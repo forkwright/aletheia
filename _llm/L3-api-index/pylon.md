@@ -133,6 +133,17 @@ pub enum ApiError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Client-visible error already classified by a lower-layer presentation contract.
+    #[snafu(display("user-facing error ({status} {code}): {message}"))]
+    UserFacing {
+        status: StatusCode,
+        code: String,
+        message: String,
+        retry_after_secs: Option<u64>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 ```
 
@@ -156,7 +167,7 @@ impl DomainEvent {
 ```
 
 > In-process broadcast bus for domain events.
->
+> 
 > Holds a [`tokio::sync::broadcast::Sender`] and provides typed publish /
 > subscribe methods.  The channel capacity is fixed at creation time;
 > slow subscribers lag behind and are dropped gracefully.
@@ -384,6 +395,9 @@ pub struct HealthResponse {
     /// Crate version from `Cargo.toml`.
     #[schema(value_type = String)]
     pub version: &'static str,
+    /// Build git SHA when available from the build environment.
+    #[schema(value_type = String)]
+    pub git_sha: &'static str,
     /// Seconds since server start.
     pub uptime_seconds: u64,
     /// Individual subsystem check results.
@@ -425,6 +439,20 @@ pub async fn get_agent_perf_one (
 pub async fn get_quality_metrics (
     State(state): State<InsightsState>,
 ) -> Json<QualityMetricsResponse>
+```
+
+```rust
+pub async fn get_token_metrics (
+    State(state): State<InsightsState>,
+    Query(query): Query<MetricsQuery>,
+) -> Json<TokenMetricsResponse>
+```
+
+```rust
+pub async fn get_cost_metrics (
+    State(state): State<InsightsState>,
+    Query(query): Query<MetricsQuery>,
+) -> Json<CostMetricsResponse>
 ```
 
 ```rust
@@ -665,9 +693,9 @@ pub struct TimelineResponse {
 }
 ```
 
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum handler; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -677,9 +705,9 @@ pub async fn list_facts (
 ) -> Result<Json<FactsResponse>, ApiError>
 ```
 
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum handler; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -735,9 +763,9 @@ pub async fn check_graph_health (
 
 ## `src/handlers/knowledge/mutation.rs`
 
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum handler; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -749,9 +777,9 @@ pub async fn forget_fact (
 ) -> Result<StatusCode, ApiError>
 ```
 
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum handler; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -762,9 +790,9 @@ pub async fn restore_fact (
 ) -> Result<StatusCode, ApiError>
 ```
 
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum handler; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -776,9 +804,9 @@ pub async fn update_confidence (
 ) -> Result<Json<serde_json::Value>, ApiError>
 ```
 
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum handler; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -792,9 +820,9 @@ pub async fn update_sensitivity (
 
 ## `src/handlers/knowledge/search.rs`
 
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum handler; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -804,9 +832,9 @@ pub async fn search (
 ) -> Result<Json<SearchResponse>, ApiError>
 ```
 
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum handler; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -1164,7 +1192,7 @@ pub struct HistoryParams {
 ```
 
 > Response for `GET /api/v1/sessions` (list).
->
+> 
 > Uses the standard paginated envelope. The `items` field contains
 > `SessionListItem` values; `has_more` and `next_cursor` enable paging.
 ```rust
@@ -1275,7 +1303,7 @@ pub fn detect_anomalies (
 ## `src/metrics.rs`
 
 > Register this crate's metrics with the shared registry.
->
+> 
 > Called once at startup from the binary crate's `register_all_metrics`.
 ```rust
 pub fn register (registry: &mut Registry)
@@ -1364,7 +1392,7 @@ pub struct CsrfState {
 ```
 
 > Middleware that validates bearer auth for an entire router subtree.
->
+> 
 > The validated claims are cached in request extensions so handlers that also
 > extract [`Claims`] do not re-validate the same token.
 ```rust
@@ -1376,12 +1404,12 @@ pub async fn require_bearer_auth (
 ```
 
 > Middleware that requires a custom header on state-changing requests.
->
+> 
 > GET, HEAD, and OPTIONS are exempt. POST, PUT, DELETE, and PATCH must
 > include the configured header with the expected value.
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum middleware; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -1393,12 +1421,12 @@ pub struct RequestId(pub String);
 ```
 
 > Middleware that generates a ULID request ID and stores it in request extensions.
->
+> 
 > If the client sends an `X-Request-ID` header, the server echoes it for
 > client-initiated correlation. Otherwise a new ULID is generated.
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum middleware; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -1407,16 +1435,16 @@ pub async fn inject_request_id (mut request: Request, next: Next) -> Response
 
 > Middleware that normalizes error responses into the `ErrorResponse` JSON
 > envelope and injects `request_id`.
->
+> 
 > WHY: Some error paths (e.g. Axum's built-in `Json` extractor rejection)
 > produce plain-text error bodies instead of the `ErrorResponse` envelope.
 > This middleware catches those responses and wraps them so all API errors
 > have a consistent `{error: {code, message}}` shape (#3160).
->
+> 
 > Must be placed inside the compression layer so the body is uncompressed.
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum middleware; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -1424,9 +1452,9 @@ pub async fn enrich_error_response (request: Request, next: Next) -> Response
 ```
 
 > Middleware that records HTTP request metrics (count + duration).
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum middleware; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -1450,14 +1478,14 @@ pub struct RateLimiter {
 ```
 
 > Middleware that enforces per-IP rate limiting.
->
+> 
 > Reads the `Arc<RateLimiter>` from request extensions (installed by
 > `build_router`). Returns 429 Too Many Requests with a `Retry-After` header
 > when the client has exceeded the configured limit. On success, injects
 > standard rate limit headers (#3268).
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum middleware; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -1478,14 +1506,14 @@ pub enum EndpointCategory {
 ```
 
 > Per-user token-bucket rate limiter with endpoint-category differentiation.
->
+> 
 > Each authenticated user gets separate token buckets for general, LLM, and
 > tool endpoints. Additionally enforces a per-IP ceiling so that a single
 > IP address cannot bypass limits by creating multiple bearer tokens (#3228).
 > The per-IP ceiling uses the same RPM but a higher burst allowance
 > ([`IP_CEILING_BURST_MULTIPLIER`] x per-user burst) to accommodate
 > multiple legitimate users behind a shared IP.
->
+> 
 > Uses `std::sync::Mutex` (not tokio): the critical section
 > is short and contains no `.await` points.
 ```rust
@@ -1501,19 +1529,19 @@ pub struct UserRateLimiter {
 ```
 
 > Middleware that enforces per-user rate limiting with endpoint categories.
->
+> 
 > Reads the `Arc<UserRateLimiter>` from request extensions. Keys on both
 > bearer token hash (per-user) and client IP (per-IP ceiling). The per-IP
 > check prevents a single IP from bypassing limits by creating multiple
 > bearer tokens (#3228). Returns 429 with `Retry-After` header when the
 > client has exceeded the configured limit for the endpoint category.
->
+> 
 > On successful responses, injects standard rate limit headers
 > (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`) so
 > consumers can self-throttle (#3268).
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum middleware; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -1532,9 +1560,9 @@ pub fn spawn_stale_cleanup (
 ## `src/openapi.rs`
 
 > Serve the generated `OpenAPI` specification as JSON.
->
+> 
 > # Cancel safety
->
+> 
 > Cancel-safe. Axum handler; cancellation drops the future with no
 > side effects beyond not returning a response.
 ```rust
@@ -1699,9 +1727,9 @@ pub enum ServerError {
 ```
 
 > Start the HTTP gateway and block until shutdown.
->
+> 
 > # Errors
->
+> 
 > Returns [`ServerError::Validation`] if the instance directory layout is invalid.
 > Returns [`ServerError::SessionStore`] if the session database cannot be opened.
 > Returns [`ServerError::Bind`] if the server cannot bind to the configured address.
@@ -1709,9 +1737,9 @@ pub enum ServerError {
 > Returns [`ServerError::NousSpawn`] if the default nous agent fails to spawn.
 > Returns [`ServerError::TlsConfig`] if TLS is enabled but certs cannot be loaded.
 > Returns [`ServerError::TlsNotCompiled`] if TLS is enabled but the feature is absent.
->
+> 
 > # Cancel safety
->
+> 
 > Not cancel-safe. Cancellation during startup (before `serve_plain`/`serve_tls`
 > returns) leaves partially initialised state. Once serving, the future blocks
 > until the OS delivers a shutdown signal; dropping it at that point skips the
@@ -1782,6 +1810,12 @@ pub struct AppState {
     pub metrics_registry: MetricsRegistry,
     /// In-process broadcast bus for domain events.
     pub event_bus: Arc<EventBus>,
+}
+```
+
+```rust
+impl AppState {
+    pub fn config_rx (&self) -> tokio::sync::watch::Receiver<AletheiaConfig>;
 }
 ```
 
@@ -1871,6 +1905,13 @@ pub struct KnowledgeState {
 ```
 
 ```rust
+pub struct PlanningState {
+    /// Root directory containing dianoia project workspaces.
+    pub planning_root: PathBuf,
+}
+```
+
+```rust
 pub struct InsightsState {
     /// Persistent session and message storage.
     pub session_store: Arc<Mutex<SessionStore>>,
@@ -1891,7 +1932,7 @@ pub struct EventBusState {
 ## `src/turn_buffer.rs`
 
 > Registry of active and recently-completed turn buffers.
->
+> 
 > Held in `SessionsState` as `Arc<TurnBufferRegistry>`.
 ```rust
 pub struct TurnBufferRegistry {
@@ -1995,6 +2036,143 @@ pub struct QualityMetricsResponse {
 ```
 
 ```rust
+pub struct MetricsQuery {
+    /// Series granularity: daily, weekly, or monthly.
+    #[serde(default)]
+    pub granularity: Option<String>,
+    /// Inclusive start date (`YYYY-MM-DD`).
+    #[serde(default)]
+    pub from: Option<String>,
+    /// Inclusive end date (`YYYY-MM-DD`).
+    #[serde(default)]
+    pub to: Option<String>,
+}
+```
+
+```rust
+pub struct TokenSeriesPoint {
+    /// Bucket date (`YYYY-MM-DD`, ISO week, or `YYYY-MM`).
+    pub date: String,
+    /// Input tokens in this bucket.
+    pub input_tokens: u64,
+    /// Output tokens in this bucket.
+    pub output_tokens: u64,
+}
+```
+
+```rust
+pub struct AgentTokenRow {
+    /// Agent identifier.
+    pub id: String,
+    /// Human-readable agent name.
+    pub name: String,
+    /// Input tokens attributed to this agent.
+    pub input_tokens: u64,
+    /// Output tokens attributed to this agent.
+    pub output_tokens: u64,
+    /// Sessions attributed to this agent.
+    pub session_count: u64,
+}
+```
+
+```rust
+pub struct ModelTokenRow {
+    /// Model identifier.
+    pub model: String,
+    /// Input tokens attributed to this model.
+    pub input_tokens: u64,
+    /// Output tokens attributed to this model.
+    pub output_tokens: u64,
+    /// Sessions attributed to this model.
+    pub session_count: u64,
+}
+```
+
+```rust
+pub struct TokenMetricsResponse {
+    /// Token usage over time.
+    pub series: Vec<TokenSeriesPoint>,
+    /// Token usage grouped by agent.
+    pub agents: Vec<AgentTokenRow>,
+    /// Token usage grouped by model.
+    pub models: Vec<ModelTokenRow>,
+    /// Input tokens used today.
+    pub today_input: u64,
+    /// Output tokens used today.
+    pub today_output: u64,
+    /// Input tokens used this week.
+    pub week_input: u64,
+    /// Output tokens used this week.
+    pub week_output: u64,
+    /// Input tokens used this month.
+    pub month_input: u64,
+    /// Output tokens used this month.
+    pub month_output: u64,
+    /// Input tokens used in the previous equivalent day.
+    pub prev_today_input: u64,
+    /// Output tokens used in the previous equivalent day.
+    pub prev_today_output: u64,
+    /// Input tokens used in the previous equivalent week.
+    pub prev_week_input: u64,
+    /// Output tokens used in the previous equivalent week.
+    pub prev_week_output: u64,
+    /// Input tokens used in the previous equivalent month.
+    pub prev_month_input: u64,
+    /// Output tokens used in the previous equivalent month.
+    pub prev_month_output: u64,
+}
+```
+
+```rust
+pub struct CostSeriesPoint {
+    /// Bucket date (`YYYY-MM-DD`, ISO week, or `YYYY-MM`).
+    pub date: String,
+    /// Estimated cost in USD for this bucket.
+    pub cost_usd: f64,
+}
+```
+
+```rust
+pub struct AgentCostRow {
+    /// Agent identifier.
+    pub id: String,
+    /// Human-readable agent name.
+    pub name: String,
+    /// Estimated cost in USD.
+    pub total_cost: f64,
+    /// Message count attributed to this agent.
+    pub message_count: u64,
+    /// Sessions attributed to this agent.
+    pub session_count: u64,
+    /// Output tokens attributed to this agent.
+    pub output_tokens: u64,
+    /// Cost from the previous equivalent period.
+    pub prev_period_cost: f64,
+}
+```
+
+```rust
+pub struct CostMetricsResponse {
+    /// Estimated cost over time.
+    pub series: Vec<CostSeriesPoint>,
+    /// Estimated costs grouped by agent.
+    pub agents: Vec<AgentCostRow>,
+    /// Estimated cost today.
+    pub today_cost: f64,
+    /// Estimated cost this week.
+    pub week_cost: f64,
+    /// Estimated cost this month.
+    pub month_cost: f64,
+    /// Estimated cost for the previous equivalent day.
+    pub prev_today_cost: f64,
+    /// Estimated cost for the previous equivalent week.
+    pub prev_week_cost: f64,
+    /// Estimated cost for the previous equivalent month.
+    pub prev_month_cost: f64,
+}
+```
+
+```rust
 pub struct JournalEvent {
     /// ISO 8601 timestamp.
     pub timestamp: String,
@@ -2065,6 +2243,10 @@ pub fn permissive_security () -> SecurityConfig
 
 ```rust
 pub fn issue_test_token (state: &AppState) -> String
+```
+
+```rust
+pub fn issue_test_token_as (state: &AppState, role: Role) -> String
 ```
 
 ```rust

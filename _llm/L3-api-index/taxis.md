@@ -638,6 +638,9 @@ pub struct DispatchSpecConfig {
     /// Maximum parallelism.
     #[serde(default)]
     pub max_parallel: Option<u32>,
+    /// Maximum turns per initial session.
+    #[serde(default)]
+    pub max_turns: Option<u32>,
 }
 ```
 
@@ -926,6 +929,7 @@ pub enum DeploymentTarget {
     /// Self-hosted endpoint reachable over the local network (e.g., a
     /// colocated llama.cpp server on the same subnet). Trusted with
     /// operator-sensitive content but not with personally-identifiable data.
+    #[serde(alias = "local_hosted", alias = "local-hosted")]
     LocalHosted,
     /// Runs on the same machine as aletheia (loopback llama.cpp / ollama
     /// / vllm). Trusted with every fact the operator would trust to disk.
@@ -937,13 +941,26 @@ pub enum DeploymentTarget {
 pub enum ProviderKind {
     /// Anthropic Messages API native client.
     Anthropic,
+    /// `OpenAI` Chat Completions API native endpoint.
+    #[serde(rename = "openai", alias = "open-ai")]
+    OpenAi,
     /// `OpenAI` Chat Completions-compatible HTTP client. Works with
     /// `OpenAI`, llama.cpp, ollama, vllm, and any other server exposing the
     /// same wire format.
+    #[serde(alias = "openai-compatible")]
     OpenAiCompatible,
     /// Claude Code subprocess adapter (delegates to the `claude` CLI).
     /// Requires the `cc-provider` feature flag on hermeneus.
     ClaudeCode,
+}
+```
+
+```rust
+pub enum OpenAiApiFamily {
+    /// `OpenAI` `/v1/chat/completions` and compatible local/proxy endpoints.
+    ChatCompletions,
+    /// `OpenAI` first-party `/v1/responses` endpoint.
+    Responses,
 }
 ```
 
@@ -966,6 +983,11 @@ pub struct LlmProviderConfig {
     /// not require authentication.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key_env: Option<String>,
+    /// `OpenAI` API family to use. If omitted, `providerType = "openai"`
+    /// defaults to `responses`, while `openai-compatible` defaults to
+    /// `chat-completions` for local/proxy compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_family: Option<OpenAiApiFamily>,
     /// Where this provider's traffic terminates. Drives the
     /// factsensitivity filter (#3414) and air-gapped mode.
     #[serde(default)]
@@ -998,14 +1020,6 @@ pub struct CapacityConfig {
     /// Applies to all built-in tools (filesystem, workspace, shell). Set to
     /// `0` to disable truncation. Valid range: 0–10 MiB. Default: 51200 (50 KiB).
     pub max_tool_output_bytes: usize,
-    /// Context window token limit applied to Opus-class models when the
-    /// global `contextTokens` is still at its default value (200k).
-    ///
-    /// Opus models support a 1M token context window; this automatic upgrade
-    /// preserves that capability without requiring manual per-agent overrides.
-    /// Set to the same value as `contextTokens` to disable the auto-upgrade.
-    /// Valid range: 200000–2000000. Default: 1000000.
-    pub opus_context_tokens: u32,
 }
 ```
 
@@ -2130,15 +2144,15 @@ pub struct PreconditionError {
 ```
 
 > Run all resource precondition checks before service initialization.
->
+> 
 > Checks disk space on the data directory, gateway port availability, and
 > read/write permissions on key instance directories.
->
+> 
 > Call this after [`crate::oikos::Oikos::validate`] and config loading, but
 > before starting the HTTP server or any actors.
->
+> 
 > # Errors
->
+> 
 > Returns [`PreconditionError`] with all collected failures when any check
 > does not pass. The error message is human-readable and actionable.
 ```rust
@@ -2241,12 +2255,12 @@ pub fn restart_prefixes () -> &'static [&'static str]
 ```
 
 > Return `staged` with every restart-required changed path restored from `current`.
->
+> 
 > The returned config is the live/effective view. Callers may still persist the
 > staged config to disk, but must not broadcast cold values as live runtime state.
->
+> 
 > # Errors
->
+> 
 > Returns [`serde_json::Error`] if the restored JSON cannot deserialize back
 > into [`AletheiaConfig`].
 ```rust
@@ -2286,7 +2300,7 @@ pub fn diff_configs (old: &AletheiaConfig, new: &AletheiaConfig) -> ConfigDiff
 ```
 
 > Log all changes from a config diff at appropriate levels.
->
+> 
 > Cold changes (those requiring restart) are logged at `warn` level with
 > an explicit message that the new value is staged but not yet effective.
 > This satisfies the observability contract: the system's reported state
@@ -2336,7 +2350,7 @@ pub fn prepare_reload (
 
 > RAII fixture that owns a fresh temp directory and restores any env vars
 > it set (or cleared) when it is dropped.
->
+> 
 > WHY: replaces `figment::Jail` after #3447 (figment replacement). The jail
 > protects a test's env-var mutations from leaking to sibling tests.
 ```rust
@@ -2380,7 +2394,7 @@ pub fn validate_section (section: &str, value: &Value) -> Result<(), ValidationE
 
 > Environment variable operators must set to `1` in order to accept a config
 > write that sets `gateway.auth.mode = "none"`.
->
+> 
 > WHY: Disabling authentication removes all access control from the HTTP API.
 > Requiring an explicit opt-in prevents a remote PUT /api/v1/config/gateway
 > from silently turning off auth. (#3383)
@@ -2390,7 +2404,7 @@ pub const ALLOW_AUTH_NONE_ENV: &str = "ALETHEIA_ALLOW_AUTH_NONE";
 
 > Environment variable operators must set to `1` to allow the server to bind
 > to a non-localhost address while running with `gateway.auth.mode = "none"`.
->
+> 
 > WHY: disabled-auth on localhost is a supported local-dev shape; disabled-auth
 > on a LAN or Tailscale bind is an insecure-by-default posture we refuse to
 > boot into. Operators who genuinely want unauthenticated LAN access must
@@ -2415,7 +2429,7 @@ pub fn auth_none_opt_in_enabled () -> bool
 ```
 
 > Emit a loud startup warning when authentication is disabled.
->
+> 
 > Called after the initial config load. Emits a single `warn!` event with the
 > prefix `SECURITY: auth disabled` so operators running with `auth_mode = "none"`
 >  -  even intentionally  -  see the consequence in every log aggregator. (#3383)

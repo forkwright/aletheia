@@ -30,7 +30,7 @@ pub enum Error {
 ## `src/listener.rs`
 
 > Listens on registered channels, merging inbound messages into a single stream.
->
+> 
 > Dropping the listener aborts all background polling tasks through
 > [`JoinSet`]'s drop behavior unless [`into_receiver`](Self::into_receiver)
 > was called first, which transfers the receiver and handles to the caller.
@@ -88,7 +88,7 @@ pub fn register (registry: &mut Registry)
 ## `src/registry.rs`
 
 > Registry of available channel providers.
->
+> 
 > Channels are registered at startup and looked up by ID during send operations.
 > Uses `IndexMap` to preserve insertion order.
 ```rust
@@ -133,7 +133,7 @@ pub enum MatchReason {
 ```
 
 > Routes inbound channel messages to the appropriate nous agent.
->
+> 
 > Resolution order:
 > 1. Exact group match: channel + `group_id` → `nous_id`
 > 2. Exact source match: channel + source → `nous_id`
@@ -358,7 +358,7 @@ pub fn parse_target (to: &str) -> SignalTarget
 ```
 
 > Signal channel provider implementing `ChannelProvider`.
->
+> 
 > Manages multiple Signal accounts, each backed by a `SignalClient`.
 > Tracks connection state per account with reconnect backoff and
 > outbound message buffering during disconnection.
@@ -493,7 +493,7 @@ pub struct InboundMessage {
 ```
 
 > The contract every channel provider must implement.
->
+> 
 > Object-safe via `Pin<Box<dyn Future>>` (matches `ToolExecutor` in organon).
 > Implementations are stored as `Arc<dyn ChannelProvider>` in the registry.
 ```rust

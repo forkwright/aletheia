@@ -76,7 +76,7 @@ pub enum OdsRendererError {
 ```
 
 > Renders a [`Document`] to an ODS byte vector.
->
+> 
 > The document title becomes the first sheet name. Tables map directly to
 > sheets. Non-table blocks are rendered as plain-text rows.
 ```rust
@@ -103,7 +103,7 @@ pub enum XlsxRendererError {
 ```
 
 > Renders a [`Document`] to an Excel XLSX byte vector.
->
+> 
 > The document title becomes the first sheet name. Each [`Block::Table`]
 > produces one worksheet. Non-table blocks are written as plain-text rows
 > at the top of the current sheet.

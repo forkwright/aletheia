@@ -145,7 +145,7 @@ pub fn make_tool_def (name: &str, groups: Vec<ToolGroupId>) -> ToolDef
 ```
 
 > Return a vec of `(skill_json, is_always)` for the always-vs-lazy canary.
->
+> 
 > All skills share the "canary" domain tag so that a single BM25 query
 > can retrieve the full fixture set for end-to-end verification.
 ```rust

@@ -2,7 +2,7 @@
 
 Crate path: `crates/gnosis`
 
-Public API signatures. Each signature is preceded by its doc comment.
+Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
 ## `src/error.rs`
@@ -24,7 +24,7 @@ pub enum GnosisError {
     #[snafu(display("failed to parse {}: {source}", path.display()))]
     Parse { path: PathBuf, source: syn::Error },
 
-    /// A `fjall` operation failed.
+    /// A fjall operation failed.
     #[snafu(display("fjall error: {source}"))]
     Fjall { source: fjall::Error },
 
@@ -60,9 +60,9 @@ pub type Result<T> = std::result::Result<T, GnosisError>;
 ## `src/lib.rs`
 
 > A handle to the gnosis fjall index.
->
+> 
 > # Thread safety
->
+> 
 > The fjall keyspace handles are thread-safe. We keep them behind a mutex so
 > query and rebuild operations see a consistent sequence of mutations.
 ```rust
@@ -112,7 +112,7 @@ pub struct QueryRow {
     /// Symbol name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol_name: Option<String>,
-    /// Symbol kind (`fn`, `struct`, `enum`, `trait`, `impl`, `reexport`, …).
+    /// Symbol kind (`fn`, `struct`, `enum`, `trait`, `impl`, `reexport`, ...).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol_kind: Option<String>,
     /// Absolute path to the source file.

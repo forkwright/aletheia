@@ -8,10 +8,9 @@ For implementation context, read the source directly (`L4`).
 ## `src/adjectives.rs`
 
 > Adjectives that are unfalsifiable without measurement context.
->
+> 
 > These appear in planning documents and vision statements but cannot be
-> tested without concrete metrics. Sourced from
-> `basanos/src/rules/planning.rs`.
+> tested without concrete metrics.
 ```rust
 pub const UNFALSIFIABLE_ADJECTIVES: &[&str] = &[
     "world-class",
@@ -25,7 +24,7 @@ pub const UNFALSIFIABLE_ADJECTIVES: &[&str] = &[
 ## `src/keywords.rs`
 
 > Keywords that suggest a coding or implementation task.
->
+> 
 > Sourced from `nous/src/bootstrap/mod.rs`.
 ```rust
 pub const CODING_KEYWORDS: &[&str] = &[
@@ -50,7 +49,7 @@ pub const CODING_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that suggest a research or investigation task.
->
+> 
 > Sourced from `nous/src/bootstrap/mod.rs`.
 ```rust
 pub const RESEARCH_KEYWORDS: &[&str] = &[
@@ -70,7 +69,7 @@ pub const RESEARCH_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that suggest a planning or design task.
->
+> 
 > Sourced from `nous/src/bootstrap/mod.rs`.
 ```rust
 pub const PLANNING_KEYWORDS: &[&str] = &[
@@ -89,7 +88,7 @@ pub const PLANNING_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that suggest a casual conversation rather than a task.
->
+> 
 > Sourced from `nous/src/bootstrap/mod.rs`.
 ```rust
 pub const CONVERSATION_KEYWORDS: &[&str] = &[
@@ -108,7 +107,7 @@ pub const CONVERSATION_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that map to an analysis intake request.
->
+> 
 > Sourced from `poiesis/intake/src/lib.rs`.
 ```rust
 pub const INTAKE_ANALYSIS_KEYWORDS: &[&str] = &[
@@ -127,7 +126,7 @@ pub const INTAKE_ANALYSIS_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that map to a report intake request.
->
+> 
 > Sourced from `poiesis/intake/src/lib.rs`.
 ```rust
 pub const INTAKE_REPORT_KEYWORDS: &[&str] = &[
@@ -144,7 +143,7 @@ pub const INTAKE_REPORT_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that map to a dashboard intake request.
->
+> 
 > Sourced from `poiesis/intake/src/lib.rs`.
 ```rust
 pub const INTAKE_DASHBOARD_KEYWORDS: &[&str] = &[
@@ -162,11 +161,11 @@ pub const INTAKE_DASHBOARD_KEYWORDS: &[&str] = &[
 ## `src/prefixes.rs`
 
 > Phrases that indicate the user is issuing a behavioral correction.
->
+> 
 > Simple keyword matching is intentionally conservative. False negatives
 > (missed corrections) are preferable to false positives (storing random
 > sentences as corrections).
->
+> 
 > Sourced from `nous/src/hooks/builtins/correction.rs`.
 ```rust
 pub const CORRECTION_PREFIXES: &[&str] = &[
@@ -194,7 +193,7 @@ pub const CORRECTION_PREFIXES: &[&str] = &[
 ## `src/stopwords.rs`
 
 > Comprehensive English stopwords for terminology discovery and text filtering.
->
+> 
 > Covers prepositions, pronouns, auxiliary verbs, determiners, and common
 > conjunctions. Sourced from `nous/src/recall/reranking.rs`.
 ```rust
@@ -329,7 +328,7 @@ pub const ENGLISH_STOPWORDS: &[&str] = &[
 ```
 
 > Smaller stopword list for probe token-overlap comparison.
->
+> 
 > Focused on high-frequency function words. Sourced from
 > `melete/src/probe.rs`.
 ```rust

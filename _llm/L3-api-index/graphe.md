@@ -248,6 +248,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub fn register (registry: &mut Registry)
 ```
 
+> Record a backup operation duration.
+> 
+> Called by the daemon's fjall backup task through the binary crate's
+> runtime hook so backup-staleness alerting observes real backup attempts.
+```rust
+pub fn record_backup_duration (duration_secs: f64, success: bool)
+```
+
 ## `src/portability.rs`
 
 ```rust
@@ -359,7 +367,7 @@ pub struct KnowledgeExport {
 ## `src/store/fjall_store.rs`
 
 > Fjall-backed session store.
->
+> 
 > Open with [`SessionStore::open`] for persistent storage or
 > [`SessionStore::open_in_memory`] for ephemeral storage (test-only; uses a
 > `TempDir` that is cleaned up on drop).

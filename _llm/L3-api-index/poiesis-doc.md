@@ -64,12 +64,12 @@ pub fn render_docx (data: &Value) -> Result<Vec<u8>>
 ```
 
 > Inspect an in-memory DOCX file and extract paragraph text.
->
+> 
 > Reads `word/document.xml` from the ZIP archive and collects the
 > concatenated text inside each `<w:t>` element, grouping by `<w:p>`.
->
+> 
 > # Errors
->
+> 
 > Returns [`Error::ReadZip`] if the bytes are not a valid ZIP archive,
 > or [`Error::ParseXml`] if `document.xml` cannot be parsed.
 ```rust

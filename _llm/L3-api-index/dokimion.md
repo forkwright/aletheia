@@ -32,7 +32,7 @@ pub struct CategoryBaseline {
 ```
 
 > Baselines for the `LongMemEval` benchmark.
->
+> 
 > Paper: *`LongMemEval`: Benchmarking Chat Assistants on Long-Term Interactive
 > Memory*, Zhang et al., 2024 (arxiv:2410.10813).
 ```rust
@@ -45,7 +45,7 @@ pub fn longmemeval_category_baselines () -> Vec<(&'static str, Vec<CategoryBasel
 ```
 
 > Baselines for the `LoCoMo` benchmark.
->
+> 
 > Paper: *Long-Context Conversational Memory (`LoCoMo`)*, Maharana et al.,
 > 2024 (arxiv:2402.17753).
 ```rust
@@ -159,7 +159,7 @@ pub fn ndcg_at_k (retrieved: &[String], relevant: &[String], k: usize) -> f64
 ## `src/benchmarks/mod.rs`
 
 > Re-export of [`EvalClient`](crate::client::EvalClient) for external use.
->
+> 
 > External consumers of the benchmark runner need this to construct a
 > runner. The rest of the client API surface is not stable.
 ```rust
@@ -301,9 +301,9 @@ pub fn download_instructions () -> &'static str
 ```
 
 > Load a `LongMemEval` dataset from a JSON file on disk.
->
+> 
 > # Errors
->
+> 
 > Returns an error if the file cannot be read or the JSON is not in the
 > expected `LongMemEval` format.
 ```rust
@@ -313,9 +313,9 @@ pub async fn load_longmemeval (
 ```
 
 > Load a `LoCoMo` dataset from a JSON file on disk.
->
+> 
 > # Errors
->
+> 
 > Returns an error if the file cannot be read or the JSON is not in the
 > expected `LoCoMo` format.
 ```rust
@@ -688,9 +688,9 @@ pub fn records_from_report (report: &RunReport) -> Vec<EvalRecord>
 ```
 
 > Append evaluation records to a JSONL file, creating it if necessary.
->
+> 
 > # Errors
->
+> 
 > Returns `Io` if the file cannot be opened or written to.
 > Returns `Json` if a record cannot be serialized.
 ```rust
@@ -699,13 +699,13 @@ pub fn append_jsonl (path: &Path, records: &[EvalRecord]) -> Result<()>
 
 > Append evaluation records from a `RunReport` to a JSONL file and write a
 > sibling `<path>.meta.json` file with provenance metadata.
->
+> 
 > The `.meta.json` file is always overwritten (not appended) because it
 > reflects the provenance of the *most recent* batch of records written to
 > the JSONL file.
->
+> 
 > # Errors
->
+> 
 > Returns `Io` if either file cannot be opened or written to.
 > Returns `Json` if serialization of records or metadata fails.
 ```rust
@@ -715,7 +715,7 @@ pub fn append_jsonl_stamped (path: &Path, report: &RunReport) -> Result<()>
 ## `src/provider/provider_impl.rs`
 
 > Provider that returns all built-in dokimion scenarios.
->
+> 
 > This is the default when no custom provider is specified  -  it wraps
 > [`scenarios::all_scenarios()`](crate::scenarios::all_scenarios).
 ```rust
@@ -723,7 +723,7 @@ pub struct BuiltinProvider;
 ```
 
 > Combines multiple providers into a single scenario set.
->
+> 
 > Scenarios are collected in provider order. Deduplication is the caller's
 > responsibility (scenario IDs are not enforced unique across providers).
 ```rust
@@ -742,7 +742,7 @@ impl CompositeProvider {
 ## `src/provider.rs`
 
 > Source of evaluation scenarios.
->
+> 
 > Implementations decide which scenarios to include. The runner calls
 > [`provide`] once at the start of a run and executes the returned set.
 ```rust

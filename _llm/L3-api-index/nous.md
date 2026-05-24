@@ -13,7 +13,7 @@ pub const DEFAULT_INBOX_CAPACITY: usize = 32;
 ```
 
 > A single nous agent running as a Tokio actor.
->
+> 
 > Each actor owns its mutable state and processes messages sequentially
 > from a bounded inbox. External code interacts via [`NousHandle`](crate::handle::NousHandle).
 ```rust
@@ -48,7 +48,7 @@ impl NousActor {
 ## `src/actor/spawn.rs`
 
 > Parameters for daemon-initiated child agent spawning.
->
+> 
 > WHY: the daemon coordinator needs to spawn child agents with a subset of
 > the parent's runtime dependencies. This struct collects the required
 > parameters so the binary crate can wire daemon spawns through to the
@@ -96,7 +96,7 @@ pub fn spawn_for_daemon (
 ## `src/adapters.rs`
 
 > Adapts `SessionStore` note methods to the `NoteStore` trait.
->
+> 
 > The inner lock guards fjall session-store access; acquired via `block_in_place`
 > to avoid holding it across async boundaries.
 ```rust
@@ -104,7 +104,7 @@ pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>);
 ```
 
 > Adapts `SessionStore` blackboard methods to the `BlackboardStore` trait.
->
+> 
 > The inner lock guards fjall session-store access; acquired via `block_in_place`
 > to avoid holding it across async boundaries.
 ```rust
@@ -229,7 +229,7 @@ impl PromptAuditLog {
 ## `src/bootstrap/mod.rs`
 
 > Default TTL for bootstrap file cache entries when no operator override is set.
->
+> 
 > // WHY: 60s balances freshness (operator edits to SOUL.md/USER.md should
 > // surface within about a minute) against the cost of re-reading every
 > // workspace file on every turn. mtime-based invalidation catches edits
@@ -370,10 +370,10 @@ pub struct BootstrapResult {
 ```
 
 > Assembles the bootstrap system prompt from oikos workspace files.
->
+> 
 > Resolves files through the three-tier cascade (`nous/{id}/` → `shared/` → `theke/`),
 > reads contents, estimates tokens, and packs sections in priority order.
->
+> 
 > Workspace file reads are served from an optional [`BootstrapFileCache`]
 > when one is attached via [`new_with_cache`](Self::new_with_cache). Without
 > a cache, every call re-reads every file from disk (legacy behaviour).
@@ -440,7 +440,7 @@ pub fn classify_task_hint (content: &str) -> TaskHint
 ```
 
 > Convert domain pack sections into bootstrap sections.
->
+> 
 > Maps thesauros [`PackSection`] values to [`BootstrapSection`] values,
 > computing token estimates for each section's content. Section names
 > are prefixed with the pack name for traceability.
@@ -476,18 +476,18 @@ pub enum PreInjectError {
 ```
 
 > Scan workspace file content before injection into the system prompt.
->
+> 
 > Returns `Ok(())` when the content passes both the invisible-Unicode and
 > threat-pattern checks. Returns `Err` on the first detected violation.
->
+> 
 > # Invisible-Unicode scan
->
+> 
 > Rejects content containing zero-width spaces, bidi control characters,
 > word joiners, and other invisible codepoints that can be used to hide
 > malicious text or alter rendering.
->
+> 
 > # Threat-pattern scan
->
+> 
 > Rejects content matching known prompt-injection signatures. Patterns are
 > compiled once via [`OnceLock`] and matched case-insensitively.
 ```rust
@@ -516,7 +516,7 @@ pub struct ToolSummary {
 ## `src/budget.rs`
 
 > Character-based token estimator: 1 token ≈ N characters (ceiling division).
->
+> 
 > Conservative estimate suitable for budget planning. Actual token counts
 > from the Anthropic API will be lower, giving natural headroom.
 > `chars_per_token` is configurable via `agents.defaults.chars_per_token`
@@ -641,7 +641,7 @@ impl CompactionStrategy {
 > Mid-session token-budget compaction. Discards noise; preserves only
 > decisions made and outstanding questions. Tone: terse, decision-focused,
 > instructional. Output target: dramatically shorter than input (≥60%).
->
+> 
 > Fires on: `TokenBudget` hits.
 ```rust
 pub const COMPACT_PROMPT: &str = r"You are a context compressor. Given a conversation history, produce a terse summary that is at least 60% shorter than the input while preserving:
@@ -659,7 +659,7 @@ Remove all redundant explanations, conversational filler, and duplicate reasonin
 > the tool calls you just ran with key results, the working hypothesis.
 > Tone: first-person ("I"), tool-trail-preserving, drops only redundant
 > prose. Output target: a continuation note future-you can act on.
->
+> 
 > Fires on: `SessionBoundary`, `DreamConsolidation`.
 ```rust
 pub const RESTORE_PROMPT: &str = r#"You are a session restoration assistant. Given a conversation history, produce a first-person continuation note ("I ...") that preserves actionable continuation state:
@@ -968,6 +968,12 @@ pub struct NousConfig {
     /// Episteme knowledge-store cohort for this agent.
     #[serde(default = "default_episteme_cohort", with = "arc_str")]
     pub episteme_cohort: Arc<str>,
+    /// Filesystem workspace used by local tools and hooks.
+    #[serde(default = "default_workspace")]
+    pub workspace: PathBuf,
+    /// Canonical filesystem roots that local tools may access.
+    #[serde(default)]
+    pub allowed_roots: Vec<PathBuf>,
     /// Server-side tools to include in API requests (e.g., web search).
     #[serde(default)]
     pub server_tools: Vec<hermeneus::types::ServerToolDefinition>,
@@ -1024,6 +1030,8 @@ pub struct HookConfig {
     pub correction_hooks_enabled: bool,
     /// Enable the audit logging hook (priority 100).
     pub audit_logging_enabled: bool,
+    /// Enable post-turn self-audit checks.
+    pub self_audit_enabled: bool,
     /// Enable the working checkpoint hook (priority 40).
     ///
     /// When enabled, agent-curated `<key_info>` checkpoints written via
@@ -1336,20 +1344,20 @@ pub fn is_transient_llm_error (err: &error::Error) -> bool
 ```
 
 > Attempt to build a degraded [`TurnResult`] when the LLM provider is down.
->
+> 
 > # Behaviour
->
+> 
 > 1. If `recent_distillation` is `Some`, prepend a status banner and return
 >    the summary as the response content with a [`DegradedMode::DistillationCache`]
 >    indicator.
 > 2. If `recent_distillation` is `None`, return a clear "can't help right now"
 >    message with a [`DegradedMode::Unavailable`] indicator.
->
+> 
 > Either way the original error is logged at `warn` level so it remains visible
 > in traces without being surfaced to the caller as a hard error.
->
+> 
 > # Parameters
->
+> 
 > - `nous_id`  -  agent identifier used for log context.
 > - `session_id`  -  session identifier used for log context.
 > - `original_error`  -  the transient error that triggered degradation.
@@ -1507,7 +1515,7 @@ impl DriftConfig {
 ```
 
 > Rolling-window quality drift detector.
->
+> 
 > Accumulates [`TurnMetrics`] and compares the most recent `recent_size`
 > turns against the full window. When a metric's z-score exceeds the
 > configured threshold, a [`DriftEvent`] is produced and logged at warn
@@ -1591,6 +1599,14 @@ pub enum Error {
     PipelineStage {
         stage: String,
         message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Turn was cancelled before completion.
+    #[snafu(display("turn cancelled: {reason}"))]
+    TurnCancelled {
+        reason: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -1912,6 +1928,14 @@ impl NousHandle {
         content: impl Into<String>,
         timeout: Duration,
     ) -> error::Result<TurnResult>;
+    pub async fn send_turn_with_cancel (
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        content: impl Into<String>,
+        timeout: Duration,
+        turn_cancel: CancellationToken,
+    ) -> error::Result<TurnResult>;
     pub async fn send_turn_with_timeout (
         &self,
         session_key: impl Into<String>,
@@ -1932,6 +1956,15 @@ impl NousHandle {
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         timeout: Duration,
     ) -> error::Result<TurnResult>;
+    pub async fn send_turn_streaming_with_cancel (
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        content: impl Into<String>,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        timeout: Duration,
+        turn_cancel: CancellationToken,
+    ) -> error::Result<TurnResult>;
     pub async fn send_turn_streaming_with_timeout (
         &self,
         session_key: impl Into<String>,
@@ -1940,6 +1973,12 @@ impl NousHandle {
         timeout: Duration,
     ) -> error::Result<TurnResult>;
     pub async fn ping (&self, timeout: Duration) -> error::Result<()>;
+    pub async fn reload_config (
+        &self,
+        config: NousConfig,
+        pipeline_config: PipelineConfig,
+        timeout: Duration,
+    ) -> error::Result<()>;
     pub async fn status (&self) -> error::Result<NousStatus>;
     pub async fn sleep (&self) -> error::Result<()>;
     pub async fn wake (&self) -> error::Result<()>;
@@ -2037,6 +2076,10 @@ impl NousManager {
     pub fn secret_vault (&self) -> Option<&hermeneus::secret::SecretVault>;
     pub fn get_config (&self, nous_id: &str) -> Option<&NousConfig>;
     pub fn configs (&self) -> Vec<&NousConfig>;
+    pub async fn reload_actor_configs (
+        &self,
+        configs: Vec<(String, NousConfig, PipelineConfig)>,
+    ) -> crate::error::Result<()>;
     pub async fn check_health (&self) -> BTreeMap<String, ActorHealth>;
     pub async fn health_cycle (&mut self);
     pub fn start_health_poller (
@@ -2257,17 +2300,17 @@ pub enum LoopVerdict {
 ```
 
 > Assemble a sequence of [`Step`]s from pipeline messages.
->
+> 
 > Walks the message stream and groups each assistant message with the
 > contiguous tool-result messages that follow it. Each group becomes one
 > [`Step`] where the assistant content is the `self_note` and the tool
 > results become [`Observation`]s.
->
+> 
 > Non-tool user messages (e.g., the original user prompt) act as turn
 > boundaries but do not produce Steps themselves.
->
+> 
 > # Edge cases
->
+> 
 > - Tool results with no preceding assistant message are attached to the
 >   most recent prior step. If no prior step exists, they are dropped.
 > - An assistant message with no trailing tool results produces a step with
@@ -2558,12 +2601,12 @@ pub struct RecallFilteredFact {
 ```
 
 > Recall stage: scores and formats knowledge for injection into the system prompt.
->
+> 
 > # Examples
->
+> 
 > ```no_run
 > use nous::recall::{RecallConfig, RecallStage};
->
+> 
 > let stage = RecallStage::new(RecallConfig::default());
 > ```
 ```rust
@@ -2711,7 +2754,7 @@ impl KnowledgeVectorSearch {
 ## `src/recall/search.rs`
 
 > Abstracts vector knowledge search.
->
+> 
 > `KnowledgeStore` implements this when the `mneme-engine` feature is available.
 > For tests, use `MockVectorSearch`.
 ```rust
@@ -2831,25 +2874,25 @@ impl RecipeRegistry {
 ## `src/research.rs`
 
 > Spawn parallel researchers for each domain and merge results.
->
+> 
 > Each researcher runs as an ephemeral sub-agent via [`SpawnService`]. All
 > researchers run concurrently. Partial results are accepted if some researchers
 > fail or timeout.
->
+> 
 > # Complexity
->
+> 
 > O(d) where d is the number of research domains. Each domain spawns a
 > concurrent task, so wall-clock time is O(1) (bounded by the slowest domain),
 > but total work scales linearly with domains.
->
+> 
 > # Errors
->
+> 
 > Returns `String` only if the spawn service itself is unavailable. Individual
 > researcher failures are captured as [`FindingStatus::Failed`] or
 > [`FindingStatus::TimedOut`] in the output.
->
+> 
 > # Cancel safety
->
+> 
 > Not cancel-safe. If cancelled while spawning researchers, some sub-agents
 > may have been spawned but their results will never be collected. This leaks
 > spawned tasks until they complete naturally. Do not use in `select!` branches.
@@ -3081,7 +3124,7 @@ impl AuditReport {
 ```
 
 > A self-audit check that evaluates a specific aspect of agent behavior.
->
+> 
 > Implementations analyze the [`CheckContext`] and return a [`CheckResult`]
 > indicating pass/warn/fail with a numeric score and evidence string.
 ```rust
@@ -3200,6 +3243,36 @@ pub struct SpawnServiceImpl {
     providers: Arc<ProviderRegistry>,
     tools: Arc<ToolRegistry>,
     oikos: Arc<Oikos>,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    session_store: Option<Arc<Mutex<SessionStore>>>,
+    #[cfg(feature = "knowledge-store")]
+    knowledge_store: Option<Arc<KnowledgeStore>>,
+    router: Option<Arc<crate::cross::CrossNousRouter>>,
+    audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
+    tool_services: OnceLock<Arc<ToolServices>>,
+}
+```
+
+> Parent runtime dependencies inherited by ephemeral sub-agents.
+```rust
+pub struct InheritedSpawnServices {
+    /// Shared embedding provider inherited from the parent runtime.
+    pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Shared vector search backend inherited from the parent runtime.
+    pub vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    /// Durable session store used to persist spawned-agent turns.
+    pub session_store: Option<Arc<Mutex<SessionStore>>>,
+    /// Knowledge store selected for spawned-agent recall and memory tools.
+    #[cfg(feature = "knowledge-store")]
+    pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Cross-nous router used to register spawned agents for communication tools.
+    pub router: Option<Arc<crate::cross::CrossNousRouter>>,
+    /// Prompt audit log shared with parent actors.
+    pub audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    /// Empirical routing backend shared with parent actors.
+    pub empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
 }
 ```
 
@@ -3210,6 +3283,8 @@ impl SpawnServiceImpl {
         tools: Arc<ToolRegistry>,
         oikos: Arc<Oikos>,
     ) -> Self;
+    pub fn with_runtime_services (mut self, services: InheritedSpawnServices) -> Self;
+    pub fn set_tool_services (&self, services: Arc<ToolServices>);
 }
 ```
 
@@ -3225,6 +3300,17 @@ pub enum TurnStreamEvent {
         tool_name: String,
         input: serde_json::Value,
     },
+    /// Tool approval is required before execution.
+    ToolApprovalRequired {
+        turn_id: String,
+        tool_id: String,
+        tool_name: String,
+        input: serde_json::Value,
+        risk: String,
+        reason: String,
+    },
+    /// Tool approval was resolved.
+    ToolApprovalResolved { tool_id: String, decision: String },
     /// Tool execution completed.
     ToolResult {
         tool_id: String,
@@ -3239,11 +3325,11 @@ pub enum TurnStreamEvent {
 ## `src/tasks/gc.rs`
 
 > Spawn a background GC task that periodically evicts stale entries.
->
+> 
 > The task runs until the `shutdown` token is cancelled. Output files for
 > evicted tasks are cleaned up from disk. The sweep interval is read from
 > [`taxis::config::NousBehaviorConfig`] defaults.
->
+> 
 > Returns a `JoinHandle` so the caller can await shutdown completion.
 ```rust
 pub fn spawn_gc_task (
@@ -3316,7 +3402,7 @@ impl OutputWriter {
 ```
 
 > Streaming reader over a task's disk-backed output.
->
+> 
 > Implements `AsyncRead` so callers can page through output without loading
 > the entire file into memory.
 ```rust
@@ -3538,7 +3624,7 @@ pub enum ProgressEvent {
 ```
 
 > A task entry in the registry.
->
+> 
 > Contains all state needed for status queries, progress streaming,
 > cancellation, and GC eligibility.
 ```rust
@@ -3634,7 +3720,7 @@ pub struct DpoPair {
 
 > Extractor that detects correction→response sequences and produces
 > [`DpoPair`]s.
->
+> 
 > Maintains a small per-session buffer of the most recent turn and
 > at most one pending correction. State is bounded: old pending
 > state is silently overwritten if a new correction arrives before
@@ -3663,7 +3749,7 @@ impl DpoExtractor {
 ```
 
 > Writer for DPO preference pairs to a dated JSONL file.
->
+> 
 > File naming: `dpo-pairs-YYYYMMDD.jsonl` in the training directory.
 > The file is opened in append mode for each write; no handle is
 > held between calls.
@@ -3858,12 +3944,12 @@ pub struct ShardEntry {
 ```
 
 > Sharded, append-only training data writer.
->
+> 
 > Writes [`TrainingRecord`]s as JSON Lines to shard files on disk. When the
 > current shard exceeds [`TrainingConfig::max_shard_bytes`], the writer
 > rotates to a new shard. A [`TrainingManifest`] is persisted after each
 > write for crash recovery.
->
+> 
 > If an author classifier is configured, turns are additionally filtered
 > at an authorship gate: if the user message is classified as non-user-authored
 > with confidence >= the configured threshold, the turn is rejected and logged
@@ -4102,6 +4188,53 @@ pub struct CalibrationSummary {
     /// Domains where overconfidence was detected.
     pub overconfidence_patterns: Vec<OverconfidencePattern>,
 }
+```
+
+## `src/user_error.rs`
+
+```rust
+pub enum UserFacingError {
+    /// The LLM provider is currently unavailable.
+    ProviderUnavailable {
+        /// User-readable provider label.
+        provider: String,
+        /// Actionable recovery suggestion.
+        suggestion: String,
+    },
+    /// The conversation exceeded the model's context window.
+    ContextOverflow {
+        /// Model context limit in tokens.
+        limit_tokens: u64,
+    },
+    /// A tool execution failed.
+    ToolExecutionFailed {
+        /// Name of the failed tool or tool stage.
+        tool_name: String,
+        /// Sanitized client-visible failure message.
+        message: String,
+    },
+    /// The session has expired or is invalid.
+    SessionExpired {
+        /// Expired or invalid session identifier.
+        session_id: String,
+    },
+    /// Rate limited by the provider.
+    RateLimited {
+        /// Optional retry hint in seconds.
+        retry_after_secs: Option<u64>,
+    },
+}
+```
+
+```rust
+impl UserFacingError {
+    pub fn code (&self) -> &'static str;
+    pub fn retry_after_secs (&self) -> Option<u64>;
+}
+```
+
+```rust
+pub fn to_user_facing (error: &crate::error::Error) -> Option<UserFacingError>
 ```
 
 ## `src/working_memory/store.rs`

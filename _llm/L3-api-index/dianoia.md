@@ -322,10 +322,10 @@ impl Intent {
 ```
 
 > Persistent store for operator intents.
->
+> 
 > Backed by `instance/nous/<agent>/intents.json`. All mutating operations
 > write through to disk immediately  -  there is no in-memory cache to go stale.
->
+> 
 > Intents are not subject to FSRS decay. They persist until explicitly resolved
 > or their `expires_at` timestamp passes.
 ```rust
@@ -354,7 +354,7 @@ pub fn register (registry: &mut Registry)
 ```
 
 > Force-initialize all lazy metric statics.
->
+> 
 > Primarily a compatibility shim for the binary crate's startup; prefer
 > [`register`] which installs the families into a shared registry.
 ```rust
@@ -405,13 +405,14 @@ pub enum PhaseState {
 ```rust
 impl Phase {
     pub fn new (name: String, goal: String, order: u32) -> Self;
+    pub fn add_plan (&mut self, plan: Plan);
 }
 ```
 
 ## `src/plan.rs`
 
 > Default maximum planning iterations.
->
+> 
 > Callers with access to the resolved taxis config should use
 > `AgentBehaviorDefaults::planning_max_iterations` instead of this fallback.
 ```rust
@@ -484,11 +485,11 @@ impl Plan {
 ```
 
 > Detect circular dependencies in the plan graph.
->
+> 
 > Builds an adjacency list from `all_plans` (with `updated_plan` overriding any
 > plan with the same ID), then runs DFS-based cycle detection. Returns `Ok(())`
 > if the graph is acyclic, or an error describing the first cycle found.
->
+> 
 > WHY separate function: called from `Plan::set_depends_on` and available for
 > bulk validation of an entire phase's plan set.
 ```rust
@@ -619,7 +620,7 @@ pub struct ReconciliationSummary {
 ```
 
 > Default tolerance in seconds for timestamp comparison.
->
+> 
 > Callers with access to the resolved taxis config should use
 > `AgentBehaviorDefaults::planning_reconciler_timestamp_tolerance_secs` instead.
 ```rust
@@ -749,6 +750,34 @@ pub struct ComplexitySignals {
 
 ```rust
 pub fn select_research_level (signals: &ComplexitySignals) -> ResearchLevel
+```
+
+## `src/runtime.rs`
+
+```rust
+pub struct PlanningRuntime {
+    project: Project,
+    stuck_detector: StuckDetector,
+}
+```
+
+```rust
+impl PlanningRuntime {
+    pub fn new (project: Project, stuck_config: StuckConfig) -> Self;
+    pub fn project (&self) -> &Project;
+    pub fn project_mut (&mut self) -> &mut Project;
+    pub fn active_phase (&self) -> Option<&Phase>;
+    pub fn start_active_phase (&mut self) -> Option<&mut Phase>;
+    pub fn record_tool_invocation (&mut self, invocation: ToolInvocation) -> Option<StuckSignal>;
+    pub fn reset_stuck_detection (&mut self);
+    pub fn stuck_history_len (&self) -> usize;
+    pub fn stuck_config (&self) -> &StuckConfig;
+    pub fn reconcile_snapshots (
+        db_snapshots: &[ProjectSnapshot],
+        fs_snapshots: &[ProjectSnapshot],
+        tolerance_secs: i64,
+    ) -> ReconciliationSummary;
+}
 ```
 
 ## `src/state.rs`

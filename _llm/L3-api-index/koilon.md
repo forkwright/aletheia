@@ -475,10 +475,10 @@ pub enum Event {
 ## `src/lib.rs`
 
 > Run the interactive TUI setup wizard for first-run instance initialization.
->
+> 
 > Returns [`wizard::WizardAnswers`] when the user confirms on the final step.
 > Returns [`error::Error::WizardAborted`] if the user presses Esc or Ctrl+C.
->
+> 
 > Call [`wizard::is_tty`] first to verify the terminal supports interactive input.
 ```rust
 pub fn run_wizard (
@@ -1728,7 +1728,7 @@ pub static THEME: std::sync::LazyLock<Theme> = std::sync::LazyLock::new(Theme::d
 ## `src/wizard/mod.rs`
 
 > Returns `true` when the current environment supports a TUI wizard.
->
+> 
 > Requires both stdin and stdout to be connected to a TTY.
 ```rust
 pub fn is_tty () -> bool

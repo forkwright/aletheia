@@ -159,12 +159,12 @@ impl LoadedPack {
 ```
 
 > Load all configured domain packs.
->
+> 
 > Reads manifests from each path, resolves context files, and returns loaded packs.
 > Invalid or missing packs emit warnings and are skipped (graceful degradation).
->
+> 
 > # Blocking I/O
->
+> 
 > This function performs synchronous file I/O and is intended to be called once
 > at startup, before the async runtime begins serving requests. If called from
 > within an async context during normal operation, wrap in
@@ -293,7 +293,7 @@ pub struct PackPropertyDef {
 ## `src/tools/mod.rs`
 
 > Register all tools from loaded packs into the tool registry.
->
+> 
 > Validates each tool's command path and schema, then registers it.
 > Invalid tools are skipped with warnings; errors are collected and returned.
 ```rust

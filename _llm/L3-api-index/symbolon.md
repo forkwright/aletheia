@@ -266,7 +266,7 @@ impl CredentialFile {
 
 > Reads credentials from the OS keyring (GNOME Keyring, macOS Keychain,
 > Windows Credential Manager).
->
+> 
 > Falls through silently when the keyring is unavailable (headless server,
 > no D-Bus session, locked keychain) so downstream providers get a chance.
 ```rust
@@ -515,7 +515,7 @@ pub async fn pkce_login_and_save (
 ## `src/credential/providers.rs`
 
 > Reads a credential from an environment variable.
->
+> 
 > Automatically detects OAuth tokens by the `sk-ant-oat` prefix and
 > returns [`CredentialSource::OAuth`] so callers use `Bearer` auth.
 ```rust
@@ -565,12 +565,12 @@ impl CredentialChain {
 ## `src/credential/refresh.rs`
 
 > Wraps a credential file with background OAuth token refresh.
->
+> 
 > Cleanup is registered at construction time via [`CleanupRegistry`](koina::cleanup::CleanupRegistry): the
 > background task is cancelled and aborted when the provider is dropped,
 > regardless of whether the drop occurs during normal execution, early
 > error return, or panic unwind.
->
+> 
 > // WHY: `RwLock` allows concurrent readers (`get_credential` calls) with a
 > // single writer (the background refresh task). This avoids blocking
 > // LLM requests during token refresh, which may take 100-500ms.
@@ -606,7 +606,7 @@ pub fn claude_code_provider (path: &Path) -> Option<Box<dyn CredentialProvider>>
 ```
 
 > Build a credential provider with a custom circuit breaker configuration.
->
+> 
 > See [`claude_code_provider`] for behavior details.
 ```rust
 pub fn claude_code_provider_with_config (
@@ -735,7 +735,7 @@ pub enum Error {
 ## `src/jwt.rs`
 
 > Default clock skew leeway applied to JWT expiration checks.
->
+> 
 > WHY: clock drift between the issuer and validator (or NTP jumps on the
 > validator) can immediately invalidate freshly issued tokens. 30s is
 > small enough that truly expired tokens are rejected in practice while

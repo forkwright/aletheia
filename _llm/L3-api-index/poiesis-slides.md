@@ -86,7 +86,7 @@ pub enum PptxError {
 ```
 
 > Renders a [`Document`] to a PPTX byte vector.
->
+> 
 > Each top-level [`Block::Heading`] starts a new slide. Other blocks
 > are appended to the current slide as bullet points.
 ```rust

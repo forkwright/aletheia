@@ -64,7 +64,7 @@ impl AuthorProbs {
 
 > Author classifier: heuristic rule bank for distinguishing human-authored
 > text from AI-generated continuations, echoes, and scaffolding.
->
+> 
 > WHY heuristic: no ONNX artifact or embedding model is required. The rule
 > bank uses surface features (length, markdown density, self-reference
 > patterns, informal markers) that are cheap to compute and sufficient for

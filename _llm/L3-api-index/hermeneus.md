@@ -79,7 +79,7 @@ impl CcProfile {
 ## `src/anthropic/client.rs`
 
 > Runtime-configurable provider behavior overrides.
->
+> 
 > Passed to [`AnthropicProvider::with_credential_provider_and_behavior`] to
 > parameterize constants that were previously hardcoded. Values come from
 > [`taxis::config::ProviderBehaviorConfig`].
@@ -187,7 +187,7 @@ pub struct CcProviderConfig {
 ```
 
 > Claude Code subprocess LLM provider.
->
+> 
 > Delegates completions to the `claude` CLI binary via `-p --output-format stream-json`.
 > CC manages its own authentication (OAuth token refresh, attestation headers)
 > so the provider only needs to spawn the process and parse output.
@@ -236,11 +236,11 @@ pub struct CircuitBreakerConfig {
 ```
 
 > Circuit breaker for a single LLM provider.
->
+> 
 > Thread-safe via `std::sync::Mutex`: no lock is held across `.await`.
->
+> 
 > # State machine
->
+> 
 > ```text
 > Closed ──[threshold failures]──▶ Open
 >   ▲                               │
@@ -267,6 +267,35 @@ impl CircuitBreaker {
     pub fn is_allowed (&self) -> bool;
     pub fn on_success (&self);
     pub fn on_failure (&self);
+}
+```
+
+## `src/codex/provider.rs`
+
+```rust
+pub struct CodexProviderConfig {
+    /// Path to the `codex` binary. If `None`, resolved from `PATH`.
+    pub codex_binary: Option<PathBuf>,
+    /// Default model when the request doesn't specify one.
+    pub default_model: String,
+    /// Subprocess timeout (wall-clock).
+    pub timeout: Duration,
+}
+```
+
+> Codex subprocess LLM provider.
+```rust
+pub struct CodexProvider {
+    // kanon:ignore RUST/pub-visibility
+    codex_binary: PathBuf,
+    default_model: String,
+    timeout: Duration,
+}
+```
+
+```rust
+impl CodexProvider {
+    pub fn new (config: &CodexProviderConfig) -> Result<Self>;
 }
 ```
 
@@ -394,18 +423,18 @@ pub struct ConcurrencyConfig {
 ```
 
 > AIMD adaptive concurrency limiter for LLM calls with latency-based back-pressure.
->
+> 
 > Callers acquire a [`ConcurrencyPermit`] before sending a request.
 > On permit release the outcome and latency are applied, adjusting the limit.
->
+> 
 > When the EWMA latency exceeds [`ConcurrencyConfig::latency_threshold_secs`],
 > successes are treated as overload and the limit decreases multiplicatively.
 > When latency drops below the threshold, additive increase resumes.
->
+> 
 > Thread-safe; `acquire` is async and parks the caller when at capacity.
->
+> 
 > # Example
->
+> 
 > ```rust,no_run
 > # use hermeneus::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome};
 > # use std::sync::Arc;
@@ -439,7 +468,7 @@ impl AdaptiveConcurrencyLimiter {
 ```
 
 > RAII permit that holds a concurrency slot.
->
+> 
 > Call [`finish`](ConcurrencyPermit::finish) or
 > [`finish_with_latency`](ConcurrencyPermit::finish_with_latency) to record
 > the outcome explicitly. If dropped without calling either, a `Neutral`
@@ -524,6 +553,10 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// API error response body could not be read.
+    #[snafu(display("failed to read API error response body for status {status}: {source}"))]
+    ApiErrorBodyRead { status: u16, source: reqwest::Error },
 
     /// API returned an error response.
     #[snafu(display("API error {status}: {message}"))]
@@ -655,7 +688,7 @@ pub struct HealthConfig {
 ```
 
 > Tracks health for a single LLM provider.
->
+> 
 > Thread-safe via `std::sync::Mutex`: all operations are short
 > (no `.await` while holding the lock).
 ```rust
@@ -673,6 +706,40 @@ impl ProviderHealthTracker {
     pub fn check_available (&self) -> Result<(), ProviderHealth>;
     pub fn record_success (&self);
     pub fn record_error (&self, error: &Error);
+}
+```
+
+## `src/kimi/provider.rs`
+
+```rust
+pub struct KimiProviderConfig {
+    /// Path to the `kimi` binary. If `None`, resolved from `PATH`.
+    pub kimi_binary: Option<PathBuf>,
+    /// Working directory passed to `kimi -w`.
+    pub working_directory: Option<PathBuf>,
+    /// Default model when the request does not specify one.
+    pub default_model: String,
+    /// Subprocess timeout (wall-clock).
+    pub timeout: Duration,
+}
+```
+
+> Kimi subprocess LLM provider.
+> 
+> Delegates completions to the `kimi` CLI binary via
+> `--print --afk --yolo --thinking`.
+```rust
+pub struct KimiProvider {
+    kimi_binary: PathBuf,
+    working_directory: PathBuf,
+    default_model: String,
+    timeout: Duration,
+}
+```
+
+```rust
+impl KimiProvider {
+    pub fn new (config: &KimiProviderConfig) -> Result<Self>;
 }
 ```
 
@@ -812,7 +879,7 @@ impl LoopGuard {
 ## `src/metrics.rs`
 
 > Register this crate's metrics with the shared registry.
->
+> 
 > Called once at startup. Counter names registered here drop the `_total`
 > suffix because `prometheus-client` appends it automatically during
 > exposition  -  register `aletheia_llm_tokens`, not `aletheia_llm_tokens_total`.
@@ -879,7 +946,7 @@ pub const BACKOFF_MAX_MS: u64 = 30_000;
 ```
 
 > All supported Anthropic model identifiers.
->
+> 
 > Includes both short names (e.g., `claude-opus-4-6`) and dated snapshots
 > (e.g., `claude-opus-4-20250514`).
 ```rust
@@ -912,6 +979,16 @@ pub const HAIKU: &str = "claude-haiku-4-5-20251001";
 ## `src/openai/client.rs`
 
 ```rust
+pub enum OpenAiApiFamily {
+    /// OpenAI `/v1/chat/completions` and compatible local/proxy endpoints.
+    #[default]
+    ChatCompletions,
+    /// OpenAI first-party `/v1/responses` endpoint.
+    Responses,
+}
+```
+
+```rust
 pub struct OpenAiProviderConfig {
     /// Operator-facing label used for logs, metrics, and `name()`.
     pub name: String,
@@ -932,6 +1009,10 @@ pub struct OpenAiProviderConfig {
     /// Maximum retries on transient failures (5xx, timeout, connection
     /// reset). Defaults to 3.
     pub max_retries: u32,
+    /// Which OpenAI API family to speak. Defaults to Chat Completions for
+    /// backwards-compatible local `OpenAI`-compatible endpoints; Aletheia's
+    /// first-party `openai` config path sets this to [`OpenAiApiFamily::Responses`].
+    pub api_family: OpenAiApiFamily,
     /// Where this provider's traffic terminates, gating which
     /// [`FactSensitivity`](mneme::knowledge::FactSensitivity) the recall
     /// pipeline is allowed to send to it (#3736, #3404, #3413).
@@ -968,11 +1049,11 @@ impl OpenAiProvider {
 ## `src/provider.rs`
 
 > Trait for LLM providers.
->
+> 
 > Implementations handle authentication, request formatting, response parsing,
 > and error mapping. The provider translates between the generic types in
 > [`types`](crate::types) and the wire format of the specific API.
->
+> 
 > `Send + Sync` required for use in async contexts and across threads.
 > Async methods return boxed futures to preserve `dyn LlmProvider` compatibility.
 ```rust
@@ -1127,12 +1208,12 @@ impl SecretVault {
 
 > Substitute `{{secret:<name>}}` and `$SECRET(<name>)` placeholders in a
 > JSON value with the corresponding secret from `vault`.
->
+> 
 > Substitution is recursive: it descends into objects and arrays.
 > If a placeholder references a missing secret, returns [`SecretError::MissingSecret`].
->
+> 
 > # Security note
->
+> 
 > This mutates `value` in place. Callers should clone the original if the
 > placeholder-bearing JSON is needed for persistence (e.g. transcript storage).
 ```rust
@@ -1144,11 +1225,11 @@ pub fn substitute_in_json (
 
 > Redact likely-secret string values inside a JSON value, replacing them
 > with `"[REDACTED]"`.
->
+> 
 > This is defense-in-depth: if a secret value leaks into a JSON payload
 > (e.g. via a tool result), the redaction pass prevents it from flowing
 > outward to logs or LLM providers.
->
+> 
 > The heuristic is conservative: strings longer than 32 characters that
 > contain no whitespace and are not already placeholders are treated as
 > sensitive.
@@ -1163,23 +1244,23 @@ pub fn make_response (text: &str) -> CompletionResponse
 ```
 
 > Configurable mock LLM provider for tests.
->
+> 
 > Supports fixed responses, response queues, request capturing,
 > and error injection. Thread-safe via `std::sync::Mutex` (lock never
 > held across `.await`).
->
+> 
 > # Examples
->
+> 
 > Fixed text response:
 > ```ignore
 > let provider = MockProvider::new("Hello!");
 > ```
->
+> 
 > Response sequence (pops from front, repeats last):
 > ```ignore
 > let provider = MockProvider::with_responses(vec![r1, r2]);
 > ```
->
+> 
 > Error injection:
 > ```ignore
 > let provider = MockProvider::error("network timeout");
@@ -1587,6 +1668,12 @@ pub struct CompletionResponse {
     pub content: Vec<ContentBlock>,
     /// Token usage.
     pub usage: Usage,
+    /// Estimated provider cost in USD, when the provider can compute it.
+    #[serde(default)]
+    pub cost_usd: Option<f64>,
+    /// End-to-end provider call duration in milliseconds, when known.
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
 }
 ```
 

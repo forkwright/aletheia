@@ -8,13 +8,13 @@ For implementation context, read the source directly (`L4`).
 ## `src/builtins/computer_use/executor.rs`
 
 > Register the `computer_use` tool into the registry.
->
+> 
 > Uses the provided [`SandboxConfig`] to derive default session
 > sandbox policy. The tool is registered with `auto_activate: false`,
 > requiring explicit activation via `enable_tool`.
->
+> 
 > # Errors
->
+> 
 > Returns an error if the tool name collides with an existing tool.
 ```rust
 pub fn register (registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()>
@@ -22,29 +22,27 @@ pub fn register (registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result
 
 ## `src/builtins/energeia/mod.rs`
 
-> Register all 9 energeia tools with real implementations.
->
+> Register all 9 energeia tools.
+> 
 > When `services` is `Some`, tools that need the orchestrator or store call
 > through to the real energeia subsystem. When `None`, those tools return a
 > structured error indicating the missing dependency  -  they do not panic.
->
-> Tools that are pure computation (schedion, prographe, diorthosis,
-> dokimasia, epitropos) work regardless of whether services are provided.
->
+> 
+> Tools that are bounded local computations (`schedion`, `prographe`,
+> `diorthosis`, `dokimasia`, `epitropos`) work regardless of whether services
+> are provided, but their public definitions describe the current limitations.
+> 
 > # Errors
->
+> 
 > Returns an error if any tool name collides with an already-registered tool.
 ```rust
-pub fn register (
-    registry: &mut ToolRegistry,
-    services: Option<Arc<EnergeiaServices>>,
-) -> Result<()>
+pub fn register (registry: &mut ToolRegistry, services: Option<&EnergeiaServices>) -> Result<()>
 ```
 
 ## `src/builtins/energeia/shared.rs`
 
 > Services injected at registration time for energeia tool executors.
->
+> 
 > The orchestrator handles dispatch (dromeus), and the store backs lessons,
 > observations, and metrics (mathesis, parateresis, metron, diorthosis).
 ```rust
@@ -56,12 +54,18 @@ pub struct EnergeiaServices {
 }
 ```
 
+```rust
+impl EnergeiaServices {
+    pub fn new (orchestrator: Arc<Orchestrator>, store: Arc<EnergeiaStore>) -> Self;
+}
+```
+
 ## `src/builtins/mod.rs`
 
 > Register all built-in tool executors with default sandbox config.
->
+> 
 > # Errors
->
+> 
 > Returns an error if any built-in tool name collides with an
 > already-registered tool.
 ```rust
@@ -69,17 +73,17 @@ pub fn register_all (registry: &mut ToolRegistry) -> Result<()>
 ```
 
 > Register all built-in tool executors with custom sandbox config.
->
+> 
 > Registration is two-phase:
->
+> 
 > 1. All domain tools are registered first.
 > 2. `tool_schema` is registered last, capturing a schema snapshot of every
 >    tool registered in phase 1.  This avoids a self-referential ownership
 >    cycle (the registry owns the `tool_schema` executor, which cannot safely
 >    hold a back-reference to the same registry).
->
+> 
 > # Errors
->
+> 
 > Returns an error if any built-in tool name collides with an
 > already-registered tool.
 ```rust
@@ -89,12 +93,20 @@ pub fn register_all_with_sandbox (
 ) -> Result<()>
 ```
 
+```rust
+pub fn register_all_with_sandbox_and_energeia_services (
+    registry: &mut ToolRegistry,
+    sandbox: SandboxConfig,
+    services: &energeia::EnergeiaServices,
+) -> Result<()>
+```
+
 ## `src/builtins/skill_read.rs`
 
 > Register the `skill_read` tool into `registry`.
->
+> 
 > # Errors
->
+> 
 > Returns an error if `skill_read` is already registered.
 ```rust
 pub fn register (registry: &mut ToolRegistry) -> Result<()>
@@ -121,9 +133,9 @@ pub struct UpdateWorkingCheckpointInput {
 ```
 
 > Register the `update_working_checkpoint` tool into `registry`.
->
+> 
 > # Errors
->
+> 
 > Returns an error if the tool name collides with an already-registered tool.
 ```rust
 pub fn register (registry: &mut ToolRegistry) -> Result<()>
@@ -404,12 +416,12 @@ pub fn expand_file_refs (text: &str, workspace_root: &Path) -> Result<String, In
 ```
 
 > Recursively expand file refs in every JSON string value.
->
+> 
 > Objects and arrays are traversed depth-first. Non-string values are cloned
 > unchanged.
->
+> 
 > # Errors
->
+> 
 > Returns [`InterpError`] on the first file-ref that fails to resolve.
 ```rust
 pub fn expand_file_refs_in_json (
@@ -428,7 +440,7 @@ pub fn register (registry: &mut Registry)
 ## `src/process_guard.rs`
 
 > RAII guard that kills and reaps a child process on drop.
->
+> 
 > Drop calls `kill()` followed by `wait()` on the inner
 > [`Child`][std::process::Child].  Both calls ignore errors: `kill()` fails
 > if the process has already exited (safe), and `wait()` fails if the OS
@@ -523,7 +535,7 @@ impl ReceiptLedger {
 ```
 
 > Scan an assistant message for cited receipts and verify each against the ledger.
->
+> 
 > # Errors
 > Returns [`HallucinationDetected::HallucinatedReceipt`] if a cited receipt is
 > not present in the ledger, or [`HallucinationDetected::ReceiptInvalid`] if
@@ -575,25 +587,25 @@ pub enum HallucinationDetected {
 ## `src/registry/mod.rs`
 
 > The trait tool implementations must satisfy.
->
+> 
 > Uses `Pin<Box<dyn Future>>` for object-safety with async dispatch.
->
+> 
 > # Errors
->
+> 
 > Implementations may return `ExecutionFailed` if the tool
 > cannot complete its operation, or `InvalidInput` if the
 > provided arguments fail validation.
->
+> 
 > # Examples
->
+> 
 > ```no_run
 > use std::future::Future;
 > use std::pin::Pin;
 > use organon::registry::ToolExecutor;
 > use organon::types::{ToolContext, ToolInput, ToolResult};
->
+> 
 > struct MyTool;
->
+> 
 > impl ToolExecutor for MyTool {
 >     fn execute<'a>(
 >         &'a self,
@@ -615,15 +627,15 @@ pub trait ToolExecutor : Send + Sync {
 ```
 
 > Registry of available tools.
->
+> 
 > Tools are registered at startup and looked up by name during execution.
 > The registry is the single source of truth for what tools an agent can use.
->
+> 
 > # Examples
->
+> 
 > ```no_run
 > use organon::registry::ToolRegistry;
->
+> 
 > let mut registry = ToolRegistry::new();
 > // Tools are registered at startup with their definitions and executors.
 > // See the `builtins` module for built-in tool implementations.
@@ -815,15 +827,15 @@ pub fn apply_sandbox (
 ## `src/testing.rs`
 
 > Install the default rustls crypto provider for tests.
->
+> 
 > Safe to call multiple times (uses `try_install_default`). This helper prevents
 > the "no crypto provider installed" panic when tests use TLS connections.
->
+> 
 > # Example
->
+> 
 > ```ignore
 > use organon::testing::install_crypto_provider;
->
+> 
 > #[test]
 > fn test_with_tls() {
 >     install_crypto_provider();
@@ -835,12 +847,12 @@ pub fn install_crypto_provider ()
 ```
 
 > Configurable mock [`ToolExecutor`] for use in tests.
->
+> 
 > Implements the same [`ToolExecutor`] trait as production executors.
 > Supports fixed text responses, error injection, and call-count tracking.
->
+> 
 > # Examples
->
+> 
 > ```ignore
 > let ex = MockToolExecutor::text("ok");
 > let result = ex.execute(&input, &ctx).await.expect("execute should succeed"); // kanon:ignore RUST/expect
@@ -868,7 +880,7 @@ impl MockToolExecutor {
 ```
 
 > Spec contract that any [`ToolExecutor`] implementation must satisfy.
->
+> 
 > Use [`ToolExecutorSpec::validate_async`] inside a `#[tokio::test]` to assert
 > the contract. The report separates passed checks from failed ones so test
 > output is easy to diagnose.
@@ -1377,6 +1389,12 @@ pub trait PlanningService : Send + Sync {
         name: &str,
         goal: &str,
     ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
+    fn add_plan (
+        &self,
+        project_id: &str,
+        phase_id: &str,
+        plan: PlanningPlanInput<'_>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
     fn complete_plan (
         &self,
         project_id: &str,
@@ -1403,6 +1421,22 @@ pub trait PlanningService : Send + Sync {
 }
 ```
 
+> Input for creating an executable plan inside a phase.
+```rust
+pub struct PlanningPlanInput<'a> {
+    /// Short title for the executable plan.
+    pub title: &'a str,
+    /// Concrete work description.
+    pub description: &'a str,
+    /// Execution wave; plans in the same wave may run in parallel.
+    pub wave: u32,
+    /// Plan IDs that must complete before this plan can run.
+    pub depends_on: &'a [String],
+    /// Optional maximum iterations before the plan is stuck.
+    pub max_iterations: Option<u32>,
+}
+```
+
 ```rust
 pub struct MemoryResult {
     pub id: String,
@@ -1426,7 +1460,7 @@ pub struct FactSummary {
 ```
 
 > Abstracts knowledge store operations for memory tools.
->
+> 
 > Implemented by an adapter in the binary crate wrapping `KnowledgeStore` + `EmbeddingProvider`.
 ```rust
 pub trait KnowledgeSearchService : Send + Sync {
@@ -1575,7 +1609,7 @@ pub struct SpawnResult {
 ```
 
 > Working checkpoint storage for agent-curated session memory.
->
+> 
 > Agents call `update_working_checkpoint` to persist structured key-info
 > that survives context compaction and is reinjected on subsequent turns.
 ```rust

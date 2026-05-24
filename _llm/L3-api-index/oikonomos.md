@@ -16,7 +16,7 @@ pub struct NoopBridge;
 
 > Allows daemon tasks to send prompts to a nous actor without the daemon
 > crate depending on nous directly.
->
+> 
 > Implemented in the binary crate where both daemon and nous are available.
 > Uses boxed futures for object safety (`Arc<dyn DaemonBridge>`).
 ```rust
@@ -389,7 +389,7 @@ pub struct MaintenanceReport {
 ```
 
 > Bridge trait for knowledge graph maintenance operations.
->
+> 
 > Daemon crate defines it, binary crate implements it where `KnowledgeStore`
 > is available. All methods are blocking: the runner wraps in `spawn_blocking`.
 ```rust
@@ -443,6 +443,13 @@ pub struct ProposeRulesConfig {
 }
 ```
 
+> Records backup observability metrics from the runtime crate.
+```rust
+pub trait BackupMetricsRecorder : std::fmt::Debug + Send + Sync {
+    fn record_backup_duration (&self, duration_secs: f64, success: bool);
+}
+```
+
 ```rust
 pub struct MaintenanceConfig {
     /// Trace file rotation and compression settings.
@@ -457,12 +464,18 @@ pub struct MaintenanceConfig {
     pub knowledge_maintenance: KnowledgeMaintenanceConfig,
     /// Fjall knowledge store backup settings.
     pub fjall_backup: FjallBackupConfig,
+    /// Runtime metrics hook for backup freshness alerting.
+    pub backup_metrics: Option<Arc<dyn BackupMetricsRecorder>>,
+    /// Directory where prosoche self-audit reports are written.
+    pub prosoche_audit_dir: PathBuf,
     /// Cron task configuration (evolution, reflection, graph cleanup).
     pub cron: crate::cron::CronConfig,
     /// Rule proposal generation from observed patterns.
     pub propose_rules: ProposeRulesConfig,
     /// Prompt audit log retention pruning (#3411).
     pub prompt_audit: PromptAuditRetentionConfig,
+    /// Runtime handle for refreshing empirical routing after-action stats.
+    pub after_action_store: Option<Arc<aletheia_routing::AfterActionStore>>,
 }
 ```
 
@@ -512,7 +525,7 @@ pub struct RetentionConfig {
 ```
 
 > Trait for components that can execute data retention cleanup.
->
+> 
 > Implemented in the aletheia binary where `SessionStore` is available.
 > The daemon crate defines the interface only.
 ```rust
@@ -843,21 +856,21 @@ pub struct SessionSnapshot {
 ```
 
 > A single prosoche self-audit check.
->
+> 
 > Implementations receive a [`ProsocheState`] snapshot and produce zero or
 > more [`Finding`]s describing attention-quality issues. Each finding carries
 > its own [`EvidenceLevel`] so consumers can weight the results appropriately.
->
+> 
 > # Implementation contract
->
+> 
 > - Checks MUST be stateless: all input is in [`ProsocheState`].
 > - Checks MUST NOT panic. Return an empty `Vec` on errors and log via `tracing`.
 > - Checks SHOULD log one `tracing::info!` per invocation with `findings_count`.
 > - Checks SHOULD be fast (<100ms). Long-running analysis belongs in a separate
 >   maintenance task, not a prosoche check.
->
+> 
 > # Object safety
->
+> 
 > `check` returns `Pin<Box<dyn Future>>` so the trait is object-safe and
 > `Arc<dyn ProsocheCheck>` works without `async_trait`. Pattern mirrors
 > [`crate::bridge::DaemonBridge`].
@@ -872,11 +885,11 @@ pub trait ProsocheCheck : Send + Sync {
 ```
 
 > Detect contradictions in the fact graph.
->
+> 
 > v1 heuristic: looks for fact pairs where one fact content contains a term
 > and another contains "not <term>" or "never <term>". This catches obvious
 > logical contradictions without requiring symbolic reasoning.
->
+> 
 > Future: integrate with episteme's A-MemGuard consensus layer for full
 > multi-path contradiction detection.
 ```rust
@@ -885,7 +898,7 @@ pub struct ConsistencyCheck;
 
 > Flag facts and sessions that haven't been touched in N days without a
 > documented rationale.
->
+> 
 > v1 thresholds:
 > - Facts untouched > 90 days: `Exploratory` finding.
 > - Incomplete sessions with > 10 turns: `Interpretive` finding.
@@ -897,11 +910,11 @@ pub struct StalenessCheck {
 ```
 
 > Verify recent session turns are advancing stated goals.
->
+> 
 > v1: keyword-overlap heuristic. For each session, count how many of the
 > stated-goal keywords appear in the session's turn text. Sessions with
 > zero overlap with any goal produce an `Interpretive` finding.
->
+> 
 > Limitation: keyword matching does not capture semantic alignment. A session
 > about "implement the authentication system" may advance the goal
 > "ship secure login" without sharing keywords.
@@ -910,7 +923,7 @@ pub struct GoalAlignmentCheck;
 ```
 
 > Flag sessions with high error rates or only abandoned turns.
->
+> 
 > v1 thresholds:
 > - Error rate > 50% of turns: `Exploratory` finding.
 > - Zero completed sessions in the snapshot AND ≥ 5 sessions: `Interpretive` finding.
@@ -926,13 +939,13 @@ pub struct SessionQualityCheck {
 ```
 
 > Detect recurring patterns in agent behavior.
->
+> 
 > v1: stub implementation. The trait shape and variant are correct; the
 > pattern detection logic requires gnomon behavioral weights and a session
 > history longer than what's available in `ProsocheState`.
->
+> 
 > # Follow-up
->
+> 
 > Full implementation tracked separately. When gnomon weights are available:
 > 1. Sample the last N session summaries.
 > 2. Run behavioural pattern detection (loop detection, avoidance bias,
@@ -943,7 +956,7 @@ pub struct InstinctPatternsCheck;
 ```
 
 > Persistence backend for audit reports.
->
+> 
 > v1: writes JSON files to a directory on disk. Each audit run produces
 > a timestamped file: `prosoche-audit-<ISO8601>.json`.
 ```rust
@@ -985,14 +998,14 @@ pub struct CheckSummary {
 ```
 
 > Runs all registered prosoche checks and persists the resulting findings.
->
+> 
 > # Usage
->
+> 
 > Build the runner with [`ProsocheAuditRunner::default_checks`], then call
 > [`ProsocheAuditRunner::run_audit`] at the heartbeat cadence. The runner is
 > wired into the existing 5-minute heartbeat via [`crate::execution`]'s
 > `SelfAudit` builtin arm  -  it does NOT create a new timer.
->
+> 
 > ```text
 > BuiltinTask::SelfAudit
 >   └─ ProsocheAuditRunner::run_audit(&state)
@@ -1070,9 +1083,6 @@ pub struct TaskRunner {
     self_prompt_limiter: crate::self_prompt::SelfPromptLimiter,
     /// Self-prompt configuration (enabled, rate limits).
     self_prompt_config: crate::self_prompt::SelfPromptConfig,
-    /// Optional cron scheduler for recurring dispatch tasks.
-    #[cfg(feature = "dispatch-cron")]
-    cron_scheduler: Option<Arc<energeia::cron::CronScheduler>>,
 }
 ```
 
@@ -1093,8 +1103,7 @@ impl TaskRunner {
         shutdown: CancellationToken,
         bridge: Arc<dyn DaemonBridge>,
     ) -> Self;
-    pub fn with_cron_scheduler (mut self, scheduler: Arc<energeia::cron::CronScheduler>) -> Self;
-    pub fn with_maintenance (mut self, config: MaintenanceConfig) -> Self;
+    pub fn with_maintenance (mut self, mut config: MaintenanceConfig) -> Self;
     pub fn with_retention (
         mut self,
         executor: Arc<dyn crate::maintenance::RetentionExecutor>,
@@ -1103,9 +1112,19 @@ impl TaskRunner {
         mut self,
         executor: Arc<dyn KnowledgeMaintenanceExecutor>,
     ) -> Self;
+    pub fn with_after_action_store (
+        mut self,
+        store: Arc<aletheia_routing::AfterActionStore>,
+    ) -> Self;
+    pub fn with_state_store (mut self, store: crate::state::TaskStateStore) -> Self;
     pub fn with_output_mode (mut self, mode: DaemonOutputMode) -> Self;
     pub fn with_daemon_behavior (mut self, behavior: DaemonBehaviorConfig) -> Self;
     pub fn with_self_prompt (mut self, config: crate::self_prompt::SelfPromptConfig) -> Self;
+    pub fn register_top_issue_self_prompt (
+        &mut self,
+        issues: &[crate::self_prompt::OpenIssue],
+        schedule: Schedule,
+    ) -> Option<String>;
 }
 ```
 
@@ -1121,7 +1140,7 @@ impl TaskRunner {
 ## `src/runner/systemd.rs`
 
 > Send `READY=1` to systemd via the `$NOTIFY_SOCKET`.
->
+> 
 > WHY: systemd `Type=notify` services need this to know initialization is
 > complete. No-op if `$NOTIFY_SOCKET` is not SET.
 ```rust
@@ -1129,7 +1148,7 @@ pub fn sd_notify_ready ()
 ```
 
 > Send `WATCHDOG=1` to systemd.
->
+> 
 > WHY: `WatchdogSec` integration enables automatic restart on hang.
 ```rust
 pub fn sd_notify_watchdog ()
@@ -1141,7 +1160,7 @@ pub fn sd_notify_stopping ()
 ```
 
 > Parse `$WATCHDOG_USEC` to determine the systemd watchdog interval.
->
+> 
 > Returns `None` if the variable is not SET or unparseable. The recommended
 > notification interval is half the watchdog timeout.
 ```rust
@@ -1200,6 +1219,8 @@ pub enum TaskAction {
     Command(String),
     /// Run a built-in maintenance function.
     Builtin(BuiltinTask),
+    /// Send a daemon-generated prompt to the nous.
+    SelfPrompt(String),
 }
 ```
 
@@ -1258,6 +1279,8 @@ pub enum BuiltinTask {
     FjallBackup,
     /// Prune prompt audit log daily files past the retention window (#3411).
     PromptAuditRotation,
+    /// Refresh empirical after-action routing statistics from JSONL logs.
+    RoutingStoreRefresh,
 }
 ```
 
@@ -1287,12 +1310,48 @@ pub struct TaskStatus {
 ## `src/self_prompt.rs`
 
 > Session key used for all self-prompt dispatches.
->
+> 
 > WHY: separate session key prevents self-prompts from interfering with user
 > sessions. Users can check `daemon:self-prompt` when they want to review
 > autonomous actions.
 ```rust
 pub const SELF_PROMPT_SESSION_KEY: &str = "daemon:self-prompt";
+```
+
+```rust
+pub struct OpenIssue {
+    /// Issue number in the tracker.
+    pub number: u64,
+    /// Issue title.
+    pub title: String,
+    /// Issue body, if the tracker provided one.
+    #[serde(default)]
+    pub body: String,
+}
+```
+
+```rust
+pub struct IssuePromptTask {
+    /// Stable daemon task id.
+    pub id: String,
+    /// Human-readable task name.
+    pub name: String,
+    /// Prompt sent to the nous.
+    pub prompt: String,
+}
+```
+
+> Parse tracker JSON and retain only open issues.
+> 
+> The accepted shape is a JSON array of objects with `number`, `title`,
+> optional `body`, and optional `state`; missing `state` is treated as open
+> so tests and simple local snapshots can use a minimal issue shape.
+```rust
+pub fn parse_open_issues_json (input: &str) -> Result<Vec<OpenIssue>, serde_json::Error>
+```
+
+```rust
+pub fn prompt_task_from_top_open_issue (issues: &[OpenIssue]) -> Option<IssuePromptTask>
 ```
 
 ```rust
@@ -1307,6 +1366,26 @@ pub struct SelfPromptConfig {
     /// produces a `## Follow-up` section would otherwise generate unbounded work.
     #[serde(default = "default_max_per_hour")]
     pub max_per_hour: u32,
+}
+```
+
+## `src/state/fjall_store.rs`
+
+> Fjall-backed store for task execution state.
+> 
+> One keyspace directory holds state for all tasks in a runner.
+> Uses `SingleWriterTxDatabase` for durability without WAL complexity.
+```rust
+pub struct TaskStateStore {
+    db: SingleWriterTxDatabase,
+}
+```
+
+```rust
+impl TaskStateStore {
+    pub fn open (path: &Path) -> Result<Self>;
+    pub fn load_all (&self) -> Result<Vec<TaskState>>;
+    pub fn save (&self, state: &TaskState) -> Result<()>;
 }
 ```
 
@@ -1331,7 +1410,9 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// Maximum concurrent child agents the daemon may spawn.
+    /// Reserved child-agent concurrency limit.
+    ///
+    /// The current runtime stores this value but does not spawn child agents.
     #[serde(default = "default_max_children")]
     pub max_children: usize,
 
@@ -1343,11 +1424,13 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub allowed_tasks: Vec<String>,
 
-    /// Webhook listener port. `None` disables the webhook trigger.
+    /// Reserved webhook listener port. The current runtime does not start a
+    /// webhook listener.
     #[serde(default)]
     pub webhook_port: Option<u16>,
 
-    /// File watch paths (relative to workspace root). Empty disables file watching.
+    /// Reserved file watch paths (relative to workspace root). The current
+    /// runtime does not start file watchers.
     #[serde(default)]
     pub watch_paths: Vec<String>,
 
@@ -1367,10 +1450,10 @@ pub struct DaemonConfig {
 
 ```rust
 pub struct AllowedTriggers {
-    /// Allow file-watcher triggers.
+    /// Reserved file-watcher trigger opt-in.
     #[serde(default)]
     pub file_watch: bool,
-    /// Allow webhook triggers.
+    /// Reserved webhook trigger opt-in.
     #[serde(default)]
     pub webhook: bool,
 }
@@ -1384,17 +1467,17 @@ impl DaemonConfig {
 ```
 
 > Single-instance lock guard for daemon process per workspace.
->
+> 
 > WHY: only one daemon process should run per workspace. We use
 > `rustix::fs::flock` directly on the lock file's file descriptor.
->
+> 
 > The lock file is created at `.aletheia/daemon.lock` in the workspace root.
 > The advisory lock is bound to the file descriptor and held for as long as
 > `WorkspaceGuard` (and therefore the inner `File`) lives. Drop closes the
 > file descriptor, which releases the flock automatically.
->
+> 
 > # Bug history
->
+> 
 > Previously this used `fd_lock::RwLock<File>` and probed with `try_write()`,
 > then immediately dropped the resulting `RwLockWriteGuard`. This was a bug:
 > `RwLockWriteGuard::drop` calls `flock(fd, LOCK_UN)`, releasing the lock
@@ -1516,7 +1599,7 @@ impl Watchdog {
 ## `tests/common/mod.rs`
 
 > Write a fixture file synchronously via `OpenOptions` + `Write`.
->
+> 
 > WHY: the daemon crate's `clippy.toml` disallows `std::fs::write` to steer
 > production code toward `tokio::fs`. Integration tests still inherit that
 > clippy config. Using explicit `File::create` + `write_all` is equivalent

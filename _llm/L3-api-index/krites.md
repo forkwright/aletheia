@@ -192,9 +192,9 @@ pub enum Bytecode {
 ```
 
 > Evaluate bytecode to a boolean predicate result.
->
+> 
 > # Errors
->
+> 
 > Returns an error if bytecode evaluation fails or if the result
 > is not a boolean value.
 ```rust
@@ -207,9 +207,9 @@ pub fn eval_bytecode_pred (
 ```
 
 > Evaluate bytecode to produce a data value.
->
+> 
 > # Errors
->
+> 
 > Returns an error if a variable is unbound, if the tuple is too short
 > for a binding, if an operation fails, or if type mismatches occur.
 ```rust
@@ -307,7 +307,7 @@ pub fn decode_tuple_from_key (key: &[u8], size_hint: usize) -> Tuple
 ```
 
 > Check if the tuple key passed in should be a valid return for a validity query.
->
+> 
 > Returns two elements, the first element contains `Some(tuple)` if the key should be included
 > in the return set and `None` otherwise,
 > the second element gives the next binary key for the seek to be used as an inclusive
@@ -429,6 +429,14 @@ pub enum Error {
     #[snafu(display("{message}"))]
     Engine {
         message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Unknown causal relation variant in counterfactual rows.
+    #[snafu(display("unknown causal relation type: {input}"))]
+    UnknownCausalRelation {
+        input: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -698,7 +706,7 @@ impl HotReloader {
 ## `src/lib.rs`
 
 > Public facade for the Datalog engine. Dispatches to a concrete storage backend.
->
+> 
 > Obtain an instance via [`Db::open_mem`] or [`Db::open_fjall`]. Attach an
 > optional LRU query cache with [`Db::with_cache`] to track hit/miss metrics
 > for repeated Datalog queries.
@@ -936,14 +944,14 @@ pub struct SourceSpan(pub usize, pub usize);
 ```
 
 > Parse a text script into the datalog AST.
->
+> 
 > * `src` - the script to parse
 > * `param_pool` - the list of parameters to execute the script with. These are substituted into the syntax tree during parsing.
 > * `fixed_rules` - a mapping of fixed rule names to their implementations. These are substituted into the syntax tree during parsing.
 > * `cur_vld` - the current timestamp, substituted into expressions where validity is relevant.
->
+> 
 > # Errors
->
+> 
 > Returns an error if the source contains syntax errors or if parsing fails.
 ```rust
 pub fn parse_script (
@@ -1067,12 +1075,12 @@ pub struct QueryCacheStats {
 ```
 
 > LRU-bounded cache for Datalog query strings.
->
+> 
 > On each [`QueryCache::check`] call the query is normalized (whitespace
 > collapsed), then looked up in an LRU cache.  A hit promotes the entry to
 > the most-recently-used position and increments the hit counter; a miss
 > inserts the entry and increments the miss counter.
->
+> 
 > The cache does not store compiled query plans -- it tracks *which queries
 > have been seen* and exposes hit/miss metrics so callers can observe query
 > repetition patterns and make caching decisions from the metrics.
@@ -1294,7 +1302,7 @@ impl RegularTempStore {
 ## `src/runtime/transact.rs`
 
 > A transaction session binding a storage transaction and a temporary store.
->
+> 
 > Dropping without calling [`commit_tx`](Self::commit_tx) implicitly aborts.
 > All schema mutations (create/destroy relations, set triggers, etc.) go
 > through this handle.

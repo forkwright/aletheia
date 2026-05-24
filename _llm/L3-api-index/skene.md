@@ -187,27 +187,27 @@ pub struct TurnOutcome {
     /// Final text output.
     pub text: String,
     /// Agent that processed this turn.
-    #[serde(rename = "nousId")]
+    #[serde(rename = "nousId", alias = "nous_id")]
     pub nous_id: NousId,
     /// Session this turn belongs to.
-    #[serde(rename = "sessionId")]
+    #[serde(rename = "sessionId", alias = "session_id")]
     pub session_id: SessionId,
     /// Model used for this turn.
     pub model: String,
     /// Number of tool calls made.
-    #[serde(rename = "toolCalls", default)]
+    #[serde(rename = "toolCalls", alias = "tool_calls", default)]
     pub tool_calls: u32,
     /// Input tokens consumed.
-    #[serde(rename = "inputTokens", default)]
+    #[serde(rename = "inputTokens", alias = "input_tokens", default)]
     pub input_tokens: u32,
     /// Output tokens generated.
-    #[serde(rename = "outputTokens", default)]
+    #[serde(rename = "outputTokens", alias = "output_tokens", default)]
     pub output_tokens: u32,
     /// Tokens read from cache.
-    #[serde(rename = "cacheReadTokens", default)]
+    #[serde(rename = "cacheReadTokens", alias = "cache_read_tokens", default)]
     pub cache_read_tokens: u32,
     /// Tokens written to cache.
-    #[serde(rename = "cacheWriteTokens", default)]
+    #[serde(rename = "cacheWriteTokens", alias = "cache_write_tokens", default)]
     pub cache_write_tokens: u32,
     /// Error message, if the turn errored.
     #[serde(default)]
@@ -447,6 +447,7 @@ pub struct AgentsResponse {
 ```rust
 pub struct SessionsResponse {
     /// List of sessions.
+    #[serde(alias = "items")]
     pub sessions: Vec<Session>,
 }
 ```
@@ -549,7 +550,39 @@ pub struct ProjectVerificationResult {
 ## `src/discovery.rs`
 
 ```rust
+pub struct DiscoveryConfig {
+    /// Gateway port to use for generated localhost, LAN, and Tailscale candidates.
+    pub port: u16,
+    /// Base URLs to probe exactly as configured, before generated LAN candidates.
+    pub base_urls: Vec<String>,
+    /// LAN hostnames to probe with the `.lan` suffix.
+    pub lan_hostnames: Vec<String>,
+    /// Tailscale IPs to probe directly.
+    pub tailscale_ips: Vec<String>,
+}
+```
+
+```rust
+impl DiscoveryConfig {
+    pub fn new () -> Self;
+    pub fn with_lan_hostnames <I, S> (mut self, hostnames: I) -> Self where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,;
+    pub fn with_tailscale_ips <I, S> (mut self, ips: I) -> Self where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,;
+    pub fn with_base_urls <I, S> (mut self, urls: I) -> Self where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,;
+}
+```
+
+```rust
 pub async fn discover_server () -> Option<String>
+```
+
+```rust
+pub async fn discover_server_with_config (config: &DiscoveryConfig) -> Option<String>
 ```
 
 ## `src/events.rs`

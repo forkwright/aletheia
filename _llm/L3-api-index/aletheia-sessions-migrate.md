@@ -270,9 +270,9 @@ pub struct MigrationReport {
 ```
 
 > Open the source `SQLite` DB read-only with a sane busy-timeout.
->
+> 
 > # Errors
->
+> 
 > Returns [`crate::error::Error::SqliteOpen`] when the source path
 > cannot be opened or the busy-timeout PRAGMA fails to apply.
 ```rust
@@ -280,18 +280,18 @@ pub fn open_source (path: &Path) -> Result<Connection>
 ```
 
 > Run a dry-run plan: read source, validate, summarise. No fjall writes.
->
+> 
 > # Errors
->
+> 
 > Propagates schema validation failures and any source read errors.
 ```rust
 pub fn run_dry_run (source: &Path) -> Result<MigrationPlan>
 ```
 
 > Run a full migration. Reads source, validates, writes fjall.
->
+> 
 > # Errors
->
+> 
 > Propagates schema validation failures, source read errors, and any
 > fjall write failure as the structured error type defined in
 > [`crate::error`].
@@ -302,7 +302,7 @@ pub fn run_migration (source: &Path, dest: &Path, force: bool) -> Result<Migrati
 ## `src/schema.rs`
 
 > Schema version we know how to migrate.
->
+> 
 > Anchored on the final `SQLite` revision shipped before PR #3446 removed
 > the `SQLite` backend. The operator's real DB shows `PRAGMA user_version
 > = 32` (verified 2026-04-27).
@@ -331,11 +331,11 @@ pub fn required_columns (table: &str) -> &'static [&'static str]
 
 > Validate that the connection points at a v32 `SQLite` session DB with
 > every required table and column.
->
+> 
 > On mismatch, returns a specific error naming the missing item.
->
+> 
 > # Errors
->
+> 
 > Returns [`crate::error::Error::SchemaUserVersion`] if `PRAGMA user_version`
 > is not [`REQUIRED_USER_VERSION`], [`crate::error::Error::SchemaMissingTable`]
 > or [`crate::error::Error::SchemaMissingColumn`] when the source schema
@@ -375,9 +375,9 @@ pub struct SessionRow {
 ```
 
 > Read every session.
->
+> 
 > # Errors
->
+> 
 > Returns [`crate::error::Error::Sqlite`] if the SELECT cannot be
 > prepared, executed, or any row fails to map.
 ```rust
@@ -385,18 +385,18 @@ pub fn read_sessions (conn: &Connection) -> Result<Vec<SessionRow>>
 ```
 
 > Read every message, ordered by (`session_id`, `seq`).
->
+> 
 > # Errors
->
+> 
 > Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
 ```rust
 pub fn read_messages (conn: &Connection) -> Result<Vec<Message>>
 ```
 
 > Read every usage record.
->
+> 
 > # Errors
->
+> 
 > Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
 ```rust
 pub fn read_usage (conn: &Connection) -> Result<Vec<UsageRecord>>
@@ -423,9 +423,9 @@ pub struct DistillationRecord {
 
 > Read every distillation record, ordered by `(session_id, id)` so the
 > per-session local sequence we assign matches insertion order.
->
+> 
 > # Errors
->
+> 
 > Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
 ```rust
 pub fn read_distillations (conn: &Connection) -> Result<Vec<DistillationRecord>>
@@ -433,9 +433,9 @@ pub fn read_distillations (conn: &Connection) -> Result<Vec<DistillationRecord>>
 
 > Read every agent note, ordered by `(session_id, id)` so the per-session
 > local sequence we assign matches insertion order.
->
+> 
 > # Errors
->
+> 
 > Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
 ```rust
 pub fn read_notes (conn: &Connection) -> Result<Vec<AgentNote>>
@@ -444,9 +444,9 @@ pub fn read_notes (conn: &Connection) -> Result<Vec<AgentNote>>
 > Read every blackboard entry. We keep expired entries here too  -  the
 > fjall layer will filter them at read time, and operators may want
 > to inspect them post-migration.
->
+> 
 > # Errors
->
+> 
 > Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
 ```rust
 pub fn read_blackboard (conn: &Connection) -> Result<Vec<BlackboardRow>>
@@ -484,9 +484,9 @@ impl VerificationReport {
 ```
 
 > Run a verification pass against a freshly-migrated fjall directory.
->
+> 
 > # Errors
->
+> 
 > Propagates `SQLite` and fjall scan errors.
 ```rust
 pub fn run_verification (source: &Path, dest: &Path, samples: usize) -> Result<VerificationReport>
@@ -495,7 +495,7 @@ pub fn run_verification (source: &Path, dest: &Path, samples: usize) -> Result<V
 ## `tests/common/mod.rs`
 
 > Minimal v32 schema covering every column the migrator reads.
->
+> 
 > This is intentionally hand-written rather than imported from the
 > historical migration runner  -  the migrator only knows about column
 > presence + types, so the simplest fixture is the one that mirrors

@@ -192,7 +192,7 @@ impl EntityType {
 ```
 
 > Mechanical bookkeeping provider abstraction.
->
+> 
 > Implementations may use an LLM compatibility path or dedicated small models.
 > The boxed futures keep the trait object-safe for runtime provider selection.
 ```rust
@@ -321,12 +321,12 @@ impl ArchitectureFact {
 ```
 
 > Flat-JSON-file backed store for [`ArchitectureFact`]s.
->
+> 
 > One file per fact: `<dir>/<safe_id>.json` where `<safe_id>` is the fact's
-> `id` with `.` and `/` replaced by `__` and `-` respectively.
->
+> `id` with `/` and `\` replaced by `-`. Dots are preserved.
+> 
 > The store is created lazily: the directory is created on first [`put`].
->
+> 
 > [`put`]: FactStore::put
 ```rust
 pub struct FactStore {
@@ -699,21 +699,21 @@ pub enum KnowledgeStage {
 ```
 
 > Default decay score threshold for transitioning from Active to Fading.
->
+> 
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::fact_active_threshold`.
 ```rust
 pub const DEFAULT_STAGE_ACTIVE_THRESHOLD: f64 = 0.7;
 ```
 
 > Default decay score threshold for transitioning from Fading to Dormant.
->
+> 
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::fact_fading_threshold`.
 ```rust
 pub const DEFAULT_STAGE_FADING_THRESHOLD: f64 = 0.3;
 ```
 
 > Default decay score threshold for transitioning from Dormant to Archived.
->
+> 
 > Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::fact_dormant_threshold`.
 ```rust
 pub const DEFAULT_STAGE_DORMANT_THRESHOLD: f64 = 0.1;
@@ -1169,14 +1169,14 @@ impl ValidatedPath {
 ```
 
 > Validate a memory path against all defense-in-depth security layers.
->
+> 
 > Applies each [`PathValidationLayer`] in order. The path must pass all
 > layers to produce a [`ValidatedPath`]. Relative paths are resolved
 > against `root/scope_dir/`; absolute paths are checked directly against
 > the scope boundary.
->
+> 
 > # Layers (applied in order)
->
+> 
 > 1. **Null byte**  -  reject `\0` characters
 > 2. **Canonicalization**  -  reject `..` and backslash components
 > 3. **URL-encoded traversal**  -  detect `%2e`, `%2f`, `%5c`
@@ -1185,9 +1185,9 @@ impl ValidatedPath {
 > 6. **Symlink resolution**  -  canonical path must stay within root (I/O)
 > 7. **Dangling symlink / loop detection**  -  reject broken or looping
 >    symlinks (I/O)
->
+> 
 > # Errors
->
+> 
 > Returns [`PathValidationError`] identifying the first layer that
 > rejected the path, with structured context for logging and diagnostics.
 ```rust
@@ -1257,7 +1257,7 @@ impl ScopeAccessPolicy {
 ## `src/meta.rs`
 
 > Every persistable artefact carries provenance metadata.
->
+> 
 > Implement this trait on your artefact struct and call `.stamp()` in the
 > persist path. The stamp is computed at the moment of persistence so that
 > `generated_at` reflects write time, not construction time.
@@ -1428,7 +1428,7 @@ pub fn test_ts (s: &str) -> jiff::Timestamp
 ```
 
 > Build a minimal `Fact` with sensible test defaults.
->
+> 
 > Fields can be mutated after construction for test-specific overrides:
 > ```ignore
 > let mut f = make_fact("f1", "syn", "Rust is fast");
@@ -1491,13 +1491,13 @@ pub struct TrainingConfig {
 ```
 
 > Current schema version for [`TrainingRecord`].
->
+> 
 > Bump this constant whenever fields are added, removed, or change
 > semantics so that records from different epochs can be distinguished
 > at read time.
->
+> 
 > # History
->
+> 
 > - v0: initial, no `schema_version` field persisted
 > - v1: added `schema_version` field
 > - v2: added episteme labels (`turn_type`, `is_correction`, `fact_types`, `quality_score`)

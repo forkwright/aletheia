@@ -224,7 +224,7 @@ impl DiaporeiaServer {
 ## `src/state.rs`
 
 > Shared state for the diaporeia MCP server.
->
+> 
 > Holds the same shared `Arc` pointers as pylon's `AppState`.
 > Both live in the same process and access identical instances.
 ```rust
@@ -263,13 +263,13 @@ pub struct DiaporeiaState {
 ## `src/transport.rs`
 
 > Build an Axum Router that serves MCP over streamable HTTP.
->
+> 
 > Mount this into the main application router to expose MCP at `/mcp`.
 > The auth middleware validates Bearer JWT tokens (or passes through
 > anonymous claims when `auth_mode == "none"`).
->
+> 
 > # Security warnings
->
+> 
 > Logs a `WARN` when `auth_mode == "none"` (all connections receive the
 > configured `none_role` without any credential check). Escalates to
 > `ERROR` when the bind address is not loopback, because the MCP server
@@ -279,7 +279,7 @@ pub fn streamable_http_router (state: Arc<DiaporeiaState>) -> axum::Router
 ```
 
 > Build an Axum Router with a custom Streamable HTTP config.
->
+> 
 > Used by integration tests to enable stateless+json-response mode for
 > simpler request-response testing without SSE parsing.
 ```rust

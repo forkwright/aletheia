@@ -8,13 +8,13 @@ For implementation context, read the source directly (`L4`).
 ## `src/lib.rs`
 
 > A provider/model router that supports empirical feedback.
->
+> 
 > Implementors select a provider or model based on [`RequestFeatures`] and
 > accept [`TurnOutcome`] records after each interaction so the router can
 > improve over time.
->
+> 
 > # Dyn compatibility
->
+> 
 > `route` returns a [`BoxFuture`] rather than using `async fn` so the trait
 > is dyn-compatible and can be stored as `Arc<dyn Router>`. Implementors
 > return `Box::pin(async move { ... })` from `route`.
@@ -30,7 +30,7 @@ pub trait Router : Send + Sync {
 ```
 
 > A no-op router used when no empirical router is configured.
->
+> 
 > Always returns the configured static provider and discards after-action
 > records. Satisfies `Arc<dyn Router>` without requiring fjall.
 ```rust
@@ -74,15 +74,6 @@ impl RollingStats {
 }
 ```
 
-> Shared read/write cache over empirical provider success-rate statistics.
->
-> Used by both the dispatch path (via [`refresh`](Self::refresh) from JSONL
-> logs) and the interactive path (via [`record_outcome`](Self::record_outcome)
-> for direct counter updates).
->
-> The cache is keyed by `(ProviderId, TaskCategory)` and protected by a
-> `RwLock` so concurrent readers (routing decisions) are never blocked by
-> a periodic `refresh`.
 ```rust
 pub struct AfterActionStore {
     /// Directory containing per-day JSONL files (`YYYY-MM-DD.jsonl`).
@@ -90,28 +81,34 @@ pub struct AfterActionStore {
     /// `None` when the store is used in memory-only mode (interactive path
     /// without a configured log directory).
     dir: Option<PathBuf>,
+    /// Latest per-day JSONL files to include during refresh.
+    window: Duration,
     /// In-memory cache: `(provider_id, task_category)` → [`RollingStats`].
     cache: RwLock<HashMap<(ProviderId, TaskCategory), RollingStats>>,
+    /// Direct interactive writes since the most recent disk refresh.
+    interactive: RwLock<HashMap<(ProviderId, TaskCategory), RollingStats>>,
 }
 ```
 
 ```rust
 impl AfterActionStore {
     pub fn new (dir: PathBuf) -> Self;
+    pub fn new_with_window (dir: PathBuf, window: Duration) -> Self;
     pub fn in_memory () -> Self;
     pub async fn rolling_stats (
         &self,
         provider: &ProviderId,
         cat: &TaskCategory,
-        _window: std::time::Duration,
+        window: std::time::Duration,
     ) -> Option<RollingStats>;
     pub async fn record_outcome (&self, outcome: &TurnOutcome);
     pub async fn refresh (&self) -> Result<(), AfterActionStoreError>;
+    pub async fn refresh_window (&self, window: Duration) -> Result<(), AfterActionStoreError>;
 }
 ```
 
 > Parse a category string from a JSONL record.
->
+> 
 > Returns [`TaskCategory::Feature`] for unrecognised strings so that new
 > categories added in future PRs degrade gracefully on old store data.
 ```rust
