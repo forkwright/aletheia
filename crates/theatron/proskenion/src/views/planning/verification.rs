@@ -214,7 +214,9 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                         store.write().push_full(
                             ToastSeverity::Error,
                             "Re-verify failed".to_owned(),
-                            Some(format!("Could not reach the verification refresh endpoint: {e}")),
+                            Some(format!(
+                                "Could not reach the verification refresh endpoint: {e}"
+                            )),
                             None,
                         );
                     }
@@ -283,8 +285,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                     let reqs: Vec<RequirementVerification> = store
                         .result
                         .as_ref()
-                        .map(|r| r.requirements.clone())
-                        .unwrap_or_default();
+                        .map_or_else(Vec::new, |r| r.requirements.clone());
 
                     rsx! {
                         div {

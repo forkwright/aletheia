@@ -242,8 +242,9 @@ fn render_project_card(project: &Project) -> Element {
     let phase_text = project
         .current_phase
         .as_ref()
-        .map(|p| format!("{} (Phase {} of {})", p.name, p.number, p.total))
-        .unwrap_or_default();
+        .map_or_else(String::new, |p| {
+            format!("{} (Phase {} of {})", p.name, p.number, p.total)
+        });
 
     let activity_text = project.last_activity.as_deref().unwrap_or("—");
 
@@ -253,8 +254,9 @@ fn render_project_card(project: &Project) -> Element {
         project.active_agents.join(", ")
     };
 
-    let progress_fill =
-        format!("width: {pct}%; height: 100%; background: var(--status-success); border-radius: var(--radius-sm);");
+    let progress_fill = format!(
+        "width: {pct}%; height: 100%; background: var(--status-success); border-radius: var(--radius-sm);"
+    );
 
     rsx! {
         div { style: "{CARD_TITLE}", "{project.name}" }
