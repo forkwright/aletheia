@@ -418,8 +418,8 @@ async fn load_token_metrics(state: InsightsState, query: MetricsQuery) -> TokenM
         .build())
     });
 
-    let session_rows = all_sessions_res.unwrap_or_else(|err| {
-        warn!(error = %err, "failed to list sessions for token metrics");
+    let session_rows = all_sessions_res.unwrap_or_else(|_err| {
+        warn!("failed to list sessions for usage metrics");
         Vec::new()
     });
 
