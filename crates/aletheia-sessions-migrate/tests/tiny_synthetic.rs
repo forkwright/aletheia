@@ -3,12 +3,10 @@
 //! directory must be openable via graphe's `SessionStore` and every row
 //! must be queryable through the public API.
 
-#![allow(
+#![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
     clippy::indexing_slicing,
-    clippy::doc_markdown,
-    clippy::too_many_lines
+    reason = "integration tests use direct assertions over fixture setup"
 )]
 
 mod common;
