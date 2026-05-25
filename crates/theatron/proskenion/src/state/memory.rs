@@ -500,7 +500,8 @@ impl EntityNavigationHistory {
         if self.stack.is_empty() {
             &[]
         } else {
-            &self.stack[..=self.cursor]
+            let end = self.cursor.saturating_add(1).min(self.stack.len());
+            self.stack.get(..end).unwrap_or(&[])
         }
     }
 

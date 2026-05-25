@@ -124,9 +124,9 @@ impl CredentialStore {
 /// Returns `"...XXXX"` where XXXX is the last 4 chars of `key`.
 /// Returns `"...????"` if `key` is shorter than 4 characters.
 pub(crate) fn mask_key(key: &str) -> String {
-    let chars: Vec<char> = key.chars().collect();
-    if chars.len() >= 4 {
-        let tail: String = chars[chars.len() - 4..].iter().collect();
+    let tail_chars: Vec<char> = key.chars().rev().take(4).collect();
+    if tail_chars.len() == 4 {
+        let tail: String = tail_chars.into_iter().rev().collect();
         format!("...{tail}")
     } else {
         "...????".to_string()
@@ -231,5 +231,10 @@ mod tests {
     #[test]
     fn mask_key_empty_returns_placeholder() {
         assert_eq!(mask_key(""), "...????");
+    }
+
+    #[test]
+    fn mask_key_handles_unicode_char_boundaries() {
+        assert_eq!(mask_key("sk-αβγδ"), "...αβγδ");
     }
 }
