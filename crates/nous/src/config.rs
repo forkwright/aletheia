@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use hermeneus::complexity::ComplexityConfig;
 use mneme::knowledge::{EpistemicTier, MemoryScope};
+use mneme::workspace::ProjectId;
 use serde::{Deserialize, Serialize};
 use taxis::config::AgentBehaviorDefaults;
 
@@ -429,6 +430,9 @@ impl NousConfig {
 pub struct PipelineConfig {
     /// Token budget for history (remaining after bootstrap).
     pub history_budget_ratio: f64,
+    /// Git-remote-derived project partition for behavioral observations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<ProjectId>,
     /// Knowledge extraction configuration (None = disabled).
     #[serde(default)]
     pub extraction: Option<mneme::extract::ExtractionConfig>,
@@ -447,6 +451,7 @@ impl Default for PipelineConfig {
     fn default() -> Self {
         Self {
             history_budget_ratio: 0.6,
+            project_id: None,
             extraction: None,
             stage_budget: StageBudget::default(),
             training: crate::training::TrainingConfig::default(),

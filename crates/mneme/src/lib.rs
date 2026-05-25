@@ -38,6 +38,10 @@
 pub use eidos::id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings (re-exported from `eidos`).
 pub use eidos::knowledge;
+/// Workspace/project identity primitives (re-exported from `eidos`).
+pub mod workspace {
+    pub use eidos::workspace::{ProjectId, ProjectIdError};
+}
 
 /// Bookkeeping provider contracts, DTOs, and pipeline adapters.
 pub mod bookkeeping {

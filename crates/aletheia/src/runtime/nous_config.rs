@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use tracing::warn;
 
+use mneme::workspace::ProjectId;
 use nous::config::{NousConfig, PipelineConfig};
 use taxis::config::{AletheiaConfig, resolve_nous};
 use taxis::oikos::Oikos;
@@ -30,6 +32,22 @@ fn resolve_allowed_roots(
         }
     }
     roots
+}
+
+fn detect_project_id(workspace: &Path) -> Option<ProjectId> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(workspace)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let remote = String::from_utf8(output.stdout).ok()?;
+    ProjectId::from_git_remote(remote).ok()
 }
 
 pub(super) fn build_nous_runtime_config(
@@ -69,6 +87,8 @@ pub(super) fn build_nous_runtime_config(
         }
     }
 
+    let workspace = resolve_config_path(oikos, &resolved.workspace);
+    let project_id = detect_project_id(&workspace);
     let nous_config = NousConfig {
         id: resolved.id,
         name: resolved.name,
@@ -105,7 +125,7 @@ pub(super) fn build_nous_runtime_config(
         domains,
         private: resolved.private,
         episteme_cohort: resolved.episteme_cohort,
-        workspace: resolve_config_path(oikos, &resolved.workspace),
+        workspace,
         allowed_roots: resolve_allowed_roots(oikos, &resolved.workspace, &resolved.allowed_roots),
         server_tools: Vec::new(),
         cache_enabled: resolved.capabilities.cache_enabled,
@@ -123,6 +143,7 @@ pub(super) fn build_nous_runtime_config(
     (
         nous_config,
         PipelineConfig {
+            project_id,
             extraction: Some(extraction_cfg),
             training: config.training.clone(),
             ..PipelineConfig::default()
