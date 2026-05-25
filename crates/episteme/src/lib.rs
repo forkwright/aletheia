@@ -68,6 +68,8 @@ pub mod query;
 pub mod query_rewrite;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
+/// Reinforcement-learning readiness types for future memory-policy training.
+pub mod rl;
 /// Steward rule proposal generation from observed tool-usage patterns.
 pub mod rule_proposals;
 /// Side-query memory relevance selector with LRU caching and already-surfaced tracking.

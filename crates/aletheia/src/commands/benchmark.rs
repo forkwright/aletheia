@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use clap::{Args, Subcommand};
 use owo_colors::OwoColorize;
+use serde::Serialize;
 use snafu::prelude::*;
 
 use dokimion::benchmarks::{
@@ -57,6 +58,9 @@ pub(crate) struct RunArgs {
     /// Write the full JSON report to a file for reproducibility and publishing
     #[arg(long)]
     pub output: Option<PathBuf>,
+    /// Write a compact baseline summary for training reward loaders
+    #[arg(long)]
+    pub baseline_out: Option<PathBuf>,
     /// Query the knowledge store after ingestion and compute Recall@k / NDCG@k
     #[arg(long)]
     pub retrieval_k: Option<usize>,
@@ -146,6 +150,16 @@ async fn run_benchmark(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Resul
         println!("Report written to {}", path.display());
     }
 
+    if let Some(ref path) = args.baseline_out {
+        let summary = BenchmarkBaselineSummary::from_report(&report);
+        let json = serde_json::to_string_pretty(&summary)
+            .whatever_context("failed to serialize baseline summary")?;
+        tokio::fs::write(path, json)
+            .await
+            .whatever_context("failed to write baseline summary file")?;
+        println!("Baseline summary written to {}", path.display());
+    }
+
     if args.json {
         print_report_json(&report).whatever_context("failed to serialize report")?;
     } else {
@@ -153,6 +167,28 @@ async fn run_benchmark(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Resul
     }
 
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct BenchmarkBaselineSummary {
+    benchmark: String,
+    total_questions: usize,
+    exact_match_rate: f64,
+    mean_f1: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    judge_accuracy: Option<f64>,
+}
+
+impl BenchmarkBaselineSummary {
+    fn from_report(report: &BenchmarkReport) -> Self {
+        Self {
+            benchmark: report.benchmark.clone(),
+            total_questions: report.total,
+            exact_match_rate: report.exact_match_rate(),
+            mean_f1: report.mean_f1(),
+            judge_accuracy: report.judge_accuracy(),
+        }
+    }
 }
 
 async fn collect_metadata(
