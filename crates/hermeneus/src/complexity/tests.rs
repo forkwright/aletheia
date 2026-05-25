@@ -32,7 +32,7 @@ fn simple_greeting_scores_low() {
         "greeting should score low, got {}",
         result.score
     );
-    assert_eq!(result.tier, ModelTier::Haiku);
+    assert_eq!(result.tier, ModelTier::NoLlm);
 }
 
 #[test]
@@ -219,39 +219,47 @@ fn score_clamps_low_inputs() {
     let result = score_complexity(&input("no"));
     assert_eq!(
         result.tier,
-        ModelTier::Haiku,
-        "very negative raw score should clamp to 0 and route to haiku"
+        ModelTier::NoLlm,
+        "very negative raw score should clamp to 0 and route to no-LLM"
     );
 }
 
 // --- Threshold routing ---
 
 #[test]
+fn tier_from_score_no_llm() {
+    assert_eq!(tier_from_score(0, 5, 30, 70), ModelTier::NoLlm);
+    assert_eq!(tier_from_score(4, 5, 30, 70), ModelTier::NoLlm);
+    assert_eq!(tier_from_score(5, 5, 30, 70), ModelTier::Haiku);
+}
+
+#[test]
 fn tier_from_score_low() {
-    assert_eq!(tier_from_score(0, 30, 70), ModelTier::Haiku);
-    assert_eq!(tier_from_score(15, 30, 70), ModelTier::Haiku);
-    assert_eq!(tier_from_score(30, 30, 70), ModelTier::Haiku);
+    assert_eq!(tier_from_score(5, 5, 30, 70), ModelTier::Haiku);
+    assert_eq!(tier_from_score(15, 5, 30, 70), ModelTier::Haiku);
+    assert_eq!(tier_from_score(30, 5, 30, 70), ModelTier::Haiku);
 }
 
 #[test]
 fn tier_from_score_medium() {
-    assert_eq!(tier_from_score(31, 30, 70), ModelTier::Sonnet);
-    assert_eq!(tier_from_score(50, 30, 70), ModelTier::Sonnet);
-    assert_eq!(tier_from_score(69, 30, 70), ModelTier::Sonnet);
+    assert_eq!(tier_from_score(31, 5, 30, 70), ModelTier::Sonnet);
+    assert_eq!(tier_from_score(50, 5, 30, 70), ModelTier::Sonnet);
+    assert_eq!(tier_from_score(69, 5, 30, 70), ModelTier::Sonnet);
 }
 
 #[test]
 fn tier_from_score_high() {
-    assert_eq!(tier_from_score(70, 30, 70), ModelTier::Opus);
-    assert_eq!(tier_from_score(85, 30, 70), ModelTier::Opus);
-    assert_eq!(tier_from_score(100, 30, 70), ModelTier::Opus);
+    assert_eq!(tier_from_score(70, 5, 30, 70), ModelTier::Opus);
+    assert_eq!(tier_from_score(85, 5, 30, 70), ModelTier::Opus);
+    assert_eq!(tier_from_score(100, 5, 30, 70), ModelTier::Opus);
 }
 
 #[test]
 fn custom_thresholds_shift_tiers() {
-    assert_eq!(tier_from_score(40, 50, 80), ModelTier::Haiku);
-    assert_eq!(tier_from_score(60, 50, 80), ModelTier::Sonnet);
-    assert_eq!(tier_from_score(85, 50, 80), ModelTier::Opus);
+    assert_eq!(tier_from_score(3, 5, 50, 80), ModelTier::NoLlm);
+    assert_eq!(tier_from_score(40, 5, 50, 80), ModelTier::Haiku);
+    assert_eq!(tier_from_score(60, 5, 50, 80), ModelTier::Sonnet);
+    assert_eq!(tier_from_score(85, 5, 50, 80), ModelTier::Opus);
 }
 
 // --- Model routing ---
@@ -291,6 +299,7 @@ fn route_model_simple_query_routes_haiku() {
 
     let decision = route_model(&input("yes"), &config);
     assert_eq!(decision.model, names::HAIKU);
+    assert_eq!(decision.complexity.tier, ModelTier::NoLlm);
 }
 
 #[test]
@@ -319,6 +328,21 @@ fn route_model_custom_model_names() {
 
     let decision = route_model(&input("ok"), &config);
     assert_eq!(decision.model, "custom-fast");
+    assert_eq!(decision.complexity.tier, ModelTier::NoLlm);
+}
+
+#[test]
+fn route_model_custom_no_llm_threshold() {
+    let config = ComplexityConfig {
+        enabled: true,
+        no_llm_threshold: 0,
+        haiku_model: "custom-fast".to_owned(),
+        ..Default::default()
+    };
+
+    let decision = route_model(&input("ok"), &config);
+    assert_eq!(decision.model, "custom-fast");
+    assert_eq!(decision.complexity.tier, ModelTier::Haiku);
 }
 
 #[test]
@@ -371,9 +395,11 @@ fn routing_decision_display_routed() {
 
 #[test]
 fn model_tier_display() {
+    let no_llm = ModelTier::NoLlm;
     let haiku = ModelTier::Haiku;
     let sonnet = ModelTier::Sonnet;
     let opus = ModelTier::Opus;
+    assert_eq!(format!("{no_llm}"), "no_llm");
     assert_eq!(format!("{haiku}"), "haiku");
     assert_eq!(format!("{sonnet}"), "sonnet");
     assert_eq!(format!("{opus}"), "opus");
