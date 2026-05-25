@@ -75,10 +75,56 @@ pub(crate) fn stream_turn(
 
     let span = tracing::info_span!("stream_turn");
     let task = async move {
-            let resp = match tokio::select! {
+        let resp = match tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                tracing::info!("stream cancelled before connect");
+                if tx.send(StreamEvent::TurnAbort {
+                    reason: "cancelled by user".to_string(),
+                }).await.is_err() {
+                    tracing::debug!("stream receiver dropped before cancellation notice");
+                }
+                return;
+            }
+            result = builder.send() => result,
+        } {
+            Ok(resp) => resp,
+            Err(e) => {
+                if tx
+                    .send(StreamEvent::Error(format!("failed to connect: {e}")))
+                    .await
+                    .is_err()
+                {
+                    tracing::debug!("stream receiver dropped before connect error");
+                }
+                return;
+            }
+        };
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let reason = status.canonical_reason().unwrap_or("Unknown");
+            let body = match resp.text().await {
+                Ok(body) => body,
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to read stream error response body");
+                    String::new()
+                }
+            };
+            let message = extract_error_message(&body, status.as_u16(), reason);
+            if tx.send(StreamEvent::Error(message)).await.is_err() {
+                tracing::debug!("stream receiver dropped before HTTP error");
+            }
+            return;
+        }
+
+        let mut es = SseStream::new(resp.bytes_stream());
+
+        loop {
+            let maybe_event = tokio::select! {
                 biased;
                 _ = cancel.cancelled() => {
-                    tracing::info!("stream cancelled before connect");
+                    tracing::info!("stream cancelled by user");
                     if tx.send(StreamEvent::TurnAbort {
                         reason: "cancelled by user".to_string(),
                     }).await.is_err() {
@@ -86,67 +132,27 @@ pub(crate) fn stream_turn(
                     }
                     return;
                 }
-                result = builder.send() => result,
-            } {
-                Ok(resp) => resp,
-                Err(e) => {
-                    if tx
-                        .send(StreamEvent::Error(format!("failed to connect: {e}")))
-                        .await
-                        .is_err()
-                    {
-                        tracing::debug!("stream receiver dropped before connect error");
-                    }
-                    return;
-                }
+                event = es.next() => event,
             };
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let reason = status.canonical_reason().unwrap_or("Unknown");
-                let body = resp.text().await.unwrap_or_default();
-                let message = extract_error_message(&body, status.as_u16(), reason);
-                if tx.send(StreamEvent::Error(message)).await.is_err() {
-                    tracing::debug!("stream receiver dropped before HTTP error");
+            let Some(event) = maybe_event else { break };
+
+            if let Some(parsed) = parse_stream_event(&event.event, &event.data) {
+                let is_terminal = matches!(
+                    &parsed,
+                    StreamEvent::TurnComplete { .. }
+                        | StreamEvent::TurnAbort { .. }
+                        | StreamEvent::Error(_)
+                );
+                if tx.send(parsed).await.is_err() {
+                    break;
                 }
-                return;
-            }
-
-            let mut es = SseStream::new(resp.bytes_stream());
-
-            loop {
-                let maybe_event = tokio::select! {
-                    biased;
-                    _ = cancel.cancelled() => {
-                        tracing::info!("stream cancelled by user");
-                        if tx.send(StreamEvent::TurnAbort {
-                            reason: "cancelled by user".to_string(),
-                        }).await.is_err() {
-                            tracing::debug!("stream receiver dropped before cancellation notice");
-                        }
-                        return;
-                    }
-                    event = es.next() => event,
-                };
-
-                let Some(event) = maybe_event else { break };
-
-                if let Some(parsed) = parse_stream_event(&event.event, &event.data) {
-                    let is_terminal = matches!(
-                        &parsed,
-                        StreamEvent::TurnComplete { .. }
-                            | StreamEvent::TurnAbort { .. }
-                            | StreamEvent::Error(_)
-                    );
-                    if tx.send(parsed).await.is_err() {
-                        break;
-                    }
-                    if is_terminal {
-                        break;
-                    }
+                if is_terminal {
+                    break;
                 }
             }
-        };
+        }
+    };
     tokio::spawn(task.instrument(span));
 
     rx
@@ -241,9 +247,8 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         "tool_result" => {
             let tool_name =
                 str_any_field(&json, &["tool_name", "toolName"], event_type)?.to_string();
-            let tool_id = ToolId::from(
-                str_any_field(&json, &["tool_id", "toolId"], event_type)?.to_string(),
-            );
+            let tool_id =
+                ToolId::from(str_any_field(&json, &["tool_id", "toolId"], event_type)?.to_string());
             let is_error = json
                 .get("is_error")
                 .or_else(|| json.get("isError"))
