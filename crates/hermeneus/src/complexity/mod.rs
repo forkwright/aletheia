@@ -2,7 +2,7 @@
 //!
 //! Scores query complexity on multiple dimensions (length, tool requirements,
 //! domain signals, conversation depth, explicit markers) and routes to an
-//! appropriate model tier (Haiku / Sonnet / Opus).
+//! appropriate model tier (NoLlm / Haiku / Sonnet / Opus).
 
 use std::fmt;
 use std::sync::LazyLock;
@@ -17,6 +17,9 @@ const DEFAULT_LOW_THRESHOLD: u32 = 30;
 
 /// Default threshold above which queries route to the high-capability tier.
 const DEFAULT_HIGH_THRESHOLD: u32 = 70;
+
+/// Default threshold below which queries are eligible for a no-LLM fast path.
+const DEFAULT_NO_LLM_THRESHOLD: u32 = 5;
 
 // --- Regex patterns (compiled once) ---
 
@@ -116,6 +119,9 @@ static PHILOSOPHICAL: LazyLock<Regex> = LazyLock::new(|| {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum ModelTier {
+    /// No model call required; a deterministic fast path can handle it.
+    #[serde(rename = "no_llm", alias = "no-llm")]
+    NoLlm,
     /// Fast, cheap, sufficient for simple queries.
     Haiku,
     /// Balanced capability and cost.
@@ -127,6 +133,7 @@ pub enum ModelTier {
 impl fmt::Display for ModelTier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NoLlm => f.write_str("no_llm"),
             Self::Haiku => f.write_str("haiku"),
             Self::Sonnet => f.write_str("sonnet"),
             Self::Opus => f.write_str("opus"),
@@ -158,6 +165,8 @@ pub struct ComplexityInput<'a> {
 pub struct ComplexityConfig {
     /// Whether complexity-based routing is enabled.
     pub enabled: bool,
+    /// Score below which queries are eligible for a deterministic no-LLM fast path.
+    pub no_llm_threshold: u32,
     /// Score at or below which queries route to `haiku_model`.
     pub low_threshold: u32,
     /// Score at or above which queries route to `opus_model`.
@@ -174,6 +183,7 @@ impl Default for ComplexityConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            no_llm_threshold: DEFAULT_NO_LLM_THRESHOLD,
             low_threshold: DEFAULT_LOW_THRESHOLD,
             high_threshold: DEFAULT_HIGH_THRESHOLD,
             haiku_model: names::HAIKU.to_owned(),
@@ -242,6 +252,7 @@ pub fn score_complexity(input: &ComplexityInput<'_>) -> ComplexityScore {
             ModelTier::Opus => 100,
             ModelTier::Sonnet => 50,
             ModelTier::Haiku => 10,
+            ModelTier::NoLlm => 0,
         };
         return ComplexityScore {
             score,
@@ -279,7 +290,12 @@ pub fn score_complexity(input: &ComplexityInput<'_>) -> ComplexityScore {
 
     let (score, factors) = score_dimensions(input);
     let score = clamp_score(score);
-    let tier = tier_from_score(score, DEFAULT_LOW_THRESHOLD, DEFAULT_HIGH_THRESHOLD);
+    let tier = tier_from_score(
+        score,
+        DEFAULT_NO_LLM_THRESHOLD,
+        DEFAULT_LOW_THRESHOLD,
+        DEFAULT_HIGH_THRESHOLD,
+    );
 
     let reason = if factors.is_empty() {
         "baseline".to_owned()
@@ -412,7 +428,7 @@ fn score_dimensions(input: &ComplexityInput<'_>) -> (i32, Vec<&'static str>) {
 #[must_use]
 pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> RoutingDecision {
     if let Some(model) = input.model_override {
-        let complexity = score_complexity(input);
+        let complexity = score_complexity_for_config(input, config);
         tracing::info!(
             model,
             complexity_score = complexity.score,
@@ -435,7 +451,7 @@ pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> Ro
         };
     }
 
-    let complexity = score_complexity(input);
+    let complexity = score_complexity_for_config(input, config);
     let model = select_model_for_tier(complexity.tier, config);
 
     tracing::info!(
@@ -457,6 +473,9 @@ pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> Ro
 #[must_use]
 fn select_model_for_tier(tier: ModelTier, config: &ComplexityConfig) -> String {
     match tier {
+        // Until a Tier-1 handler registry exists, no-LLM decisions fall back to
+        // the fast model while preserving the tier in telemetry and tests.
+        ModelTier::NoLlm => config.haiku_model.clone(),
         ModelTier::Haiku => config.haiku_model.clone(),
         ModelTier::Sonnet => config.sonnet_model.clone(),
         ModelTier::Opus => config.opus_model.clone(),
@@ -465,14 +484,35 @@ fn select_model_for_tier(tier: ModelTier, config: &ComplexityConfig) -> String {
 
 /// Map a numeric score to a model tier using configurable thresholds.
 #[must_use]
-fn tier_from_score(score: u32, low_threshold: u32, high_threshold: u32) -> ModelTier {
-    if score <= low_threshold {
+fn tier_from_score(
+    score: u32,
+    no_llm_threshold: u32,
+    low_threshold: u32,
+    high_threshold: u32,
+) -> ModelTier {
+    if score < no_llm_threshold {
+        ModelTier::NoLlm
+    } else if score <= low_threshold {
         ModelTier::Haiku
     } else if score >= high_threshold {
         ModelTier::Opus
     } else {
         ModelTier::Sonnet
     }
+}
+
+fn score_complexity_for_config(
+    input: &ComplexityInput<'_>,
+    config: &ComplexityConfig,
+) -> ComplexityScore {
+    let mut complexity = score_complexity(input);
+    complexity.tier = tier_from_score(
+        complexity.score,
+        config.no_llm_threshold,
+        config.low_threshold,
+        config.high_threshold,
+    );
+    complexity
 }
 
 /// Clamp an i32 score into the [0, 100] range.
