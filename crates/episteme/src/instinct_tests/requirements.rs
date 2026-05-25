@@ -23,6 +23,7 @@ fn make_observation(
         outcome,
         context_summary: context.to_owned(),
         nous_id: "test-nous".to_owned(),
+        project_id: None,
         observed_at: ts(timestamp),
     }
 }
@@ -46,6 +47,7 @@ fn aggregation_with_empty_parameters_does_not_panic() {
             outcome: ToolOutcome::Success,
             context_summary: "reading code file".to_owned(),
             nous_id: "nous-1".to_owned(),
+            project_id: None,
             observed_at: ts(&format!("2026-03-{:02}T10:00:00Z", i + 1)),
         })
         .collect();
@@ -280,6 +282,7 @@ fn different_nous_observations_aggregate_together_without_filter() {
             outcome: ToolOutcome::Success,
             context_summary: "code search".to_owned(),
             nous_id: "nous-alice".to_owned(),
+            project_id: None,
             observed_at: ts(&format!("2026-03-{:02}T10:00:00Z", i + 1)),
         })
         .collect();
@@ -289,6 +292,7 @@ fn different_nous_observations_aggregate_together_without_filter() {
         outcome: ToolOutcome::Success,
         context_summary: "code search".to_owned(),
         nous_id: "nous-bob".to_owned(),
+        project_id: None,
         observed_at: ts(&format!("2026-03-{:02}T11:00:00Z", i + 1)),
     }));
     let all = aggregate_observations(
@@ -325,6 +329,7 @@ fn two_tools_identical_parameters_produce_separate_patterns() {
             outcome: ToolOutcome::Success,
             context_summary: "code search".to_owned(),
             nous_id: "nous-1".to_owned(),
+            project_id: None,
             observed_at: ts(&format!("2026-03-{:02}T10:00:00Z", i + 1)),
         });
         observations.push(ToolObservation {
@@ -333,6 +338,7 @@ fn two_tools_identical_parameters_produce_separate_patterns() {
             outcome: ToolOutcome::Success,
             context_summary: "code search".to_owned(),
             nous_id: "nous-1".to_owned(),
+            project_id: None,
             observed_at: ts(&format!("2026-03-{:02}T11:00:00Z", i + 1)),
         });
     }
@@ -495,6 +501,7 @@ mod proptests {
                     outcome: ToolOutcome::Success,
                     context_summary: "code search".to_owned(),
                     nous_id: "nous-1".to_owned(),
+                    project_id: None,
                     observed_at: jiff::Timestamp::UNIX_EPOCH,
                 })
                 .collect();

@@ -44,6 +44,7 @@ pub(crate) fn observation_from_tool_call(
         outcome,
         context_summary: truncated_summary,
         nous_id: nous_id.to_owned(),
+        project_id: None,
         observed_at: jiff::Timestamp::now(),
     }
 }

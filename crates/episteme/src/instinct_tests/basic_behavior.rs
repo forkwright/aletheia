@@ -23,6 +23,7 @@ fn make_observation(
         outcome,
         context_summary: context.to_owned(),
         nous_id: "test-nous".to_owned(),
+        project_id: None,
         observed_at: ts(timestamp),
     }
 }
@@ -35,6 +36,7 @@ fn observation_stores_correct_fields() {
         outcome: ToolOutcome::Success,
         context_summary: "searching for TODOs in code".to_owned(),
         nous_id: "nous-1".to_owned(),
+        project_id: None,
         observed_at: ts("2026-03-01T12:00:00Z"),
     };
     assert_eq!(
@@ -431,6 +433,7 @@ fn observation_serde_roundtrip() {
         outcome: ToolOutcome::Success,
         context_summary: "reading test file".to_owned(),
         nous_id: "nous-1".to_owned(),
+        project_id: None,
         observed_at: ts("2026-03-01T12:00:00Z"),
     };
     let json = serde_json::to_string(&obs).expect("serialize");
@@ -472,6 +475,7 @@ fn observations_different_context_categories_aggregate_separately() {
             outcome: ToolOutcome::Success,
             context_summary: "searching code files".to_owned(),
             nous_id: "nous-alice".to_owned(),
+            project_id: None,
             observed_at: ts(&format!("2026-03-{:02}T10:00:00Z", i + 1)),
         });
     }
@@ -482,6 +486,7 @@ fn observations_different_context_categories_aggregate_separately() {
             outcome: ToolOutcome::Success,
             context_summary: "web search and research documentation".to_owned(),
             nous_id: "nous-alice".to_owned(),
+            project_id: None,
             observed_at: ts(&format!("2026-03-{:02}T12:00:00Z", i + 1)),
         });
     }
