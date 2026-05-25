@@ -22,6 +22,7 @@ jiff = { workspace = true, features = ["serde"] }
 koina = { path = "../koina" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

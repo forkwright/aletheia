@@ -344,6 +344,7 @@ mod tests {
                 outcome: outcome.clone(),
                 context_summary: "code review".to_owned(),
                 nous_id: "test-nous".to_owned(),
+                project_id: None,
                 observed_at: jiff::Timestamp::now(),
             })
             .collect()

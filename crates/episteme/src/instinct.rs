@@ -9,6 +9,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use eidos::workspace::ProjectId;
+
 /// Default maximum length for parameter values before truncation.
 ///
 /// Callers should prefer the value from `taxis::config::KnowledgeConfig::instinct_max_param_value_len`.
@@ -59,6 +61,9 @@ pub struct ToolObservation {
     pub context_summary: String,
     /// Which nous made the observation.
     pub nous_id: String,
+    /// Optional git-remote-derived project partition for this observation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<ProjectId>,
     /// When the observation was recorded.
     pub observed_at: jiff::Timestamp,
 }

@@ -35,6 +35,8 @@ pub use meta::{ArtefactMeta, Provenance, ProvenanceProject, Stamped};
 pub mod test_fixtures;
 /// Training data capture types.
 pub mod training;
+/// Workspace and project identity primitives.
+pub mod workspace;
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
