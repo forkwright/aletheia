@@ -53,7 +53,10 @@ const CHART_LABEL_STYLE: &str = "\
     font-family: var(--font-mono);\
 ";
 
-#[expect(dead_code, reason = "tooltip style reserved for future hover implementation")]
+#[expect(
+    dead_code,
+    reason = "tooltip style reserved for future hover implementation"
+)]
 const TOOLTIP_STYLE: &str = "\
     position: absolute; \
     bottom: 110%; \
@@ -247,11 +250,7 @@ pub(crate) fn HorizBarChart(
 
 /// Donut chart using CSS conic-gradient with legend.
 #[component]
-pub(crate) fn DonutChart(
-    segments: Vec<ChartEntry>,
-    size_px: u32,
-    center_label: String,
-) -> Element {
+pub(crate) fn DonutChart(segments: Vec<ChartEntry>, size_px: u32, center_label: String) -> Element {
     if segments.is_empty() {
         return rsx! {
             div {
@@ -405,7 +404,14 @@ pub(crate) fn GroupedBarChart(
 
 /// Palette for multi-series charts (8 visually distinct hues).
 pub(crate) const SERIES_COLORS: &[&str] = &[
-    "#5b6af0", "var(--status-success)", "var(--status-warning)", "var(--status-error)", "#a855f7", "#06b6d4", "#f97316", "#ec4899",
+    "#5b6af0",
+    "var(--status-success)",
+    "var(--status-warning)",
+    "var(--status-error)",
+    "#a855f7",
+    "#06b6d4",
+    "#f97316",
+    "#ec4899",
 ];
 
 // -- Line chart types ---------------------------------------------------------
@@ -447,11 +453,7 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
         .fold(0.0f64, f64::max)
         .max(1.0);
 
-    let num_points = series
-        .iter()
-        .map(|s| s.points.len())
-        .max()
-        .unwrap_or(0);
+    let num_points = series.iter().map(|s| s.points.len()).max().unwrap_or(0);
 
     rsx! {
         div {
@@ -487,7 +489,10 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
                                 #[expect(clippy::as_conversions, reason = "CSS percentage from bounded ratio")]
                                 let pct = ((val / max_val) * 100.0) as u32;
                                 let color = s.color.clone();
-                                let label_text = s.points.get(idx).map(|p| p.label.clone()).unwrap_or_default();
+                                let label_text = s
+                                    .points
+                                    .get(idx)
+                                    .map_or_else(String::new, |p| p.label.clone());
                                 rsx! {
                                     div {
                                         style: "flex: 1; height: {pct}%; background: {color}; border-radius: 1px 1px 0 0; min-height: 1px;",
@@ -505,10 +510,10 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
                 {
                     let first_label = series.iter()
                         .find_map(|s| s.points.first().map(|p| p.label.clone()))
-                        .unwrap_or_default();
+                        .unwrap_or_else(String::new);
                     let last_label = series.iter()
                         .find_map(|s| s.points.last().map(|p| p.label.clone()))
-                        .unwrap_or_default();
+                        .unwrap_or_else(String::new);
                     rsx! {
                         div {
                             style: "display: flex; justify-content: space-between; padding: 0 var(--space-1);",
@@ -548,12 +553,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
         };
     }
 
-    let global_max = entries
-        .iter()
-        .map(|e| e.max_ms)
-        .max()
-        .unwrap_or(1)
-        .max(1);
+    let global_max = entries.iter().map(|e| e.max_ms).max().unwrap_or(1).max(1);
 
     rsx! {
         div {
@@ -772,7 +772,10 @@ pub(crate) fn format_chart_value(v: f64) -> String {
     } else if v >= 1_000.0 {
         format!("{:.1}K", v / 1_000.0)
     } else if v == v.trunc() {
-        #[expect(clippy::as_conversions, reason = "integer-valued f64 for display formatting")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "integer-valued f64 for display formatting"
+        )]
         let n = v as u64;
         format!("{n}")
     } else {
