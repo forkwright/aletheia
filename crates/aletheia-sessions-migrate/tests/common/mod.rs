@@ -1,13 +1,8 @@
-//! Shared test scaffolding: build a SQLite v32 fixture from scratch.
+//! Shared test scaffolding: build a `SQLite` v32 fixture from scratch.
 
-#![allow(
+#![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::doc_markdown,
-    clippy::too_many_lines,
-    clippy::too_many_arguments,
-    dead_code
+    reason = "integration test fixtures use direct setup assertions"
 )]
 // per-test binary uses only a subset of these helpers
 
@@ -109,13 +104,15 @@ CREATE TABLE blackboard (
 );
 ";
 
-/// Create an empty v32 SQLite DB file at `path`.
+/// Create an empty v32 `SQLite` DB file at `path`.
+#[allow(dead_code, reason = "shared fixture helper used by a subset of tests")]
 pub fn build_empty_v32(path: &Path) {
     let conn = Connection::open(path).expect("open writable SQLite");
     conn.execute_batch(SCHEMA_SQL).expect("apply v32 DDL");
 }
 
 /// Insert one session row.
+#[allow(dead_code, reason = "shared fixture helper used by a subset of tests")]
 pub fn insert_session(
     conn: &Connection,
     id: &str,
@@ -135,6 +132,7 @@ pub fn insert_session(
 }
 
 /// Insert one message row.
+#[allow(dead_code, reason = "shared fixture helper used by a subset of tests")]
 pub fn insert_message(
     conn: &Connection,
     session_id: &str,
@@ -154,6 +152,7 @@ pub fn insert_message(
 }
 
 /// Insert one distillation row.
+#[allow(dead_code, reason = "shared fixture helper used by a subset of tests")]
 pub fn insert_distillation(
     conn: &Connection,
     session_id: &str,
@@ -172,7 +171,8 @@ pub fn insert_distillation(
     .expect("insert distillation");
 }
 
-/// Insert one agent_note row.
+/// Insert one `agent_note` row.
+#[allow(dead_code, reason = "shared fixture helper used by a subset of tests")]
 pub fn insert_note(
     conn: &Connection,
     session_id: &str,
@@ -189,6 +189,7 @@ pub fn insert_note(
 }
 
 /// Insert one usage row.
+#[allow(dead_code, reason = "shared fixture helper used by a subset of tests")]
 pub fn insert_usage(
     conn: &Connection,
     session_id: &str,

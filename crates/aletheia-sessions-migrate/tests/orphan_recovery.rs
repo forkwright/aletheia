@@ -1,13 +1,10 @@
 //! Orphan messages (whose parent session row was already deleted in
-//! the legacy SQLite DB) must be preserved under a synthesised
+//! the legacy `SQLite` DB) must be preserved under a synthesised
 //! `orphan-recovery` session, not silently dropped.
 
-#![allow(
+#![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::doc_markdown,
-    clippy::too_many_lines
+    reason = "integration tests use direct assertions over fixture setup"
 )]
 
 mod common;

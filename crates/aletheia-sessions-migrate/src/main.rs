@@ -37,7 +37,7 @@ After verification, the operator swaps the live aletheia data dir at their own p
 // would surface to operators as literal characters.
 #[expect(
     clippy::struct_excessive_bools,
-    reason = "orthogonal CLI mode flags; idiomatic clap shape (#[arg(long)] per flag)"
+    reason = "orthogonal CLI mode flags; idiomatic clap shape"
 )]
 #[expect(
     clippy::doc_markdown,

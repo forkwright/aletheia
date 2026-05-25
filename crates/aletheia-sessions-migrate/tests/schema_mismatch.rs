@@ -1,13 +1,11 @@
-//! Test 4 from the deliverable: hand the migrator a SQLite file with
+//! Test 4 from the deliverable: hand the migrator a `SQLite` file with
 //! mismatched schema, assert it errors with a specific message
 //! identifying what's wrong.
 
-#![allow(
+#![expect(
     clippy::expect_used,
     clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::doc_markdown,
-    clippy::too_many_lines
+    reason = "integration tests use direct assertions over fixture setup"
 )]
 
 mod common;
