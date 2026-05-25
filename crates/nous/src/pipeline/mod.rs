@@ -1350,6 +1350,7 @@ pub(crate) async fn run_pipeline(
                 &result.tool_calls,
                 &input.content,
                 &config.id,
+                pipeline_config.project_id.as_ref(),
             );
             tracing::debug!(
                 observation_count = observations.len(),

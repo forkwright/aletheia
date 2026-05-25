@@ -7,6 +7,7 @@ use mneme::instinct::{
     DEFAULT_MAX_CONTEXT_SUMMARY_LEN, DEFAULT_MAX_PARAM_VALUE_LEN, ToolObservation, ToolOutcome,
     sanitize_parameters, truncate_context_summary,
 };
+use mneme::workspace::ProjectId;
 
 use crate::pipeline::ToolCall;
 
@@ -19,6 +20,7 @@ pub(crate) fn observation_from_tool_call(
     tool_call: &ToolCall,
     context_summary: &str,
     nous_id: &str,
+    project_id: Option<&ProjectId>,
 ) -> ToolObservation {
     let outcome = if tool_call.is_error {
         ToolOutcome::Failure {
@@ -44,7 +46,7 @@ pub(crate) fn observation_from_tool_call(
         outcome,
         context_summary: truncated_summary,
         nous_id: nous_id.to_owned(),
-        project_id: None,
+        project_id: project_id.cloned(),
         observed_at: jiff::Timestamp::now(),
     }
 }
@@ -60,10 +62,11 @@ pub(crate) fn record_observations(
     tool_calls: &[ToolCall],
     context_summary: &str,
     nous_id: &str,
+    project_id: Option<&ProjectId>,
 ) -> Vec<ToolObservation> {
     let observations: Vec<ToolObservation> = tool_calls
         .iter()
-        .map(|tc| observation_from_tool_call(tc, context_summary, nous_id))
+        .map(|tc| observation_from_tool_call(tc, context_summary, nous_id, project_id))
         .collect();
 
     if observations.is_empty() {
@@ -121,9 +124,10 @@ mod tests {
     #[test]
     fn observation_from_successful_tool_call() {
         let tc = make_tool_call("grep", false);
-        let obs = observation_from_tool_call(&tc, "searching code", "nous-1");
+        let obs = observation_from_tool_call(&tc, "searching code", "nous-1", None);
         assert_eq!(obs.tool_name, "grep");
         assert_eq!(obs.nous_id, "nous-1");
+        assert!(obs.project_id.is_none());
         assert!(obs.outcome.is_success());
         assert_eq!(obs.parameters["api_key"], "[REDACTED]");
         assert_eq!(obs.parameters["path"], "/src/main.rs");
@@ -132,12 +136,24 @@ mod tests {
     #[test]
     fn observation_from_failed_tool_call() {
         let tc = make_tool_call("exec", true);
-        let obs = observation_from_tool_call(&tc, "running command", "nous-2");
+        let obs = observation_from_tool_call(&tc, "running command", "nous-2", None);
         assert!(!obs.outcome.is_success());
         match &obs.outcome {
             ToolOutcome::Failure { error } => assert!(error.contains("tool failed")),
             _ => panic!("expected Failure outcome"),
         }
+    }
+
+    #[test]
+    fn observation_preserves_project_partition() {
+        let tc = make_tool_call("grep", false);
+        let project_id = ProjectId::from_git_remote("https://github.com/forkwright/aletheia.git")
+            .expect("valid remote");
+
+        let obs =
+            observation_from_tool_call(&tc, "searching project code", "nous-1", Some(&project_id));
+
+        assert_eq!(obs.project_id.as_ref(), Some(&project_id));
     }
 
     #[test]
@@ -147,13 +163,13 @@ mod tests {
             make_tool_call("read_file", false),
             make_tool_call("exec", true),
         ];
-        let observations = record_observations(&calls, "multi-tool turn", "nous-1");
+        let observations = record_observations(&calls, "multi-tool turn", "nous-1", None);
         assert_eq!(observations.len(), 3);
     }
 
     #[test]
     fn record_observations_empty_calls() {
-        let observations = record_observations(&[], "no tools used", "nous-1");
+        let observations = record_observations(&[], "no tools used", "nous-1", None);
         assert!(observations.is_empty());
     }
 }

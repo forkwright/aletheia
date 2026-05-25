@@ -202,6 +202,7 @@ impl SpawnService for SpawnServiceImpl {
         // are internal delegation, not user-facing conversation.
         let pipeline_config = PipelineConfig {
             history_budget_ratio: 0.6,
+            project_id: None,
             extraction: None,
             stage_budget: StageBudget::default(),
             training: crate::training::TrainingConfig::default(),
