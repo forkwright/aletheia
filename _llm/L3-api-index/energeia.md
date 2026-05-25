@@ -290,11 +290,28 @@ pub enum PromptStatus {
 ```
 
 ```rust
+pub enum ContextPolicy {
+    /// Start each prompt node from a fresh session context.
+    #[default]
+    Fresh,
+    /// Inherit structured outputs from selected dependency nodes.
+    Inherit(
+        /// Dependency node numbers whose structured outputs should be inherited.
+        Vec<u32>,
+    ),
+    /// Share one conversational context across the DAG.
+    Shared,
+}
+```
+
+```rust
 pub struct DagNode {
     /// Unique prompt number.
     pub number: u32,
     /// Prompt numbers this prompt depends on (forward edges).
     pub depends_on: Vec<u32>,
+    /// Conversational context policy for this prompt.
+    pub context_policy: ContextPolicy,
     /// Current execution status.
     pub status: PromptStatus,
 }
@@ -343,6 +360,12 @@ pub struct PromptDag {
 impl PromptDag {
     pub fn new () -> Self;
     pub fn add_node (&mut self, number: u32, depends_on: Vec<u32>) -> Result<(), DagError>;
+    pub fn add_node_with_context_policy (
+        &mut self,
+        number: u32,
+        depends_on: Vec<u32>,
+        context_policy: ContextPolicy,
+    ) -> Result<(), DagError>;
     pub fn set_status (&mut self, number: u32, status: PromptStatus) -> Result<(), DagError>;
     pub fn get_ready (&self) -> Vec<u32>;
     pub fn validate (&self) -> Result<(), DagError>;
@@ -1291,6 +1314,9 @@ pub struct PromptSpec {
     pub description: String,
     /// Prompt numbers this prompt depends on (DAG edges).
     pub depends_on: Vec<u32>,
+    /// How this prompt receives conversational context from other prompt nodes.
+    #[serde(default)]
+    pub context_policy: ContextPolicy,
     /// Acceptance criteria the implementation must satisfy.
     pub acceptance_criteria: Vec<String>,
     /// File paths the prompt is allowed to modify.
