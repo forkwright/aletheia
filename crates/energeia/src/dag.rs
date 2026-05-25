@@ -36,6 +36,23 @@ impl fmt::Display for PromptStatus {
     }
 }
 
+/// How a prompt node receives conversational context from other prompt nodes.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+#[serde(tag = "policy", content = "nodes", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ContextPolicy {
+    /// Start each prompt node from a fresh session context.
+    #[default]
+    Fresh,
+    /// Inherit structured outputs from selected dependency nodes.
+    Inherit(
+        /// Dependency node numbers whose structured outputs should be inherited.
+        Vec<u32>,
+    ),
+    /// Share one conversational context across the DAG.
+    Shared,
+}
+
 /// A node in the prompt dependency graph.
 #[derive(Debug, Clone)]
 pub struct DagNode {
@@ -43,6 +60,8 @@ pub struct DagNode {
     pub number: u32,
     /// Prompt numbers this prompt depends on (forward edges).
     pub depends_on: Vec<u32>,
+    /// Conversational context policy for this prompt.
+    pub context_policy: ContextPolicy,
     /// Current execution status.
     pub status: PromptStatus,
 }
@@ -129,6 +148,22 @@ impl PromptDag {
     ///
     /// Returns [`DagError::DuplicateNode`] if `number` is already present.
     pub fn add_node(&mut self, number: u32, depends_on: Vec<u32>) -> Result<(), DagError> {
+        self.add_node_with_context_policy(number, depends_on, ContextPolicy::Fresh)
+    }
+
+    /// Add a prompt node with an explicit context policy.
+    ///
+    /// The initial status is `Pending`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DagError::DuplicateNode`] if `number` is already present.
+    pub fn add_node_with_context_policy(
+        &mut self,
+        number: u32,
+        depends_on: Vec<u32>,
+        context_policy: ContextPolicy,
+    ) -> Result<(), DagError> {
         if self.nodes.contains_key(&number) {
             return Err(DagError::DuplicateNode { number });
         }
@@ -137,6 +172,7 @@ impl PromptDag {
             DagNode {
                 number,
                 depends_on,
+                context_policy,
                 status: PromptStatus::Pending,
             },
         );
@@ -296,6 +332,18 @@ mod tests {
         let mut dag = PromptDag::new();
         dag.add_node(1, vec![]).unwrap();
         assert_eq!(dag.nodes[&1].status, PromptStatus::Pending);
+        assert_eq!(dag.nodes[&1].context_policy, ContextPolicy::Fresh);
+    }
+
+    #[test]
+    fn add_node_with_context_policy_stores_policy() {
+        let mut dag = PromptDag::new();
+        dag.add_node_with_context_policy(2, vec![1], ContextPolicy::Inherit(vec![1]))
+            .unwrap();
+        assert_eq!(
+            dag.nodes[&2].context_policy,
+            ContextPolicy::Inherit(vec![1])
+        );
     }
 
     #[test]

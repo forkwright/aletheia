@@ -7,8 +7,10 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
-use crate::dag::{DagError, PromptDag, PromptStatus};
-use crate::error::{DagCycleSnafu, DagMissingDepsSnafu, FrontmatterParseSnafu, IoSnafu, Result};
+use crate::dag::{ContextPolicy, DagError, PromptDag, PromptStatus};
+use crate::error::{
+    DagCycleSnafu, DagMissingDepsSnafu, FrontmatterParseSnafu, IoSnafu, PreflightSnafu, Result,
+};
 
 /// Full specification for a dispatch prompt.
 ///
@@ -22,6 +24,8 @@ use crate::error::{DagCycleSnafu, DagMissingDepsSnafu, FrontmatterParseSnafu, Io
 /// number: 1
 /// description: "Add health endpoint"
 /// depends_on: [2, 3]
+/// context_policy:
+///   policy: fresh
 /// acceptance_criteria:
 ///   - "GET /health returns 200"
 ///   - "response includes build info"
@@ -40,6 +44,9 @@ pub struct PromptSpec {
     pub description: String,
     /// Prompt numbers this prompt depends on (DAG edges).
     pub depends_on: Vec<u32>,
+    /// How this prompt receives conversational context from other prompt nodes.
+    #[serde(default)]
+    pub context_policy: ContextPolicy,
     /// Acceptance criteria the implementation must satisfy.
     pub acceptance_criteria: Vec<String>,
     /// File paths the prompt is allowed to modify.
@@ -60,6 +67,8 @@ struct Frontmatter {
     description: String,
     #[serde(default)]
     depends_on: Vec<u32>,
+    #[serde(default)]
+    context_policy: ContextPolicy,
     #[serde(default)]
     acceptance_criteria: Vec<String>,
     #[serde(default)]
@@ -134,6 +143,7 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
         number: fm.number,
         description: fm.description,
         depends_on: fm.depends_on,
+        context_policy: fm.context_policy,
         acceptance_criteria: fm.acceptance_criteria,
         blast_radius: fm.blast_radius,
         body,
@@ -185,15 +195,28 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
     let mut dag = PromptDag::new();
 
     for spec in prompts {
+        if spec.context_policy != ContextPolicy::Fresh {
+            return PreflightSnafu {
+                reason: format!(
+                    "context policy {:?} for prompt {} requires output_format support from issue #3972",
+                    spec.context_policy, spec.number
+                ),
+            }
+            .fail();
+        }
         // NOTE: Duplicate numbers in the prompt set are not expected; treat as
         // a configuration error.
-        dag.add_node(spec.number, spec.depends_on.clone())
-            .map_err(|_duplicate| {
-                DagMissingDepsSnafu {
-                    detail: format!("duplicate prompt number {} in queue", spec.number),
-                }
-                .build()
-            })?;
+        dag.add_node_with_context_policy(
+            spec.number,
+            spec.depends_on.clone(),
+            spec.context_policy.clone(),
+        )
+        .map_err(|_duplicate| {
+            DagMissingDepsSnafu {
+                detail: format!("duplicate prompt number {} in queue", spec.number),
+            }
+            .build()
+        })?;
     }
 
     // WHY: Validate immediately after building — callers can rely on the
@@ -313,6 +336,38 @@ blast_radius:
     }
 
     #[test]
+    fn load_prompt_context_policy_defaults_fresh() {
+        let dir = TempDir::new().unwrap();
+        let path = make_prompt_file(&dir, "001-task.md", MINIMAL_PROMPT);
+
+        let spec = load_prompt(&path).unwrap();
+        assert_eq!(spec.context_policy, ContextPolicy::Fresh);
+    }
+
+    #[test]
+    fn load_prompt_context_policy_from_frontmatter() {
+        let dir = TempDir::new().unwrap();
+        let path = make_prompt_file(
+            &dir,
+            "002-task.md",
+            "\
+---
+number: 2
+depends_on: [1]
+context_policy:
+  policy: inherit
+  nodes: [1]
+---
+
+body
+",
+        );
+
+        let spec = load_prompt(&path).unwrap();
+        assert_eq!(spec.context_policy, ContextPolicy::Inherit(vec![1]));
+    }
+
+    #[test]
     fn load_prompt_missing_open_delimiter_fails() {
         let dir = TempDir::new().unwrap();
         let path = make_prompt_file(&dir, "bad.md", "number: 1\n# no delimiters\n");
@@ -389,6 +444,7 @@ blast_radius:
             number,
             description: format!("prompt {number}"),
             depends_on,
+            context_policy: ContextPolicy::Fresh,
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: String::new(),
@@ -409,6 +465,16 @@ blast_radius:
         let dag = build_dag(&prompts).unwrap();
         assert_eq!(dag.get_ready(), vec![1]);
         assert_eq!(dag.nodes[&2].status, PromptStatus::Blocked);
+        assert_eq!(dag.nodes[&2].context_policy, ContextPolicy::Fresh);
+    }
+
+    #[test]
+    fn build_dag_rejects_non_fresh_context_policy() {
+        let mut prompt = spec(2, vec![1]);
+        prompt.context_policy = ContextPolicy::Inherit(vec![1]);
+
+        let err = build_dag(&[spec(1, vec![]), prompt]).unwrap_err();
+        assert!(matches!(err, Error::Preflight { .. }));
     }
 
     #[test]

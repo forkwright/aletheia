@@ -201,6 +201,7 @@ mod tests {
             number: 1,
             description: "test task".to_owned(),
             depends_on: vec![],
+            context_policy: crate::dag::ContextPolicy::Fresh,
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: "do the thing".to_owned(),

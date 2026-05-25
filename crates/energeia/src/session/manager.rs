@@ -571,6 +571,7 @@ mod tests {
             number,
             description: format!("test prompt {number}"),
             depends_on: vec![],
+            context_policy: crate::dag::ContextPolicy::Fresh,
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: format!("implement task {number}"),

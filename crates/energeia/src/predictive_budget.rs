@@ -555,6 +555,7 @@ mod tests {
             number,
             description: description.to_owned(),
             depends_on: Vec::new(),
+            context_policy: crate::dag::ContextPolicy::Fresh,
             acceptance_criteria: Vec::new(),
             blast_radius,
             body: body.to_owned(),
