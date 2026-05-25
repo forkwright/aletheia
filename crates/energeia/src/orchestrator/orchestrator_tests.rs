@@ -74,6 +74,7 @@ fn sample_prompt_spec(number: u32, depends_on: Vec<u32>) -> PromptSpec {
         description: format!("test prompt {number}"),
         depends_on,
         context_policy: crate::dag::ContextPolicy::Fresh,
+        worktree: crate::prompt::WorktreePolicy::default(),
         acceptance_criteria: vec![],
         blast_radius: vec![],
         body: format!("implement task {number}"),

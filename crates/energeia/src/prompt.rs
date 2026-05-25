@@ -12,6 +12,20 @@ use crate::error::{
     DagCycleSnafu, DagMissingDepsSnafu, FrontmatterParseSnafu, IoSnafu, PreflightSnafu, Result,
 };
 
+/// Worktree isolation preference declared by a prompt file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct WorktreePolicy {
+    /// Whether the dispatch harness should run this prompt in an isolated worktree.
+    pub enabled: bool,
+}
+
+impl Default for WorktreePolicy {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 /// Full specification for a dispatch prompt.
 ///
 /// Loaded from a YAML frontmatter file where the frontmatter contains
@@ -26,6 +40,8 @@ use crate::error::{
 /// depends_on: [2, 3]
 /// context_policy:
 ///   policy: fresh
+/// worktree:
+///   enabled: true
 /// acceptance_criteria:
 ///   - "GET /health returns 200"
 ///   - "response includes build info"
@@ -47,6 +63,10 @@ pub struct PromptSpec {
     /// How this prompt receives conversational context from other prompt nodes.
     #[serde(default)]
     pub context_policy: ContextPolicy,
+    /// Whether this prompt expects isolated worktree execution when the
+    /// dispatch harness supports it.
+    #[serde(default)]
+    pub worktree: WorktreePolicy,
     /// Acceptance criteria the implementation must satisfy.
     pub acceptance_criteria: Vec<String>,
     /// File paths the prompt is allowed to modify.
@@ -69,6 +89,8 @@ struct Frontmatter {
     depends_on: Vec<u32>,
     #[serde(default)]
     context_policy: ContextPolicy,
+    #[serde(default)]
+    worktree: WorktreePolicy,
     #[serde(default)]
     acceptance_criteria: Vec<String>,
     #[serde(default)]
@@ -144,6 +166,7 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
         description: fm.description,
         depends_on: fm.depends_on,
         context_policy: fm.context_policy,
+        worktree: fm.worktree,
         acceptance_criteria: fm.acceptance_criteria,
         blast_radius: fm.blast_radius,
         body,
@@ -317,6 +340,7 @@ blast_radius:
         assert_eq!(spec.number, 1);
         assert_eq!(spec.description, "Test task");
         assert!(spec.depends_on.is_empty());
+        assert_eq!(spec.worktree, WorktreePolicy::default());
         assert!(spec.acceptance_criteria.is_empty());
         assert!(spec.blast_radius.is_empty());
         assert!(spec.body.contains("Task body here"));
@@ -365,6 +389,27 @@ body
 
         let spec = load_prompt(&path).unwrap();
         assert_eq!(spec.context_policy, ContextPolicy::Inherit(vec![1]));
+    }
+
+    #[test]
+    fn load_prompt_worktree_policy_from_frontmatter() {
+        let dir = TempDir::new().unwrap();
+        let path = make_prompt_file(
+            &dir,
+            "002-task.md",
+            "\
+---
+number: 2
+worktree:
+  enabled: false
+---
+
+body
+",
+        );
+
+        let spec = load_prompt(&path).unwrap();
+        assert_eq!(spec.worktree, WorktreePolicy { enabled: false });
     }
 
     #[test]
@@ -445,6 +490,7 @@ body
             description: format!("prompt {number}"),
             depends_on,
             context_policy: ContextPolicy::Fresh,
+            worktree: WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: String::new(),
