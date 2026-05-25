@@ -77,7 +77,7 @@ pub async fn execute(
         || tools.definitions_for_groups(&config.tool_groups).len(),
         Vec::len,
     );
-    let turn_model = resolve_turn_model(ctx, config, tool_count);
+    let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -483,7 +483,7 @@ pub async fn execute_streaming(
         || tools.definitions_for_groups(&config.tool_groups).len(),
         Vec::len,
     );
-    let turn_model = resolve_turn_model(ctx, config, tool_count);
+    let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
 
     let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {
         // NOTE: fall back to non-streaming execute if no streaming provider is registered

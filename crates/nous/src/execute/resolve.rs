@@ -7,7 +7,7 @@ use tracing::{debug, warn};
 
 use hermeneus::complexity::{ComplexityInput, route_model};
 use hermeneus::health::ProviderHealth;
-use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::provider::{DeploymentTarget, LlmProvider, ProviderRegistry};
 use hermeneus::types::{ContentBlock, ServerToolDefinition};
 use koina::id::ToolName;
 use organon::types::ToolContext;
@@ -35,6 +35,7 @@ pub(super) struct ResponseExtract {
 pub(super) fn resolve_turn_model(
     ctx: &PipelineContext,
     config: &NousConfig,
+    providers: &ProviderRegistry,
     tool_count: usize,
 ) -> String {
     if !config.generation.complexity.enabled {
@@ -61,6 +62,34 @@ pub(super) fn resolve_turn_model(
     };
 
     let decision = route_model(&input, &config.generation.complexity);
+    let deployment_target = providers
+        .find_provider(&config.generation.model)
+        .map_or(DeploymentTarget::Cloud, LlmProvider::deployment_target);
+    let configured_local = matches!(
+        deployment_target,
+        DeploymentTarget::LocalHosted | DeploymentTarget::Embedded
+    );
+    let routed_deployment_target = providers
+        .find_provider(&decision.model)
+        .map(LlmProvider::deployment_target);
+    let routed_local = matches!(
+        routed_deployment_target,
+        Some(DeploymentTarget::LocalHosted | DeploymentTarget::Embedded)
+    );
+    if configured_local && !routed_local && decision.model != config.generation.model {
+        debug!(
+            configured_model = config.generation.model,
+            routed_model = decision.model,
+            deployment_target = deployment_target.as_str(),
+            routed_deployment_target = routed_deployment_target
+                .map_or("unregistered", DeploymentTarget::as_str),
+            complexity_score = decision.complexity.score,
+            complexity_tier = %decision.complexity.tier,
+            "complexity routing preserved local deployment target"
+        );
+        return config.generation.model.clone();
+    }
+
     decision.model
 }
 
