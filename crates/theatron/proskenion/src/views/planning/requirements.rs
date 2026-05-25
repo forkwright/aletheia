@@ -227,10 +227,18 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
 
             // WHY: Proposals endpoint may not exist yet; treat 404 as empty.
             let proposals = match props_result {
-                Ok(resp) if resp.status().is_success() => resp
-                    .json::<Vec<CategoryProposal>>()
-                    .await
-                    .unwrap_or_default(),
+                Ok(resp) if resp.status().is_success() => {
+                    match resp.json::<Vec<CategoryProposal>>().await {
+                        Ok(proposals) => proposals,
+                        Err(err) => {
+                            tracing::warn!(
+                                error = %err,
+                                "failed to parse planning category proposals"
+                            );
+                            Vec::new()
+                        }
+                    }
+                }
                 _ => Vec::new(),
             };
 
