@@ -217,9 +217,13 @@ pub(crate) fn load_notification_prefs() -> NotificationPreferences {
         Ok(c) => c,
         Err(_) => return NotificationPreferences::default(),
     };
-    toml::from_str::<DesktopConfig>(&content)
-        .map(|c| c.notifications)
-        .unwrap_or_default()
+    match toml::from_str::<DesktopConfig>(&content) {
+        Ok(config) => config.notifications,
+        Err(err) => {
+            tracing::warn!("failed to parse notification preferences, using defaults: {err}");
+            NotificationPreferences::default()
+        }
+    }
 }
 
 /// Save notification preferences to the config file.
@@ -444,7 +448,10 @@ server_url = "http://custom:9000"
         assert_eq!(loaded.connection.server_url, "http://test-host:9000");
         assert_eq!(loaded.connection.connect_timeout_secs, 60);
         assert!(!loaded.connection.auto_reconnect);
-        assert_eq!(loaded.connection.auth_token.as_deref(), Some("session-token"));
+        assert_eq!(
+            loaded.connection.auth_token.as_deref(),
+            Some("session-token")
+        );
     }
 
     #[test]
