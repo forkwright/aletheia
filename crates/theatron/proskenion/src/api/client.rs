@@ -25,7 +25,10 @@ pub(crate) fn authenticated_client(config: &ConnectionConfig) -> Client {
         .default_headers(headers)
         .timeout(Duration::from_secs(30))
         .build()
-        .unwrap_or_default()
+        .unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "failed to build authenticated HTTP client");
+            Client::new()
+        })
 }
 
 #[cfg(test)]
@@ -82,7 +85,8 @@ mod tests {
             auth_token: Some(String::new()),
             ..ConnectionConfig::default()
         };
-        let _client = authenticated_client(&config);
-        // No assertion beyond no panic; covers the Some-but-empty branch.
+        let client = authenticated_client(&config);
+        let debug = format!("{client:?}");
+        assert!(!debug.is_empty());
     }
 }
