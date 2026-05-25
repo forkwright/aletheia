@@ -1,6 +1,7 @@
 //! `aletheia maintenance`: instance maintenance task management.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use clap::Subcommand;
 use snafu::prelude::*;
@@ -212,7 +213,9 @@ pub(crate) fn build_config(
     prompt_audit: &taxis::config::PromptAuditSettings,
 ) -> MaintenanceConfig {
     MaintenanceConfig {
-        after_action_store: None,
+        after_action_store: Some(Arc::new(aletheia_routing::AfterActionStore::new(
+            oikos.logs().join("after-actions"),
+        ))),
         trace_rotation: TraceRotationConfig {
             enabled: settings.trace_rotation.enabled,
             trace_dir: oikos.traces(),
