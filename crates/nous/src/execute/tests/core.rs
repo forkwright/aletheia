@@ -7,7 +7,7 @@ use super::*;
 use std::sync::{Arc, Mutex};
 
 use hermeneus::error as llm_error;
-use hermeneus::provider::LlmProvider;
+use hermeneus::provider::{DeploymentTarget, LlmProvider};
 
 struct FallbackSequenceProvider {
     responses: Mutex<Vec<hermeneus::error::Result<CompletionResponse>>>,
@@ -17,6 +17,11 @@ struct FallbackSequenceProvider {
 }
 
 struct ArcProvider(Arc<FallbackSequenceProvider>);
+
+struct DeploymentTargetProvider {
+    inner: MockProvider,
+    target: DeploymentTarget,
+}
 
 impl FallbackSequenceProvider {
     fn new(
@@ -34,6 +39,12 @@ impl FallbackSequenceProvider {
 
     fn called_models(&self) -> Vec<String> {
         self.models.lock().expect("models lock").clone()
+    }
+}
+
+impl DeploymentTargetProvider {
+    fn new(inner: MockProvider, target: DeploymentTarget) -> Self {
+        Self { inner, target }
     }
 }
 
@@ -57,6 +68,28 @@ impl LlmProvider for FallbackSequenceProvider {
 
     fn name(&self) -> &str {
         self.provider_name
+    }
+}
+
+impl LlmProvider for DeploymentTargetProvider {
+    fn complete<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.inner.complete(request)
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        self.inner.supported_models()
+    }
+
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn deployment_target(&self) -> DeploymentTarget {
+        self.target
     }
 }
 
@@ -854,5 +887,94 @@ async fn test_routing_enabled_selects_tier_model() {
     .expect("execute should resolve opus-tier via complexity routing");
 
     assert_eq!(result.content, "opus answer");
+    assert_eq!(result.usage.llm_calls, 1);
+}
+
+#[tokio::test]
+async fn test_routing_enabled_preserves_local_deployment_target() {
+    // WHY: a locally configured turn model must not be replaced by a cloud
+    // tier model just because the complexity score is high. Provider
+    // resolution only registers the local model, so this fails if the
+    // sovereignty guard is bypassed.
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(DeploymentTargetProvider::new(
+        MockProvider::with_responses(vec![make_text_response("local answer")])
+            .models(&["local-tier"]),
+        DeploymentTarget::Embedded,
+    )));
+
+    let tools = ToolRegistry::new();
+
+    let mut config = test_config();
+    config.generation.model = "local-tier".to_owned();
+    config.generation.complexity = hermeneus::complexity::ComplexityConfig {
+        enabled: true,
+        haiku_model: "haiku-cloud".to_owned(),
+        sonnet_model: "sonnet-cloud".to_owned(),
+        opus_model: "opus-cloud".to_owned(),
+        ..hermeneus::complexity::ComplexityConfig::default()
+    };
+
+    let mut ctx = test_pipeline_ctx();
+    ctx.messages[0].content = "think hard about this architecture decision".to_owned();
+
+    let result = execute(
+        &ctx,
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute should preserve the embedded provider's local model");
+
+    assert_eq!(result.content, "local answer");
+    assert_eq!(result.usage.llm_calls, 1);
+}
+
+#[tokio::test]
+async fn test_routing_enabled_allows_local_tier_model() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(DeploymentTargetProvider::new(
+        MockProvider::with_responses(vec![make_text_response("configured local")])
+            .models(&["local-tier"]),
+        DeploymentTarget::Embedded,
+    )));
+    providers.register(Box::new(DeploymentTargetProvider::new(
+        MockProvider::with_responses(vec![make_text_response("local opus answer")])
+            .models(&["local-opus"]),
+        DeploymentTarget::Embedded,
+    )));
+
+    let tools = ToolRegistry::new();
+
+    let mut config = test_config();
+    config.generation.model = "local-tier".to_owned();
+    config.generation.complexity = hermeneus::complexity::ComplexityConfig {
+        enabled: true,
+        haiku_model: "local-tier".to_owned(),
+        sonnet_model: "local-sonnet".to_owned(),
+        opus_model: "local-opus".to_owned(),
+        ..hermeneus::complexity::ComplexityConfig::default()
+    };
+
+    let mut ctx = test_pipeline_ctx();
+    ctx.messages[0].content = "think hard about this architecture decision".to_owned();
+
+    let result = execute(
+        &ctx,
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute should allow local tier model routing");
+
+    assert_eq!(result.content, "local opus answer");
     assert_eq!(result.usage.llm_calls, 1);
 }
