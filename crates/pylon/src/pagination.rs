@@ -4,8 +4,9 @@
 //! parameters: `limit` and `after`. Response: include `has_more: true/false`
 //! boolean and cursor for next page."
 
-use serde::Serialize;
-use utoipa::ToSchema;
+#[path = "pagination_dto.rs"]
+mod pagination_dto;
+pub use pagination_dto::PaginatedResponse;
 
 /// Default page size when `limit` is omitted.
 pub(crate) const DEFAULT_LIMIT: u32 = 50;
@@ -13,27 +14,7 @@ pub(crate) const DEFAULT_LIMIT: u32 = 50;
 /// Maximum page size to prevent unbounded responses.
 pub(crate) const MAX_LIMIT: u32 = 1000;
 
-/// Standard pagination envelope for all list endpoints.
-///
-/// Wraps a `Vec<T>` with metadata so clients can page through results
-/// with a single, consistent implementation.
-#[derive(Debug, Serialize, ToSchema)]
-pub struct PaginatedResponse<T> {
-    /// The items in this page.
-    pub items: Vec<T>,
-    /// Whether more items exist beyond this page.
-    pub has_more: bool,
-    /// Cursor to pass as `after` to fetch the next page.
-    /// `None` when `has_more` is `false`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_cursor: Option<String>,
-    /// Total count of matching items, when cheap to compute.
-    /// `None` when the total is unknown or expensive to calculate.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total: Option<u64>,
-}
-
-impl<T: Serialize> PaginatedResponse<T> {
+impl<T: serde::Serialize> PaginatedResponse<T> {
     /// Build a paginated response from a full result set, applying cursor
     /// and limit. The `cursor_fn` extracts the cursor value from an item.
     ///

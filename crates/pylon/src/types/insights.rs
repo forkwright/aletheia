@@ -1,3 +1,4 @@
+// WHY: wire DTO
 //! Request and response types for meta-insights endpoints.
 
 use serde::{Deserialize, Serialize};

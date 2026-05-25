@@ -1,0 +1,104 @@
+// WHY: wire DTO
+//! Nous endpoint request and response wire shapes.
+
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
+/// Payload for creating a new nous agent via `POST /api/v1/nous`.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AgentDefinition {
+    /// Agent identifier (alphanumeric and hyphens only).
+    pub id: String,
+    /// Human-readable display name. Falls back to a capitalized `id`.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// LLM model identifier. Falls back to the workspace default.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+/// Response from a successful agent creation.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CreateAgentResponse {
+    /// Agent identifier.
+    pub id: String,
+    /// Human-readable display name.
+    pub name: String,
+    /// LLM model assigned to this agent.
+    pub model: String,
+    /// Whether the agent requires a server restart to become active.
+    pub restart_required: bool,
+}
+
+/// Response from a recovery attempt.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RecoverResponse {
+    /// Agent identifier.
+    pub id: String,
+    /// Whether recovery was performed (false if agent was not degraded).
+    pub recovered: bool,
+}
+
+/// Response listing all registered nous agents.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NousListResponse {
+    /// Agent summaries.
+    pub nous: Vec<NousSummary>,
+}
+
+/// Brief overview of a registered nous agent.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NousSummary {
+    /// Agent identifier.
+    pub id: String,
+    /// Human-readable display name (falls back to `id`).
+    pub name: String,
+    /// LLM model assigned to this agent.
+    pub model: String,
+    /// Lifecycle status (e.g. `"active"`).
+    pub status: String,
+}
+
+/// Detailed status of a single nous agent.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NousStatus {
+    /// Agent identifier.
+    pub id: String,
+    /// LLM model assigned to this agent.
+    pub model: String,
+    /// Maximum context window in tokens.
+    pub context_window: u32,
+    /// Maximum output tokens per turn.
+    pub max_output_tokens: u32,
+    /// Whether extended thinking is enabled.
+    pub thinking_enabled: bool,
+    /// Token budget for extended thinking.
+    pub thinking_budget: u32,
+    /// Maximum tool iterations per turn.
+    pub max_tool_iterations: u32,
+    /// Actor lifecycle status.
+    pub status: String,
+}
+
+/// Response listing tools available to a nous agent.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ToolsResponse {
+    /// Tool summaries.
+    pub tools: Vec<ToolSummary>,
+}
+
+/// Brief description of a registered tool.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ToolSummary {
+    /// Tool name as sent to the LLM.
+    pub name: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Tool category (e.g. `"Builtin"`, `"Pack"`).
+    pub category: String,
+    /// Whether the tool activates automatically without explicit configuration.
+    ///
+    /// When `false` the tool is lazy and must be activated via `enable_tool`
+    /// before the agent can use it.
+    pub auto_activate: bool,
+}
