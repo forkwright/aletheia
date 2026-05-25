@@ -3078,6 +3078,107 @@ impl HttpReranker {
 }
 ```
 
+## `src/rl/actions.rs`
+
+```rust
+pub enum Action {
+    /// Keep a memory item regardless of ordinary decay pressure.
+    Pin {
+        /// Stable memory identifier chosen by the caller.
+        memory_id: String,
+    },
+    /// Remove a memory item from active recall.
+    Evict {
+        /// Stable memory identifier chosen by the caller.
+        memory_id: String,
+    },
+    /// Merge two memory items into a single survivor.
+    Merge {
+        /// Identifier of the item being merged away.
+        source_id: String,
+        /// Identifier of the item that remains after the merge.
+        target_id: String,
+    },
+    /// Compact a scoped set of memory items into a denser representation.
+    Compact {
+        /// Caller-defined scope such as a session, project, or topic key.
+        scope: String,
+    },
+    /// Lower recall priority without removing the memory item.
+    Demote {
+        /// Stable memory identifier chosen by the caller.
+        memory_id: String,
+    },
+    /// Leave the memory item unchanged for this step.
+    Retain {
+        /// Stable memory identifier chosen by the caller.
+        memory_id: String,
+    },
+}
+```
+
+## `src/rl/reward.rs`
+
+```rust
+pub struct MemoryOutcome {
+    /// Exact-match rate in the inclusive range 0.0..=1.0.
+    pub exact_match_rate: f64,
+    /// Mean F1 score in the inclusive range 0.0..=1.0 when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_f1: Option<f64>,
+}
+```
+
+> Computes scalar reward from a benchmark outcome.
+```rust
+pub trait RewardFn {
+    fn reward (&self, outcome: &MemoryOutcome) -> f64;
+}
+```
+
+```rust
+pub struct LongMemEvalReward {
+    /// Baseline exact-match rate to improve on.
+    pub baseline_exact_match_rate: f64,
+}
+```
+
+```rust
+impl LongMemEvalReward {
+    pub fn from_json_file (path: impl AsRef<Path>) -> io::Result<Self>;
+}
+```
+
+## `src/rl/state.rs`
+
+```rust
+pub struct MemoryState {
+    /// Stable identifier for the memory item or policy decision point.
+    pub subject_id: String,
+    /// Named numeric features available to the policy.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub features: BTreeMap<String, f64>,
+}
+```
+
+```rust
+impl MemoryState {
+    pub fn new (subject_id: impl Into<String>) -> Self;
+    pub fn with_feature (mut self, name: impl Into<String>, value: f64) -> Self;
+}
+```
+
+```rust
+pub struct MemoryTransition {
+    /// State before the action.
+    pub previous: MemoryState,
+    /// Action chosen by the policy.
+    pub action: Action,
+    /// State after the action.
+    pub next: MemoryState,
+}
+```
+
 ## `src/rule_proposals.rs`
 
 > Default minimum observations before a pattern can generate a proposal.
