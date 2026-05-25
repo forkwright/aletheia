@@ -14,7 +14,7 @@ use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
-use super::response::{ResponsesResponse, parse_arguments};
+use super::response::{ResponsesResponse, TokenDetails, parse_arguments};
 
 #[derive(Debug, Deserialize)]
 struct ChatStreamChunk {
@@ -66,6 +66,8 @@ struct ChatStreamUsage {
     prompt_tokens: u64,
     #[serde(default)]
     completion_tokens: u64,
+    #[serde(default)]
+    prompt_tokens_details: Option<TokenDetails>,
 }
 
 /// Accumulator for an OpenAI SSE stream.
@@ -127,8 +129,13 @@ impl OpenAiStreamAccumulator {
         }
 
         if let Some(usage) = chunk.usage {
-            self.usage.input_tokens = usage.prompt_tokens;
+            let cache_read_tokens = usage
+                .prompt_tokens_details
+                .as_ref()
+                .map_or(0, |details| details.cached_tokens);
+            self.usage.input_tokens = usage.prompt_tokens.saturating_sub(cache_read_tokens);
             self.usage.output_tokens = usage.completion_tokens;
+            self.usage.cache_read_tokens = cache_read_tokens;
         }
 
         for choice in chunk.choices {
@@ -479,8 +486,13 @@ impl ResponsesStreamAccumulator {
             self.model.clone_from(&response.model);
         }
         if let Some(usage) = &response.usage {
-            self.usage.input_tokens = usage.input_tokens;
+            let cache_read_tokens = usage
+                .input_tokens_details
+                .as_ref()
+                .map_or(0, |details| details.cached_tokens);
+            self.usage.input_tokens = usage.input_tokens.saturating_sub(cache_read_tokens);
             self.usage.output_tokens = usage.output_tokens;
+            self.usage.cache_read_tokens = cache_read_tokens;
         }
         self.start_message(on_event);
     }
@@ -647,6 +659,17 @@ mod tests {
         (events, resp)
     }
 
+    fn process_responses_events(chunks: &[&str]) -> (Vec<StreamEvent>, CompletionResponse) {
+        let mut acc = ResponsesStreamAccumulator::new();
+        let mut events = Vec::new();
+        for event_json in chunks {
+            let event: ResponsesStreamEvent = serde_json::from_str(event_json).unwrap();
+            acc.process_event(event, &mut |e| events.push(e)).unwrap();
+        }
+        let resp = acc.finish(&mut |e| events.push(e));
+        (events, resp)
+    }
+
     #[test]
     fn accumulates_text_deltas() {
         let (events, resp) = process_chunks(&[
@@ -692,9 +715,35 @@ mod tests {
     fn usage_propagates_when_present() {
         let (_, resp) = process_chunks(&[
             r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"content":"hi"}}]}"#,
-            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":1}}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":1,"prompt_tokens_details":{"cached_tokens":3}}}"#,
         ]);
-        assert_eq!(resp.usage.input_tokens, 4);
+        assert_eq!(resp.usage.input_tokens, 1);
         assert_eq!(resp.usage.output_tokens, 1);
+        assert_eq!(resp.usage.cache_read_tokens, 3);
+    }
+
+    #[test]
+    fn responses_stream_usage_extracts_cached_input_tokens() {
+        let (_, resp) = process_responses_events(&[r#"{
+            "type": "response.completed",
+            "response": {
+                "id": "resp-cache",
+                "model": "gpt-5",
+                "status": "completed",
+                "output": [{
+                    "type": "message",
+                    "content": [{ "type": "output_text", "text": "cached" }]
+                }],
+                "usage": {
+                    "input_tokens": 9,
+                    "output_tokens": 2,
+                    "total_tokens": 11,
+                    "input_tokens_details": { "cached_tokens": 6 }
+                }
+            }
+        }"#]);
+        assert_eq!(resp.usage.input_tokens, 3);
+        assert_eq!(resp.usage.output_tokens, 2);
+        assert_eq!(resp.usage.cache_read_tokens, 6);
     }
 }

@@ -59,7 +59,14 @@ pub(crate) struct ChatUsage {
     pub prompt_tokens: u64,
     #[serde(default)]
     pub completion_tokens: u64,
-    // OpenAI does not expose cache-tier tokens; leave zero.
+    #[serde(default)]
+    pub prompt_tokens_details: Option<TokenDetails>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TokenDetails {
+    #[serde(default)]
+    pub cached_tokens: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,6 +124,8 @@ pub(crate) struct ResponsesUsage {
     pub input_tokens: u64,
     #[serde(default)]
     pub output_tokens: u64,
+    #[serde(default)]
+    pub input_tokens_details: Option<TokenDetails>,
 }
 
 impl ChatCompletionResponse {
@@ -167,11 +176,17 @@ impl ChatCompletionResponse {
         }
 
         let usage = usage
-            .map(|u| Usage {
-                input_tokens: u.prompt_tokens,
-                output_tokens: u.completion_tokens,
-                cache_read_tokens: 0,
-                cache_write_tokens: 0,
+            .map(|u| {
+                let cache_read_tokens = u
+                    .prompt_tokens_details
+                    .as_ref()
+                    .map_or(0, |details| details.cached_tokens);
+                Usage {
+                    input_tokens: u.prompt_tokens.saturating_sub(cache_read_tokens),
+                    output_tokens: u.completion_tokens,
+                    cache_read_tokens,
+                    cache_write_tokens: 0,
+                }
             })
             .unwrap_or_default();
 
@@ -267,11 +282,17 @@ impl ResponsesResponse {
         };
 
         let usage = usage
-            .map(|u| Usage {
-                input_tokens: u.input_tokens,
-                output_tokens: u.output_tokens,
-                cache_read_tokens: 0,
-                cache_write_tokens: 0,
+            .map(|u| {
+                let cache_read_tokens = u
+                    .input_tokens_details
+                    .as_ref()
+                    .map_or(0, |details| details.cached_tokens);
+                Usage {
+                    input_tokens: u.input_tokens.saturating_sub(cache_read_tokens),
+                    output_tokens: u.output_tokens,
+                    cache_read_tokens,
+                    cache_write_tokens: 0,
+                }
             })
             .unwrap_or_default();
 
@@ -415,6 +436,56 @@ mod tests {
         let resp = parsed.into_response().unwrap();
         assert_eq!(resp.usage.input_tokens, 0);
         assert_eq!(resp.usage.output_tokens, 0);
+    }
+
+    #[test]
+    fn chat_usage_extracts_cached_prompt_tokens() {
+        let body = r#"{
+            "id": "chatcmpl-cache",
+            "model": "qwen",
+            "choices": [{
+                "message": { "role": "assistant", "content": "cached" },
+                "finish_reason": "stop",
+                "index": 0
+            }],
+            "usage": {
+                "prompt_tokens": 9,
+                "completion_tokens": 2,
+                "total_tokens": 11,
+                "prompt_tokens_details": { "cached_tokens": 7 }
+            }
+        }"#;
+        let parsed: ChatCompletionResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.usage.input_tokens, 2);
+        assert_eq!(resp.usage.output_tokens, 2);
+        assert_eq!(resp.usage.cache_read_tokens, 7);
+        assert_eq!(resp.usage.cache_write_tokens, 0);
+    }
+
+    #[test]
+    fn responses_usage_extracts_cached_input_tokens() {
+        let body = r#"{
+            "id": "resp-cache",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "message",
+                "content": [{ "type": "output_text", "text": "cached" }]
+            }],
+            "usage": {
+                "input_tokens": 12,
+                "output_tokens": 3,
+                "total_tokens": 15,
+                "input_tokens_details": { "cached_tokens": 8 }
+            }
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.usage.input_tokens, 4);
+        assert_eq!(resp.usage.output_tokens, 3);
+        assert_eq!(resp.usage.cache_read_tokens, 8);
+        assert_eq!(resp.usage.cache_write_tokens, 0);
     }
 
     #[test]
