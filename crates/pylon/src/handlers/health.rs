@@ -7,10 +7,12 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use koina::system::{Environment, RealSystem};
-use serde::Serialize;
-use utoipa::ToSchema;
 
 use crate::state::HealthState;
+
+#[path = "health_dto.rs"]
+mod health_dto;
+pub use health_dto::{HealthCheck, HealthResponse};
 
 /// Per-check timeout: individual health checks that exceed this are reported as "timeout".
 const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -672,39 +674,6 @@ fn base64url_decode(s: &str) -> Result<Vec<u8>, ()> {
     }
 
     Ok(out)
-}
-
-/// Top-level health response combining all subsystem checks.
-#[derive(Debug, Serialize, ToSchema)]
-pub struct HealthResponse {
-    /// Aggregate status: `"healthy"`, `"degraded"`, or `"unhealthy"`.
-    #[schema(value_type = String)]
-    pub status: &'static str,
-    /// Crate version from `Cargo.toml`.
-    #[schema(value_type = String)]
-    pub version: &'static str,
-    /// Build git SHA when available from the build environment.
-    #[schema(value_type = String)]
-    pub git_sha: &'static str,
-    /// Seconds since server start.
-    pub uptime_seconds: u64,
-    /// Individual subsystem check results.
-    pub checks: Vec<HealthCheck>,
-    /// Absolute path to the instance data directory.
-    pub data_dir: String,
-}
-
-/// Result of a single subsystem health check.
-#[derive(Debug, Serialize, ToSchema)]
-pub struct HealthCheck {
-    /// Subsystem name (e.g. `"session_store"`, `"providers"`).
-    #[schema(value_type = String)]
-    pub name: &'static str,
-    /// Check outcome: `"pass"`, `"warn"`, `"fail"`, or `"timeout"`.
-    #[schema(value_type = String)]
-    pub status: &'static str,
-    /// Diagnostic message when status is not `"pass"`.
-    pub message: Option<String>,
 }
 
 #[cfg(test)]

@@ -4,19 +4,9 @@
 //! [`DomainEvent`] values filtered by topic.  Lagged subscribers are dropped
 //! gracefully with a warning rather than panicking.
 
-use serde::{Deserialize, Serialize};
-
-/// A domain event with a stable topic name and JSON payload.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct DomainEvent {
-    /// Event topic (e.g. `fact.created`, `turn.complete`).
-    pub topic: String,
-    /// Structured event payload.
-    pub payload: serde_json::Value,
-    /// ISO-8601 timestamp of emission.
-    pub at: String,
-}
+#[path = "event_bus_dto.rs"]
+mod event_bus_dto;
+pub use event_bus_dto::DomainEvent;
 
 impl DomainEvent {
     /// Construct a new domain event with the current timestamp.

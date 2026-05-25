@@ -9,9 +9,12 @@
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
-use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 use tracing::{info, warn};
+
+#[path = "discovery_dto.rs"]
+mod discovery_dto;
+use discovery_dto::DiscoveryInfo;
 
 /// Discovery file name within the instance data directory.
 const DISCOVERY_FILE: &str = ".discovery.json";
@@ -30,20 +33,6 @@ pub(crate) enum DiscoveryError {
         path: PathBuf,
         source: std::io::Error,
     },
-}
-
-/// Contents of the discovery file written to `instance/data/.discovery.json`.
-#[derive(Debug, Serialize)]
-pub(crate) struct DiscoveryInfo {
-    /// Server URL reachable from the local machine, e.g. `http://localhost:18789`.
-    pub(crate) url: String,
-    /// Crate version from `Cargo.toml`.
-    pub(crate) version: &'static str,
-    /// ISO 8601 timestamp when the server started.
-    pub(crate) started_at: String,
-    /// Tailscale IP address, if the node is on a tailnet.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) tailscale_ip: Option<String>,
 }
 
 /// Write the discovery file to `data_dir/.discovery.json`.

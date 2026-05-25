@@ -2,7 +2,6 @@
 
 use axum::Json;
 use axum::extract::State;
-use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use symbolon::types::Role;
@@ -13,27 +12,16 @@ use crate::state::KnowledgeState;
 
 // MAX_IMPORT_BATCH_SIZE is now read from `config.api_limits.max_import_batch_size` at runtime.
 
-/// Request body for bulk fact import.
-#[derive(Debug, Deserialize)]
-pub struct BulkImportRequest {
-    pub facts: Vec<mneme::knowledge::Fact>,
-}
-
-/// Summary response for bulk fact import.
-#[derive(Debug, Serialize)]
-pub struct BulkImportResponse {
-    pub imported: usize,
-    pub skipped: usize,
-    pub errors: Vec<ImportFactError>,
-}
-
-/// Per-fact error detail.
-#[derive(Debug, Serialize)]
-pub struct ImportFactError {
-    pub index: usize,
-    pub id: String,
-    pub message: String,
-}
+#[path = "bulk_import_dto.rs"]
+mod bulk_import_dto;
+#[cfg_attr(
+    not(test),
+    expect(
+        unused_imports,
+        reason = "ImportFactError remains part of the DTO surface and is used by tests/features"
+    )
+)]
+pub use bulk_import_dto::{BulkImportRequest, BulkImportResponse, ImportFactError};
 
 /// Parse a request body as either JSON (`{ "facts": [...] }`) or JSONL.
 fn parse_import_body(bytes: &[u8]) -> Result<Vec<mneme::knowledge::Fact>, ApiError> {
