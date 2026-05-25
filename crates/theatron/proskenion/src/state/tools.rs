@@ -20,8 +20,6 @@ pub enum ToolStatus {
     Error,
 }
 
-
-
 impl ToolStatus {
     /// Whether this status represents a terminal (completed) state.
     #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
@@ -185,7 +183,6 @@ impl PlanCardState {
     pub(crate) fn is_finished(&self) -> bool {
         matches!(self.status, PlanStatus::Complete { .. })
     }
-
 }
 
 #[cfg(test)]
