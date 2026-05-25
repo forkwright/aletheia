@@ -3,15 +3,13 @@
 use std::collections::HashMap;
 
 use super::{
-    AgentEntry, AgentPerformanceApiResponse, AgentPerformanceStore,
-    EntityEntry, FactEntry, HealthApiResponse, JournalEventEntry,
-    KnowledgeGrowthStore, MemoryHealthStore, MetaData, MetricsApiResponse, QualityMetricsApiResponse,
-    QualityStore, SessionEntry, SystemReflectionStore, TimelineEntry, TimeSeriesPointEntry,
+    AgentEntry, AgentPerformanceApiResponse, AgentPerformanceStore, EntityEntry, FactEntry,
+    HealthApiResponse, JournalEventEntry, KnowledgeGrowthStore, MemoryHealthStore, MetaData,
+    MetricsApiResponse, QualityMetricsApiResponse, QualityStore, SessionEntry,
+    SystemReflectionStore, TimeSeriesPointEntry, TimelineEntry,
 };
 
 /// Assemble all fetched data into the composite `MetaData` structure.
-#[expect(clippy::cast_precision_loss, reason = "display-only metrics")]
-#[expect(clippy::as_conversions, reason = "display-only metrics assembly")]
 #[expect(
     clippy::too_many_arguments,
     reason = "data assembly requires all fetched API sources"
@@ -39,7 +37,7 @@ pub(super) fn assemble_meta_data(
         for agent in &agents {
             let agent_sessions: Vec<&SessionEntry> =
                 sessions.iter().filter(|s| s.nous_id == agent.id).collect();
-            let session_count = agent_sessions.len().max(1) as f64;
+            let session_count = count_to_f64(agent_sessions.len().max(1));
             let total_messages: u32 = agent_sessions.iter().map(|s| s.message_count).sum();
 
             scorecards.push(crate::state::meta::AgentScorecard {
@@ -54,7 +52,7 @@ pub(super) fn assemble_meta_data(
                 tool_success_rate: 0.0,
                 distillation_frequency: 0.0,
                 avg_context_before_distill: 0.0,
-                messages_per_session: total_messages as f64 / session_count,
+                messages_per_session: f64::from(total_messages) / session_count,
                 sessions_per_day: compute_sessions_per_day(&agent_sessions),
                 errors_per_session: 0.0,
             });
@@ -141,7 +139,7 @@ pub(super) fn assemble_meta_data(
     };
 
     // -- Knowledge growth --
-    let total_entity_count = entities.len() as u64;
+    let total_entity_count = usize_to_u64(entities.len());
     let total_relationship_count: u32 = entities.iter().map(|e| e.relationship_count).sum();
 
     let cumulative_entities: Vec<crate::state::meta::DataPoint> = timeline
@@ -179,12 +177,14 @@ pub(super) fn assemble_meta_data(
     let mut type_slices: Vec<crate::state::meta::EntityTypeSlice> = type_counts
         .into_iter()
         .enumerate()
-        .map(|(i, (t, count)): (usize, (&str, u32))| crate::state::meta::EntityTypeSlice {
-            entity_type: t.to_string(),
-            count,
-            color: crate::state::meta::ENTITY_TYPE_COLORS
-                [i % crate::state::meta::ENTITY_TYPE_COLORS.len()],
-        })
+        .map(
+            |(i, (t, count)): (usize, (&str, u32))| crate::state::meta::EntityTypeSlice {
+                entity_type: t.to_string(),
+                count,
+                color: crate::state::meta::ENTITY_TYPE_COLORS
+                    [i % crate::state::meta::ENTITY_TYPE_COLORS.len()],
+            },
+        )
         .collect();
     type_slices.sort_by(|a, b| b.count.cmp(&a.count));
 
@@ -193,7 +193,7 @@ pub(super) fn assemble_meta_data(
     let density_over_time = if total_entity_count > 0 {
         vec![crate::state::meta::DataPoint {
             label: "now".to_string(),
-            value: total_relationship_count as f64 / total_entity_count as f64,
+            value: f64::from(total_relationship_count) / count_to_f64(entities.len()),
         }]
     } else {
         Vec::new()
@@ -215,7 +215,7 @@ pub(super) fn assemble_meta_data(
     let avg_confidence = if facts.is_empty() {
         0.0
     } else {
-        facts.iter().map(|f| f.confidence).sum::<f64>() / facts.len() as f64
+        facts.iter().map(|f| f.confidence).sum::<f64>() / count_to_f64(facts.len())
     };
 
     let orphan_count = entities
@@ -225,7 +225,7 @@ pub(super) fn assemble_meta_data(
     let orphan_ratio = if entities.is_empty() {
         0.0
     } else {
-        orphan_count as f64 / entities.len() as f64
+        count_to_f64(orphan_count) / count_to_f64(entities.len())
     };
 
     // WHY: Approximate staleness from facts with empty updated_at or old dates.
@@ -233,7 +233,7 @@ pub(super) fn assemble_meta_data(
     let staleness_ratio = if facts.is_empty() {
         0.0
     } else {
-        stale_count as f64 / facts.len() as f64
+        count_to_f64(stale_count) / count_to_f64(facts.len())
     };
 
     let health_score =
@@ -242,14 +242,16 @@ pub(super) fn assemble_meta_data(
     // WHY: Build confidence distribution histogram (10 buckets of 0.1 width).
     let mut confidence_buckets = vec![0u32; 10];
     for f in &facts {
-        let idx = ((f.confidence * 10.0).floor() as usize).min(9);
-        confidence_buckets[idx] += 1;
+        let idx = confidence_bucket_index(f.confidence);
+        if let Some(bucket) = confidence_buckets.get_mut(idx) {
+            *bucket += 1;
+        }
     }
     let confidence_distribution: Vec<crate::state::meta::ConfidenceBucket> = confidence_buckets
         .into_iter()
         .enumerate()
         .map(|(i, count)| {
-            let lo = i as f64 * 0.1;
+            let lo = count_to_f64(i) * 0.1;
             let hi = lo + 0.1;
             crate::state::meta::ConfidenceBucket {
                 range_label: format!("{lo:.1}-{hi:.1}"),
@@ -294,7 +296,7 @@ pub(super) fn assemble_meta_data(
             total_entity_count,
         ),
         cost_per_session: if metrics.total_sessions > 0 {
-            metrics.total_cost_usd / metrics.total_sessions as f64
+            metrics.total_cost_usd / u64_to_f64(metrics.total_sessions)
         } else {
             0.0
         },
@@ -360,7 +362,7 @@ fn parse_journal_event_type(s: &str) -> crate::state::meta::JournalEventType {
 
 /// Compute average sessions per active day from session timestamps.
 fn compute_sessions_per_day(sessions: &[&SessionEntry]) -> f64 {
-    let count = sessions.len() as f64;
+    let count = count_to_f64(sessions.len());
     if count < 1.0 {
         return 0.0;
     }
@@ -373,7 +375,55 @@ fn compute_sessions_per_day(sessions: &[&SessionEntry]) -> f64 {
     if unique_dates.is_empty() {
         return 0.0;
     }
-    count / unique_dates.len() as f64
+    count / count_to_f64(unique_dates.len())
+}
+
+fn confidence_bucket_index(confidence: f64) -> usize {
+    if !confidence.is_finite() || confidence <= 0.0 {
+        return 0;
+    }
+    if confidence >= 1.0 {
+        return 9;
+    }
+
+    for bucket in 0..10 {
+        let upper_bound = count_to_f64(bucket + 1) * 0.1;
+        if confidence < upper_bound {
+            return bucket;
+        }
+    }
+
+    9
+}
+
+fn count_to_f64(count: usize) -> f64 {
+    match count.to_string().parse::<f64>() {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(?error, count, "failed to convert count to display metric");
+            0.0
+        }
+    }
+}
+
+fn u64_to_f64(count: u64) -> f64 {
+    match count.to_string().parse::<f64>() {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(?error, count, "failed to convert count to display metric");
+            0.0
+        }
+    }
+}
+
+fn usize_to_u64(count: usize) -> u64 {
+    match u64::try_from(count) {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(?error, count, "failed to convert count to overview metric");
+            u64::MAX
+        }
+    }
 }
 
 /// Extract (day_of_week, hour) from an ISO 8601 timestamp string.
@@ -408,10 +458,13 @@ fn day_of_week(mut year: i32, month: u32, day: u32) -> u8 {
     if month < 3 {
         year -= 1;
     }
-    let dow =
-        {
-        #[expect(clippy::as_conversions, reason = "month/day to index/i32 for day-of-week algorithm")]
-        let dow_raw = (year + year / 4 - year / 100 + year / 400 + T[month as usize - 1] + day as i32) % 7;
+    let dow = {
+        #[expect(
+            clippy::as_conversions,
+            reason = "month/day to index/i32 for day-of-week algorithm"
+        )]
+        let dow_raw =
+            (year + year / 4 - year / 100 + year / 400 + T[month as usize - 1] + day as i32) % 7;
         dow_raw
     };
     // WHY: Sakamoto returns 0=Sun, convert to 0=Mon.
