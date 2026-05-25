@@ -2,7 +2,7 @@
 path = "crates/agora"
 layer = "runtime"
 purpose = "Channel registry and provider implementations (Signal)"
-depends_on = ["koina", "taxis"]
+depends_on = ["koina", "organon", "taxis"]
 used_by = ["aletheia"]
 
 [crates.agora.features]
@@ -13,7 +13,7 @@ test-full = "full test tier fixtures"
 path = "crates/aletheia"
 layer = "cli"
 purpose = "Aletheia cognitive agent runtime"
-depends_on = ["agora", "dianoia", "diaporeia", "dokimion", "energeia", "hermeneus", "koilon", "koina", "mneme", "nous", "oikonomos", "organon", "pylon", "symbolon", "taxis", "thesauros"]
+depends_on = ["agora", "dianoia", "diaporeia", "dokimion", "energeia", "hermeneus", "koilon", "koina", "melete", "mneme", "nous", "oikonomos", "organon", "pylon", "symbolon", "taxis", "thesauros"]
 used_by = []
 
 [crates.aletheia.features]
@@ -36,7 +36,7 @@ path = "crates/dianoia"
 layer = "runtime"
 purpose = "Planning and project orchestration — multi-phase state machine with workspace persistence"
 depends_on = ["koina"]
-used_by = ["aletheia", "nous"]
+used_by = ["aletheia", "nous", "pylon"]
 
 [crates.dianoia.features]
 test-core = "test tier fixtures"
@@ -46,7 +46,7 @@ test-full = "full test tier fixtures"
 path = "crates/diaporeia"
 layer = "http"
 purpose = "MCP server interface — the passage through for external AI agents"
-depends_on = ["koina", "mneme", "nous", "organon", "symbolon", "taxis"]
+depends_on = ["hermeneus", "koina", "mneme", "nous", "organon", "symbolon", "taxis"]
 used_by = ["aletheia"]
 
 [crates.diaporeia.features]
@@ -59,8 +59,8 @@ test-full = "full test tier fixtures"
 path = "crates/eval"
 layer = "ops"
 purpose = "Behavioral eval framework — scenario-based API testing against a live instance"
-depends_on = ["koina"]
-used_by = ["aletheia"]
+depends_on = ["eidos", "koina", "organon"]
+used_by = ["aletheia", "integration-tests"]
 
 [crates.dokimion.features]
 test-core = "test tier fixtures"
@@ -70,8 +70,8 @@ test-full = "full test tier fixtures"
 path = "crates/eidos"
 layer = "types"
 purpose = "Shared knowledge types for the Aletheia memory layer"
-depends_on = []
-used_by = ["energeia", "episteme", "graphe", "krites", "mneme", "nous", "taxis"]
+depends_on = ["koina"]
+used_by = ["dokimion", "energeia", "episteme", "graphe", "krites", "mneme", "nous", "oikonomos", "organon", "taxis"]
 
 [crates.eidos.features]
 test-core = "test tier fixtures"
@@ -127,7 +127,7 @@ path = "crates/hermeneus"
 layer = "engine"
 purpose = "LLM provider abstraction and Anthropic streaming client"
 depends_on = ["koina"]
-used_by = ["aletheia", "energeia", "melete", "nous", "organon", "pylon"]
+used_by = ["aletheia", "diaporeia", "energeia", "integration-tests", "melete", "nous", "organon", "pylon"]
 
 [crates.hermeneus.features]
 cc-provider = "Claude Code subprocess provider"
@@ -140,7 +140,7 @@ test-utils = "mock LLM provider (legacy alias)"
 path = "crates/integration-tests"
 layer = "ops"
 purpose = "Cross-crate integration test suite exercising multi-crate pipelines end-to-end"
-depends_on = []
+depends_on = ["dokimion", "hermeneus", "koina", "mneme", "nous", "organon", "pylon", "symbolon", "taxis", "thesauros"]
 used_by = []
 
 [crates.integration-tests.features]
@@ -167,7 +167,7 @@ path = "crates/koina"
 layer = "types"
 purpose = "Core types, errors, and tracing for Aletheia"
 depends_on = []
-used_by = ["agora", "aletheia", "dianoia", "diaporeia", "dokimion", "energeia", "episteme", "graphe", "hermeneus", "koilon", "melete", "nous", "oikonomos", "organon", "pylon", "skene", "symbolon", "taxis", "thesauros"]
+used_by = ["agora", "aletheia", "dianoia", "diaporeia", "dokimion", "eidos", "energeia", "episteme", "graphe", "hermeneus", "integration-tests", "koilon", "krites", "melete", "nous", "oikonomos", "organon", "proskenion", "pylon", "skene", "symbolon", "taxis", "thesauros"]
 
 [crates.koina.features]
 fjall = "fjall KV storage backend support"
@@ -179,7 +179,7 @@ test-support = "test helpers and fixtures"
 path = "crates/krites"
 layer = "engine"
 purpose = "Embedded Datalog engine with HNSW and graph support for Aletheia"
-depends_on = ["eidos"]
+depends_on = ["eidos", "koina"]
 used_by = ["episteme", "mneme"]
 
 [crates.krites.features]
@@ -194,7 +194,7 @@ path = "crates/melete"
 layer = "runtime"
 purpose = "Context distillation engine — compresses conversation history"
 depends_on = ["hermeneus", "koina"]
-used_by = ["nous"]
+used_by = ["aletheia", "nous"]
 
 [crates.melete.features]
 test-core = "test tier fixtures"
@@ -205,7 +205,7 @@ path = "crates/mneme"
 layer = "storage"
 purpose = "Session store and memory engine for Aletheia"
 depends_on = ["eidos", "episteme", "graphe", "krites"]
-used_by = ["aletheia", "diaporeia", "nous", "pylon"]
+used_by = ["aletheia", "diaporeia", "integration-tests", "nous", "pylon"]
 
 [crates.mneme.features]
 default = "fjall + graph-algo + mneme-engine"
@@ -224,7 +224,7 @@ path = "crates/nous"
 layer = "runtime"
 purpose = "Agent session pipeline — bootstrap, routing, tool execution"
 depends_on = ["dianoia", "eidos", "episteme", "hermeneus", "koina", "melete", "mneme", "organon", "taxis", "thesauros"]
-used_by = ["aletheia", "diaporeia", "pylon"]
+used_by = ["aletheia", "diaporeia", "integration-tests", "pylon"]
 
 [crates.nous.features]
 knowledge-store = "enables mneme knowledge store"
@@ -236,7 +236,7 @@ test-support = "mock search and test helpers"
 path = "crates/daemon"
 layer = "ops"
 purpose = "Per-nous background task runner, cron scheduling, maintenance services, prosoche attention, watchdog"
-depends_on = ["episteme", "koina"]
+depends_on = ["eidos", "episteme", "koina", "taxis"]
 used_by = ["aletheia"]
 
 [crates.oikonomos.features]
@@ -251,8 +251,8 @@ test-full = "full test tier fixtures"
 path = "crates/organon"
 layer = "tool"
 purpose = "Tool registry, definitions, and built-in tool executors"
-depends_on = ["energeia", "hermeneus", "koina", "taxis"]
-used_by = ["aletheia", "diaporeia", "nous", "pylon", "thesauros"]
+depends_on = ["eidos", "energeia", "hermeneus", "koina", "poiesis-core", "poiesis-sheet", "poiesis-slides", "poiesis-text", "taxis"]
+used_by = ["agora", "aletheia", "diaporeia", "dokimion", "integration-tests", "nous", "pylon", "thesauros"]
 
 [crates.organon.features]
 computer-use = "screen capture and Landlock sandbox tools"
@@ -266,7 +266,7 @@ path = "crates/poiesis/core"
 layer = "types"
 purpose = "Format-agnostic document model and Renderer trait for poiesis"
 depends_on = []
-used_by = ["poiesis-sheet", "poiesis-slides", "poiesis-text"]
+used_by = ["organon", "poiesis-sheet", "poiesis-slides", "poiesis-text"]
 features = {}
 
 [crates.poiesis-sheet]
@@ -274,7 +274,7 @@ path = "crates/poiesis/sheet"
 layer = "tool"
 purpose = "XLSX and ODS spreadsheet rendering backends for poiesis"
 depends_on = ["poiesis-core"]
-used_by = []
+used_by = ["organon"]
 
 [crates.poiesis-sheet.features]
 default = "xlsx + ods"
@@ -286,7 +286,7 @@ path = "crates/poiesis/slides"
 layer = "tool"
 purpose = "PPTX presentation rendering backend for poiesis"
 depends_on = ["poiesis-core"]
-used_by = []
+used_by = ["organon"]
 
 [crates.poiesis-slides.features]
 default = "pptx"
@@ -297,7 +297,7 @@ path = "crates/poiesis/text"
 layer = "tool"
 purpose = "PDF and ODT document rendering backends for poiesis"
 depends_on = ["poiesis-core"]
-used_by = []
+used_by = ["organon"]
 
 [crates.poiesis-text.features]
 default = "pdf + odt"
@@ -308,7 +308,7 @@ pdf = "PDF backend via krilla"
 path = "crates/theatron/proskenion"
 layer = "desktop"
 purpose = "Dioxus desktop UI for the Aletheia distributed cognition system"
-depends_on = ["skene"]
+depends_on = ["koina", "skene"]
 used_by = []
 features = {}
 
@@ -316,8 +316,8 @@ features = {}
 path = "crates/pylon"
 layer = "http"
 purpose = "Axum HTTP gateway for Aletheia"
-depends_on = ["hermeneus", "koina", "mneme", "nous", "organon", "symbolon", "taxis"]
-used_by = ["aletheia"]
+depends_on = ["dianoia", "hermeneus", "koina", "mneme", "nous", "organon", "symbolon", "taxis"]
+used_by = ["aletheia", "integration-tests"]
 
 [crates.pylon.features]
 knowledge-store = "enables nous knowledge store"
@@ -341,7 +341,7 @@ path = "crates/symbolon"
 layer = "ops"
 purpose = "Authentication and authorization for Aletheia"
 depends_on = ["koina"]
-used_by = ["aletheia", "diaporeia", "pylon"]
+used_by = ["aletheia", "diaporeia", "integration-tests", "pylon"]
 
 [crates.symbolon.features]
 default = "fjall backend"
@@ -357,7 +357,7 @@ path = "crates/taxis"
 layer = "types"
 purpose = "Configuration cascade and path resolution for Aletheia"
 depends_on = ["eidos", "koina"]
-used_by = ["agora", "aletheia", "diaporeia", "nous", "organon", "pylon"]
+used_by = ["agora", "aletheia", "diaporeia", "integration-tests", "nous", "oikonomos", "organon", "pylon", "thesauros"]
 
 [crates.taxis.features]
 test-core = "test tier fixtures"
@@ -375,8 +375,8 @@ features = {}
 path = "crates/thesauros"
 layer = "storage"
 purpose = "Domain pack loader — external knowledge, tools, and config overlays"
-depends_on = ["koina", "organon"]
-used_by = ["aletheia", "nous"]
+depends_on = ["koina", "organon", "taxis"]
+used_by = ["aletheia", "integration-tests", "nous"]
 
 [crates.thesauros.features]
 test-core = "test tier fixtures"
