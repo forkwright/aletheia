@@ -94,3 +94,97 @@ impl Router for NoOpRouter {
         Ok(())
     }
 }
+
+/// A static router that records after-action outcomes into a shared store.
+///
+/// This is the interactive-runtime counterpart to the richer dispatch
+/// empirical routers: it does not change provider selection, but it prevents
+/// completed turns from being discarded when the binary has not enabled an
+/// empirical selection policy.
+pub struct RecordingRouter {
+    /// Shared empirical outcome store.
+    store: Arc<AfterActionStore>,
+    /// Static provider/model returned for route calls.
+    provider: Arc<str>,
+}
+
+impl RecordingRouter {
+    /// Create a router that records outcomes while preserving static routing.
+    #[must_use]
+    pub fn new(store: Arc<AfterActionStore>, provider: impl Into<Arc<str>>) -> Self {
+        Self {
+            store,
+            provider: provider.into(),
+        }
+    }
+}
+
+impl Router for RecordingRouter {
+    fn route<'a>(&'a self, _features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
+        let provider = self.provider.clone();
+        Box::pin(async move { RoutingDecision::new(provider, None) })
+    }
+
+    fn after_action(
+        &self,
+        _decision: &RoutingDecision,
+        outcome: &TurnOutcome,
+    ) -> Result<(), RouterError> {
+        let store = Arc::clone(&self.store);
+        let outcome = outcome.clone();
+        tokio::spawn(async move {
+            store.record_outcome(&outcome).await;
+        });
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use crate::types::{ProviderId, TaskCategory};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn recording_router_preserves_static_route() {
+        let store = Arc::new(AfterActionStore::in_memory());
+        let router = RecordingRouter::new(store, "claude-sonnet");
+        let decision = router
+            .route(&RequestFeatures::new(Vec::new(), None, None))
+            .await;
+
+        assert_eq!(decision.provider.as_ref(), "claude-sonnet");
+        assert_eq!(decision.confidence, None);
+    }
+
+    #[tokio::test]
+    async fn recording_router_records_after_action_into_store() {
+        let store = Arc::new(AfterActionStore::in_memory());
+        let router = RecordingRouter::new(Arc::clone(&store), "claude-sonnet");
+        let provider = ProviderId::new("claude-sonnet");
+        let outcome = TurnOutcome::new(provider.clone(), TaskCategory::Feature, true, true);
+        let decision = RoutingDecision::new("claude-sonnet", None);
+
+        assert!(router.after_action(&decision, &outcome).is_ok());
+
+        for _ in 0..10 {
+            if let Some(stats) = store
+                .rolling_stats(
+                    &provider,
+                    &TaskCategory::Feature,
+                    Duration::from_secs(7 * 24 * 60 * 60),
+                )
+                .await
+            {
+                assert_eq!(stats.successes, 1);
+                assert_eq!(stats.total, 1);
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+
+        panic!("recording router did not write outcome");
+    }
+}

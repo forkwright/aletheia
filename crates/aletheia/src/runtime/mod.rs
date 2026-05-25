@@ -12,6 +12,7 @@ use tokio_util::task::TaskTracker;
 use tracing::{Instrument, error, info, warn};
 
 use agora::types::ChannelProvider;
+use aletheia_routing::{AfterActionStore, RecordingRouter};
 use hermeneus::provider::ProviderRegistry;
 use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
@@ -476,6 +477,19 @@ impl RuntimeBuilder {
             audit_log_dir,
             self.config.prompt_audit.enabled,
         ));
+        let after_action_store = Arc::new(AfterActionStore::new(
+            self.oikos.logs().join("after-actions"),
+        ));
+        let empirical_router: Arc<dyn aletheia_routing::Router> = Arc::new(RecordingRouter::new(
+            Arc::clone(&after_action_store),
+            self.config
+                .agents
+                .defaults
+                .model_defaults
+                .model
+                .primary
+                .as_str(),
+        ));
 
         let spawn_impl = if self.tool_services {
             #[cfg(feature = "recall")]
@@ -494,7 +508,7 @@ impl RuntimeBuilder {
                     knowledge_store: child_knowledge_store,
                     router: Some(Arc::clone(&cross_router)),
                     audit_log: Some(Arc::clone(&audit_log)),
-                    empirical_router: None,
+                    empirical_router: Some(Arc::clone(&empirical_router)),
                 }),
             ))
         } else {
@@ -542,7 +556,8 @@ impl RuntimeBuilder {
             Some(tool_services),
             self.config.nous_behavior.clone(),
         )
-        .with_audit_log(Arc::clone(&audit_log));
+        .with_audit_log(Arc::clone(&audit_log))
+        .with_empirical_router(Arc::clone(&empirical_router));
 
         // Spawn nous actors
         {
@@ -565,6 +580,7 @@ impl RuntimeBuilder {
             &self.config.maintenance,
             &self.config.prompt_audit,
         );
+        maintenance_config.after_action_store = Some(Arc::clone(&after_action_store));
         maintenance_config.backup_metrics = Some(Arc::new(RuntimeBackupMetricsRecorder));
         let task_state_root = self.oikos.data().join("daemon-task-state");
 
