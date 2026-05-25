@@ -30,7 +30,7 @@ struct CredentialApiEntry {
     role: String,
     /// Key value from API. Must be masked before use if it is not already masked.
     #[serde(default)]
-    masked_key: String,
+    masked_key: String, // kanon:ignore RUST/plain-string-secret -- API payload is masked before it enters UI state (#3988)
     #[serde(default)]
     status: String,
     #[serde(default)]

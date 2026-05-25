@@ -155,7 +155,7 @@ struct SerializedCombo {
     alt: bool,
     #[serde(default)]
     shift: bool,
-    key: String,
+    key: String, // kanon:ignore RUST/plain-string-secret -- keyboard key name, not credential material (#3988)
 }
 
 impl From<&KeyCombo> for SerializedCombo {

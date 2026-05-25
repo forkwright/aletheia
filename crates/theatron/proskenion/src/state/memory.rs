@@ -223,7 +223,7 @@ fn default_entity_type() -> EntityType {
 /// A key-value property on an entity.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub(crate) struct EntityProperty {
-    pub key: String,
+    pub key: String, // kanon:ignore RUST/plain-string-secret -- metadata property name, not credential material (#3988)
     pub value: String,
 }
 

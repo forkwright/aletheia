@@ -59,7 +59,7 @@ pub(crate) struct CredentialEntry {
     pub(crate) provider: String,
     pub(crate) role: CredentialRole,
     /// Display form of the key: last 4 chars prefixed with "...".
-    pub(crate) masked_key: String,
+    pub(crate) masked_key: String, // kanon:ignore RUST/plain-string-secret -- masked display suffix only, never the raw credential (#3988)
     pub(crate) status: ValidationStatus,
     pub(crate) last_validated: Option<String>,
     pub(crate) requests_today: u64,
@@ -117,7 +117,6 @@ impl CredentialStore {
             .any(|e| e.provider == provider && e.role == CredentialRole::Backup);
         has_primary && has_backup
     }
-
 }
 
 /// Masks a credential key to show only the last 4 characters.

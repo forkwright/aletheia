@@ -21,12 +21,7 @@ pub(crate) struct ServerConfigStore {
 
 impl ServerConfigStore {
     /// Add a new server; returns the assigned id.
-    pub(crate) fn add(
-        &mut self,
-        name: String,
-        url: String,
-        auth_token: Option<String>,
-    ) -> String {
+    pub(crate) fn add(&mut self, name: String, url: String, auth_token: Option<String>) -> String {
         let id = gen_server_id();
         self.servers.push(ServerEntry {
             id: id.clone(),
@@ -166,7 +161,7 @@ pub(crate) struct KeyCombo {
     pub(crate) ctrl: bool,
     pub(crate) alt: bool,
     pub(crate) shift: bool,
-    pub(crate) key: String,
+    pub(crate) key: String, // kanon:ignore RUST/plain-string-secret -- keyboard key name, not credential material (#3988)
 }
 
 impl KeyCombo {
@@ -481,7 +476,11 @@ mod tests {
     #[test]
     fn server_store_add_increases_count() {
         let mut store = ServerConfigStore::default();
-        store.add("Local".to_string(), "http://localhost:3000".to_string(), None);
+        store.add(
+            "Local".to_string(),
+            "http://localhost:3000".to_string(),
+            None,
+        );
         assert_eq!(store.servers.len(), 1);
     }
 
@@ -603,5 +602,4 @@ mod tests {
         };
         assert_eq!(combo.display(), "Ctrl+Shift+K");
     }
-
 }
