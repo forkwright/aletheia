@@ -15,9 +15,9 @@ use crate::state::connection::ConnectionConfig;
 use crate::state::events::EventState;
 use crate::state::fetch::FetchState;
 use crate::state::ops::{
-    AgentCardData, AgentStatusStore, AgentToggle, CronJobInfo, DaemonTaskInfo, FeatureFlag,
-    HealthTier, JobResult, ServiceHealthStore, TaskStatus, ToggleStore, ToolToggle, Trend,
-    health_from_status,
+    health_from_status, AgentCardData, AgentStatusStore, AgentToggle, CronJobInfo, DaemonTaskInfo,
+    FeatureFlag, HealthTier, JobResult, ServiceHealthStore, TaskStatus, ToggleStore, ToolToggle,
+    Trend,
 };
 
 use self::agents::AgentCards;
@@ -344,10 +344,13 @@ pub(crate) fn Ops() -> Element {
 
             let agents_data: Vec<AgentEntry> = match agents_res {
                 Ok(resp) if resp.status().is_success() => {
-                    resp.json::<AgentListResponse>()
-                        .await
-                        .map(AgentListResponse::into_agents)
-                        .unwrap_or_default()
+                    match resp.json::<AgentListResponse>().await {
+                        Ok(data) => data.into_agents(),
+                        Err(err) => {
+                            tracing::warn!(error = %err, "failed to parse ops agent response");
+                            Vec::new()
+                        }
+                    }
                 }
                 Ok(resp) => {
                     dash_fetch.set(FetchState::Error(format!(
@@ -403,7 +406,13 @@ pub(crate) fn Ops() -> Element {
             // -- Health -------------------------------------------------------
             let health_data = match health_res {
                 Ok(resp) if resp.status().is_success() => {
-                    resp.json::<HealthApiResponse>().await.unwrap_or_default()
+                    match resp.json::<HealthApiResponse>().await {
+                        Ok(data) => data,
+                        Err(err) => {
+                            tracing::warn!(error = %err, "failed to parse ops health response");
+                            HealthApiResponse::default()
+                        }
+                    }
                 }
                 _ => HealthApiResponse::default(),
             };
@@ -449,11 +458,10 @@ pub(crate) fn Ops() -> Element {
 
             // -- Feature flags ------------------------------------------------
             let feature_flags: Vec<FeatureFlag> = match config_res {
-                Ok(resp) if resp.status().is_success() => resp
-                    .json::<ConfigResponse>()
-                    .await
-                    .map(|c| {
-                        c.feature_flags
+                Ok(resp) if resp.status().is_success() => {
+                    match resp.json::<ConfigResponse>().await {
+                        Ok(c) => c
+                            .feature_flags
                             .into_iter()
                             .map(|f| FeatureFlag {
                                 key: f.key,
@@ -461,9 +469,13 @@ pub(crate) fn Ops() -> Element {
                                 enabled: f.enabled,
                                 pending: false,
                             })
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+                            .collect(),
+                        Err(err) => {
+                            tracing::warn!(error = %err, "failed to parse ops config response");
+                            Vec::new()
+                        }
+                    }
+                }
                 _ => Vec::new(),
             };
 
@@ -687,7 +699,11 @@ pub(crate) fn Ops() -> Element {
 }
 
 fn render_tool_history_row(i: usize, entry: &ToolHistoryEntry) -> Element {
-    let color = if entry.is_error { "var(--status-error)" } else { "var(--status-success)" };
+    let color = if entry.is_error {
+        "var(--status-error)"
+    } else {
+        "var(--status-success)"
+    };
     let icon = if entry.is_error { "[x]" } else { "[v]" };
     let icon_style = format!("color: {color};");
 
