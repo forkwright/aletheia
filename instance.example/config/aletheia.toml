@@ -77,22 +77,6 @@ workspace = "nous/main"
 # httpHost = "localhost"
 # httpPort = 8080
 
-# --- Matrix channel (feature-gated: build with `--features matrix`) ---
-# See docs/DEPLOYMENT.md "Matrix (optional)" and issue #3557.
-# Prefer TLS; fall back to http:// only on trusted loopback (e.g. a local
-# conduwuit running on 127.0.0.1) — never cross a network boundary in
-# plaintext because device access tokens are transported in each request.
-# [channels.matrix]
-# enabled = true
-# homeserverUrl = "https://matrix.example.com"
-# userId = "@agent:example.com"
-# deviceDisplayName = "menos-syn"
-# cryptoStorePath = "matrix-crypto"
-#
-# [[channels.matrix.accounts]]
-# nousId = "syn"
-# room = "!abcd1234:example.com"
-
 # --- Bindings (route messages to agents) ---
 # [[bindings]]
 # channel = "signal"
