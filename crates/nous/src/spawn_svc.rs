@@ -322,6 +322,10 @@ impl SpawnService for SpawnServiceImpl {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::time::Duration;
+
+    use aletheia_routing::types::{ProviderId, TaskCategory};
+    use aletheia_routing::{AfterActionStore, RecordingRouter};
     use hermeneus::provider::LlmProvider;
     use hermeneus::test_utils::MockProvider;
     use hermeneus::types::{
@@ -392,6 +396,62 @@ mod tests {
         assert_eq!(result.content, "Sub-agent result");
         assert_eq!(result.input_tokens, 200);
         assert_eq!(result.output_tokens, 80);
+    }
+
+    #[tokio::test]
+    async fn spawn_inherits_empirical_router_and_records_outcome() {
+        let (_dir, oikos) = make_oikos();
+        let store = Arc::new(AfterActionStore::in_memory());
+        let router: Arc<dyn aletheia_routing::Router> = Arc::new(RecordingRouter::new(
+            Arc::clone(&store),
+            "claude-sonnet-4-20250514",
+        ));
+        let svc = make_spawn_service(oikos).with_runtime_services(InheritedSpawnServices {
+            embedding_provider: None,
+            vector_search: None,
+            session_store: None,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
+            router: None,
+            audit_log: None,
+            empirical_router: Some(router),
+        });
+
+        let result = svc
+            .spawn_and_run(
+                SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Build a feature".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+            )
+            .await
+            .expect("spawn");
+
+        assert!(!result.is_error, "unexpected error: {}", result.content);
+
+        let provider = ProviderId::new("claude-sonnet-4-20250514");
+        for _ in 0..20 {
+            if let Some(stats) = store
+                .rolling_stats(
+                    &provider,
+                    &TaskCategory::Feature,
+                    Duration::from_secs(7 * 24 * 60 * 60),
+                )
+                .await
+            {
+                assert_eq!(stats.successes, 1);
+                assert_eq!(stats.failures, 0);
+                assert_eq!(stats.total, 1);
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+
+        panic!("spawned actor did not record empirical routing outcome");
     }
 
     #[test]
