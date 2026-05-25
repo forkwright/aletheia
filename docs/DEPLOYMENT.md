@@ -506,9 +506,10 @@ nous_id = "main"
 
 ## Matrix (Phase 3 deployment profile)
 
-Aletheia's public deployment profile treats the Matrix channel provider as
-scaffolding for the Phase 3 implementation against a
-self-hosted [conduwuit](https://conduwuit.puppyirl.gay/) homeserver.
+Aletheia's public deployment profile preserves homeserver deployment prep for
+the Phase 3 Matrix channel implementation against a self-hosted
+[conduwuit](https://conduwuit.puppyirl.gay/) homeserver. Aletheia does not
+currently expose a Matrix provider, config surface, or Cargo feature.
 
 ### Prerequisites
 
