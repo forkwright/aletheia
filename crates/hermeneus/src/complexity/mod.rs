@@ -475,8 +475,7 @@ fn select_model_for_tier(tier: ModelTier, config: &ComplexityConfig) -> String {
     match tier {
         // Until a Tier-1 handler registry exists, no-LLM decisions fall back to
         // the fast model while preserving the tier in telemetry and tests.
-        ModelTier::NoLlm => config.haiku_model.clone(),
-        ModelTier::Haiku => config.haiku_model.clone(),
+        ModelTier::NoLlm | ModelTier::Haiku => config.haiku_model.clone(),
         ModelTier::Sonnet => config.sonnet_model.clone(),
         ModelTier::Opus => config.opus_model.clone(),
     }
