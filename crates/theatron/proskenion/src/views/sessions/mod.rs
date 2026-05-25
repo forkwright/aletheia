@@ -10,7 +10,7 @@ use skene::api::types::{HistoryResponse, Session, SessionsResponse};
 use skene::id::SessionId;
 
 use crate::api::client::authenticated_client;
-use crate::components::resize_handle::{use_resize_state, ResizeDir, ResizeHandle};
+use crate::components::resize_handle::{ResizeDir, ResizeHandle, use_resize_state};
 use crate::state::agents::AgentStore;
 use crate::state::chat::ChatSelection;
 use crate::state::connection::ConnectionConfig;
@@ -241,17 +241,17 @@ pub(crate) fn Sessions() -> Element {
                         };
 
                         // WHY: history response may be {messages: [...]} or bare [...].
-                        let messages =
-                            if let Ok(wrapper) = serde_json::from_str::<HistoryResponse>(&text) {
-                                wrapper.messages
-                            } else if let Ok(list) = serde_json::from_str::<
-                                Vec<skene::api::types::HistoryMessage>,
-                            >(&text)
-                            {
-                                list
-                            } else {
-                                Vec::new()
-                            };
+                        let messages = if let Ok(wrapper) =
+                            serde_json::from_str::<HistoryResponse>(&text)
+                        {
+                            wrapper.messages
+                        } else if let Ok(list) =
+                            serde_json::from_str::<Vec<skene::api::types::HistoryMessage>>(&text)
+                        {
+                            list
+                        } else {
+                            Vec::new()
+                        };
 
                         let mut user_count = 0u32;
                         let mut assistant_count = 0u32;
@@ -292,7 +292,7 @@ pub(crate) fn Sessions() -> Element {
                                             .collect::<String>()
                                     })
                                 })
-                                .unwrap_or_default();
+                                .unwrap_or_else(String::new);
 
                             previews.push(MessagePreview {
                                 role: msg.role.clone(),

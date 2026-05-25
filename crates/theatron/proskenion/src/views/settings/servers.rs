@@ -188,7 +188,7 @@ fn ServerCard(
     let mut editing = use_signal(|| false);
     let mut edit_name = use_signal(|| name.clone());
     let mut edit_url = use_signal(|| url.clone());
-    let mut edit_token = use_signal(|| auth_token.clone().unwrap_or_default());
+    let mut edit_token = use_signal(|| auth_token.clone().unwrap_or_else(String::new));
 
     let mut server_store: Signal<ServerConfigStore> = use_context();
     let appearance = use_context::<Signal<crate::state::settings::AppearanceSettings>>();
@@ -196,7 +196,11 @@ fn ServerCard(
 
     let health_color = health.color();
     let health_label = health.label();
-    let card_border = if is_active { "1px solid var(--accent)" } else { "1px solid var(--border)" };
+    let card_border = if is_active {
+        "1px solid var(--accent)"
+    } else {
+        "1px solid var(--border)"
+    };
 
     let id_for_save = id.clone();
 
