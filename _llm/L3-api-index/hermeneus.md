@@ -303,6 +303,9 @@ impl CodexProvider {
 
 ```rust
 pub enum ModelTier {
+    /// No model call required; a deterministic fast path can handle it.
+    #[serde(rename = "no_llm", alias = "no-llm")]
+    NoLlm,
     /// Fast, cheap, sufficient for simple queries.
     Haiku,
     /// Balanced capability and cost.
@@ -333,6 +336,8 @@ pub struct ComplexityInput<'a> {
 pub struct ComplexityConfig {
     /// Whether complexity-based routing is enabled.
     pub enabled: bool,
+    /// Score below which queries are eligible for a deterministic no-LLM fast path.
+    pub no_llm_threshold: u32,
     /// Score at or below which queries route to `haiku_model`.
     pub low_threshold: u32,
     /// Score at or above which queries route to `opus_model`.
