@@ -1,6 +1,6 @@
 //! Tool usage metrics state: aggregated stats, stores, and helpers.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 // -- API response types -------------------------------------------------------
 
@@ -175,9 +175,9 @@ pub(crate) fn format_delta(delta: i64) -> String {
 /// Formats a duration in milliseconds as a human-readable string.
 pub(crate) fn format_duration_ms(ms: u64) -> String {
     if ms >= 60_000 {
-        format!("{:.1}m", ms as f64 / 60_000.0)
+        format!("{:.1}m", Duration::from_millis(ms).as_secs_f64() / 60.0)
     } else if ms >= 1_000 {
-        format!("{:.1}s", ms as f64 / 1_000.0)
+        format!("{:.1}s", Duration::from_millis(ms).as_secs_f64())
     } else {
         format!("{ms}ms")
     }
@@ -190,7 +190,7 @@ pub(crate) fn paginate<T>(items: &[T], page: usize, per_page: usize) -> &[T] {
         return &[];
     }
     let end = (start + per_page).min(items.len());
-    &items[start..end]
+    items.get(start..end).unwrap_or(&[])
 }
 
 /// Total number of pages for `total_items` items at `per_page` per page.
@@ -214,10 +214,13 @@ pub(crate) fn percentile_nearest_rank(sorted_values: &[u64], p: f64) -> u64 {
         clippy::cast_precision_loss,
         reason = "display-only: fractional index is fine for N < 2^53"
     )]
-    #[expect(clippy::as_conversions, reason = "length to f64 and rank to usize for percentile")]
+    #[expect(
+        clippy::as_conversions,
+        reason = "length to f64 and rank to usize for percentile"
+    )]
     let rank = (p * sorted_values.len() as f64).ceil() as usize;
     let idx = rank.saturating_sub(1).min(sorted_values.len() - 1);
-    sorted_values[idx]
+    sorted_values.get(idx).copied().unwrap_or(0)
 }
 
 // -- Tests --------------------------------------------------------------------
