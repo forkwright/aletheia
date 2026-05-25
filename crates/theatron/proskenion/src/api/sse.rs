@@ -71,99 +71,12 @@ impl SseConnection {
         let child = cancel.child_token();
 
         let span = tracing::info_span!("sse_connection");
-        let handle = tokio::spawn(
-            async move {
-                let mut backoff = INITIAL_BACKOFF;
+        let handle = tokio::spawn(run_sse_connection(client, url, child, tx).instrument(span));
 
-                loop {
-                    if child.is_cancelled() {
-                        return;
-                    }
-
-                    let resp = match tokio::select! {
-                        biased;
-                        _ = child.cancelled() => return,
-                        result = client
-                            .get(&url)
-                            .header("Accept", "text/event-stream")
-                            .send() => result,
-                    } {
-                        Ok(resp) => resp,
-                        Err(e) => {
-                            tracing::error!("SSE connection failed: {e}");
-                            let _ = tx.send(SseEvent::Disconnected).await;
-                            tokio::select! {
-                                biased;
-                                _ = child.cancelled() => return,
-                                _ = tokio::time::sleep(backoff) => {}
-                            }
-                            backoff = advance_backoff(backoff);
-                            continue;
-                        }
-                    };
-
-                    if !resp.status().is_success() {
-                        let status = resp.status();
-                        let reason = status.canonical_reason().unwrap_or("Unknown");
-                        let body = resp.text().await.unwrap_or_default();
-                        let message = extract_error_message(&body, status.as_u16(), reason);
-                        tracing::warn!("SSE error: {message}");
-                        let _ = tx.send(SseEvent::Disconnected).await;
-                        backoff = advance_backoff(backoff);
-                        tokio::select! {
-                            biased;
-                            _ = child.cancelled() => return,
-                            _ = tokio::time::sleep(backoff) => {}
-                        }
-                        continue;
-                    }
-
-                    let _ = tx.send(SseEvent::Connected).await;
-                    tracing::info!("SSE connected");
-                    backoff = INITIAL_BACKOFF;
-                    let mut es = SseStream::new(resp.bytes_stream());
-
-                    loop {
-                        let maybe_event = tokio::select! {
-                            biased;
-                            _ = child.cancelled() => return,
-                            result = tokio::time::timeout(HEARTBEAT_TIMEOUT, es.next()) => result,
-                        };
-
-                        let event = match maybe_event {
-                            Ok(Some(event)) => event,
-                            Ok(None) => break,
-                            Err(_elapsed) => {
-                                tracing::warn!(
-                                    timeout_secs = HEARTBEAT_TIMEOUT.as_secs(),
-                                    "SSE heartbeat timeout — treating as disconnect"
-                                );
-                                break;
-                            }
-                        };
-
-                        if let Some(parsed) = parse_sse_event(&event.event, &event.data)
-                            && tx.send(parsed).await.is_err()
-                        {
-                            // Receiver dropped: shut down.
-                            return;
-                        }
-                    }
-
-                    let _ = tx.send(SseEvent::Disconnected).await;
-                    tracing::info!(backoff_secs = backoff.as_secs(), "SSE reconnecting");
-                    tokio::select! {
-                        biased;
-                        _ = child.cancelled() => return,
-                        // NOTE: backoff elapsed, retry connection
-                        _ = tokio::time::sleep(backoff) => {}
-                    }
-                }
-            }
-            .instrument(span),
-        );
-
-        SseConnection { rx, _handle: handle }
+        SseConnection {
+            rx,
+            _handle: handle,
+        }
     }
 
     /// Receive the next parsed SSE event. Returns `None` when the
@@ -171,7 +84,114 @@ impl SseConnection {
     pub async fn next(&mut self) -> Option<SseEvent> {
         self.rx.recv().await
     }
+}
 
+async fn run_sse_connection(
+    client: Client,
+    url: String,
+    child: CancellationToken,
+    tx: mpsc::Sender<SseEvent>,
+) {
+    let mut backoff = INITIAL_BACKOFF;
+
+    loop {
+        if child.is_cancelled() {
+            return;
+        }
+
+        let resp = match tokio::select! {
+            biased;
+            _ = child.cancelled() => return,
+            result = client
+                .get(&url)
+                .header("Accept", "text/event-stream")
+                .send() => result,
+        } {
+            Ok(resp) => resp,
+            Err(e) => {
+                tracing::error!("SSE connection failed: {e}");
+                if tx.send(SseEvent::Disconnected).await.is_err() {
+                    return;
+                }
+                tokio::select! {
+                    biased;
+                    _ = child.cancelled() => return,
+                    _ = tokio::time::sleep(backoff) => {}
+                }
+                backoff = advance_backoff(backoff);
+                continue;
+            }
+        };
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let reason = status.canonical_reason().unwrap_or("Unknown");
+            let body = match resp.text().await {
+                Ok(body) => body,
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to read SSE error response body");
+                    String::new()
+                }
+            };
+            let message = extract_error_message(&body, status.as_u16(), reason);
+            tracing::warn!("SSE error: {message}");
+            if tx.send(SseEvent::Disconnected).await.is_err() {
+                return;
+            }
+            backoff = advance_backoff(backoff);
+            tokio::select! {
+                biased;
+                _ = child.cancelled() => return,
+                _ = tokio::time::sleep(backoff) => {}
+            }
+            continue;
+        }
+
+        if tx.send(SseEvent::Connected).await.is_err() {
+            return;
+        }
+        tracing::info!("SSE connected");
+        backoff = INITIAL_BACKOFF;
+        let mut es = SseStream::new(resp.bytes_stream());
+
+        loop {
+            let maybe_event = tokio::select! {
+                biased;
+                _ = child.cancelled() => return,
+                result = tokio::time::timeout(HEARTBEAT_TIMEOUT, es.next()) => result,
+            };
+
+            let event = match maybe_event {
+                Ok(Some(event)) => event,
+                Ok(None) => break,
+                Err(_elapsed) => {
+                    tracing::warn!(
+                        timeout_secs = HEARTBEAT_TIMEOUT.as_secs(),
+                        "SSE heartbeat timeout — treating as disconnect"
+                    );
+                    break;
+                }
+            };
+
+            if let Some(parsed) = parse_sse_event(&event.event, &event.data)
+                && tx.send(parsed).await.is_err()
+            {
+                // Receiver dropped: shut down.
+                return;
+            }
+        }
+
+        if tx.send(SseEvent::Disconnected).await.is_err() {
+            return;
+        }
+        tracing::info!(backoff_secs = backoff.as_secs(), "SSE reconnecting");
+        tokio::select! {
+            biased;
+            _ = child.cancelled() => return,
+            // NOTE: backoff elapsed, retry connection
+            _ = tokio::time::sleep(backoff) => {}
+        }
+    }
 }
 
 /// Advance exponential backoff: double the interval, capped at `MAX_BACKOFF`.
