@@ -572,6 +572,7 @@ mod tests {
             description: format!("test prompt {number}"),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: format!("implement task {number}"),
