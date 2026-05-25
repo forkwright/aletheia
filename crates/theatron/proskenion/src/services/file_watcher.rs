@@ -106,7 +106,6 @@ impl FileChangeTracker {
             _ => None,
         }
     }
-
 }
 
 impl Default for FileChangeTracker {
@@ -153,8 +152,17 @@ pub(crate) fn truncate_path(path: &str, max_len: usize) -> String {
     if path.len() <= max_len {
         return path.to_string();
     }
+    if max_len <= 3 {
+        return ".".repeat(max_len);
+    }
     // NOTE: Show the tail of the path (most informative part).
-    let suffix = &path[path.len() - (max_len - 3)..];
+    let suffix_max_len = max_len - 3;
+    let suffix_start = path
+        .char_indices()
+        .map(|(idx, _)| idx)
+        .find(|idx| path.len() - idx <= suffix_max_len)
+        .unwrap_or(path.len());
+    let suffix = path.get(suffix_start..).unwrap_or("");
     format!("...{suffix}")
 }
 
@@ -264,6 +272,21 @@ mod tests {
         assert!(truncated.starts_with("..."));
         assert!(truncated.len() <= 20);
         assert!(truncated.ends_with("file.rs"));
+    }
+
+    #[test]
+    fn truncate_path_respects_unicode_boundaries() {
+        let truncated = truncate_path("src/διαδρομή/deep/file.rs", 18);
+        assert!(truncated.starts_with("..."));
+        assert!(truncated.len() <= 18);
+        assert!(truncated.ends_with("file.rs"));
+    }
+
+    #[test]
+    fn truncate_path_handles_tiny_limits() {
+        assert_eq!(truncate_path("src/main.rs", 0), "");
+        assert_eq!(truncate_path("src/main.rs", 2), "..");
+        assert_eq!(truncate_path("src/main.rs", 3), "...");
     }
 
     #[test]

@@ -349,7 +349,10 @@ impl NotificationDispatch {
     // -- Send -----------------------------------------------------------------
 
     /// Apply DND, rate limit, then dispatch the notification.
-    #[expect(clippy::too_many_arguments, reason = "all parameters are contextual state")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "all parameters are contextual state"
+    )]
     fn send(
         &mut self,
         category: NotificationCategory,
@@ -424,7 +427,7 @@ fn severity_for(category: NotificationCategory) -> ToastSeverity {
 /// Truncate `s` to at most `max_chars` Unicode scalar values.
 fn truncate_chars(s: &str, max_chars: usize) -> &str {
     match s.char_indices().nth(max_chars) {
-        Some((byte_idx, _)) => &s[..byte_idx],
+        Some((byte_idx, _)) => s.get(..byte_idx).unwrap_or(s),
         None => s,
     }
 }
@@ -500,7 +503,10 @@ mod tests {
             &mut no_fallback,
         );
 
-        assert!(history.is_empty(), "completion should be suppressed when focused");
+        assert!(
+            history.is_empty(),
+            "completion should be suppressed when focused"
+        );
     }
 
     // -- Focus rules ----------------------------------------------------------
@@ -570,9 +576,11 @@ mod tests {
 
         // Only the first notification should reach history.
         assert_eq!(history.len(), 1);
-        assert!(dispatch
-            .pending_groups
-            .contains_key(&NotificationCategory::AgentCompletion));
+        assert!(
+            dispatch
+                .pending_groups
+                .contains_key(&NotificationCategory::AgentCompletion)
+        );
     }
 
     // -- Preferences ----------------------------------------------------------
@@ -622,7 +630,10 @@ mod tests {
             &mut no_fallback,
         );
 
-        assert!(history.is_empty(), "DND should suppress completion notification");
+        assert!(
+            history.is_empty(),
+            "DND should suppress completion notification"
+        );
     }
 
     // -- Helpers --------------------------------------------------------------
