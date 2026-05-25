@@ -1,3 +1,4 @@
+# kanon:ignore WORKFLOW/llm-corpus-required -- proskenion is a standalone workspace linted under the parent repo corpus (#3988)
 # WHY: Explicit [workspace] prevents cargo from walking up to the root
 # workspace and failing with "not in workspace" when building standalone.
 [workspace]

@@ -252,7 +252,7 @@ pub(crate) struct ToolToggle {
 /// A system-wide feature flag.
 #[derive(Debug, Clone)]
 pub(crate) struct FeatureFlag {
-    pub key: String,
+    pub key: String, // kanon:ignore RUST/plain-string-secret -- feature flag identifier, not credential material (#3988)
     pub description: String,
     pub enabled: bool,
     pub pending: bool,

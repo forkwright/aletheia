@@ -314,7 +314,7 @@ fn ToolToggleRow(
 
 #[component]
 fn FeatureFlagRow(
-    flag_key: String,
+    flag_key: String, // kanon:ignore RUST/plain-string-secret -- feature flag identifier, not credential material (#3988)
     description: String,
     enabled: bool,
     pending: bool,
@@ -431,10 +431,7 @@ fn toggle_switch(
 
 // WHY: Signal::set requires &mut self, which is unavailable inside Fn closures.
 // Passing Signal by value to a function with `mut` parameter sidesteps this.
-fn request_confirm(
-    mut sig: Signal<Option<skene::id::NousId>>,
-    id: skene::id::NousId,
-) {
+fn request_confirm(mut sig: Signal<Option<skene::id::NousId>>, id: skene::id::NousId) {
     sig.set(Some(id));
 }
 
@@ -501,7 +498,7 @@ fn fire_tool_toggle(
 fn fire_feature_toggle(
     mut store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
-    key: String,
+    key: String, // kanon:ignore RUST/plain-string-secret -- feature flag identifier, not credential material (#3988)
 ) {
     let prev = store.write().flip_feature(&key);
     let Some(prev_val) = prev else { return };
