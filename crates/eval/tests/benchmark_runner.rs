@@ -4,14 +4,14 @@
 //! enough for the benchmark runner to exercise the full pipeline: session
 //! creation → haystack ingestion → question → SSE response → scoring.
 
-#![allow(clippy::unwrap_used, reason = "integration test boilerplate")]
-#![allow(clippy::expect_used, reason = "integration test boilerplate")]
 #![allow(clippy::indexing_slicing, reason = "integration test boilerplate")]
 
 use dokimion::benchmarks::longmemeval::LongMemEvalDataset;
 use dokimion::benchmarks::{BenchmarkRunner, BenchmarkRunnerConfig, EvalClient, MemoryBenchmark};
 use wiremock::matchers::{method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 /// Initialize the rustls default crypto provider once per test run.
 /// Required because the workspace uses `reqwest` with `rustls-no-provider`.
@@ -128,31 +128,32 @@ const SAMPLE_DATASET: &str = r#"[
 ]"#;
 
 #[tokio::test]
-async fn runner_scores_perfect_answer() {
+async fn runner_scores_perfect_answer() -> TestResult {
     init_crypto();
     let server = setup_mock_server("blue").await;
     let client = EvalClient::new(server.uri(), None);
     let config = BenchmarkRunnerConfig::default();
     let runner = BenchmarkRunner::new(client, config);
 
-    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
-    let report = runner.run(&dataset).await.expect("run should succeed");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
 
     assert_eq!(report.total, 1);
     assert!(report.exact_match_rate() > 0.99, "perfect answer should EM");
     assert!(report.mean_f1() > 0.99, "perfect answer should F1=1");
+    Ok(())
 }
 
 #[tokio::test]
-async fn runner_scores_wrong_answer_as_zero() {
+async fn runner_scores_wrong_answer_as_zero() -> TestResult {
     init_crypto();
     let server = setup_mock_server("purple").await;
     let client = EvalClient::new(server.uri(), None);
     let config = BenchmarkRunnerConfig::default();
     let runner = BenchmarkRunner::new(client, config);
 
-    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
-    let report = runner.run(&dataset).await.expect("run should succeed");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
 
     assert_eq!(report.total, 1);
     assert!(
@@ -160,10 +161,11 @@ async fn runner_scores_wrong_answer_as_zero() {
         "wrong answer should not EM"
     );
     assert!(report.mean_f1() < 0.01, "wrong answer should have zero F1");
+    Ok(())
 }
 
 #[tokio::test]
-async fn runner_scores_timed_out_question_as_zero() {
+async fn runner_scores_timed_out_question_as_zero() -> TestResult {
     init_crypto();
     let server = setup_slow_mock_server("blue", std::time::Duration::from_millis(200)).await;
     let client = EvalClient::new(server.uri(), None);
@@ -173,8 +175,8 @@ async fn runner_scores_timed_out_question_as_zero() {
     };
     let runner = BenchmarkRunner::new(client, config);
 
-    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
-    let report = runner.run(&dataset).await.expect("run should succeed");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
 
     assert_eq!(report.total, 1);
     assert_eq!(report.questions[0].actual_answer, "");
@@ -182,10 +184,11 @@ async fn runner_scores_timed_out_question_as_zero() {
         report.mean_f1().abs() < f64::EPSILON,
         "timeout should be scored as a zero-answer"
     );
+    Ok(())
 }
 
 #[tokio::test]
-async fn runner_respects_max_questions_limit() {
+async fn runner_respects_max_questions_limit() -> TestResult {
     init_crypto();
     let server = setup_mock_server("blue").await;
     let client = EvalClient::new(server.uri(), None);
@@ -195,56 +198,60 @@ async fn runner_respects_max_questions_limit() {
     };
     let runner = BenchmarkRunner::new(client, config);
 
-    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
-    let report = runner.run(&dataset).await.expect("run should succeed");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
 
     assert_eq!(report.total, 0, "max_questions=0 should score nothing");
+    Ok(())
 }
 
 #[tokio::test]
-async fn runner_preserves_question_metadata_in_results() {
+async fn runner_preserves_question_metadata_in_results() -> TestResult {
     init_crypto();
     let server = setup_mock_server("blue").await;
     let client = EvalClient::new(server.uri(), None);
     let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default());
 
-    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
-    let report = runner.run(&dataset).await.expect("run should succeed");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
 
     let question = &report.questions[0];
     assert_eq!(question.id, "q1");
     assert_eq!(question.category, "factual");
     assert_eq!(question.expected_answers, vec!["blue".to_owned()]);
+    Ok(())
 }
 
 #[tokio::test]
-async fn runner_produces_per_category_breakdown() {
+async fn runner_produces_per_category_breakdown() -> TestResult {
     init_crypto();
     let server = setup_mock_server("blue").await;
     let client = EvalClient::new(server.uri(), None);
     let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default());
 
-    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes()).expect("valid dataset");
-    let report = runner.run(&dataset).await.expect("run should succeed");
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
 
     let per_cat = report.per_category();
     assert_eq!(per_cat.len(), 1);
     assert_eq!(per_cat[0].0, "factual");
     assert!(per_cat[0].1 > 0.99, "factual EM should be 1.0");
+    Ok(())
 }
 
 #[tokio::test]
-async fn runner_handles_empty_dataset() {
+async fn runner_handles_empty_dataset() -> TestResult {
     init_crypto();
     let server = setup_mock_server("anything").await;
     let client = EvalClient::new(server.uri(), None);
     let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default());
 
-    let dataset = LongMemEvalDataset::from_bytes(b"[]").expect("valid empty dataset");
+    let dataset = LongMemEvalDataset::from_bytes(b"[]")?;
     assert!(dataset.is_empty());
-    let report = runner.run(&dataset).await.expect("run should succeed");
+    let report = runner.run(&dataset).await?;
 
     assert_eq!(report.total, 0);
     assert!((report.exact_match_rate()).abs() < f64::EPSILON);
     assert!((report.mean_f1()).abs() < f64::EPSILON);
+    Ok(())
 }
