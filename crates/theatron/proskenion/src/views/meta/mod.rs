@@ -9,6 +9,7 @@ mod quality;
 mod reflection;
 
 use dioxus::prelude::*;
+use serde::de::DeserializeOwned;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
@@ -91,19 +92,28 @@ struct TimelineEntry {
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct SessionEntry {
-    #[expect(dead_code, reason = "deserialized; used when session detail linking is added")]
+    #[expect(
+        dead_code,
+        reason = "deserialized; used when session detail linking is added"
+    )]
     #[serde(default)]
     id: String,
     #[serde(default)]
     nous_id: String,
     #[serde(default)]
     message_count: u32,
-    #[expect(dead_code, reason = "deserialized; used when status filtering is added")]
+    #[expect(
+        dead_code,
+        reason = "deserialized; used when status filtering is added"
+    )]
     #[serde(default)]
     status: String,
     #[serde(default)]
     created_at: String,
-    #[expect(dead_code, reason = "deserialized; used when last-updated sorting is added")]
+    #[expect(
+        dead_code,
+        reason = "deserialized; used when last-updated sorting is added"
+    )]
     #[serde(default)]
     updated_at: String,
 }
@@ -114,6 +124,18 @@ struct AgentEntry {
     id: String,
     #[serde(default)]
     name: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct SessionsApiResponse {
+    #[serde(default)]
+    sessions: Vec<SessionEntry>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct AgentsApiResponse {
+    #[serde(default, alias = "agents")]
+    nous: Vec<AgentEntry>,
 }
 
 // -- New insights endpoint response types -----------------------------------
@@ -366,7 +388,11 @@ pub(crate) fn Meta() -> Element {
     });
 
     let mut toggle_section = move |idx: usize| {
-        expanded.with_mut(|arr| arr[idx] = !arr[idx]);
+        expanded.with_mut(|arr| {
+            if let Some(section) = arr.get_mut(idx) {
+                *section = !*section;
+            }
+        });
     };
 
     rsx! {
@@ -394,31 +420,31 @@ pub(crate) fn Meta() -> Element {
                     rsx! {
                         AccordionSection {
                             title: "Agent Performance",
-                            expanded: exp[0],
+                            expanded: exp.first().copied().unwrap_or(false),
                             on_toggle: move |_| toggle_section(0),
                             AgentPerformanceSection { store: data.performance.clone() }
                         }
                         AccordionSection {
                             title: "Conversation Quality",
-                            expanded: exp[1],
+                            expanded: exp.get(1).copied().unwrap_or(false),
                             on_toggle: move |_| toggle_section(1),
                             ConversationQualitySection { store: data.quality.clone() }
                         }
                         AccordionSection {
                             title: "Knowledge Growth",
-                            expanded: exp[2],
+                            expanded: exp.get(2).copied().unwrap_or(false),
                             on_toggle: move |_| toggle_section(2),
                             KnowledgeGrowthSection { store: data.knowledge.clone() }
                         }
                         AccordionSection {
                             title: "Memory Health",
-                            expanded: exp[3],
+                            expanded: exp.get(3).copied().unwrap_or(false),
                             on_toggle: move |_| toggle_section(3),
                             MemoryHealthSection { store: data.health.clone() }
                         }
                         AccordionSection {
                             title: "System Self-Reflection",
-                            expanded: exp[4],
+                            expanded: exp.get(4).copied().unwrap_or(false),
                             on_toggle: move |_| toggle_section(4),
                             SystemReflectionSection { store: data.reflection.clone() }
                         }
@@ -501,9 +527,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     );
 
     let health: HealthApiResponse = match health_res {
-        Ok(resp) if resp.status().is_success() => {
-            resp.json().await.unwrap_or_default()
-        }
+        Ok(resp) if resp.status().is_success() => optional_json(resp, "health").await,
         Ok(resp) => {
             return FetchState::Error(format!("health endpoint returned {}", resp.status()));
         }
@@ -513,94 +537,138 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     };
 
     let metrics: MetricsApiResponse = match metrics_res {
-        Ok(resp) if resp.status().is_success() => resp.json().await.unwrap_or_default(),
+        Ok(resp) if resp.status().is_success() => optional_json(resp, "metrics").await,
         _ => MetricsApiResponse::default(),
     };
 
     let facts: Vec<FactEntry> = match facts_res {
         Ok(resp) if resp.status().is_success() => {
             // WHY: API may return bare array or wrapped in { facts: [...] }.
-            let text = resp.text().await.unwrap_or_default();
-            serde_json::from_str::<Vec<FactEntry>>(&text)
-                .or_else(|_| {
-                    serde_json::from_str::<KnowledgeFactsResponse>(&text)
-                        .map(|r| r.facts)
-                })
-                .unwrap_or_default()
+            match optional_text(resp, "facts").await {
+                Some(text) => parse_facts_response(&text),
+                None => Vec::new(),
+            }
         }
         _ => Vec::new(),
     };
 
     let entities: Vec<EntityEntry> = match entities_res {
-        Ok(resp) if resp.status().is_success() => resp.json().await.unwrap_or_default(),
+        Ok(resp) if resp.status().is_success() => optional_json(resp, "entities").await,
         _ => Vec::new(),
     };
 
     let timeline: Vec<TimelineEntry> = match timeline_res {
-        Ok(resp) if resp.status().is_success() => resp.json().await.unwrap_or_default(),
+        Ok(resp) if resp.status().is_success() => optional_json(resp, "timeline").await,
         _ => Vec::new(),
     };
 
     let sessions: Vec<SessionEntry> = match sessions_res {
-        Ok(resp) if resp.status().is_success() => {
-            let text = resp.text().await.unwrap_or_default();
-            serde_json::from_str::<Vec<SessionEntry>>(&text)
-                .or_else(|_| {
-                    #[derive(serde::Deserialize)]
-                    struct Wrapped {
-                        #[serde(default)]
-                        sessions: Vec<SessionEntry>,
-                    }
-                    serde_json::from_str::<Wrapped>(&text).map(|w| w.sessions)
-                })
-                .unwrap_or_default()
-        }
+        Ok(resp) if resp.status().is_success() => match optional_text(resp, "sessions").await {
+            Some(text) => parse_sessions_response(&text),
+            None => Vec::new(),
+        },
         _ => Vec::new(),
     };
 
     let agents: Vec<AgentEntry> = match agents_res {
-        Ok(resp) if resp.status().is_success() => {
-            let text = resp.text().await.unwrap_or_default();
-            serde_json::from_str::<Vec<AgentEntry>>(&text)
-                .or_else(|_| {
-                    #[derive(serde::Deserialize)]
-                    struct Wrapped {
-                        #[serde(default, alias = "agents")]
-                        nous: Vec<AgentEntry>,
-                    }
-                    serde_json::from_str::<Wrapped>(&text).map(|w| w.nous)
-                })
-                .unwrap_or_default()
-        }
+        Ok(resp) if resp.status().is_success() => match optional_text(resp, "agents").await {
+            Some(text) => parse_agents_response(&text),
+            None => Vec::new(),
+        },
         _ => Vec::new(),
     };
 
     let perf: AgentPerformanceApiResponse = match perf_res {
-        Ok(resp) if resp.status().is_success() => resp.json().await.unwrap_or_default(),
+        Ok(resp) if resp.status().is_success() => optional_json(resp, "agent performance").await,
         _ => AgentPerformanceApiResponse::default(),
     };
 
     let quality: QualityMetricsApiResponse = match quality_res {
-        Ok(resp) if resp.status().is_success() => resp.json().await.unwrap_or_default(),
+        Ok(resp) if resp.status().is_success() => optional_json(resp, "quality").await,
         _ => QualityMetricsApiResponse::default(),
     };
 
     let journal: Vec<JournalEventEntry> = match journal_res {
-        Ok(resp) if resp.status().is_success() => resp.json().await.unwrap_or_default(),
+        Ok(resp) if resp.status().is_success() => optional_json(resp, "journal").await,
         _ => Vec::new(),
     };
 
     let data = assemble_meta_data(
-        health,
-        metrics,
-        facts,
-        entities,
-        timeline,
-        sessions,
-        agents,
-        perf,
-        quality,
-        journal,
+        health, metrics, facts, entities, timeline, sessions, agents, perf, quality, journal,
     );
     FetchState::Loaded(data)
+}
+
+async fn optional_json<T>(resp: reqwest::Response, endpoint: &'static str) -> T
+where
+    T: DeserializeOwned + Default,
+{
+    match resp.json().await {
+        Ok(value) => value,
+        Err(err) => {
+            tracing::warn!(endpoint, error = %err, "failed to parse optional meta response");
+            T::default()
+        }
+    }
+}
+
+async fn optional_text(resp: reqwest::Response, endpoint: &'static str) -> Option<String> {
+    match resp.text().await {
+        Ok(text) => Some(text),
+        Err(err) => {
+            tracing::warn!(endpoint, error = %err, "failed to read optional meta response");
+            None
+        }
+    }
+}
+
+fn parse_facts_response(text: &str) -> Vec<FactEntry> {
+    match serde_json::from_str::<Vec<FactEntry>>(text) {
+        Ok(facts) => facts,
+        Err(array_err) => match serde_json::from_str::<KnowledgeFactsResponse>(text) {
+            Ok(response) => response.facts,
+            Err(wrapped_err) => {
+                tracing::warn!(
+                    array_error = %array_err,
+                    wrapped_error = %wrapped_err,
+                    "failed to parse facts response"
+                );
+                Vec::new()
+            }
+        },
+    }
+}
+
+fn parse_sessions_response(text: &str) -> Vec<SessionEntry> {
+    match serde_json::from_str::<Vec<SessionEntry>>(text) {
+        Ok(sessions) => sessions,
+        Err(array_err) => match serde_json::from_str::<SessionsApiResponse>(text) {
+            Ok(response) => response.sessions,
+            Err(wrapped_err) => {
+                tracing::warn!(
+                    array_error = %array_err,
+                    wrapped_error = %wrapped_err,
+                    "failed to parse sessions response"
+                );
+                Vec::new()
+            }
+        },
+    }
+}
+
+fn parse_agents_response(text: &str) -> Vec<AgentEntry> {
+    match serde_json::from_str::<Vec<AgentEntry>>(text) {
+        Ok(agents) => agents,
+        Err(array_err) => match serde_json::from_str::<AgentsApiResponse>(text) {
+            Ok(response) => response.nous,
+            Err(wrapped_err) => {
+                tracing::warn!(
+                    array_error = %array_err,
+                    wrapped_error = %wrapped_err,
+                    "failed to parse agents response"
+                );
+                Vec::new()
+            }
+        },
+    }
 }
