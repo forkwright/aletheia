@@ -18,7 +18,7 @@ use tracing::{debug, info};
 
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
-use crate::provider::LlmProvider;
+use crate::provider::{DeploymentTarget, LlmProvider};
 use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
 
 use super::parse;
@@ -276,6 +276,10 @@ impl LlmProvider for CcProvider {
         "cc"
     }
 
+    fn deployment_target(&self) -> DeploymentTarget {
+        DeploymentTarget::Cloud
+    }
+
     fn supports_streaming(&self) -> bool {
         true
     }
@@ -393,5 +397,15 @@ mod tests {
         assert!(SUPPORTED_MODELS.contains(&"claude-sonnet-4-20250514"));
         assert!(SUPPORTED_MODELS.contains(&"claude-opus-4-20250514"));
         assert!(!SUPPORTED_MODELS.contains(&"gpt-4"));
+    }
+
+    #[test]
+    fn cc_provider_reports_cloud_deployment_target() {
+        let provider = CcProvider {
+            cc_binary: PathBuf::from("claude"),
+            default_model: "claude-opus-4-6".to_owned(),
+            timeout: Duration::from_secs(1),
+        };
+        assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
     }
 }
