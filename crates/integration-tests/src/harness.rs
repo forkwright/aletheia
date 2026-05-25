@@ -439,7 +439,7 @@ impl TestHarness {
         let router = self.router();
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("local_addr");
-        let base_url = format!("http://{addr}");
+        let base_url = format!("http://{addr}"); // kanon:ignore SECURITY/insecure-transport
 
         tokio::spawn(
             async move {
