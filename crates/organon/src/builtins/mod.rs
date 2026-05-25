@@ -249,7 +249,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_energeia_registry_excludes_unimplemented_bookkeeper_tools() -> Result<()> {
+    fn default_energeia_registry_excludes_feature_gated_bookkeeper_tools() -> Result<()> {
         let mut registry = ToolRegistry::new();
         register_domain_tools(&mut registry, SandboxConfig::default(), None)?;
         let names: Vec<&str> = registry
@@ -264,7 +264,7 @@ mod tests {
         );
         assert!(
             !names.contains(&"tamias") && !names.contains(&"katharos"),
-            "unimplemented bookkeeper tools must not be exposed by default"
+            "feature-gated bookkeeper tools must not be exposed by default"
         );
         Ok(())
     }
