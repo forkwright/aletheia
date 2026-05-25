@@ -119,8 +119,8 @@ pub enum DeploymentTarget {
 /// Which concrete provider implementation to instantiate at startup.
 ///
 /// Matches on this in `crates/aletheia/src/runtime/setup.rs` to pick between
-/// the Anthropic HTTP client, OpenAI-compatible HTTP client, or the CC
-/// subprocess adapter.
+/// the Anthropic HTTP client, OpenAI-compatible HTTP client, or a subprocess
+/// adapter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
@@ -138,6 +138,10 @@ pub enum ProviderKind {
     /// Claude Code subprocess adapter (delegates to the `claude` CLI).
     /// Requires the `cc-provider` feature flag on hermeneus.
     ClaudeCode,
+    /// Codex CLI subprocess adapter (delegates to the `codex` CLI).
+    /// Requires the `codex-provider` feature flag on hermeneus.
+    #[serde(rename = "codex_oauth", alias = "codex-oauth")]
+    CodexOauth,
 }
 
 /// `OpenAI` HTTP API family for `OpenAI` and OpenAI-compatible providers.
@@ -170,7 +174,7 @@ pub struct LlmProviderConfig {
     /// HTTP base URL override. Required for OpenAI-compatible providers
     /// (e.g., `http://127.0.0.1:8088/v1` for local llama.cpp). Optional for
     /// Anthropic (defaults to `https://api.anthropic.com`). Ignored for
-    /// the Claude Code subprocess adapter.
+    /// subprocess adapters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
     /// Environment variable name holding the API key. Read at startup via
@@ -180,7 +184,8 @@ pub struct LlmProviderConfig {
     pub api_key_env: Option<String>,
     /// `OpenAI` API family to use. If omitted, `providerType = "openai"`
     /// defaults to `responses`, while `openai-compatible` defaults to
-    /// `chat-completions` for local/proxy compatibility.
+    /// `chat-completions` for local/proxy compatibility. Ignored for
+    /// subprocess adapters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_family: Option<OpenAiApiFamily>,
     /// Where this provider's traffic terminates. Drives the

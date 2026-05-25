@@ -280,10 +280,10 @@ fn configured_openai_api_family(
 /// registry (#3424, #3414).
 ///
 /// Dispatches on `ProviderKind` to pick between Anthropic, OpenAI-compatible
-/// HTTP, and the CC subprocess adapter. Anthropic entries in the declarative
-/// list are skipped — the top-level credential chain already owns the
-/// Anthropic provider so we do not double-register. Empty list (the default)
-/// is a no-op, preserving legacy single-provider behavior.
+/// HTTP, and subprocess adapters. Anthropic and subprocess entries in the
+/// declarative list are skipped when their legacy registration path already
+/// owns the provider so we do not double-register. Empty list (the default) is
+/// a no-op, preserving legacy single-provider behavior.
 fn register_declared_providers(registry: &mut ProviderRegistry, config: &AletheiaConfig) {
     use taxis::config::ProviderKind;
 
@@ -373,6 +373,17 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
                 tracing::debug!(
                     provider = %entry.name,
                     "declarative ClaudeCode entry skipped — provider already registered via credential chain"
+                );
+            }
+            ProviderKind::CodexOauth => {
+                // WHY: codex-provider registration is feature-gated above and
+                // owns binary discovery / CLI OAuth inheritance when enabled.
+                // Accepting the typed config shape here makes the provider
+                // declarable without changing startup behavior or introducing
+                // duplicate routing.
+                tracing::debug!(
+                    provider = %entry.name,
+                    "declarative Codex OAuth entry accepted; registration remains controlled by codex-provider feature path"
                 );
             }
             // WHY: ProviderKind is #[non_exhaustive] so future additions
