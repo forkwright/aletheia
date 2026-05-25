@@ -5,9 +5,35 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::AgentOptions;
+use crate::types::SessionStatus;
+
+/// Progress bridge event for a child prompt session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ChildSessionProgress {
+    /// Prompt number that owns the child session.
+    pub prompt_number: u32,
+    /// Current child-session lifecycle state.
+    pub status: ChildSessionProgressStatus,
+    /// Agent SDK session identifier.
+    pub child_session_id: String,
+    /// Bounded text excerpt observed from the child session, when available.
+    pub output_excerpt: Option<String>,
+}
+
+/// Lifecycle state reported by [`ChildSessionProgress`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ChildSessionProgressStatus {
+    /// A child session has been spawned.
+    Started,
+    /// A child session reached a terminal energeia session status.
+    Finished(SessionStatus),
+}
 
 // ---------------------------------------------------------------------------
 // EngineConfig
@@ -27,6 +53,8 @@ pub struct EngineConfig {
     pub idle_timeout: Option<Duration>,
     /// Cancellation token shared by the dispatch group.
     pub cancel: Option<CancellationToken>,
+    /// Optional parent bridge for child-session progress events.
+    pub child_progress_tx: Option<mpsc::UnboundedSender<ChildSessionProgress>>,
 }
 
 impl EngineConfig {
@@ -38,6 +66,7 @@ impl EngineConfig {
             additional_dirs: Vec::new(),
             idle_timeout: None,
             cancel: None,
+            child_progress_tx: None,
         }
     }
 
@@ -106,6 +135,13 @@ impl EngineConfig {
         self
     }
 
+    /// Set the parent bridge for child-session progress events.
+    #[must_use]
+    pub fn child_progress_tx(mut self, tx: mpsc::UnboundedSender<ChildSessionProgress>) -> Self {
+        self.child_progress_tx = Some(tx);
+        self
+    }
+
     /// Extract the inner [`AgentOptions`] for passing to the engine.
     #[must_use]
     pub fn to_agent_options(&self) -> AgentOptions {
@@ -161,6 +197,7 @@ mod tests {
             Some(&PathBuf::from("/tmp/shared"))
         );
         assert_eq!(config.idle_timeout, Some(Duration::from_mins(5)));
+        assert!(config.child_progress_tx.is_none());
     }
 
     #[test]
@@ -169,6 +206,14 @@ mod tests {
         assert!(config.options.model.is_none());
         assert!(config.additional_dirs.is_empty());
         assert!(config.idle_timeout.is_none());
+        assert!(config.child_progress_tx.is_none());
+    }
+
+    #[test]
+    fn child_progress_tx_builder_sets_bridge() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let config = EngineConfig::default().child_progress_tx(tx);
+        assert!(config.child_progress_tx.is_some());
     }
 
     #[test]

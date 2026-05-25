@@ -13,7 +13,7 @@ use crate::resume::ResumePolicy;
 use crate::types::{Budget, SessionOutcome, SessionStatus};
 
 use super::events::{self, StreamOutcome, extract_pr_url};
-use super::options::EngineConfig;
+use super::options::{ChildSessionProgress, ChildSessionProgressStatus, EngineConfig};
 
 // ---------------------------------------------------------------------------
 // SessionManager
@@ -82,6 +82,7 @@ impl SessionManager {
         let mut total_turns = 0_u32;
         let mut resume_count = 0_u32;
         let mut pr_url: Option<String> = None;
+        let mut last_output_excerpt: Option<String>;
 
         // --- Initial session ---
 
@@ -119,6 +120,13 @@ impl SessionManager {
             })?;
 
         let mut session_id = Some(handle.session_id().to_owned());
+        emit_child_progress(
+            options,
+            prompt.number,
+            ChildSessionProgressStatus::Started,
+            session_id.as_deref(),
+            None,
+        );
 
         let stream_result =
             events::process_events(&mut handle, options.idle_timeout, options.cancel.as_ref())
@@ -138,6 +146,11 @@ impl SessionManager {
         )
         .await?
         {
+            emit_child_terminal(
+                options,
+                &outcome,
+                output_excerpt_from_stream(&stream_result),
+            );
             return Ok(outcome);
         }
 
@@ -156,6 +169,7 @@ impl SessionManager {
 
         // NOTE: Extract PR URL from all text fragments and result text.
         let all_text = collect_text(&stream_result, result_text.as_deref());
+        last_output_excerpt = output_excerpt(&all_text);
         if let Some(url) = extract_pr_url(&all_text) {
             pr_url = Some(url.to_owned());
         }
@@ -176,7 +190,7 @@ impl SessionManager {
         // --- Check if initial run succeeded ---
 
         if run_success {
-            return Ok(build_outcome(
+            let outcome = build_outcome(
                 prompt.number,
                 SessionStatus::Success,
                 session_id,
@@ -190,7 +204,9 @@ impl SessionManager {
                 prompt.blast_radius.clone(),
                 cache_hits,
                 cache_misses,
-            ));
+            );
+            emit_child_terminal(options, &outcome, last_output_excerpt);
+            return Ok(outcome);
         }
 
         // --- Budget check before entering resume loop ---
@@ -201,7 +217,7 @@ impl SessionManager {
                 reason = %reason,
                 "budget exceeded after initial run"
             );
-            return Ok(build_outcome(
+            let outcome = build_outcome(
                 prompt.number,
                 SessionStatus::BudgetExceeded,
                 session_id,
@@ -215,7 +231,9 @@ impl SessionManager {
                 prompt.blast_radius.clone(),
                 cache_hits,
                 cache_misses,
-            ));
+            );
+            emit_child_terminal(options, &outcome, last_output_excerpt);
+            return Ok(outcome);
         }
 
         if let BudgetStatus::Warning(msg) = self.budget.check() {
@@ -237,7 +255,7 @@ impl SessionManager {
                     resume_count,
                     "all resume stages exhausted, marking as Stuck"
                 );
-                return Ok(build_outcome(
+                let outcome = build_outcome(
                     prompt.number,
                     SessionStatus::Stuck,
                     session_id,
@@ -251,7 +269,9 @@ impl SessionManager {
                     prompt.blast_radius.clone(),
                     cache_hits,
                     cache_misses,
-                ));
+                );
+                emit_child_terminal(options, &outcome, last_output_excerpt);
+                return Ok(outcome);
             };
 
             resume_count += 1;
@@ -280,7 +300,7 @@ impl SessionManager {
                         error = %e,
                         "resume failed"
                     );
-                    return Ok(build_outcome(
+                    let outcome = build_outcome(
                         prompt.number,
                         SessionStatus::Failed,
                         session_id,
@@ -294,11 +314,20 @@ impl SessionManager {
                         prompt.blast_radius.clone(),
                         cache_hits,
                         cache_misses,
-                    ));
+                    );
+                    emit_child_terminal(options, &outcome, last_output_excerpt);
+                    return Ok(outcome);
                 }
             };
 
             session_id = Some(handle.session_id().to_owned());
+            emit_child_progress(
+                options,
+                prompt.number,
+                ChildSessionProgressStatus::Started,
+                session_id.as_deref(),
+                None,
+            );
 
             let stream_result =
                 events::process_events(&mut handle, options.idle_timeout, options.cancel.as_ref())
@@ -318,6 +347,11 @@ impl SessionManager {
             )
             .await?
             {
+                emit_child_terminal(
+                    options,
+                    &outcome,
+                    output_excerpt_from_stream(&stream_result),
+                );
                 return Ok(outcome);
             }
 
@@ -342,6 +376,7 @@ impl SessionManager {
 
             // NOTE: Check for PR URL in resume output.
             let all_text = collect_text(&stream_result, result_text.as_deref());
+            last_output_excerpt = output_excerpt(&all_text);
             if let Some(url) = extract_pr_url(&all_text) {
                 pr_url = Some(url.to_owned());
             }
@@ -351,7 +386,7 @@ impl SessionManager {
             // --- Success check ---
 
             if run_success {
-                return Ok(build_outcome(
+                let outcome = build_outcome(
                     prompt.number,
                     SessionStatus::Success,
                     session_id,
@@ -365,7 +400,9 @@ impl SessionManager {
                     prompt.blast_radius.clone(),
                     cache_hits,
                     cache_misses,
-                ));
+                );
+                emit_child_terminal(options, &outcome, last_output_excerpt);
+                return Ok(outcome);
             }
 
             // --- Budget check before next resume ---
@@ -377,7 +414,7 @@ impl SessionManager {
                         reason = %reason,
                         "budget exceeded during resume loop"
                     );
-                    return Ok(build_outcome(
+                    let outcome = build_outcome(
                         prompt.number,
                         SessionStatus::BudgetExceeded,
                         session_id,
@@ -391,7 +428,9 @@ impl SessionManager {
                         prompt.blast_radius.clone(),
                         cache_hits,
                         cache_misses,
-                    ));
+                    );
+                    emit_child_terminal(options, &outcome, last_output_excerpt);
+                    return Ok(outcome);
                 }
                 BudgetStatus::Warning(msg) => {
                     tracing::info!(
@@ -517,6 +556,55 @@ fn collect_text(outcome: &StreamOutcome, result_text: Option<&str>) -> String {
         text.push_str(rt);
     }
     text
+}
+
+fn output_excerpt_from_stream(outcome: &StreamOutcome) -> Option<String> {
+    output_excerpt(&accumulator_from(outcome).text_fragments.join(""))
+}
+
+fn output_excerpt(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(trimmed.chars().take(512).collect())
+}
+
+fn emit_child_progress(
+    options: &EngineConfig,
+    prompt_number: u32,
+    status: ChildSessionProgressStatus,
+    child_session_id: Option<&str>,
+    output_excerpt: Option<String>,
+) {
+    let Some(tx) = &options.child_progress_tx else {
+        return;
+    };
+    let Some(child_session_id) = child_session_id else {
+        return;
+    };
+
+    let _ = tx.send(ChildSessionProgress {
+        prompt_number,
+        status,
+        child_session_id: child_session_id.to_owned(),
+        output_excerpt,
+    });
+}
+
+fn emit_child_terminal(
+    options: &EngineConfig,
+    outcome: &SessionOutcome,
+    output_excerpt: Option<String>,
+) {
+    emit_child_progress(
+        options,
+        outcome.prompt_number,
+        ChildSessionProgressStatus::Finished(outcome.status),
+        outcome.session_id.as_deref(),
+        output_excerpt,
+    );
 }
 
 /// Build a [`SessionOutcome`] from the accumulated session state.
@@ -685,6 +773,37 @@ mod tests {
         // Budget should be recorded.
         assert!((budget.current_cost_usd() - 0.50).abs() < 0.01);
         assert_eq!(budget.current_turns(), 10);
+    }
+
+    #[tokio::test]
+    async fn execute_emits_child_session_progress() {
+        let engine = Arc::new(MockEngine::new(vec![success_outcome("sess-1", 0.50, 10)]));
+        let budget = Arc::new(Budget::new(Some(10.0), Some(100), None));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let mgr = SessionManager::new(engine, budget, ResumePolicy::default());
+        let config = default_config().child_progress_tx(tx);
+
+        let outcome = mgr.execute(&sample_prompt_spec(7), &config).await.unwrap();
+        assert_eq!(outcome.status, SessionStatus::Success);
+
+        let started = rx.recv().await.unwrap();
+        assert_eq!(started.prompt_number, 7);
+        assert_eq!(started.status, ChildSessionProgressStatus::Started);
+        assert_eq!(started.child_session_id, "sess-1");
+        assert!(started.output_excerpt.is_none());
+
+        let finished = rx.recv().await.unwrap();
+        assert_eq!(finished.prompt_number, 7);
+        assert_eq!(
+            finished.status,
+            ChildSessionProgressStatus::Finished(SessionStatus::Success)
+        );
+        assert_eq!(finished.child_session_id, "sess-1");
+        assert_eq!(
+            finished.output_excerpt.as_deref(),
+            Some("working on it task complete")
+        );
     }
 
     // ---- PR URL extraction ----
