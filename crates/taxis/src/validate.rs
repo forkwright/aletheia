@@ -732,7 +732,7 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
         match entry.get("providerType").and_then(Value::as_str) {
             None | Some("") => {
                 errors.push(format!(
-                    "providers[{i}].providerType must be one of: anthropic, openai, open-ai-compatible, openai-compatible, claude-code"
+                    "providers[{i}].providerType must be one of: anthropic, openai, open-ai-compatible, openai-compatible, claude-code, codex_oauth, codex-oauth"
                 ));
             }
             Some(kind) => {
@@ -743,9 +743,11 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
                         | "open-ai-compatible"
                         | "openai-compatible"
                         | "claude-code"
+                        | "codex_oauth"
+                        | "codex-oauth"
                 ) {
                     errors.push(format!(
-                        "providers[{i}].providerType '{kind}' is not recognized (expected one of: anthropic, openai, open-ai-compatible, openai-compatible, claude-code)"
+                        "providers[{i}].providerType '{kind}' is not recognized (expected one of: anthropic, openai, open-ai-compatible, openai-compatible, claude-code, codex_oauth, codex-oauth)"
                     ));
                 }
                 // OpenAI-compatible requires baseUrl.

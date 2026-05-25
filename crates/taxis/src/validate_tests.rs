@@ -171,6 +171,12 @@ fn accepts_provider_type_and_deployment_aliases() {
             "baseUrl": "http://127.0.0.1:5009/v1",
             "deploymentTarget": "localhosted",
             "models": ["qwen3-vl"]
+        },
+        {
+            "name": "codex-seat",
+            "providerType": "codex_oauth",
+            "deploymentTarget": "cloud",
+            "models": ["codex/gpt-5-codex"]
         }
     ]);
 
@@ -196,6 +202,12 @@ fn provider_aliases_deserialize_to_typed_config() {
                 "baseUrl": "http://127.0.0.1:5001/v1",
                 "deploymentTarget": "local_hosted",
                 "models": ["anubis-70b"]
+            },
+            {
+                "name": "codex-seat",
+                "providerType": "codex-oauth",
+                "deploymentTarget": "cloud",
+                "models": ["codex/gpt-5-codex"]
             }
         ]
     }"#;
@@ -206,7 +218,7 @@ fn provider_aliases_deserialize_to_typed_config() {
         "provider aliases should parse: {config_result:?}"
     );
     let config = config_result.unwrap_or_default();
-    assert_eq!(config.providers.len(), 2);
+    assert_eq!(config.providers.len(), 3);
     assert_eq!(
         config.providers[0].kind,
         crate::config::ProviderKind::OpenAi
@@ -218,6 +230,14 @@ fn provider_aliases_deserialize_to_typed_config() {
     assert_eq!(
         config.providers[1].deployment_target,
         crate::config::DeploymentTarget::LocalHosted
+    );
+    assert_eq!(
+        config.providers[2].kind,
+        crate::config::ProviderKind::CodexOauth
+    );
+    assert_eq!(
+        config.providers[2].deployment_target,
+        crate::config::DeploymentTarget::Cloud
     );
 }
 
