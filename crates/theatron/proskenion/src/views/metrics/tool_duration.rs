@@ -5,9 +5,7 @@ use dioxus::prelude::*;
 use crate::components::chart::{
     LineChart, LinePoint, LineSeries, PercentileBarChart, PercentileEntry, SERIES_COLORS,
 };
-use crate::state::tool_metrics::{
-    TimeSeriesBucket, ToolStat, tools_by_duration,
-};
+use crate::state::tool_metrics::{tools_by_duration, TimeSeriesBucket, ToolStat};
 
 // -- Component ----------------------------------------------------------------
 
@@ -84,10 +82,13 @@ pub(crate) fn DurationTrendView(
                         label: bucket.date.clone(),
                         value: if bucket_count > 0 {
                             {
-                            #[expect(clippy::as_conversions, reason = "u64 ms to f64 for chart point")]
-                            let v = tool.p50_ms as f64;
-                            v
-                        }
+                                #[expect(
+                                    clippy::as_conversions,
+                                    reason = "u64 ms to f64 for chart point"
+                                )]
+                                let v = tool.p50_ms as f64;
+                                v
+                            }
                         } else {
                             0.0
                         },
@@ -106,5 +107,3 @@ pub(crate) fn DurationTrendView(
         LineChart { series, height: 150 }
     }
 }
-
-

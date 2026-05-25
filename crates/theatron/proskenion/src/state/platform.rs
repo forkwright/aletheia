@@ -55,8 +55,6 @@ pub struct TrayState {
     pub window_visible: bool,
 }
 
-
-
 /// Registration status for a global hotkey.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -84,16 +82,12 @@ pub enum HotkeyAction {
     AbortStreaming,
 }
 
-
-
 /// Reactive state for global hotkey registration.
 #[derive(Debug, Clone, Default)]
 pub struct HotkeyState {
     /// Registration status for each hotkey action.
     pub registrations: Vec<(HotkeyAction, HotkeyRegistration)>,
 }
-
-
 
 /// Persisted window geometry and UI state.
 ///
@@ -166,8 +160,6 @@ impl Default for WindowState {
         }
     }
 }
-
-
 
 /// Reactive state for the quick input overlay.
 #[derive(Debug, Clone, Default)]

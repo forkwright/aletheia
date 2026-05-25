@@ -359,7 +359,10 @@ impl RoadmapStore {
 #[must_use]
 pub(crate) fn days_between(start: &str, end: &str) -> u32 {
     match (date_to_days(start), date_to_days(end)) {
-        #[expect(clippy::as_conversions, reason = "day difference verified positive and small")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "day difference verified positive and small"
+        )]
         (Some(s), Some(e)) if e > s => (e - s) as u32,
         (Some(_), Some(_)) => 1,
         _ => 30,
@@ -398,7 +401,7 @@ pub(crate) fn status_label(status: ProjectStatus) -> &'static str {
     }
 }
 
-/// Phase status color.
+/// CSS background color for phase status badges.
 #[must_use]
 pub(crate) fn phase_status_color(status: PhaseStatus) -> &'static str {
     match status {
