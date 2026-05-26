@@ -486,6 +486,7 @@ impl EnergeiaStore {
             content,
             fact_type: "training".to_owned(),
             scope: None,
+            project_id: None,
             temporal: FactTemporal {
                 valid_from: now,
                 valid_to: far_future,
