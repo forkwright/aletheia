@@ -6,6 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::dag::condition::{ConditionContext, evaluate_condition};
 use crate::dag::{PromptDag, PromptStatus};
 
 /// Compute the parallel dispatch frontier from a DAG.
@@ -38,6 +39,11 @@ pub fn compute_frontier(dag: &PromptDag) -> Vec<Vec<u32>> {
         .iter()
         .filter(|(_, n)| n.status == PromptStatus::Done)
         .map(|(&num, _)| num)
+        .collect();
+    let mut outputs: HashMap<u32, serde_json::Value> = dag
+        .nodes
+        .iter()
+        .filter_map(|(&num, node)| node.output.clone().map(|output| (num, output)))
         .collect();
 
     // NOTE: Only non-Done prompts are dispatchable.
@@ -77,6 +83,7 @@ pub fn compute_frontier(dag: &PromptDag) -> Vec<Vec<u32>> {
                 deps.get(&num)
                     .is_none_or(|d| d.iter().all(|dep| completed.contains(dep)))
             })
+            .filter(|&&num| node_condition_allows(dag, num, &outputs))
             .copied()
             .collect();
 
@@ -89,10 +96,71 @@ pub fn compute_frontier(dag: &PromptDag) -> Vec<Vec<u32>> {
         group.sort_unstable();
         dispatched += group.len();
         completed.extend(&group);
+        for num in &group {
+            if let Some(output) = dag.nodes.get(num).and_then(|node| node.output.clone()) {
+                outputs.insert(*num, output);
+            }
+        }
         groups.push(group);
     }
 
     groups
+}
+
+/// Compute the next currently eligible frontier group from real DAG state.
+///
+/// Unlike [`compute_frontier`], this does not simulate future completion. It
+/// returns only non-terminal nodes whose dependencies are already `Done` and
+/// whose `when` condition is satisfied by recorded structured outputs.
+#[must_use]
+pub fn compute_ready_frontier(dag: &PromptDag) -> Vec<u32> {
+    let completed: HashSet<u32> = dag
+        .nodes
+        .iter()
+        .filter(|(_, n)| n.status == PromptStatus::Done)
+        .map(|(&num, _)| num)
+        .collect();
+    let outputs: HashMap<u32, serde_json::Value> = dag
+        .nodes
+        .iter()
+        .filter_map(|(&num, node)| node.output.clone().map(|output| (num, output)))
+        .collect();
+    let all_numbers: HashSet<u32> = dag.nodes.keys().copied().collect();
+
+    let mut group: Vec<u32> = dag
+        .nodes
+        .iter()
+        .filter(|(_, node)| {
+            matches!(
+                node.status,
+                PromptStatus::Pending | PromptStatus::Ready | PromptStatus::Blocked
+            )
+        })
+        .filter(|(_, node)| {
+            node.depends_on
+                .iter()
+                .filter(|dep| all_numbers.contains(dep))
+                .all(|dep| completed.contains(dep))
+        })
+        .filter(|&(&num, _)| node_condition_allows(dag, num, &outputs))
+        .map(|(&num, _)| num)
+        .collect();
+
+    group.sort_unstable();
+    group
+}
+
+fn node_condition_allows(
+    dag: &PromptDag,
+    number: u32,
+    outputs: &HashMap<u32, serde_json::Value>,
+) -> bool {
+    let Some(when) = dag.nodes.get(&number).and_then(|node| node.when.as_deref()) else {
+        return true;
+    };
+
+    let context = ConditionContext::from_prompt_outputs(outputs);
+    evaluate_condition(when, &context).unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -243,5 +311,48 @@ mod tests {
         // Algorithm breaks early.
         assert_eq!(frontier.len(), 1);
         assert_eq!(frontier[0], vec![1]);
+    }
+
+    #[test]
+    fn frontier_gates_branch_by_structured_output_condition() {
+        let mut dag = PromptDag::new();
+        dag.add_node_with_contract(
+            1,
+            vec![],
+            crate::dag::ContextPolicy::Fresh,
+            Some(crate::dag::NodeOutputFormat {
+                schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["severity"],
+                    "properties": {
+                        "severity": { "enum": ["high", "low"] }
+                    }
+                }),
+            }),
+            None,
+        )
+        .unwrap();
+        dag.add_node_with_contract(
+            2,
+            vec![1],
+            crate::dag::ContextPolicy::Fresh,
+            None,
+            Some("$1.output.severity == 'high'".to_owned()),
+        )
+        .unwrap();
+        dag.add_node_with_contract(
+            3,
+            vec![1],
+            crate::dag::ContextPolicy::Fresh,
+            None,
+            Some("$1.output.severity == 'low'".to_owned()),
+        )
+        .unwrap();
+
+        dag.complete_node(1, Some(serde_json::json!({ "severity": "high" })))
+            .unwrap();
+
+        assert_eq!(compute_ready_frontier(&dag), vec![2]);
+        assert_eq!(compute_frontier(&dag), vec![vec![2]]);
     }
 }

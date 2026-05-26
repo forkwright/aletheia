@@ -5,6 +5,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+pub mod condition;
+
 /// Status of a prompt node within the dependency graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -53,6 +55,39 @@ pub enum ContextPolicy {
     Shared,
 }
 
+/// JSON-schema contract for a prompt node's structured output.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct NodeOutputFormat {
+    /// JSON Schema that successful node output must satisfy.
+    pub schema: serde_json::Value,
+}
+
+impl NodeOutputFormat {
+    /// Validate a node output value against this format's JSON Schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DagError::InvalidOutputSchema`] if the schema itself cannot
+    /// be compiled, or [`DagError::OutputSchemaViolation`] if `output` does
+    /// not satisfy the schema.
+    pub fn validate_output(&self, number: u32, output: &serde_json::Value) -> Result<(), DagError> {
+        let validator = jsonschema::validator_for(&self.schema).map_err(|source| {
+            DagError::InvalidOutputSchema {
+                number,
+                detail: source.to_string(),
+            }
+        })?;
+
+        validator
+            .validate(output)
+            .map_err(|source| DagError::OutputSchemaViolation {
+                number,
+                detail: source.to_string(),
+            })
+    }
+}
+
 /// A node in the prompt dependency graph.
 #[derive(Debug, Clone)]
 pub struct DagNode {
@@ -62,6 +97,12 @@ pub struct DagNode {
     pub depends_on: Vec<u32>,
     /// Conversational context policy for this prompt.
     pub context_policy: ContextPolicy,
+    /// Optional JSON-schema contract for structured node output.
+    pub output_format: Option<NodeOutputFormat>,
+    /// Structured output produced by the node after successful completion.
+    pub output: Option<serde_json::Value>,
+    /// Optional condition that must evaluate true before this node is eligible.
+    pub when: Option<String>,
     /// Current execution status.
     pub status: PromptStatus,
 }
@@ -96,6 +137,24 @@ pub enum DagError {
     DuplicateNode {
         /// The duplicate prompt number.
         number: u32,
+    },
+
+    /// A node output schema could not be compiled.
+    #[snafu(display("invalid output schema for prompt {number}: {detail}"))]
+    InvalidOutputSchema {
+        /// The prompt number whose schema is invalid.
+        number: u32,
+        /// Schema validation library diagnostic.
+        detail: String,
+    },
+
+    /// A node output failed its JSON-schema contract.
+    #[snafu(display("output for prompt {number} failed schema validation: {detail}"))]
+    OutputSchemaViolation {
+        /// The prompt number whose output was validated.
+        number: u32,
+        /// Validation diagnostic.
+        detail: String,
     },
 }
 
@@ -164,6 +223,24 @@ impl PromptDag {
         depends_on: Vec<u32>,
         context_policy: ContextPolicy,
     ) -> Result<(), DagError> {
+        self.add_node_with_contract(number, depends_on, context_policy, None, None)
+    }
+
+    /// Add a prompt node with context, output format, and branch condition.
+    ///
+    /// The initial status is `Pending`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DagError::DuplicateNode`] if `number` is already present.
+    pub fn add_node_with_contract(
+        &mut self,
+        number: u32,
+        depends_on: Vec<u32>,
+        context_policy: ContextPolicy,
+        output_format: Option<NodeOutputFormat>,
+        when: Option<String>,
+    ) -> Result<(), DagError> {
         if self.nodes.contains_key(&number) {
             return Err(DagError::DuplicateNode { number });
         }
@@ -173,6 +250,9 @@ impl PromptDag {
                 number,
                 depends_on,
                 context_policy,
+                output_format,
+                output: None,
+                when,
                 status: PromptStatus::Pending,
             },
         );
@@ -190,6 +270,60 @@ impl PromptDag {
             .ok_or(DagError::InvalidPrompt { number })?
             .status = status;
         Ok(())
+    }
+
+    /// Record structured output for a node, validating it against any node
+    /// output schema before storing it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DagError::InvalidPrompt`] if `number` is unknown, or a schema
+    /// validation error if the node has an [`NodeOutputFormat`] contract.
+    pub fn set_output(&mut self, number: u32, output: serde_json::Value) -> Result<(), DagError> {
+        let node = self
+            .nodes
+            .get_mut(&number)
+            .ok_or(DagError::InvalidPrompt { number })?;
+
+        if let Some(format) = &node.output_format {
+            format.validate_output(number, &output)?;
+        }
+
+        node.output = Some(output);
+        Ok(())
+    }
+
+    /// Validate and complete a node with optional structured output.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DagError::InvalidPrompt`] if `number` is unknown, or a schema
+    /// validation error if `output` does not satisfy the node contract.
+    pub fn complete_node(
+        &mut self,
+        number: u32,
+        output: Option<serde_json::Value>,
+    ) -> Result<(), DagError> {
+        if let Some(output) = output {
+            self.set_output(number, output)?;
+        } else if let Some(node) = self.nodes.get(&number)
+            && node.output_format.is_some()
+        {
+            return Err(DagError::OutputSchemaViolation {
+                number,
+                detail: "node completed without structured output".to_owned(),
+            });
+        }
+
+        self.set_status(number, PromptStatus::Done)
+    }
+
+    /// Return the structured output currently recorded for a node.
+    #[must_use]
+    pub fn output(&self, number: u32) -> Option<&serde_json::Value> {
+        self.nodes
+            .get(&number)
+            .and_then(|node| node.output.as_ref())
     }
 
     /// Return prompt numbers currently in [`PromptStatus::Ready`] state.
@@ -367,6 +501,41 @@ mod tests {
         let mut dag = PromptDag::new();
         let err = dag.set_status(99, PromptStatus::Done).unwrap_err();
         assert!(matches!(err, DagError::InvalidPrompt { number: 99 }));
+    }
+
+    #[test]
+    fn complete_node_validates_structured_output_schema() {
+        let mut dag = PromptDag::new();
+        dag.add_node_with_contract(
+            1,
+            vec![],
+            ContextPolicy::Fresh,
+            Some(NodeOutputFormat {
+                schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["approved"],
+                    "properties": {
+                        "approved": { "type": "boolean" }
+                    }
+                }),
+            }),
+            None,
+        )
+        .unwrap();
+
+        let err = dag
+            .complete_node(1, Some(serde_json::json!({ "approved": "yes" })))
+            .unwrap_err();
+        assert!(matches!(err, DagError::OutputSchemaViolation { .. }));
+        assert_eq!(dag.nodes[&1].status, PromptStatus::Pending);
+
+        dag.complete_node(1, Some(serde_json::json!({ "approved": true })))
+            .unwrap();
+        assert_eq!(dag.nodes[&1].status, PromptStatus::Done);
+        assert_eq!(
+            dag.output(1),
+            Some(&serde_json::json!({ "approved": true }))
+        );
     }
 
     #[test]

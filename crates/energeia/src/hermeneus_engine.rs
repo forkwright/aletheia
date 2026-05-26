@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use hermeneus::provider::{LlmProvider, ModelPricing, ProviderConfig};
-use hermeneus::types::{CompletionRequest, Content, Message, Role, StopReason};
+use hermeneus::types::{CompletionRequest, Content, Message, OutputFormat, Role, StopReason};
 
 use crate::engine::{
     AgentOptions, DispatchEngine, SessionEvent, SessionHandle, SessionResult, SessionSpec,
@@ -94,6 +94,14 @@ impl HermeneusEngine {
             }],
             max_tokens: options.max_turns.unwrap_or(4096),
             cache_system,
+            output_format: spec
+                .output_format
+                .as_ref()
+                .map(|format| OutputFormat::JsonSchema {
+                    name: "node_output".to_owned(),
+                    schema: format.schema.clone(),
+                    strict: Some(true),
+                }),
             ..CompletionRequest::default()
         }
     }
@@ -180,6 +188,10 @@ impl DispatchEngine for HermeneusEngine {
                 })
                 .collect::<Vec<_>>()
                 .join("");
+            let structured_output = request
+                .output_format
+                .as_ref()
+                .and_then(|_| serde_json::from_str(&text).ok());
 
             let success = matches!(
                 response.stop_reason,
@@ -193,6 +205,7 @@ impl DispatchEngine for HermeneusEngine {
                 duration_ms,
                 success,
                 result_text: Some(text.clone()),
+                structured_output,
                 model: Some(request.model),
                 cache_hit_tokens: response.usage.cache_read_tokens,
                 cache_miss_tokens: response.usage.cache_write_tokens,
@@ -261,6 +274,7 @@ impl DispatchEngine for HermeneusEngine {
 
             let result = SessionResult {
                 session_id: session_id.clone(),
+                structured_output: None,
                 cost_usd: self.cost_from_response(&response, &request.model),
                 num_turns: 1,
                 duration_ms,
@@ -354,6 +368,7 @@ mod tests {
                 static_prefix: "static".to_owned(),
                 dynamic_suffix: "dynamic".to_owned(),
             }),
+            output_format: None,
         };
 
         let request = engine.build_request(&spec, &AgentOptions::new());
@@ -373,11 +388,48 @@ mod tests {
             system_prompt: None,
             cwd: None,
             prompt_components: None,
+            output_format: None,
         };
 
         let request = engine.build_request(&spec, &AgentOptions::new());
         assert!(!request.cache_system);
         assert_eq!(request.system, None);
+    }
+
+    #[test]
+    fn build_request_maps_node_output_format_to_provider_schema() {
+        let provider = Arc::new(hermeneus::test_utils::MockProvider::new("done"));
+        let engine = HermeneusEngine::new(provider, "test-model");
+        let schema = serde_json::json!({
+            "type": "object",
+            "required": ["approved"],
+            "properties": {
+                "approved": { "type": "boolean" }
+            }
+        });
+
+        let spec = SessionSpec {
+            prompt: "review".to_owned(),
+            system_prompt: None,
+            cwd: None,
+            prompt_components: None,
+            output_format: Some(crate::dag::NodeOutputFormat {
+                schema: schema.clone(),
+            }),
+        };
+
+        let request = engine.build_request(&spec, &AgentOptions::new());
+        match request.output_format {
+            Some(OutputFormat::JsonSchema {
+                schema: actual,
+                strict,
+                ..
+            }) => {
+                assert_eq!(actual, schema);
+                assert_eq!(strict, Some(true));
+            }
+            other => panic!("expected JSON schema output format, got {other:?}"),
+        }
     }
 
     #[test]
@@ -393,6 +445,7 @@ mod tests {
                 static_prefix: String::new(),
                 dynamic_suffix: "dynamic".to_owned(),
             }),
+            output_format: None,
         };
 
         let request = engine.build_request(&spec, &AgentOptions::new());
@@ -413,6 +466,7 @@ mod tests {
             system_prompt: None,
             cwd: None,
             prompt_components: None,
+            output_format: None,
         };
 
         let handle = engine.spawn_session(&spec, &AgentOptions::new()).await?;
@@ -450,6 +504,7 @@ mod tests {
             system_prompt: None,
             cwd: None,
             prompt_components: None,
+            output_format: None,
         };
 
         let handle = engine.spawn_session(&spec, &AgentOptions::new()).await?;
@@ -486,6 +541,7 @@ mod tests {
             system_prompt: None,
             cwd: None,
             prompt_components: None,
+            output_format: None,
         };
 
         let handle = engine.spawn_session(&spec, &AgentOptions::new()).await?;

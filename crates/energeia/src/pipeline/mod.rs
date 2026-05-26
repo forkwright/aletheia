@@ -202,6 +202,8 @@ mod tests {
             description: "test task".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -214,6 +216,7 @@ mod tests {
             events: vec![SessionEvent::TurnComplete { turn: 5 }],
             result: SessionResult {
                 session_id: "s1".to_owned(),
+                structured_output: None,
                 cost_usd: 0.50,
                 num_turns: 5,
                 duration_ms: 100,

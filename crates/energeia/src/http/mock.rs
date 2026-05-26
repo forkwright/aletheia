@@ -169,6 +169,7 @@ mod tests {
     fn make_result(session_id: &str, success: bool) -> SessionResult {
         SessionResult {
             session_id: session_id.to_owned(),
+            structured_output: None,
             cost_usd: 0.05,
             num_turns: 3,
             duration_ms: 1000,
@@ -187,6 +188,7 @@ mod tests {
             cwd: None,
 
             prompt_components: None,
+            output_format: None,
         }
     }
 

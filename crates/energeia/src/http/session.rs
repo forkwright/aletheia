@@ -93,6 +93,7 @@ impl SessionHandle for ProcessSessionHandle {
 
                 Ok(SessionResult {
                     session_id: self.session_id.clone(),
+                    structured_output: None,
                     cost_usd: result.total_cost_usd.unwrap_or(0.0),
                     num_turns: result.num_turns,
                     duration_ms,

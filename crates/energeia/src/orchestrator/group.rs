@@ -76,6 +76,7 @@ pub(crate) async fn execute_group(
                 Ok(outcome) => outcome,
                 Err(e) => SessionOutcome {
                     prompt_number: prompt.number,
+                    structured_output: None,
                     status: SessionStatus::Failed,
                     session_id: None,
                     cost_usd: 0.0,
@@ -121,6 +122,7 @@ pub(crate) async fn execute_group(
                 tracing::error!(error = %join_err, "session task join error");
                 outcomes.push(SessionOutcome {
                     prompt_number: 0,
+                    structured_output: None,
                     status: SessionStatus::InfraFailure,
                     session_id: None,
                     cost_usd: 0.0,
@@ -146,6 +148,7 @@ pub(crate) async fn execute_group(
 fn skipped_outcome(prompt: &PromptSpec, reason: &str) -> SessionOutcome {
     SessionOutcome {
         prompt_number: prompt.number,
+        structured_output: None,
         status: SessionStatus::Skipped,
         session_id: None,
         cost_usd: 0.0,
@@ -188,6 +191,8 @@ mod tests {
             description: format!("test prompt {number}"),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -201,6 +206,7 @@ mod tests {
             events: vec![SessionEvent::TurnComplete { turn: turns }],
             result: SessionResult {
                 session_id: session_id.to_owned(),
+                structured_output: None,
                 cost_usd: cost,
                 num_turns: turns,
                 duration_ms: 100,

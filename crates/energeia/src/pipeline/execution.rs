@@ -7,6 +7,7 @@
 // stages.
 
 use crate::dag::{PromptDag, PromptStatus};
+use crate::frontier::compute_ready_frontier;
 use crate::pipeline::PipelineStage;
 use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::PipelineError;
@@ -30,19 +31,22 @@ impl PipelineStage for ExecutionStage {
 
         let t0 = std::time::Instant::now();
 
-        // Clone frontier to avoid borrow conflict while mutating ctx inside the
-        // loop. The frontier is immutable after preparation.
-        let frontier = ctx.frontier.clone();
+        let mut group_idx = 0_usize;
+        loop {
+            let group_numbers = compute_ready_frontier(ctx.dag_mut());
+            if group_numbers.is_empty() {
+                break;
+            }
 
-        for (group_idx, group_numbers) in frontier.iter().enumerate() {
             if ctx.cancel.is_cancelled() {
                 tracing::info!(group = group_idx, "skipping group due to cancellation");
                 {
                     let dag = ctx.dag_mut();
-                    let skipped = collect_skipped(group_numbers, dag, "dispatch aborted");
+                    let skipped = collect_skipped(&group_numbers, dag, "dispatch aborted");
                     ctx.outcomes.extend(skipped);
                 }
                 ctx.aborted = true;
+                group_idx += 1;
                 continue;
             }
 
@@ -54,17 +58,18 @@ impl PipelineStage for ExecutionStage {
                 );
                 {
                     let dag = ctx.dag_mut();
-                    let skipped = collect_skipped(group_numbers, dag, "dispatch aborted");
+                    let skipped = collect_skipped(&group_numbers, dag, "dispatch aborted");
                     ctx.outcomes.extend(skipped);
                 }
                 ctx.aborted = true;
+                group_idx += 1;
                 continue;
             }
 
             // Collect prompts for this group, skipping those whose dependencies
             // failed or are blocked.
             let mut group_prompts: Vec<PromptSpec> = Vec::new();
-            for &n in group_numbers {
+            for &n in &group_numbers {
                 let Some(prompt) = ctx.prompt_map.get(&n).cloned() else {
                     continue;
                 };
@@ -72,6 +77,7 @@ impl PipelineStage for ExecutionStage {
                     let _ = ctx.dag_mut().set_status(n, PromptStatus::Blocked);
                     ctx.outcomes.push(SessionOutcome {
                         prompt_number: n,
+                        structured_output: None,
                         status: SessionStatus::Skipped,
                         session_id: None,
                         cost_usd: 0.0,
@@ -153,9 +159,10 @@ impl PipelineStage for ExecutionStage {
 
                 match outcome.status {
                     SessionStatus::Success => {
-                        let _ = ctx
-                            .dag_mut()
-                            .set_status(outcome.prompt_number, PromptStatus::Done);
+                        let _ = ctx.dag_mut().complete_node(
+                            outcome.prompt_number,
+                            outcome.structured_output.clone(),
+                        );
 
                         if let Some(pr_url) = &outcome.pr_url
                             && let Some(prompt) =
@@ -193,12 +200,54 @@ impl PipelineStage for ExecutionStage {
             }
 
             ctx.outcomes.extend(outcomes);
+            group_idx += 1;
+        }
+
+        let existing_outcomes: std::collections::HashSet<u32> = ctx
+            .outcomes
+            .iter()
+            .map(|outcome| outcome.prompt_number)
+            .collect();
+        let dependency_skipped: Vec<u32> = {
+            let dag = ctx.dag_mut();
+            dag.nodes
+                .values()
+                .filter(|node| !existing_outcomes.contains(&node.number))
+                .filter(|node| matches!(node.status, PromptStatus::Blocked))
+                .filter(|node| has_failed_dependency(node.number, dag))
+                .map(|node| node.number)
+                .collect()
+        };
+        for number in dependency_skipped {
+            let blast_radius = ctx
+                .prompt_map
+                .get(&number)
+                .map(|prompt| prompt.blast_radius.clone())
+                .unwrap_or_default();
+            ctx.outcomes.push(SessionOutcome {
+                prompt_number: number,
+                structured_output: None,
+                status: SessionStatus::Skipped,
+                session_id: None,
+                cost_usd: 0.0,
+                num_turns: 0,
+                duration_ms: 0,
+                resume_count: 0,
+                pr_url: None,
+                error: Some("dependency failed".to_owned()),
+                model: None,
+                blast_radius,
+                corrective_attempts: 0,
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
+            });
         }
 
         // Any correctives that had no group to run in are recorded as skipped.
         for c in std::mem::take(&mut ctx.correctives) {
             ctx.outcomes.push(SessionOutcome {
                 prompt_number: c.number,
+                structured_output: None,
                 status: SessionStatus::Skipped,
                 session_id: None,
                 cost_usd: 0.0,
@@ -265,6 +314,7 @@ fn collect_skipped(numbers: &[u32], dag: &mut PromptDag, reason: &str) -> Vec<Se
             let _ = dag.set_status(n, PromptStatus::Failed);
             SessionOutcome {
                 prompt_number: n,
+                structured_output: None,
                 status: SessionStatus::Skipped,
                 session_id: None,
                 cost_usd: 0.0,
@@ -383,6 +433,8 @@ async fn run_qa_and_generate_corrective(
             description: corrective.description,
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: corrective.acceptance_criteria,
             blast_radius: corrective.blast_radius,
@@ -554,6 +606,7 @@ mod tests {
             events: vec![SessionEvent::TurnComplete { turn: turns }],
             result: SessionResult {
                 session_id: session_id.to_owned(),
+                structured_output: None,
                 cost_usd: cost,
                 num_turns: turns,
                 duration_ms: 100,
@@ -573,6 +626,7 @@ mod tests {
             }],
             result: SessionResult {
                 session_id: session_id.to_owned(),
+                structured_output: None,
                 cost_usd: cost,
                 num_turns: turns,
                 duration_ms: 100,
@@ -669,6 +723,8 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -700,6 +756,8 @@ mod tests {
                 description: "first".to_owned(),
                 depends_on: vec![],
                 context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
+                when: None,
                 worktree: crate::prompt::WorktreePolicy::default(),
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
@@ -712,6 +770,8 @@ mod tests {
                 description: "second".to_owned(),
                 depends_on: vec![1],
                 context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
+                when: None,
                 worktree: crate::prompt::WorktreePolicy::default(),
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
@@ -753,6 +813,8 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -789,6 +851,8 @@ mod tests {
                 description: "first".to_owned(),
                 depends_on: vec![],
                 context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
+                when: None,
                 worktree: crate::prompt::WorktreePolicy::default(),
                 acceptance_criteria: vec!["feature works".to_owned()],
                 blast_radius: vec![],
@@ -801,6 +865,8 @@ mod tests {
                 description: "second".to_owned(),
                 depends_on: vec![1],
                 context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
+                when: None,
                 worktree: crate::prompt::WorktreePolicy::default(),
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
@@ -867,6 +933,8 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec!["feature works".to_owned()],
             blast_radius: vec![],
@@ -973,6 +1041,8 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -1032,6 +1102,8 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],

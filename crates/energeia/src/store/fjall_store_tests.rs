@@ -342,6 +342,7 @@ fn record_training_data_produces_fact() {
 
     let outcome = SessionOutcome {
         prompt_number: 1,
+        structured_output: None,
         status: SessionStatus::Success,
         session_id: Some("cc-sess-abc".to_owned()),
         cost_usd: 0.42,

@@ -92,6 +92,7 @@ impl SessionManager {
                 system_prompt: Some(components.static_prefix.clone()),
                 cwd: options.options.cwd.clone(),
                 prompt_components: Some(components.clone()),
+                output_format: prompt.output_format.clone(),
             }
         } else {
             SessionSpec {
@@ -99,6 +100,7 @@ impl SessionManager {
                 system_prompt: options.options.system_prompt.clone(),
                 cwd: options.options.cwd.clone(),
                 prompt_components: None,
+                output_format: prompt.output_format.clone(),
             }
         };
 
@@ -157,8 +159,16 @@ impl SessionManager {
         // NOTE: Wait for the session to produce its final result.
         let session_result = handle.wait().await;
 
-        let (run_cost, run_turns, run_success, result_text, run_model, cache_hits, cache_misses) =
-            extract_run_metrics(session_result, &stream_result);
+        let (
+            run_cost,
+            run_turns,
+            run_success,
+            result_text,
+            structured_output,
+            run_model,
+            cache_hits,
+            cache_misses,
+        ) = extract_run_metrics(session_result, &stream_result);
 
         // Use model from result if available, otherwise from initial options
         let effective_model = run_model.or_else(|| model.clone());
@@ -190,6 +200,31 @@ impl SessionManager {
         // --- Check if initial run succeeded ---
 
         if run_success {
+            let structured_output =
+                match validate_structured_output(prompt, structured_output, result_text.as_deref())
+                {
+                    Ok(output) => output,
+                    Err(error) => {
+                        let outcome = build_outcome(
+                            prompt.number,
+                            SessionStatus::Failed,
+                            session_id,
+                            total_cost,
+                            total_turns,
+                            start,
+                            resume_count,
+                            pr_url,
+                            Some(error),
+                            None,
+                            effective_model.clone(),
+                            prompt.blast_radius.clone(),
+                            cache_hits,
+                            cache_misses,
+                        );
+                        emit_child_terminal(options, &outcome, last_output_excerpt);
+                        return Ok(outcome);
+                    }
+                };
             let outcome = build_outcome(
                 prompt.number,
                 SessionStatus::Success,
@@ -200,6 +235,7 @@ impl SessionManager {
                 resume_count,
                 pr_url,
                 None,
+                structured_output,
                 effective_model.clone(),
                 prompt.blast_radius.clone(),
                 cache_hits,
@@ -227,6 +263,7 @@ impl SessionManager {
                 resume_count,
                 None,
                 Some(reason),
+                None,
                 effective_model.clone(),
                 prompt.blast_radius.clone(),
                 cache_hits,
@@ -265,6 +302,7 @@ impl SessionManager {
                     resume_count,
                     None,
                     Some("resume policy exhausted".to_owned()),
+                    None,
                     effective_model.clone(),
                     prompt.blast_radius.clone(),
                     cache_hits,
@@ -310,6 +348,7 @@ impl SessionManager {
                         resume_count,
                         None,
                         Some(format!("resume failed: {e}")),
+                        None,
                         effective_model.clone(),
                         prompt.blast_radius.clone(),
                         cache_hits,
@@ -362,6 +401,7 @@ impl SessionManager {
                 run_turns,
                 run_success,
                 result_text,
+                structured_output,
                 run_model,
                 cache_hits,
                 cache_misses,
@@ -386,6 +426,33 @@ impl SessionManager {
             // --- Success check ---
 
             if run_success {
+                let structured_output = match validate_structured_output(
+                    prompt,
+                    structured_output,
+                    result_text.as_deref(),
+                ) {
+                    Ok(output) => output,
+                    Err(error) => {
+                        let outcome = build_outcome(
+                            prompt.number,
+                            SessionStatus::Failed,
+                            session_id,
+                            total_cost,
+                            total_turns,
+                            start,
+                            resume_count,
+                            pr_url,
+                            Some(error),
+                            None,
+                            effective_model.clone(),
+                            prompt.blast_radius.clone(),
+                            cache_hits,
+                            cache_misses,
+                        );
+                        emit_child_terminal(options, &outcome, last_output_excerpt);
+                        return Ok(outcome);
+                    }
+                };
                 let outcome = build_outcome(
                     prompt.number,
                     SessionStatus::Success,
@@ -396,6 +463,7 @@ impl SessionManager {
                     resume_count,
                     pr_url,
                     None,
+                    structured_output,
                     effective_model.clone(),
                     prompt.blast_radius.clone(),
                     cache_hits,
@@ -424,6 +492,7 @@ impl SessionManager {
                         resume_count,
                         None,
                         Some(reason),
+                        None,
                         effective_model.clone(),
                         prompt.blast_radius.clone(),
                         cache_hits,
@@ -454,23 +523,35 @@ impl SessionManager {
 
 /// Extract run metrics from a session result, falling back to the stream
 /// accumulator if the result is unavailable.
+type RunMetrics = (
+    f64,
+    u32,
+    bool,
+    Option<String>,
+    Option<serde_json::Value>,
+    Option<String>,
+    u64,
+    u64,
+);
+
 fn extract_run_metrics(
     session_result: Result<crate::engine::SessionResult>,
     stream_result: &StreamOutcome,
-) -> (f64, u32, bool, Option<String>, Option<String>, u64, u64) {
+) -> RunMetrics {
     if let Ok(result) = session_result {
         (
             result.cost_usd,
             result.num_turns,
             result.success,
             result.result_text,
+            result.structured_output,
             result.model,
             result.cache_hit_tokens,
             result.cache_miss_tokens,
         )
     } else {
         let acc = accumulator_from(stream_result);
-        (acc.cost_usd, acc.num_turns, false, None, None, 0, 0)
+        (acc.cost_usd, acc.num_turns, false, None, None, None, 0, 0)
     }
 }
 
@@ -518,6 +599,7 @@ async fn abort_terminal_stream(
                 resume_count,
                 None,
                 Some(format!("timeout: no events for {}s", elapsed.as_secs())),
+                None,
                 model,
                 blast_radius,
                 0,
@@ -537,6 +619,7 @@ async fn abort_terminal_stream(
                 resume_count,
                 None,
                 Some("dispatch cancelled".to_owned()),
+                None,
                 model,
                 blast_radius,
                 0,
@@ -569,6 +652,30 @@ fn output_excerpt(text: &str) -> Option<String> {
     }
 
     Some(trimmed.chars().take(512).collect())
+}
+
+fn validate_structured_output(
+    prompt: &PromptSpec,
+    structured_output: Option<serde_json::Value>,
+    result_text: Option<&str>,
+) -> std::result::Result<Option<serde_json::Value>, String> {
+    let Some(format) = &prompt.output_format else {
+        return Ok(structured_output);
+    };
+
+    let output = if let Some(output) = structured_output {
+        output
+    } else {
+        let Some(text) = result_text else {
+            return Err("node completed without structured output".to_owned());
+        };
+        serde_json::from_str(text).map_err(|e| format!("structured output was not JSON: {e}"))?
+    };
+
+    format
+        .validate_output(prompt.number, &output)
+        .map_err(|e| e.to_string())?;
+    Ok(Some(output))
 }
 
 fn emit_child_progress(
@@ -619,6 +726,7 @@ fn build_outcome(
     resume_count: u32,
     pr_url: Option<String>,
     error: Option<String>,
+    structured_output: Option<serde_json::Value>,
     model: Option<String>,
     blast_radius: Vec<String>,
     cache_hit_tokens: u64,
@@ -634,6 +742,7 @@ fn build_outcome(
         resume_count,
         pr_url,
         error,
+        structured_output,
         model,
         blast_radius,
         corrective_attempts: 0,
@@ -660,6 +769,8 @@ mod tests {
             description: format!("test prompt {number}"),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -678,6 +789,7 @@ mod tests {
             ],
             result: SessionResult {
                 session_id: session_id.to_owned(),
+                structured_output: None,
                 cost_usd: cost,
                 num_turns: turns,
                 duration_ms: 1000,
@@ -695,6 +807,7 @@ mod tests {
             events: vec![SessionEvent::TurnComplete { turn: turns }],
             result: SessionResult {
                 session_id: session_id.to_owned(),
+                structured_output: None,
                 cost_usd: cost,
                 num_turns: turns,
                 duration_ms: 1000,
@@ -717,6 +830,7 @@ mod tests {
             ],
             result: SessionResult {
                 session_id: session_id.to_owned(),
+                structured_output: None,
                 cost_usd: cost,
                 num_turns: turns,
                 duration_ms: 1000,
@@ -945,6 +1059,7 @@ mod tests {
                 }],
                 result: SessionResult {
                     session_id: "sess-err".to_owned(),
+                    structured_output: None,
                     cost_usd: 0.05,
                     num_turns: 2,
                     duration_ms: 500,

@@ -96,6 +96,8 @@ pub struct SessionSpec {
     /// prompt caching should use `static_prefix` as the cached system prompt
     /// and `dynamic_suffix` as the user message.
     pub prompt_components: Option<crate::prompt_cache::PromptComponents>,
+    /// Optional JSON-schema contract for structured model output.
+    pub output_format: Option<crate::dag::NodeOutputFormat>,
 }
 
 /// Configuration options for an agent session.
@@ -260,6 +262,10 @@ pub struct SessionResult {
     pub success: bool,
     /// Final text output from the agent, if any.
     pub result_text: Option<String>,
+    /// Parsed structured output, when the session requested a structured
+    /// output format and the provider returned valid JSON.
+    #[serde(default)]
+    pub structured_output: Option<serde_json::Value>,
     /// LLM model used for this session, if known.
     pub model: Option<String>,
     /// Tokens read from the prompt cache.
@@ -279,6 +285,8 @@ struct SessionResultRaw {
     duration_ms: u64,
     success: bool,
     result_text: Option<String>,
+    #[serde(default)]
+    structured_output: Option<serde_json::Value>,
     model: Option<String>,
     #[serde(default)]
     cache_hit_tokens: u64,
@@ -295,6 +303,7 @@ impl From<SessionResultRaw> for SessionResult {
             duration_ms: raw.duration_ms,
             success: raw.success,
             result_text: raw.result_text,
+            structured_output: raw.structured_output,
             model: raw.model,
             cache_hit_tokens: raw.cache_hit_tokens,
             cache_miss_tokens: raw.cache_miss_tokens,
@@ -323,6 +332,7 @@ impl SessionResult {
             duration_ms,
             success,
             result_text,
+            structured_output: None,
             model: None,
             cache_hit_tokens: 0,
             cache_miss_tokens: 0,
@@ -363,6 +373,7 @@ mod tests {
             system_prompt: Some("you are a coding agent".to_owned()),
             cwd: Some("/home/user/project".to_owned()),
             prompt_components: None,
+            output_format: None,
         };
         let json = serde_json::to_string(&spec).unwrap();
         let deserialized: SessionSpec = serde_json::from_str(&json).unwrap();
@@ -384,6 +395,7 @@ mod tests {
     fn session_result_roundtrip() {
         let result = SessionResult {
             session_id: "sess-abc".to_owned(),
+            structured_output: None,
             cost_usd: 0.42,
             num_turns: 15,
             duration_ms: 30_000,

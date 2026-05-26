@@ -7,10 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt as _;
 
-use crate::dag::{ContextPolicy, DagError, PromptDag, PromptStatus};
-use crate::error::{
-    DagCycleSnafu, DagMissingDepsSnafu, FrontmatterParseSnafu, IoSnafu, PreflightSnafu, Result,
-};
+use crate::dag::{ContextPolicy, DagError, NodeOutputFormat, PromptDag, PromptStatus};
+use crate::error::{DagCycleSnafu, DagMissingDepsSnafu, FrontmatterParseSnafu, IoSnafu, Result};
 
 /// Worktree isolation preference declared by a prompt file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +38,14 @@ impl Default for WorktreePolicy {
 /// depends_on: [2, 3]
 /// context_policy:
 ///   policy: fresh
+/// output_format:
+///   schema:
+///     type: object
+///     required: ["severity"]
+///     properties:
+///       severity:
+///         enum: ["high", "low"]
+/// when: "$1.output.severity == 'high'"
 /// worktree:
 ///   enabled: true
 /// acceptance_criteria:
@@ -63,6 +69,12 @@ pub struct PromptSpec {
     /// How this prompt receives conversational context from other prompt nodes.
     #[serde(default)]
     pub context_policy: ContextPolicy,
+    /// Optional JSON-schema contract for structured prompt output.
+    #[serde(default)]
+    pub output_format: Option<NodeOutputFormat>,
+    /// Optional branch condition over upstream structured outputs.
+    #[serde(default)]
+    pub when: Option<String>,
     /// Whether this prompt expects isolated worktree execution when the
     /// dispatch harness supports it.
     #[serde(default)]
@@ -89,6 +101,10 @@ struct Frontmatter {
     depends_on: Vec<u32>,
     #[serde(default)]
     context_policy: ContextPolicy,
+    #[serde(default)]
+    output_format: Option<NodeOutputFormat>,
+    #[serde(default)]
+    when: Option<String>,
     #[serde(default)]
     worktree: WorktreePolicy,
     #[serde(default)]
@@ -166,6 +182,8 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
         description: fm.description,
         depends_on: fm.depends_on,
         context_policy: fm.context_policy,
+        output_format: fm.output_format,
+        when: fm.when,
         worktree: fm.worktree,
         acceptance_criteria: fm.acceptance_criteria,
         blast_radius: fm.blast_radius,
@@ -218,21 +236,14 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
     let mut dag = PromptDag::new();
 
     for spec in prompts {
-        if spec.context_policy != ContextPolicy::Fresh {
-            return PreflightSnafu {
-                reason: format!(
-                    "context policy {:?} for prompt {} requires output_format support from issue #3972",
-                    spec.context_policy, spec.number
-                ),
-            }
-            .fail();
-        }
         // NOTE: Duplicate numbers in the prompt set are not expected; treat as
         // a configuration error.
-        dag.add_node_with_context_policy(
+        dag.add_node_with_contract(
             spec.number,
             spec.depends_on.clone(),
             spec.context_policy.clone(),
+            spec.output_format.clone(),
+            spec.when.clone(),
         )
         .map_err(|_duplicate| {
             DagMissingDepsSnafu {
@@ -264,6 +275,11 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
         .build(),
         DagError::DuplicateNode { number } => DagMissingDepsSnafu {
             detail: format!("duplicate node {number}"),
+        }
+        .build(),
+        DagError::InvalidOutputSchema { number, detail }
+        | DagError::OutputSchemaViolation { number, detail } => DagMissingDepsSnafu {
+            detail: format!("prompt {number} output contract is invalid: {detail}"),
         }
         .build(),
     })?;
@@ -490,6 +506,8 @@ body
             description: format!("prompt {number}"),
             depends_on,
             context_policy: ContextPolicy::Fresh,
+            output_format: None,
+            when: None,
             worktree: WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -515,12 +533,15 @@ body
     }
 
     #[test]
-    fn build_dag_rejects_non_fresh_context_policy() {
+    fn build_dag_accepts_non_fresh_context_policy() {
         let mut prompt = spec(2, vec![1]);
         prompt.context_policy = ContextPolicy::Inherit(vec![1]);
 
-        let err = build_dag(&[spec(1, vec![]), prompt]).unwrap_err();
-        assert!(matches!(err, Error::Preflight { .. }));
+        let dag = build_dag(&[spec(1, vec![]), prompt]).unwrap();
+        assert_eq!(
+            dag.nodes[&2].context_policy,
+            ContextPolicy::Inherit(vec![1])
+        );
     }
 
     #[test]

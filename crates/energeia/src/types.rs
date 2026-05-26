@@ -156,6 +156,9 @@ pub struct SessionOutcome {
     /// Tokens written to the prompt cache on this session.
     #[serde(default)]
     pub cache_miss_tokens: u64,
+    /// Parsed structured output produced by the prompt, if any.
+    #[serde(default)]
+    pub structured_output: Option<serde_json::Value>,
 }
 
 /// Terminal status of a dispatched session.
@@ -426,6 +429,7 @@ mod tests {
     fn session_outcome_roundtrip() {
         let outcome = SessionOutcome {
             prompt_number: 1,
+            structured_output: None,
             status: SessionStatus::Success,
             session_id: Some("sess-123".to_owned()),
             cost_usd: 0.42,
