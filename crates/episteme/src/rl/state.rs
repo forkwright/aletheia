@@ -30,6 +30,7 @@ impl MemoryState {
     }
 
     /// Add or replace a named numeric feature.
+    #[must_use]
     pub fn with_feature(mut self, name: impl Into<String>, value: f64) -> Self {
         self.features.insert(name.into(), value);
         self

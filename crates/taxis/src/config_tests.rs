@@ -469,6 +469,10 @@ fn pricing_defaults_empty() {
         config.agents.defaults.recall.reranker_url.is_none(),
         "default reranker_url should be None"
     );
+    assert!(
+        config.agents.defaults.recall.reranker_model_path.is_none(),
+        "default reranker_model_path should be None"
+    );
 }
 
 #[test]

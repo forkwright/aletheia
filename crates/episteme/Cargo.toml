@@ -14,6 +14,7 @@ workspace = true
 default = ["graph-algo", "reranker"]
 graph-algo = []
 reranker = ["dep:reqwest", "dep:rustls", "dep:tokio"]
+local-reranker = ["reranker"]
 gliner = ["dep:ort", "dep:tokio", "dep:tokenizers"]
 test-support = []
 # WHY: mneme-engine brings in the Datalog knowledge store via krites and the

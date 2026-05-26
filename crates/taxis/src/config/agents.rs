@@ -113,6 +113,13 @@ pub struct RecallSettings {
     /// not enabled, the pipeline falls back to baseline ranking.
     #[serde(default)]
     pub reranker_url: Option<String>,
+    /// Filesystem path to a local ONNX cross-encoder model for in-process reranking.
+    ///
+    /// When set alongside `reranker_url`, the URL takes precedence.  This path
+    /// is only consulted when `reranker_url` is `None` and the
+    /// `local-reranker` feature is enabled.  Default: `None`.
+    #[serde(default)]
+    pub reranker_model_path: Option<String>,
 }
 
 /// Named recall behavior profile for a nous agent.
@@ -144,6 +151,7 @@ impl Default for RecallSettings {
             late_inject_anchor: false,
             scope_quotas: HashMap::new(),
             reranker_url: None,
+            reranker_model_path: None,
         }
     }
 }
