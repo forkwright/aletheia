@@ -355,11 +355,38 @@ fn accepts_valid_channels() {
             "accounts": {
                 "primary": { "httpPort": 8080 }
             }
+        },
+        "matrix": {
+            "accounts": {
+                "primary": {
+                    "homeserver": "https://matrix.example.org",
+                    "accessTokenEnv": "MATRIX_ACCESS_TOKEN"
+                }
+            }
         }
     });
     assert!(
         validate_section("channels", &section).is_ok(),
         "valid channel config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_matrix_account_missing_token_env() {
+    let section = json!({
+        "matrix": {
+            "accounts": {
+                "primary": {
+                    "homeserver": "https://matrix.example.org",
+                    "accessTokenEnv": ""
+                }
+            }
+        }
+    });
+    let result = validate_section("channels", &section);
+    assert!(
+        result.is_err(),
+        "matrix account without accessTokenEnv should be rejected"
     );
 }
 
@@ -383,6 +410,17 @@ fn accepts_valid_bindings() {
     assert!(
         validate_section("bindings", &section).is_ok(),
         "valid binding config should be accepted"
+    );
+}
+
+#[test]
+fn accepts_matrix_binding() {
+    let section = json!([
+        { "channel": "matrix", "source": "!room:example.org", "nousId": "main" }
+    ]);
+    assert!(
+        validate_section("bindings", &section).is_ok(),
+        "matrix binding config should be accepted"
     );
 }
 

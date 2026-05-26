@@ -103,6 +103,14 @@ fn defaults_are_sensible() {
         "signal accounts should be empty by default"
     );
     assert!(
+        !config.channels.matrix.enabled,
+        "matrix channel should be disabled by default"
+    );
+    assert!(
+        config.channels.matrix.accounts.is_empty(),
+        "matrix accounts should be empty by default"
+    );
+    assert!(
         config.bindings.is_empty(),
         "bindings should be empty by default"
     );
@@ -184,6 +192,10 @@ fn serde_roundtrip() {
     assert!(
         back.channels.signal.enabled,
         "signal channel enabled should survive serde roundtrip"
+    );
+    assert!(
+        !back.channels.matrix.enabled,
+        "matrix channel enabled flag should survive serde roundtrip"
     );
     assert_eq!(
         back.embedding.provider, "candle",

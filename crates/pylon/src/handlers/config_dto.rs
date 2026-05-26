@@ -62,6 +62,8 @@ pub struct GatewayConfig {
 pub struct ChannelsConfig {
     #[schema(value_type = Object)]
     pub signal: Option<Value>,
+    #[schema(value_type = Object)]
+    pub matrix: Option<Value>,
 }
 
 /// Schema for a single channel binding entry.

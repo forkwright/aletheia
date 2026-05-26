@@ -26,7 +26,9 @@ use organon::types::ToolServices;
 use pylon::state::AppState;
 use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
-use taxis::config::{AletheiaConfig, resolve_nous};
+use taxis::config::AletheiaConfig;
+#[cfg(feature = "recall")]
+use taxis::config::resolve_nous;
 use taxis::oikos::Oikos;
 use taxis::validate::{validate_section, validate_startup};
 
@@ -351,6 +353,11 @@ impl RuntimeBuilder {
         } else {
             None
         };
+        let matrix_provider = if self.tool_services {
+            build_matrix_provider(&self.config.channels.matrix, &self.config.messaging)
+        } else {
+            None
+        };
 
         // Tool services
         let (cross_nous, messenger, note_store, blackboard_store, planning) = if self.tool_services
@@ -636,6 +643,7 @@ impl RuntimeBuilder {
             &nous_manager,
             ready_rx,
             signal_provider.as_ref(),
+            matrix_provider.as_ref(),
             &shutdown_token,
         )?;
 
@@ -806,6 +814,6 @@ mod tool_adapters;
 #[cfg(feature = "recall")]
 use setup::open_knowledge_stores;
 use setup::{
-    LazyEmbeddingProvider, build_provider_registry, build_signal_provider, build_tool_registry,
-    start_inbound_dispatch,
+    LazyEmbeddingProvider, build_matrix_provider, build_provider_registry, build_signal_provider,
+    build_tool_registry, start_inbound_dispatch,
 };

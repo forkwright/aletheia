@@ -124,12 +124,14 @@ fn expand_session_key(template: &str, msg: &InboundMessage) -> String {
 
 /// Determine reply target for outbound response.
 ///
-/// Group messages reply to the group. DMs reply to the sender.
+/// Group messages reply to the group. Signal keeps its `group:` send-target
+/// prefix; Matrix replies directly to the room ID.
 #[must_use]
 pub fn reply_target(msg: &InboundMessage) -> String {
-    match &msg.group_id {
-        Some(group) => format!("group:{group}"),
-        None => msg.sender.clone(),
+    match (msg.channel.as_str(), &msg.group_id) {
+        ("signal", Some(group)) => format!("group:{group}"),
+        (_, Some(group)) => group.clone(),
+        (_, None) => msg.sender.clone(),
     }
 }
 
@@ -298,6 +300,13 @@ mod tests {
     fn reply_target_group() {
         let msg = group_message("+1234567890", "group-abc");
         assert_eq!(reply_target(&msg), "group:group-abc");
+    }
+
+    #[test]
+    fn reply_target_matrix_room() {
+        let mut msg = group_message("@alice:example.org", "!room:example.org");
+        msg.channel = "matrix".to_owned();
+        assert_eq!(reply_target(&msg), "!room:example.org");
     }
 
     #[test]

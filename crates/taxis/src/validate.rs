@@ -386,9 +386,37 @@ fn validate_channels(value: &Value, errors: &mut Vec<String>) {
             );
         }
     }
+
+    if let Some(matrix) = value.get("matrix")
+        && let Some(accounts) = matrix.get("accounts").and_then(Value::as_object)
+    {
+        for (account_id, account) in accounts {
+            if account.get("enabled").and_then(Value::as_bool) == Some(false) {
+                continue;
+            }
+            if account
+                .get("homeserver")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                errors.push(format!(
+                    "channels.matrix.accounts.{account_id}.homeserver must not be empty"
+                ));
+            }
+            if account
+                .get("accessTokenEnv")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                errors.push(format!(
+                    "channels.matrix.accounts.{account_id}.accessTokenEnv must not be empty"
+                ));
+            }
+        }
+    }
 }
 
-const KNOWN_CHANNEL_TYPES: &[&str] = &["signal", "slack", "discord", "webhook", "http"];
+const KNOWN_CHANNEL_TYPES: &[&str] = &["signal", "matrix", "slack", "discord", "webhook", "http"];
 
 fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
     let Some(bindings) = value.as_array() else {
