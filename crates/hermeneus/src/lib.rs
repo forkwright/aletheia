@@ -66,3 +66,9 @@ pub mod secret;
 pub mod test_utils;
 /// Anthropic-native types for LLM requests and responses ([`CompletionRequest`](types::CompletionRequest), [`CompletionResponse`](types::CompletionResponse)).
 pub mod types;
+
+/// [`SeatBridgedProvider`](seat_bridged::SeatBridgedProvider) trait for CLI-subprocess OAuth-seat providers.
+///
+/// Shared contract for providers that delegate LLM calls to a local CLI binary
+/// (e.g. `claude`, `codex`) which owns the OAuth credential handshake.
+pub mod seat_bridged;

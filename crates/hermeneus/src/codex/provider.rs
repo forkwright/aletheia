@@ -12,8 +12,10 @@ use std::time::Duration;
 use koina::system::{Environment, RealSystem};
 use tracing::{debug, info};
 
+use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::provider::{DeploymentTarget, LlmProvider};
+use crate::seat_bridged::SeatBridgedProvider;
 use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
 
 use super::{parse, process};
@@ -148,8 +150,51 @@ impl CodexProvider {
 
         Ok(parse::text_to_response(&text, model))
     }
+
+    /// Execute a streaming completion, emitting `StreamEvent::TextDelta` for each
+    /// output line.
+    ///
+    /// Codex emits plain text, not JSON-event streams, so "streaming" here means
+    /// collecting the full output and emitting a single `TextDelta` event — which
+    /// is functionally equivalent and avoids the caller having to special-case
+    /// non-streaming codex responses.
+    async fn execute_streaming(
+        &self,
+        request: &CompletionRequest,
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<CompletionResponse> {
+        let model = self.resolve_model(&request.model);
+        let prompt = Self::format_prompt(request);
+
+        let output = Box::pin(process::run_completion(
+            &self.codex_binary,
+            request.system.as_deref(),
+            &prompt,
+            self.timeout,
+        ))
+        .await?;
+        let text = parse::parse_output(&output.stdout)?;
+
+        // WHY: Codex's CLI does not support line-by-line streaming; we emit the
+        // full response as a single TextDelta so callers that consume
+        // complete_streaming see consistent event-based output regardless of
+        // which seat-bridged provider they're talking to.
+        on_event(StreamEvent::TextDelta {
+            text: text.clone(),
+        });
+
+        Ok(parse::text_to_response(&text, model))
+    }
 }
 
+/// Render `content` as a flat text string suitable for Codex's plain-text stdin.
+///
+/// Tool-use blocks are serialized as `[Tool call: name(json_input)]` markers so
+/// multi-turn conversations that include tool-call turns are not silently
+/// truncated. Without this, `ContentBlock::ToolUse` falls through to the
+/// wildcard arm and is dropped, causing the codex subprocess to receive a
+/// conversation with entire assistant turns missing — the live correctness bug
+/// fixed by #3980.
 fn extract_text_content(content: &Content) -> String {
     match content {
         Content::Text(s) => s.clone(),
@@ -158,6 +203,12 @@ fn extract_text_content(content: &Content) -> String {
                 .iter()
                 .filter_map(|block| match block {
                     ContentBlock::Text { text, .. } if !text.is_empty() => Some(text.to_owned()),
+                    ContentBlock::ToolUse { name, input, .. } => {
+                        // WHY(#3980): render tool-use calls textually so Codex sees
+                        // the full conversation. Compact JSON keeps it readable while
+                        // fitting in the flat prompt format.
+                        Some(format!("[Tool call: {name}({input})]"))
+                    }
                     ContentBlock::ToolResult { content, .. } => {
                         let summary = content.text_summary();
                         if summary.is_empty() {
@@ -166,6 +217,8 @@ fn extract_text_content(content: &Content) -> String {
                             Some(summary)
                         }
                     }
+                    // Thinking, server tool use, web search have no meaningful
+                    // text representation for Codex's flat prompt format.
                     _ => None,
                 })
                 .collect();
@@ -207,6 +260,32 @@ impl LlmProvider for CodexProvider {
     fn deployment_target(&self) -> DeploymentTarget {
         DeploymentTarget::Cloud
     }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    fn complete_streaming<'a>(
+        &'a self,
+        request: &'a CompletionRequest,
+        on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
+        Box::pin(self.execute_streaming(request, on_event))
+    }
+}
+
+impl SeatBridgedProvider for CodexProvider {
+    fn cli_binary(&self) -> &PathBuf {
+        &self.codex_binary
+    }
+
+    fn subprocess_timeout(&self) -> Duration {
+        self.timeout
+    }
+
+    fn cli_product_name(&self) -> &'static str {
+        "codex"
+    }
 }
 
 fn find_codex_binary() -> Result<PathBuf> {
@@ -243,7 +322,7 @@ fn find_codex_binary() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CompletionRequest, Content, Message, Role};
+    use crate::types::{CompletionRequest, Content, ContentBlock, Message, Role, ToolResultContent};
 
     #[test]
     fn format_prompt_single_message() {
@@ -287,6 +366,86 @@ mod tests {
         assert!(prompt.contains("User: And 3+3?"));
     }
 
+    // WHY(#3980): regression — ToolUse blocks were silently dropped by the
+    // wildcard arm of extract_text_content, causing entire assistant turns to
+    // vanish from the Codex prompt when a conversation included tool calls.
+    #[test]
+    fn extract_text_content_renders_tool_use_blocks() {
+        let content = Content::Blocks(vec![
+            ContentBlock::Text {
+                text: "Let me check that.".to_owned(),
+                citations: None,
+            },
+            ContentBlock::ToolUse {
+                id: "toolu_01".to_owned(),
+                name: "read_file".to_owned(),
+                input: serde_json::json!({"path": "/etc/hosts"}),
+            },
+        ]);
+        let text = extract_text_content(&content);
+        assert!(
+            text.contains("Let me check that."),
+            "text block must be present: {text}"
+        );
+        assert!(
+            text.contains("[Tool call: read_file("),
+            "tool-use block must be rendered, not dropped: {text}"
+        );
+        assert!(
+            text.contains("/etc/hosts"),
+            "tool input must appear in rendered marker: {text}"
+        );
+    }
+
+    // WHY(#3980): a conversation with a tool-use assistant turn followed by a
+    // tool-result user turn must round-trip through format_prompt without
+    // losing the tool-call context. Before the fix, the assistant turn was
+    // entirely skipped (extract_text_content returned ""), so Codex received
+    // a tool result with no corresponding call visible in context.
+    #[test]
+    fn format_prompt_preserves_tool_use_turns() {
+        let request = CompletionRequest {
+            messages: vec![
+                Message {
+                    role: Role::User,
+                    content: Content::Text("What is in /etc/hosts?".to_owned()),
+                    cache_breakpoint: false,
+                },
+                Message {
+                    role: Role::Assistant,
+                    content: Content::Blocks(vec![
+                        ContentBlock::Text {
+                            text: "I will read the file.".to_owned(),
+                            citations: None,
+                        },
+                        ContentBlock::ToolUse {
+                            id: "toolu_01".to_owned(),
+                            name: "read_file".to_owned(),
+                            input: serde_json::json!({"path": "/etc/hosts"}),
+                        },
+                    ]),
+                    cache_breakpoint: false,
+                },
+                Message {
+                    role: Role::User,
+                    content: Content::Blocks(vec![ContentBlock::ToolResult {
+                        tool_use_id: "toolu_01".to_owned(),
+                        content: ToolResultContent::text("127.0.0.1 localhost"),
+                        is_error: None,
+                    }]),
+                    cache_breakpoint: false,
+                },
+            ],
+            ..Default::default()
+        };
+        let prompt = CodexProvider::format_prompt(&request);
+        // All three turns must appear.
+        assert!(prompt.contains("User: What is in /etc/hosts?"), "first user turn missing: {prompt}");
+        assert!(prompt.contains("I will read the file."), "assistant text missing: {prompt}");
+        assert!(prompt.contains("[Tool call: read_file("), "tool-use marker missing: {prompt}");
+        assert!(prompt.contains("127.0.0.1 localhost"), "tool result missing: {prompt}");
+    }
+
     #[test]
     fn resolve_model_strips_prefix() {
         let provider = CodexProvider {
@@ -318,5 +477,27 @@ mod tests {
             timeout: Duration::from_secs(1),
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
+    }
+
+    #[test]
+    fn codex_provider_supports_streaming() {
+        let provider = CodexProvider {
+            codex_binary: PathBuf::from("codex"),
+            default_model: "codex/gpt-5-codex".to_owned(),
+            timeout: Duration::from_secs(1),
+        };
+        assert!(provider.supports_streaming(), "CodexProvider must report supports_streaming=true after #3980");
+    }
+
+    #[test]
+    fn seat_bridged_fields() {
+        let provider = CodexProvider {
+            codex_binary: PathBuf::from("/usr/local/bin/codex"),
+            default_model: "codex/gpt-5-codex".to_owned(),
+            timeout: Duration::from_secs(300),
+        };
+        assert_eq!(provider.cli_binary(), &PathBuf::from("/usr/local/bin/codex"));
+        assert_eq!(provider.subprocess_timeout(), Duration::from_secs(300));
+        assert_eq!(provider.cli_product_name(), "codex");
     }
 }
