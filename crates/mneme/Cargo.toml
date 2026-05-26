@@ -19,6 +19,8 @@ graph-algo = ["episteme/graph-algo"]
 reranker = ["episteme/reranker"]
 # Optional GLiNER bookkeeping provider support from episteme.
 gliner = ["episteme/gliner"]
+# Optional NuExtract bookkeeping provider support from episteme.
+nuextract = ["episteme/nuextract"]
 # Gates MockEmbeddingProvider and other test helpers. No test code in release binaries.
 test-support = ["episteme/test-support"]
 embed-candle = ["episteme/embed-candle"]

@@ -98,6 +98,8 @@ pub enum BookkeepingProviderKind {
     Llm,
     /// `GLiNER` ONNX entity adapter with LLM fallback for facts and relationships.
     Gliner,
+    /// NuExtract-2.0 ONNX structured JSON extraction provider.
+    NuExtract,
 }
 
 /// The system prompt and user message for an extraction LLM call.

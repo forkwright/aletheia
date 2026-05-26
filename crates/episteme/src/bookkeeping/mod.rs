@@ -3,12 +3,18 @@
 #[cfg(feature = "gliner")]
 mod gliner;
 
+#[cfg(feature = "nuextract")]
+mod nuextract;
+
 use eidos::bookkeeping::{
     BookkeepingProvider, BookkeepingResult, Extraction, ExtractionSchema, ProviderFailedSnafu,
 };
 
 #[cfg(feature = "gliner")]
 pub use gliner::{GlinerExtractionProvider, GlinerProviderConfig};
+
+#[cfg(feature = "nuextract")]
+pub use nuextract::{NuExtractProvider, NuExtractProviderConfig};
 
 use crate::extract::engine::ExtractionEngine;
 use crate::extract::refinement::TurnType;

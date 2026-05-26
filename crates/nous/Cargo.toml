@@ -25,6 +25,8 @@ pre-llm-triage = []
 reranker = ["mneme/reranker"]
 # Enables mneme's in-process GLiNER ONNX bookkeeping provider facade.
 gliner = ["mneme/gliner"]
+# Enables mneme's in-process NuExtract ONNX bookkeeping provider facade.
+nuextract = ["mneme/nuextract"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["knowledge-store"]
 test-full = ["test-core"]

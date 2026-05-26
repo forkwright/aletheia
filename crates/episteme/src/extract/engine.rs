@@ -1,9 +1,9 @@
-#[cfg(feature = "gliner")]
+#[cfg(any(feature = "gliner", feature = "nuextract"))]
 use eidos::bookkeeping::BookkeepingProvider;
 use snafu::IntoError;
 use tracing::instrument;
 
-#[cfg(feature = "gliner")]
+#[cfg(any(feature = "gliner", feature = "nuextract"))]
 use super::error::LlmCallSnafu;
 #[cfg(feature = "mneme-engine")]
 use super::error::PersistSnafu;
@@ -22,6 +22,8 @@ use super::utils::strip_code_fences;
 #[cfg(feature = "gliner")]
 use crate::bookkeeping::GlinerExtractionProvider;
 use crate::bookkeeping::LlmBookkeepingProvider;
+#[cfg(feature = "nuextract")]
+use crate::bookkeeping::NuExtractProvider;
 use crate::causal;
 
 /// Small heuristic for first-person / assistant self-reference in fact subjects.
@@ -704,11 +706,36 @@ Rules:
                     }
                 }
             }
+            BookkeepingProviderKind::NuExtract => {
+                #[cfg(feature = "nuextract")]
+                {
+                    let bookkeeping = NuExtractProvider::new()
+                        .map_err(|err| bookkeeping_to_extraction_error(&err))?;
+                    bookkeeping
+                        .extract_knowledge(messages, &self.config.schema())
+                        .await
+                        .map_err(|err| bookkeeping_to_extraction_error(&err))
+                }
+                #[cfg(not(feature = "nuextract"))]
+                {
+                    tracing::warn!(
+                        "NuExtract bookkeeping provider requested but episteme/nuextract is disabled; falling back to LLM"
+                    );
+                    let bookkeeping = LlmBookkeepingProvider::new(self, provider);
+                    if let Some(turn_type) = turn_type {
+                        bookkeeping
+                            .extract_messages_with_turn_type(messages, turn_type)
+                            .await
+                    } else {
+                        bookkeeping.extract_messages(messages).await
+                    }
+                }
+            }
         }
     }
 }
 
-#[cfg(feature = "gliner")]
+#[cfg(any(feature = "gliner", feature = "nuextract"))]
 fn bookkeeping_to_extraction_error(
     error: &eidos::bookkeeping::BookkeepingError,
 ) -> ExtractionError {
