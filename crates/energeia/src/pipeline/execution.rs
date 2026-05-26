@@ -166,6 +166,7 @@ impl PipelineStage for ExecutionStage {
                             let counts = &mut ctx.corrective_attempt_counts;
                             if let Some(verdict) = run_qa_and_generate_corrective(
                                 &*ctx.qa,
+                                ctx.diff_provider.as_deref(),
                                 &prompt,
                                 pr_url,
                                 correctives,
@@ -284,6 +285,7 @@ fn collect_skipped(numbers: &[u32], dag: &mut PromptDag, reason: &str) -> Vec<Se
 
 async fn run_qa_and_generate_corrective(
     qa: &dyn crate::qa::QaGate,
+    diff_provider: Option<&dyn crate::qa::DiffProvider>,
     prompt: &crate::prompt::PromptSpec,
     pr_url: &str,
     correctives: &mut Vec<crate::prompt::PromptSpec>,
@@ -297,6 +299,18 @@ async fn run_qa_and_generate_corrective(
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0);
 
+    let diff_result: std::result::Result<String, String> = if pr_number == 0 {
+        Err("could not parse PR number from URL".to_owned())
+    } else if let Some(provider) = diff_provider {
+        match provider.fetch_diff(pr_url).await {
+            Ok(diff) if !diff.trim().is_empty() => Ok(diff),
+            Ok(_) => Err("empty diff returned by forge".to_owned()),
+            Err(e) => Err(format!("{e}")),
+        }
+    } else {
+        Err("no diff provider configured".to_owned())
+    };
+
     let qa_prompt = crate::qa::PromptSpec {
         prompt_number: prompt.number,
         description: prompt.description.clone(),
@@ -304,15 +318,37 @@ async fn run_qa_and_generate_corrective(
         blast_radius: prompt.blast_radius.clone(),
     };
 
-    let qa_result = match qa.evaluate(&qa_prompt, pr_number, "").await {
-        Ok(result) => result,
-        Err(e) => {
+    let (qa_result, diff_fetch_failed) = match diff_result {
+        Ok(ref diff) => match qa.evaluate(&qa_prompt, pr_number, diff).await {
+            Ok(result) => (result, false),
+            Err(e) => {
+                tracing::warn!(
+                    prompt_number = prompt.number,
+                    error = %e,
+                    "QA evaluation failed, skipping corrective generation"
+                );
+                return None;
+            }
+        },
+        Err(ref reason) => {
             tracing::warn!(
                 prompt_number = prompt.number,
-                error = %e,
-                "QA evaluation failed, skipping corrective generation"
+                pr_url,
+                reason,
+                "diff fetch failed — returning degraded QA result"
             );
-            return None;
+            let result = crate::types::QaResult {
+                prompt_number: prompt.number,
+                pr_number,
+                verdict: crate::types::QaVerdict::Fail,
+                criteria_results: vec![],
+                mechanical_issues: vec![],
+                reasons: vec![format!("diff fetch failed: {reason}")],
+                cost_usd: 0.0,
+                evaluated_at: jiff::Timestamp::now(),
+                semantic_evaluated: false,
+            };
+            (result, true)
         }
     };
 
@@ -320,6 +356,7 @@ async fn run_qa_and_generate_corrective(
         prompt_number = prompt.number,
         pr_number,
         verdict = %qa_result.verdict,
+        semantic_evaluated = qa_result.semantic_evaluated,
         "QA evaluation complete"
     );
 
@@ -331,6 +368,7 @@ async fn run_qa_and_generate_corrective(
     let budget_ok = !matches!(budget.check(), crate::budget::BudgetStatus::Exceeded(_));
 
     if qa_result.verdict != crate::types::QaVerdict::Pass
+        && !diff_fetch_failed
         && current_count < max_corrective_retries
         && budget_ok
         && let Some(corrective) = crate::qa::corrective::generate_corrective(&qa_result, &qa_prompt)
@@ -374,6 +412,7 @@ mod tests {
     use crate::pipeline::context::PipelineContext;
     use crate::pipeline::preparation::PreparationStage;
     use crate::prompt::PromptSpec;
+    use crate::qa::DiffProvider;
     use crate::qa::QaGate;
     use crate::types::{DispatchSpec, MechanicalIssue, QaResult, QaVerdict, SessionStatus};
 
@@ -546,6 +585,46 @@ mod tests {
         }
     }
 
+    struct MockDiffProvider {
+        diff: String,
+    }
+
+    impl MockDiffProvider {
+        fn new(diff: impl Into<String>) -> Self {
+            Self { diff: diff.into() }
+        }
+    }
+
+    impl DiffProvider for MockDiffProvider {
+        fn fetch_diff<'a>(
+            &'a self,
+            _pr_url: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = crate::error::Result<String>> + Send + 'a>,
+        > {
+            let diff = self.diff.clone();
+            Box::pin(async move { Ok(diff) })
+        }
+    }
+
+    struct FailingDiffProvider;
+
+    impl DiffProvider for FailingDiffProvider {
+        fn fetch_diff<'a>(
+            &'a self,
+            _pr_url: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = crate::error::Result<String>> + Send + 'a>,
+        > {
+            Box::pin(async move {
+                Err(crate::error::PreflightSnafu {
+                    reason: "simulated diff fetch failure",
+                }
+                .build())
+            })
+        }
+    }
+
     fn make_prepared_context(
         mock_outcomes: Vec<MockOutcome>,
         prompts: Vec<PromptSpec>,
@@ -555,6 +634,7 @@ mod tests {
             prompts,
             OrchestratorConfig::default(),
             Arc::new(AlwaysPassQa),
+            Some(Arc::new(MockDiffProvider::new("fake diff"))),
         )
     }
 
@@ -563,6 +643,7 @@ mod tests {
         prompts: Vec<PromptSpec>,
         config: OrchestratorConfig,
         qa: Arc<dyn QaGate>,
+        diff_provider: Option<Arc<dyn DiffProvider>>,
     ) -> PipelineContext {
         let engine = Arc::new(MockEngine::new(mock_outcomes));
         let spec = DispatchSpec::new(
@@ -578,6 +659,7 @@ mod tests {
             #[cfg(feature = "storage-fjall")]
             None,
         )
+        .with_diff_provider(diff_provider)
     }
 
     #[tokio::test]
@@ -740,6 +822,7 @@ mod tests {
             prompts,
             config,
             qa,
+            Some(Arc::new(MockDiffProvider::new("fake diff"))),
         );
 
         PreparationStage
@@ -800,6 +883,7 @@ mod tests {
             prompts,
             config,
             qa,
+            Some(Arc::new(MockDiffProvider::new("fake diff"))),
         );
 
         PreparationStage
@@ -837,5 +921,140 @@ mod tests {
         assert_eq!(dag.nodes[&3].status, PromptStatus::Blocked);
         // NOTE: 4 depends on 2, not directly on 1. It is not marked blocked
         // by this call. The orchestrator marks it in a subsequent pass.
+    }
+
+    #[tokio::test]
+    async fn qa_receives_non_empty_diff() {
+        struct RecordingQaGate {
+            last_diff: std::sync::Mutex<String>,
+        }
+
+        impl QaGate for RecordingQaGate {
+            fn evaluate<'a>(
+                &'a self,
+                prompt: &'a crate::qa::PromptSpec,
+                pr_number: u64,
+                diff: &'a str,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = crate::error::Result<QaResult>> + Send + 'a>,
+            > {
+                let mut last = self.last_diff.lock().unwrap();
+                *last = diff.to_owned();
+                Box::pin(async move {
+                    Ok(QaResult {
+                        prompt_number: prompt.prompt_number,
+                        pr_number,
+                        verdict: QaVerdict::Pass,
+                        criteria_results: vec![],
+                        mechanical_issues: vec![],
+                        reasons: vec![],
+                        cost_usd: 0.0,
+                        evaluated_at: jiff::Timestamp::now(),
+                        semantic_evaluated: true,
+                    })
+                })
+            }
+
+            fn mechanical_check(
+                &self,
+                _diff: &str,
+                _prompt: &crate::qa::PromptSpec,
+            ) -> Vec<MechanicalIssue> {
+                vec![]
+            }
+        }
+
+        let qa = &RecordingQaGate {
+            last_diff: std::sync::Mutex::new(String::new()),
+        };
+        let provider = &MockDiffProvider::new("+real diff content");
+        let prompt = crate::prompt::PromptSpec {
+            number: 1,
+            description: "test".to_owned(),
+            depends_on: vec![],
+            context_policy: crate::dag::ContextPolicy::Fresh,
+            worktree: crate::prompt::WorktreePolicy::default(),
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do the thing".to_owned(),
+            prompt_components: None,
+        };
+        let mut correctives = vec![];
+        let mut counts = std::collections::HashMap::new();
+        let budget = crate::budget::Budget::new(Some(10.0), None, None);
+
+        let verdict = super::run_qa_and_generate_corrective(
+            qa,
+            Some(provider),
+            &prompt,
+            "https://github.com/acme/repo/pull/42",
+            &mut correctives,
+            1,
+            &mut counts,
+            &budget,
+        )
+        .await;
+
+        assert_eq!(verdict, Some(QaVerdict::Pass));
+        assert_eq!(qa.last_diff.lock().unwrap().as_str(), "+real diff content");
+        assert!(correctives.is_empty());
+    }
+
+    #[tokio::test]
+    async fn qa_skips_semantic_eval_on_diff_fetch_failure() {
+        struct PanicQaGate;
+
+        impl QaGate for PanicQaGate {
+            fn evaluate<'a>(
+                &'a self,
+                _prompt: &'a crate::qa::PromptSpec,
+                _pr_number: u64,
+                _diff: &'a str,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = crate::error::Result<QaResult>> + Send + 'a>,
+            > {
+                panic!("evaluate should not be called when diff fetch fails")
+            }
+
+            fn mechanical_check(
+                &self,
+                _diff: &str,
+                _prompt: &crate::qa::PromptSpec,
+            ) -> Vec<MechanicalIssue> {
+                vec![]
+            }
+        }
+
+        let qa = &PanicQaGate;
+        let provider = &FailingDiffProvider;
+        let prompt = crate::prompt::PromptSpec {
+            number: 1,
+            description: "test".to_owned(),
+            depends_on: vec![],
+            context_policy: crate::dag::ContextPolicy::Fresh,
+            worktree: crate::prompt::WorktreePolicy::default(),
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do the thing".to_owned(),
+            prompt_components: None,
+        };
+        let mut correctives = vec![];
+        let mut counts = std::collections::HashMap::new();
+        let budget = crate::budget::Budget::new(Some(10.0), None, None);
+
+        let verdict = super::run_qa_and_generate_corrective(
+            qa,
+            Some(provider),
+            &prompt,
+            "https://github.com/acme/repo/pull/42",
+            &mut correctives,
+            1,
+            &mut counts,
+            &budget,
+        )
+        .await;
+
+        assert_eq!(verdict, Some(QaVerdict::Fail));
+        assert!(correctives.is_empty());
     }
 }

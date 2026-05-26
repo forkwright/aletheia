@@ -65,6 +65,22 @@ pub trait QaGate: Send + Sync {
 }
 
 // ---------------------------------------------------------------------------
+// DiffProvider trait
+// ---------------------------------------------------------------------------
+
+/// Abstraction over PR diff fetching.
+///
+/// Implementations fetch the unified diff for a pull request from a forge
+/// (`GitHub`, `GitLab`, etc.) so the QA gate can evaluate real changes.
+pub trait DiffProvider: Send + Sync {
+    /// Fetch the unified diff for the given PR URL.
+    fn fetch_diff<'a>(
+        &'a self,
+        pr_url: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>>;
+}
+
+// ---------------------------------------------------------------------------
 // Supporting types
 // ---------------------------------------------------------------------------
 

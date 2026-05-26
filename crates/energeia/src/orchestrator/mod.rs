@@ -12,7 +12,7 @@ use crate::error::{self, Result};
 use crate::pipeline::DispatchPipeline;
 use crate::pipeline::context::PipelineContext;
 use crate::prompt::PromptSpec;
-use crate::qa::QaGate;
+use crate::qa::{DiffProvider, QaGate};
 use crate::session::options::EngineConfig;
 use crate::types::{DispatchResult, DispatchSpec};
 
@@ -35,6 +35,7 @@ pub use config::OrchestratorConfig;
 pub struct Orchestrator {
     engine: Arc<dyn DispatchEngine>,
     qa: Arc<dyn QaGate>,
+    diff_provider: Option<Arc<dyn DiffProvider>>,
     #[cfg(feature = "storage-fjall")]
     store: Option<Arc<crate::store::EnergeiaStore>>,
     config: OrchestratorConfig,
@@ -52,6 +53,7 @@ impl Orchestrator {
         Self {
             engine,
             qa,
+            diff_provider: None,
             #[cfg(feature = "storage-fjall")]
             store: None,
             config,
@@ -69,6 +71,13 @@ impl Orchestrator {
     #[must_use]
     pub fn with_cancel_token(mut self, cancel: CancellationToken) -> Self {
         self.cancel = cancel;
+        self
+    }
+
+    /// Attach a PR diff provider for QA evaluation.
+    #[must_use]
+    pub fn with_diff_provider(mut self, provider: Option<Arc<dyn DiffProvider>>) -> Self {
+        self.diff_provider = provider;
         self
     }
 
@@ -116,7 +125,8 @@ impl Orchestrator {
             #[cfg(feature = "storage-fjall")]
             self.store.clone(),
         )
-        .with_cancel_token(self.cancel.clone());
+        .with_cancel_token(self.cancel.clone())
+        .with_diff_provider(self.diff_provider.clone());
 
         let pipeline = DispatchPipeline::default();
         pipeline
