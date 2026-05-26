@@ -9,9 +9,12 @@
 //!
 //! - [`manager`] — `SessionManager::execute()` and resume loop
 //! - [`events`] — event stream processing, PR URL extraction, rate limit detection
+//! - [`isolation`] — worktree isolation resolution and stale cleanup
 //! - [`options`] — `EngineConfig` builder for session-level configuration
 
 pub(crate) mod events;
+/// Worktree isolation resolution for session execution.
+pub mod isolation;
 /// Per-prompt session manager with resume loop and event processing.
 pub mod manager;
 /// Session-level configuration options for the execution engine.
