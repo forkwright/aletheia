@@ -1,7 +1,7 @@
 use super::*;
 use crate::types::{
-    CompletionRequest, Content, ContentBlock, Message, Role, ThinkingConfig, ToolDefinition,
-    ToolResultContent,
+    CompletionRequest, Content, ContentBlock, Message, OutputFormat, Role, ThinkingConfig,
+    ToolDefinition, ToolResultContent,
 };
 
 #[test]
@@ -255,4 +255,79 @@ fn tool_arguments_serialized_as_json_string() {
     let tc = &wire.messages[0].tool_calls[0];
     let parsed: serde_json::Value = serde_json::from_str(&tc.function.arguments).unwrap();
     assert_eq!(parsed["x"], 1);
+}
+
+#[test]
+fn output_format_json_schema_maps_to_response_format() {
+    let req = CompletionRequest {
+        model: "gpt-4o".to_owned(),
+        messages: vec![Message {
+            role: Role::User,
+            content: Content::Text("Give me JSON".to_owned()),
+            cache_breakpoint: false,
+        }],
+        max_tokens: 128,
+        output_format: Some(OutputFormat::JsonSchema {
+            name: "answer".to_owned(),
+            schema: serde_json::json!({
+                "type": "object",
+                "properties": { "answer": { "type": "string" } }
+            }),
+            strict: Some(true),
+        }),
+        ..Default::default()
+    };
+    let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
+    assert!(
+        wire.output_format.is_some(),
+        "output_format should be translated"
+    );
+    let json = serde_json::to_value(&wire).unwrap();
+    assert_eq!(json["response_format"]["type"], "json_schema");
+    assert_eq!(json["response_format"]["json_schema"]["name"], "answer");
+    assert_eq!(json["response_format"]["json_schema"]["strict"], true);
+    assert_eq!(
+        json["response_format"]["json_schema"]["schema"]["type"],
+        "object"
+    );
+}
+
+#[test]
+fn output_format_none_omits_response_format() {
+    let req = CompletionRequest {
+        model: "gpt-4o".to_owned(),
+        messages: vec![Message {
+            role: Role::User,
+            content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
+        }],
+        max_tokens: 128,
+        output_format: None,
+        ..Default::default()
+    };
+    let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
+    assert!(wire.output_format.is_none());
+    let json = serde_json::to_string(&wire).unwrap();
+    assert!(
+        !json.contains("response_format"),
+        "serialized request must not contain response_format when output_format is None"
+    );
+}
+
+#[test]
+fn output_format_text_maps_to_response_format_text() {
+    let req = CompletionRequest {
+        model: "gpt-4o".to_owned(),
+        messages: vec![Message {
+            role: Role::User,
+            content: Content::Text("hi".to_owned()),
+            cache_breakpoint: false,
+        }],
+        max_tokens: 128,
+        output_format: Some(OutputFormat::Text),
+        ..Default::default()
+    };
+    let wire = ChatCompletionRequest::from_request(&req, None).unwrap();
+    let json = serde_json::to_value(&wire).unwrap();
+    assert_eq!(json["response_format"]["type"], "text");
 }
