@@ -246,6 +246,11 @@ workspace = "{workspace}"
 # account = "+1XXXXXXXXXX"
 # http_host = "localhost"
 # http_port = 8080
+#
+# [channels.matrix.accounts.primary]
+# homeserver = "https://matrix.example.org"
+# access_token_env = "MATRIX_ACCESS_TOKEN"
+# user_id = "@bot:example.org"
 
 # --- Bindings (route messages to agents) ---
 # [[bindings]]

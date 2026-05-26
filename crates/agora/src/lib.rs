@@ -3,12 +3,14 @@
 //!
 //! Agora (ἀγορά): "gathering place." The public square where messages flow
 //! between Aletheia and the outside world. Provides the channel abstraction
-//! and registry, with Signal (semeion) as the first provider.
+//! and registry, with Signal (semeion) and Matrix providers.
 
 /// Error types for channel operations and provider failures.
 pub(crate) mod error;
 /// Unified channel listener that merges inbound messages from all providers into a single stream.
 pub mod listener;
+/// Matrix channel provider backed by the Matrix Client-Server API.
+pub mod matrix;
 /// Prometheus metric definitions for channel messaging.
 pub mod metrics;
 /// Channel registry: the single source of truth for available channel providers.
@@ -23,6 +25,8 @@ pub mod types;
 #[cfg(test)]
 mod assertions {
     use super::listener::ChannelListener;
+    use super::matrix::MatrixProvider;
+    use super::matrix::client::MatrixClient;
     use super::registry::ChannelRegistry;
     use super::router::MessageRouter;
     use super::semeion::SignalProvider;
@@ -36,6 +40,8 @@ mod assertions {
         assert_send::<ChannelListener>();
         assert_send_sync::<InboundMessage>();
         assert_send_sync::<MessageRouter>();
+        assert_send_sync::<MatrixClient>();
+        assert_send_sync::<MatrixProvider>();
         assert_send_sync::<SignalClient>();
         assert_send_sync::<SignalProvider>();
     };

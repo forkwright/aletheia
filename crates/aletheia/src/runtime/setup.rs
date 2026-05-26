@@ -7,6 +7,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use agora::listener::ChannelListener;
+use agora::matrix::MatrixProvider;
+use agora::matrix::client::MatrixClient;
 use agora::registry::ChannelRegistry;
 use agora::router::MessageRouter;
 use agora::semeion::SignalProvider;
@@ -601,14 +603,84 @@ pub(super) fn build_signal_provider(
     Some(Arc::new(provider))
 }
 
+pub(super) fn build_matrix_provider(
+    matrix_config: &taxis::config::MatrixConfig,
+    messaging_config: &taxis::config::MessagingConfig,
+) -> Option<Arc<MatrixProvider>> {
+    if !matrix_config.enabled {
+        info!("Matrix channel disabled");
+        return None;
+    }
+
+    if matrix_config.accounts.is_empty() {
+        tracing::debug!("Matrix enabled but no accounts configured");
+        return None;
+    }
+
+    let mut provider = MatrixProvider::from_config(messaging_config);
+    let rpc_timeout = std::time::Duration::from_secs(messaging_config.rpc_timeout_secs);
+    let receive_timeout = std::time::Duration::from_secs(messaging_config.receive_timeout_secs);
+
+    for (account_id, account_cfg) in &matrix_config.accounts {
+        if !account_cfg.enabled {
+            continue;
+        }
+        let access_token = match std::env::var(&account_cfg.access_token_env) {
+            Ok(token) if !token.is_empty() => token,
+            Ok(_) => {
+                warn!(
+                    account = %account_id,
+                    env = %account_cfg.access_token_env,
+                    "Matrix access token environment variable is empty"
+                );
+                continue;
+            }
+            Err(e) => {
+                warn!(
+                    account = %account_id,
+                    env = %account_cfg.access_token_env,
+                    error = %e,
+                    "Matrix access token environment variable is unavailable"
+                );
+                continue;
+            }
+        };
+
+        match MatrixClient::with_timeouts(
+            &account_cfg.homeserver,
+            &access_token,
+            rpc_timeout,
+            receive_timeout,
+        ) {
+            Ok(client) => {
+                provider.add_account(
+                    account_id.clone(),
+                    client,
+                    account_cfg.user_id.clone(),
+                    account_cfg.auto_start,
+                    account_cfg.initial_since.clone(),
+                );
+                info!(account = %account_id, auto_start = account_cfg.auto_start, "Matrix account added");
+            }
+            Err(e) => {
+                warn!(account = %account_id, error = %e, "failed to CREATE Matrix client");
+            }
+        }
+    }
+
+    Some(Arc::new(provider))
+}
+
 pub(super) fn start_inbound_dispatch(
     config: &AletheiaConfig,
     nous_manager: &Arc<NousManager>,
     ready_rx: tokio::sync::watch::Receiver<bool>,
     signal_provider: Option<&Arc<SignalProvider>>,
+    matrix_provider: Option<&Arc<MatrixProvider>>,
     shutdown_token: &CancellationToken,
 ) -> Result<(Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>)> {
     let mut channel_registry = ChannelRegistry::new();
+    let mut listen_providers: Vec<&dyn ChannelProvider> = Vec::new();
 
     if let Some(provider) = signal_provider {
         #[expect(
@@ -619,20 +691,34 @@ pub(super) fn start_inbound_dispatch(
             &mut channel_registry,
             Arc::clone(provider) as Arc<dyn ChannelProvider>,
         )?;
+        listen_providers.push(provider.as_ref());
+    }
+    if let Some(provider) = matrix_provider {
+        #[expect(
+            clippy::as_conversions,
+            reason = "coercion to dyn ChannelProvider trait object: required by registry API"
+        )]
+        register_channel_provider(
+            &mut channel_registry,
+            Arc::clone(provider) as Arc<dyn ChannelProvider>,
+        )?;
+        listen_providers.push(provider.as_ref());
     }
     let channel_registry = Arc::new(channel_registry);
 
-    let handle = if let Some(provider) = signal_provider {
+    let handle = if listen_providers.is_empty() {
+        None
+    } else {
         let poll_interval = Some(std::time::Duration::from_millis(
             config.messaging.poll_interval_ms,
         ));
-        let listener = ChannelListener::start_with_config(
-            provider.as_ref(),
+        let listener = ChannelListener::start_many_with_config(
+            listen_providers,
             poll_interval,
-            shutdown_token.child_token(),
+            &shutdown_token.child_token(),
             config.messaging.max_concurrent_handlers,
         );
-        info!("signal channel listener started");
+        info!("channel listeners started");
         let (rx, _poll_handles) = listener.into_receiver();
 
         let default_nous_id = config
@@ -651,8 +737,6 @@ pub(super) fn start_inbound_dispatch(
             Arc::clone(&channel_registry),
             ready_rx,
         ))
-    } else {
-        None
     };
 
     Ok((channel_registry, handle))

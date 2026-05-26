@@ -293,6 +293,8 @@ impl Default for EmbeddingSettings {
 pub struct ChannelsConfig { // kanon:ignore RUST/config-deny-unknown-fields
     /// Signal messenger transport configuration.
     pub signal: SignalConfig,
+    /// Matrix messenger transport configuration.
+    pub matrix: MatrixConfig,
 }
 
 /// Signal messenger channel configuration.
@@ -339,6 +341,51 @@ impl Default for SignalAccountConfig {
             http_host: "localhost".to_owned(),
             http_port: 8080,
             auto_start: true,
+        }
+    }
+}
+
+/// Matrix messenger channel configuration.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[rustfmt::skip]
+pub struct MatrixConfig { // kanon:ignore RUST/config-deny-unknown-fields
+    /// Whether the Matrix channel is active.
+    pub enabled: bool,
+    /// Named Matrix accounts keyed by account label.
+    pub accounts: HashMap<String, MatrixAccountConfig>,
+}
+
+/// Configuration for a single Matrix account.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[rustfmt::skip]
+pub struct MatrixAccountConfig { // kanon:ignore RUST/config-deny-unknown-fields
+    /// Whether this account is active.
+    pub enabled: bool,
+    /// Matrix homeserver base URL, e.g. `https://matrix.example.org`.
+    pub homeserver: String,
+    /// Environment variable that contains the Matrix access token.
+    pub access_token_env: String, // kanon:ignore RUST/plain-string-secret
+    /// Matrix user ID for this account. Used to ignore echoed self messages.
+    pub user_id: Option<String>,
+    /// Whether to auto-start the `/sync` receive loop on server boot.
+    pub auto_start: bool,
+    /// Optional initial `/sync` since token.
+    pub initial_since: Option<String>,
+}
+
+impl Default for MatrixAccountConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            homeserver: String::new(),
+            access_token_env: String::new(),
+            user_id: None,
+            auto_start: true,
+            initial_since: None,
         }
     }
 }
