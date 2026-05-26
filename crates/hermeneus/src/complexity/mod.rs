@@ -3,6 +3,12 @@
 //! Scores query complexity on multiple dimensions (length, tool requirements,
 //! domain signals, conversation depth, explicit markers) and routes to an
 //! appropriate model tier (NoLlm / Haiku / Sonnet / Opus).
+//!
+//! The `NoLlm` tier feeds into the [`tier1`] handler registry: deterministic
+//! regex/exact-match handlers that respond without any LLM call.
+
+/// Tier-1 (no-LLM) handler registry for deterministic prompt transforms.
+pub mod tier1;
 
 use std::fmt;
 use std::sync::LazyLock;
@@ -470,11 +476,16 @@ pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> Ro
 }
 
 /// Select the model identifier for a given tier from config.
+///
+/// `NoLlm` falls back to `haiku_model` here. Callers that have a
+/// [`tier1::Tier1Registry`] should consult it *before* calling this function
+/// so that matched prompts never reach the model dispatch path at all.
 #[must_use]
 fn select_model_for_tier(tier: ModelTier, config: &ComplexityConfig) -> String {
     match tier {
-        // Until a Tier-1 handler registry exists, no-LLM decisions fall back to
-        // the fast model while preserving the tier in telemetry and tests.
+        // WHY(#3970): NoLlm falls back to the fast model when the Tier-1
+        // registry has no matching handler. The tier is preserved in telemetry
+        // so callers can distinguish "no handler matched" from "Haiku choice."
         ModelTier::NoLlm | ModelTier::Haiku => config.haiku_model.clone(),
         ModelTier::Sonnet => config.sonnet_model.clone(),
         ModelTier::Opus => config.opus_model.clone(),
