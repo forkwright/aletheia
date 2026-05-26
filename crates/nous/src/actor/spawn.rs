@@ -130,6 +130,8 @@ pub struct DaemonSpawnParams {
     pub tool_services: Option<Arc<organon::types::ToolServices>>,
     /// Additional bootstrap sections for the child agent.
     pub extra_bootstrap: Vec<BootstrapSection>,
+    /// Optional empirical router (shared with parent).
+    pub empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
 }
 
 /// Spawn a child agent for daemon coordination.
@@ -170,7 +172,7 @@ pub fn spawn_for_daemon(
         cancel,
         taxis::config::NousBehaviorConfig::default(),
         None, // WHY: daemon child agents share the parent's audit log via binary crate wiring
-        None, // WHY: daemon child agents use the NoOpRouter; binary crate wires empirical router
+        params.empirical_router,
     )
 }
 

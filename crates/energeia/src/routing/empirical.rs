@@ -53,10 +53,7 @@ impl EmpiricalRouter {
     /// * `min_samples` — minimum records before empirical choice is made (default 5)
     /// * `window` — rolling window for record weighting (default 7 days)
     /// * `confidence_threshold` — minimum gap (winner − static) to override (default 0.1)
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "binary wiring constructs EmpiricalRouter")
-    )]
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn new(
         store: Arc<AfterActionStore>,
         fallback: StaticRouter,
@@ -166,10 +163,7 @@ impl EmpiricalRouter {
     /// Return the success rate for a specific (provider, category) pair.
     ///
     /// Returns `None` when the cache has no records for this pair.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "observability API for binary wiring")
-    )]
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) async fn success_rate(
         &self,
         provider: &ProviderId,

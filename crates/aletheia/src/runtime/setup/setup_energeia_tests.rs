@@ -45,7 +45,7 @@ async fn energeia_feature_registers_service_backed_runtime_tools() {
     let tmp = tempfile::TempDir::new().expect("tempdir");
     let oikos = Oikos::from_root(tmp.path());
     let config = AletheiaConfig::default();
-    let registry = build_tool_registry(&config, &oikos, &CancellationToken::new())
+    let registry = build_tool_registry(&config, &oikos, &CancellationToken::new(), None)
         .expect("tool registry with energeia services");
     let names: HashSet<String> = registry
         .definitions()

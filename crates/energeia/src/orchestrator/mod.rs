@@ -3,6 +3,7 @@
 // stages (preparation → execution → post_processing). The orchestrator owns
 // the public API surface and the store attachment.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
@@ -40,6 +41,7 @@ pub struct Orchestrator {
     store: Option<Arc<crate::store::EnergeiaStore>>,
     config: OrchestratorConfig,
     cancel: CancellationToken,
+    after_action_log_dir: Option<PathBuf>,
 }
 
 impl Orchestrator {
@@ -58,6 +60,7 @@ impl Orchestrator {
             store: None,
             config,
             cancel: CancellationToken::new(),
+            after_action_log_dir: None,
         }
     }
 
@@ -86,6 +89,16 @@ impl Orchestrator {
     #[must_use]
     pub fn with_store(mut self, store: Arc<crate::store::EnergeiaStore>) -> Self {
         self.store = Some(store);
+        self
+    }
+
+    /// Attach the directory for after-action JSONL logs.
+    ///
+    /// When set, the post-processing stage writes dispatch outcomes as JSONL
+    /// records to this directory so they can be read by `AfterActionStore`.
+    #[must_use]
+    pub fn with_after_action_log_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.after_action_log_dir = dir;
         self
     }
 
@@ -126,7 +139,8 @@ impl Orchestrator {
             self.store.clone(),
         )
         .with_cancel_token(self.cancel.clone())
-        .with_diff_provider(self.diff_provider.clone());
+        .with_diff_provider(self.diff_provider.clone())
+        .with_after_action_log_dir(self.after_action_log_dir.clone());
 
         let pipeline = DispatchPipeline::default();
         pipeline

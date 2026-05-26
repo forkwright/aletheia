@@ -306,6 +306,38 @@ fn spawn_test_actor_with_cross() -> (
     (handle, join, cross_tx, dir)
 }
 
+fn spawn_test_actor_with_router(
+    router: Option<Arc<dyn aletheia_routing::Router>>,
+) -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::TempDir) {
+    let (dir, oikos) = test_oikos();
+    let providers = test_providers();
+    let tools = Arc::new(ToolRegistry::new());
+    let config = test_config();
+    let pipeline_config = PipelineConfig::default();
+
+    let (handle, join, _active_turn, _turn_started_at_ms) = spawn(
+        config,
+        pipeline_config,
+        providers,
+        tools,
+        oikos,
+        None,
+        None,
+        None,
+        #[cfg(feature = "knowledge-store")]
+        None,
+        None,
+        Vec::new(),
+        None,
+        None,
+        CancellationToken::new(),
+        taxis::config::NousBehaviorConfig::default(),
+        None, // audit_log
+        router,
+    );
+    (handle, join, dir)
+}
+
 fn spawn_panicking_actor_with_cross() -> (
     NousHandle,
     tokio::task::JoinHandle<()>,

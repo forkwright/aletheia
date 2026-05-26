@@ -178,6 +178,13 @@ impl PipelineContext {
         self
     }
 
+    /// Set the directory for after-action JSONL logs.
+    #[must_use]
+    pub(crate) fn with_after_action_log_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.after_action_log_dir = dir;
+        self
+    }
+
     /// Attach a diff provider for PR diff fetching during QA.
     #[must_use]
     pub(crate) fn with_diff_provider(mut self, provider: Option<Arc<dyn DiffProvider>>) -> Self {
