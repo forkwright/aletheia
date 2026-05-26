@@ -175,11 +175,10 @@ jobs:
 
           # WHY: --auto-merge queues the PR for squash-merge once required
           # status checks pass. The branch is deleted automatically on merge.
+          PR_BODY="Automated regeneration of _llm/ L3 API index.\n\nGate-Passed: kanon 0.1.0"
           gh pr create \
             --title "chore(_llm): regenerate L3 API index" \
-            --body "Automated regeneration of `_llm/` L3 API index.
-
-Gate-Passed: kanon 0.1.0" \
+            --body "$PR_BODY" \
             --base main \
             --head "$BRANCH" || true
 
