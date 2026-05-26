@@ -326,19 +326,14 @@ mod tests {
 
     #[test]
     fn regex_replace_handler_returns_none_on_no_match() {
-        let h = RegexReplaceHandler::new("guard", r"^fixed$", "Fixed response.")
-            .unwrap();
+        let h = RegexReplaceHandler::new("guard", r"^fixed$", "Fixed response.").unwrap();
         assert!(h.try_handle("not fixed").is_none());
     }
 
     #[test]
     fn regex_replace_handler_returns_template_without_captures() {
-        let h = RegexReplaceHandler::new("simple", r"^hello$", "Hello back!")
-            .unwrap();
-        assert_eq!(
-            h.try_handle("hello"),
-            Some("Hello back!".to_owned())
-        );
+        let h = RegexReplaceHandler::new("simple", r"^hello$", "Hello back!").unwrap();
+        assert_eq!(h.try_handle("hello"), Some("Hello back!".to_owned()));
     }
 
     #[test]
@@ -396,7 +391,8 @@ mod tests {
     fn default_registry_does_not_match_complex_prompts() {
         let reg = default_registry().unwrap();
         assert!(
-            reg.dispatch("Please analyze the codebase and suggest improvements").is_none()
+            reg.dispatch("Please analyze the codebase and suggest improvements")
+                .is_none()
         );
     }
 }
