@@ -22,7 +22,7 @@ pub trait RewardFn {
     fn reward(&self, outcome: &MemoryOutcome) -> f64;
 }
 
-/// Reward function that scores improvement over a LongMemEval baseline.
+/// Reward function that scores improvement over a `LongMemEval` baseline.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct LongMemEvalReward {
     /// Baseline exact-match rate to improve on.

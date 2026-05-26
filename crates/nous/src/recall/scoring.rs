@@ -86,6 +86,9 @@ pub struct RecallConfig {
     /// URL for an HTTP cross-encoder reranker.
     #[serde(default)]
     pub reranker_url: Option<String>,
+    /// Filesystem path to a local ONNX cross-encoder model for in-process reranking.
+    #[serde(default)]
+    pub reranker_model_path: Option<String>,
     /// Characters per token for recall budget estimation.
     ///
     /// Wired from `agents.defaults.chars_per_token` at startup.
@@ -113,6 +116,7 @@ impl Default for RecallConfig {
             late_inject_anchor: false,
             scope_quotas: HashMap::new(),
             reranker_url: None,
+            reranker_model_path: None,
             chars_per_token: default_chars_per_token(),
         }
     }
@@ -140,6 +144,7 @@ impl From<taxis::config::RecallSettings> for RecallConfig {
             late_inject_anchor: s.late_inject_anchor,
             scope_quotas: s.scope_quotas,
             reranker_url: s.reranker_url,
+            reranker_model_path: s.reranker_model_path,
             // NOTE: chars_per_token is forwarded separately from AgentDefaults
             //       via NousConfig; the From conversion cannot carry it since
             //       RecallSettings does not own that field.

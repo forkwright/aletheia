@@ -299,6 +299,10 @@ fn recall_config_defaults() {
         config.reranker_url.is_none(),
         "default reranker_url should be None"
     );
+    assert!(
+        config.reranker_model_path.is_none(),
+        "default reranker_model_path should be None"
+    );
 }
 
 #[test]
@@ -318,6 +322,7 @@ fn recall_from_settings_propagation() {
             m
         },
         reranker_url: Some("http://localhost:9999/rerank".to_owned()),
+        reranker_model_path: Some("/models/cross-encoder".to_owned()),
         ..taxis::config::RecallSettings::default()
     };
     let config = RecallConfig::from(settings);
@@ -333,6 +338,30 @@ fn recall_from_settings_propagation() {
     assert_eq!(
         config.reranker_url,
         Some("http://localhost:9999/rerank".to_owned())
+    );
+    assert_eq!(
+        config.reranker_model_path,
+        Some("/models/cross-encoder".to_owned())
+    );
+}
+
+#[test]
+fn recall_url_behavior_unchanged_when_model_path_present() {
+    let settings = taxis::config::RecallSettings {
+        reranker_url: Some("http://localhost:9999/rerank".to_owned()),
+        reranker_model_path: Some("/models/cross-encoder".to_owned()),
+        ..taxis::config::RecallSettings::default()
+    };
+    let config = RecallConfig::from(settings);
+    assert_eq!(
+        config.reranker_url,
+        Some("http://localhost:9999/rerank".to_owned()),
+        "reranker_url should still propagate when model path is also set"
+    );
+    assert_eq!(
+        config.reranker_model_path,
+        Some("/models/cross-encoder".to_owned()),
+        "reranker_model_path should propagate alongside url"
     );
 }
 

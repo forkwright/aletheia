@@ -479,6 +479,27 @@ fn pricing_defaults_empty() {
 }
 
 #[test]
+fn recall_settings_serde_roundtrip() {
+    let mut config = AletheiaConfig::default();
+    config.agents.defaults.recall.reranker_url = Some("http://localhost:9999/rerank".to_owned());
+    config.agents.defaults.recall.reranker_model_path = Some("/models/cross-encoder".to_owned());
+
+    let json = serde_json::to_string(&config).expect("serialize");
+    let back: AletheiaConfig = serde_json::from_str(&json).expect("deserialize");
+
+    assert_eq!(
+        back.agents.defaults.recall.reranker_url,
+        Some("http://localhost:9999/rerank".to_owned()),
+        "reranker_url should survive serde roundtrip"
+    );
+    assert_eq!(
+        back.agents.defaults.recall.reranker_model_path,
+        Some("/models/cross-encoder".to_owned()),
+        "reranker_model_path should survive serde roundtrip"
+    );
+}
+
+#[test]
 fn pricing_from_json() {
     let json = r#"{
         "pricing": {
