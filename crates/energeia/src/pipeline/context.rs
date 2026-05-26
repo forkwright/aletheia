@@ -17,7 +17,7 @@ use crate::dag::{PromptDag, compute_frontier};
 use crate::engine::DispatchEngine;
 use crate::orchestrator::OrchestratorConfig;
 use crate::prompt::PromptSpec;
-use crate::qa::QaGate;
+use crate::qa::{DiffProvider, QaGate};
 use crate::resume::ResumePolicy;
 use crate::session::options::EngineConfig;
 use crate::types::{DispatchResult, DispatchSpec, SessionOutcome};
@@ -36,6 +36,8 @@ pub(crate) struct PipelineContext {
     pub(crate) engine: Arc<dyn DispatchEngine>,
     /// Quality assurance gate.
     pub(crate) qa: Arc<dyn QaGate>,
+    /// PR diff provider for QA evaluation.
+    pub(crate) diff_provider: Option<Arc<dyn DiffProvider>>,
     /// Orchestrator-level configuration (concurrency, budget defaults).
     pub(crate) config: OrchestratorConfig,
     /// State persistence store, if attached.
@@ -132,6 +134,7 @@ impl PipelineContext {
             prompts,
             engine,
             qa,
+            diff_provider: None,
             config,
             #[cfg(feature = "storage-fjall")]
             store,
@@ -168,6 +171,13 @@ impl PipelineContext {
     #[must_use]
     pub(crate) fn with_cancel_token(mut self, cancel: CancellationToken) -> Self {
         self.cancel = cancel;
+        self
+    }
+
+    /// Attach a diff provider for PR diff fetching during QA.
+    #[must_use]
+    pub(crate) fn with_diff_provider(mut self, provider: Option<Arc<dyn DiffProvider>>) -> Self {
+        self.diff_provider = provider;
         self
     }
 
