@@ -140,11 +140,7 @@ impl NuExtractProvider {
             .encode(prompt, true)
             .map_err(|err| provider_failed("tokenize_prompt", err))?;
 
-        let input_ids: Vec<i64> = encoding
-            .get_ids()
-            .iter()
-            .map(|id| i64::from(*id))
-            .collect();
+        let input_ids: Vec<i64> = encoding.get_ids().iter().map(|id| i64::from(*id)).collect();
         let seq_len = input_ids.len();
         let attention_mask: Vec<i64> = encoding
             .get_attention_mask()
@@ -153,8 +149,13 @@ impl NuExtractProvider {
             .collect();
 
         let mut session = self.session.lock().await;
-        let output_ids =
-            greedy_decode(&mut session, &input_ids, &attention_mask, seq_len, self.config.max_new_tokens)?;
+        let output_ids = greedy_decode(
+            &mut session,
+            &input_ids,
+            &attention_mask,
+            seq_len,
+            self.config.max_new_tokens,
+        )?;
         drop(session);
 
         let decoded = self
@@ -248,8 +249,9 @@ fn greedy_decode(
     // supplies input_ids + attention_mask + max_new_tokens and reads
     // output_ids directly. This avoids the encoder/decoder split that
     // requires kv-cache plumbing not yet in ort 2.0-rc.
-    let max_new = vec![i64::try_from(max_new_tokens)
-        .map_err(|err| provider_failed("max_new_tokens_cast", err))?];
+    let max_new = vec![
+        i64::try_from(max_new_tokens).map_err(|err| provider_failed("max_new_tokens_cast", err))?,
+    ];
     let seq_i64 = usize_to_i64(seq_len)?;
     let outputs = session
         .run(ort::inputs![
@@ -270,9 +272,7 @@ fn greedy_decode(
         .map_err(|err| provider_failed("view_output_ids", err))?;
 
     data.iter()
-        .map(|&id| {
-            u32::try_from(id).map_err(|err| provider_failed("output_id_cast", err))
-        })
+        .map(|&id| u32::try_from(id).map_err(|err| provider_failed("output_id_cast", err)))
         .collect()
 }
 
@@ -447,8 +447,7 @@ mod tests {
 
     #[test]
     fn parse_nuextract_json_with_output_markers() {
-        let decoded =
-            "<|output|>\n{\"entities\": [{\"name\": \"Alice\"}]}\n<|end|>";
+        let decoded = "<|output|>\n{\"entities\": [{\"name\": \"Alice\"}]}\n<|end|>";
         let value = parse_nuextract_json(decoded).expect("should parse wrapped JSON");
         assert!(value.get("entities").is_some());
     }
