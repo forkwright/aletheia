@@ -179,9 +179,7 @@ impl CodexProvider {
         // full response as a single TextDelta so callers that consume
         // complete_streaming see consistent event-based output regardless of
         // which seat-bridged provider they're talking to.
-        on_event(StreamEvent::TextDelta {
-            text: text.clone(),
-        });
+        on_event(StreamEvent::TextDelta { text: text.clone() });
 
         Ok(parse::text_to_response(&text, model))
     }
@@ -322,7 +320,9 @@ fn find_codex_binary() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CompletionRequest, Content, ContentBlock, Message, Role, ToolResultContent};
+    use crate::types::{
+        CompletionRequest, Content, ContentBlock, Message, Role, ToolResultContent,
+    };
 
     #[test]
     fn format_prompt_single_message() {
@@ -440,10 +440,22 @@ mod tests {
         };
         let prompt = CodexProvider::format_prompt(&request);
         // All three turns must appear.
-        assert!(prompt.contains("User: What is in /etc/hosts?"), "first user turn missing: {prompt}");
-        assert!(prompt.contains("I will read the file."), "assistant text missing: {prompt}");
-        assert!(prompt.contains("[Tool call: read_file("), "tool-use marker missing: {prompt}");
-        assert!(prompt.contains("127.0.0.1 localhost"), "tool result missing: {prompt}");
+        assert!(
+            prompt.contains("User: What is in /etc/hosts?"),
+            "first user turn missing: {prompt}"
+        );
+        assert!(
+            prompt.contains("I will read the file."),
+            "assistant text missing: {prompt}"
+        );
+        assert!(
+            prompt.contains("[Tool call: read_file("),
+            "tool-use marker missing: {prompt}"
+        );
+        assert!(
+            prompt.contains("127.0.0.1 localhost"),
+            "tool result missing: {prompt}"
+        );
     }
 
     #[test]
@@ -486,7 +498,10 @@ mod tests {
             default_model: "codex/gpt-5-codex".to_owned(),
             timeout: Duration::from_secs(1),
         };
-        assert!(provider.supports_streaming(), "CodexProvider must report supports_streaming=true after #3980");
+        assert!(
+            provider.supports_streaming(),
+            "CodexProvider must report supports_streaming=true after #3980"
+        );
     }
 
     #[test]
@@ -496,7 +511,10 @@ mod tests {
             default_model: "codex/gpt-5-codex".to_owned(),
             timeout: Duration::from_secs(300),
         };
-        assert_eq!(provider.cli_binary(), &PathBuf::from("/usr/local/bin/codex"));
+        assert_eq!(
+            provider.cli_binary(),
+            &PathBuf::from("/usr/local/bin/codex")
+        );
         assert_eq!(provider.subprocess_timeout(), Duration::from_secs(300));
         assert_eq!(provider.cli_product_name(), "codex");
     }

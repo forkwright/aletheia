@@ -431,7 +431,10 @@ mod tests {
             default_model: "claude-opus-4-6".to_owned(),
             timeout: Duration::from_secs(300),
         };
-        assert_eq!(provider.cli_binary(), &PathBuf::from("/usr/local/bin/claude"));
+        assert_eq!(
+            provider.cli_binary(),
+            &PathBuf::from("/usr/local/bin/claude")
+        );
         assert_eq!(provider.subprocess_timeout(), Duration::from_secs(300));
         assert_eq!(provider.cli_product_name(), "claude");
     }
