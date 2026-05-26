@@ -1,11 +1,15 @@
 # WHY: Post-merge regeneration of _llm/ L3 API index. Stale summaries are
 # worse than no summaries — agents trust the cached API surface, but the code
 # has changed. This workflow detects affected crates from the merge commit,
-# regenerates the minimum set, and pushes an automated follow-up commit.
+# regenerates the minimum set, and opens an auto-merge PR.
 #
 # Large refactors (new crate, removed crate, generator script change) trigger
 # full regeneration. Small changes (new function, modified signature) trigger
 # per-crate regeneration.
+#
+# WHY: Push directly to main is blocked by branch protection (3 required
+# status checks). Instead, push to a dedicated branch and open a PR with
+# auto-merge enabled so the bot commit goes through the normal gate path.
 name: _llm Regeneration
 
 on:
@@ -14,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: llm-regen-${{ github.ref }}
@@ -117,13 +122,13 @@ jobs:
 
       - name: Set up uv
         if: steps.detect.outputs.full_regen == 'true' || steps.detect.outputs.changed_crates != ''
-        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           version: "latest"
 
       # WHY: gate regeneration on the fixture test so we never rewrite the
       # index with a broken extractor (which would silently drop pub items,
-      # as the `type_item` / `static_item` miss demonstrated pre-fix).
+      # as the type_item / static_item miss demonstrated pre-fix).
       - name: Test L3 extractor
         if: steps.detect.outputs.full_regen == 'true' || steps.detect.outputs.changed_crates != ''
         run: uv run scripts/test_llm_extract_l3.py
@@ -149,18 +154,34 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit and push updated _llm/
+      - name: Open auto-merge PR with updated _llm/
         if: steps.regen.outputs.changed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
+          BRANCH="chore/llm-regen-${{ github.run_id }}"
+
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          git checkout -b "$BRANCH"
           git add _llm/
           git commit -m "chore(_llm): regenerate L3 API index" \
                      -m "Gate-Passed: kanon 0.1.0"
-          git push
+          git push origin "$BRANCH"
+
+          # WHY: --auto-merge queues the PR for squash-merge once required
+          # status checks pass. The branch is deleted automatically on merge.
+          gh pr create \
+            --title "chore(_llm): regenerate L3 API index" \
+            --body "Automated regeneration of `_llm/` L3 API index.
+
+Gate-Passed: kanon 0.1.0" \
+            --base main \
+            --head "$BRANCH" || true
+
+          # Enable auto-merge (idempotent — no-op if PR already set)
+          gh pr merge "$BRANCH" --auto --squash --delete-branch 2>/dev/null || true
