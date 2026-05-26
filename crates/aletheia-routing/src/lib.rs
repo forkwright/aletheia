@@ -26,7 +26,7 @@ pub mod store;
 pub mod types;
 
 pub use store::AfterActionStore;
-pub use types::{RequestFeatures, RouterError, RoutingDecision, TurnOutcome};
+pub use types::{RequestFeatures, RouterError, RoutingBoundary, RoutingDecision, TurnOutcome};
 
 use std::sync::Arc;
 
@@ -144,6 +144,93 @@ impl Router for RecordingRouter {
     }
 }
 
+// ---------------------------------------------------------------------------
+// FallthroughRouter
+// ---------------------------------------------------------------------------
+
+/// A router combinator that falls through to a secondary router when the
+/// primary router's confidence is below a threshold.
+///
+/// WHY(#3969): the Q-learner (and any learned router) needs a way to defer to
+/// a static or rule-based fallback when it has insufficient data to make a
+/// high-confidence decision. `FallthroughRouter` is that combinator: it runs
+/// the primary router first, and if `confidence < threshold` (or the primary
+/// returns `None` confidence), delegates to the secondary.
+///
+/// Both `after_action` calls are forwarded to the primary router only. The
+/// secondary is a read-only fallback; recording against it would corrupt the
+/// primary's training signal.
+///
+/// # Example
+///
+/// ```rust
+/// # use aletheia_routing::{FallthroughRouter, NoOpRouter};
+/// # use std::sync::Arc;
+/// let primary = Arc::new(NoOpRouter { provider: Arc::from("learned") });
+/// let fallback = Arc::new(NoOpRouter { provider: Arc::from("static") });
+/// // Fall through to `fallback` when primary confidence < 0.5.
+/// let router = FallthroughRouter::new(primary, fallback, 0.5);
+/// ```
+pub struct FallthroughRouter {
+    /// Primary router — queried first on every `route` call.
+    primary: Arc<dyn Router>,
+    /// Fallback router — used when primary confidence is below threshold.
+    fallback: Arc<dyn Router>,
+    /// Minimum confidence required to accept the primary decision.
+    ///
+    /// Must be in `[0.0, 1.0]`. A value of `0.0` means always accept the
+    /// primary decision; `1.0` means always fall through.
+    threshold: f64,
+}
+
+impl FallthroughRouter {
+    /// Create a new `FallthroughRouter`.
+    ///
+    /// `threshold` is clamped to `[0.0, 1.0]`.
+    #[must_use]
+    pub fn new(primary: Arc<dyn Router>, fallback: Arc<dyn Router>, threshold: f64) -> Self {
+        Self {
+            primary,
+            fallback,
+            threshold: threshold.clamp(0.0, 1.0),
+        }
+    }
+
+    /// Configured fallthrough confidence threshold.
+    #[must_use]
+    pub fn threshold(&self) -> f64 {
+        self.threshold
+    }
+}
+
+impl Router for FallthroughRouter {
+    fn route<'a>(&'a self, features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
+        Box::pin(async move {
+            let decision = self.primary.route(features).await;
+            // WHY(#3969): fall through when confidence is absent or below
+            // the threshold. A primary that returns None confidence is treated
+            // as having zero confidence so pure static routers always fall
+            // through, letting the secondary handle the request.
+            let confidence = decision.confidence.unwrap_or(0.0);
+            if confidence >= self.threshold {
+                decision
+            } else {
+                self.fallback.route(features).await
+            }
+        })
+    }
+
+    fn after_action(
+        &self,
+        decision: &RoutingDecision,
+        outcome: &TurnOutcome,
+    ) -> Result<(), RouterError> {
+        // WHY: only the primary receives after-action records so the learning
+        // signal is not diluted by fallback decisions.
+        self.primary.after_action(decision, outcome)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -191,5 +278,105 @@ mod tests {
         }
 
         panic!("recording router did not write outcome");
+    }
+
+    // WHY(#3969): FallthroughRouter must accept the primary decision when its
+    // confidence meets or exceeds the threshold.
+    #[tokio::test]
+    async fn fallthrough_router_uses_primary_when_confidence_meets_threshold() {
+        // A mock router that always returns a fixed decision with confidence 0.8.
+        struct ConfidentRouter;
+        impl Router for ConfidentRouter {
+            fn route<'a>(
+                &'a self,
+                _features: &'a RequestFeatures,
+            ) -> BoxFuture<'a, RoutingDecision> {
+                Box::pin(async { RoutingDecision::new("primary", Some(0.8)) })
+            }
+            fn after_action(
+                &self,
+                _decision: &RoutingDecision,
+                _outcome: &TurnOutcome,
+            ) -> Result<(), RouterError> {
+                Ok(())
+            }
+        }
+        let primary = Arc::new(ConfidentRouter);
+        let fallback = Arc::new(NoOpRouter {
+            provider: Arc::from("fallback"),
+        });
+        let router = FallthroughRouter::new(primary, fallback, 0.5);
+        let decision = router
+            .route(&RequestFeatures::new(Vec::new(), None, None))
+            .await;
+        assert_eq!(decision.provider.as_ref(), "primary");
+        assert_eq!(decision.confidence, Some(0.8));
+    }
+
+    // WHY(#3969): FallthroughRouter must delegate to the fallback when the
+    // primary confidence is below the threshold.
+    #[tokio::test]
+    async fn fallthrough_router_uses_fallback_when_confidence_below_threshold() {
+        struct LowConfidenceRouter;
+        impl Router for LowConfidenceRouter {
+            fn route<'a>(
+                &'a self,
+                _features: &'a RequestFeatures,
+            ) -> BoxFuture<'a, RoutingDecision> {
+                Box::pin(async { RoutingDecision::new("primary", Some(0.2)) })
+            }
+            fn after_action(
+                &self,
+                _decision: &RoutingDecision,
+                _outcome: &TurnOutcome,
+            ) -> Result<(), RouterError> {
+                Ok(())
+            }
+        }
+        let primary = Arc::new(LowConfidenceRouter);
+        let fallback = Arc::new(NoOpRouter {
+            provider: Arc::from("fallback"),
+        });
+        let router = FallthroughRouter::new(primary, fallback, 0.5);
+        let decision = router
+            .route(&RequestFeatures::new(Vec::new(), None, None))
+            .await;
+        assert_eq!(decision.provider.as_ref(), "fallback");
+    }
+
+    // WHY(#3969): a primary that returns None confidence (e.g. static router)
+    // should always fall through — None is treated as 0.0.
+    #[tokio::test]
+    async fn fallthrough_router_treats_none_confidence_as_zero() {
+        let primary = Arc::new(NoOpRouter {
+            provider: Arc::from("primary"),
+        });
+        let fallback = Arc::new(NoOpRouter {
+            provider: Arc::from("fallback"),
+        });
+        // threshold > 0 so None confidence always falls through.
+        let router = FallthroughRouter::new(primary, fallback, 0.1);
+        let decision = router
+            .route(&RequestFeatures::new(Vec::new(), None, None))
+            .await;
+        assert_eq!(decision.provider.as_ref(), "fallback");
+    }
+
+    // WHY(#3969): threshold clamping at 0.0 means always accept primary.
+    #[tokio::test]
+    async fn fallthrough_router_threshold_zero_always_accepts_primary() {
+        let primary = Arc::new(NoOpRouter {
+            provider: Arc::from("primary"),
+        });
+        let fallback = Arc::new(NoOpRouter {
+            provider: Arc::from("fallback"),
+        });
+        let router = FallthroughRouter::new(primary, fallback, 0.0);
+        let decision = router
+            .route(&RequestFeatures::new(Vec::new(), None, None))
+            .await;
+        // NoOpRouter returns None confidence; threshold 0.0 means
+        // None(=0.0) >= 0.0 is true, so primary wins.
+        assert_eq!(decision.provider.as_ref(), "primary");
     }
 }
