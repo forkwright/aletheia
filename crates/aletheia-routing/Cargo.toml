@@ -7,9 +7,6 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-[lints]
-workspace = true
-
 [features]
 # Test tiers (see docs/test-tiers.md)
 test-core = []
@@ -27,3 +24,6 @@ tracing = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true }
+
+[lints]
+workspace = true

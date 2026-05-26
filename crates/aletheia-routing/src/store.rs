@@ -38,6 +38,7 @@ const DEFAULT_REFRESH_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
 /// Errors produced by [`AfterActionStore`] operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
+#[non_exhaustive]
 pub enum AfterActionStoreError {
     /// Could not read a JSONL log directory.
     #[snafu(display("I/O error reading after-action log '{}': {source}", path.display()))]
@@ -411,7 +412,7 @@ fn merge_stats(target: &mut RollingStats, source: &RollingStats) {
 ///
 /// Returns [`TaskCategory::Feature`] for unrecognised strings so that new
 /// categories added in future PRs degrade gracefully on old store data.
-pub fn parse_category(s: &str) -> TaskCategory {
+pub(crate) fn parse_category(s: &str) -> TaskCategory {
     match s {
         "refactor" => TaskCategory::Refactor,
         "bug" => TaskCategory::Bug,

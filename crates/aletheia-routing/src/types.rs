@@ -70,7 +70,9 @@ impl TaskCategory {
                 "chore" | "dependency" | "dependencies" | "deps" | "ci" | "lint" => {
                     is_chore = true;
                 }
-                _ => {}
+                _ => {
+                    // other tokens are ignored — only keyword hits affect categorisation
+                }
             }
         }
 
