@@ -17,6 +17,7 @@ set -euo pipefail
 # Prerequisites: cargo, curl, jq, systemctl
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export CARGO_TARGET_DIR="$REPO_ROOT/target"
 
 # Instance root: env var, then common locations, then fail
 if [[ -n "${ALETHEIA_ROOT:-}" ]]; then
@@ -395,7 +396,7 @@ if [[ "$BUILD" == true ]]; then
     else
         log "Building release binary..."
         cd "$REPO_ROOT"
-        cargo build --release -p aletheia
+        CARGO_TARGET_DIR="$REPO_ROOT/target" cargo build --release -p aletheia
         log "Built: $(./target/release/aletheia --version)"
     fi
 fi

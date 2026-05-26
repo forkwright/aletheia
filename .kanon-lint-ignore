@@ -89,3 +89,24 @@ RUST/todo-marker-needs-quadrant-and-artifact:crates/nous/src/audit.rs
 RUST/todo-marker-needs-quadrant-and-artifact:crates/pylon/src/idempotency.rs
 RUST/todo-marker-needs-quadrant-and-artifact:crates/pylon/src/tests/mod.rs
 RUST/todo-marker-needs-quadrant-and-artifact:crates/theatron/proskenion/src/views/ops/credentials.rs
+
+# WHY(#3987): legacy context files pending standardized preamble migration
+CONTEXT/preamble-required:AGENTS.md
+CONTEXT/preamble-required:*/CLAUDE.md
+CONTEXT/preamble-required:crates/*/CLAUDE.md
+CONTEXT/preamble-required:crates/*/*/CLAUDE.md
+CONTEXT/preamble-required:instance.example/nous/*/AGENTS.md
+
+# WHY(#3987): temporary dispatch prompt file; not part of the repo corpus
+WRITING/weasel-word:.dispatch-prompt.md
+
+# WHY(#3987): generated _llm API indexes mirror extracted Rust doc comments; fix generator/policy before hand-editing snapshots
+COMMENTS/journal-shaped:_llm/L3-api-index/*.md
+DOCS/stale-local-link:_llm/L3-api-index/*.md
+
+# WHY(#3987): CRATE-INDEX dependency graph corrections require dedicated architecture review to avoid cycles
+ARCHITECTURE/crate-index-conformance:CRATE-INDEX.toml
+
+# WHY(#3987): library crates pending #![deny(missing_docs)] rollout
+ARCHITECTURE/no-deny-missing-docs:crates/gnosis/src/lib.rs
+ARCHITECTURE/no-deny-missing-docs:crates/poiesis/scaffold/src/lib.rs

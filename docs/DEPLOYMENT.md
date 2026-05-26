@@ -509,7 +509,7 @@ nous_id = "main"
 Aletheia's public deployment profile preserves homeserver deployment prep for
 the Phase 3 Matrix channel implementation against a self-hosted
 [conduwuit](https://conduwuit.puppyirl.gay/) homeserver. Aletheia does not
-currently expose a Matrix provider, config surface, or Cargo feature.
+expose a Matrix provider, config surface, or Cargo feature.
 
 ### Prerequisites
 

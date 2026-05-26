@@ -29,6 +29,8 @@ If this PR adds a new module, function, or abstraction:
 
 - [ ] `cargo test -p <affected-crate>` passes
 - [ ] `cargo clippy --workspace` passes with zero warnings
+- [ ] `kanon lint --summary --writing` and `kanon lint --summary --workflow` pass (workspace-level gates)
+- [ ] For affected crates at zero rust violations: `kanon lint --summary --rust crates/<name>` passes (crate-scoped gate)
 - [ ] New functionality has tests
 - [ ] No secrets or credentials in the diff
 - [ ] Commit message follows convention (`type(scope): description`)
