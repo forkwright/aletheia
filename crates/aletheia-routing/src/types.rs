@@ -159,6 +159,30 @@ impl From<String> for ProviderId {
 // RequestFeatures
 // ---------------------------------------------------------------------------
 
+/// Sovereignty boundary for a routing request.
+///
+/// Mirrors `hermeneus::provider::DeploymentTarget` without creating a hard
+/// dependency on `hermeneus`. Routers use this to filter out candidates whose
+/// `deployment_target` exceeds the allowed boundary for the current request.
+///
+/// Ordering: `Cloud < LocalHosted < Embedded` (same as the hermeneus variant).
+/// A request with `RoutingBoundary::LocalHosted` allows providers at
+/// `LocalHosted` *or* `Embedded`, but not `Cloud`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[non_exhaustive]
+pub enum RoutingBoundary {
+    /// External cloud provider allowed. Widest boundary; permits all providers.
+    ///
+    /// This is the default so routers that have not been updated to pass a
+    /// boundary never accidentally restrict routing.
+    #[default]
+    Cloud,
+    /// Only local-hosted or embedded providers (no external API calls).
+    LocalHosted,
+    /// Only in-process providers (fully air-gapped).
+    Embedded,
+}
+
 /// Input signals used to make a routing decision.
 ///
 /// Both dispatch and interactive paths populate this struct before calling
@@ -184,6 +208,17 @@ pub struct RequestFeatures {
     ///
     /// Used by category-inference helpers when `task_category` is absent.
     pub prompt_text: Option<Arc<str>>,
+
+    /// Maximum allowed deployment boundary for this request.
+    ///
+    /// Routers that respect sovereignty must not select providers whose
+    /// deployment target exceeds this boundary. Defaults to
+    /// [`RoutingBoundary::Cloud`] so existing call-sites are not broken.
+    ///
+    /// WHY(#3969): the Q-learner and fallthrough router need this in context
+    /// so they can filter candidates by sovereignty without out-of-band state.
+    #[doc(hidden)]
+    pub deployment_target: RoutingBoundary,
 }
 
 impl RequestFeatures {
@@ -200,7 +235,17 @@ impl RequestFeatures {
             candidates,
             task_category,
             prompt_text,
+            deployment_target: RoutingBoundary::default(),
         }
+    }
+
+    /// Set the deployment boundary for this request.
+    ///
+    /// Builder-style setter for call-sites that need sovereignty gating.
+    #[must_use]
+    pub fn with_deployment_target(mut self, boundary: RoutingBoundary) -> Self {
+        self.deployment_target = boundary;
+        self
     }
 
     /// Resolve the effective task category.
@@ -371,5 +416,27 @@ mod tests {
             TaskCategory::from_prompt("fix the test fixture"),
             TaskCategory::Test
         );
+    }
+
+    // WHY(#3969): deployment_target field must default to Cloud so existing
+    // call-sites using RequestFeatures::new() are not broken.
+    #[test]
+    fn request_features_deployment_target_defaults_to_cloud() {
+        let f = RequestFeatures::new(Vec::new(), None, None);
+        assert_eq!(f.deployment_target, RoutingBoundary::Cloud);
+    }
+
+    #[test]
+    fn routing_boundary_ordering_matches_sovereignty_hierarchy() {
+        assert!(RoutingBoundary::Cloud < RoutingBoundary::LocalHosted);
+        assert!(RoutingBoundary::LocalHosted < RoutingBoundary::Embedded);
+    }
+
+    // WHY(#3969): with_deployment_target is the builder for sovereignty gating.
+    #[test]
+    fn request_features_with_deployment_target_sets_boundary() {
+        let f = RequestFeatures::new(Vec::new(), None, None)
+            .with_deployment_target(RoutingBoundary::Embedded);
+        assert_eq!(f.deployment_target, RoutingBoundary::Embedded);
     }
 }
