@@ -19,6 +19,7 @@ use tracing::{debug, info};
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::provider::{DeploymentTarget, LlmProvider};
+use crate::seat_bridged::SeatBridgedProvider;
 use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
 
 use super::parse;
@@ -293,6 +294,20 @@ impl LlmProvider for CcProvider {
     }
 }
 
+impl SeatBridgedProvider for CcProvider {
+    fn cli_binary(&self) -> &PathBuf {
+        &self.cc_binary
+    }
+
+    fn subprocess_timeout(&self) -> Duration {
+        self.timeout
+    }
+
+    fn cli_product_name(&self) -> &'static str {
+        "claude"
+    }
+}
+
 /// Find the `claude` binary in `PATH`.
 fn find_cc_binary() -> Result<PathBuf> {
     // 1. Search PATH (standard resolution).
@@ -407,5 +422,17 @@ mod tests {
             timeout: Duration::from_secs(1),
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
+    }
+
+    #[test]
+    fn seat_bridged_fields() {
+        let provider = CcProvider {
+            cc_binary: PathBuf::from("/usr/local/bin/claude"),
+            default_model: "claude-opus-4-6".to_owned(),
+            timeout: Duration::from_secs(300),
+        };
+        assert_eq!(provider.cli_binary(), &PathBuf::from("/usr/local/bin/claude"));
+        assert_eq!(provider.subprocess_timeout(), Duration::from_secs(300));
+        assert_eq!(provider.cli_product_name(), "claude");
     }
 }
