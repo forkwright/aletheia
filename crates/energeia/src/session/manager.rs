@@ -92,6 +92,7 @@ impl SessionManager {
                 system_prompt: Some(components.static_prefix.clone()),
                 cwd: options.options.cwd.clone(),
                 prompt_components: Some(components.clone()),
+                output_format: prompt.output_format.clone(),
             }
         } else {
             SessionSpec {
@@ -99,6 +100,7 @@ impl SessionManager {
                 system_prompt: options.options.system_prompt.clone(),
                 cwd: options.options.cwd.clone(),
                 prompt_components: None,
+                output_format: prompt.output_format.clone(),
             }
         };
 
@@ -170,6 +172,11 @@ impl SessionManager {
         // NOTE: Extract PR URL from all text fragments and result text.
         let all_text = collect_text(&stream_result, result_text.as_deref());
         last_output_excerpt = output_excerpt(&all_text);
+        let structured_output = parse_structured_output(
+            prompt.number,
+            prompt.output_format.as_ref(),
+            result_text.as_deref(),
+        );
         if let Some(url) = extract_pr_url(&all_text) {
             pr_url = Some(url.to_owned());
         }
@@ -204,6 +211,7 @@ impl SessionManager {
                 prompt.blast_radius.clone(),
                 cache_hits,
                 cache_misses,
+                structured_output,
             );
             emit_child_terminal(options, &outcome, last_output_excerpt);
             return Ok(outcome);
@@ -231,6 +239,7 @@ impl SessionManager {
                 prompt.blast_radius.clone(),
                 cache_hits,
                 cache_misses,
+                None,
             );
             emit_child_terminal(options, &outcome, last_output_excerpt);
             return Ok(outcome);
@@ -269,6 +278,7 @@ impl SessionManager {
                     prompt.blast_radius.clone(),
                     cache_hits,
                     cache_misses,
+                    None,
                 );
                 emit_child_terminal(options, &outcome, last_output_excerpt);
                 return Ok(outcome);
@@ -314,6 +324,7 @@ impl SessionManager {
                         prompt.blast_radius.clone(),
                         cache_hits,
                         cache_misses,
+                        None,
                     );
                     emit_child_terminal(options, &outcome, last_output_excerpt);
                     return Ok(outcome);
@@ -377,6 +388,11 @@ impl SessionManager {
             // NOTE: Check for PR URL in resume output.
             let all_text = collect_text(&stream_result, result_text.as_deref());
             last_output_excerpt = output_excerpt(&all_text);
+            let structured_output = parse_structured_output(
+                prompt.number,
+                prompt.output_format.as_ref(),
+                result_text.as_deref(),
+            );
             if let Some(url) = extract_pr_url(&all_text) {
                 pr_url = Some(url.to_owned());
             }
@@ -400,6 +416,7 @@ impl SessionManager {
                     prompt.blast_radius.clone(),
                     cache_hits,
                     cache_misses,
+                    structured_output,
                 );
                 emit_child_terminal(options, &outcome, last_output_excerpt);
                 return Ok(outcome);
@@ -428,6 +445,7 @@ impl SessionManager {
                         prompt.blast_radius.clone(),
                         cache_hits,
                         cache_misses,
+                        None,
                     );
                     emit_child_terminal(options, &outcome, last_output_excerpt);
                     return Ok(outcome);
@@ -522,6 +540,7 @@ async fn abort_terminal_stream(
                 blast_radius,
                 0,
                 0,
+                None,
             )))
         }
         StreamOutcome::Cancelled { .. } => {
@@ -541,6 +560,7 @@ async fn abort_terminal_stream(
                 blast_radius,
                 0,
                 0,
+                None,
             )))
         }
         StreamOutcome::Complete(_) | StreamOutcome::Error { .. } => Ok(None),
@@ -569,6 +589,30 @@ fn output_excerpt(text: &str) -> Option<String> {
     }
 
     Some(trimmed.chars().take(512).collect())
+}
+
+fn parse_structured_output(
+    prompt_number: u32,
+    output_format: Option<&hermeneus::types::OutputFormat>,
+    result_text: Option<&str>,
+) -> Option<serde_json::Value> {
+    output_format?;
+    let text = result_text?.trim();
+    if text.is_empty() {
+        return None;
+    }
+
+    match serde_json::from_str(text) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(
+                prompt_number,
+                error = %error,
+                "session declared structured output but final result was not valid JSON"
+            );
+            None
+        }
+    }
 }
 
 fn emit_child_progress(
@@ -623,6 +667,7 @@ fn build_outcome(
     blast_radius: Vec<String>,
     cache_hit_tokens: u64,
     cache_miss_tokens: u64,
+    structured_output: Option<serde_json::Value>,
 ) -> SessionOutcome {
     SessionOutcome {
         prompt_number,
@@ -639,6 +684,7 @@ fn build_outcome(
         corrective_attempts: 0,
         cache_hit_tokens,
         cache_miss_tokens,
+        structured_output,
     }
 }
 
@@ -660,11 +706,20 @@ mod tests {
             description: format!("test prompt {number}"),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
             body: format!("implement task {number}"),
             prompt_components: None,
+        }
+    }
+
+    fn json_output_format() -> hermeneus::types::OutputFormat {
+        hermeneus::types::OutputFormat::JsonSchema {
+            name: "result".to_owned(),
+            schema: serde_json::json!({"type": "object"}),
+            strict: Some(true),
         }
     }
 
@@ -803,6 +858,35 @@ mod tests {
         assert_eq!(
             finished.output_excerpt.as_deref(),
             Some("working on it task complete")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_captures_structured_output_when_declared() {
+        let engine = Arc::new(MockEngine::new(vec![MockOutcome::Success {
+            events: vec![SessionEvent::TurnComplete { turn: 1 }],
+            result: SessionResult {
+                session_id: "sess-json".to_owned(),
+                cost_usd: 0.10,
+                num_turns: 1,
+                duration_ms: 100,
+                success: true,
+                result_text: Some(r#"{"summary":"bounded"}"#.to_owned()),
+                model: Some("test-model".to_owned()),
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
+            },
+        }]));
+        let budget = Arc::new(Budget::new(Some(10.0), Some(100), None));
+        let mgr = SessionManager::new(engine, budget, ResumePolicy::default());
+        let mut prompt = sample_prompt_spec(9);
+        prompt.output_format = Some(json_output_format());
+
+        let outcome = mgr.execute(&prompt, &default_config()).await.unwrap();
+
+        assert_eq!(
+            outcome.structured_output,
+            Some(serde_json::json!({"summary": "bounded"}))
         );
     }
 

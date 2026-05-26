@@ -156,6 +156,10 @@ pub struct SessionOutcome {
     /// Tokens written to the prompt cache on this session.
     #[serde(default)]
     pub cache_miss_tokens: u64,
+    /// Parsed structured output from this session, when the prompt declared
+    /// an output format and the final result was valid JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_output: Option<serde_json::Value>,
 }
 
 /// Terminal status of a dispatched session.
@@ -439,6 +443,7 @@ mod tests {
             corrective_attempts: 0,
             cache_hit_tokens: 0,
             cache_miss_tokens: 0,
+            structured_output: None,
         };
         let json = serde_json::to_string(&outcome).unwrap();
         let deserialized: SessionOutcome = serde_json::from_str(&json).unwrap();

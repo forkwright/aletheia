@@ -100,6 +100,7 @@ impl PromptComponents {
             },
             cwd,
             prompt_components: Some(self.clone()),
+            output_format: None,
         }
     }
 }

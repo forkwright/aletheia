@@ -323,6 +323,7 @@ mod tests {
             cwd: None,
 
             prompt_components: None,
+            output_format: None,
         }
     }
 

@@ -96,6 +96,9 @@ pub struct SessionSpec {
     /// prompt caching should use `static_prefix` as the cached system prompt
     /// and `dynamic_suffix` as the user message.
     pub prompt_components: Option<crate::prompt_cache::PromptComponents>,
+    /// Optional structured output contract for the session response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_format: Option<hermeneus::types::OutputFormat>,
 }
 
 /// Configuration options for an agent session.
@@ -363,6 +366,7 @@ mod tests {
             system_prompt: Some("you are a coding agent".to_owned()),
             cwd: Some("/home/user/project".to_owned()),
             prompt_components: None,
+            output_format: None,
         };
         let json = serde_json::to_string(&spec).unwrap();
         let deserialized: SessionSpec = serde_json::from_str(&json).unwrap();
