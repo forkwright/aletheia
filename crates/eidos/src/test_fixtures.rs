@@ -54,6 +54,7 @@ pub fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         },
         sensitivity: FactSensitivity::Public,
         scope: None,
+        project_id: None,
         visibility: crate::knowledge::Visibility::Private,
     }
 }

@@ -36,6 +36,7 @@ pub(crate) fn upsert_fact() -> String {
             ForgottenAt,
             ForgetReason,
             Scope,
+            ProjectId,
             Visibility,
         ])
         .done()
@@ -71,6 +72,7 @@ pub(crate) fn current_facts() -> String {
         .bind(ForgottenAt)
         .bind(ForgetReason)
         .bind(Scope)
+        .bind(ProjectId)
         .bind(Visibility)
         .filter("nous_id = $nous_id")
         .filter("valid_from <= $now")
@@ -109,6 +111,7 @@ pub(crate) fn full_current_facts() -> String {
             ForgottenAt,
             ForgetReason,
             Scope,
+            ProjectId,
             Visibility,
         ])
         .bind(Id)
@@ -129,6 +132,7 @@ pub(crate) fn full_current_facts() -> String {
         .bind(ForgottenAt)
         .bind(ForgetReason)
         .bind(Scope)
+        .bind(ProjectId)
         .bind(Visibility)
         .filter("nous_id = $nous_id")
         .filter("valid_from <= $now")
@@ -156,6 +160,7 @@ pub(crate) fn facts_at_time() -> String {
         .bind(ValidTo)
         .bind(IsForgotten)
         .bind(Scope)
+        .bind(ProjectId)
         .bind(Visibility)
         .filter("valid_from <= $time")
         .filter("valid_to > $time")
@@ -192,6 +197,7 @@ pub(crate) fn supersede_fact() -> String {
             ForgottenAt,
             ForgetReason,
             Scope,
+            ProjectId,
             Visibility,
         ])
         .row(&[
@@ -213,6 +219,7 @@ pub(crate) fn supersede_fact() -> String {
             "$old_forgotten_at",
             "$old_forget_reason",
             "$old_scope",
+            "$old_project_id",
             "$old_visibility",
         ])
         .row(&[
@@ -234,6 +241,7 @@ pub(crate) fn supersede_fact() -> String {
             "null",
             "null",
             "$scope",
+            "$project_id",
             "$visibility",
         ])
         .done()
@@ -298,9 +306,9 @@ pub(crate) const ENTITY_NEIGHBORHOOD: &str = r"
 pub(crate) const BM25_RECALL: &str = r"
     bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
 
-    ?[id, content, source_type, source_id, dist, scope, visibility] :=
+    ?[id, content, source_type, source_id, dist, scope, project_id, visibility] :=
         bm25[id, bm25_score],
-        *facts{id, content, is_forgotten, superseded_by, scope, visibility},
+        *facts{id, content, is_forgotten, superseded_by, scope, project_id, visibility},
         is_forgotten == false,
         is_null(superseded_by),
         source_type = 'fact',
@@ -413,11 +421,11 @@ pub(crate) const TEMPORAL_FACTS_FILTERED: &str = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
       superseded_by, source_session_id,
       access_count, last_accessed_at, stability_hours, fact_type,
-      is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
+      is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
         *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                superseded_by, source_session_id, recorded_at,
                access_count, last_accessed_at, stability_hours, fact_type,
-               is_forgotten, forgotten_at, forget_reason, scope, visibility},
+               is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
         nous_id = $nous_id,
         is_forgotten == false,
         valid_from <= $at_time,
@@ -434,11 +442,11 @@ pub(crate) const TEMPORAL_DIFF_ADDED: &str = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
       superseded_by, source_session_id,
       access_count, last_accessed_at, stability_hours, fact_type,
-      is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
+      is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
         *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                superseded_by, source_session_id, recorded_at,
                access_count, last_accessed_at, stability_hours, fact_type,
-               is_forgotten, forgotten_at, forget_reason, scope, visibility},
+               is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
         nous_id = $nous_id,
         is_forgotten == false,
         valid_from > $from_time,
@@ -451,11 +459,11 @@ pub(crate) const TEMPORAL_DIFF_REMOVED: &str = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
       superseded_by, source_session_id,
       access_count, last_accessed_at, stability_hours, fact_type,
-      is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
+      is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
         *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                superseded_by, source_session_id, recorded_at,
                access_count, last_accessed_at, stability_hours, fact_type,
-               is_forgotten, forgotten_at, forget_reason, scope, visibility},
+               is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
         nous_id = $nous_id,
         is_forgotten == false,
         valid_to > $from_time,

@@ -305,6 +305,7 @@ mod tests {
             fact_type: fact_type.to_owned(),
             content: content.to_owned(),
             scope: None,
+            project_id: None,
             temporal: FactTemporal {
                 valid_from: now,
                 valid_to: crate::knowledge::far_future(),

@@ -770,6 +770,7 @@ pub(crate) fn seed_skills(instance_root: Option<&PathBuf>, args: &SeedSkillsArgs
                 content: content_json.clone(),
                 fact_type: "skill".to_owned(),
                 scope: None,
+                project_id: None,
                 temporal: FactTemporal {
                     valid_from: now,
                     valid_to: mneme::knowledge::far_future(),

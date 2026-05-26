@@ -5,8 +5,8 @@
 )]
 
 use crate::knowledge::Visibility;
-use crate::recall::{FactorScores, ScoredResult};
-use crate::recall::{filter_by_cohort_visibility, filter_by_visibility};
+use crate::recall::{FactorScores, ProjectRecallScope, ScoredResult};
+use crate::recall::{filter_by_cohort_visibility, filter_by_project_scope, filter_by_visibility};
 
 fn make_scored_with_visibility(nous_id: &str, visibility: Visibility) -> ScoredResult {
     ScoredResult {
@@ -19,6 +19,14 @@ fn make_scored_with_visibility(nous_id: &str, visibility: Visibility) -> ScoredR
         sensitivity: crate::knowledge::FactSensitivity::Public,
         visibility,
         scope: None,
+        project_id: None,
+    }
+}
+
+fn make_scored_with_project(project_id: Option<eidos::workspace::ProjectId>) -> ScoredResult {
+    ScoredResult {
+        project_id,
+        ..make_scored_with_visibility("alice", Visibility::Private)
     }
 }
 
@@ -161,6 +169,64 @@ fn min_visibility_published_keeps_only_published() {
         "Published minimum should keep only Published"
     );
     assert_eq!(filtered[0].visibility, Visibility::Published);
+}
+
+#[test]
+fn project_scope_keeps_current_project_and_global_results() {
+    let project_alpha =
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/alpha.git")
+            .expect("valid remote");
+    let project_beta =
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/beta.git")
+            .expect("valid remote");
+
+    let candidates = vec![
+        make_scored_with_project(Some(project_alpha.clone())),
+        make_scored_with_project(Some(project_beta)),
+        make_scored_with_project(None),
+    ];
+
+    let filtered = filter_by_project_scope(
+        candidates,
+        &ProjectRecallScope::Project(project_alpha.clone()),
+    );
+
+    assert_eq!(
+        filtered.len(),
+        2,
+        "project-scoped recall should keep current project plus global facts"
+    );
+    assert!(
+        filtered.iter().all(|result| result
+            .project_id
+            .as_ref()
+            .is_none_or(|id| id == &project_alpha)),
+        "other project facts should be excluded"
+    );
+}
+
+#[test]
+fn global_project_scope_keeps_all_projects() {
+    let project_alpha =
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/alpha.git")
+            .expect("valid remote");
+    let project_beta =
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/beta.git")
+            .expect("valid remote");
+
+    let candidates = vec![
+        make_scored_with_project(Some(project_alpha)),
+        make_scored_with_project(Some(project_beta)),
+        make_scored_with_project(None),
+    ];
+
+    let filtered = filter_by_project_scope(candidates, &ProjectRecallScope::Global);
+
+    assert_eq!(
+        filtered.len(),
+        3,
+        "global recall should be an explicit all-project read"
+    );
 }
 
 #[test]

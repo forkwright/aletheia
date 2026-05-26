@@ -68,6 +68,7 @@ fn make_fact_with_tier(
         sensitivity: FactSensitivity::Public,
         visibility: crate::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     };
     store
         .insert_fact(&fact)
@@ -209,6 +210,7 @@ fn causal_chain_direct_edge_appears_in_derived_facts() {
         sensitivity: FactSensitivity::Public,
         visibility: crate::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     };
 
     store
@@ -276,6 +278,7 @@ fn causal_chain_transitive_confidence_is_product() {
         sensitivity: FactSensitivity::Public,
         visibility: crate::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     };
 
     store.insert_fact(&make("fa")).expect("fa");
@@ -344,6 +347,7 @@ fn causal_chain_low_confidence_pruned() {
         sensitivity: FactSensitivity::Public,
         visibility: crate::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     };
 
     store.insert_fact(&make("g1")).expect("g1");
@@ -565,6 +569,7 @@ fn query_derived_facts_by_rule_prefix_filters_correctly() {
         sensitivity: FactSensitivity::Public,
         visibility: crate::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     };
     store
         .insert_fact(&make("fact-dave", "dave does analysis"))

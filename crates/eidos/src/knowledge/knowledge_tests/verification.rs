@@ -15,6 +15,7 @@ fn make_test_fact(tier: EpistemicTier, recorded_at: jiff::Timestamp) -> Fact {
         content: "test fact".to_owned(),
         fact_type: "observation".to_owned(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: recorded_at,
             valid_to: far_future(),

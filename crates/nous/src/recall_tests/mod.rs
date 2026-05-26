@@ -75,6 +75,7 @@ fn make_knowledge_result(content: &str, distance: f64) -> KnowledgeRecallResult 
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         graph_importance: 0.0,
         scope: None,
+        project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
     }
 }
@@ -92,6 +93,7 @@ fn make_knowledge_result_with_id(
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         graph_importance: 0.0,
         scope: None,
+        project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
     }
 }
@@ -109,6 +111,7 @@ fn make_knowledge_result_with_scope(
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         graph_importance: 0.0,
         scope,
+        project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
     }
 }
@@ -124,6 +127,7 @@ fn make_scored(content: &str, score: f64) -> ScoredResult {
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     }
 }
 

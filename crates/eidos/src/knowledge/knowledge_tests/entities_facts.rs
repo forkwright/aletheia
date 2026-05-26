@@ -242,6 +242,7 @@ fn fact_with_supersession() {
         content: "outdated claim".to_owned(),
         fact_type: String::new(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: test_timestamp("2026-01-01"),
             valid_to: test_timestamp("2026-02-01"),
@@ -290,6 +291,7 @@ fn fact_with_session_source() {
         content: "extracted from conversation".to_owned(),
         fact_type: "relationship".to_owned(),
         scope: Some(MemoryScope::Project),
+        project_id: None,
         temporal: FactTemporal {
             valid_from: test_timestamp("2026-03-01"),
             valid_to: far_future(),

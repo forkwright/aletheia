@@ -508,6 +508,7 @@ pub(crate) fn persist_lesson(
             content,
             fact_type: classified_type.as_str().to_owned(),
             scope: None,
+            project_id: None,
             temporal: FactTemporal {
                 valid_from: now,
                 valid_to: far_future(),

@@ -69,6 +69,7 @@ pub enum FactsField {
     ForgottenAt,
     ForgetReason,
     Scope,
+    ProjectId,
     Visibility,
 }
 

@@ -239,14 +239,17 @@ pub mod extract {
 ///
 /// [`DEFAULT_MAX_CONTEXT_SUMMARY_LEN`](instinct::DEFAULT_MAX_CONTEXT_SUMMARY_LEN),
 /// [`DEFAULT_MAX_PARAM_VALUE_LEN`](instinct::DEFAULT_MAX_PARAM_VALUE_LEN),
+/// [`DEFAULT_PROMOTION_MIN_CONFIDENCE`](instinct::DEFAULT_PROMOTION_MIN_CONFIDENCE),
+/// [`DEFAULT_PROMOTION_MIN_PROJECTS`](instinct::DEFAULT_PROMOTION_MIN_PROJECTS),
 /// [`ToolObservation`](instinct::ToolObservation),
 /// [`ToolOutcome`](instinct::ToolOutcome),
 /// [`sanitize_parameters`](instinct::sanitize_parameters),
 /// [`truncate_context_summary`](instinct::truncate_context_summary)
 pub mod instinct {
     pub use episteme::instinct::{
-        DEFAULT_MAX_CONTEXT_SUMMARY_LEN, DEFAULT_MAX_PARAM_VALUE_LEN, ToolObservation, ToolOutcome,
-        sanitize_parameters, truncate_context_summary,
+        DEFAULT_MAX_CONTEXT_SUMMARY_LEN, DEFAULT_MAX_PARAM_VALUE_LEN,
+        DEFAULT_PROMOTION_MIN_CONFIDENCE, DEFAULT_PROMOTION_MIN_PROJECTS, ToolObservation,
+        ToolOutcome, sanitize_parameters, truncate_context_summary,
     };
 }
 
@@ -294,12 +297,13 @@ pub mod query_rewrite {
 ///
 /// [`FactorScores`](recall::FactorScores),
 /// [`RecallEngine`](recall::RecallEngine),
+/// [`ProjectRecallScope`](recall::ProjectRecallScope),
 /// [`RecallWeights`](recall::RecallWeights),
 /// [`ScoredResult`](recall::ScoredResult)
 pub mod recall {
     pub use episteme::recall::{
-        FactorScores, RecallEngine, RecallWeights, ScoredResult, filter_by_cohort_visibility,
-        filter_by_visibility,
+        FactorScores, ProjectRecallScope, RecallEngine, RecallWeights, ScoredResult,
+        filter_by_cohort_visibility, filter_by_project_scope, filter_by_visibility,
     };
 
     /// Optional reranker implementations and trait.

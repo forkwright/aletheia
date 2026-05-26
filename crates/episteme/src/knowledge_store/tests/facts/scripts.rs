@@ -364,6 +364,7 @@ fn concurrent_inserts() {
                     sensitivity: crate::knowledge::FactSensitivity::Public,
                     visibility: crate::knowledge::Visibility::Private,
                     scope: None,
+                    project_id: None,
                 };
                 s.insert_fact(&fact).expect("concurrent insert");
             })

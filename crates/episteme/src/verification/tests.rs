@@ -22,6 +22,7 @@ fn make_fact(id: &str, confidence: f64, tier: EpistemicTier, recorded_at: Timest
         fact_type: "preference".to_owned(),
         content: format!("test fact {id}"),
         scope: None,
+        project_id: None,
         sensitivity: FactSensitivity::Public,
         visibility: crate::knowledge::Visibility::Private,
         temporal: FactTemporal {
@@ -208,7 +209,7 @@ fn fresh_store_migrates_to_current_schema() {
 
     let store = KnowledgeStore::open_mem().expect("open_mem should succeed");
     let v = store.schema_version().expect("read schema version");
-    assert_eq!(v, 11, "fresh store should initialize at schema version 11");
+    assert_eq!(v, 12, "fresh store should initialize at schema version 12");
 
     // Probe the new relations exist by querying them (empty result is fine).
     let probe_pubs = store.run_query("?[id] := *published_facts{id}", BTreeMap::new());

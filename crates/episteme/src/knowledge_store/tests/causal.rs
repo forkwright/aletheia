@@ -44,6 +44,7 @@ fn make_fact(id: &str, content: &str) -> Fact {
         sensitivity: crate::knowledge::FactSensitivity::Public,
         visibility: crate::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     }
 }
 

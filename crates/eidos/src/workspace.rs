@@ -28,6 +28,20 @@ impl ProjectId {
         Ok(Self(id))
     }
 
+    /// Build a project ID from its stored SHA-256 lowercase hex form.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectIdError::InvalidHex`] when the value is not exactly
+    /// 64 ASCII hex characters.
+    pub fn from_sha256_hex(value: impl AsRef<str>) -> Result<Self, ProjectIdError> {
+        let trimmed = value.as_ref().trim();
+        if trimmed.len() != 64 || !trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(ProjectIdError::InvalidHex);
+        }
+        Ok(Self(trimmed.to_ascii_lowercase()))
+    }
+
     /// The lowercase SHA-256 hex identifier.
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -53,12 +67,15 @@ impl AsRef<str> for ProjectId {
 pub enum ProjectIdError {
     /// The remote URL was empty after trimming whitespace.
     EmptyRemote,
+    /// The stored project ID was not a 64-character SHA-256 hex string.
+    InvalidHex,
 }
 
 impl fmt::Display for ProjectIdError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyRemote => f.write_str("git remote URL cannot be empty"),
+            Self::InvalidHex => f.write_str("project ID must be 64 hex characters"),
         }
     }
 }
@@ -123,6 +140,16 @@ mod tests {
 
         let json = serde_json::to_string(&id).expect("serialize");
         let back: ProjectId = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(id, back);
+    }
+
+    #[test]
+    fn project_id_constructs_from_stored_hex() {
+        let id = ProjectId::from_git_remote("https://github.com/forkwright/aletheia")
+            .expect("valid remote");
+        let back = ProjectId::from_sha256_hex(id.as_str().to_ascii_uppercase())
+            .expect("stored hex should parse");
 
         assert_eq!(id, back);
     }

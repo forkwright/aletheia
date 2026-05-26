@@ -681,6 +681,7 @@ impl MemoryServer {
                     fact_type: "annotation".to_owned(),
                     content,
                     scope: None,
+                    project_id: None,
                     sensitivity: mneme::knowledge::FactSensitivity::Public,
                     visibility: mneme::knowledge::Visibility::Private,
                     temporal: mneme::knowledge::FactTemporal {
@@ -867,6 +868,7 @@ impl MemoryServer {
                     fact_type: "supersession".to_owned(),
                     content: record_content,
                     scope: None,
+                    project_id: None,
                     sensitivity: mneme::knowledge::FactSensitivity::Public,
                     visibility: mneme::knowledge::Visibility::Private,
                     temporal: mneme::knowledge::FactTemporal {

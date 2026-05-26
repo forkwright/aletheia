@@ -210,6 +210,7 @@ fn fact_scope_none_omitted_in_json() {
         content: "legacy fact without scope".to_owned(),
         fact_type: String::new(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: test_timestamp("2026-01-01"),
             valid_to: far_future(),
@@ -255,6 +256,7 @@ fn fact_scope_some_included_in_json() {
         content: "team project fact".to_owned(),
         fact_type: "project".to_owned(),
         scope: Some(MemoryScope::Project),
+        project_id: None,
         temporal: FactTemporal {
             valid_from: test_timestamp("2026-03-01"),
             valid_to: far_future(),
@@ -332,6 +334,7 @@ fn fact_scope_all_variants_roundtrip() {
             content: format!("fact in {scope} scope"),
             fact_type: String::new(),
             scope: Some(scope),
+            project_id: None,
             temporal: FactTemporal {
                 valid_from: test_timestamp("2026-01-01"),
                 valid_to: far_future(),

@@ -161,6 +161,7 @@ fn run(args: Args) -> anyhow::Result<()> {
             content: spec.content.clone(),
             fact_type: spec.fact_type.clone(),
             scope: Some(scope),
+            project_id: None,
             sensitivity,
             visibility: Visibility::Private,
             temporal: FactTemporal {

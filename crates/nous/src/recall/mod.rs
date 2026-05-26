@@ -113,6 +113,8 @@ pub struct RecallStage {
     late_inject_anchor: bool,
     /// Per-scope minimum result counts with slack-fill.
     scope_quotas: HashMap<MemoryScope, usize>,
+    /// Project partition filter applied before scoring thresholds and budgeting.
+    project_scope: mneme::recall::ProjectRecallScope,
     /// Optional URL for an HTTP cross-encoder reranker.
     reranker_url: Option<String>,
 }
@@ -148,6 +150,7 @@ impl RecallStage {
             pinned_facts,
             late_inject_anchor,
             scope_quotas,
+            project_scope: mneme::recall::ProjectRecallScope::Global,
             reranker_url,
         }
     }
@@ -196,6 +199,13 @@ impl RecallStage {
     #[must_use]
     pub fn with_scope_quotas(mut self, quotas: HashMap<MemoryScope, usize>) -> Self {
         self.scope_quotas = quotas;
+        self
+    }
+
+    /// Set project recall scope.
+    #[must_use]
+    pub fn with_project_scope(mut self, scope: mneme::recall::ProjectRecallScope) -> Self {
+        self.project_scope = scope;
         self
     }
 
@@ -553,6 +563,7 @@ impl RecallStage {
         // unchanged.
         let ranked =
             mneme::recall::filter_by_visibility(ranked, mneme::knowledge::Visibility::Private);
+        let ranked = mneme::recall::filter_by_project_scope(ranked, &self.project_scope);
         // TODO(#208) [deliberate-prudent]: wire `filter_by_cohort_visibility` once
         // `build_candidates` populates `nous_id` from the search layer instead of
         // `String::new()`.
@@ -752,6 +763,7 @@ impl RecallStage {
                 // per-fact classification rather than assuming `Public`.
                 sensitivity: r.sensitivity,
                 scope: r.scope,
+                project_id: r.project_id,
                 visibility: r.visibility,
             })
             .collect()

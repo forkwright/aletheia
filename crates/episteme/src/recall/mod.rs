@@ -16,6 +16,7 @@ use std::collections::HashSet;
 use std::hash::BuildHasher;
 
 use eidos::meta::{ArtefactMeta, Stamped};
+use eidos::workspace::ProjectId;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -144,6 +145,10 @@ pub struct ScoredResult {
     /// `None` for results from non-fact sources or facts created before the
     /// team memory model was introduced.
     pub scope: Option<crate::knowledge::MemoryScope>,
+    /// Project partition for project-scoped recall.
+    ///
+    /// `None` means the result is global or predates project partitioning.
+    pub project_id: Option<ProjectId>,
 }
 
 impl Stamped for ScoredResult {
@@ -753,6 +758,38 @@ pub fn filter_by_visibility(candidates: Vec<ScoredResult>, min: Visibility) -> V
         .into_iter()
         .filter(|c| c.visibility >= min)
         .collect()
+}
+
+/// Project recall scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectRecallScope {
+    /// Return all projects and global results.
+    Global,
+    /// Return only this project plus global results.
+    Project(ProjectId),
+}
+
+/// Filter recall candidates by project partition.
+///
+/// Project-scoped reads retain global rows (`project_id = None`) so promoted
+/// cross-project facts remain visible. Facts tied to a different project are
+/// excluded unless the caller explicitly selects [`ProjectRecallScope::Global`].
+///
+/// # Complexity
+///
+/// O(C) where C is the number of candidates.
+#[must_use]
+pub fn filter_by_project_scope(
+    candidates: Vec<ScoredResult>,
+    scope: &ProjectRecallScope,
+) -> Vec<ScoredResult> {
+    match scope {
+        ProjectRecallScope::Global => candidates,
+        ProjectRecallScope::Project(project_id) => candidates
+            .into_iter()
+            .filter(|c| c.project_id.as_ref().is_none_or(|id| id == project_id))
+            .collect(),
+    }
 }
 
 #[cfg(test)]
