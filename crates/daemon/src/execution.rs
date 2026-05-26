@@ -919,6 +919,7 @@ fn extracted_fact_to_fact(
         fact_type: classified_type.as_str().to_owned(),
         content,
         scope: Some(MemoryScope::Project),
+        project_id: None,
         temporal: FactTemporal {
             valid_from: now,
             valid_to: far_future(),

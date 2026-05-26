@@ -23,6 +23,7 @@ fn sample_scored_result() -> ScoredResult {
         sensitivity: FactSensitivity::Public,
         visibility: crate::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     }
 }
 

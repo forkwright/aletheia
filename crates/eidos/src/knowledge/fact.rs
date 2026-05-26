@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::id::FactId;
+use crate::workspace::ProjectId;
 
 use super::MemoryScope;
 
@@ -82,6 +83,12 @@ pub struct Fact {
     /// New facts should always populate this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<MemoryScope>,
+
+    /// Git-remote-derived project partition for project-scoped behavioral facts.
+    ///
+    /// `None` means the fact is global or predates project partitioning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<ProjectId>,
 
     /// Data-sovereignty classification gating which provider deployment
     /// targets may receive this fact during recall (#3404, #3413).

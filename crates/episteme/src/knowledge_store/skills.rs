@@ -58,11 +58,11 @@ impl KnowledgeStore {
         let script = r"?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                    superseded_by, source_session_id, recorded_at,
                    access_count, last_accessed_at, stability_hours, fact_type,
-                   is_forgotten, forgotten_at, forget_reason, scope, visibility},
+                   is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
             nous_id = $nous_id,
             fact_type = 'skill',
             is_null(superseded_by),
@@ -101,12 +101,12 @@ impl KnowledgeStore {
             ?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
                 candidates[id, _score],
                 *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                        superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason, scope, visibility},
+                       is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
                 nous_id = $nous_id,
                 fact_type = 'skill',
                 is_null(superseded_by),
@@ -155,11 +155,11 @@ impl KnowledgeStore {
         let script = r"?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                    superseded_by, source_session_id, recorded_at,
                    access_count, last_accessed_at, stability_hours, fact_type,
-                   is_forgotten, forgotten_at, forget_reason, scope, visibility},
+                   is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
             nous_id = $nous_id,
             fact_type = 'skill_pending',
             is_null(superseded_by),
@@ -216,6 +216,7 @@ impl KnowledgeStore {
             content: skill_json,
             fact_type: "skill".to_owned(),
             scope: None,
+            project_id: None,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: now,
                 valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),

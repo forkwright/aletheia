@@ -94,6 +94,10 @@ fn insert_fact_with_scope_and_visibility_roundtrips() {
     let store = make_store();
     let mut fact = make_fact("f-scoped", "agent-a", "Scoped fact content");
     fact.scope = Some(crate::knowledge::MemoryScope::Project);
+    fact.project_id = Some(
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/alpha.git")
+            .expect("valid remote"),
+    );
     fact.visibility = crate::knowledge::Visibility::Shared;
     store.insert_fact(&fact).expect("insert fact");
 
@@ -110,6 +114,10 @@ fn insert_fact_with_scope_and_visibility_roundtrips() {
         results[0].visibility,
         crate::knowledge::Visibility::Shared,
         "visibility should roundtrip through storage"
+    );
+    assert_eq!(
+        results[0].project_id, fact.project_id,
+        "project_id should roundtrip through storage"
     );
 }
 

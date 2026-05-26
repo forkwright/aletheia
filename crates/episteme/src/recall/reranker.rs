@@ -211,7 +211,10 @@ impl HttpReranker {
 #[cfg(feature = "local-reranker")]
 #[derive(Debug, Clone)]
 pub struct CrossEncoderReranker {
-    #[expect(dead_code, reason = "groundwork stub: model_path stored for future ONNX wiring")]
+    #[expect(
+        dead_code,
+        reason = "groundwork stub: model_path stored for future ONNX wiring"
+    )]
     model_path: String,
 }
 
@@ -378,6 +381,7 @@ mod tests {
             sensitivity: FactSensitivity::Public,
             visibility: crate::knowledge::Visibility::Private,
             scope: None,
+            project_id: None,
         }
     }
 

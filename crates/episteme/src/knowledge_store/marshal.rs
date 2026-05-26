@@ -98,6 +98,13 @@ pub(super) fn fact_to_params(
         },
     );
     p.insert(
+        "project_id".to_owned(),
+        match &fact.project_id {
+            Some(id) => DataValue::Str(id.as_str().into()),
+            None => DataValue::Null,
+        },
+    );
+    p.insert(
         "visibility".to_owned(),
         DataValue::Str(fact.visibility.as_str().into()),
     );
@@ -363,8 +370,13 @@ pub(super) fn rows_to_facts(
             .and_then(|v| extract_optional_str(v).ok())
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
-        let visibility = row
+        let project_id = row
             .get(18)
+            .and_then(|v| extract_optional_str(v).ok())
+            .unwrap_or(None)
+            .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok());
+        let visibility = row
+            .get(19)
             .and_then(|v| extract_str(v).ok())
             .unwrap_or_default()
             .parse::<crate::knowledge::Visibility>()
@@ -385,6 +397,7 @@ pub(super) fn rows_to_facts(
             content,
             fact_type,
             scope,
+            project_id,
             visibility,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: crate::knowledge::parse_timestamp(&valid_from)
@@ -520,8 +533,13 @@ pub(super) fn rows_to_raw_facts(
             .and_then(|v| extract_optional_str(v).ok())
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
-        let visibility = row
+        let project_id = row
             .get(18)
+            .and_then(|v| extract_optional_str(v).ok())
+            .unwrap_or(None)
+            .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok());
+        let visibility = row
+            .get(19)
             .and_then(|v| extract_str(v).ok())
             .unwrap_or_default()
             .parse::<crate::knowledge::Visibility>()
@@ -537,6 +555,7 @@ pub(super) fn rows_to_raw_facts(
             content,
             fact_type,
             scope,
+            project_id,
             visibility,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: crate::knowledge::parse_timestamp(&valid_from)
@@ -608,6 +627,7 @@ pub(super) fn rows_to_facts_partial(
             content,
             fact_type: String::new(),
             scope: None,
+            project_id: None,
             visibility: crate::knowledge::Visibility::Private,
             temporal: crate::knowledge::FactTemporal {
                 valid_from: jiff::Timestamp::UNIX_EPOCH,
@@ -679,8 +699,13 @@ pub(super) fn rows_to_recall_results(
             .and_then(|v| extract_optional_str(v).ok())
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
-        let visibility = row
+        let project_id = row
             .get(6)
+            .and_then(|v| extract_optional_str(v).ok())
+            .unwrap_or(None)
+            .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok());
+        let visibility = row
+            .get(7)
             .and_then(|v| extract_str(v).ok())
             .unwrap_or_default()
             .parse::<crate::knowledge::Visibility>()
@@ -696,6 +721,7 @@ pub(super) fn rows_to_recall_results(
             sensitivity: crate::knowledge::FactSensitivity::Public,
             graph_importance: 0.0,
             scope,
+            project_id,
             visibility,
         });
     }

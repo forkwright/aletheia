@@ -204,7 +204,7 @@ impl KnowledgeStore {
         Ok(())
     }
 
-    /// Hydrate recall results with `scope` and `visibility` from the `facts` relation.
+    /// Hydrate recall results with `scope`, `project_id`, and `visibility` from the `facts` relation.
     ///
     /// Semantic search returns from the `embeddings` relation, which does not
     /// carry these fields. This enrichment looks them up from `facts` for
@@ -213,8 +213,8 @@ impl KnowledgeStore {
     fn hydrate_recall_scope_visibility(&self, results: &mut [crate::knowledge::RecallResult]) {
         for result in results.iter_mut().filter(|r| r.source_type == "fact") {
             let script = r"
-                ?[scope, visibility] :=
-                    *facts{id: $fid, scope, visibility}
+                ?[scope, project_id, visibility] :=
+                    *facts{id: $fid, scope, project_id, visibility}
             ";
             let mut params = std::collections::BTreeMap::new();
             params.insert(
@@ -238,7 +238,14 @@ impl KnowledgeStore {
                         ),
                     }
                 }
-                if let Some(vis_str) = row.get(1).and_then(|v| v.get_str())
+                if let Some(project_id) = row
+                    .get(1)
+                    .and_then(|v| v.get_str())
+                    .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok())
+                {
+                    result.project_id = Some(project_id);
+                }
+                if let Some(vis_str) = row.get(2).and_then(|v| v.get_str())
                     && !vis_str.is_empty()
                 {
                     result.visibility = vis_str
@@ -345,6 +352,7 @@ impl KnowledgeStore {
                     sensitivity: crate::knowledge::FactSensitivity::Public,
                     graph_importance: 0.0,
                     scope: None,
+                    project_id: None,
                     visibility: crate::knowledge::Visibility::Private,
                 });
                 added += 1;
@@ -568,6 +576,7 @@ impl KnowledgeStore {
                     sensitivity: fact.sensitivity,
                     graph_importance: 0.0,
                     scope: fact.scope,
+                    project_id: fact.project_id,
                     visibility: fact.visibility,
                 });
                 break;

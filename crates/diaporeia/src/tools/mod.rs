@@ -895,6 +895,7 @@ impl DiaporeiaServer {
                 fact_type: "knowledge".to_string(),
                 content: params.content.clone(),
                 scope: None,
+                project_id: None,
                 sensitivity,
                 visibility: mneme::knowledge::Visibility::Private,
                 temporal: FactTemporal {

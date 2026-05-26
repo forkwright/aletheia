@@ -26,6 +26,7 @@ impl Field for FactsField {
             Self::ForgottenAt => "forgotten_at",
             Self::ForgetReason => "forget_reason",
             Self::Scope => "scope",
+            Self::ProjectId => "project_id",
             Self::Visibility => "visibility",
         }
     }

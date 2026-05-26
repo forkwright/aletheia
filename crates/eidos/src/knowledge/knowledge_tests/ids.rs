@@ -95,6 +95,7 @@ fn fact_serde_roundtrip() {
         content: "The researcher published findings on memory consolidation".to_owned(),
         fact_type: String::new(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: test_timestamp("2026-02-01"),
             valid_to: far_future(),
@@ -263,6 +264,7 @@ fn recall_result_serde_roundtrip() {
         sensitivity: FactSensitivity::Public,
         graph_importance: 0.0,
         scope: None,
+        project_id: None,
         visibility: Visibility::Private,
     };
     let json = serde_json::to_string(&result).expect("RecallResult serialization is infallible");
@@ -286,6 +288,7 @@ fn fact_with_empty_content() {
         content: String::new(),
         fact_type: String::new(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: test_timestamp("2026-01-01"),
             valid_to: far_future(),
@@ -328,6 +331,7 @@ fn fact_with_unicode_content() {
         content: "The user writes \u{65E5}\u{672C}\u{8A9E} and emoji \u{1F980}".to_owned(),
         fact_type: String::new(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: test_timestamp("2026-01-01"),
             valid_to: far_future(),

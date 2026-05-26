@@ -151,6 +151,7 @@ fn build_ops_fact(
             fact_type: String::from("operational"),
             content: content.to_owned(),
             scope: Some(MemoryScope::Project),
+            project_id: None,
             temporal: FactTemporal {
                 valid_from: now,
                 valid_to: far_future(),

@@ -31,6 +31,12 @@ pub const DEFAULT_MIN_OBSERVATIONS: u32 = 5;
 /// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_instinct_min_success_rate`.
 pub const DEFAULT_MIN_SUCCESS_RATE: f64 = 0.80;
 
+/// Default minimum distinct projects before project-scoped instincts promote to global.
+pub const DEFAULT_PROMOTION_MIN_PROJECTS: usize = 2;
+
+/// Default minimum per-project confidence before project-scoped instincts promote to global.
+pub const DEFAULT_PROMOTION_MIN_CONFIDENCE: f64 = 0.80;
+
 /// Patterns matching potential secret values in tool parameters.
 const SECRET_PATTERNS: &[&str] = &[
     "api_key",
@@ -509,6 +515,96 @@ pub(crate) fn aggregate_observations_by_project(
         min_success_rate,
         AggregationScope::ByProject,
     )
+}
+
+/// Promote convergent project-scoped patterns into global patterns.
+///
+/// A pattern promotes only when it is present in at least `min_projects`
+/// distinct project partitions and every contributing project pattern has a
+/// success rate at least `min_confidence`. Patterns without a `project_id` are
+/// already global and do not count toward cross-project evidence.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "promotion is an explicit opt-in step for project-scoped pattern callers"
+    )
+)]
+#[must_use]
+pub(crate) fn promote_cross_project_patterns(
+    patterns: &[BehavioralPattern],
+    min_projects: usize,
+    min_confidence: f64,
+) -> Vec<BehavioralPattern> {
+    use std::collections::{HashMap, HashSet};
+
+    #[derive(Default)]
+    struct PromotionAccum {
+        projects: HashSet<ProjectId>,
+        success_count: u32,
+        total_count: u32,
+        first_observed: Option<jiff::Timestamp>,
+        last_observed: Option<jiff::Timestamp>,
+    }
+
+    let mut groups: HashMap<(String, String), PromotionAccum> = HashMap::new();
+
+    for pattern in patterns
+        .iter()
+        .filter(|pattern| pattern.success_rate >= min_confidence)
+    {
+        let Some(project_id) = pattern.project_id.clone() else {
+            continue;
+        };
+
+        let accum = groups
+            .entry((pattern.tool_name.clone(), pattern.context_type.clone()))
+            .or_default();
+        accum.projects.insert(project_id);
+        accum.success_count = accum.success_count.saturating_add(pattern.success_count);
+        accum.total_count = accum.total_count.saturating_add(pattern.total_count);
+
+        match accum.first_observed {
+            Some(ref ts) if pattern.first_observed < *ts => {
+                accum.first_observed = Some(pattern.first_observed);
+            }
+            None => accum.first_observed = Some(pattern.first_observed),
+            _ => {}
+        }
+        match accum.last_observed {
+            Some(ref ts) if pattern.last_observed > *ts => {
+                accum.last_observed = Some(pattern.last_observed);
+            }
+            None => accum.last_observed = Some(pattern.last_observed),
+            _ => {}
+        }
+    }
+
+    groups
+        .into_iter()
+        .filter_map(|((tool_name, context_type), accum)| {
+            if accum.projects.len() < min_projects || accum.total_count == 0 {
+                return None;
+            }
+
+            let success_rate = f64::from(accum.success_count) / f64::from(accum.total_count);
+            let pattern = BehavioralPattern {
+                pattern: String::new(),
+                tool_name,
+                context_type,
+                project_id: None,
+                success_count: accum.success_count,
+                total_count: accum.total_count,
+                success_rate,
+                first_observed: accum.first_observed.unwrap_or_else(jiff::Timestamp::now),
+                last_observed: accum.last_observed.unwrap_or_else(jiff::Timestamp::now),
+            };
+            Some(BehavioralPattern {
+                pattern: pattern.to_fact_content(),
+                ..pattern
+            })
+        })
+        .collect()
 }
 
 fn aggregate_observations_scoped(

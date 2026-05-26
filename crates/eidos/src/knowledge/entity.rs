@@ -91,6 +91,12 @@ pub struct RecallResult {
     /// [`Fact::scope`]: super::fact::Fact::scope
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<super::scope::MemoryScope>,
+    /// Git-remote-derived project partition for the underlying fact.
+    ///
+    /// `None` means the result is global, non-fact, or predates project
+    /// partitioning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<crate::workspace::ProjectId>,
     /// Visibility level for the underlying fact, carried from
     /// [`Fact::visibility`] so the recall pipeline can filter by visibility.
     /// Defaults to [`Visibility::Private`] for facts persisted before

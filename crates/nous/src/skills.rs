@@ -594,6 +594,7 @@ mod tests {
             sensitivity: mneme::knowledge::FactSensitivity::Public,
             visibility: mneme::knowledge::Visibility::Private,
             scope: None,
+            project_id: None,
         }
     }
 

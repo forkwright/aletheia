@@ -18,6 +18,7 @@ fn terminology_discovery_finds_novel_terms() {
             sensitivity: mneme::knowledge::FactSensitivity::Public,
             visibility: mneme::knowledge::Visibility::Private,
             scope: None,
+            project_id: None,
         },
         ScoredResult {
             content: "quantum computing leverages superposition states".to_owned(),
@@ -29,6 +30,7 @@ fn terminology_discovery_finds_novel_terms() {
             sensitivity: mneme::knowledge::FactSensitivity::Public,
             visibility: mneme::knowledge::Visibility::Private,
             scope: None,
+            project_id: None,
         },
     ];
 
@@ -52,6 +54,7 @@ fn terminology_discovery_ignores_stopwords() {
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     }];
 
     let terms = discover_terminology(&results, "test query");
@@ -79,6 +82,7 @@ fn terminology_discovery_skips_short_words() {
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     }];
 
     let terms = discover_terminology(&results, "test");
@@ -101,6 +105,7 @@ fn gap_detection_finds_capitalized_phrases() {
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     }];
 
     let gaps = detect_gaps(&results);
@@ -123,6 +128,7 @@ fn gap_detection_finds_quoted_strings() {
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     }];
 
     let gaps = detect_gaps(&results);
@@ -212,6 +218,7 @@ fn make_knowledge_result_sensitive(
         sensitivity,
         graph_importance: 0.0,
         scope: None,
+        project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
     }
 }

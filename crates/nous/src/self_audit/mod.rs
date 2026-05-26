@@ -353,6 +353,7 @@ pub fn store_audit_report(
             fact_type: String::from("audit"),
             content,
             scope: None,
+            project_id: None,
             temporal: FactTemporal {
                 valid_from: now,
                 valid_to: far_future(),

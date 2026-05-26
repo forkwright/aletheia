@@ -806,6 +806,7 @@ async fn run_skill_extraction(
                             content,
                             fact_type: "skill_pending".to_owned(),
                             scope: None,
+                            project_id: None,
                             temporal: FactTemporal {
                                 valid_from: now,
                                 valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),

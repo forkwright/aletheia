@@ -447,6 +447,7 @@ fn fact_from_content(
         fact_type: fact_type.clone(),
         content: content.to_owned(),
         scope: Some(MemoryScope::Project),
+        project_id: None,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: Visibility::Private,
         temporal: FactTemporal {

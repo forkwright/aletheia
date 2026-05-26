@@ -169,7 +169,7 @@ pub(super) async fn run_context_stage(
 )]
 pub(super) async fn run_recall_stage(
     config: &NousConfig,
-    _pipeline_config: &PipelineConfig,
+    pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
     content: &str,
     embedding_provider: Option<&dyn EmbeddingProvider>,
@@ -221,7 +221,8 @@ pub(super) async fn run_recall_stage(
                 "embeddings unavailable — using BM25-only recall"
             );
             let recall_stage = crate::recall::RecallStage::new(config.recall.clone())
-                .with_deployment_target(deployment_target);
+                .with_deployment_target(deployment_target)
+                .with_project_scope(project_recall_scope(pipeline_config));
             let result = recall_stage.run_bm25(content, &config.id, ts, budget);
             apply_recall_result(result, ctx, &span, config.recall.late_inject_anchor);
         } else {
@@ -234,7 +235,8 @@ pub(super) async fn run_recall_stage(
         }
     } else if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
         let recall_stage = crate::recall::RecallStage::new(config.recall.clone())
-            .with_deployment_target(deployment_target);
+            .with_deployment_target(deployment_target)
+            .with_project_scope(project_recall_scope(pipeline_config));
         let recall_bridge = ProviderRecallBridge {
             providers,
             model: &config.generation.model,
@@ -266,6 +268,13 @@ pub(super) async fn run_recall_stage(
         duration_secs,
     });
     Ok(())
+}
+
+fn project_recall_scope(pipeline_config: &PipelineConfig) -> mneme::recall::ProjectRecallScope {
+    pipeline_config.project_id.clone().map_or(
+        mneme::recall::ProjectRecallScope::Global,
+        mneme::recall::ProjectRecallScope::Project,
+    )
 }
 
 /// History stage: load conversation history within token budget.

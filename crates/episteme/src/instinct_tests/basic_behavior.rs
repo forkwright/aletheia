@@ -676,3 +676,99 @@ fn project_scoped_aggregation_groups_none_project_id() {
         "pattern for None project_id should have None project_id"
     );
 }
+
+#[test]
+fn cross_project_promotion_requires_two_confident_projects() {
+    let project_alpha =
+        ProjectId::from_git_remote("https://github.com/acme/alpha.git").expect("valid remote");
+    let project_beta =
+        ProjectId::from_git_remote("https://github.com/acme/beta.git").expect("valid remote");
+
+    let mut observations = Vec::new();
+    for i in 0..20 {
+        let outcome = if i < 17 {
+            ToolOutcome::Success
+        } else {
+            ToolOutcome::Failure {
+                error: "synthetic timeout".to_owned(),
+            }
+        };
+        observations.push(make_observation_with_project(
+            "grep",
+            "code search",
+            outcome.clone(),
+            &format!("2026-03-{:02}T10:00:00Z", i + 1),
+            Some(project_alpha.clone()),
+        ));
+        observations.push(make_observation_with_project(
+            "grep",
+            "code search",
+            outcome,
+            &format!("2026-04-{:02}T10:00:00Z", i + 1),
+            Some(project_beta.clone()),
+        ));
+    }
+
+    let project_patterns = aggregate_observations_by_project(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
+    let promoted = promote_cross_project_patterns(
+        &project_patterns,
+        DEFAULT_PROMOTION_MIN_PROJECTS,
+        DEFAULT_PROMOTION_MIN_CONFIDENCE,
+    );
+
+    assert_eq!(
+        promoted.len(),
+        1,
+        "same pattern at 0.85 confidence in two projects should promote globally"
+    );
+    assert_eq!(
+        promoted[0].project_id, None,
+        "promoted pattern should be global"
+    );
+    assert_eq!(promoted[0].success_count, 34);
+    assert_eq!(promoted[0].total_count, 40);
+}
+
+#[test]
+fn cross_project_promotion_rejects_single_project_even_high_confidence() {
+    let project_alpha =
+        ProjectId::from_git_remote("https://github.com/acme/alpha.git").expect("valid remote");
+
+    let mut observations = Vec::new();
+    for i in 0..20 {
+        let outcome = if i < 19 {
+            ToolOutcome::Success
+        } else {
+            ToolOutcome::Failure {
+                error: "synthetic timeout".to_owned(),
+            }
+        };
+        observations.push(make_observation_with_project(
+            "grep",
+            "code search",
+            outcome,
+            &format!("2026-03-{:02}T10:00:00Z", i + 1),
+            Some(project_alpha.clone()),
+        ));
+    }
+
+    let project_patterns = aggregate_observations_by_project(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
+    let promoted = promote_cross_project_patterns(
+        &project_patterns,
+        DEFAULT_PROMOTION_MIN_PROJECTS,
+        DEFAULT_PROMOTION_MIN_CONFIDENCE,
+    );
+
+    assert!(
+        promoted.is_empty(),
+        "one project at 0.95 confidence must remain project-scoped only"
+    );
+}
