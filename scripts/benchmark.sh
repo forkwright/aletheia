@@ -19,6 +19,8 @@ NOUS_ID="${NOUS_ID:-benchmark}"
 MAX_QUESTIONS=""
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 REPORT_DIR="docs/benchmarks/reports"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export CARGO_TARGET_DIR="$REPO_ROOT/target"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -74,7 +76,7 @@ echo ""
 
 # Build runner
 echo "Building benchmark runner..."
-cargo build --release -p aletheia --quiet
+CARGO_TARGET_DIR="$REPO_ROOT/target" cargo build --release -p aletheia --quiet
 RUNNER="target/release/aletheia"
 
 MAX_ARGS=()

@@ -86,6 +86,7 @@ check_graceful() {
 BINARY=""
 FORCE_BUILD=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export CARGO_TARGET_DIR="$REPO_ROOT/target"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -105,7 +106,7 @@ DEFAULT_BINARY="$REPO_ROOT/target/release/aletheia"
 if [[ -z "$BINARY" ]]; then
     if [[ "$FORCE_BUILD" -eq 1 ]] || [[ ! -x "$DEFAULT_BINARY" ]]; then
         section "Building release binary"
-        cargo build --release --manifest-path "$REPO_ROOT/Cargo.toml" --bin aletheia
+        CARGO_TARGET_DIR="$REPO_ROOT/target" cargo build --release --manifest-path "$REPO_ROOT/Cargo.toml" --bin aletheia
     fi
     BINARY="$DEFAULT_BINARY"
 fi

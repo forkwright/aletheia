@@ -22,14 +22,16 @@
 # - crates/archeion/src/ci_config.rs::default_rust_gate (upstream default)
 #
 # NOTE: the duplicate in-repo basanos crate was removed in favor of kanon's
-# canonical linter. The `kanon lint` stage remains intentionally omitted until
-# the workspace baseline is clean enough to enforce for every PR. GHA CI also
-# never enforced it, so omission preserves parity. Re-add the stage (matching
-# harmonia's) once the baseline is clean. Tracked in the phase plan at
+# canonical linter. The full `kanon lint --summary --rust` stage remains
+# intentionally omitted because the workspace rust baseline still carries
+# non-zero debt (~1500+ violations). Writing and workflow lint are now clean
+# and enforced below. Per-crate rust lint gates should be added as individual
+# crates reach zero violations (koina is closest). Whole-workspace rust lint
+# can be re-added once the baseline is clean. Tracked in the phase plan at
 # `<canonical-state-doc>/phases/aletheia-05e-forge-cutover.md`.
 
 [pipeline]
-stages = ["cargo fmt", "cargo check", "cargo clippy", "cargo nextest", "dokimasia"]
+stages = ["cargo fmt", "cargo check", "cargo clippy", "cargo nextest", "kanon lint writing", "kanon lint workflow", "dokimasia"]
 
 [stages."cargo fmt"]
 cmd = "cargo fmt --all -- --check"
@@ -46,6 +48,14 @@ timeout_secs = 1800
 [stages."cargo nextest"]
 cmd = "cargo nextest run --workspace --features test-core --profile ci --build-jobs 4 --test-threads 4 --no-fail-fast"
 timeout_secs = 2400
+
+[stages."kanon lint writing"]
+cmd = "kanon lint --summary --writing"
+timeout_secs = 300
+
+[stages."kanon lint workflow"]
+cmd = "kanon lint --summary --workflow"
+timeout_secs = 300
 
 # Design-token enforcement: every var(--token) reference in CSS or Rust
 # source must resolve to a declaration in DESIGN-TOKENS.md.
