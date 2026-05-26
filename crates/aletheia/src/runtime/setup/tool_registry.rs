@@ -45,6 +45,7 @@ pub(in crate::runtime) fn build_tool_registry(
     config: &AletheiaConfig,
     oikos: &Oikos,
     shutdown_token: &CancellationToken,
+    after_action_log_dir: Option<std::path::PathBuf>,
 ) -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::new();
     let sandbox_settings = &config.sandbox;
@@ -74,6 +75,7 @@ pub(in crate::runtime) fn build_tool_registry(
         config,
         oikos,
         shutdown_token.child_token(),
+        after_action_log_dir,
     )?;
     info!(count = registry.definitions().len(), "tools registered");
     Ok(registry)
@@ -85,10 +87,11 @@ fn register_builtin_tools(
     config: &AletheiaConfig,
     oikos: &Oikos,
     cancel_token: CancellationToken,
+    after_action_log_dir: Option<std::path::PathBuf>,
 ) -> Result<()> {
     #[cfg(feature = "energeia")]
     {
-        let services = build_energeia_services(config, oikos, cancel_token)?;
+        let services = build_energeia_services(config, oikos, cancel_token, after_action_log_dir)?;
         builtins::register_all_with_sandbox_and_energeia_services(
             registry,
             sandbox,
@@ -99,7 +102,7 @@ fn register_builtin_tools(
 
     #[cfg(not(feature = "energeia"))]
     {
-        let _ = (config, oikos, cancel_token);
+        let _ = (config, oikos, cancel_token, after_action_log_dir);
         builtins::register_all_with_sandbox(registry, sandbox)
             .whatever_context("failed to register builtin tools")
     }
@@ -110,6 +113,7 @@ fn build_energeia_services(
     config: &AletheiaConfig,
     oikos: &Oikos,
     cancel_token: CancellationToken,
+    after_action_log_dir: Option<std::path::PathBuf>,
 ) -> Result<Arc<organon::builtins::energeia::EnergeiaServices>> {
     let store_path = oikos.data().join("energeia.fjall");
     if let Some(parent) = store_path.parent() {
@@ -138,7 +142,8 @@ fn build_energeia_services(
             energeia::orchestrator::OrchestratorConfig::new(),
         )
         .with_store(Arc::clone(&store))
-        .with_cancel_token(cancel_token),
+        .with_cancel_token(cancel_token)
+        .with_after_action_log_dir(after_action_log_dir),
     );
 
     Ok(Arc::new(

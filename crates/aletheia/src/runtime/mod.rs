@@ -285,8 +285,14 @@ impl RuntimeBuilder {
         };
 
         // Tool registry
+        let after_action_log_dir = self.oikos.logs().join("after-actions");
         let mut tool_registry = if self.credentials {
-            build_tool_registry(&self.config, &self.oikos, &shutdown_token)?
+            build_tool_registry(
+                &self.config,
+                &self.oikos,
+                &shutdown_token,
+                Some(after_action_log_dir.clone()),
+            )?
         } else {
             ToolRegistry::new()
         };

@@ -63,10 +63,7 @@ pub(crate) struct StaticRouter {
 
 impl StaticRouter {
     /// Create a static router with the given default provider.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "binary wiring constructs StaticRouter")
-    )]
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn new(default_provider: ProviderId) -> Self {
         Self { default_provider }
     }
@@ -102,13 +99,7 @@ pub(crate) enum RoutingMode {
 /// Operator-facing routing configuration for the dispatch engine.
 ///
 /// Placed under `[dispatch.routing]` in the instance `taxis` config.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "binary wiring constructs DispatchRoutingConfig (follow-up #3455)"
-    )
-)]
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub(crate) struct DispatchRoutingConfig {

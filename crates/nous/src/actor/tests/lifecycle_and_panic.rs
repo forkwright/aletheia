@@ -390,3 +390,47 @@ async fn status_includes_uptime() {
     handle.shutdown().await.expect("shutdown");
     join.await.expect("join");
 }
+
+// ── empirical router: after-action recording ────────────────────────────────
+
+use aletheia_routing::types::{ProviderId, TaskCategory};
+use aletheia_routing::{AfterActionStore, RecordingRouter};
+use std::time::Duration;
+
+#[tokio::test]
+async fn turn_records_after_action_outcome_in_empirical_store() {
+    let store = Arc::new(AfterActionStore::in_memory());
+    let router: Arc<dyn aletheia_routing::Router> =
+        Arc::new(RecordingRouter::new(Arc::clone(&store), "test-model"));
+
+    let (handle, join, _dir) = spawn_test_actor_with_router(Some(router));
+
+    let result = handle
+        .send_turn("main", "Build a feature")
+        .await
+        .expect("turn");
+    assert_eq!(result.content, "Hello from actor!");
+
+    handle.shutdown().await.expect("shutdown");
+    join.await.expect("join");
+
+    let provider = ProviderId::new("test-model");
+    for _ in 0..20 {
+        if let Some(stats) = store
+            .rolling_stats(
+                &provider,
+                &TaskCategory::Feature,
+                Duration::from_secs(7 * 24 * 60 * 60),
+            )
+            .await
+        {
+            assert_eq!(stats.successes, 1);
+            assert_eq!(stats.failures, 0);
+            assert_eq!(stats.total, 1);
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+
+    panic!("completed interactive turn did not record after-action outcome");
+}

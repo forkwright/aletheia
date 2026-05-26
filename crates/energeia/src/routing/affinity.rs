@@ -177,10 +177,7 @@ impl AffinityRouter {
     /// * `store` — shared after-action store (same instance as the inner empirical router)
     /// * `window` — rolling window for stat queries (should match empirical window)
     /// * `affinity_threshold` — minimum affinity gap to override empirical selection
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "binary wiring constructs AffinityRouter")
-    )]
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn new(
         inner: PersonaRouter,
         store: Arc<AfterActionStore>,
@@ -202,10 +199,7 @@ impl AffinityRouter {
     /// the empirical winner by at least `affinity_threshold`.
     ///
     /// When `persona_hint` is `Some`, it is forwarded to the inner persona router.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "binary wiring calls route_with_affinity")
-    )]
+    #[cfg_attr(not(test), allow(dead_code))]
     #[instrument(skip(self), fields(
         affinity_threshold = self.affinity_threshold,
     ))]
