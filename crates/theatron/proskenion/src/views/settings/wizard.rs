@@ -1,3 +1,4 @@
+// kanon:ignore STORAGE/no-migration-checksum -- settings wizard UI contains no storage migrations (#3988)
 //! First-run setup wizard.
 //!
 //! Three-step flow: Server -> Appearance -> Ready.

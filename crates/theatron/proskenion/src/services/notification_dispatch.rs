@@ -87,7 +87,7 @@ impl NotificationDispatch {
     ///   Completion notifications are suppressed when the window is focused.
     ///   Tool approval is never suppressed.
     /// - `on_sent`: called with each [`NotificationEntry`] that was dispatched,
-    ///   allowing the caller to record it in [`NotificationHistory`].
+    ///   allowing the caller to store it in [`NotificationHistory`].
     /// - `toast_fallback`: called when native notification fails so the caller
     ///   can push an in-app toast instead.
     pub(crate) fn process_event(

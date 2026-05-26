@@ -25,9 +25,9 @@ impl TrendDirection {
     #[must_use]
     pub(crate) fn arrow(&self) -> &'static str {
         match self {
-            Self::Up => "\u{25b2}",     // ▲
-            Self::Down => "\u{25bc}",   // ▼
-            Self::Flat => "\u{2014}",   // —
+            Self::Up => "\u{25b2}",   // ▲
+            Self::Down => "\u{25bc}", // ▼
+            Self::Flat => "\u{2014}", // —
         }
     }
 
@@ -115,7 +115,10 @@ impl Anomaly {
 /// Returns entries where the latest value exceeds 2 standard deviations from
 /// the mean of `values`. Returns `None` if insufficient data.
 #[must_use]
-#[expect(dead_code, reason = "used in tests; wired when SSE anomaly detection is plumbed")]
+#[expect(
+    dead_code,
+    reason = "used in tests; wired when SSE anomaly detection is plumbed"
+)]
 pub(crate) fn detect_anomaly(
     agent_name: &str,
     metric_name: &str,
@@ -126,7 +129,10 @@ pub(crate) fn detect_anomaly(
     }
 
     let n = values.len();
-    #[expect(clippy::as_conversions, reason = "sample count to f64 for statistical mean")]
+    #[expect(
+        clippy::as_conversions,
+        reason = "sample count to f64 for statistical mean"
+    )]
     let mean = values.iter().sum::<f64>() / n as f64;
     #[expect(clippy::as_conversions, reason = "sample count to f64 for variance")]
     let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
@@ -177,7 +183,10 @@ pub(crate) struct AgentPerformanceStore {
 
 impl AgentPerformanceStore {
     #[must_use]
-    #[expect(dead_code, reason = "constructed via struct literal in view; new() for test convenience")]
+    #[expect(
+        dead_code,
+        reason = "constructed via struct literal in view; new() for test convenience"
+    )]
     pub(crate) fn new() -> Self {
         Self::default()
     }
@@ -251,7 +260,10 @@ pub(crate) struct TopicEntry {
 
 /// Compute average turn length from a slice of message lengths.
 #[must_use]
-#[expect(dead_code, reason = "used in tests; wired when per-message metrics are available")]
+#[expect(
+    dead_code,
+    reason = "used in tests; wired when per-message metrics are available"
+)]
 pub(crate) fn compute_average(values: &[f64]) -> f64 {
     if values.is_empty() {
         return 0.0;
@@ -263,7 +275,10 @@ pub(crate) fn compute_average(values: &[f64]) -> f64 {
 
 /// Compute ratio of agent turns to user turns.
 #[must_use]
-#[expect(dead_code, reason = "used in tests; wired when per-turn metrics are available")]
+#[expect(
+    dead_code,
+    reason = "used in tests; wired when per-turn metrics are available"
+)]
 pub(crate) fn compute_ratio(numerator: u64, denominator: u64) -> f64 {
     if denominator == 0 {
         return 0.0;
@@ -333,8 +348,8 @@ pub(crate) fn compute_acceleration(values: &[f64]) -> TrendDirection {
 
 /// Palette for entity type stacked area charts.
 pub(crate) const ENTITY_TYPE_COLORS: &[&str] = &[
-    "#4a9aff", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6",
-    "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1",
+    "#4a9aff", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16",
+    "#f97316", "#6366f1",
 ];
 
 // -- Memory health ------------------------------------------------------------
@@ -426,14 +441,10 @@ pub(crate) fn generate_recommendations(
         ));
     }
     if avg_confidence < 0.5 {
-        recs.push(
-            "Average confidence is low \u{2014} verify or reinforce key facts".to_string(),
-        );
+        recs.push("Average confidence is low \u{2014} verify or reinforce key facts".to_string());
     }
     if growth_rate < 1.0 {
-        recs.push(
-            "Knowledge growth has slowed \u{2014} consider seeding new topics".to_string(),
-        );
+        recs.push("Knowledge growth has slowed \u{2014} consider seeding new topics".to_string());
     }
 
     recs

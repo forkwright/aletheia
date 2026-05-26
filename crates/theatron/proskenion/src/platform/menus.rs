@@ -12,6 +12,8 @@ mod tests {
 
     use crate::state::agents::AgentStore;
 
+    use super::*;
+
     fn make_store(names: &[&str]) -> AgentStore {
         let mut store = AgentStore::new();
         let agents: Vec<Agent> = names

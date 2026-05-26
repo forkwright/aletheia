@@ -83,7 +83,8 @@ impl ConnectionState {
 }
 
 /// User-configurable connection parameters, persisted to disk.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectionConfig {
     /// Base URL of the pylon server (e.g. `http://localhost:3000`).
     pub server_url: String,
@@ -102,6 +103,21 @@ pub struct ConnectionConfig {
     /// Maximum time in seconds to wait for a connection attempt before timing out.
     #[serde(default = "default_connect_timeout_secs")]
     pub connect_timeout_secs: u64,
+}
+
+impl std::fmt::Debug for ConnectionConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionConfig")
+            .field("server_url", &self.server_url)
+            .field(
+                "auth_token",
+                &self.auth_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("auto_reconnect", &self.auto_reconnect)
+            .field("connect_timeout_secs", &self.connect_timeout_secs)
+            .field("retry_backoff_ms", &self.retry_backoff_ms)
+            .finish()
+    }
 }
 
 fn default_connect_timeout_secs() -> u64 {

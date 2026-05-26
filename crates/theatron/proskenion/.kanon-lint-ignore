@@ -1,0 +1,32 @@
+# Rules to skip for specific proskenion paths.
+# Format: RULE/name:path/glob
+#
+# Every entry requires a tracking issue. No blanket category ignores.
+
+# WHY(#3988): standalone desktop Dioxus dependency graph is reviewed here and
+# remains below kanon's error threshold; parent workspace policy does not own
+# this excluded Cargo.lock.
+MANIFEST/dep-count:Cargo.lock
+
+# WHY(#3988): Dioxus component props and UI projection structs are intentionally
+# public field records at the component/state boundary; replacing them with
+# smart constructors would add ceremony without changing invariants.
+TOPOLOGY/shallow-struct:src/components/chart.rs
+TOPOLOGY/shallow-struct:src/components/chat/mod.rs
+TOPOLOGY/shallow-struct:src/components/input_bar.rs
+TOPOLOGY/shallow-struct:src/components/thinking.rs
+TOPOLOGY/shallow-struct:src/platform/notifications.rs
+TOPOLOGY/shallow-struct:src/services/file_watcher.rs
+TOPOLOGY/shallow-struct:src/state/app.rs
+TOPOLOGY/shallow-struct:src/state/chat.rs
+TOPOLOGY/shallow-struct:src/state/commands.rs
+TOPOLOGY/shallow-struct:src/state/events.rs
+TOPOLOGY/shallow-struct:src/state/memory.rs
+TOPOLOGY/shallow-struct:src/state/meta/mod.rs
+TOPOLOGY/shallow-struct:src/state/metrics.rs
+TOPOLOGY/shallow-struct:src/state/notifications.rs
+TOPOLOGY/shallow-struct:src/state/ops.rs
+TOPOLOGY/shallow-struct:src/state/platform.rs
+TOPOLOGY/shallow-struct:src/state/sessions.rs
+TOPOLOGY/shallow-struct:src/state/tools.rs
+TOPOLOGY/shallow-struct:src/state/view_preservation.rs

@@ -60,7 +60,6 @@ impl ViewPreservationStore {
     pub(crate) fn restore(&mut self, key: &ViewKey) -> Option<PreservedViewState> {
         self.states.remove(key)
     }
-
 }
 
 #[cfg(test)]

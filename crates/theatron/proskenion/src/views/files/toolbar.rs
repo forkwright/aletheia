@@ -114,7 +114,11 @@ pub(crate) fn ViewerToolbar(
                                 "navigator.clipboard.writeText('{}')",
                                 path.replace('\'', "\\'")
                             );
-                            let _ = document::eval(&js);
+                            if document::eval(&js).is_err() {
+                                tracing::warn!("failed to copy file path to clipboard");
+                                copied.set(false);
+                                return;
+                            }
                             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                             copied.set(false);
                         });

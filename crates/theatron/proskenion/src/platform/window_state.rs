@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use snafu::{ResultExt, Snafu};
 use tokio::sync::Notify;
+use tracing::Instrument;
 
 use crate::state::platform::WindowState;
 
@@ -152,7 +153,7 @@ impl Drop for AbortOnDrop {
 // All fields are `Arc`-wrapped, so cloning is cheap (reference count bump).
 #[derive(Clone)]
 pub(crate) struct DebouncedWriter {
-    state: Arc<Mutex<WindowState>>,
+    state: Arc<Mutex<WindowState>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern -- sync-only state snapshot, never held across await (#3988)
     dirty: Arc<Notify>,
     /// Whether there are unsaved changes.
     has_pending: Arc<std::sync::atomic::AtomicBool>,
@@ -167,7 +168,7 @@ impl DebouncedWriter {
     /// at which point it is aborted via the `AbortOnDrop` guard.
     #[must_use]
     pub(crate) fn new(initial: WindowState) -> Self {
-        let state = Arc::new(Mutex::new(initial));
+        let state = Arc::new(Mutex::new(initial)); // kanon:ignore RUST/no-arc-mutex-anti-pattern -- sync-only state snapshot, never held across await (#3988)
         let dirty = Arc::new(Notify::new());
         let has_pending = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
@@ -194,6 +195,7 @@ impl DebouncedWriter {
                     }
                 }
             }
+            .instrument(tracing::debug_span!("window_state_flush"))
         });
 
         Self {

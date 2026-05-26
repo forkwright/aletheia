@@ -152,7 +152,10 @@ impl ChatState {
         let now_ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| {
-                #[expect(clippy::as_conversions, reason = "epoch seconds fit in i64 until year 292B")]
+                #[expect(
+                    clippy::as_conversions,
+                    reason = "epoch seconds fit in i64 until year 292B"
+                )]
                 let secs = d.as_secs() as i64;
                 secs
             })
@@ -176,7 +179,10 @@ impl ChatState {
                 },
                 content: m.content.clone(),
                 timestamp: {
-                    #[expect(clippy::as_conversions, reason = "message offset to i64 for timestamp spacing")]
+                    #[expect(
+                        clippy::as_conversions,
+                        reason = "message offset to i64 for timestamp spacing"
+                    )]
                     let offset = (self.messages.len() - 1 - i) as i64 * 30;
                     now_ts - offset
                 },

@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+// kanon:ignore STORAGE/no-migration-checksum -- desktop launch code contains no storage migrations (#3988)
 //! Dioxus desktop streaming architecture for Aletheia.
 //!
 //! Provides signal-based SSE and per-message stream consumption
@@ -68,7 +69,7 @@ pub fn run(verbose: bool) {
     let _log_guard = match bathron::logging::init_with_stderr(cfg, also_to_stderr) {
         Ok(guard) => guard,
         Err(e) => {
-            eprintln!("proskenion: failed to initialize logging: {e}");
+            tracing::error!(error = %e, "failed to initialize logging");
             return;
         }
     };
@@ -78,14 +79,22 @@ pub fn run(verbose: bool) {
     // WHY: reqwest with rustls-no-provider requires an explicit crypto provider
     // install before any Client is constructed, otherwise it panics with
     // "No provider set" (#2363).
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    if rustls::crypto::ring::default_provider()
+        .install_default()
+        .is_err()
+    {
+        tracing::debug!("rustls crypto provider was already installed");
+    }
 
     // WHY: Dioxus 0.7 does not expose GTK CSD styling. The native title bar
     // inherits the system GTK theme, which is light by default on most distros.
     // Setting GTK_THEME to the dark variant before window creation makes the
     // CSD header bar match the app's dark content area. Respects user override
     // if GTK_THEME is already set. On non-GTK platforms this is a no-op.
-    #[expect(unsafe_code, reason = "set_var is safe here: single-threaded, before async runtime")]
+    #[expect(
+        unsafe_code,
+        reason = "set_var is safe here: single-threaded, before async runtime"
+    )]
     if std::env::var_os("GTK_THEME").is_none() {
         unsafe { std::env::set_var("GTK_THEME", "Adwaita:dark") };
     }
@@ -144,9 +153,12 @@ pub fn run(verbose: bool) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn crate_modules_accessible() {
         // NOTE: Validates that the public module tree compiles and links.
-        let _ = super::state::events::EventState::default();
+        let state = state::events::EventState::default();
+        assert!(state.active_turns.is_empty());
     }
 }

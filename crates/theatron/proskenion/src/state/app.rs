@@ -167,7 +167,6 @@ impl TabBar {
         }
         Some(entry)
     }
-
 }
 
 impl Default for TabBar {
