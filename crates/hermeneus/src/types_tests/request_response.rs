@@ -5,6 +5,8 @@
 )]
 use super::*;
 
+use crate::types::OutputFormat;
+
 #[test]
 fn citation_char_location_serde() {
     let citation = Citation::CharLocation {
@@ -222,4 +224,62 @@ fn completion_request_default() {
         req.citations.is_none(),
         "default CompletionRequest citations should be None"
     );
+    assert!(
+        req.output_format.is_none(),
+        "default CompletionRequest output_format should be None"
+    );
+}
+
+#[test]
+fn output_format_json_schema_serde_roundtrip() {
+    let format = OutputFormat::JsonSchema {
+        name: "test_schema".to_owned(),
+        schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "answer": { "type": "string" }
+            }
+        }),
+        strict: Some(true),
+    };
+    let json =
+        serde_json::to_string(&format).expect("OutputFormat::JsonSchema should serialize to JSON");
+    assert!(
+        json.contains("json_schema"),
+        "serialized JSON should contain type tag"
+    );
+    assert!(
+        json.contains("test_schema"),
+        "serialized JSON should contain schema name"
+    );
+    let back: OutputFormat =
+        serde_json::from_str(&json).expect("OutputFormat::JsonSchema should deserialize from JSON");
+    match back {
+        OutputFormat::JsonSchema {
+            name,
+            schema,
+            strict,
+        } => {
+            assert_eq!(name, "test_schema", "schema name should round-trip");
+            assert_eq!(schema["type"], "object", "schema body should round-trip");
+            assert_eq!(strict, Some(true), "strict flag should round-trip");
+        }
+        other => panic!("expected JsonSchema, got {other:?}"),
+    }
+}
+
+#[test]
+fn output_format_text_serde_roundtrip() {
+    let format = OutputFormat::Text;
+    let json = serde_json::to_string(&format).expect("OutputFormat::Text should serialize to JSON");
+    assert!(
+        json.contains("text"),
+        "serialized JSON should contain type tag 'text'"
+    );
+    let back: OutputFormat =
+        serde_json::from_str(&json).expect("OutputFormat::Text should deserialize from JSON");
+    match back {
+        OutputFormat::Text => {}
+        other => panic!("expected Text, got {other:?}"),
+    }
 }

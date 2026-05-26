@@ -19,7 +19,8 @@ use serde::Serialize;
 
 use crate::error::{self, Result};
 use crate::types::{
-    CompletionRequest, Content, ContentBlock, Message, Role, ToolChoice, ToolResultContent,
+    CompletionRequest, Content, ContentBlock, Message, OutputFormat, Role, ToolChoice,
+    ToolResultContent,
 };
 
 /// Top-level OpenAI Chat Completions request body.
@@ -40,6 +41,8 @@ pub(crate) struct ChatCompletionRequest<'a> {
     pub stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "response_format")]
+    pub output_format: Option<WireResponseFormat>,
 }
 
 /// Single chat message. `role` is `"system" | "user" | "assistant" | "tool"`.
@@ -102,6 +105,27 @@ pub(crate) struct ResponsesRequest<'a> {
     pub stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<&'a str>,
+}
+
+/// Wire representation of `response_format` for OpenAI Chat Completions.
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+pub(crate) enum WireResponseFormat {
+    #[serde(rename = "json_schema")]
+    JsonSchema {
+        #[serde(rename = "json_schema")]
+        definition: WireJsonSchema,
+    },
+    #[serde(rename = "text")]
+    Text,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WireJsonSchema {
+    pub name: String,
+    pub schema: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strict: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -187,6 +211,13 @@ impl<'a> ChatCompletionRequest<'a> {
             );
         }
 
+        if req.output_format.is_some() {
+            tracing::debug!(
+                "output_format set on request routed to OpenAI-compatible provider; \
+                 passing through response_format"
+            );
+        }
+
         let mut messages: Vec<ChatMessage> = Vec::with_capacity(req.messages.len() + 1);
 
         // Prepend system message. Anthropic carries `system` at the top level;
@@ -224,6 +255,7 @@ impl<'a> ChatCompletionRequest<'a> {
         let stop: Vec<&str> = req.stop_sequences.iter().map(String::as_str).collect();
 
         let user = req.metadata.as_ref().and_then(|m| m.user_id.as_deref());
+        let output_format = req.output_format.as_ref().map(translate_output_format);
 
         Ok(Self {
             model: &req.model,
@@ -235,6 +267,7 @@ impl<'a> ChatCompletionRequest<'a> {
             tool_choice,
             stream,
             user,
+            output_format,
         })
     }
 }
@@ -283,6 +316,13 @@ impl<'a> ResponsesRequest<'a> {
             tracing::debug!(
                 "citations config set on request routed to OpenAI Responses provider; \
                  ignored until Responses annotations are mapped"
+            );
+        }
+
+        if req.output_format.is_some() {
+            tracing::warn!(
+                "output_format set on request routed to OpenAI Responses provider; \
+                 dropping (Responses text.format not yet mapped in hermeneus)"
             );
         }
 
@@ -557,6 +597,23 @@ fn translate_responses_assistant_message(msg: &Message, out: &mut Vec<ResponsesI
             role: "assistant",
             content: text_parts.join("\n"),
         });
+    }
+}
+
+fn translate_output_format(format: &OutputFormat) -> WireResponseFormat {
+    match format {
+        OutputFormat::JsonSchema {
+            name,
+            schema,
+            strict,
+        } => WireResponseFormat::JsonSchema {
+            definition: WireJsonSchema {
+                name: name.clone(),
+                schema: schema.clone(),
+                strict: *strict,
+            },
+        },
+        OutputFormat::Text => WireResponseFormat::Text,
     }
 }
 

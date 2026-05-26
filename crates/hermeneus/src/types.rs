@@ -484,6 +484,25 @@ pub struct CitationConfig {
     pub enabled: bool,
 }
 
+/// Structured output format for LLM responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum OutputFormat {
+    /// Constrain output to a JSON Schema.
+    JsonSchema {
+        /// Descriptive name for the schema.
+        name: String,
+        /// The JSON Schema definition.
+        schema: serde_json::Value,
+        /// Whether to enforce strict schema adherence.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        strict: Option<bool>,
+    },
+    /// Plain text output.
+    Text,
+}
+
 /// A source citation in a response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -555,6 +574,9 @@ pub struct CompletionRequest {
     pub metadata: Option<RequestMetadata>,
     /// Enable citation tracking in responses.
     pub citations: Option<CitationConfig>,
+    /// Structured output format (e.g. JSON Schema).
+    /// When `None`, providers default to plain text.
+    pub output_format: Option<OutputFormat>,
 }
 
 impl Default for CompletionRequest {
@@ -575,6 +597,7 @@ impl Default for CompletionRequest {
             tool_choice: None,
             metadata: None,
             citations: None,
+            output_format: None,
         }
     }
 }
