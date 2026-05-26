@@ -355,6 +355,7 @@ fn record_training_data_produces_fact() {
         corrective_attempts: 0,
         cache_hit_tokens: 0,
         cache_miss_tokens: 0,
+        structured_output: None,
     };
 
     let fact = store.record_training_data(session, &outcome).unwrap();

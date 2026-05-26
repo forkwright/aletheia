@@ -12,7 +12,7 @@ use crate::engine::AgentOptions;
 use crate::types::SessionStatus;
 
 /// Progress bridge event for a child prompt session.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct ChildSessionProgress {
     /// Prompt number that owns the child session.
@@ -26,7 +26,7 @@ pub struct ChildSessionProgress {
 }
 
 /// Lifecycle state reported by [`ChildSessionProgress`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ChildSessionProgressStatus {
     /// A child session has been spawned.
@@ -214,6 +214,22 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         let config = EngineConfig::default().child_progress_tx(tx);
         assert!(config.child_progress_tx.is_some());
+    }
+
+    #[test]
+    fn child_progress_serializes_as_structured_record() {
+        let progress = ChildSessionProgress {
+            prompt_number: 7,
+            status: ChildSessionProgressStatus::Finished(SessionStatus::Success),
+            child_session_id: "sess-7".to_owned(),
+            output_excerpt: Some("done".to_owned()),
+        };
+
+        let json = serde_json::to_string(&progress).expect("serialize child progress");
+        let decoded: ChildSessionProgress =
+            serde_json::from_str(&json).expect("deserialize child progress");
+
+        assert_eq!(decoded, progress);
     }
 
     #[test]

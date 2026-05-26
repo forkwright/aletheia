@@ -94,6 +94,7 @@ impl HermeneusEngine {
             }],
             max_tokens: options.max_turns.unwrap_or(4096),
             cache_system,
+            output_format: spec.output_format.clone(),
             ..CompletionRequest::default()
         }
     }
@@ -335,7 +336,7 @@ impl SessionHandle for HermeneusSessionHandle {
 #[cfg(test)]
 #[expect(clippy::indexing_slicing, reason = "test assertions")]
 mod tests {
-    use hermeneus::types::Usage;
+    use hermeneus::types::{OutputFormat, Usage};
 
     use crate::prompt_cache::PromptComponents;
 
@@ -354,6 +355,7 @@ mod tests {
                 static_prefix: "static".to_owned(),
                 dynamic_suffix: "dynamic".to_owned(),
             }),
+            output_format: None,
         };
 
         let request = engine.build_request(&spec, &AgentOptions::new());
@@ -373,11 +375,39 @@ mod tests {
             system_prompt: None,
             cwd: None,
             prompt_components: None,
+            output_format: None,
         };
 
         let request = engine.build_request(&spec, &AgentOptions::new());
         assert!(!request.cache_system);
         assert_eq!(request.system, None);
+    }
+
+    #[test]
+    fn build_request_carries_output_format() {
+        let provider = Arc::new(hermeneus::test_utils::MockProvider::new("done"));
+        let engine = HermeneusEngine::new(provider, "test-model");
+
+        let spec = SessionSpec {
+            prompt: "classify".to_owned(),
+            system_prompt: None,
+            cwd: None,
+            prompt_components: None,
+            output_format: Some(OutputFormat::JsonSchema {
+                name: "classification".to_owned(),
+                schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {"kind": {"type": "string"}}
+                }),
+                strict: Some(true),
+            }),
+        };
+
+        let request = engine.build_request(&spec, &AgentOptions::new());
+        assert!(matches!(
+            request.output_format,
+            Some(OutputFormat::JsonSchema { ref name, .. }) if name == "classification"
+        ));
     }
 
     #[test]
@@ -393,6 +423,7 @@ mod tests {
                 static_prefix: String::new(),
                 dynamic_suffix: "dynamic".to_owned(),
             }),
+            output_format: None,
         };
 
         let request = engine.build_request(&spec, &AgentOptions::new());
@@ -413,6 +444,7 @@ mod tests {
             system_prompt: None,
             cwd: None,
             prompt_components: None,
+            output_format: None,
         };
 
         let handle = engine.spawn_session(&spec, &AgentOptions::new()).await?;
@@ -450,6 +482,7 @@ mod tests {
             system_prompt: None,
             cwd: None,
             prompt_components: None,
+            output_format: None,
         };
 
         let handle = engine.spawn_session(&spec, &AgentOptions::new()).await?;
@@ -486,6 +519,7 @@ mod tests {
             system_prompt: None,
             cwd: None,
             prompt_components: None,
+            output_format: None,
         };
 
         let handle = engine.spawn_session(&spec, &AgentOptions::new()).await?;

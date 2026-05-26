@@ -63,6 +63,9 @@ pub struct PromptSpec {
     /// How this prompt receives conversational context from other prompt nodes.
     #[serde(default)]
     pub context_policy: ContextPolicy,
+    /// Optional structured output contract for this prompt's response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_format: Option<hermeneus::types::OutputFormat>,
     /// Whether this prompt expects isolated worktree execution when the
     /// dispatch harness supports it.
     #[serde(default)]
@@ -89,6 +92,8 @@ struct Frontmatter {
     depends_on: Vec<u32>,
     #[serde(default)]
     context_policy: ContextPolicy,
+    #[serde(default)]
+    output_format: Option<hermeneus::types::OutputFormat>,
     #[serde(default)]
     worktree: WorktreePolicy,
     #[serde(default)]
@@ -166,6 +171,7 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
         description: fm.description,
         depends_on: fm.depends_on,
         context_policy: fm.context_policy,
+        output_format: fm.output_format,
         worktree: fm.worktree,
         acceptance_criteria: fm.acceptance_criteria,
         blast_radius: fm.blast_radius,
@@ -218,10 +224,10 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
     let mut dag = PromptDag::new();
 
     for spec in prompts {
-        if spec.context_policy != ContextPolicy::Fresh {
+        if spec.context_policy == ContextPolicy::Shared {
             return PreflightSnafu {
                 reason: format!(
-                    "context policy {:?} for prompt {} requires output_format support from issue #3972",
+                    "context policy {:?} for prompt {} requires shared conversation support",
                     spec.context_policy, spec.number
                 ),
             }
@@ -392,6 +398,45 @@ body
     }
 
     #[test]
+    fn load_prompt_output_format_from_frontmatter() {
+        let dir = TempDir::new().unwrap();
+        let path = make_prompt_file(
+            &dir,
+            "003-task.md",
+            "\
+---
+number: 3
+output_format:
+  type: json_schema
+  name: research_result
+  strict: true
+  schema:
+    type: object
+    required: [summary]
+    properties:
+      summary:
+        type: string
+---
+
+body
+",
+        );
+
+        let spec = load_prompt(&path).unwrap();
+        let Some(hermeneus::types::OutputFormat::JsonSchema {
+            name,
+            schema,
+            strict,
+        }) = spec.output_format
+        else {
+            panic!("expected JSON schema output format");
+        };
+        assert_eq!(name, "research_result");
+        assert_eq!(strict, Some(true));
+        assert_eq!(schema["required"][0], "summary");
+    }
+
+    #[test]
     fn load_prompt_worktree_policy_from_frontmatter() {
         let dir = TempDir::new().unwrap();
         let path = make_prompt_file(
@@ -490,6 +535,7 @@ body
             description: format!("prompt {number}"),
             depends_on,
             context_policy: ContextPolicy::Fresh,
+            output_format: None,
             worktree: WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -515,9 +561,9 @@ body
     }
 
     #[test]
-    fn build_dag_rejects_non_fresh_context_policy() {
+    fn build_dag_rejects_shared_context_policy() {
         let mut prompt = spec(2, vec![1]);
-        prompt.context_policy = ContextPolicy::Inherit(vec![1]);
+        prompt.context_policy = ContextPolicy::Shared;
 
         let err = build_dag(&[spec(1, vec![]), prompt]).unwrap_err();
         assert!(matches!(err, Error::Preflight { .. }));

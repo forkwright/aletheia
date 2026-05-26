@@ -360,6 +360,7 @@ mod tests {
             system_prompt: None,
             cwd: None,
             prompt_components: None,
+            output_format: None,
         }
     }
 

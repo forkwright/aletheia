@@ -6,7 +6,9 @@
 // on a single phase and makes the full pipeline readable as a sequence of named
 // stages.
 
-use crate::dag::{PromptDag, PromptStatus};
+use std::collections::HashMap;
+
+use crate::dag::{ContextPolicy, PromptDag, PromptStatus};
 use crate::pipeline::PipelineStage;
 use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::PipelineError;
@@ -85,6 +87,7 @@ impl PipelineStage for ExecutionStage {
                         corrective_attempts: 0,
                         cache_hit_tokens: 0,
                         cache_miss_tokens: 0,
+                        structured_output: None,
                     });
                     mark_dependents_blocked(n, ctx.dag_mut());
                 } else {
@@ -95,6 +98,12 @@ impl PipelineStage for ExecutionStage {
             // Drain correctives from the previous group into this execution.
             let correctives = std::mem::take(&mut ctx.correctives);
             group_prompts.extend(correctives);
+            group_prompts = group_prompts
+                .into_iter()
+                .map(|prompt| {
+                    attach_structured_upstream_outputs(prompt, ctx.dag(), &ctx.structured_outputs)
+                })
+                .collect();
 
             if group_prompts.is_empty() {
                 continue;
@@ -156,6 +165,10 @@ impl PipelineStage for ExecutionStage {
                         let _ = ctx
                             .dag_mut()
                             .set_status(outcome.prompt_number, PromptStatus::Done);
+                        if let Some(structured_output) = &outcome.structured_output {
+                            ctx.structured_outputs
+                                .insert(outcome.prompt_number, structured_output.clone());
+                        }
 
                         if let Some(pr_url) = &outcome.pr_url
                             && let Some(prompt) =
@@ -212,6 +225,7 @@ impl PipelineStage for ExecutionStage {
                 corrective_attempts: 0,
                 cache_hit_tokens: 0,
                 cache_miss_tokens: 0,
+                structured_output: None,
             });
         }
 
@@ -223,6 +237,65 @@ impl PipelineStage for ExecutionStage {
 // ---------------------------------------------------------------------------
 // Helpers (replicated from orchestrator/mod.rs, scoped here for the stage)
 // ---------------------------------------------------------------------------
+
+fn attach_structured_upstream_outputs(
+    mut prompt: PromptSpec,
+    dag: &PromptDag,
+    structured_outputs: &HashMap<u32, serde_json::Value>,
+) -> PromptSpec {
+    let selected = selected_upstream_nodes(&prompt, dag);
+    let mut entries: Vec<(u32, &serde_json::Value)> = selected
+        .into_iter()
+        .filter_map(|number| {
+            structured_outputs
+                .get(&number)
+                .map(|output| (number, output))
+        })
+        .collect();
+    entries.sort_by_key(|(number, _)| *number);
+
+    if entries.is_empty() {
+        return prompt;
+    }
+
+    let section = format_structured_outputs(&entries);
+    prompt.body.push_str(&section);
+    if let Some(components) = &mut prompt.prompt_components {
+        components.dynamic_suffix.push_str(&section);
+    }
+    prompt
+}
+
+fn selected_upstream_nodes(prompt: &PromptSpec, dag: &PromptDag) -> Vec<u32> {
+    match &prompt.context_policy {
+        ContextPolicy::Fresh => prompt.depends_on.clone(),
+        ContextPolicy::Inherit(nodes) => nodes.clone(),
+        ContextPolicy::Shared => dag
+            .nodes
+            .values()
+            .filter(|node| node.status == PromptStatus::Done)
+            .map(|node| node.number)
+            .collect(),
+    }
+}
+
+fn format_structured_outputs(entries: &[(u32, &serde_json::Value)]) -> String {
+    let mut section = String::from(
+        "\n\n<upstream_structured_outputs>\nOnly structured outputs from selected upstream prompt nodes are included.\n",
+    );
+    for (number, output) in entries {
+        section.push_str("<node number=\"");
+        section.push_str(&number.to_string());
+        section.push_str("\">\n");
+        match serde_json::to_string_pretty(output) {
+            Ok(json) => section.push_str(&json),
+            Err(_) => section.push_str(&output.to_string()),
+        }
+        section.push_str("\n</node>\n");
+    }
+    section.push_str("</upstream_structured_outputs>\n");
+    section
+}
 
 fn has_failed_dependency(number: u32, dag: &PromptDag) -> bool {
     let Some(node) = dag.nodes.get(&number) else {
@@ -278,6 +351,7 @@ fn collect_skipped(numbers: &[u32], dag: &mut PromptDag, reason: &str) -> Vec<Se
                 corrective_attempts: 0,
                 cache_hit_tokens: 0,
                 cache_miss_tokens: 0,
+                structured_output: None,
             }
         })
         .collect()
@@ -383,6 +457,7 @@ async fn run_qa_and_generate_corrective(
             description: corrective.description,
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: corrective.acceptance_criteria,
             blast_radius: corrective.blast_radius,
@@ -403,9 +478,15 @@ async fn run_qa_and_generate_corrective(
     reason = "test assertions on known-length collections"
 )]
 mod tests {
+    use std::collections::VecDeque;
+    use std::future::Future;
+    use std::pin::Pin;
     use std::sync::Arc;
 
-    use crate::engine::{SessionEvent, SessionResult};
+    use crate::engine::{
+        AgentOptions, DispatchEngine, SessionEvent, SessionHandle, SessionResult, SessionSpec,
+    };
+    use crate::error::{self, Result};
     use crate::http::mock::{MockEngine, MockOutcome};
     use crate::orchestrator::OrchestratorConfig;
     use crate::pipeline::PipelineStage as _;
@@ -549,6 +630,131 @@ mod tests {
         }
     }
 
+    struct RecordingEngine {
+        outcomes: tokio::sync::Mutex<VecDeque<MockOutcome>>,
+        prompts: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl RecordingEngine {
+        fn new(outcomes: Vec<MockOutcome>, prompts: Arc<std::sync::Mutex<Vec<String>>>) -> Self {
+            Self {
+                outcomes: tokio::sync::Mutex::new(VecDeque::from(outcomes)),
+                prompts,
+            }
+        }
+    }
+
+    impl DispatchEngine for RecordingEngine {
+        fn spawn_session<'a>(
+            &'a self,
+            spec: &'a SessionSpec,
+            _options: &'a AgentOptions,
+        ) -> Pin<Box<dyn Future<Output = Result<Box<dyn SessionHandle>>> + Send + 'a>> {
+            Box::pin(async move {
+                self.prompts
+                    .lock()
+                    .expect("recording prompts lock poisoned")
+                    .push(spec.prompt.clone());
+                let outcome = self.outcomes.lock().await.pop_front().ok_or_else(|| {
+                    error::EngineSnafu {
+                        detail: "RecordingEngine: no more configured outcomes".to_owned(),
+                    }
+                    .build()
+                })?;
+                match outcome {
+                    MockOutcome::Success { events, result } => {
+                        let handle =
+                            RecordingHandle::new(result.session_id.clone(), events, result);
+                        let boxed: Box<dyn SessionHandle> = Box::new(handle);
+                        Ok(boxed)
+                    }
+                    MockOutcome::SpawnFailure { detail } => {
+                        Err(error::EngineSnafu { detail }.build())
+                    }
+                }
+            })
+        }
+
+        fn resume_session<'a>(
+            &'a self,
+            _session_id: &'a str,
+            prompt: &'a str,
+            _options: &'a AgentOptions,
+        ) -> Pin<Box<dyn Future<Output = Result<Box<dyn SessionHandle>>> + Send + 'a>> {
+            Box::pin(async move {
+                self.prompts
+                    .lock()
+                    .expect("recording prompts lock poisoned")
+                    .push(prompt.to_owned());
+                let outcome = self.outcomes.lock().await.pop_front().ok_or_else(|| {
+                    error::EngineSnafu {
+                        detail: "RecordingEngine: no more configured outcomes".to_owned(),
+                    }
+                    .build()
+                })?;
+                match outcome {
+                    MockOutcome::Success { events, result } => {
+                        let handle =
+                            RecordingHandle::new(result.session_id.clone(), events, result);
+                        let boxed: Box<dyn SessionHandle> = Box::new(handle);
+                        Ok(boxed)
+                    }
+                    MockOutcome::SpawnFailure { detail } => {
+                        Err(error::EngineSnafu { detail }.build())
+                    }
+                }
+            })
+        }
+    }
+
+    struct RecordingHandle {
+        session_id: String,
+        events: VecDeque<SessionEvent>,
+        result: Option<SessionResult>,
+    }
+
+    impl RecordingHandle {
+        fn new(session_id: String, events: Vec<SessionEvent>, result: SessionResult) -> Self {
+            Self {
+                session_id,
+                events: VecDeque::from(events),
+                result: Some(result),
+            }
+        }
+    }
+
+    impl SessionHandle for RecordingHandle {
+        fn session_id(&self) -> &str {
+            &self.session_id
+        }
+
+        fn next_event<'a>(
+            &'a mut self,
+        ) -> Pin<Box<dyn Future<Output = Option<SessionEvent>> + Send + 'a>> {
+            Box::pin(async move { self.events.pop_front() })
+        }
+
+        fn wait(
+            mut self: Box<Self>,
+        ) -> Pin<Box<dyn Future<Output = Result<SessionResult>> + Send>> {
+            Box::pin(async move {
+                self.result.take().ok_or_else(|| {
+                    error::EngineSnafu {
+                        detail: "RecordingHandle: wait called more than once".to_owned(),
+                    }
+                    .build()
+                })
+            })
+        }
+
+        fn abort<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
+            Box::pin(async move {
+                self.events.clear();
+                Ok(())
+            })
+        }
+    }
+
     fn success_mock_outcome(session_id: &str, cost: f64, turns: u32) -> MockOutcome {
         MockOutcome::Success {
             events: vec![SessionEvent::TurnComplete { turn: turns }],
@@ -582,6 +788,75 @@ mod tests {
                 cache_hit_tokens: 0,
                 cache_miss_tokens: 0,
             },
+        }
+    }
+
+    fn success_json_outcome(session_id: &str, result_text: &str) -> MockOutcome {
+        MockOutcome::Success {
+            events: vec![SessionEvent::TurnComplete { turn: 1 }],
+            result: SessionResult {
+                session_id: session_id.to_owned(),
+                cost_usd: 0.01,
+                num_turns: 1,
+                duration_ms: 100,
+                success: true,
+                result_text: Some(result_text.to_owned()),
+                model: Some("test-model".to_owned()),
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
+            },
+        }
+    }
+
+    fn success_json_outcome_with_secret_event(
+        session_id: &str,
+        result_text: &str,
+        secret: &str,
+    ) -> MockOutcome {
+        MockOutcome::Success {
+            events: vec![
+                SessionEvent::TextDelta {
+                    text: secret.to_owned(),
+                },
+                SessionEvent::TurnComplete { turn: 1 },
+            ],
+            result: SessionResult {
+                session_id: session_id.to_owned(),
+                cost_usd: 0.01,
+                num_turns: 1,
+                duration_ms: 100,
+                success: true,
+                result_text: Some(result_text.to_owned()),
+                model: Some("test-model".to_owned()),
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
+            },
+        }
+    }
+
+    fn json_schema(name: &str) -> hermeneus::types::OutputFormat {
+        hermeneus::types::OutputFormat::JsonSchema {
+            name: name.to_owned(),
+            schema: serde_json::json!({
+                "type": "object",
+                "additionalProperties": true
+            }),
+            strict: Some(true),
+        }
+    }
+
+    fn structured_prompt(number: u32, depends_on: Vec<u32>, body: &str) -> PromptSpec {
+        PromptSpec {
+            number,
+            description: format!("prompt {number}"),
+            depends_on,
+            context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: Some(json_schema(&format!("prompt_{number}_output"))),
+            worktree: crate::prompt::WorktreePolicy::default(),
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: body.to_owned(),
+            prompt_components: None,
         }
     }
 
@@ -669,6 +944,7 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -700,6 +976,7 @@ mod tests {
                 description: "first".to_owned(),
                 depends_on: vec![],
                 context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
                 worktree: crate::prompt::WorktreePolicy::default(),
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
@@ -712,6 +989,7 @@ mod tests {
                 description: "second".to_owned(),
                 depends_on: vec![1],
                 context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
                 worktree: crate::prompt::WorktreePolicy::default(),
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
@@ -746,6 +1024,80 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fresh_context_uses_only_structured_dependency_outputs() {
+        let full_conversation = "IMPLEMENT_FULL_CONVERSATION_SHOULD_NOT_LEAK ".repeat(80);
+        let captured_prompts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let engine = Arc::new(RecordingEngine::new(
+            vec![
+                success_json_outcome("s1", r#"{"kind":"feature"}"#),
+                success_json_outcome("s2", r#"{"research":"small research output"}"#),
+                success_json_outcome("s3", r#"{"plan":"small plan output"}"#),
+                success_json_outcome_with_secret_event(
+                    "s4",
+                    r#"{"implementation":"bounded summary"}"#,
+                    &full_conversation,
+                ),
+                success_json_outcome("s5", r#"{"validated":true}"#),
+            ],
+            Arc::clone(&captured_prompts),
+        ));
+        let qa = Arc::new(AlwaysPassQa);
+        let prompts = vec![
+            structured_prompt(1, vec![], "classify"),
+            structured_prompt(2, vec![1], "research"),
+            structured_prompt(3, vec![2], "plan"),
+            structured_prompt(4, vec![3], "implement"),
+            PromptSpec {
+                number: 5,
+                description: "validate".to_owned(),
+                depends_on: vec![4],
+                context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
+                worktree: crate::prompt::WorktreePolicy::default(),
+                acceptance_criteria: vec![],
+                blast_radius: vec![],
+                body: "validate".to_owned(),
+                prompt_components: None,
+            },
+        ];
+        let spec = DispatchSpec::new("acme".to_owned(), vec![1, 2, 3, 4, 5]);
+        let mut ctx = PipelineContext::new(
+            spec,
+            prompts,
+            engine,
+            qa,
+            OrchestratorConfig::default().max_concurrent(1),
+            #[cfg(feature = "storage-fjall")]
+            None,
+        )
+        .with_diff_provider(Some(Arc::new(MockDiffProvider::new("fake diff"))));
+
+        PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect("preparation must succeed");
+        ExecutionStage
+            .run(&mut ctx)
+            .await
+            .expect("execution must succeed");
+
+        assert_eq!(ctx.outcomes.len(), 5);
+        assert_eq!(ctx.structured_outputs.len(), 4);
+
+        let prompts = captured_prompts
+            .lock()
+            .expect("captured prompts lock poisoned");
+        assert_eq!(prompts.len(), 5);
+        let validate_prompt = &prompts[4];
+        assert!(validate_prompt.contains(r#""implementation": "bounded summary""#));
+        assert!(!validate_prompt.contains("IMPLEMENT_FULL_CONVERSATION_SHOULD_NOT_LEAK"));
+        assert!(
+            validate_prompt.len() < full_conversation.len(),
+            "validate prompt should be bounded by structured upstream output"
+        );
+    }
+
+    #[tokio::test]
     async fn execution_qa_pass_no_corrective() {
         // Happy path: QA returns Pass, no corrective generated.
         let prompts = vec![PromptSpec {
@@ -753,6 +1105,7 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -789,6 +1142,7 @@ mod tests {
                 description: "first".to_owned(),
                 depends_on: vec![],
                 context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
                 worktree: crate::prompt::WorktreePolicy::default(),
                 acceptance_criteria: vec!["feature works".to_owned()],
                 blast_radius: vec![],
@@ -801,6 +1155,7 @@ mod tests {
                 description: "second".to_owned(),
                 depends_on: vec![1],
                 context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
                 worktree: crate::prompt::WorktreePolicy::default(),
                 acceptance_criteria: vec![],
                 blast_radius: vec![],
@@ -867,6 +1222,7 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec!["feature works".to_owned()],
             blast_radius: vec![],
@@ -973,6 +1329,7 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
@@ -1032,6 +1389,7 @@ mod tests {
             description: "test".to_owned(),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],

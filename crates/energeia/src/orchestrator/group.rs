@@ -89,6 +89,7 @@ pub(crate) async fn execute_group(
                     corrective_attempts: 0,
                     cache_hit_tokens: 0,
                     cache_miss_tokens: 0,
+                    structured_output: None,
                 },
             };
 
@@ -134,6 +135,7 @@ pub(crate) async fn execute_group(
                     corrective_attempts: 0,
                     cache_hit_tokens: 0,
                     cache_miss_tokens: 0,
+                    structured_output: None,
                 });
             }
         }
@@ -159,6 +161,7 @@ fn skipped_outcome(prompt: &PromptSpec, reason: &str) -> SessionOutcome {
         corrective_attempts: 0,
         cache_hit_tokens: 0,
         cache_miss_tokens: 0,
+        structured_output: None,
     }
 }
 
@@ -188,6 +191,7 @@ mod tests {
             description: format!("test prompt {number}"),
             depends_on: vec![],
             context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
             worktree: crate::prompt::WorktreePolicy::default(),
             acceptance_criteria: vec![],
             blast_radius: vec![],
