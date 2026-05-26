@@ -6,6 +6,7 @@
 )]
 use super::super::*;
 use crate::knowledge::parse_timestamp;
+use eidos::workspace::ProjectId;
 
 fn ts(s: &str) -> jiff::Timestamp {
     parse_timestamp(s).expect("valid test timestamp")
@@ -160,6 +161,7 @@ fn pattern_generates_correct_fact_content() {
         pattern: String::new(),
         tool_name: "grep".to_owned(),
         context_type: "code".to_owned(),
+        project_id: None,
         success_count: 8,
         total_count: 10,
         success_rate: 0.8,
@@ -343,6 +345,7 @@ fn pattern_meets_thresholds_at_boundary() {
         pattern: String::new(),
         tool_name: "grep".to_owned(),
         context_type: "code".to_owned(),
+        project_id: None,
         success_count: 5,
         total_count: 6,
         success_rate: 5.0 / 6.0,
@@ -361,6 +364,7 @@ fn pattern_does_not_meet_thresholds_below() {
         pattern: String::new(),
         tool_name: "grep".to_owned(),
         context_type: "code".to_owned(),
+        project_id: None,
         success_count: 4,
         total_count: 5,
         success_rate: 0.8,
@@ -513,5 +517,162 @@ fn observations_different_context_categories_aggregate_separately() {
     assert!(
         ctx_types.contains("research"),
         "expected a research context pattern"
+    );
+}
+
+fn make_observation_with_project(
+    tool_name: &str,
+    context: &str,
+    outcome: ToolOutcome,
+    timestamp: &str,
+    project_id: Option<ProjectId>,
+) -> ToolObservation {
+    ToolObservation {
+        tool_name: tool_name.to_owned(),
+        parameters: serde_json::json!({}),
+        outcome,
+        context_summary: context.to_owned(),
+        nous_id: "test-nous".to_owned(),
+        project_id,
+        observed_at: ts(timestamp),
+    }
+}
+
+#[test]
+fn project_scoped_aggregation_separates_projects() {
+    let project_alpha =
+        ProjectId::from_git_remote("https://github.com/acme/alpha.git").expect("valid remote");
+    let project_beta =
+        ProjectId::from_git_remote("https://github.com/acme/beta.git").expect("valid remote");
+
+    let mut observations = Vec::new();
+    for i in 0..5 {
+        observations.push(make_observation_with_project(
+            "grep",
+            "code search",
+            ToolOutcome::Success,
+            &format!("2026-03-{:02}T10:00:00Z", i + 1),
+            Some(project_alpha.clone()),
+        ));
+        observations.push(make_observation_with_project(
+            "grep",
+            "code search",
+            ToolOutcome::Success,
+            &format!("2026-03-{:02}T11:00:00Z", i + 1),
+            Some(project_beta.clone()),
+        ));
+    }
+
+    let patterns = aggregate_observations_by_project(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
+    assert_eq!(
+        patterns.len(),
+        2,
+        "two projects with same tool/context should produce two separate patterns"
+    );
+
+    let alpha_patterns: Vec<_> = patterns
+        .iter()
+        .filter(|p| p.project_id == Some(project_alpha.clone()))
+        .collect();
+    let beta_patterns: Vec<_> = patterns
+        .iter()
+        .filter(|p| p.project_id == Some(project_beta.clone()))
+        .collect();
+
+    assert_eq!(
+        alpha_patterns.len(),
+        1,
+        "alpha should have exactly one pattern"
+    );
+    assert_eq!(
+        beta_patterns.len(),
+        1,
+        "beta should have exactly one pattern"
+    );
+    assert_eq!(
+        alpha_patterns[0].success_count, 5,
+        "alpha pattern should have 5 successes"
+    );
+    assert_eq!(
+        beta_patterns[0].success_count, 5,
+        "beta pattern should have 5 successes"
+    );
+}
+
+#[test]
+fn global_aggregation_still_combines_projects() {
+    let project_alpha =
+        ProjectId::from_git_remote("https://github.com/acme/alpha.git").expect("valid remote");
+    let project_beta =
+        ProjectId::from_git_remote("https://github.com/acme/beta.git").expect("valid remote");
+
+    let mut observations = Vec::new();
+    for i in 0..5 {
+        observations.push(make_observation_with_project(
+            "grep",
+            "code search",
+            ToolOutcome::Success,
+            &format!("2026-03-{:02}T10:00:00Z", i + 1),
+            Some(project_alpha.clone()),
+        ));
+        observations.push(make_observation_with_project(
+            "grep",
+            "code search",
+            ToolOutcome::Success,
+            &format!("2026-03-{:02}T11:00:00Z", i + 1),
+            Some(project_beta.clone()),
+        ));
+    }
+
+    let patterns = aggregate_observations(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
+    assert_eq!(
+        patterns.len(),
+        1,
+        "global aggregation should still combine cross-project observations"
+    );
+    assert_eq!(
+        patterns[0].total_count, 10,
+        "combined pattern should have 10 total observations"
+    );
+    assert_eq!(
+        patterns[0].project_id, None,
+        "global aggregation should not set project_id"
+    );
+}
+
+#[test]
+fn project_scoped_aggregation_groups_none_project_id() {
+    let mut observations = Vec::new();
+    for i in 0..5 {
+        observations.push(make_observation_with_project(
+            "grep",
+            "code search",
+            ToolOutcome::Success,
+            &format!("2026-03-{:02}T10:00:00Z", i + 1),
+            None,
+        ));
+    }
+
+    let patterns = aggregate_observations_by_project(
+        &observations,
+        DEFAULT_MIN_OBSERVATIONS,
+        DEFAULT_MIN_SUCCESS_RATE,
+    );
+    assert_eq!(
+        patterns.len(),
+        1,
+        "None project_id observations should still aggregate into one pattern"
+    );
+    assert_eq!(
+        patterns[0].project_id, None,
+        "pattern for None project_id should have None project_id"
     );
 }

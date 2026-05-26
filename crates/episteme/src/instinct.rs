@@ -140,6 +140,9 @@ pub(crate) struct BehavioralPattern {
     pub tool_name: String,
     /// Simplified context category (code, research, system, memory, communication, other).
     pub context_type: String,
+    /// Project partition this pattern belongs to, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<ProjectId>,
     /// Number of successful observations.
     pub success_count: u32,
     /// Total number of observations.
@@ -445,6 +448,15 @@ pub fn truncate_context_summary(summary: &str, max_context_summary_len: usize) -
     }
 }
 
+/// Scope for observation aggregation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AggregationScope {
+    /// Group observations globally by `(tool_name, context_category)`.
+    Global,
+    /// Group observations by `(project_id, tool_name, context_category)`.
+    ByProject,
+}
+
 /// Aggregate raw observations into behavioral patterns.
 ///
 /// Groups by (`tool_name`, `context_category`), computes success rates, and
@@ -465,6 +477,46 @@ pub(crate) fn aggregate_observations(
     min_observations: u32,
     min_success_rate: f64,
 ) -> Vec<BehavioralPattern> {
+    aggregate_observations_scoped(
+        observations,
+        min_observations,
+        min_success_rate,
+        AggregationScope::Global,
+    )
+}
+
+/// Aggregate raw observations into behavioral patterns, scoped by project.
+///
+/// Groups by (`project_id`, `tool_name`, `context_category`), computes success
+/// rates, and returns patterns that meet the minimum thresholds. Observations
+/// from different projects never mix into the same pattern.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "behavioral analysis internal; exercised by crate tests"
+    )
+)]
+#[must_use]
+pub(crate) fn aggregate_observations_by_project(
+    observations: &[ToolObservation],
+    min_observations: u32,
+    min_success_rate: f64,
+) -> Vec<BehavioralPattern> {
+    aggregate_observations_scoped(
+        observations,
+        min_observations,
+        min_success_rate,
+        AggregationScope::ByProject,
+    )
+}
+
+fn aggregate_observations_scoped(
+    observations: &[ToolObservation],
+    min_observations: u32,
+    min_success_rate: f64,
+    scope: AggregationScope,
+) -> Vec<BehavioralPattern> {
     use std::collections::HashMap;
 
     #[derive(Default)]
@@ -475,11 +527,20 @@ pub(crate) fn aggregate_observations(
         last_observed: Option<jiff::Timestamp>,
     }
 
-    let mut groups: HashMap<(String, String), Accum> = HashMap::new();
+    let mut groups: HashMap<(Option<ProjectId>, String, String), Accum> = HashMap::new();
 
     for obs in observations {
         let category = ContextCategory::classify(&obs.tool_name, &obs.context_summary);
-        let key = (obs.tool_name.clone(), category.as_str().to_owned());
+        let project_id = if scope == AggregationScope::ByProject {
+            obs.project_id.clone()
+        } else {
+            None
+        };
+        let key = (
+            project_id,
+            obs.tool_name.clone(),
+            category.as_str().to_owned(),
+        );
         let accum = groups.entry(key).or_default();
 
         accum.total_count += 1;
@@ -514,7 +575,7 @@ pub(crate) fn aggregate_observations(
 
     groups
         .into_iter()
-        .filter_map(|((tool_name, context_type), accum)| {
+        .filter_map(|((project_id, tool_name, context_type), accum)| {
             let success_rate = if accum.total_count > 0 {
                 f64::from(accum.success_count) / f64::from(accum.total_count)
             } else {
@@ -525,6 +586,7 @@ pub(crate) fn aggregate_observations(
                 pattern: String::new(), // filled below
                 tool_name,
                 context_type,
+                project_id,
                 success_count: accum.success_count,
                 total_count: accum.total_count,
                 success_rate,
