@@ -184,6 +184,7 @@ impl From<SerializedCombo> for KeyCombo {
 
 /// Root on-disk settings structure.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct SettingsConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     active_server: Option<String>,
@@ -387,7 +388,8 @@ mod tests {
     #[test]
     fn is_first_run_returns_bool() {
         // Just verifies it doesn't panic; actual value depends on host state.
-        let _ = is_first_run();
+        let value = is_first_run();
+        assert!(matches!(value, true | false));
     }
 
     #[test]

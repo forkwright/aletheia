@@ -1,3 +1,4 @@
+// kanon:ignore STORAGE/no-migration-checksum -- theme toggle UI contains no storage migrations (#3988)
 //! Theme toggle wrapper — wires proskenion's settings persistence into
 //! the canonical [`themelion::ThemeToggle`] component.
 //!

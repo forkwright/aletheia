@@ -286,8 +286,10 @@ mod tests {
 
     #[test]
     fn distillation_progress_partial_eq() {
-        assert_eq!(DistillationProgress::Complete, DistillationProgress::Complete);
-        assert_ne!(DistillationProgress::Started, DistillationProgress::Complete);
+        assert_ne!(
+            DistillationProgress::Started,
+            DistillationProgress::Complete
+        );
         let a = DistillationProgress::Stage {
             stage: "x".to_string(),
         };

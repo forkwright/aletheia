@@ -114,23 +114,24 @@ fn dispatch_command(
             // from a non-chat view.
             let Some(legacy_state) = try_consume_context::<Signal<ChatState>>() else {
                 if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
-                    toast_store
-                        .write()
-                        .push(ToastSeverity::Warning, "Navigate to Chat first to export a conversation");
+                    toast_store.write().push(
+                        ToastSeverity::Warning,
+                        "Navigate to Chat first to export a conversation",
+                    );
                 }
                 return;
             };
 
             // WHY: Use the centralized projection method instead of
             // duplicating the legacy-to-render mapping here (#3323).
-            let messages: Vec<ChatMessage> =
-                legacy_state.read().project_messages(None);
+            let messages: Vec<ChatMessage> = legacy_state.read().project_messages(None);
 
             if messages.is_empty() {
                 if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
-                    toast_store
-                        .write()
-                        .push(ToastSeverity::Warning, "Nothing to export — start a conversation first");
+                    toast_store.write().push(
+                        ToastSeverity::Warning,
+                        "Nothing to export — start a conversation first",
+                    );
                 }
                 return;
             }
@@ -139,7 +140,10 @@ fn dispatch_command(
             if let Ok(escaped) = serde_json::to_string(&md) {
                 let js = format!("navigator.clipboard.writeText({escaped})");
                 spawn(async move {
-                    let _ = document::eval(&js).await;
+                    if let Err(error) = document::eval(&js).await {
+                        tracing::warn!(%error, "failed to copy conversation markdown to clipboard");
+                        return;
+                    }
                     if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
                         toast_store
                             .write()

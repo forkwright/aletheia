@@ -279,5 +279,4 @@ mod tests {
         assert!(!prefs.category_enabled(NotificationCategory::AgentCompletion));
         assert!(prefs.category_enabled(NotificationCategory::Error));
     }
-
 }

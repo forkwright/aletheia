@@ -194,7 +194,9 @@ impl ConnectionService {
 
     /// Send a state update. Silently drops if the receiver has been closed.
     fn emit(&self, state: ConnectionState) {
-        let _ = self.tx.send(state);
+        if self.tx.send(state).is_err() {
+            tracing::debug!("connection state receiver closed");
+        }
     }
 
     /// Run the connection loop until cancelled or timed out.
@@ -615,7 +617,7 @@ mod tests {
         let handle = tokio::spawn(svc.run());
 
         // Let it emit Connecting, then cancel.
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await; // kanon:ignore TESTING/sleep-in-test -- real retry loop cancellation requires a brief scheduler window (#3988)
         cancel.cancel();
         let _ = tokio::time::timeout(Duration::from_secs(2), handle)
             .await

@@ -1,7 +1,13 @@
-# kanon:ignore WORKFLOW/llm-corpus-required -- proskenion is a standalone workspace linted under the parent repo corpus (#3988)
+# kanon:ignore WORKFLOW/llm-corpus-required -- standalone workspace (#3988); kanon:ignore CI/no-ci-workflows -- parent repository CI owns this excluded desktop workspace (#3988); kanon:ignore RELEASES/no-release-please-config -- release metadata is owned by the parent repository (#3988); kanon:ignore RELEASES/no-release-workflow -- release workflow is owned by the parent repository (#3988)
 # WHY: Explicit [workspace] prevents cargo from walking up to the root
 # workspace and failing with "not in workspace" when building standalone.
 [workspace]
+
+[workspace.package]
+version = "0.13.1"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+rust-version = "1.94"
 
 # WHY: theatron deps declared here (single source of truth within this
 # standalone workspace) so the 4 consumers below inherit via
@@ -41,9 +47,6 @@ license = "AGPL-3.0-or-later"
 rust-version = "1.94"
 description = "Dioxus desktop UI for the Aletheia distributed cognition system"
 publish = false
-
-[package.metadata.basanos]
-kind = "ui-substrate"
 
 [dependencies]
 skene = { path = "../skene" }
@@ -168,3 +171,6 @@ unused_self = "warn"
 # Architectural boundary enforcement — must stay in sync with [workspace.lints.clippy]
 disallowed_methods = "deny"
 disallowed_types = "deny"
+
+[package.metadata.basanos]
+kind = "ui-substrate"

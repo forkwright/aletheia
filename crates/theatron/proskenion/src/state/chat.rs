@@ -16,7 +16,11 @@ pub(crate) struct ChatSelection {
 impl ChatSelection {
     /// Create an activation request for the chat route.
     #[must_use]
-    pub(crate) fn new(agent_id: NousId, session_key: String, title: String) -> Self { // kanon:ignore RUST/plain-string-secret
+    pub(crate) fn new(
+        agent_id: NousId,
+        session_key: String, // kanon:ignore RUST/plain-string-secret
+        title: String,
+    ) -> Self {
         Self {
             agent_id,
             session_key,
@@ -70,7 +74,10 @@ pub(crate) fn relative_time(timestamp: i64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| {
-            #[expect(clippy::as_conversions, reason = "epoch seconds fit in i64 until year 292B")]
+            #[expect(
+                clippy::as_conversions,
+                reason = "epoch seconds fit in i64 until year 292B"
+            )]
             let secs = d.as_secs() as i64;
             secs
         })

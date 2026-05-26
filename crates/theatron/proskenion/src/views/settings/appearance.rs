@@ -5,10 +5,10 @@
 //! system so changes are visible under both themes.
 
 use dioxus::prelude::*;
+use themelion::theme::ThemeMode;
 
 use crate::services::settings_config;
 use crate::state::settings::{ACCENT_PRESETS, AppearanceSettings, UiDensity};
-use themelion::theme::ThemeMode;
 
 // WHY: Section card styling uses theme tokens so appearance settings are
 // visually consistent with the rest of the app and respond to theme changes.
@@ -196,11 +196,6 @@ pub(crate) fn AppearancePanel() -> Element {
 }
 
 fn mode_str(mode: ThemeMode) -> &'static str {
-    // Migrated 2026-05-08 to themelion::ThemeMode::slug (theatron v1.2.0):
-    // a single shared accessor instead of a hand-rolled match here. Falls
-    // back to "system" for any future #[non_exhaustive] variant via the
-    // `or_else` (slug returns &'static str unconditionally for the three
-    // known variants; the catch-all is defensive against upstream variant
-    // additions theatron-side that this consumer hasn't picked up yet).
+    // WHY: ThemeMode::slug is the shared accessor for the three known modes.
     mode.slug()
 }

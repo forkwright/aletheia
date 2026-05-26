@@ -212,7 +212,6 @@ impl SessionDetailStore {
     pub(crate) fn has_token_breakdown(&self) -> bool {
         self.input_tokens > 0 || self.output_tokens > 0
     }
-
 }
 
 /// A distillation (context compaction) event.

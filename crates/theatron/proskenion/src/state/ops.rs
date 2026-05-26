@@ -724,6 +724,9 @@ mod tests {
         store.resolve_agent(&nid("ghost"), true, false);
         store.resolve_tool(&nid("ghost"), "missing", true, false);
         store.resolve_feature("missing", true, false);
+        assert!(store.agent_toggles.is_empty());
+        assert!(store.tool_toggles.is_empty());
+        assert!(store.feature_flags.is_empty());
     }
 
     #[test]

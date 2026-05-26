@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long -- metrics state split is tracked under #3988
 //! Metrics state: token usage, cost tracking, and budget management.
 
 // -- Enums --------------------------------------------------------------------
@@ -329,7 +330,7 @@ impl AgentCostRow {
         if self.output_tokens == 0 {
             0.0
         } else {
-            self.total_cost / (self.output_tokens as f64 / 1000.0)
+            self.total_cost / (self.output_tokens as f64 / 1000.0) // kanon:ignore RUST/as-cast -- u64 to f64 for display-only cost ratio (#3988)
         }
     }
 }
@@ -930,7 +931,10 @@ mod tests {
     #[test]
     fn days_in_current_month_in_valid_range() {
         let n = days_in_current_month();
-        assert!((28..=31).contains(&n), "days_in_month must be 28..=31, got {n}");
+        assert!(
+            (28..=31).contains(&n),
+            "days_in_month must be 28..=31, got {n}"
+        );
     }
 
     #[test]
@@ -1030,7 +1034,11 @@ mod tests {
             session_count: sessions,
             ..Default::default()
         };
-        let mut rows = vec![make("a", 10, 5, 5), make("b", 100, 50, 5), make("c", 50, 25, 5)];
+        let mut rows = vec![
+            make("a", 10, 5, 5),
+            make("b", 100, 50, 5),
+            make("c", 50, 25, 5),
+        ];
         let grand = 240u64;
 
         sort_agent_token_rows(&mut rows, AgentTokenSort::Input, SortDir::Asc, grand);
@@ -1040,7 +1048,12 @@ mod tests {
         sort_agent_token_rows(&mut rows, AgentTokenSort::Output, SortDir::Desc, grand);
         assert_eq!(rows[0].name, "b");
 
-        sort_agent_token_rows(&mut rows, AgentTokenSort::AvgPerSession, SortDir::Desc, grand);
+        sort_agent_token_rows(
+            &mut rows,
+            AgentTokenSort::AvgPerSession,
+            SortDir::Desc,
+            grand,
+        );
         assert_eq!(rows[0].name, "b");
 
         sort_agent_token_rows(&mut rows, AgentTokenSort::PctOfTotal, SortDir::Asc, grand);

@@ -69,6 +69,7 @@ pub enum ConfigError {
 
 /// TOML file envelope for `~/.config/aletheia/desktop.toml`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct DesktopConfig {
     #[serde(default)]
     connection: ConnectionConfig,
@@ -492,6 +493,7 @@ server_url = "http://custom:9000"
     fn load_notification_prefs_does_not_panic() {
         // Same pattern: load_notification_prefs must always return Some
         // value, never panic, regardless of host state.
-        let _prefs = load_notification_prefs();
+        let prefs = load_notification_prefs();
+        assert_eq!(prefs.enabled, NotificationPreferences::default().enabled);
     }
 }
