@@ -30,6 +30,8 @@ pub use types::{RequestFeatures, RouterError, RoutingDecision, TurnOutcome};
 
 use std::sync::Arc;
 
+use tracing::Instrument;
+
 /// Re-export `BoxFuture` for use in `Router` implementations.
 ///
 /// WHY: `async fn` in traits is not dyn-compatible in Rust (the vtable cannot
@@ -132,9 +134,12 @@ impl Router for RecordingRouter {
     ) -> Result<(), RouterError> {
         let store = Arc::clone(&self.store);
         let outcome = outcome.clone();
-        tokio::spawn(async move {
-            store.record_outcome(&outcome).await;
-        });
+        tokio::spawn(
+            async move {
+                store.record_outcome(&outcome).await;
+            }
+            .instrument(tracing::Span::current()),
+        );
         Ok(())
     }
 }
