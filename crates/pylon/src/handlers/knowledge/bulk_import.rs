@@ -14,13 +14,10 @@ use crate::state::KnowledgeState;
 
 #[path = "bulk_import_dto.rs"]
 mod bulk_import_dto;
-#[cfg_attr(
-    not(test),
-    expect(
-        unused_imports,
-        reason = "ImportFactError remains part of the DTO surface and is used by tests/features"
-    )
-)]
+// WHY: ImportFactError is re-exported for API consumers; rustc flags it unused
+// because bulk_import.rs uses it internally via bulk_import_dto:: path, not via
+// the re-export itself. The pub use is intentional for the public pylon surface.
+#[allow(unused_imports)]
 pub use bulk_import_dto::{BulkImportRequest, BulkImportResponse, ImportFactError};
 
 /// Parse a request body as either JSON (`{ "facts": [...] }`) or JSONL.
