@@ -1,10 +1,8 @@
 //! Project lifecycle state machine.
 
-use serde::{Deserialize, Serialize};
-use snafu::ensure;
-
 use crate::error::{self, GateBlockedSnafu, Result};
 use crate::gate::{GateResult, PhaseGate, evaluate_gate};
+use serde::{Deserialize, Serialize};
 
 /// Project lifecycle states.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -130,14 +128,11 @@ impl ProjectState {
             ) => Ok(Self::Abandoned),
 
             _ => {
-                ensure!(
-                    false,
-                    error::InvalidTransitionSnafu {
-                        state: self,
-                        transition: t,
-                    }
-                );
-                unreachable!()
+                return error::InvalidTransitionSnafu {
+                    state: self,
+                    transition: t,
+                }
+                .fail();
             }
         };
 

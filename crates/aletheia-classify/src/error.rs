@@ -3,11 +3,11 @@ use std::path::PathBuf;
 /// Errors from author-classifier operations.
 #[derive(Debug, snafu::Snafu)]
 #[snafu(visibility(pub(crate)))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (source, path) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum ClassifyError {
     /// Failed to load classifier artifact from the filesystem.
     #[snafu(display("failed to load classifier artifact from {}: {source}", path.display()))]

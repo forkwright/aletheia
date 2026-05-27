@@ -13,11 +13,11 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// Migrator error surface.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (source, location, message) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum Error {
     #[snafu(display("opening SQLite source at {}: {source}", path.display()))]
     SqliteOpen {

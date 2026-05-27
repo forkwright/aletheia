@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 /// Callers should construct from the resolved taxis config rather than relying
 /// on `Default`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StuckConfig {
     /// How many identical consecutive errors trigger detection.
     pub repeated_error_threshold: u32,

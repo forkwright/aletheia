@@ -234,7 +234,7 @@ pub fn read_usage(conn: &Connection) -> Result<Vec<UsageRecord>> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistillationRecord {
     /// Owning session.
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: mirrors legacy SQLite schema byte-for-byte; newtype would break serde deserialization
     /// Message count before distillation.
     pub messages_before: i64,
     /// Message count after distillation.

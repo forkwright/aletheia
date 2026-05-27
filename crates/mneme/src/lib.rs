@@ -390,10 +390,10 @@ mod coexistence_tests {
     #[test]
     fn engine_and_session_store_coexist() {
         let ks = KnowledgeStore::open_mem()
-            .expect("KnowledgeStore::open_mem should succeed with mneme-engine feature");
+            .expect("KnowledgeStore::open_mem should succeed with mneme-engine feature"); // kanon:ignore RUST/expect WHY: test assertion; infallible in-memory store
 
         let ss =
-            SessionStore::open_in_memory().expect("SessionStore::open_in_memory should succeed");
+            SessionStore::open_in_memory().expect("SessionStore::open_in_memory should succeed"); // kanon:ignore RUST/expect WHY: test assertion; infallible in-memory store
 
         drop(ks);
         drop(ss);
