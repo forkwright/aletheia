@@ -230,9 +230,9 @@ impl DreamConfig {
 ```rust
 pub struct SessionTranscript {
     /// Session identifier.
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: koina::SessionId is UUID-backed; migration to newtype tracked separately to avoid breaking callers
     /// Nous (agent) identifier.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: koina::NousId newtype available; migration tracked separately to avoid breaking callers
     /// Conversation messages FROM this session.
     pub messages: Vec<Message>,
 }
