@@ -1,8 +1,9 @@
 //! Project lifecycle state machine.
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::{self, GateBlockedSnafu, Result};
 use crate::gate::{GateResult, PhaseGate, evaluate_gate};
-use serde::{Deserialize, Serialize};
 
 /// Project lifecycle states.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
