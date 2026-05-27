@@ -168,7 +168,7 @@ impl DeploymentTarget {
 }
 
 /// Configuration for provider initialization.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProviderConfig {
     /// Provider type: `anthropic`, `openai`, `ollama`.
     pub provider_type: String,
@@ -200,6 +200,21 @@ pub struct ProviderConfig {
     /// unconfigured provider speaks to an external service.
     #[serde(default)]
     pub deployment_target: DeploymentTarget,
+}
+
+impl std::fmt::Debug for ProviderConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderConfig")
+            .field("provider_type", &self.provider_type)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("base_url", &self.base_url)
+            .field("default_model", &self.default_model)
+            .field("max_retries", &self.max_retries)
+            .field("cc_mimicry", &self.cc_mimicry)
+            .field("prompt_cache_mode", &self.prompt_cache_mode)
+            .field("deployment_target", &self.deployment_target)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for ProviderConfig {

@@ -188,7 +188,7 @@ impl ChatCompletionResponse {
                     cache_write_tokens: 0,
                 }
             })
-            .unwrap_or_default();
+            .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<Usage> chain, not Result — None maps to Usage::default()
 
         Ok(CompletionResponse {
             id,
@@ -294,7 +294,7 @@ impl ResponsesResponse {
                     cache_write_tokens: 0,
                 }
             })
-            .unwrap_or_default();
+            .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<Usage> chain, not Result — None maps to Usage::default()
 
         Ok(CompletionResponse {
             id,

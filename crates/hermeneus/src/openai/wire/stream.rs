@@ -401,7 +401,7 @@ impl ResponsesStreamAccumulator {
                     .call_id
                     .clone()
                     .or(event.item_id.clone())
-                    .unwrap_or_default();
+                    .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
                 let pending = self.tool_calls.entry(key.clone()).or_insert_with(|| {
                     PendingResponsesToolCall {
                         id: key,
@@ -423,7 +423,7 @@ impl ResponsesStreamAccumulator {
                     .call_id
                     .clone()
                     .or(event.item_id.clone())
-                    .unwrap_or_default();
+                    .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
                 let pending = self.tool_calls.entry(key.clone()).or_insert_with(|| {
                     PendingResponsesToolCall {
                         id: key,

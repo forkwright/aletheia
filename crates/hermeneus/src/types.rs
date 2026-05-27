@@ -309,11 +309,11 @@ impl From<String> for ToolResultContent {
 /// Content block inside a tool result (text, image, or document).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "variant fields (text, source) are self-documenting by name"
 )]
+#[non_exhaustive]
 pub enum ToolResultBlock {
     // kanon:ignore RUST/pub-visibility
     /// Text content.
@@ -451,11 +451,11 @@ impl Default for CachingConfig {
 /// Control tool use behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "variant fields (name) are self-documenting by name"
 )]
+#[non_exhaustive]
 pub enum ToolChoice {
     // kanon:ignore RUST/pub-visibility
     /// Let the model decide whether to use a tool.
@@ -506,11 +506,11 @@ pub enum OutputFormat {
 /// A source citation in a response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "citation variant fields (document_index, start_char_index, etc.) are self-documenting by name"
 )]
+#[non_exhaustive]
 pub enum Citation {
     // kanon:ignore RUST/pub-visibility
     /// Citation by character offset within a document.

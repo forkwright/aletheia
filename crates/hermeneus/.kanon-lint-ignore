@@ -93,3 +93,45 @@ SECURITY/credential-logging:src/secret.rs
 # numeric/bool/null JSON scalars which have no strings to process. Comments
 # adjacent explain intent; the arms are intentionally empty.
 RUST/empty-match-arm:src/secret.rs
+
+# WHY: bench functions use .expect() for test fixture setup; benches cannot
+# return Result and .expect() is the correct pattern for setup-time failures.
+RUST/expect:benches/parser.rs
+
+# WHY: config-deny-unknown-fields omitted on user-facing provider/complexity
+# configs to allow forward-compatible serialization as new fields are added.
+RUST/config-deny-unknown-fields:src/provider.rs
+RUST/config-deny-unknown-fields:src/complexity/mod.rs
+RUST/config-deny-unknown-fields:src/types.rs
+
+# WHY: doc-promised-observability false positive — doc comments describe
+# caller behavior contracts and wire-format notes, not internal tracing spans.
+RUST/doc-promised-observability:src/anthropic/stream/mod.rs
+RUST/doc-promised-observability:src/codex/provider.rs
+
+# WHY: hardcoded-model in codex/provider.rs is the canonical model registry
+# for the Codex integration; these strings are configuration constants, not
+# ad-hoc literals. Tracked for config-driven refactor separately.
+RUST/hardcoded-model:src/codex/provider.rs
+
+# WHY: primitive-for-domain-id on wire-format ID fields (batch custom_id,
+# API response id, tool call id). Changing these to newtypes would require
+# serde FromStr/Into impls across the OpenAI/Anthropic wire format; tracked
+# as architectural work separately.
+RUST/primitive-for-domain-id:src/anthropic/batch.rs
+RUST/primitive-for-domain-id:src/anthropic/wire/response.rs
+RUST/primitive-for-domain-id:src/anthropic/wire/stream.rs
+RUST/primitive-for-domain-id:src/openai/wire/request.rs
+RUST/primitive-for-domain-id:src/openai/wire/response.rs
+RUST/primitive-for-domain-id:src/types.rs
+
+# WHY: no-direct-process-command in cc_profile.rs is an intentional shell
+# dispatch site for reading the CC OAuth profile; no project command wrapper
+# exists for this credential-discovery operation.
+RUST/no-direct-process-command:src/anthropic/cc_profile.rs
+
+# WHY: file-too-long — accumulator.rs, client.rs, and session/manager.rs are
+# cohesive protocol-parsing modules; splitting would add cross-module state.
+RUST/file-too-long:src/anthropic/stream/accumulator.rs
+RUST/file-too-long:src/anthropic/client.rs
+RUST/file-too-long:src/session/manager.rs

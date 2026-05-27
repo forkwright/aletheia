@@ -298,7 +298,7 @@ impl LlmProvider for KimiProvider {
 
 /// Find the `kimi` binary in `PATH`.
 fn find_kimi_binary() -> Result<PathBuf> {
-    let paths = RealSystem.var_os("PATH").unwrap_or_default();
+    let paths = RealSystem.var_os("PATH").unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<OsString>, not Result — empty PATH is a valid fallback
     for dir in std::env::split_paths(&paths) {
         let candidate = dir.join("kimi");
         if candidate.is_file() {
