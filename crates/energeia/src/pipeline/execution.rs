@@ -477,6 +477,10 @@ async fn run_qa_and_generate_corrective(
     clippy::indexing_slicing,
     reason = "test assertions on known-length collections"
 )]
+#[expect(
+    clippy::disallowed_types,
+    reason = "std::sync::Mutex is sufficient for synchronous capture in test mocks"
+)]
 mod tests {
     use std::collections::VecDeque;
     use std::future::Future;

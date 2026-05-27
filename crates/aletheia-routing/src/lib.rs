@@ -266,7 +266,7 @@ mod tests {
                 .rolling_stats(
                     &provider,
                     &TaskCategory::Feature,
-                    Duration::from_secs(7 * 24 * 60 * 60),
+                    Duration::from_hours(168),
                 )
                 .await
             {

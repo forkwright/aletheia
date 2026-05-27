@@ -333,10 +333,12 @@ fn dest_per_session_counts(db: &FjallDb) -> Result<std::collections::BTreeMap<St
 }
 
 fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
     let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        write!(&mut s, "{b:02x}").expect("writing to String is infallible"); // kanon:ignore RUST/expect WHY: fmt::Write for String never returns Err
+    for &b in bytes {
+        // WHY: a hex nibble is always 0..=15, so `from_digit` always returns
+        // `Some`; the `unwrap_or` fallback is unreachable but keeps this panic-free.
+        s.push(char::from_digit(u32::from(b >> 4), 16).unwrap_or('0'));
+        s.push(char::from_digit(u32::from(b & 0x0f), 16).unwrap_or('0'));
     }
     s
 }

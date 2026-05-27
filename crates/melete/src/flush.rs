@@ -1,7 +1,5 @@
 //! Memory flush types for amnesia prevention across distillation boundaries.
 
-use std::fmt::Write;
-
 /// Items to flush to persistent storage before distillation.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MemoryFlush {
@@ -79,7 +77,9 @@ impl MemoryFlush {
         write_section(&mut out, "Facts", &self.facts);
 
         if let Some(state) = &self.task_state {
-            writeln!(out, "## Task State\n{state}\n");
+            out.push_str("## Task State\n");
+            out.push_str(state);
+            out.push_str("\n\n");
         }
 
         out.trim_end().to_owned()
@@ -90,16 +90,17 @@ fn write_section(out: &mut String, heading: &str, items: &[FlushItem]) {
     if items.is_empty() {
         return;
     }
-    writeln!(out, "## {heading}");
+    out.push_str("## ");
+    out.push_str(heading);
+    out.push('\n');
     for item in items {
-        writeln!(
-            out,
-            "- [{}] {} (source: {})",
-            item.timestamp,
-            item.content,
-            item.source.label()
-        )
-        .expect("writing to String is infallible"); // kanon:ignore RUST/expect WHY: fmt::Write for String never returns Err
+        out.push_str("- [");
+        out.push_str(&item.timestamp);
+        out.push_str("] ");
+        out.push_str(&item.content);
+        out.push_str(" (source: ");
+        out.push_str(item.source.label());
+        out.push_str(")\n");
     }
     out.push('\n');
 }
