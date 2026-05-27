@@ -19,6 +19,17 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
 
+/// Canonical list of all individual maintenance task names.
+const INDIVIDUAL_TASKS: &[&str] = &[
+    "trace-rotation",
+    "drift-detection",
+    "db-monitor",
+    "fjall-backup",
+    "prompt-audit-rotation",
+    "self-audit",
+    "prosoche-self-audit",
+];
+
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {
     /// Show status of all maintenance tasks
@@ -29,7 +40,10 @@ pub(crate) enum Action {
     },
     /// Run a specific maintenance task immediately
     Run {
-        /// Task name: trace-rotation, drift-detection, db-monitor, prosoche-self-audit, or all
+        /// Task name: one of the individual tasks below, or "all" to run every task.
+        ///
+        /// Individual tasks: trace-rotation, drift-detection, db-monitor,
+        /// fjall-backup, prompt-audit-rotation, self-audit, prosoche-self-audit
         task: String,
         /// List individual files (drift-detection only)
         #[arg(long)]
@@ -69,13 +83,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
         }
         Action::Run { task, verbose } => {
             let tasks: Vec<&str> = if task == "all" {
-                vec![
-                    "trace-rotation",
-                    "drift-detection",
-                    "db-monitor",
-                    "fjall-backup",
-                    "prompt-audit-rotation",
-                ]
+                INDIVIDUAL_TASKS.to_vec()
             } else {
                 vec![task.as_str()]
             };
@@ -162,9 +170,10 @@ async fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Resul
         }
         "self-audit" => run_self_audit(),
         "prosoche-self-audit" => run_prosoche_self_audit(maint).await,
-        other => whatever!(
-            "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, fjall-backup, prompt-audit-rotation, self-audit, prosoche-self-audit, all"
-        ),
+        other => {
+            let valid = INDIVIDUAL_TASKS.join(", ");
+            whatever!("unknown task: {other}. Valid: {valid}, all")
+        }
     }
     Ok(())
 }
@@ -284,5 +293,36 @@ pub(crate) fn build_config(
                 ),
             },
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::INDIVIDUAL_TASKS;
+
+    #[test]
+    fn all_expansion_contains_every_individual_task() {
+        // The "all" expansion in `run` is literally `INDIVIDUAL_TASKS.to_vec()`;
+        // this test guarantees that every named task appears in that slice.
+        let expected = [
+            "trace-rotation",
+            "drift-detection",
+            "db-monitor",
+            "fjall-backup",
+            "prompt-audit-rotation",
+            "self-audit",
+            "prosoche-self-audit",
+        ];
+        for task in expected {
+            assert!(
+                INDIVIDUAL_TASKS.contains(&task),
+                "task '{task}' missing from INDIVIDUAL_TASKS"
+            );
+        }
+        assert_eq!(
+            INDIVIDUAL_TASKS.len(),
+            expected.len(),
+            "INDIVIDUAL_TASKS has unexpected extra entries"
+        );
     }
 }
