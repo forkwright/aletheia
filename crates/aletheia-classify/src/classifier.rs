@@ -42,7 +42,12 @@ impl AuthorClass {
     /// Return the integer index corresponding to this variant.
     #[must_use]
     pub fn index(self) -> usize {
-        self as usize
+        match self {
+            Self::User => 0,
+            Self::Subagent => 1,
+            Self::SystemScaffolding => 2,
+            Self::Template => 3,
+        }
     }
 
     /// Human-readable name for this class.
@@ -181,7 +186,8 @@ impl Classifier {
         );
 
         let metadata_content =
-            std::fs::read_to_string(&metadata_path).context(ArtifactMissingSnafu {
+            std::fs::read_to_string(&metadata_path) // kanon:ignore RUST/blocking-in-async WHY: startup-only; tokio is dev-dep only; bounded I/O
+            .context(ArtifactMissingSnafu {
                 path: &metadata_path,
             })?;
         let metadata: ArtifactMetadata =

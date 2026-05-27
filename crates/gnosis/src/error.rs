@@ -10,11 +10,11 @@ use snafu::Snafu;
 /// Errors produced by gnosis operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum GnosisError {
     /// `cargo metadata` failed to run or returned a non-zero exit.
     #[snafu(display("cargo metadata failed: {source}"))]

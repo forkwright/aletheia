@@ -336,7 +336,7 @@ fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
-        let _ = write!(&mut s, "{b:02x}");
+        write!(&mut s, "{b:02x}").expect("writing to String is infallible"); // kanon:ignore RUST/expect WHY: fmt::Write for String never returns Err
     }
     s
 }

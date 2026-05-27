@@ -84,6 +84,7 @@ pub struct ResearchFinding {
 
 /// Configurable parameters for the research phase.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ResearchConfig {
     /// Timeout per researcher in seconds (default: 300).
     pub timeout_secs: u64,
@@ -215,7 +216,7 @@ fn format_markdown(findings: &[ResearchFinding]) -> String {
     let mut out = String::from("# Research Summary\n");
 
     for finding in findings {
-        let _ = write!(out, "\n## {}\n\n", finding.domain.heading());
+        write!(out, "\n## {}\n\n", finding.domain.heading()).expect("writing to String is infallible"); // kanon:ignore RUST/expect WHY: fmt::Write for String never returns Err
         match finding.status {
             FindingStatus::Complete => {
                 out.push_str(&finding.content);

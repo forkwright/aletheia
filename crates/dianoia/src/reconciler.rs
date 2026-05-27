@@ -81,7 +81,7 @@ pub struct ConflictEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReconciliationResult {
     /// The project ID that was reconciled.
-    pub project_id: String,
+    pub project_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: serialized result DTO; eidos::ProjectId is not a dianoia dependency — refactor tracked separately
     /// Which direction the sync went.
     pub direction: ReconciliationDirection,
     /// Conflicts detected between the two sources.
