@@ -76,16 +76,16 @@ fn correct_fact(
     let script = r"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
           access_count, last_accessed_at, stability_hours, fact_type,
-          is_forgotten, forgotten_at, forget_reason] :=
+          is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, source_session_id, recorded_at,
                    access_count, last_accessed_at, stability_hours, fact_type,
-                   is_forgotten, forgotten_at, forget_reason},
+                   is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
             id = $old_id,
             valid_to = $now,
             superseded_by = $new_id
         :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
                     access_count, last_accessed_at, stability_hours, fact_type,
-                    is_forgotten, forgotten_at, forget_reason}
+                    is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}
     ";
     let mut params = BTreeMap::new();
     params.insert(String::from("old_id"), DataValue::Str(old_id.into()));
@@ -137,15 +137,15 @@ fn retract_fact(store: &Arc<KnowledgeStore>, fact_id: &str, retraction_time: &st
     let script = r"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
           access_count, last_accessed_at, stability_hours, fact_type,
-          is_forgotten, forgotten_at, forget_reason] :=
+          is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, superseded_by, source_session_id, recorded_at,
                    access_count, last_accessed_at, stability_hours, fact_type,
-                   is_forgotten, forgotten_at, forget_reason},
+                   is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
             id = $fact_id,
             valid_to = $now
         :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
                     access_count, last_accessed_at, stability_hours, fact_type,
-                    is_forgotten, forgotten_at, forget_reason}
+                    is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}
     ";
     let mut params = BTreeMap::new();
     params.insert(String::from("fact_id"), DataValue::Str(fact_id.into()));
