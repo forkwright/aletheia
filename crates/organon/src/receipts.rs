@@ -74,6 +74,10 @@ impl ReceiptSigner {
             .decode(receipt)
             .map_err(|source| VerifyError::Decode { source })?;
 
+        #[expect(
+            clippy::expect_used,
+            reason = "INVARIANT: self.key is always 32 bytes (set by constructor with fixed-size array)"
+        )]
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.key)
             .expect("32-byte key is valid for Hmac<Sha256>");
         mac.update(tool_name.as_bytes());

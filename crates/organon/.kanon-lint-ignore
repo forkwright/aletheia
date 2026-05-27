@@ -40,3 +40,81 @@ RUST/indexing-slicing:src/sandbox/policy.rs
 RUST/missing-must-use:src/builtins/computer_use.rs
 RUST/missing-must-use:src/builtins/mod.rs
 RUST/missing-must-use:src/registry.rs
+
+# WHY: computer_use/actions.rs, computer_use/capture.rs, filesystem.rs,
+# git_ops.rs, and workspace.rs are the approved shell-dispatch execution sites
+# in organon. They deliberately use std::process::Command to invoke xdotool,
+# scrot/grim, system utilities, git, and user-specified commands. Adding a
+# project wrapper here would create an abstraction layer with no safety benefit.
+RUST/no-direct-process-command:src/builtins/computer_use/actions.rs
+RUST/no-direct-process-command:src/builtins/computer_use/capture.rs
+RUST/no-direct-process-command:src/builtins/filesystem.rs
+RUST/no-direct-process-command:src/builtins/git_ops.rs
+RUST/no-direct-process-command:src/builtins/workspace.rs
+
+# WHY: silent-discard pattern in these files is intentional in every case:
+# - skill_read.rs, parameters.rs, inspect_report.rs, diff_report.rs,
+#   triage/prompt_gen.rs, triage/mod.rs, http_client.rs: writeln!(String,...) /
+#   write!(String,...) -- fmt::Write on String is infallible by contract
+# - sandbox.rs: cleanup temp files (remove_file after error return -- already
+#   on error path; secondary cleanup error is irrelevant)
+# - git_ops.rs: read_to_string on stdout/stderr pipe and detach() -- best-effort
+#   capture; IO errors from closed pipes are benign
+# - process_guard.rs: kill()+wait() in Drop -- ESRCH/ECHILD from already-exited
+#   process is safe (zombie prevention is the goal, not kill success)
+# - workspace.rs: setrlimit discards (best-effort resource limits in pre_exec),
+#   plus kill()+wait() zombie-prevention pattern
+# - testing.rs: install_default() is idempotent; first-caller-wins
+RUST/no-silent-result-swallow:src/builtins/computer_use/sandbox.rs
+RUST/no-silent-result-swallow:src/builtins/diff_report.rs
+RUST/no-silent-result-swallow:src/builtins/filesystem.rs
+RUST/no-silent-result-swallow:src/builtins/git_ops.rs
+RUST/no-silent-result-swallow:src/builtins/http_client.rs
+RUST/no-silent-result-swallow:src/builtins/inspect_report.rs
+RUST/no-silent-result-swallow:src/builtins/parameters.rs
+RUST/no-silent-result-swallow:src/builtins/skill_read.rs
+RUST/no-silent-result-swallow:src/builtins/triage/mod.rs
+RUST/no-silent-result-swallow:src/builtins/triage/prompt_gen.rs
+RUST/no-silent-result-swallow:src/builtins/workspace.rs
+RUST/no-silent-result-swallow:src/process_guard.rs
+RUST/no-silent-result-swallow:src/testing.rs
+
+# WHY: render_pptx_report.rs line 100 is a string literal containing schema
+# documentation with [..] Markdown list syntax. The linter false-positively
+# matches the bracket notation in the doc string as a Rust slice operation.
+RUST/string-slice:src/builtins/render_pptx_report.rs
+
+# WHY: tool_schema.rs test module imports specific crate-level types rather
+# than using use super::*. The parent module is a tool definition file; its
+# exports are tool-def helpers, not test utilities. Explicit imports are clearer.
+RUST/test-missing-use-super:src/builtins/tool_schema.rs
+
+# WHY: workspace.rs (955L) implements a large set of filesystem/workspace
+# operations that form a cohesive tool builtin. Splitting it would create
+# artificial module boundaries with no logical seams.
+RUST/file-too-long:src/builtins/workspace.rs
+
+# WHY: SandboxConfig and ServerToolConfig are both deserialized from
+# aletheia.toml (user config) and from pylon API payloads. deny_unknown_fields
+# would hard-error on any unrecognized key, breaking forward compatibility
+# when newer aletheia versions add new config fields that older binaries do not
+# know about. Graceful ignore is the correct behavior for user-facing configs.
+RUST/config-deny-unknown-fields:src/sandbox/config.rs
+RUST/config-deny-unknown-fields:src/types/context.rs
+
+# WHY: tool_use_id, id (service/session), author_nous_id, session_id are
+# primitive String fields on wire-format structs deserialized from API JSON.
+# Introducing newtypes would require changes to the entire API serialization
+# layer and all callers. Architectural refactor tracked as a separate issue.
+RUST/primitive-for-domain-id:src/types/mod.rs
+RUST/primitive-for-domain-id:src/types/services.rs
+
+# WHY: energeia/planning.rs, planning.rs, triage/mod.rs, z3_solver.rs all use
+# .unwrap_or_default() at the end of Option method chains (serde_json value
+# extraction, z3 model option). The kanon linter incorrectly classifies these
+# as Result.unwrap_or_default because it pattern-matches on the method name
+# without tracking the type chain.
+RUST/no-result-unwrap-or-default:src/builtins/energeia/planning.rs
+RUST/no-result-unwrap-or-default:src/builtins/planning.rs
+RUST/no-result-unwrap-or-default:src/builtins/triage/mod.rs
+RUST/no-result-unwrap-or-default:src/builtins/z3_solver.rs

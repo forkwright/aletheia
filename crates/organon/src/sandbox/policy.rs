@@ -35,6 +35,7 @@ fn is_loopback(addr: &IpAddr) -> bool {
 /// Parses each entry as an IP address or CIDR (prefix/len). Returns `true`
 /// if every entry resolves to a loopback address. Unparseable entries are
 /// treated as non-loopback so the caller logs a warning.
+// kanon:ignore RUST/doc-promised-observability -- WHY: the "caller logs" note is prose description, not an observability contract; function is a pure predicate
 pub(crate) fn allowlist_is_loopback_only(entries: &[String]) -> bool {
     entries.iter().all(|entry| {
         let ip_part = entry.split('/').next().unwrap_or(entry);
