@@ -115,7 +115,6 @@ impl std::fmt::Debug for ConnectionConfig {
             )
             .field("auto_reconnect", &self.auto_reconnect)
             .field("connect_timeout_secs", &self.connect_timeout_secs)
-            .field("retry_backoff_ms", &self.retry_backoff_ms)
             .finish()
     }
 }

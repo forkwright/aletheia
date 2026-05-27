@@ -114,7 +114,7 @@ pub(crate) fn ViewerToolbar(
                                 "navigator.clipboard.writeText('{}')",
                                 path.replace('\'', "\\'")
                             );
-                            if document::eval(&js).is_err() {
+                            if document::eval(&js).await.is_err() {
                                 tracing::warn!("failed to copy file path to clipboard");
                                 copied.set(false);
                                 return;
