@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct NousBehaviorConfig {
     /// Panics within the window that trigger degraded mode. Default: 5.
     /// Mirrors `nous::actor::DEGRADED_PANIC_THRESHOLD`.

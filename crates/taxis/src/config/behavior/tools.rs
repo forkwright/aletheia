@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct ToolLimitsConfig {
     /// Maximum character length for glob patterns. Default: 1000.
     /// Mirrors `organon::builtins::filesystem::MAX_PATTERN_LENGTH`.

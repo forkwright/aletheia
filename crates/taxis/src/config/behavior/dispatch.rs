@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct DispatchConfig {
     /// Recurring cron-dispatched tasks.
     pub cron_tasks: Vec<CronTaskConfig>,

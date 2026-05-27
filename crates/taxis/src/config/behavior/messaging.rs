@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct MessagingConfig {
     /// How often Semeion polls for new channel messages in milliseconds. Default: 2000.
     /// Mirrors `agora::semeion::DEFAULT_POLL_INTERVAL`.

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct ApiLimitsConfig {
     /// Maximum characters in a session name. Default: 255.
     /// Mirrors `pylon::handlers::sessions::MAX_SESSION_NAME_LEN`.
