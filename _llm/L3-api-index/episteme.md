@@ -172,6 +172,47 @@ impl <'a> LlmBookkeepingProvider<'a> {
 }
 ```
 
+## `src/bookkeeping/nuextract.rs`
+
+```rust
+pub struct NuExtractProviderConfig {
+    /// Directory containing `tokenizer.json` and `onnx/model.onnx`.
+    pub model_dir: PathBuf,
+    /// Maximum new tokens to generate per extraction call.
+    pub max_new_tokens: usize,
+}
+```
+
+> NuExtract-2.0-backed structured extraction provider.
+> 
+> The constructor loads the tokenizer and ONNX encoder/decoder graphs up
+> front. Schema-constrained JSON is generated at inference time with a
+> greedy decode (temperature=0 equivalent). Entity and relationship fields
+> from the returned JSON are lifted into `Extraction`; the LLM fallback is
+> not used because NuExtract is designed for full-coverage extraction rather
+> than NER-only span tagging.
+```rust
+pub struct NuExtractProvider {
+    config: NuExtractProviderConfig,
+    tokenizer: Tokenizer,
+    session: Mutex<Session>,
+}
+```
+
+```rust
+impl NuExtractProvider {
+    pub fn new () -> BookkeepingResult<Self>;
+    pub fn with_model_dir (model_dir: impl Into<PathBuf>) -> BookkeepingResult<Self>;
+    pub fn with_config (config: NuExtractProviderConfig) -> BookkeepingResult<Self>;
+    pub async fn extract_json (
+        &self,
+        text: &str,
+        template: &str,
+    ) -> BookkeepingResult<serde_json::Value>;
+    pub async fn smoke_infer (&self) -> BookkeepingResult<()>;
+}
+```
+
 ## `src/causal.rs`
 
 ```rust
@@ -1761,6 +1802,8 @@ pub enum BookkeepingProviderKind {
     Llm,
     /// `GLiNER` ONNX entity adapter with LLM fallback for facts and relationships.
     Gliner,
+    /// NuExtract-2.0 ONNX structured JSON extraction provider.
+    NuExtract,
 }
 ```
 
@@ -1939,6 +1982,16 @@ pub const DEFAULT_MIN_OBSERVATIONS: u32 = 5;
 pub const DEFAULT_MIN_SUCCESS_RATE: f64 = 0.80;
 ```
 
+> Default minimum distinct projects before project-scoped instincts promote to global.
+```rust
+pub const DEFAULT_PROMOTION_MIN_PROJECTS: usize = 2;
+```
+
+> Default minimum per-project confidence before project-scoped instincts promote to global.
+```rust
+pub const DEFAULT_PROMOTION_MIN_CONFIDENCE: f64 = 0.80;
+```
+
 ```rust
 pub struct ToolObservation {
     /// Name of the tool that was called.
@@ -1951,6 +2004,9 @@ pub struct ToolObservation {
     pub context_summary: String,
     /// Which nous made the observation.
     pub nous_id: String,
+    /// Optional git-remote-derived project partition for this observation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<ProjectId>,
     /// When the observation was recorded.
     pub observed_at: jiff::Timestamp,
 }
@@ -2187,6 +2243,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         forgotten_at: String?,
         forget_reason: String?,
         scope: String?,
+        project_id: String?,
         visibility: String default 'private'
     }",
     r":create entities {
@@ -2703,6 +2760,7 @@ pub enum FactsField {
     ForgottenAt,
     ForgetReason,
     Scope,
+    ProjectId,
     Visibility,
 }
 ```
@@ -2961,6 +3019,10 @@ pub struct ScoredResult {
     /// `None` for results from non-fact sources or facts created before the
     /// team memory model was introduced.
     pub scope: Option<crate::knowledge::MemoryScope>,
+    /// Project partition for project-scoped recall.
+    ///
+    /// `None` means the result is global or predates project partitioning.
+    pub project_id: Option<ProjectId>,
 }
 ```
 
@@ -3030,6 +3092,22 @@ pub fn filter_by_cohort_visibility (
 pub fn filter_by_visibility (candidates: Vec<ScoredResult>, min: Visibility) -> Vec<ScoredResult>
 ```
 
+```rust
+pub enum ProjectRecallScope {
+    /// Return all projects and global results.
+    Global,
+    /// Return only this project plus global results.
+    Project(ProjectId),
+}
+```
+
+```rust
+pub fn filter_by_project_scope (
+    candidates: Vec<ScoredResult>,
+    scope: &ProjectRecallScope,
+) -> Vec<ScoredResult>
+```
+
 ## `src/recall/reranker.rs`
 
 ```rust
@@ -3075,6 +3153,22 @@ pub struct HttpReranker {
 ```rust
 impl HttpReranker {
     pub fn new (url: impl Into<String>) -> Self;
+}
+```
+
+```rust
+pub struct CrossEncoderReranker {
+    #[expect(
+        dead_code,
+        reason = "groundwork stub: model_path stored for future ONNX wiring"
+    )]
+    model_path: String,
+}
+```
+
+```rust
+impl CrossEncoderReranker {
+    pub fn new (model_path: impl Into<String>) -> Result<Self, EpistemeError>;
 }
 ```
 
