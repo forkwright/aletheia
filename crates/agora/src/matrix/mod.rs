@@ -106,7 +106,7 @@ struct MatrixAccount {
     client: client::MatrixClient,
     user_id: Option<String>,
     auto_start: bool,
-    since: Arc<Mutex<Option<String>>>,
+    since: Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
 }
 
 /// Matrix channel provider implementing `ChannelProvider`.
@@ -155,7 +155,7 @@ impl MatrixProvider {
                 client,
                 user_id,
                 auto_start,
-                since: Arc::new(Mutex::new(initial_since)),
+                since: Arc::new(Mutex::new(initial_since)), // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
             },
         );
     }
@@ -327,7 +327,7 @@ async fn sync_loop(
     client: client::MatrixClient,
     tx: mpsc::Sender<InboundMessage>,
     interval: Duration,
-    since: Arc<Mutex<Option<String>>>,
+    since: Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
     user_id: Option<String>,
     cancel: CancellationToken,
     circuit_breaker_threshold: u32,
@@ -373,7 +373,7 @@ async fn sync_loop(
 async fn sync_once(
     client: &client::MatrixClient,
     tx: &mpsc::Sender<InboundMessage>,
-    since: &Arc<Mutex<Option<String>>>,
+    since: &Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
     own_user_id: Option<&str>,
 ) -> error::Result<()> {
     let since_token = { since.lock().await.clone() };
@@ -423,7 +423,7 @@ fn extract_message(
         .get("url")
         .and_then(serde_json::Value::as_str)
         .map(|url| vec![url.to_owned()])
-        .unwrap_or_default();
+        .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option::unwrap_or_default on Option<Vec<_>> chain; no Result involved
 
     Some(InboundMessage {
         channel: "matrix".to_owned(),
@@ -436,7 +436,7 @@ fn extract_message(
             0
         }),
         attachments,
-        raw: serde_json::to_value(event).ok(),
+        raw: serde_json::to_value(event).ok(), // kanon:ignore RUST/silent-error-ok WHY: optional diagnostic field; serde failure is non-fatal and pre-existing WHY documents this
     })
 }
 

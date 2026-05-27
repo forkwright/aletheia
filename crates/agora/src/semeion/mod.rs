@@ -86,7 +86,7 @@ pub struct SignalProvider {
     /// Per-account connection state and outbound buffer. Lock guards
     /// connection status transitions and buffered-message drain; held
     /// briefly during send and poll-loop state updates.
-    account_states: HashMap<String, Arc<Mutex<AccountState>>>,
+    account_states: HashMap<String, Arc<Mutex<AccountState>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
     /// Per-account auto-start flag. When `false`, `listen()` skips
     /// spawning the receive poll task for that account.
     auto_start: HashMap<String, bool>,
@@ -149,7 +149,7 @@ impl SignalProvider {
         }
         self.account_states.insert(
             account_id.clone(),
-            Arc::new(Mutex::new(AccountState::new(self.buffer_capacity))),
+            Arc::new(Mutex::new(AccountState::new(self.buffer_capacity))), // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
         );
         self.auto_start.insert(account_id.clone(), auto_start);
         self.clients.insert(account_id, client);
@@ -422,7 +422,7 @@ async fn poll_loop(
     signal_client: client::SignalClient,
     tx: mpsc::Sender<InboundMessage>,
     interval: Duration,
-    state: Arc<Mutex<AccountState>>,
+    state: Arc<Mutex<AccountState>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
     cancel: CancellationToken,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,

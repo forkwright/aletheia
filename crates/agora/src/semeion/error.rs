@@ -5,11 +5,11 @@ use snafu::Snafu;
 /// Errors from Signal JSON-RPC communication and envelope processing.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (source, location, code, message) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum Error {
     /// JSON-RPC returned an error response.
     #[snafu(display("signal RPC error {code}: {message}"))]
