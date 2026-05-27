@@ -504,10 +504,12 @@ impl KnowledgeStore {
         let script = r"
 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by,
    source_session_id, recorded_at, access_count, last_accessed_at,
-   stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason] :=
+   stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason,
+   scope, project_id, visibility] :=
     *facts{id, valid_from, content, nous_id, confidence, tier,
            source_session_id, recorded_at, access_count, last_accessed_at,
-           stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason},
+           stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason,
+           scope, project_id, visibility},
     id = $id,
     valid_to = $now,
     superseded_by = $superseding_id
@@ -515,7 +517,7 @@ impl KnowledgeStore {
 :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to,
             superseded_by, source_session_id, recorded_at, access_count,
             last_accessed_at, stability_hours, fact_type, is_forgotten,
-            forgotten_at, forget_reason}
+            forgotten_at, forget_reason, scope, project_id, visibility}
 ";
         let mut params = BTreeMap::new();
         params.insert("id".to_owned(), DataValue::Str(fact_id.as_str().into()));

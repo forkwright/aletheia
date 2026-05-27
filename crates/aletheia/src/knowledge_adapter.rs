@@ -159,15 +159,15 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let retract_script = r"
                 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
                   access_count, last_accessed_at, stability_hours, fact_type,
-                  is_forgotten, forgotten_at, forget_reason] :=
+                  is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
                     *facts{id: $old_id, valid_from, content, nous_id, confidence, tier, source_session_id, recorded_at,
                            access_count, last_accessed_at, stability_hours, fact_type,
-                           is_forgotten, forgotten_at, forget_reason},
+                           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
                     valid_to = $now,
                     superseded_by = $new_id
                 :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
                             access_count, last_accessed_at, stability_hours, fact_type,
-                            is_forgotten, forgotten_at, forget_reason}
+                            is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}
             ";
             let mut params = std::collections::BTreeMap::new();
             params.insert(
@@ -253,14 +253,14 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let script = r"
                 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
                   access_count, last_accessed_at, stability_hours, fact_type,
-                  is_forgotten, forgotten_at, forget_reason] :=
+                  is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
                     *facts{id: $fact_id, valid_from, content, nous_id, confidence, tier, superseded_by, source_session_id, recorded_at,
                            access_count, last_accessed_at, stability_hours, fact_type,
-                           is_forgotten, forgotten_at, forget_reason},
+                           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
                     valid_to = $now
                 :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
                             access_count, last_accessed_at, stability_hours, fact_type,
-                            is_forgotten, forgotten_at, forget_reason}
+                            is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}
             ";
             let mut params = std::collections::BTreeMap::new();
             params.insert(
