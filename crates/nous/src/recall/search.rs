@@ -82,12 +82,11 @@ pub(super) fn vector_search_tiered(
     rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
 ) -> error::Result<Vec<KnowledgeRecallResult>> {
     if let Some(result) = search.search_tiered(query, query_vec.clone(), k, 50, rewrite_provider) {
-        return result.map_err(|e| {
-            error::RecallSearchSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        });
+        // WHY: `search_tiered` already wraps engine errors in `RecallSearchSnafu`
+        // (see search/search_impl.rs); return its result directly rather than
+        // wrapping a second time. The prior double-wrap produced the duplicated
+        // "recall search failed: recall search failed:" message. See #4156.
+        return result;
     }
     vector_search(search, query_vec, k)
 }

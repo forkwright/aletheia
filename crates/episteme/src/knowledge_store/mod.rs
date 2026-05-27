@@ -1097,9 +1097,23 @@ impl KnowledgeStore {
         params: std::collections::BTreeMap<String, crate::engine::DataValue>,
     ) -> crate::error::Result<crate::engine::NamedRows> {
         use crate::engine::ScriptMutability;
+        // WHY: A failing read query (e.g. a CozoScript parse error on the recall
+        // path, #4156) is otherwise invisible — the error carries only the engine
+        // message, not the script that produced it. Capture the script text and
+        // the parameter key set so the exact failing query is recoverable from
+        // logs at debug level. Parameter values are deliberately not logged
+        // (they may carry user content); scripts use `$param` placeholders, so
+        // the script text itself contains no user data.
+        let param_keys: Vec<String> = params.keys().cloned().collect();
         self.db
             .run(script, params, ScriptMutability::Immutable)
             .map_err(|e| {
+                tracing::debug!(
+                    script,
+                    param_keys = ?param_keys,
+                    error = %e,
+                    "read query failed against the knowledge engine"
+                );
                 crate::error::EngineQuerySnafu {
                     message: e.to_string(),
                 }
