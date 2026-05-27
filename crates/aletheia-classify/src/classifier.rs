@@ -185,8 +185,7 @@ impl Classifier {
             "loading author classifier metadata"
         );
 
-        let metadata_content =
-            std::fs::read_to_string(&metadata_path) // kanon:ignore RUST/blocking-in-async WHY: startup-only; tokio is dev-dep only; bounded I/O
+        let metadata_content = std::fs::read_to_string(&metadata_path) // kanon:ignore RUST/blocking-in-async WHY: startup-only; tokio is dev-dep only; bounded I/O
             .context(ArtifactMissingSnafu {
                 path: &metadata_path,
             })?;
