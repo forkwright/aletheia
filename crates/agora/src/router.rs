@@ -10,12 +10,12 @@ use crate::types::InboundMessage;
 ///
 /// Borrows `nous_id` from the router's binding data. The `session_key` is
 /// always freshly expanded, so it remains owned.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)] // kanon:ignore RUST/no-debug-derive-on-public-types WHY: session_key is a routing template expansion (non-sensitive); MatchReason and nous_id are non-sensitive
 pub struct RouteDecision<'a> {
     /// The nous agent that should handle this message.
     pub nous_id: &'a str,
     /// Session key derived from template expansion (e.g., `signal:+1234567890`).
-    pub session_key: String,
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret WHY: session_key is a routing key (channel:sender template expansion), not a credential
     /// How the routing decision was determined.
     pub matched_by: MatchReason,
 }

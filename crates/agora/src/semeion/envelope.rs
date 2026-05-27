@@ -96,7 +96,7 @@ pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessag
                 .filter_map(|a| a.filename.clone().or_else(|| a.id.clone()))
                 .collect()
         })
-        .unwrap_or_default();
+        .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option::unwrap_or_default on Option<Vec<_>> chain; no Result involved
 
     let raw_value = serde_json::to_value(envelope).ok(); // WHY: optional diagnostic data; serialization failure is non-fatal
 
