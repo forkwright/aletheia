@@ -341,10 +341,12 @@ pub(crate) const SEARCH_ENTITIES: &str = r"
 ";
 
 /// Hybrid search: BM25 + HNSW vector + graph neighborhood fused via RRF.
-/// Graph sub-rules are injected dynamically by `build_hybrid_query`.
-/// Params: `$query_text`, `$query_vec`, `$k`, `$ef`, `$limit`.
+/// The BM25 and graph sub-rules are injected dynamically by `build_hybrid_query`
+/// (`{BM25_RULE}` is the full-text rule, or an empty relation when the query has
+/// no text terms; `{GRAPH_RULES}` is the entity-graph expansion).
+/// Params: `$query_text` (only when text terms are present), `$query_vec`, `$k`, `$ef`, `$limit`.
 pub(crate) const HYBRID_SEARCH_BASE: &str = r"
-    bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
+    {BM25_RULE}
 
     vec[id, score] :=
         ~embeddings:semantic_idx{id | query: $query_vec, k: $k, ef: $ef, bind_distance: raw_dist},

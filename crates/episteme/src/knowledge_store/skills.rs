@@ -2,7 +2,9 @@ use snafu::ResultExt;
 use tracing::instrument;
 
 use super::KnowledgeStore;
-use super::marshal::{compute_name_similarity, compute_tool_overlap, rows_to_facts};
+use super::marshal::{
+    compute_name_similarity, compute_tool_overlap, rows_to_facts, sanitize_fts_query,
+};
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
@@ -89,8 +91,18 @@ impl KnowledgeStore {
 
         use crate::engine::DataValue;
         let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
+        // WHY: bind sanitized bare terms, not raw user text — see sanitize_fts_query (#4156).
+        // No text terms means no full-text match is possible (and an empty FTS query is a
+        // parse error), so return empty rather than running the query.
+        let sanitized_text = sanitize_fts_query(query);
+        if sanitized_text.is_empty() {
+            return Ok(Vec::new());
+        }
         let mut params = BTreeMap::new();
-        params.insert("query_text".to_owned(), DataValue::Str(query.into()));
+        params.insert(
+            "query_text".to_owned(),
+            DataValue::Str(sanitized_text.into()),
+        );
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert("k".to_owned(), DataValue::from(limit_i64 * 3));
         params.insert("limit".to_owned(), DataValue::from(limit_i64));

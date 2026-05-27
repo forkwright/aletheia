@@ -732,9 +732,39 @@ pub(super) fn rows_to_recall_results(
     Ok(out)
 }
 
+/// Reduce a natural-language message to a bag-of-terms full-text-search query.
+///
+/// WHY: The FTS `query:` argument of `~facts:content_fts{... query: $query_text ...}`
+/// is parsed by Cozo's *own* full-text query grammar, in which characters such as
+/// `?`, `*`, `"`, parentheses and boolean keywords are operators. Binding a raw user
+/// message (e.g. any question, which ends in `?`) therefore triggers an FTS parse
+/// error that is swallowed, silently disabling knowledge recall for that turn
+/// (#4156). Keeping only alphanumeric word tokens yields a universally valid
+/// bare-term query that preserves recall on the meaningful words while dropping all
+/// FTS-syntax characters. Returns an empty string when the message has no word
+/// characters; callers treat that as "no text query".
+#[cfg(feature = "mneme-engine")]
+pub(super) fn sanitize_fts_query(raw: &str) -> String {
+    raw.split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(feature = "mneme-engine")]
 pub(super) fn build_hybrid_query(q: &super::HybridQuery) -> String {
     use super::queries;
+
+    // WHY: When the message has no full-text terms (e.g. an emoji- or
+    // punctuation-only message that `sanitize_fts_query` reduces to ""), the FTS
+    // `query: ""` argument is itself an FTS parse error (#4156). Emit an empty
+    // `bm25` relation in that case so vector + graph search still run; the
+    // `$query_text` param is then left unbound by the caller.
+    let bm25_rule = if sanitize_fts_query(&q.text).is_empty() {
+        "bm25[id, score] <- []".to_owned()
+    } else {
+        "bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}".to_owned()
+    };
 
     let graph_rules = if q.seed_entities.is_empty() {
         "graph[id, score] <- []".to_owned()
@@ -753,7 +783,9 @@ pub(super) fn build_hybrid_query(q: &super::HybridQuery) -> String {
              graph[id, sum(score)] := graph_raw[id, score]"
         )
     };
-    queries::HYBRID_SEARCH_BASE.replace("{GRAPH_RULES}", &graph_rules)
+    queries::HYBRID_SEARCH_BASE
+        .replace("{BM25_RULE}", &bm25_rule)
+        .replace("{GRAPH_RULES}", &graph_rules)
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -1238,5 +1270,85 @@ mod tests {
             script.contains("50") || script.contains("$ef"),
             "script should reference the ef parameter"
         );
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // sanitize_fts_query — FTS query-string hardening (#4156)
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn build_hybrid_query_omits_fts_when_no_text_terms() {
+        use super::super::HybridQuery;
+        let query = HybridQuery {
+            // Punctuation-only message reduces to an empty FTS query (#4156).
+            text: "???".to_owned(),
+            embedding: vec![0.1_f32; 384],
+            seed_entities: Vec::new(),
+            limit: 20,
+            ef: 50,
+        };
+        let script = build_hybrid_query(&query);
+        assert!(
+            script.contains("bm25[id, score] <- []"),
+            "empty-text query should emit an empty bm25 relation, got: {script}"
+        );
+        assert!(
+            !script.contains("content_fts"),
+            "empty-text query must not reference the FTS index, got: {script}"
+        );
+        assert!(
+            !script.contains("$query_text"),
+            "empty-text query must not reference the unbound $query_text param, got: {script}"
+        );
+    }
+
+    #[test]
+    fn build_hybrid_query_includes_fts_when_text_present() {
+        use super::super::HybridQuery;
+        let query = HybridQuery {
+            text: "cozo databases".to_owned(),
+            embedding: vec![0.1_f32; 384],
+            seed_entities: Vec::new(),
+            limit: 20,
+            ef: 50,
+        };
+        let script = build_hybrid_query(&query);
+        assert!(
+            script.contains("content_fts") && script.contains("$query_text"),
+            "text query should reference the FTS index and $query_text, got: {script}"
+        );
+    }
+
+    #[test]
+    fn sanitize_fts_query_strips_question_mark() {
+        // The trailing '?' is an FTS-special character that previously caused a
+        // parse error disabling recall on every question (#4156).
+        assert_eq!(
+            sanitize_fts_query("what do you remember about cozo?"),
+            "what do you remember about cozo"
+        );
+    }
+
+    #[test]
+    fn sanitize_fts_query_drops_fts_operators_and_punctuation() {
+        // Quotes, parentheses, wildcards and other FTS operators must not reach
+        // the engine as syntax — they are reduced to plain whitespace separators.
+        assert_eq!(
+            sanitize_fts_query("\"foo*\" AND (bar) -baz?!"),
+            "foo AND bar baz"
+        );
+    }
+
+    #[test]
+    fn sanitize_fts_query_collapses_whitespace() {
+        assert_eq!(sanitize_fts_query("  hello\t\nworld  "), "hello world");
+    }
+
+    #[test]
+    fn sanitize_fts_query_empty_when_no_word_chars() {
+        // A message with no alphanumerics yields an empty query rather than
+        // invalid FTS syntax.
+        assert_eq!(sanitize_fts_query("???"), "");
+        assert_eq!(sanitize_fts_query(""), "");
     }
 }

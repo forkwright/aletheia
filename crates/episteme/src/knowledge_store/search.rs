@@ -2,7 +2,7 @@ use snafu::ResultExt;
 
 use super::marshal::{
     build_hybrid_query, embedding_to_params, extract_str, rows_to_hybrid_results,
-    rows_to_recall_results,
+    rows_to_recall_results, sanitize_fts_query,
 };
 use tracing::instrument;
 
@@ -151,8 +151,18 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         use crate::engine::DataValue;
+        // WHY: bind sanitized bare terms, not raw user text — see sanitize_fts_query (#4156).
+        // A text-only BM25 search with no terms cannot match anything and would be an
+        // FTS parse error, so return empty rather than running an empty FTS query.
+        let sanitized_text = sanitize_fts_query(query_text);
+        if sanitized_text.is_empty() {
+            return Ok(Vec::new());
+        }
         let mut params = BTreeMap::new();
-        params.insert("query_text".to_owned(), DataValue::Str(query_text.into()));
+        params.insert(
+            "query_text".to_owned(),
+            DataValue::Str(sanitized_text.into()),
+        );
         params.insert("k".to_owned(), DataValue::from(k));
 
         let rows = self.run_read(queries::BM25_RECALL, params)?;
@@ -381,10 +391,16 @@ impl KnowledgeStore {
 
         use crate::engine::{Array1, DataValue, Vector};
         let mut params = BTreeMap::new();
-        params.insert(
-            "query_text".to_owned(),
-            DataValue::Str(q.text.as_str().into()),
-        );
+        // WHY: bind sanitized bare terms, not raw user text — see sanitize_fts_query (#4156).
+        // Only bind $query_text when terms remain; otherwise build_hybrid_query emits an
+        // empty `bm25` relation and the unreferenced param must be omitted.
+        let sanitized_text = sanitize_fts_query(q.text.as_str());
+        if !sanitized_text.is_empty() {
+            params.insert(
+                "query_text".to_owned(),
+                DataValue::Str(sanitized_text.into()),
+            );
+        }
         params.insert(
             "query_vec".to_owned(),
             DataValue::Vec(Vector::F32(Array1::from(q.embedding.clone()))),
