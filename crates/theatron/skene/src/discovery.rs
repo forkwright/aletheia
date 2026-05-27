@@ -136,7 +136,7 @@ fn build_candidates(config: &DiscoveryConfig) -> Vec<Candidate> {
 
     // 1. Localhost -- most common case, check first.
     candidates.push(Candidate {
-        base_url: format!("http://localhost:{}", config.port),
+        base_url: format!("http://localhost:{}", config.port), // kanon:ignore SECURITY/hardcoded-loopback-url -- runtime loopback URL construction; port is from config, not hardcoded
         label: "localhost",
     });
 

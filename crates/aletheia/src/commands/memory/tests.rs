@@ -42,6 +42,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: Visibility::Private,
         scope: None,
+        project_id: None,
     }
 }
 

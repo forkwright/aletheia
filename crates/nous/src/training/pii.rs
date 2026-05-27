@@ -84,7 +84,7 @@ static PATTERNS: LazyLock<Vec<Pattern>> = LazyLock::new(|| {
         Pattern {
             kind: "anthropic_api_key",
             // sk-ant-<tokentype>-<base64url>
-            re: compile(r"sk-ant-[A-Za-z0-9_\-]{16,}"),
+            re: compile(r"sk-ant-[A-Za-z0-9_\-]{16,}"), // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape for PII detection test; not a real credential
         },
         // ── `OpenAI` / generic sk- bearer tokens ─────────────────────
         Pattern {
@@ -329,15 +329,15 @@ mod tests {
         let (out, changed) = redact(&input);
         assert!(changed);
         assert!(out.contains("[REDACTED:anthropic_api_key]"));
-        assert!(!out.contains("sk-ant-"));
+        assert!(!out.contains("sk-ant-")); // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape for PII detection test; not a real credential
     }
 
     #[test]
     fn redacts_openai_api_key() {
-        let (out, changed) = redact("OPENAI=sk-proj-abcdefghij1234567890ABCDEF0123456789"); // pii-allow: synthetic OpenAI key shape, redactor self-test
+        let (out, changed) = redact("OPENAI=sk-proj-abcdefghij1234567890ABCDEF0123456789"); // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape for PII detection test; not a real credential
         assert!(changed);
         assert!(out.contains("[REDACTED:"));
-        assert!(!out.contains("sk-proj-abcdefghij1234567890ABCDEF0123456789")); // pii-allow: synthetic OpenAI key shape, redactor self-test
+        assert!(!out.contains("sk-proj-abcdefghij1234567890ABCDEF0123456789")); // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape for PII detection test; not a real credential
     }
 
     #[test]
@@ -357,7 +357,7 @@ mod tests {
 
     #[test]
     fn redacts_aws_access_key_id() {
-        let (out, changed) = redact("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"); // pii-allow: AWS canonical example access key id, redactor self-test
+        let (out, changed) = redact("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"); // kanon:ignore SECURITY/hardcoded-aws-access-key -- AWS canonical example key; synthetic PII test fixture only
         assert!(changed);
         assert!(out.contains("[REDACTED:"));
     }
@@ -453,7 +453,7 @@ mod tests {
 
         #[test]
         fn anthropic_key_bypass_none(tail in "[A-Za-z0-9_\\-]{30,60}") {
-            let key = format!("sk-ant-{tail}");
+            let key = format!("sk-ant-{tail}"); // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape for PII detection test; not a real credential
             let text = format!("leak: {key} done");
             let (out, changed) = redact(&text);
             prop_assert!(changed, "did not redact anthropic key");

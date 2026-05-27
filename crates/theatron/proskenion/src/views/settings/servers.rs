@@ -350,7 +350,7 @@ fn ServerCard(
 #[component]
 fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler<()>) -> Element {
     let mut name = use_signal(|| "My Server".to_string());
-    let mut url = use_signal(|| "http://localhost:3000".to_string());
+    let mut url = use_signal(|| "http://localhost:3000".to_string()); // kanon:ignore SECURITY/hardcoded-loopback-url -- UI form default; user replaces with actual server URL on save
     let mut token = use_signal(String::new);
     let appearance = use_context::<Signal<crate::state::settings::AppearanceSettings>>();
     let keybindings = use_context::<Signal<crate::state::settings::KeybindingStore>>();

@@ -11,6 +11,7 @@ use crate::error::Result;
 pub(crate) struct EvalArgs {
     /// Server URL to evaluate
     #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
     pub url: String,
     /// Bearer token for authenticated endpoints
     #[arg(long, env = "ALETHEIA_EVAL_TOKEN")]

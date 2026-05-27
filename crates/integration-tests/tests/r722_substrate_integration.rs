@@ -121,6 +121,7 @@ fn make_test_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         fact_type: "test".to_owned(),
         content: content.to_owned(),
         scope: None,
+        project_id: None,
         sensitivity: FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
         temporal: FactTemporal {

@@ -110,3 +110,24 @@ ARCHITECTURE/crate-index-conformance:CRATE-INDEX.toml
 # WHY(#3987): library crates pending #![deny(missing_docs)] rollout
 ARCHITECTURE/no-deny-missing-docs:crates/gnosis/src/lib.rs
 ARCHITECTURE/no-deny-missing-docs:crates/poiesis/scaffold/src/lib.rs
+
+# WHY(#4124): CLI --url arg default values are user-overridable at runtime; not production service discovery
+SECURITY/hardcoded-loopback-url:crates/aletheia/src/cli.rs
+SECURITY/hardcoded-loopback-url:crates/aletheia/src/commands/agent_io.rs
+SECURITY/hardcoded-loopback-url:crates/aletheia/src/commands/benchmark.rs
+SECURITY/hardcoded-loopback-url:crates/aletheia/src/commands/eval.rs
+SECURITY/hardcoded-loopback-url:crates/aletheia/src/commands/health.rs
+SECURITY/hardcoded-loopback-url:crates/aletheia/src/commands/ingest.rs
+SECURITY/hardcoded-loopback-url:crates/aletheia/src/commands/repl.rs
+SECURITY/hardcoded-loopback-url:crates/aletheia/src/commands/session_export.rs
+
+# WHY(#4124): RFC 8252 S7.3 mandates 127.0.0.1 loopback for installed-app OAuth2 PKCE; port is dynamic
+SECURITY/hardcoded-loopback-url:crates/symbolon/src/credential/pkce.rs
+
+# WHY(#4124): UI placeholder text and Default::default() shown before user configures a server; not a live URL
+SECURITY/hardcoded-loopback-url:crates/theatron/koilon/src/app/test_helpers.rs
+SECURITY/hardcoded-loopback-url:crates/theatron/proskenion/src/state/connection.rs
+SECURITY/hardcoded-loopback-url:crates/theatron/proskenion/src/views/connect.rs
+SECURITY/hardcoded-loopback-url:crates/theatron/proskenion/src/views/settings/servers.rs
+SECURITY/hardcoded-loopback-url:crates/theatron/proskenion/src/views/settings/wizard.rs
+SECURITY/hardcoded-loopback-url:crates/theatron/skene/src/discovery.rs

@@ -35,6 +35,7 @@ fn seed_store() -> Arc<KnowledgeStore> {
         fact_type: "preference".to_owned(),
         content: "Alice prefers dark roast coffee with no cream".to_owned(),
         scope: None,
+        project_id: None,
         sensitivity: FactSensitivity::Public,
         visibility: Visibility::Private,
         temporal: FactTemporal {
@@ -79,6 +80,7 @@ fn seed_store_two_facts() -> Arc<KnowledgeStore> {
         fact_type: "preference".to_owned(),
         content: "Alice prefers dark roast coffee with no cream".to_owned(),
         scope: None,
+        project_id: None,
         sensitivity: FactSensitivity::Public,
         visibility: Visibility::Private,
         temporal: FactTemporal {
@@ -113,6 +115,7 @@ fn seed_store_two_facts() -> Arc<KnowledgeStore> {
         fact_type: "preference".to_owned(),
         content: "Alice prefers espresso".to_owned(),
         scope: None,
+        project_id: None,
         sensitivity: FactSensitivity::Public,
         visibility: Visibility::Private,
         temporal: FactTemporal {
@@ -657,6 +660,7 @@ async fn nous_stats_last_updated_ignores_superseded_facts() {
             fact_type: "preference".to_owned(),
             content: "Alice prefers espresso".to_owned(),
             scope: None,
+            project_id: None,
             sensitivity: FactSensitivity::Public,
             visibility: Visibility::Private,
             temporal: FactTemporal {
@@ -687,6 +691,7 @@ async fn nous_stats_last_updated_ignores_superseded_facts() {
             fact_type: "preference".to_owned(),
             content: "Alice prefers stale coffee".to_owned(),
             scope: None,
+            project_id: None,
             sensitivity: FactSensitivity::Public,
             visibility: Visibility::Private,
             temporal: FactTemporal {

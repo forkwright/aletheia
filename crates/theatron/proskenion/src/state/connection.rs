@@ -131,7 +131,7 @@ fn default_auto_reconnect() -> bool {
 impl Default for ConnectionConfig {
     fn default() -> Self {
         Self {
-            server_url: "http://localhost:3000".to_string(),
+            server_url: "http://localhost:3000".to_string(), // kanon:ignore SECURITY/hardcoded-loopback-url -- Default impl placeholder; users set a real URL in first-launch wizard
             auth_token: None,
             auto_reconnect: true,
             connect_timeout_secs: DEFAULT_CONNECT_TIMEOUT.as_secs(),

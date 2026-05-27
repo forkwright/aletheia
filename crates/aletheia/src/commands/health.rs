@@ -12,6 +12,7 @@ use crate::error::Result;
 pub(crate) struct HealthArgs {
     /// Server URL to check
     #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
     pub url: String,
 }
 

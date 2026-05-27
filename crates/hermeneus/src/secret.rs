@@ -227,10 +227,10 @@ mod tests {
     #[test]
     fn vault_round_trip() {
         let vault = SecretVault::new();
-        vault.store("aws", "AKIAIOSFODNN7EXAMPLE"); // pii-allow: AWS canonical example key used as synthetic test fixture
+        vault.store("aws", "AKIAIOSFODNN7EXAMPLE"); // kanon:ignore SECURITY/hardcoded-aws-access-key -- AWS canonical example key from docs.aws.amazon.com; synthetic test fixture only
         assert_eq!(
             vault.get("aws").unwrap().expose_secret(),
-            "AKIAIOSFODNN7EXAMPLE" // pii-allow: AWS canonical example key used as synthetic test fixture
+            "AKIAIOSFODNN7EXAMPLE" // kanon:ignore SECURITY/hardcoded-aws-access-key -- AWS canonical example key from docs.aws.amazon.com; synthetic test fixture only
         );
     }
 
