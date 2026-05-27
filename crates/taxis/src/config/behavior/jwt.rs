@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct JwtSettings {
     /// Clock skew tolerance in seconds applied when checking the `exp`
     /// claim. A token whose `exp` lies up to this many seconds in the past

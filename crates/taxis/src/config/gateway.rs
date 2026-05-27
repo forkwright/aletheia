@@ -8,6 +8,7 @@ use koina::secret::SecretString;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct GatewayConfig {
     /// TCP port the gateway listens on.
     pub port: u16,
@@ -49,6 +50,7 @@ impl Default for GatewayConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct GatewayAuthConfig {
     /// Auth mode: `"token"` (bearer token), `"none"` (disabled), `"jwt"` (explicit JWT).
     pub mode: String,
@@ -76,6 +78,7 @@ impl Default for GatewayAuthConfig {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct TlsConfig {
     /// Whether TLS termination is active.
     pub enabled: bool,
@@ -89,6 +92,7 @@ pub struct TlsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct CorsConfig {
     /// Allowed origins. Empty or `["*"]` means permissive (dev mode).
     pub allowed_origins: Vec<String>,
@@ -109,6 +113,7 @@ impl Default for CorsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct BodyLimitConfig {
     /// Maximum request body size in bytes.
     pub max_bytes: usize,
@@ -126,6 +131,7 @@ impl Default for BodyLimitConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct CsrfConfig {
     /// Whether CSRF header checking is active.
     pub enabled: bool,
@@ -152,6 +158,7 @@ impl Default for CsrfConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct RateLimitConfig {
     /// Whether rate limiting is active.
     pub enabled: bool,
@@ -178,6 +185,7 @@ impl Default for RateLimitConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct PerUserRateLimitConfig {
     /// Whether per-user rate limiting is active.
     pub enabled: bool,

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct TimeoutsConfig {
     /// Maximum wall-clock seconds for a single LLM API call (Anthropic or CC provider).
     ///
@@ -33,6 +34,7 @@ impl Default for TimeoutsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct CapacityConfig {
     /// Maximum bytes returned by a single tool call before the output is
     /// truncated with an indicator showing the original size.
@@ -58,6 +60,7 @@ impl Default for CapacityConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct RetrySettings {
     /// Maximum number of retry attempts after an initial transient failure.
     ///

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct DaemonBehaviorConfig {
     /// Base duration in seconds for watchdog restart backoff. Default: 2.
     /// Mirrors `daemon::watchdog::BACKOFF_BASE`.

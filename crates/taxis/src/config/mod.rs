@@ -41,6 +41,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct ObservabilitySettings {
     /// Install the episteme trace-ingest subscriber layer and flush ops facts
     /// into the knowledge store. Default: true.
