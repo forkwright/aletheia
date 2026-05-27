@@ -314,7 +314,7 @@ fn is_stale(mtime: Option<&std::time::SystemTime>, stale_threshold_secs: i64) ->
         return false;
     };
     let threshold =
-        std::time::Duration::from_secs(u64::try_from(stale_threshold_secs).unwrap_or_default());
+        std::time::Duration::from_secs(u64::try_from(stale_threshold_secs).unwrap_or_default()); // kanon:ignore RUST/no-result-unwrap-or-default WHY: negative threshold is pathological; default to 0 (never stale) is safe
     elapsed > threshold
 }
 

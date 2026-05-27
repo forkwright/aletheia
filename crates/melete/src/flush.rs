@@ -79,7 +79,7 @@ impl MemoryFlush {
         write_section(&mut out, "Facts", &self.facts);
 
         if let Some(state) = &self.task_state {
-            let _ = writeln!(out, "## Task State\n{state}\n");
+            writeln!(out, "## Task State\n{state}\n");
         }
 
         out.trim_end().to_owned()
@@ -90,15 +90,15 @@ fn write_section(out: &mut String, heading: &str, items: &[FlushItem]) {
     if items.is_empty() {
         return;
     }
-    let _ = writeln!(out, "## {heading}");
+    writeln!(out, "## {heading}");
     for item in items {
-        let _ = writeln!(
+        writeln!(
             out,
             "- [{}] {} (source: {})",
             item.timestamp,
             item.content,
             item.source.label()
-        );
+        ).expect("writing to String is infallible"); // kanon:ignore RUST/expect WHY: fmt::Write for String never returns Err
     }
     out.push('\n');
 }
