@@ -3,6 +3,7 @@
     clippy::indexing_slicing,
     reason = "test assertions: index access is guarded by prior length checks"
 )]
+#![expect(clippy::expect_used, reason = "test assertions")]
 
 use crate::knowledge::Visibility;
 use crate::recall::{FactorScores, ProjectRecallScope, ScoredResult};

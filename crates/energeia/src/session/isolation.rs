@@ -138,7 +138,7 @@ impl IsolationResolver {
         let entries = self.list_worktrees()?;
 
         if entries.iter().any(|entry| same_path(entry, &worktree)) {
-            self.open_worktree(&worktree)?;
+            Self::open_worktree(&worktree)?;
             return Ok(worktree);
         }
 
@@ -152,7 +152,7 @@ impl IsolationResolver {
         }
 
         self.create_worktree(&worktree)?;
-        self.open_worktree(&worktree)?;
+        Self::open_worktree(&worktree)?;
         Ok(worktree)
     }
 
@@ -177,7 +177,7 @@ impl IsolationResolver {
         Ok(parse_worktree_paths(&output.stdout))
     }
 
-    fn open_worktree(&self, worktree: &Path) -> std::result::Result<(), ResolveError> {
+    fn open_worktree(worktree: &Path) -> std::result::Result<(), ResolveError> {
         if !worktree.is_dir() {
             return Err(ResolveError::WorktreeOpen(WorktreeOpenError {
                 reason: CompactString::from(format!(
@@ -246,7 +246,7 @@ impl IsolationResolver {
         ) {
             Ok(_) => Ok(()),
             Err(remove_reason) => {
-                let entries = self.list_worktrees().map_err(|err| err.into_reason())?;
+                let entries = self.list_worktrees().map_err(ResolveError::into_reason)?;
                 if entries.iter().any(|entry| same_path(entry, &worktree)) {
                     Err(remove_reason)
                 } else {
@@ -317,7 +317,7 @@ where
 fn display_args(args: &[OsString]) -> String {
     args.iter()
         .map(|arg| arg.to_string_lossy())
-        .map(|arg| arg.into_owned())
+        .map(std::borrow::Cow::into_owned)
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -423,6 +423,10 @@ fn emit_outcome(outcome: &IsolationResult) {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::similar_names,
+    reason = "test bindings `resolver`/`resolved` are clear in context"
+)]
 mod tests {
     use std::fs;
 

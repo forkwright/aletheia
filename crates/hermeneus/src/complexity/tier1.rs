@@ -129,7 +129,7 @@ impl Tier1Registry {
 /// # Example
 ///
 /// ```rust
-/// use hermeneus::complexity::tier1::RegexReplaceHandler;
+/// use hermeneus::complexity::tier1::{RegexReplaceHandler, Tier1Handler};
 ///
 /// // Match simple arithmetic and return a fixed message.
 /// let handler = RegexReplaceHandler::new(
@@ -194,7 +194,7 @@ impl Tier1Handler for RegexReplaceHandler {
 /// # Example
 ///
 /// ```rust
-/// use hermeneus::complexity::tier1::ExactMatchHandler;
+/// use hermeneus::complexity::tier1::{ExactMatchHandler, Tier1Handler};
 ///
 /// let handler = ExactMatchHandler::new("ack-ok", "ok", "Acknowledged.");
 /// assert!(handler.try_handle("  OK  ").is_some());

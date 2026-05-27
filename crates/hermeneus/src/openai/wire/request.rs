@@ -374,10 +374,6 @@ impl<'a> ResponsesRequest<'a> {
 /// Messages with mixed content (text + `tool_use` + `tool_result`) expand
 /// into multiple chat messages: OpenAI requires each tool result to live
 /// in its own `role: "tool"` message correlated by `tool_call_id`.
-#[expect(
-    clippy::too_many_lines,
-    reason = "one function per Anthropic role keeps the wire mapping readable in one place"
-)]
 fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
     match msg.role {
         Role::System => {
@@ -407,10 +403,8 @@ fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
                     let mut text_parts: Vec<String> = Vec::new();
                     for block in blocks {
                         match block {
-                            ContentBlock::Text { text, .. } => {
-                                if !text.is_empty() {
-                                    text_parts.push(text.clone());
-                                }
+                            ContentBlock::Text { text, .. } if !text.is_empty() => {
+                                text_parts.push(text.clone());
                             }
                             ContentBlock::ToolResult {
                                 tool_use_id,
@@ -450,10 +444,8 @@ fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
                 Content::Blocks(blocks) => {
                     for block in blocks {
                         match block {
-                            ContentBlock::Text { text, .. } => {
-                                if !text.is_empty() {
-                                    text_parts.push(text.clone());
-                                }
+                            ContentBlock::Text { text, .. } if !text.is_empty() => {
+                                text_parts.push(text.clone());
                             }
                             ContentBlock::ToolUse { id, name, input } => {
                                 // WHY: OpenAI requires arguments as a JSON

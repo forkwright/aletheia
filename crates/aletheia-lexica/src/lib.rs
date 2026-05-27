@@ -12,7 +12,6 @@ pub mod stopwords;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn modules_are_reachable() {

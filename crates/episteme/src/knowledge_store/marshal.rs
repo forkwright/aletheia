@@ -4,6 +4,10 @@
 )]
 use snafu::ResultExt;
 #[cfg(feature = "mneme-engine")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "exhaustive 1:1 field-to-column marshalling; splitting would obscure the mapping"
+)]
 pub(super) fn fact_to_params(
     fact: &crate::knowledge::Fact,
 ) -> std::collections::BTreeMap<String, crate::engine::DataValue> {

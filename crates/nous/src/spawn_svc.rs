@@ -436,11 +436,7 @@ mod tests {
         let provider = ProviderId::new("claude-sonnet-4-20250514");
         for _ in 0..20 {
             if let Some(stats) = store
-                .rolling_stats(
-                    &provider,
-                    &TaskCategory::Feature,
-                    Duration::from_secs(7 * 24 * 60 * 60),
-                )
+                .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
                 .await
             {
                 assert_eq!(stats.successes, 1);

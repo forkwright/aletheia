@@ -616,7 +616,7 @@ mod tests {
         );
 
         let token = CancellationToken::new();
-        let (mut rx, mut handles) = provider.listen(Some(Duration::from_secs(60)), token.clone());
+        let (mut rx, mut handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
         let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
             .await
             .expect("timeout")

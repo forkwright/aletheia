@@ -100,6 +100,7 @@ pub(crate) fn record_observations(
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"
 )]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[cfg(test)]
 mod tests {
     use super::*;
