@@ -78,6 +78,172 @@ impl ChannelListener {
 }
 ```
 
+## `src/matrix/client.rs`
+
+```rust
+pub struct MatrixClient {
+    client: reqwest::Client,
+    homeserver: String,
+    access_token: String, // kanon:ignore RUST/plain-string-secret
+    sync_timeout: Duration,
+}
+```
+
+```rust
+impl MatrixClient {
+    pub fn new (homeserver: &str, access_token: &str) -> Result<Self>;
+    pub fn with_timeouts (
+        homeserver: &str,
+        access_token: &str,
+        rpc_timeout: Duration,
+        sync_timeout: Duration,
+    ) -> Result<Self>;
+    pub async fn send_text (
+        &self,
+        room_id: &str,
+        body: &str,
+        thread_id: Option<&str>,
+    ) -> Result<serde_json::Value>;
+    pub async fn sync (&self, since: Option<&str>) -> Result<MatrixSyncResponse>;
+    pub async fn health (&self) -> bool;
+}
+```
+
+## `src/matrix/error.rs`
+
+```rust
+pub enum Error {
+    /// HTTP transport or response decoding failed.
+    #[snafu(display("Matrix HTTP error: {source}"))]
+    Http {
+        /// Underlying reqwest error.
+        source: reqwest::Error,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+
+    /// JSON encoding or decoding failed.
+    #[snafu(display("Matrix JSON error: {source}"))]
+    Json {
+        /// Underlying serde JSON error.
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+
+    /// Matrix API returned an unsuccessful status.
+    #[snafu(display("Matrix API error {status}: {message}"))]
+    Api {
+        /// HTTP status code returned by the homeserver.
+        status: u16,
+        /// Matrix API error message.
+        message: String,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+}
+```
+
+## `src/matrix/mod.rs`
+
+```rust
+pub struct MatrixSyncResponse {
+    /// Batch token to pass as `since` on the next sync.
+    pub next_batch: Option<String>,
+    /// Joined rooms returned by sync.
+    #[serde(default)]
+    pub rooms: MatrixRooms,
+}
+```
+
+```rust
+pub struct MatrixRooms {
+    /// Joined rooms keyed by room ID.
+    #[serde(default)]
+    pub join: HashMap<String, MatrixJoinedRoom>,
+}
+```
+
+```rust
+pub struct MatrixJoinedRoom {
+    /// Timeline events returned for the room.
+    #[serde(default)]
+    pub timeline: MatrixTimeline,
+}
+```
+
+```rust
+pub struct MatrixTimeline {
+    /// Timeline events.
+    #[serde(default)]
+    pub events: Vec<MatrixEvent>,
+}
+```
+
+```rust
+pub struct MatrixEvent {
+    /// Event type, e.g. `m.room.message`.
+    #[serde(rename = "type")]
+    pub event_type: String,
+    /// Matrix user ID of the sender.
+    pub sender: Option<String>,
+    /// Event ID.
+    pub event_id: Option<String>,
+    /// Server timestamp in milliseconds.
+    pub origin_server_ts: Option<u64>,
+    /// Event content.
+    #[serde(default)]
+    pub content: MatrixEventContent,
+    /// Raw unsigned metadata.
+    #[serde(default)]
+    pub unsigned: Option<serde_json::Value>,
+}
+```
+
+```rust
+pub struct MatrixEventContent {
+    /// Matrix message type, e.g. `m.text`.
+    pub msgtype: Option<String>,
+    /// Plain-text body.
+    pub body: Option<String>,
+    /// Additional content fields retained for attachments and raw diagnostics.
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+```
+
+> Matrix channel provider implementing `ChannelProvider`.
+```rust
+pub struct MatrixProvider {
+    accounts: HashMap<String, MatrixAccount>,
+    default_account: Option<String>,
+    circuit_breaker_threshold: u32,
+}
+```
+
+```rust
+impl MatrixProvider {
+    pub fn new () -> Self;
+    pub fn from_config (config: &taxis::config::MessagingConfig) -> Self;
+    pub fn add_account (
+        &mut self,
+        account_id: String,
+        client: client::MatrixClient,
+        user_id: Option<String>,
+        auto_start: bool,
+        initial_since: Option<String>,
+    );
+    pub fn listen (
+        &self,
+        poll_interval: Option<Duration>,
+        cancel: CancellationToken,
+    ) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>);
+}
+```
+
 ## `src/metrics.rs`
 
 > Register this crate's metrics with the shared registry.
@@ -113,7 +279,7 @@ pub struct RouteDecision<'a> {
     /// The nous agent that should handle this message.
     pub nous_id: &'a str,
     /// Session key derived from template expansion (e.g., `signal:+1234567890`).
-    pub session_key: String,
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret WHY: session_key is a routing key (channel:sender template expansion), not a credential
     /// How the routing decision was determined.
     pub matched_by: MatchReason,
 }
@@ -369,7 +535,7 @@ pub struct SignalProvider {
     /// Per-account connection state and outbound buffer. Lock guards
     /// connection status transitions and buffered-message drain; held
     /// briefly during send and poll-loop state updates.
-    account_states: HashMap<String, Arc<Mutex<AccountState>>>,
+    account_states: HashMap<String, Arc<Mutex<AccountState>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
     /// Per-account auto-start flag. When `false`, `listen()` skips
     /// spawning the receive poll task for that account.
     auto_start: HashMap<String, bool>,
