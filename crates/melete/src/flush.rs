@@ -98,7 +98,8 @@ fn write_section(out: &mut String, heading: &str, items: &[FlushItem]) {
             item.timestamp,
             item.content,
             item.source.label()
-        ).expect("writing to String is infallible"); // kanon:ignore RUST/expect WHY: fmt::Write for String never returns Err
+        )
+        .expect("writing to String is infallible"); // kanon:ignore RUST/expect WHY: fmt::Write for String never returns Err
     }
     out.push('\n');
 }
