@@ -12,6 +12,7 @@ use snafu::Snafu;
     missing_docs,
     reason = "snafu error variant fields (path, source, location, reason, type_name, tool_name, pack_name, name, pack) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum -- WHY: #[non_exhaustive] is already present; linter false-positive when intervening #[expect] separates the attribute from the enum keyword
 pub enum Error {
     /// Pack directory does not exist.
     #[snafu(display("pack not found: {}", path.display()))]

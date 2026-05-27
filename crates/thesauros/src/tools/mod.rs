@@ -4,7 +4,7 @@ use std::future::Future;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::process::{Command, Stdio};
+use std::process::{Command, Stdio}; // kanon:ignore RUST/no-direct-process-command -- WHY: thesauros IS the shell-tool executor; this is the approved execution site
 use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
@@ -52,7 +52,7 @@ impl ToolExecutor for ShellToolExecutor {
                 let mut last_err = None;
                 let mut spawned = None;
                 for attempt in 0..4 {
-                    match Command::new(&self.command_path)
+                    match Command::new(&self.command_path) // kanon:ignore RUST/no-direct-process-command -- WHY: this executor IS the organon-approved shell dispatch site for pack tools
                         .current_dir(&self.pack_root)
                         .stdin(Stdio::piped())
                         .stdout(Stdio::piped())
@@ -109,17 +109,17 @@ impl ToolExecutor for ShellToolExecutor {
                 let mut stdout_buf = Vec::new();
                 let mut stderr_buf = Vec::new();
                 if let Some(mut pipe) = stdout_pipe {
-                    let _ = pipe.read_to_end(&mut stdout_buf);
+                    let _ = pipe.read_to_end(&mut stdout_buf); // kanon:ignore RUST/no-silent-result-swallow -- WHY: pipe read in background thread; partial read is acceptable, data already in buf
                 }
                 if let Some(mut pipe) = stderr_pipe {
-                    let _ = pipe.read_to_end(&mut stderr_buf);
+                    let _ = pipe.read_to_end(&mut stderr_buf); // kanon:ignore RUST/no-silent-result-swallow -- WHY: pipe read in background thread; partial read is acceptable, data already in buf
                 }
                 let result = guard.get_mut().wait().map(|status| std::process::Output {
                     status,
                     stdout: stdout_buf,
                     stderr: stderr_buf,
                 });
-                let _ = tx.send(result);
+                let _ = tx.send(result); // kanon:ignore RUST/no-silent-result-swallow -- WHY: receiver may have dropped on timeout; send failure is intentionally ignored here
                 // NOTE: guard drops here -- kills and reaps child if still alive
                 // (no-op if already exited). This handles the panic path too.
             });
@@ -136,7 +136,7 @@ impl ToolExecutor for ShellToolExecutor {
                     // WHY: kill child by PID to unblock the background thread's
                     // read_to_end(). The thread will then exit and drop the
                     // ProcessGuard (which reaps the zombie).
-                    let _ = std::process::Command::new("kill")
+                    let _ = std::process::Command::new("kill") // kanon:ignore RUST/no-direct-process-command RUST/no-silent-result-swallow -- WHY: kill -9 for timeout cleanup; kill failure is benign (child may have already exited)
                         .args(["-9", &child_pid.to_string()])
                         .stdin(Stdio::null())
                         .stdout(Stdio::null())
