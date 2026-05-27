@@ -1,7 +1,5 @@
 //! Cross-chunk contradiction detection via LLM comparison.
 
-use std::fmt::Write;
-
 use snafu::ResultExt;
 
 use hermeneus::provider::LlmProvider;
@@ -105,7 +103,10 @@ pub(crate) async fn detect_contradictions(
 
     let mut numbered = String::new();
     for (i, chunk) in chunks.iter().enumerate() {
-        writeln!(numbered, "{}. {chunk}", i + 1);
+        numbered.push_str(&(i + 1).to_string());
+        numbered.push_str(". ");
+        numbered.push_str(chunk);
+        numbered.push('\n');
     }
 
     let request = CompletionRequest {

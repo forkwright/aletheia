@@ -263,11 +263,7 @@ mod tests {
 
         for _ in 0..10 {
             if let Some(stats) = store
-                .rolling_stats(
-                    &provider,
-                    &TaskCategory::Feature,
-                    Duration::from_hours(168),
-                )
+                .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
                 .await
             {
                 assert_eq!(stats.successes, 1);

@@ -58,10 +58,6 @@ impl ReceiptSigner {
     /// # Errors
     /// Returns [`VerifyError::Malformed`] if the receipt is not valid base64url,
     /// or [`VerifyError::HmacMismatch`] if the HMAC does not match.
-    #[expect(
-        clippy::expect_used,
-        reason = "32-byte key is always valid for Hmac<Sha256>"
-    )]
     pub fn verify(
         &self,
         receipt: &str,
