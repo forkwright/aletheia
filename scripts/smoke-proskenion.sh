@@ -128,18 +128,19 @@ mkdir -p "$LOGDIR" "$CONFIG_HOME/aletheia" "$INSTANCE_ROOT"
 if [[ "$START_SERVER" == true ]]; then
     PORT="${ALETHEIA_SMOKE_PORT:-$(( 39000 + (RANDOM % 2000) ))}"
     SERVER_URL="$(printf 'http://127.0.0.1:%s' "$PORT")"
-    mkdir -p "$INSTANCE_ROOT/config"
-    {
-        echo "[gateway]"
-        echo 'bind = "localhost"'
-        printf 'port = %s\n' "$PORT"
-        echo
-        echo "[gateway.auth]"
-        echo 'mode = "none"'
-        echo 'none_role = "operator"'
-    } >"$INSTANCE_ROOT/config/aletheia.toml"
+    # WHY: `serve` requires a full instance layout (data/, logs/, nous/, ...) and
+    # at least one configured agent, not just a bare config file. `init -y`
+    # generates a complete valid instance whose default config already sets
+    # `gateway.auth.mode = "none"` and one agent. Bind/port are supplied on the
+    # CLI below, so no further config edits are needed.
+    if ! "$SERVER_BINARY" init --instance-root "$INSTANCE_ROOT" -y \
+        >"$LOGDIR/init.log" 2>&1; then
+        degrade "$(printf 'aletheia init failed; see %s/init.log' "$LOGDIR")"
+    fi
     log "$(printf 'starting server: %s --instance-root %s --bind 127.0.0.1 --port %s serve' "$SERVER_BINARY" "$INSTANCE_ROOT" "$PORT")"
-    "$SERVER_BINARY" \
+    # WHY: the smoke config sets `gateway.auth.mode = "none"`; the server rejects
+    # that by default and requires this explicit local-dev opt-in env var.
+    ALETHEIA_ALLOW_AUTH_NONE=1 "$SERVER_BINARY" \
         --instance-root "$INSTANCE_ROOT" \
         --bind 127.0.0.1 \
         --port "$PORT" \

@@ -338,23 +338,36 @@ mod tests {
         }
     }
 
-    /// Point the store at a fresh temp dir for each test via env var.
-    fn setup_temp_dir() -> tempfile::TempDir {
+    /// Serializes the tests in this module that mutate the process-global
+    /// `ALETHEIA_FACTS_DIR`. `#[tokio::test]` functions run concurrently, so
+    /// without this lock they race on the env var and `op_list_all` (and the
+    /// other store tests) intermittently observe another test's fact directory.
+    static FACTS_DIR_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// Point the store at a fresh temp dir for the duration of a test.
+    ///
+    /// Returns the `TempDir` (keeps the directory alive) and a guard that
+    /// serializes access to the shared `ALETHEIA_FACTS_DIR` env var. Both must
+    /// stay bound for the whole test body.
+    async fn setup_temp_dir() -> (tempfile::TempDir, tokio::sync::MutexGuard<'static, ()>) {
+        let guard = FACTS_DIR_LOCK.lock().await;
         let dir = tempfile::tempdir().expect("tempdir");
-        // WHY: The executor reads ALETHEIA_FACTS_DIR at call time, so we
-        // set it before each test invocation.  Tests are not run in parallel
-        // within this module so the env var is safe to mutate.
-        #[expect(unsafe_code, reason = "test-only env mutation; tests run sequentially")]
-        // SAFETY: single-threaded tokio test context; no concurrent env readers.
+        // WHY: the executor reads ALETHEIA_FACTS_DIR at call time; the guard
+        // above ensures no other test in this module mutates it concurrently.
+        #[expect(
+            unsafe_code,
+            reason = "test-only env mutation, serialized by FACTS_DIR_LOCK"
+        )]
+        // SAFETY: FACTS_DIR_LOCK serializes env mutation/reads across this module's tests.
         unsafe {
             std::env::set_var("ALETHEIA_FACTS_DIR", dir.path());
         };
-        dir
+        (dir, guard)
     }
 
     #[tokio::test]
     async fn op_put_then_get_roundtrip() {
-        let _dir = setup_temp_dir();
+        let (_dir, _guard) = setup_temp_dir().await;
         let ctx = mock_ctx();
         let executor = ArchitectureFactExecutor;
 
@@ -402,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn op_list_all() {
-        let _dir = setup_temp_dir();
+        let (_dir, _guard) = setup_temp_dir().await;
         let ctx = mock_ctx();
         let executor = ArchitectureFactExecutor;
 
@@ -442,7 +455,7 @@ mod tests {
 
     #[tokio::test]
     async fn op_search_returns_matching() {
-        let _dir = setup_temp_dir();
+        let (_dir, _guard) = setup_temp_dir().await;
         let ctx = mock_ctx();
         let executor = ArchitectureFactExecutor;
 
@@ -484,7 +497,7 @@ mod tests {
 
     #[tokio::test]
     async fn op_get_missing_returns_not_found_message() {
-        let _dir = setup_temp_dir();
+        let (_dir, _guard) = setup_temp_dir().await;
         let ctx = mock_ctx();
         let executor = ArchitectureFactExecutor;
 
@@ -506,7 +519,7 @@ mod tests {
 
     #[tokio::test]
     async fn op_put_missing_updated_by_is_error() {
-        let _dir = setup_temp_dir();
+        let (_dir, _guard) = setup_temp_dir().await;
         let ctx = mock_ctx();
         let executor = ArchitectureFactExecutor;
 
@@ -534,7 +547,7 @@ mod tests {
 
     #[tokio::test]
     async fn op_unknown_is_error() {
-        let _dir = setup_temp_dir();
+        let (_dir, _guard) = setup_temp_dir().await;
         let ctx = mock_ctx();
         let executor = ArchitectureFactExecutor;
 
