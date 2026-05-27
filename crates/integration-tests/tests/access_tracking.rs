@@ -41,6 +41,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         content: content.to_owned(),
         fact_type: "inference".to_owned(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: ts(TS_2026),
             valid_to: far_future(),

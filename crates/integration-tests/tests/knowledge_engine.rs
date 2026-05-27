@@ -35,6 +35,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
         content: content.to_owned(),
         fact_type: String::new(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: ts(TS_2026),
             valid_to: far_future(),
@@ -115,6 +116,7 @@ fn fact_round_trip() {
         content: "The researcher published findings on memory consolidation".to_owned(),
         fact_type: String::new(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: ts(TS_2026),
             valid_to: far_future(),
