@@ -8,7 +8,7 @@ use tracing::warn;
 
 use mneme::types::{Message, Role, Session};
 
-use crate::error::{ApiError, InternalSnafu, NousNotFoundSnafu};
+use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::insights::anomaly::detect_anomalies;
 use crate::state::InsightsState;
 use crate::types::insights::{
@@ -198,6 +198,52 @@ pub async fn get_quality_metrics(
     Json(QualityMetricsResponse { series })
 }
 
+// -- Metrics query validation ------------------------------------------------
+
+/// Granularity values accepted by the metrics endpoints.
+///
+/// Anything else would otherwise fall through `bucket_date`'s `_` arm and be
+/// silently treated as `daily`, so an unknown granularity is rejected up front.
+const VALID_GRANULARITIES: [&str; 3] = ["daily", "weekly", "monthly"];
+
+/// Reject metrics query parameters that would otherwise be silently ignored.
+///
+/// `date_in_range` compares dates lexicographically and `bucket_date` defaults
+/// unknown granularities to `daily`, so malformed input previously produced a
+/// misleading empty/`daily` `200` response instead of an error. Validating here
+/// turns those silent wrong-answers into an honest `400`. Absent (`None`) and
+/// empty values keep their existing meaning (no filter / default granularity).
+fn validate_metrics_query(query: &MetricsQuery) -> Result<(), ApiError> {
+    if let Some(granularity) = query.granularity.as_deref()
+        && !granularity.is_empty()
+        && !VALID_GRANULARITIES.contains(&granularity)
+    {
+        return Err(BadRequestSnafu {
+            message: format!(
+                "granularity must be one of daily, weekly, monthly (got `{granularity}`)"
+            ),
+        }
+        .build());
+    }
+    validate_optional_date("from", query.from.as_deref())?;
+    validate_optional_date("to", query.to.as_deref())?;
+    Ok(())
+}
+
+/// Validate an optional `YYYY-MM-DD` bound, rejecting unparseable calendar dates.
+fn validate_optional_date(field: &str, value: Option<&str>) -> Result<(), ApiError> {
+    if let Some(raw) = value
+        && !raw.is_empty()
+        && raw.parse::<jiff::civil::Date>().is_err()
+    {
+        return Err(BadRequestSnafu {
+            message: format!("{field} must be a valid ISO date (YYYY-MM-DD), got `{raw}`"),
+        }
+        .build());
+    }
+    Ok(())
+}
+
 // -- GET /api/v1/metrics/tokens ----------------------------------------------
 
 /// GET /api/v1/metrics/tokens: token usage envelope consumed by desktop metrics.
@@ -207,6 +253,7 @@ pub async fn get_quality_metrics(
     params(MetricsQuery),
     responses(
         (status = 200, description = "Token metrics", body = TokenMetricsResponse),
+        (status = 400, description = "Invalid query parameters", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -214,8 +261,9 @@ pub async fn get_quality_metrics(
 pub async fn get_token_metrics(
     State(state): State<InsightsState>,
     Query(query): Query<MetricsQuery>,
-) -> Json<TokenMetricsResponse> {
-    Json(load_token_metrics(state, query).await)
+) -> Result<Json<TokenMetricsResponse>, ApiError> {
+    validate_metrics_query(&query)?;
+    Ok(Json(load_token_metrics(state, query).await))
 }
 
 // -- GET /api/v1/metrics/costs -----------------------------------------------
@@ -227,6 +275,7 @@ pub async fn get_token_metrics(
     params(MetricsQuery),
     responses(
         (status = 200, description = "Cost metrics", body = CostMetricsResponse),
+        (status = 400, description = "Invalid query parameters", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -234,9 +283,10 @@ pub async fn get_token_metrics(
 pub async fn get_cost_metrics(
     State(state): State<InsightsState>,
     Query(query): Query<MetricsQuery>,
-) -> Json<CostMetricsResponse> {
+) -> Result<Json<CostMetricsResponse>, ApiError> {
+    validate_metrics_query(&query)?;
     let tokens = load_token_metrics(state, query).await;
-    Json(costs_from_tokens(&tokens))
+    Ok(Json(costs_from_tokens(&tokens)))
 }
 
 // -- GET /api/v1/journal -----------------------------------------------------
@@ -760,4 +810,52 @@ fn u64_to_f64(n: u64) -> f64 {
 
 fn session_count_f64(n: usize) -> f64 {
     usize_to_f64(n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn query(granularity: Option<&str>, from: Option<&str>, to: Option<&str>) -> MetricsQuery {
+        MetricsQuery {
+            granularity: granularity.map(str::to_owned),
+            from: from.map(str::to_owned),
+            to: to.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn accepts_absent_and_empty_parameters() {
+        assert!(validate_metrics_query(&query(None, None, None)).is_ok());
+        // Empty strings keep their legacy meaning (default granularity / no filter).
+        assert!(validate_metrics_query(&query(Some(""), Some(""), Some(""))).is_ok());
+    }
+
+    #[test]
+    fn accepts_known_granularities_and_iso_dates() {
+        for g in ["daily", "weekly", "monthly"] {
+            assert!(
+                validate_metrics_query(&query(Some(g), Some("2026-01-01"), Some("2026-12-31")))
+                    .is_ok(),
+                "granularity {g} should be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_granularity() {
+        let result = validate_metrics_query(&query(Some("hourly"), None, None));
+        assert!(
+            matches!(result, Err(ApiError::BadRequest { .. })),
+            "unknown granularity must be rejected with a 400"
+        );
+    }
+
+    #[test]
+    fn rejects_unparseable_dates() {
+        assert!(validate_metrics_query(&query(None, Some("not-a-date"), None)).is_err());
+        assert!(validate_metrics_query(&query(None, None, Some("2026-13-45"))).is_err());
+        // A syntactically plausible but out-of-calendar date is also rejected.
+        assert!(validate_metrics_query(&query(None, Some("2026-02-30"), None)).is_err());
+    }
 }
