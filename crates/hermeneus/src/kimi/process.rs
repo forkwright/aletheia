@@ -41,17 +41,26 @@ fn scrub_kimi_auth_env(cmd: &mut Command) {
     cmd.env_remove("MOONSHOT_API_KEY");
 }
 
-fn ensure_max_tokens_supported(max_tokens: u32) -> Result<()> {
-    if max_tokens == 0 {
-        return Ok(());
+/// Warn (once) that a non-zero `max_tokens` cannot be honored by the Kimi
+/// subprocess provider, then ignore it.
+///
+/// WHY: The `kimi` CLI exposes no max-output-token flag, so the cap is
+/// genuinely unenforceable here. Hard-erroring on any non-zero value (the prior
+/// behavior) broke every turn whenever a non-zero `max_output_tokens` (e.g. the
+/// scaffolded default) or the hardcoded recall-rewrite `max_tokens = 512` fed
+/// this path. The turn should still run; degrade gracefully by ignoring the
+/// unenforceable cap with a single warning rather than failing. See aletheia#4158.
+fn warn_unenforceable_max_tokens(max_tokens: u32) {
+    use std::sync::Once;
+    static WARN_ONCE: Once = Once::new();
+    if max_tokens != 0 {
+        WARN_ONCE.call_once(|| {
+            tracing::warn!(
+                max_tokens,
+                "kimi CLI cannot enforce a max output token limit; ignoring max_tokens for Kimi subprocess completions"
+            );
+        });
     }
-
-    Err(error::ApiRequestSnafu {
-        message: format!(
-            "Kimi subprocess cannot enforce max_tokens={max_tokens}: kimi CLI does not expose a max output token flag"
-        ),
-    }
-    .build())
 }
 
 fn compose_prompt(system_prompt: Option<&str>, prompt: &str) -> Result<String> {
@@ -135,7 +144,7 @@ pub(crate) async fn run_completion(
     prompt: &str,
     max_tokens: u32,
 ) -> Result<KimiOutput> {
-    ensure_max_tokens_supported(max_tokens)?;
+    warn_unenforceable_max_tokens(max_tokens);
     let prompt = compose_prompt(system_prompt, prompt)?;
     let mut child = spawn_kimi(
         config.kimi_binary,
@@ -215,7 +224,7 @@ pub(crate) async fn run_streaming(
     max_tokens: u32,
     on_delta: &mut (dyn FnMut(&str) + Send),
 ) -> Result<KimiOutput> {
-    ensure_max_tokens_supported(max_tokens)?;
+    warn_unenforceable_max_tokens(max_tokens);
     let prompt = compose_prompt(system_prompt, prompt)?;
     let mut child = spawn_kimi(
         config.kimi_binary,

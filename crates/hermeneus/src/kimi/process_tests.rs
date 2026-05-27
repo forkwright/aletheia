@@ -257,14 +257,21 @@ exit 7"#,
 }
 
 #[tokio::test]
-async fn run_completion_rejects_max_tokens() {
-    let binary = PathBuf::from("/bin/echo");
+async fn run_completion_tolerates_nonzero_max_tokens() {
+    // WHY: The kimi CLI exposes no max-output-token flag, so a non-zero
+    // max_tokens is unenforceable and must be ignored (with a one-time warning),
+    // not rejected — otherwise every turn fails on the Kimi provider. See #4158.
+    let script = write_script(
+        "completion_max_tokens_ok",
+        r#"cat > /dev/null
+printf '{"role":"assistant","content":"ok"}\n'"#,
+    );
     let cwd = std::env::temp_dir();
-    let config = process_config(&binary, &cwd);
-    let err = run_completion(&config, None, "prompt", 100)
-        .await
-        .unwrap_err();
-    assert!(err.to_string().contains("cannot enforce max_tokens=100"));
+    let config = process_config(&script, &cwd);
+    let output = run_completion(&config, None, "prompt", 100).await.unwrap();
+    assert_eq!(output.result_text, "ok");
+
+    fs::remove_file(&script).unwrap();
 }
 
 #[tokio::test]
