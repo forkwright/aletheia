@@ -10,6 +10,7 @@ use snafu::Snafu;
     missing_docs,
     reason = "snafu error variant fields (id, message, source, location) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum -- WHY: #[non_exhaustive] is already present; linter false-positive when intervening #[expect] separates the attribute from the enum keyword
 pub enum Error {
     /// Nous agent not found.
     #[snafu(display("nous agent not found: {id}"))]
