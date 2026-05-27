@@ -78,6 +78,8 @@ pub struct DaemonSpawnParams {
     pub tool_services: Option<Arc<organon::types::ToolServices>>,
     /// Additional bootstrap sections for the child agent.
     pub extra_bootstrap: Vec<BootstrapSection>,
+    /// Optional empirical router (shared with parent).
+    pub empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
 }
 ```
 
@@ -1051,6 +1053,9 @@ impl NousConfig {
 pub struct PipelineConfig {
     /// Token budget for history (remaining after bootstrap).
     pub history_budget_ratio: f64,
+    /// Git-remote-derived project partition for behavioral observations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<ProjectId>,
     /// Knowledge extraction configuration (None = disabled).
     #[serde(default)]
     pub extraction: Option<mneme::extract::ExtractionConfig>,
@@ -2632,6 +2637,8 @@ pub struct RecallStage {
     late_inject_anchor: bool,
     /// Per-scope minimum result counts with slack-fill.
     scope_quotas: HashMap<MemoryScope, usize>,
+    /// Project partition filter applied before scoring thresholds and budgeting.
+    project_scope: mneme::recall::ProjectRecallScope,
     /// Optional URL for an HTTP cross-encoder reranker.
     reranker_url: Option<String>,
 }
@@ -2645,6 +2652,7 @@ impl RecallStage {
     pub fn with_pinned_facts (mut self, facts: &[FactId]) -> Self;
     pub fn with_late_inject_anchor (mut self, enabled: bool) -> Self;
     pub fn with_scope_quotas (mut self, quotas: HashMap<MemoryScope, usize>) -> Self;
+    pub fn with_project_scope (mut self, scope: mneme::recall::ProjectRecallScope) -> Self;
     pub fn with_reranker_url (mut self, url: Option<String>) -> Self;
     pub fn run (
         &self,
@@ -2722,6 +2730,9 @@ pub struct RecallConfig {
     /// URL for an HTTP cross-encoder reranker.
     #[serde(default)]
     pub reranker_url: Option<String>,
+    /// Filesystem path to a local ONNX cross-encoder model for in-process reranking.
+    #[serde(default)]
+    pub reranker_model_path: Option<String>,
     /// Characters per token for recall budget estimation.
     ///
     /// Wired from `agents.defaults.chars_per_token` at startup.

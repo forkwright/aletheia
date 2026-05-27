@@ -421,6 +421,9 @@ pub struct SessionSpec {
     /// prompt caching should use `static_prefix` as the cached system prompt
     /// and `dynamic_suffix` as the user message.
     pub prompt_components: Option<crate::prompt_cache::PromptComponents>,
+    /// Optional structured output contract for the session response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_format: Option<hermeneus::types::OutputFormat>,
 }
 ```
 
@@ -1159,10 +1162,12 @@ impl OrchestratorConfig {
 pub struct Orchestrator {
     engine: Arc<dyn DispatchEngine>,
     qa: Arc<dyn QaGate>,
+    diff_provider: Option<Arc<dyn DiffProvider>>,
     #[cfg(feature = "storage-fjall")]
     store: Option<Arc<crate::store::EnergeiaStore>>,
     config: OrchestratorConfig,
     cancel: CancellationToken,
+    after_action_log_dir: Option<PathBuf>,
 }
 ```
 
@@ -1174,7 +1179,9 @@ impl Orchestrator {
         config: OrchestratorConfig,
     ) -> Self;
     pub fn with_cancel_token (mut self, cancel: CancellationToken) -> Self;
+    pub fn with_diff_provider (mut self, provider: Option<Arc<dyn DiffProvider>>) -> Self;
     pub fn with_store (mut self, store: Arc<crate::store::EnergeiaStore>) -> Self;
+    pub fn with_after_action_log_dir (mut self, dir: Option<PathBuf>) -> Self;
     pub async fn dispatch (
         &self,
         spec: DispatchSpec,
@@ -1307,6 +1314,13 @@ pub fn predict_budget_with_historical (
 ## `src/prompt.rs`
 
 ```rust
+pub struct WorktreePolicy {
+    /// Whether the dispatch harness should run this prompt in an isolated worktree.
+    pub enabled: bool,
+}
+```
+
+```rust
 pub struct PromptSpec {
     /// Prompt number (unique within the project queue).
     pub number: u32,
@@ -1317,6 +1331,13 @@ pub struct PromptSpec {
     /// How this prompt receives conversational context from other prompt nodes.
     #[serde(default)]
     pub context_policy: ContextPolicy,
+    /// Optional structured output contract for this prompt's response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_format: Option<hermeneus::types::OutputFormat>,
+    /// Whether this prompt expects isolated worktree execution when the
+    /// dispatch harness supports it.
+    #[serde(default)]
+    pub worktree: WorktreePolicy,
     /// Acceptance criteria the implementation must satisfy.
     pub acceptance_criteria: Vec<String>,
     /// File paths the prompt is allowed to modify.
@@ -1464,6 +1485,19 @@ pub trait QaGate : Send + Sync {
 }
 ```
 
+> Abstraction over PR diff fetching.
+> 
+> Implementations fetch the unified diff for a pull request from a forge
+> (`GitHub`, `GitLab`, etc.) so the QA gate can evaluate real changes.
+```rust
+pub trait DiffProvider : Send + Sync {
+    fn fetch_diff <'a> (
+        &'a self,
+        pr_url: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>>;
+}
+```
+
 ```rust
 pub struct PromptSpec {
     /// Prompt number within the dispatch.
@@ -1592,6 +1626,75 @@ impl EventAccumulator {
 pub fn extract_pr_url (text: &str) -> Option<&str>
 ```
 
+## `src/session/isolation.rs`
+
+```rust
+pub enum IsolationResult {
+    /// Isolation is active and the worktree is ready for use.
+    Resolved {
+        /// Filesystem path to the usable worktree.
+        worktree: PathBuf,
+    },
+    /// A stale worktree entry was cleaned and the retry resolved successfully.
+    StaleCleaned {
+        /// Filesystem path to the usable worktree.
+        worktree: PathBuf,
+    },
+    /// Isolation was disabled by prompt policy.
+    None,
+    /// Isolation could not be resolved safely.
+    Blocked {
+        /// Human-readable reason explaining why resolution stopped.
+        reason: CompactString,
+    },
+}
+```
+
+```rust
+impl IsolationResult {
+    pub fn kind (&self) -> &'static str;
+}
+```
+
+```rust
+pub struct WorktreeOpenError {
+    /// Human-readable explanation of the open failure.
+    pub reason: CompactString,
+}
+```
+
+```rust
+pub struct IsolationRequest {
+    /// Git repository used as the source for worktree operations.
+    pub repository: PathBuf,
+    /// Worktree path that should back the isolated session.
+    pub worktree: PathBuf,
+    /// Ref checked out when the worktree must be created.
+    pub base_ref: CompactString,
+    /// Prompt-declared isolation policy.
+    pub policy: WorktreePolicy,
+}
+```
+
+```rust
+impl IsolationRequest {
+    pub fn new (repository: impl Into<PathBuf>, worktree: impl Into<PathBuf>) -> Self;
+}
+```
+
+```rust
+pub struct IsolationResolver {
+    request: IsolationRequest,
+}
+```
+
+```rust
+impl IsolationResolver {
+    pub fn new (request: IsolationRequest) -> Self;
+    pub fn resolve (&self) -> IsolationResult;
+}
+```
+
 ## `src/session/manager.rs`
 
 ```rust
@@ -1612,6 +1715,28 @@ impl SessionManager {
 ## `src/session/options.rs`
 
 ```rust
+pub struct ChildSessionProgress {
+    /// Prompt number that owns the child session.
+    pub prompt_number: u32,
+    /// Current child-session lifecycle state.
+    pub status: ChildSessionProgressStatus,
+    /// Agent SDK session identifier.
+    pub child_session_id: String,
+    /// Bounded text excerpt observed from the child session, when available.
+    pub output_excerpt: Option<String>,
+}
+```
+
+```rust
+pub enum ChildSessionProgressStatus {
+    /// A child session has been spawned.
+    Started,
+    /// A child session reached a terminal energeia session status.
+    Finished(SessionStatus),
+}
+```
+
+```rust
 pub struct EngineConfig {
     /// Base options passed to the [`DispatchEngine`](crate::engine::DispatchEngine).
     pub options: AgentOptions,
@@ -1622,6 +1747,8 @@ pub struct EngineConfig {
     pub idle_timeout: Option<Duration>,
     /// Cancellation token shared by the dispatch group.
     pub cancel: Option<CancellationToken>,
+    /// Optional parent bridge for child-session progress events.
+    pub child_progress_tx: Option<mpsc::UnboundedSender<ChildSessionProgress>>,
 }
 ```
 
@@ -1636,6 +1763,7 @@ impl EngineConfig {
     pub fn add_dir (mut self, dir: impl Into<PathBuf>) -> Self;
     pub fn idle_timeout (mut self, timeout: Duration) -> Self;
     pub fn cancel_token (mut self, token: CancellationToken) -> Self;
+    pub fn child_progress_tx (mut self, tx: mpsc::UnboundedSender<ChildSessionProgress>) -> Self;
     pub fn to_agent_options (&self) -> AgentOptions;
     pub fn options_with_turns (&self, turns: u32) -> AgentOptions;
 }
@@ -2506,6 +2634,10 @@ pub struct SessionOutcome {
     /// Tokens written to the prompt cache on this session.
     #[serde(default)]
     pub cache_miss_tokens: u64,
+    /// Parsed structured output from this session, when the prompt declared
+    /// an output format and the final result was valid JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_output: Option<serde_json::Value>,
 }
 ```
 
