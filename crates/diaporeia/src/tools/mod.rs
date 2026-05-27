@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long -- WHY: single #[tool_router] impl block; split would require multiple partial impls or a macro dispatch table; deferred as architectural work
 //! MCP tool implementations for diaporeia.
 //!
 //! All tools are defined in a single `#[tool_router]` impl block on

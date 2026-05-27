@@ -47,7 +47,7 @@ impl StdioMcpServerConfig {
 /// Running external MCP client connection.
 #[derive(Clone)]
 pub struct ExternalMcpClient {
-    service: Arc<Mutex<RunningService<RoleClient, ClientInfo>>>,
+    service: Arc<Mutex<RunningService<RoleClient, ClientInfo>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern -- WHY: tokio::sync::Mutex is used (correct for async); not std::sync::Mutex
 }
 
 impl ExternalMcpClient {
@@ -90,7 +90,7 @@ impl ExternalMcpClient {
         })?;
 
         Ok(Self {
-            service: Arc::new(Mutex::new(service)),
+            service: Arc::new(Mutex::new(service)), // kanon:ignore RUST/no-arc-mutex-anti-pattern -- WHY: tokio::sync::Mutex is used (correct for async); not std::sync::Mutex
         })
     }
 
@@ -115,7 +115,7 @@ impl ExternalMcpClient {
         })?;
 
         Ok(Self {
-            service: Arc::new(Mutex::new(service)),
+            service: Arc::new(Mutex::new(service)), // kanon:ignore RUST/no-arc-mutex-anti-pattern -- WHY: tokio::sync::Mutex is used (correct for async); not std::sync::Mutex
         })
     }
 

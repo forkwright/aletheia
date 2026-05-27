@@ -9,7 +9,7 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct SessionCreateParams {
     /// The nous agent ID to create the session for.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     /// Optional session key. If omitted, defaults to "main".
     pub session_key: Option<String>,
 }
@@ -18,14 +18,14 @@ pub(crate) struct SessionCreateParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct SessionListParams {
     /// Filter by nous agent ID.
-    pub nous_id: Option<String>,
+    pub nous_id: Option<String>, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
 }
 
 /// Parameters for sending a message to a session.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct SessionMessageParams {
     /// The nous agent ID.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     /// The session key identifying the conversation.
     pub session_key: String,
     /// The message content to send.
@@ -36,7 +36,7 @@ pub(crate) struct SessionMessageParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct SessionHistoryParams {
     /// The session ID (the database primary key).
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     /// Maximum number of messages to return.
     pub limit: Option<i64>,
 }
@@ -45,7 +45,7 @@ pub(crate) struct SessionHistoryParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct NousIdParam {
     /// The nous agent ID.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
 }
 
 /// Parameters for knowledge search.
@@ -54,7 +54,7 @@ pub(crate) struct KnowledgeSearchParams {
     /// The search query text.
     pub query: String,
     /// Optional nous agent ID to scope the search.
-    pub nous_id: Option<String>,
+    pub nous_id: Option<String>, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     /// Maximum number of results to return.
     pub limit: Option<u32>,
 }
@@ -67,7 +67,7 @@ pub(crate) struct KnowledgeRecallParams {
     /// Scope the recall to a specific nous agent ID.
     ///
     /// When omitted, results span all agents visible to the caller.
-    pub nous_id: Option<String>,
+    pub nous_id: Option<String>, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     /// Maximum number of facts to return (default: 20).
     pub limit: Option<u32>,
 }
@@ -80,7 +80,7 @@ pub(crate) struct KnowledgeInsertParams {
     /// The fact content to store.
     pub content: String,
     /// The nous agent ID that owns this fact.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     /// Data-sovereignty sensitivity: `"public"`, `"internal"`, or `"confidential"`.
     ///
     /// Defaults to `"public"` when omitted.
@@ -91,7 +91,7 @@ pub(crate) struct KnowledgeInsertParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct KnowledgeForgetParams {
     /// The fact ID to soft-delete.
-    pub fact_id: String,
+    pub fact_id: String, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     /// Human-readable reason for forgetting.
     ///
     /// Accepted values: `"user_requested"` (default), `"superseded"`,
@@ -103,14 +103,14 @@ pub(crate) struct KnowledgeForgetParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct KnowledgeGetParams {
     /// The fact ID to retrieve.
-    pub fact_id: String,
+    pub fact_id: String, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
 }
 
 /// Parameters for `knowledge.graph_neighbors` — traverse entity edges.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct KnowledgeGraphNeighborsParams {
     /// The entity ID to start from.
-    pub entity_id: String,
+    pub entity_id: String, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     /// Maximum number of hops from the start entity (default: 2, max: 4).
     pub depth: Option<u32>,
 }
