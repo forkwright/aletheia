@@ -123,7 +123,7 @@ impl ToolExecutor for WebSearchExecutor {
 
             let status = response.status();
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
+                let body = response.text().await.unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default -- WHY: error path; empty body preferred over secondary decode error
                 return Ok(ToolResult::error(format!(
                     "search API returned {status}: {body}"
                 )));

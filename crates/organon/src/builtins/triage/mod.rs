@@ -387,7 +387,7 @@ async fn fetch_issues(
 
     if !response.status().is_success() {
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
+        let body = response.text().await.unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default -- WHY: already handling error path; empty body preferred over propagating a secondary decode error
         return Err(format!("GitHub API error ({status}): {body}"));
     }
 

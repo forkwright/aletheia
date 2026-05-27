@@ -21,6 +21,7 @@ use crate::types::{
 /// Scope of a working checkpoint.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum WorkingCheckpointScope {
     /// Session-scoped checkpoint (default).
     #[default]
