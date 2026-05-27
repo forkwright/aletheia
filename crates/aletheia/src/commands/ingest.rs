@@ -23,6 +23,7 @@ pub(crate) struct IngestArgs {
     pub dry_run: bool,
     /// Server URL for API routing when server is running.
     #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
     pub url: String,
 }
 

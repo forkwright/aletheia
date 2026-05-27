@@ -217,7 +217,7 @@ pub(crate) fn ConnectView(
                     input {
                         style: "{INPUT_STYLE}",
                         r#type: "text",
-                        placeholder: "http://localhost:3000",
+                        placeholder: "http://localhost:3000", // kanon:ignore SECURITY/hardcoded-loopback-url -- UI placeholder text shown in input field; not a live URL
                         value: "{url_input}",
                         disabled: is_connecting,
                         oninput: move |evt: Event<FormData>| {

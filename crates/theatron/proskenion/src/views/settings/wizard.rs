@@ -216,7 +216,7 @@ fn StepServer(wizard_data: Signal<WizardData>, on_next: EventHandler<()>) -> Ele
                 input {
                     style: "background: var(--input-bg); border: 1px solid var(--input-border); border-radius: var(--radius-md); \
                             padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
-                    placeholder: "http://localhost:3000",
+                    placeholder: "http://localhost:3000", // kanon:ignore SECURITY/hardcoded-loopback-url -- UI placeholder shown in wizard input; not a live URL
                     value: "{wizard_data.read().server_url}",
                     oninput: move |e| { wizard_data.write().server_url = e.value(); },
                 }

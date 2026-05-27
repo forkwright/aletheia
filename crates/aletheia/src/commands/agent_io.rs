@@ -84,6 +84,7 @@ pub(crate) struct ExportSkillsArgs {
     pub domain: Option<String>,
     /// Server URL for lock detection
     #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
     pub url: String,
 }
 
@@ -100,6 +101,7 @@ pub(crate) struct ReviewSkillsArgs {
     pub fact_id: Option<String>,
     /// Server URL for lock detection
     #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
     pub url: String,
 }
 
@@ -107,6 +109,7 @@ pub(crate) struct ReviewSkillsArgs {
 pub(crate) struct MigrateMemoryArgs {
     /// Qdrant server URL
     #[arg(long, default_value = "http://localhost:6333", env = "QDRANT_URL")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
     pub qdrant_url: String,
     /// Qdrant collection name
     #[arg(long, default_value = "aletheia_memories")]

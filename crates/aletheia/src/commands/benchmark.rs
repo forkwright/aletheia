@@ -39,6 +39,7 @@ pub(crate) struct RunArgs {
     pub dataset: PathBuf,
     /// Server URL to benchmark against
     #[arg(long, default_value = "http://127.0.0.1:18789")]
+    // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
     pub url: String,
     /// Bearer token for authenticated endpoints
     #[arg(long, env = "ALETHEIA_EVAL_TOKEN")]

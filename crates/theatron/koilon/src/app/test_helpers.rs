@@ -9,7 +9,7 @@ use super::*;
 pub(crate) fn test_app() -> App {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let config = Config {
-        url: "http://localhost:18789".to_string(),
+        url: "http://localhost:18789".to_string(), // kanon:ignore SECURITY/hardcoded-loopback-url -- test fixture, hardcoded loopback for in-process test harness // kanon:ignore SECURITY/hardcoded-loopback-url -- test fixture, hardcoded loopback for in-process test harness,
         token: None,
         default_agent: None,
         default_session: None,

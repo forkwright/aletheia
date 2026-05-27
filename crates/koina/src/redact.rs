@@ -47,14 +47,14 @@ mod tests {
 
     #[test]
     fn redacts_anthropic_api_key() {
-        let input = "using key sk-ant-api03-abcdef123456_789XYZ for requests"; // pii-allow: synthetic Anthropic key shape, redactor self-test
+        let input = "using key sk-ant-api03-abcdef123456_789XYZ for requests"; // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape used by redaction self-test; not a real credential
         let output = redact_sensitive(input);
         assert_eq!(output, "using key sk-ant-*** for requests");
     }
 
     #[test]
     fn redacts_generic_sk_key() {
-        let input = "key: sk-proj-abcdefghij1234567890abcdef"; // pii-allow: synthetic OpenAI proj-token shape, redactor self-test
+        let input = "key: sk-proj-abcdefghij1234567890abcdef"; // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape used by redaction self-test; not a real credential
         let output = redact_sensitive(input);
         assert_eq!(output, "key: sk-***");
     }
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn handles_multiple_sensitive_values() {
-        let input = "key=sk-ant-api03-abc123 and password=secret123";
+        let input = "key=sk-ant-api03-abc123 and password=secret123"; // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape used by redaction self-test; not a real credential
         let output = redact_sensitive(input);
         assert!(output.contains("sk-ant-***"));
         assert!(!output.contains("abc123"));

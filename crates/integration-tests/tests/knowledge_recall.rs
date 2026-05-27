@@ -31,6 +31,7 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     }
 }
 
@@ -66,6 +67,7 @@ fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: mneme::knowledge::Visibility::Private,
         scope: None,
+        project_id: None,
     }
 }
 
@@ -141,6 +143,7 @@ fn knowledge_types_all_serialize() {
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         graph_importance: 0.0,
         scope: None,
+        project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
     };
 

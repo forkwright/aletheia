@@ -357,7 +357,7 @@ fn build_authorization_url(
     let redirect_uri = provider
         .redirect_uri
         .clone()
-        .unwrap_or_else(|| format!("http://127.0.0.1:{redirect_port}/callback"));
+        .unwrap_or_else(|| format!("http://127.0.0.1:{redirect_port}/callback")); // kanon:ignore SECURITY/hardcoded-loopback-url -- RFC 8252 S7.3 OAuth2 loopback; 127.0.0.1 is mandatory for installed-app PKCE flows
 
     let mut url = format!(
         "{}?response_type=code&client_id={}&redirect_uri={}&code_challenge={}&code_challenge_method=S256&state={}",
@@ -603,7 +603,7 @@ async fn exchange_code(
     let redirect_uri = provider
         .redirect_uri
         .clone()
-        .unwrap_or_else(|| format!("http://127.0.0.1:{redirect_port}/callback"));
+        .unwrap_or_else(|| format!("http://127.0.0.1:{redirect_port}/callback")); // kanon:ignore SECURITY/hardcoded-loopback-url -- RFC 8252 S7.3 OAuth2 loopback; 127.0.0.1 is mandatory for installed-app PKCE flows
 
     let mut params = HashMap::new();
     params.insert("grant_type", "authorization_code");

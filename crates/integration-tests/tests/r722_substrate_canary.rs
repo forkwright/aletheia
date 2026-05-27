@@ -68,6 +68,7 @@ mod fixtures {
             fact_type: "test".to_owned(),
             content: content.to_owned(),
             scope: None,
+            project_id: None,
             sensitivity: FactSensitivity::Public,
             visibility: Visibility::Private,
             temporal: FactTemporal {
@@ -119,6 +120,7 @@ mod fixtures {
             sensitivity: FactSensitivity::Public,
             visibility,
             scope,
+            project_id: None,
         }
     }
 

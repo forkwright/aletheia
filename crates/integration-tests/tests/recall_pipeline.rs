@@ -40,6 +40,7 @@ fn fact(id: &str, content: &str) -> Fact {
         content: content.to_owned(),
         fact_type: "observation".to_owned(),
         scope: None,
+        project_id: None,
         temporal: FactTemporal {
             valid_from: ts(),
             valid_to: mneme::knowledge::far_future(),

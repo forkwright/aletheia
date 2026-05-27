@@ -86,6 +86,7 @@ pub(crate) enum Command {
     Memory {
         /// Server URL for API routing when server is running
         #[arg(long, default_value = "http://127.0.0.1:18789")]
+        // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
         url: String,
         #[command(subcommand)]
         action: memory::Action,
@@ -99,6 +100,7 @@ pub(crate) enum Command {
     Status {
         /// Server URL to check
         #[arg(long, default_value = "http://127.0.0.1:18789")]
+        // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
         url: String,
     },
     /// Credential management

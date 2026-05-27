@@ -1408,6 +1408,7 @@ mod tests {
             fact_type: "knowledge".to_owned(),
             content: content.to_owned(),
             scope: None,
+            project_id: None,
             sensitivity: FactSensitivity::Public,
             visibility: Visibility::Private,
             temporal: FactTemporal {
