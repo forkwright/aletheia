@@ -273,3 +273,104 @@ RUST/file-too-long:src/fts/tokenizer/stop_word_filter/stopwords.rs
 # constructor validate invariants (min_gram > 0, min_gram <= max_gram)
 # that are programming errors, not runtime failures. panic is correct.
 RUST/bare-assert:src/fts/tokenizer/ngram_tokenizer.rs
+
+# WHY: vendored CozoDB engine — memcmp.rs, search.rs, visited_pool.rs,
+# atomic_save.rs, transact.rs, hot_reload.rs: silent-discard patterns are
+# intentional. In memcmp: Write::write_all on Vec<u8> is infallible by contract.
+# In search.rs: CompactString::write_str is infallible. In visited_pool.rs:
+# ArrayQueue::push discard is expected when pool is full (set is just dropped).
+# In atomic_save.rs: remove_file calls in error cleanup paths — already handling
+# a primary error; cleanup errors are secondary. In transact.rs + hot_reload.rs:
+# channel send results are intentionally ignored (receiver may have dropped).
+RUST/no-silent-result-swallow:src/data/memcmp.rs
+RUST/no-silent-result-swallow:src/hot_reload.rs
+RUST/no-silent-result-swallow:src/query/ra/search.rs
+RUST/no-silent-result-swallow:src/runtime/hnsw/atomic_save.rs
+RUST/no-silent-result-swallow:src/runtime/hnsw/visited_pool.rs
+RUST/no-silent-result-swallow:src/runtime/transact.rs
+
+# WHY: vendored CozoDB engine — new engine files with direct indexing. Indices
+# are structurally bounded: counterfactual.rs has false-positive matches on
+# Datalog string literal content; remaining files have engine loop invariants
+# guaranteeing bounds just as in the already-suppressed engine core.
+RUST/indexing-slicing:src/counterfactual.rs
+RUST/indexing-slicing:src/data/program/input.rs
+RUST/indexing-slicing:src/fixed_rule/algos/pagerank.rs
+RUST/indexing-slicing:src/fixed_rule/utilities/reorder_sort.rs
+RUST/indexing-slicing:src/parse/expr/bytecode.rs
+RUST/indexing-slicing:src/parse/expr/mod.rs
+RUST/indexing-slicing:src/query/ra/inline_fixed.rs
+RUST/indexing-slicing:src/query/ra/stored.rs
+RUST/indexing-slicing:src/query/ra/temp_store.rs
+RUST/indexing-slicing:src/runtime/hnsw/graph.rs
+RUST/indexing-slicing:src/runtime/relation/index_create.rs
+
+# WHY: vendored CozoDB engine — these files use #[allow] instead of #[expect]
+# for glob-import suppressions where the expectation cannot be expressed reliably
+# across lib and lib-test compilation units (the glob may or may not fire
+# depending on cfg). Converting to #[expect] would cause unused expectation
+# errors in some compilation configurations.
+RUST/allow-not-expect:src/data/functions/math/mod.rs
+RUST/allow-not-expect:src/fixed_rule/mod.rs
+RUST/allow-not-expect:src/fts/tokenizer/stemmer.rs
+
+# WHY: vendored CozoDB engine — unwrap_or_default on Duration from
+# SystemTime::duration_since(UNIX_EPOCH). Returns Err only if the system clock
+# is before Unix epoch; Duration::default() (zero) is the correct fallback.
+RUST/no-result-unwrap-or-default:src/data/functions/temporal.rs
+
+# WHY: vendored CozoDB engine test modules — these tests use explicit
+#  or  imports rather than 
+# because wildcard import would pull in too many or conflicting names, or the
+# test helper module defines shared fixtures rather than testing the parent.
+RUST/test-missing-use-super:src/fts/tokenizer/empty_tokenizer.rs
+RUST/test-missing-use-super:src/fts/tokenizer/mod.rs
+RUST/test-missing-use-super:src/parse/fts.rs
+RUST/test-missing-use-super:src/query/ra/mod.rs
+RUST/test-missing-use-super:src/runtime/hnsw/put.rs
+RUST/test-missing-use-super:src/query/stratify.rs
+
+# WHY: vendored CozoDB engine — TokenizerConfig intentionally omits
+# deny_unknown_fields because the config format is user-facing and must
+# silently forward-compatible: older engine versions encountering new filter
+# args from a newer schema should not hard-error on serialization.
+RUST/config-deny-unknown-fields:src/fts/mod.rs
+
+# WHY: vendored CozoDB engine — Error enum already has #[non_exhaustive] at the
+# attribute block level; kanon's line-proximity check fires a false positive
+# because #[non_exhaustive] is not the attribute immediately preceding .
+# HotReloadError is a Snafu-generated error with a fixed variant set; adding
+# #[non_exhaustive] would break pattern-matching in all callers.
+RUST/non-exhaustive-enum:src/error.rs
+RUST/non-exhaustive-enum:src/hot_reload.rs
+
+# WHY: vendored CozoDB engine — CsrBuilder.in_neighbors / CsrBuilder.new are
+# internal graph CSR construction methods. #[must_use] on the builder pattern
+# would require API changes across the engine's graph algorithm layer.
+RUST/must-use-result-builder:src/fixed_rule/csr/mod.rs
+
+# WHY: vendored CozoDB engine — hot_reload.rs spawns a background task that
+# owns the entire reload debounce loop. The span is passed via capture in the
+# async block; adding .instrument() requires a tracing import and span creation
+# at the spawn site, which is architectural scope for the engine file.
+RUST/spawn-no-instrument:src/hot_reload.rs
+
+# WHY: vendored CozoDB engine — validate_sort_keys returns Result<(), _> as
+# a validation function that checks sort key constraints. Refactoring to a
+# constrained type would require a new type and structural changes to the parser.
+RUST/validate-returns-unit:src/parse/query/options.rs
+
+# WHY: vendored CozoDB engine — data/value.rs (821L), fixed_rule/mod.rs (978L),
+# query/eval.rs (863L), runtime/hnsw/put.rs (858L), storage/fjall_backend.rs
+# (927L) are dense engine implementation files where splitting would create
+# artificial module boundaries with no logical seams.
+RUST/file-too-long:src/data/value.rs
+RUST/file-too-long:src/fixed_rule/mod.rs
+RUST/file-too-long:src/query/eval.rs
+RUST/file-too-long:src/runtime/hnsw/put.rs
+RUST/file-too-long:src/storage/fjall_backend.rs
+
+# WHY: vendored CozoDB engine — stored.rs slices a validated ASCII prefix
+# string for query key construction; the slice bounds are structurally correct
+# per the key schema.
+RUST/string-slice:src/query/ra/stored.rs
