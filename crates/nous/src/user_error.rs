@@ -11,8 +11,6 @@ use std::fmt;
 pub enum UserFacingError {
     /// The LLM provider is currently unavailable.
     ProviderUnavailable {
-        /// User-readable provider label.
-        provider: String,
         /// Actionable recovery suggestion.
         suggestion: String,
     },
@@ -43,13 +41,10 @@ pub enum UserFacingError {
 impl fmt::Display for UserFacingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ProviderUnavailable {
-                provider,
-                suggestion,
-            } => {
+            Self::ProviderUnavailable { suggestion } => {
                 write!(
                     f,
-                    "The AI provider ({provider}) is temporarily unavailable. {suggestion}"
+                    "The AI provider is temporarily unavailable. {suggestion}"
                 )
             }
             Self::ContextOverflow { limit_tokens } => {
@@ -125,7 +120,6 @@ pub fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
     match error {
         Error::Llm { source, .. } => match source {
             HError::AuthFailed { .. } => Some(UserFacingError::ProviderUnavailable {
-                provider: "AI provider".to_owned(),
                 suggestion: "This may be a configuration issue. Please check the API key."
                     .to_owned(),
             }),
@@ -134,19 +128,16 @@ pub fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
             }),
             HError::ApiError { status, .. } if *status >= 500 => {
                 Some(UserFacingError::ProviderUnavailable {
-                    provider: "AI provider".to_owned(),
                     suggestion: "Please try again in a moment.".to_owned(),
                 })
             }
             HError::ApiRequest { .. } => Some(UserFacingError::ProviderUnavailable {
-                provider: "AI provider".to_owned(),
                 suggestion: "There may be a network issue. Please try again.".to_owned(),
             }),
             _ => None,
         },
         Error::PipelineStage { message, .. } if message.contains("unavailable") => {
             Some(UserFacingError::ProviderUnavailable {
-                provider: "AI provider".to_owned(),
                 suggestion: "The provider is recovering from errors. Please try again shortly."
                     .to_owned(),
             })
@@ -169,12 +160,12 @@ mod tests {
     #[test]
     fn display_provider_unavailable() {
         let e = UserFacingError::ProviderUnavailable {
-            provider: "anthropic".to_owned(),
             suggestion: "Try again.".to_owned(),
         };
         let s = e.to_string();
-        assert!(s.contains("anthropic"));
-        assert!(s.contains("Try again."));
+        assert_eq!(s, "The AI provider is temporarily unavailable. Try again.");
+        // The message must not duplicate the "AI provider" wording (#4154).
+        assert_eq!(s.matches("AI provider").count(), 1);
     }
 
     #[test]
