@@ -38,7 +38,7 @@ impl StdioMcpServerConfig {
 
 ```rust
 pub struct ExternalMcpClient {
-    service: Arc<Mutex<RunningService<RoleClient, ClientInfo>>>,
+    service: Arc<Mutex<RunningService<RoleClient, ClientInfo>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern -- WHY: tokio::sync::Mutex is used (correct for async); not std::sync::Mutex
 }
 ```
 
@@ -268,12 +268,8 @@ pub struct DiaporeiaState {
 > The auth middleware validates Bearer JWT tokens (or passes through
 > anonymous claims when `auth_mode == "none"`).
 > 
-> # Security warnings
-> 
-> Logs a `WARN` when `auth_mode == "none"` (all connections receive the
-> configured `none_role` without any credential check). Escalates to
-> `ERROR` when the bind address is not loopback, because the MCP server
-> is reachable from the network with no authentication.
+> Delegates to [`streamable_http_router_with_config`] with the default
+> `StreamableHttpServerConfig`. See that function for security warning details.
 ```rust
 pub fn streamable_http_router (state: Arc<DiaporeiaState>) -> axum::Router
 ```
@@ -282,6 +278,13 @@ pub fn streamable_http_router (state: Arc<DiaporeiaState>) -> axum::Router
 > 
 > Used by integration tests to enable stateless+json-response mode for
 > simpler request-response testing without SSE parsing.
+> 
+> # Security warnings
+> 
+> Logs a `WARN` when `auth_mode == "none"` (all connections receive the
+> configured `none_role` without any credential check). Escalates to
+> `ERROR` when the bind address is not loopback, because the MCP server
+> is reachable from the network with no authentication.
 ```rust
 pub fn streamable_http_router_with_config (
     state: Arc<DiaporeiaState>,
