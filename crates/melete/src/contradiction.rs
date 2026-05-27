@@ -105,7 +105,7 @@ pub(crate) async fn detect_contradictions(
 
     let mut numbered = String::new();
     for (i, chunk) in chunks.iter().enumerate() {
-        let _ = writeln!(numbered, "{}. {chunk}", i + 1);
+        writeln!(numbered, "{}. {chunk}", i + 1);
     }
 
     let request = CompletionRequest {

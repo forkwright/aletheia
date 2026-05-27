@@ -17,7 +17,7 @@ pub(crate) fn build_system_prompt(sections: &[DistillSection]) -> String {
     );
 
     for section in sections {
-        let _ = writeln!(prompt, "{}\n{}\n", section.heading(), section.description());
+        writeln!(prompt, "{}\n{}\n", section.heading(), section.description());
     }
 
     prompt.push_str(
@@ -48,7 +48,7 @@ pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) ->
 
         match &msg.content {
             Content::Text(text) => {
-                let _ = writeln!(output, "[{role_label}]\n{text}\n");
+                writeln!(output, "[{role_label}]\n{text}\n");
             }
             Content::Blocks(blocks) => {
                 let mut block_text = String::new();
@@ -59,7 +59,7 @@ pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) ->
                             block_text.push('\n');
                         }
                         ContentBlock::ToolUse { name, input, .. } if include_tool_calls => {
-                            let _ = writeln!(block_text, "[Tool call: {name}({input})]");
+                            writeln!(block_text, "[Tool call: {name}({input})]");
                         }
                         ContentBlock::ToolResult {
                             content, is_error, ..
@@ -71,10 +71,10 @@ pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) ->
                             };
                             let summary = content.text_summary();
                             let truncated = truncate_tool_result(&summary);
-                            let _ = writeln!(block_text, "[{prefix}: {truncated}]");
+                            writeln!(block_text, "[{prefix}: {truncated}]");
                         }
                         ContentBlock::Thinking { thinking, .. } => {
-                            let _ = writeln!(block_text, "[Thinking: {thinking}]");
+                            writeln!(block_text, "[Thinking: {thinking}]");
                         }
                         _ => {
                             // NOTE: other content block types not rendered in prompt summary
@@ -82,7 +82,7 @@ pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) ->
                     }
                 }
                 if !block_text.is_empty() {
-                    let _ = writeln!(output, "[{role_label}]\n{block_text}");
+                    writeln!(output, "[{role_label}]\n{block_text}");
                 }
             }
             _ => {

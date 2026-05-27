@@ -142,6 +142,7 @@ impl DistillSection {
 
 /// Configuration for a distillation run.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DistillConfig {
     /// Model to use for distillation.
     pub model: String,

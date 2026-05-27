@@ -5,11 +5,11 @@ use snafu::Snafu;
 /// Errors from distillation operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu variant fields are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum Error {
     /// LLM call failed during distillation.
     #[snafu(display("LLM call failed during distillation: {source}"))]

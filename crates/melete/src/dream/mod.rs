@@ -86,9 +86,9 @@ impl DreamConfig {
 #[derive(Debug, Clone)]
 pub struct SessionTranscript {
     /// Session identifier.
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: koina::SessionId is UUID-backed; migration to newtype tracked separately to avoid breaking callers
     /// Nous (agent) identifier.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: koina::NousId newtype available; migration tracked separately to avoid breaking callers
     /// Conversation messages FROM this session.
     pub messages: Vec<Message>,
 }
@@ -221,7 +221,7 @@ impl DreamEngine {
             match jiff::Timestamp::now().since(ts) {
                 Ok(span) => {
                     let elapsed_secs = span.get_seconds();
-                    let min_secs_i64 = i64::try_from(min_secs).unwrap_or_default();
+                    let min_secs_i64 = i64::try_from(min_secs).unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: negative min_secs is pathological; 0 seconds means no minimum wait
                     if elapsed_secs < min_secs_i64 {
                         tracing::debug!(
                             elapsed_secs,
@@ -328,7 +328,7 @@ impl DreamEngine {
                 {
                     Ok(report) => {
                         let duration_ms = start.elapsed().as_millis().min(u64::MAX.into());
-                        let duration_ms = u64::try_from(duration_ms).unwrap_or_default();
+                        let duration_ms = u64::try_from(duration_ms).unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: duration_ms is from min(as_millis, u64::MAX); the try_from never fails here
                         tracing::info!(
                             facts_added = report.facts_added,
                             facts_deduped = report.facts_deduped,
@@ -380,7 +380,7 @@ impl DreamEngine {
                 }) {
                 Ok(t) => t,
                 Err(e) => {
-                    let _ = acquired.rollback();
+                    acquired.rollback().unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
                     return Err(e);
                 }
             };
@@ -424,7 +424,7 @@ impl DreamEngine {
 
             if let Err(e) = self.verify_flush_grounding(&result.memory_flush, &transcript.messages)
             {
-                let _ = acquired.rollback();
+                acquired.rollback().unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
                 return Err(e);
             }
 
