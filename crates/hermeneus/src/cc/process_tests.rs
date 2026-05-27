@@ -377,24 +377,32 @@ async fn run_completion_spawn_failure_reports_binary_path() {
 }
 
 #[tokio::test]
-async fn run_completion_errors_when_max_tokens_requested() {
-    let binary = PathBuf::from("/bin/echo");
-    let err = run_completion(
-        &binary,
+async fn run_completion_tolerates_nonzero_max_tokens() {
+    // WHY: The claude CLI exposes no max-output-token flag, so a non-zero
+    // max_tokens is unenforceable and must be ignored (with a one-time warning),
+    // not rejected. Previously this hard-errored, breaking every turn on the
+    // default zero-config CC provider. See #4158.
+    let script = write_script(
+        "completion_max_tokens_ok",
+        r#"cat > /dev/null
+printf '{"type":"result","subtype":"success","result":"ok","is_error":false}\n'"#,
+    );
+
+    let output = run_completion(
+        &script,
         "claude-test-model",
         None,
         "hello",
         1024,
-        Duration::from_secs(5),
+        Duration::from_secs(10),
     )
     .await
-    .unwrap_err();
+    .unwrap();
 
-    let msg = err.to_string();
-    assert!(
-        msg.contains("cannot enforce max_tokens=1024"),
-        "error must explain unsupported max token limit, got: {msg}"
-    );
+    assert_eq!(output.result_text, "ok");
+    assert!(!output.is_error);
+
+    let _ = fs::remove_file(&script);
 }
 
 #[tokio::test]
@@ -553,26 +561,36 @@ async fn run_streaming_spawn_failure_reports_binary_path() {
 }
 
 #[tokio::test]
-async fn run_streaming_errors_when_max_tokens_requested() {
-    let binary = PathBuf::from("/bin/echo");
-    let mut on_delta = |_: &str| {};
-    let err = run_streaming(
-        &binary,
+async fn run_streaming_tolerates_nonzero_max_tokens() {
+    // WHY: As with run_completion, a non-zero max_tokens is unenforceable by the
+    // claude CLI and must be ignored rather than rejected, so streamed turns run
+    // on the default CC provider. See #4158.
+    let script = write_script(
+        "streaming_max_tokens_ok",
+        r#"cat > /dev/null
+printf '{"type":"assistant","message":{"type":"text","text":"hi"}}\n'
+printf '{"type":"result","subtype":"success","result":"hi","is_error":false}\n'"#,
+    );
+
+    let mut collected: Vec<String> = Vec::new();
+    let mut on_delta = |s: &str| collected.push(s.to_owned());
+
+    let output = run_streaming(
+        &script,
         "claude-test-model",
         None,
         "hello",
         2048,
-        Duration::from_secs(5),
+        Duration::from_secs(10),
         &mut on_delta,
     )
     .await
-    .unwrap_err();
+    .unwrap();
 
-    let msg = err.to_string();
-    assert!(
-        msg.contains("cannot enforce max_tokens=2048"),
-        "error must explain unsupported streaming max token limit, got: {msg}"
-    );
+    assert_eq!(output.result_text, "hi");
+    assert_eq!(collected, vec!["hi"]);
+
+    let _ = fs::remove_file(&script);
 }
 
 #[tokio::test]

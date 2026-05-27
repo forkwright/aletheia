@@ -65,17 +65,27 @@ fn scrub_cc_auth_env(cmd: &mut Command) {
         .env_remove("CLAUDE_CODE_OAUTH_TOKEN");
 }
 
-fn ensure_max_tokens_supported(max_tokens: u32) -> Result<()> {
-    if max_tokens == 0 {
-        return Ok(());
+/// Warn (once) that a non-zero `max_tokens` cannot be honored by the CC
+/// subprocess provider, then ignore it.
+///
+/// WHY: The `claude` CLI exposes no max-output-token flag, so the cap is
+/// genuinely unenforceable here. Hard-erroring on any non-zero value (the prior
+/// behavior) broke every turn on the default zero-config CC provider — both the
+/// scaffolded `[agents.defaults] max_output_tokens` and the hardcoded
+/// recall-rewrite `max_tokens = 512` feed a non-zero value into this path. The
+/// turn should still run; degrade gracefully by ignoring the unenforceable cap
+/// with a single warning rather than failing the request. See aletheia#4158.
+fn warn_unenforceable_max_tokens(max_tokens: u32) {
+    use std::sync::Once;
+    static WARN_ONCE: Once = Once::new();
+    if max_tokens != 0 {
+        WARN_ONCE.call_once(|| {
+            tracing::warn!(
+                max_tokens,
+                "claude CLI cannot enforce a max output token limit; ignoring max_tokens for CC subprocess completions"
+            );
+        });
     }
-
-    Err(error::ApiRequestSnafu {
-        message: format!(
-            "CC subprocess cannot enforce max_tokens={max_tokens}: claude CLI does not expose a max output token flag"
-        ),
-    }
-    .build())
 }
 
 /// Outcome of a CC subprocess invocation.
@@ -129,7 +139,7 @@ pub(crate) async fn run_completion(
     max_tokens: u32,
     timeout: Duration,
 ) -> Result<CcOutput> {
-    ensure_max_tokens_supported(max_tokens)?;
+    warn_unenforceable_max_tokens(max_tokens);
 
     let mut cmd = Command::new(cc_binary);
     cmd.arg("-p")
@@ -407,7 +417,7 @@ pub(crate) async fn run_streaming(
     timeout: Duration,
     on_delta: &mut (dyn FnMut(&str) + Send),
 ) -> Result<CcOutput> {
-    ensure_max_tokens_supported(max_tokens)?;
+    warn_unenforceable_max_tokens(max_tokens);
 
     let mut cmd = Command::new(cc_binary);
     cmd.arg("-p")
