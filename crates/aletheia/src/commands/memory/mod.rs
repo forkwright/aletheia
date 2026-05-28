@@ -25,7 +25,7 @@ pub(crate) enum Action {
         #[arg(long)]
         nous_id: Option<String>,
     },
-    /// Find and merge duplicate entities/facts
+    /// Find and merge duplicate entities (fact-merge not implemented; see #4165)
     Dedup {
         /// Nous agent ID to deduplicate
         #[arg(long)]
