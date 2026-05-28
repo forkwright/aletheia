@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-28T03:00:47Z"
+generated_at = "2026-05-28T04:38:38Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -219,115 +219,115 @@ token_estimate = 117
 [[crates]]
 name = "agora"
 path = "crates/agora"
-source_hash = "fcb34c53009da38513e60a976ffcfa8eee3afcea932d24c6cdb3766236df31e3"
-l3_token_estimate = 3821
+source_hash = "445a22f50b974c5bd11d9c2d40ff722f64ba0797d639d1590560953c3186509d"
+l3_token_estimate = 4901
 
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "8d16319887e3127da0e704dadfefa62a2fd25225d7e70dee21c72f8a70bbc532"
+source_hash = "1b1660a58b8aed8dfd452f4a6bcddb8d9fc99e2e0af4df5890b8e2c3516358bc"
 l3_token_estimate = 105
 
 [[crates]]
 name = "aletheia-classify"
 path = "crates/aletheia-classify"
-source_hash = "ce003420ef845eb7c81d7ecd62e58df4db917c7e4f6989fc942c8694c27319e6"
+source_hash = "02b000ee701084fe8e565e60ef6f24776abb00200a023da3d4158052498d2520"
 l3_token_estimate = 910
 
 [[crates]]
 name = "aletheia-lexica"
 path = "crates/aletheia-lexica"
-source_hash = "2a8b1b2bba03ebf8789a20e2ceda72fd29a301326ad4b2a1814f89452648b956"
+source_hash = "a4c65dd6fae1244235b65fd10b3c2f5225e6d18384a1f3f7ab0a41d8c87ae668"
 l3_token_estimate = 1530
 
 [[crates]]
 name = "aletheia-memory-mcp"
 path = "crates/aletheia-memory-mcp"
-source_hash = "6252efff536efe563f3800b0ef25ae206341194725f31a17209e0deb4c379fbe"
+source_hash = "e79a5c8f110dfccaec611de2c7245a64262b32b3f6a5fe6c1724d5b8e554c596"
 l3_token_estimate = 1133
 
 [[crates]]
 name = "aletheia-routing"
 path = "crates/aletheia-routing"
-source_hash = "96be2ffd5c78b822e40d71d3cef39c531a55bb6078c02abf88495f71c0ff372a"
-l3_token_estimate = 1645
+source_hash = "8f08cc508b36c6357c66f9b0c957f42b652ce5156e98d3efc84a5296a61f2081"
+l3_token_estimate = 2427
 
 [[crates]]
 name = "aletheia-sessions-migrate"
 path = "crates/aletheia-sessions-migrate"
-source_hash = "793ca9f613b9beb836d4f795b7b6dd691c59758a8970373559923c40a8466187"
-l3_token_estimate = 4455
+source_hash = "7f614360056a704980404c7bbfa066567ad38b1f6a7b671613dc4193e855d7d4"
+l3_token_estimate = 4443
 
 [[crates]]
 name = "dianoia"
 path = "crates/dianoia"
-source_hash = "fe5d0dfdc7417a5d83f2ec3468004c52796c101aa68ee80e0cc012adbe5ede69"
-l3_token_estimate = 7665
+source_hash = "3d366f27fc51292d3d151f83118af7951e09189f27ab63e9f54dbbc48f52649a"
+l3_token_estimate = 7702
 
 [[crates]]
 name = "diaporeia"
 path = "crates/diaporeia"
-source_hash = "bf7b5ee965cf293ff840137be32c0408dc0888b5063af8f6ea67ff179598531a"
-l3_token_estimate = 2187
+source_hash = "78ed6924f26802a1ce5aebecdc601510d0cc7c201d60325d17f450c7c9aec0c4"
+l3_token_estimate = 2257
 
 [[crates]]
 name = "dokimion"
 path = "crates/eval"
-source_hash = "0db57a2f84b277cc6ab589b81ff816498dd7acbba22be93c60fd9221aba26e2d"
-l3_token_estimate = 7846
+source_hash = "3c689658917fd3f73d1d867a4b47fe33367934386192c55dbc246b19541483d2"
+l3_token_estimate = 8198
 
 [[crates]]
 name = "eidos"
 path = "crates/eidos"
-source_hash = "296a3485c292c8a7cdd68c45db79ecf74cc09a8b5219c00d91f3f402f0266e24"
-l3_token_estimate = 12724
+source_hash = "7771ca71d4227236486ef10555dd1b05d8b376946975be38293d0632c899753a"
+l3_token_estimate = 13271
 
 [[crates]]
 name = "energeia"
 path = "crates/energeia"
-source_hash = "327d568b63de2a11c9c2edc0c4f2a7fb7b03114f4603e38198db8fcc4968c770"
-l3_token_estimate = 18658
+source_hash = "48c7434f7ffef83e67597526618154502afa6ed9736f1feea7f14f246f0fa483"
+l3_token_estimate = 19912
 
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "efc1fdfee52a3690f41ecad6b37f7e94580dc518c4cce709042c2cba075d0d50"
-l3_token_estimate = 29271
+source_hash = "e12180de21722c131f7857ed63d9c029e870ac7ea9244cfe5c77838b6fd5f185"
+l3_token_estimate = 29959
 
 [[crates]]
 name = "gnosis"
 path = "crates/gnosis"
-source_hash = "bdf9d62ce9c3c6fe1a8ee605230b58ea68f259e84fbae56d99e3d011f81d81ae"
+source_hash = "767b11648ce5eb8930d34d28542ae112e2c705db43048eb6c1f4efa8b6bbb77c"
 l3_token_estimate = 1107
 
 [[crates]]
 name = "graphe"
 path = "crates/graphe"
-source_hash = "5e0ae80a64b5645c429c9fc866c1e9bc93301e29f29314252b05a1363ccdcf21"
-l3_token_estimate = 4647
+source_hash = "3f2dbe18c49d631ab65bd8a1a0fc5b8f08b67a3135acd12174eca3bcc07a7423"
+l3_token_estimate = 4977
 
 [[crates]]
 name = "hermeneus"
 path = "crates/hermeneus"
-source_hash = "d1bbabd008e639ebb2aa07613b1a5e02c5493bcf4d608149a9dc072091d6e567"
-l3_token_estimate = 12019
+source_hash = "0b354fb749d56c843359e7b28b06e99216a7936734b8e03c1865f171231f63eb"
+l3_token_estimate = 13187
 
 [[crates]]
 name = "integration-tests"
 path = "crates/integration-tests"
-source_hash = "a988df6198093c5b8a9a45b97235de4a92e88d9ef88efcff83c60a006a727efc"
+source_hash = "2c74693a10fa5a6029bf384d73a1a4148f47b66dbbcdd497e826a0e347720ace"
 l3_token_estimate = 1135
 
 [[crates]]
 name = "koilon"
 path = "crates/theatron/koilon"
-source_hash = "b98d788bb3c7e20dd5b329987f281b7f14fddf58a32aa41aedf042e8feae161e"
+source_hash = "1219c0d32338436318b6f8bda5c5733d159943c1cc2ef76bdf9a08c34354a20a"
 l3_token_estimate = 11516
 
 [[crates]]
 name = "koina"
 path = "crates/koina"
-source_hash = "bc7ccf10239870b465954e29eaa8364610a23f80b36574c92041c2c90ee4b648"
+source_hash = "b57aa8d8cd899da57987305233e191745fad399bae9b461eaa6e30b4b980ccc1"
 l3_token_estimate = 7158
 
 [[crates]]
@@ -339,31 +339,31 @@ l3_token_estimate = 9904
 [[crates]]
 name = "melete"
 path = "crates/melete"
-source_hash = "a67b5498c6f4d83a072d3314de098b8d95cecd7b198b4838585060ebe7276c4f"
-l3_token_estimate = 4025
+source_hash = "eb21e13070b2ed2cce931ea44334c5ab84b2a4d6dcb19c60df0a348fd5969c23"
+l3_token_estimate = 4097
 
 [[crates]]
 name = "mneme"
 path = "crates/mneme"
-source_hash = "2a65993f838c21089baba2df1d599abad012f3125737ec5b6f9c8d229fccce5b"
+source_hash = "eda076baf6fdb4d78c945e1056655a808737bee8f8bac8e4ac3de4f32faaeb0e"
 l3_token_estimate = 51
 
 [[crates]]
 name = "nous"
 path = "crates/nous"
-source_hash = "41536ae489d08a137dc0b865c57461fb0a7ccfc8e19bb6041183a180a1bfcaff"
-l3_token_estimate = 32521
+source_hash = "44139b5747ed013d9eda700b48291f2aff63cdd8578d0077cb356de718a7289d"
+l3_token_estimate = 32675
 
 [[crates]]
 name = "oikonomos"
 path = "crates/daemon"
-source_hash = "0b4aa0c32017eb7acc4c24b7725958aa538be376254d298e7348027df108a785"
-l3_token_estimate = 11778
+source_hash = "df2ef95efc5e98a785048724daf7127c1a74f1829e2206d00cec4f4a82cc23d5"
+l3_token_estimate = 12254
 
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "c3e83a2ce81986e8bf75c28f8275ed51c74f3e44cc9d920dfb84ad62c3804c89"
+source_hash = "28e6e040304a534b30e03e663e63c7a175de1c7dfb3126f4f2d3eae309710ef0"
 l3_token_estimate = 11827
 
 [[crates]]
@@ -441,35 +441,35 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "be9500b6d70748e043699bac0a4aec84523a9129fe25cf04d258fe55fd44ed1a"
-l3_token_estimate = 14947
+source_hash = "81426a000859f095bb9b46f2bb92527d02ff1b97f4d38ca344600e3285556e3a"
+l3_token_estimate = 14981
 
 [[crates]]
 name = "skene"
 path = "crates/theatron/skene"
-source_hash = "fbacb5354086c7d4f2b1951572425436f2034ac2d48511a6f133598e0e67ce65"
+source_hash = "00542f38a09a0cddf39e6f2d37c7aacefe692914f37d260c65ed204c2c783126"
 l3_token_estimate = 4767
 
 [[crates]]
 name = "symbolon"
 path = "crates/symbolon"
-source_hash = "b81d2a24a277de4023a1a18b9c0b09814a531c7f3a1cef40bf5cd34068b913ad"
-l3_token_estimate = 6417
+source_hash = "f711ca843fb065f226246940de81ba0dbf1f991b3a8f58b43417a372ba438d7f"
+l3_token_estimate = 6587
 
 [[crates]]
 name = "taxis"
 path = "crates/taxis"
-source_hash = "4e2536cab3d44283af091a98d6e28fe86ebfd80402c17480a120242dfa7a024e"
-l3_token_estimate = 22930
+source_hash = "7480023984e55d11bf3f86677d932368abaa7a7f5b046ef8a1c999a5a63a8c74"
+l3_token_estimate = 23333
 
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "6048a5e51321137ffb8996ed490ad365c031965849f6ccce4c879a8978e81e3e"
+source_hash = "c76fd612fa77c359d94c6875ae475d9529ffd750baaab76ddbbbed81a0c48bcc"
 l3_token_estimate = 21930
 
 [[crates]]
 name = "thesauros"
 path = "crates/thesauros"
-source_hash = "7e20b249bc4231d22cc710c994fcd6ca059b6abfe575e445e59158d79fe9f03e"
+source_hash = "b721527439f4ccac128a15f76f285d0801b1a38020db34d1284441b1806d66ff"
 l3_token_estimate = 2194

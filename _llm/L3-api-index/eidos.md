@@ -108,7 +108,7 @@ pub struct ExtractedFact {
 ```rust
 pub struct ExtractedToolCall {
     /// Tool call ID.
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — raw provider-assigned tool call ID, not a knowledge-domain identifier
     /// Tool name.
     pub name: String,
     /// Input parameters.
@@ -291,7 +291,7 @@ pub enum FactScope {
 ```rust
 pub struct ArchitectureFact {
     /// Stable dot-separated identifier, e.g. `aletheia.spawn.model`.
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — dot-separated hierarchical path, not a typed domain ID
     /// Architectural scope of this fact.
     pub scope: FactScope,
     /// The fact itself, written as a single declarative sentence (markdown OK).
@@ -455,9 +455,9 @@ pub struct EmbeddedChunk {
     /// Source type (fact, message, note, document).
     pub source_type: String,
     /// Source ID (fact ID, message `session_id:seq`, etc.).
-    pub source_id: String,
+    pub source_id: String, // kanon:ignore RUST/primitive-for-domain-id — polymorphic source reference string, not a single domain ID type
     /// Which nous this belongs to (empty = shared).
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — cross-crate nous identifier from koina, serialized as string here
     /// The embedding vector (dimension depends on model).
     pub embedding: Vec<f32>,
     /// When embedded.
@@ -474,7 +474,7 @@ pub struct RecallResult {
     /// Source type.
     pub source_type: String,
     /// Source ID.
-    pub source_id: String,
+    pub source_id: String, // kanon:ignore RUST/primitive-for-domain-id — polymorphic source reference string, not a single domain ID type
     /// Data-sovereignty classification for the underlying fact, carried
     /// from [`Fact::sensitivity`] so the recall pipeline can filter results
     /// by the active provider's deployment target (#3404, #3413). Defaults
@@ -500,6 +500,12 @@ pub struct RecallResult {
     /// [`Fact::scope`]: super::fact::Fact::scope
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<super::scope::MemoryScope>,
+    /// Git-remote-derived project partition for the underlying fact.
+    ///
+    /// `None` means the result is global, non-fact, or predates project
+    /// partitioning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<crate::workspace::ProjectId>,
     /// Visibility level for the underlying fact, carried from
     /// [`Fact::visibility`] so the recall pipeline can filter by visibility.
     /// Defaults to [`Visibility::Private`] for facts persisted before
@@ -579,7 +585,7 @@ pub struct Fact {
     /// Stable identifier for this fact.
     pub id: FactId,
     /// Agent (nous) that owns this fact.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — cross-crate nous identifier from koina, serialized as string here
     /// Classification determining base decay behavior.
     pub fact_type: String,
     /// Human-readable fact statement.
@@ -591,6 +597,12 @@ pub struct Fact {
     /// New facts should always populate this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<MemoryScope>,
+
+    /// Git-remote-derived project partition for project-scoped behavioral facts.
+    ///
+    /// `None` means the fact is global or predates project partitioning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<ProjectId>,
 
     /// Data-sovereignty classification gating which provider deployment
     /// targets may receive this fact during recall (#3404, #3413).
@@ -1024,7 +1036,7 @@ pub struct Finding {
     /// Stable identifier for this finding within the eval run.
     ///
     /// Convention: `<BENCHMARK>-<CATEGORY>-<N>`, e.g. `LME-factual-001`.
-    pub finding_id: String,
+    pub finding_id: String, // kanon:ignore RUST/primitive-for-domain-id — benchmark-scoped finding label, not a knowledge-domain identifier
     /// The claim as a single declarative sentence.
     ///
     /// Write as: "{system} {verb} {metric} ({value}), {framing qualifier}."
@@ -1527,7 +1539,7 @@ pub struct ToolOutcome {
 ```rust
 pub struct RecalledFact {
     /// Stable identifier of the recalled source (fact / note / document id).
-    pub source_id: String,
+    pub source_id: String, // kanon:ignore RUST/primitive-for-domain-id — polymorphic source reference string, not a single domain ID type
     /// Source type label (e.g. `"fact"`, `"note"`, `"document"`).
     pub source_type: String,
     /// Final weighted recall score in `[0.0, 1.0]`.
@@ -1562,9 +1574,9 @@ pub struct TrainingRecord {
     #[serde(default)]
     pub schema_version: u32,
     /// Session identifier (groups turns within a conversation).
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — cross-crate session identifier, serialized as string here
     /// Nous agent identifier that handled the turn.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — cross-crate nous identifier from koina, serialized as string here
     /// The user's input message.
     pub user_message: String,
     /// The assistant's response content.
@@ -1612,5 +1624,28 @@ pub struct TrainingRecord {
     /// re-process unredacted corpora if the redaction policy changes.
     #[serde(default, skip_serializing_if = "is_false")]
     pub pii_redacted: bool,
+}
+```
+
+## `src/workspace.rs`
+
+```rust
+pub struct ProjectId(String);
+```
+
+```rust
+impl ProjectId {
+    pub fn from_git_remote (remote_url: impl AsRef<str>) -> Result<Self, ProjectIdError>;
+    pub fn from_sha256_hex (value: impl AsRef<str>) -> Result<Self, ProjectIdError>;
+    pub fn as_str (&self) -> &str;
+}
+```
+
+```rust
+pub enum ProjectIdError {
+    /// The remote URL was empty after trimming whitespace.
+    EmptyRemote,
+    /// The stored project ID was not a 64-character SHA-256 hex string.
+    InvalidHex,
 }
 ```
