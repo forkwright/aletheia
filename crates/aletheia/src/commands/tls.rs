@@ -40,6 +40,10 @@ pub(crate) fn run(action: &Action) -> Result<()> {
 }
 
 fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) -> Result<()> {
+    if days == 0 {
+        whatever!("tls generate: --days must be at least 1");
+    }
+
     std::fs::create_dir_all(output_dir)
         .with_whatever_context(|_| format!("failed to create {}", output_dir.display()))?;
 
@@ -58,7 +62,7 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
     }
 
     let cert = tls_self_signed::generate(sans, days, "Aletheia Dev")
-        .whatever_context("failed to generate self-signed certificate")?;
+        .with_whatever_context(|e| e.to_string())?;
 
     koina::fs::write_restricted(&cert_path, cert.cert_pem.as_bytes())
         .with_whatever_context(|_| format!("failed to write {}", cert_path.display()))?;

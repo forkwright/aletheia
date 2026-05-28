@@ -31,6 +31,10 @@ pub(crate) enum Error {
     KeyParse,
     #[snafu(display("failed to sign certificate"))]
     Sign,
+    #[snafu(display(
+        "tls generate: --days {days} is too large; certificate expiry would overflow the representable timestamp range"
+    ))]
+    ExpiryOverflow { days: u32 },
 }
 
 /// A freshly generated self-signed certificate and its private key, both PEM-encoded.
@@ -67,7 +71,7 @@ pub(crate) fn generate(
     let now = Timestamp::now();
     let end = now
         .checked_add(jiff::SignedDuration::from_hours(i64::from(days) * 24))
-        .unwrap_or(now);
+        .map_err(|_e| Error::ExpiryOverflow { days })?;
 
     // ---- serial number (16 random bytes, positive) ----
     let mut serial = [0u8; 16];
