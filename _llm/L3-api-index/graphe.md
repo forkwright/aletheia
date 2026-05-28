@@ -276,7 +276,7 @@ pub struct AgentFile {
 
 ```rust
 pub struct NousInfo {
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     pub name: Option<String>,
     pub model: Option<String>,
     pub config: serde_json::Value,
@@ -292,7 +292,7 @@ pub struct WorkspaceData {
 
 ```rust
 pub struct ExportedSession {
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     pub session_key: String,
     pub status: String,
     pub session_type: String,
@@ -340,7 +340,7 @@ pub struct MemoryData {
 
 ```rust
 pub struct ExportedVector {
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     pub text: String,
     pub metadata: serde_json::Value,
 }
@@ -550,9 +550,9 @@ pub struct SessionOrigin {
 ```rust
 pub struct Session {
     /// Unique session identifier (UUID v4).
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     /// Owning agent identifier.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     /// Logical key used to look up or resume this session.
     pub session_key: String,
     /// Current lifecycle status.
@@ -585,7 +585,7 @@ pub struct Message {
     /// Database-assigned row identifier.
     pub id: i64,
     /// Session this message belongs to.
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     /// Sequence number within the session (monotonically increasing).
     pub seq: i64,
     /// Author role (system, user, assistant, or `tool_result`).
@@ -608,7 +608,7 @@ pub struct Message {
 ```rust
 pub struct UsageRecord {
     /// Session this usage belongs to.
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     /// Turn sequence number within the session.
     pub turn_seq: i64,
     /// Tokens consumed from the input (prompt).
@@ -628,7 +628,7 @@ pub struct UsageRecord {
 pub struct BlackboardRow {
     pub key: String,
     pub value: String,
-    pub author_nous_id: String,
+    pub author_nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     pub ttl_seconds: i64,
     pub created_at: String,
     pub expires_at: Option<String>,
@@ -640,9 +640,9 @@ pub struct AgentNote {
     /// Database-assigned row identifier.
     pub id: i64,
     /// Session this note is attached to.
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     /// Agent that wrote the note.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     /// Freeform category tag for filtering (e.g. "insight", "task").
     pub category: String,
     /// Note body text.
