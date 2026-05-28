@@ -10,6 +10,7 @@ use tracing::warn;
 use mneme::types::{Message, Role, Session};
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
+use crate::extract::Claims;
 use crate::insights::anomaly::detect_anomalies;
 use crate::state::InsightsState;
 use crate::types::insights::{
@@ -52,6 +53,7 @@ fn usize_to_f64(n: usize) -> f64 {
 )]
 pub async fn get_agent_perf(
     State(state): State<InsightsState>,
+    _claims: Claims,
 ) -> Json<AgentPerformanceListResponse> {
     // WHY: Collect agent configs outside spawn_blocking because configs()
     // returns references tied to the manager's lifetime.
@@ -126,6 +128,7 @@ pub async fn get_agent_perf(
 )]
 pub async fn get_agent_perf_one(
     State(state): State<InsightsState>,
+    _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<AgentPerformance>, ApiError> {
     let config = state
@@ -169,6 +172,7 @@ pub async fn get_agent_perf_one(
 )]
 pub async fn get_quality_metrics(
     State(state): State<InsightsState>,
+    _claims: Claims,
 ) -> Json<QualityMetricsResponse> {
     let state_clone = state.clone();
     let (sessions, messages) = tokio::task::spawn_blocking(move || {
@@ -261,6 +265,7 @@ fn validate_optional_date(field: &str, value: Option<&str>) -> Result<(), ApiErr
 )]
 pub async fn get_token_metrics(
     State(state): State<InsightsState>,
+    _claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<TokenMetricsResponse>, ApiError> {
     validate_metrics_query(&query)?;
@@ -283,6 +288,7 @@ pub async fn get_token_metrics(
 )]
 pub async fn get_cost_metrics(
     State(state): State<InsightsState>,
+    _claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<CostMetricsResponse>, ApiError> {
     validate_metrics_query(&query)?;
@@ -303,7 +309,10 @@ pub async fn get_cost_metrics(
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn get_journal(Query(query): Query<JournalQuery>) -> Json<Vec<JournalEvent>> {
+pub async fn get_journal(
+    _claims: Claims,
+    Query(query): Query<JournalQuery>,
+) -> Json<Vec<JournalEvent>> {
     warn!(
         source = ?query.source,
         level = ?query.level,

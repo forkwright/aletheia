@@ -18,6 +18,7 @@ use dianoia::verify::{
 use dianoia::workspace::ProjectWorkspace;
 
 use crate::error::{ApiError, InternalSnafu, NotFoundSnafu};
+use crate::extract::Claims;
 use crate::state::PlanningState;
 
 #[path = "planning_dto.rs"]
@@ -44,6 +45,7 @@ use planning_dto::{
 )]
 pub(crate) async fn get_verification(
     State(state): State<PlanningState>,
+    _claims: Claims,
     Path(project_id): Path<String>,
 ) -> Result<Json<VerificationResult>, ApiError> {
     load_project_verification(state.planning_root, project_id, None)
@@ -67,6 +69,7 @@ pub(crate) async fn get_verification(
 )]
 pub(crate) async fn refresh_verification(
     State(state): State<PlanningState>,
+    _claims: Claims,
     Path(project_id): Path<String>,
     body: Option<Json<RefreshRequest>>,
 ) -> Result<Json<VerificationResult>, ApiError> {
@@ -76,7 +79,7 @@ pub(crate) async fn refresh_verification(
         .map(Json)
 }
 
-async fn load_project_verification(
+pub(crate) async fn load_project_verification(
     planning_root: PathBuf,
     project_id: String,
     criteria: Option<Vec<CriterionEvaluation>>,
@@ -320,32 +323,11 @@ impl From<&CriterionEvaluation> for CriterionInput {
     reason = "test: JSON keys and first requirement are known-present"
 )]
 mod tests {
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use axum::routing::{get, post};
-    use axum::{Router, body};
-    use tower::ServiceExt as _;
-
     use dianoia::phase::{Phase, PhaseState};
     use dianoia::plan::{Plan, PlanState};
     use dianoia::project::{Project, ProjectMode};
 
     use super::*;
-
-    fn planning_router(root: PathBuf) -> Router {
-        Router::new()
-            .route(
-                "/api/v1/planning/projects/{project_id}/verification",
-                get(get_verification),
-            )
-            .route(
-                "/api/v1/planning/projects/{project_id}/verification/refresh",
-                post(refresh_verification),
-            )
-            .with_state(PlanningState {
-                planning_root: root,
-            })
-    }
 
     fn write_project(root: &std::path::Path, complete: bool) -> String {
         let mut project = Project::new(
@@ -382,24 +364,15 @@ mod tests {
     async fn get_verification_returns_real_result() {
         let dir = tempfile::tempdir().unwrap();
         let project_id = write_project(dir.path(), true);
-        let app = planning_router(dir.path().to_path_buf());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!(
-                        "/api/v1/planning/projects/{project_id}/verification"
-                    ))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let result = load_project_verification(
+            dir.path().to_path_buf(),
+            project_id.clone(),
+            None,
+        )
+        .await
+        .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = body::to_bytes(response.into_body(), 64 * 1024)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["project_id"], project_id);
         assert_eq!(json["requirements"][0]["status"], "verified");
         assert_eq!(json["requirements"][0]["coverage_pct"], 100);
@@ -407,41 +380,27 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_verification_accepts_synthetic_criterion_input() {
+        use planning_dto::EvidenceInput;
+
         let dir = tempfile::tempdir().unwrap();
         let project_id = write_project(dir.path(), false);
-        let app = planning_router(dir.path().to_path_buf());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!(
-                        "/api/v1/planning/projects/{project_id}/verification/refresh"
-                    ))
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "criteria": [{
-                                "criterion": "endpoint returns plan-validity result",
-                                "status": "met",
-                                "evidence": [{
-                                    "kind": "test",
-                                    "content": "synthetic endpoint test"
-                                }],
-                                "detail": "verified by synthetic request"
-                            }]
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let criteria = vec![CriterionEvaluation {
+            phase_id: None,
+            criterion: "endpoint returns plan-validity result".to_owned(),
+            status: CriterionStatusInput::Met,
+            evidence: vec![EvidenceInput {
+                kind: "test".to_owned(),
+                content: "synthetic endpoint test".to_owned(),
+            }],
+            detail: "verified by synthetic request".to_owned(),
+            proposed_fix: None,
+        }];
+        let result =
+            load_project_verification(dir.path().to_path_buf(), project_id, Some(criteria))
+                .await
+                .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = body::to_bytes(response.into_body(), 64 * 1024)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["requirements"][0]["status"], "verified");
         assert_eq!(
             json["requirements"][0]["evidence"][0]["artifact"],
@@ -452,17 +411,14 @@ mod tests {
     #[tokio::test]
     async fn get_verification_returns_not_found_for_missing_project() {
         let dir = tempfile::tempdir().unwrap();
-        let app = planning_router(dir.path().to_path_buf());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/v1/planning/projects/missing/verification")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let result =
+            load_project_verification(dir.path().to_path_buf(), "missing".to_owned(), None).await;
+        let Err(err) = result else {
+            panic!("missing project should fail, got Ok");
+        };
+        assert!(
+            matches!(err, ApiError::NotFound { .. }),
+            "expected NotFound, got {err:?}"
+        );
     }
 }

@@ -383,6 +383,122 @@ impl KnowledgeWriteRoute {
     }
 }
 
+/// Read-only `/api/v1/...` routes that must reject anonymous requests.
+///
+/// These handlers do not run inside a `route_layer` like knowledge does, and
+/// they do not perform write actions, but they read agent telemetry and
+/// planning state that should not be exposed without a verified bearer.
+fn unauthenticated_read_routes() -> [(Method, &'static str); 8] {
+    [
+        (Method::GET, "/api/v1/metrics/agents"),
+        (Method::GET, "/api/v1/metrics/agents/syn"),
+        (Method::GET, "/api/v1/metrics/quality"),
+        (Method::GET, "/api/v1/metrics/tokens"),
+        (Method::GET, "/api/v1/metrics/costs"),
+        (Method::GET, "/api/v1/journal"),
+        (
+            Method::GET,
+            "/api/v1/planning/projects/some-project/verification",
+        ),
+        (
+            Method::POST,
+            "/api/v1/planning/projects/some-project/verification/refresh",
+        ),
+    ]
+}
+
+#[tokio::test]
+async fn insights_and_planning_routes_reject_missing_bearer_token() {
+    // WHY: insights (`/api/v1/metrics/*`, `/api/v1/journal`) and planning
+    // (`/api/v1/planning/projects/{id}/verification[/refresh]`) handlers
+    // previously did not require Claims and were not behind a `route_layer`,
+    // so anonymous callers could read per-agent token/cost metrics and
+    // planning state. Regression test: every handler under those prefixes
+    // must reject anonymous requests with 401.
+    let env = TestEnv::new().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for (method, path) in unauthenticated_read_routes() {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method.clone())
+                    .uri(path)
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("router response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "{method} {path} must reject anonymous requests"
+        );
+    }
+}
+
+#[tokio::test]
+async fn insights_and_planning_routes_reject_invalid_bearer_token() {
+    let env = TestEnv::new().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for (method, path) in unauthenticated_read_routes() {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method.clone())
+                    .uri(path)
+                    .header("authorization", "Bearer not.a.valid.jwt")
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("router response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "{method} {path} must reject invalid bearer"
+        );
+    }
+}
+
+#[tokio::test]
+async fn insights_routes_admit_authenticated_bearer() {
+    // WHY: the auth gate on these handlers should be additive: a valid
+    // bearer still gets through to the handler. Asserts the new Claims
+    // extractor does not break the happy path for the GET handlers.
+    let env = TestEnv::new().await;
+    let token = issue_test_token(&env.state);
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for path in [
+        "/api/v1/metrics/agents",
+        "/api/v1/metrics/quality",
+        "/api/v1/journal",
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::get(path)
+                    .header("authorization", bearer(&token))
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("router response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "{path} must succeed with a valid bearer"
+        );
+    }
+}
+
 fn knowledge_write_routes() -> [KnowledgeWriteRoute; 7] {
     [
         KnowledgeWriteRoute {
