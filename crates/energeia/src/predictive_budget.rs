@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — cohesive budget prediction module; 808 lines is only marginally over limit and splitting would fragment tightly coupled allocation logic
 // WHY: Predictive budget allocation from prompt characteristics. Analyzes
 // prompt complexity, blast radius, domain, and historical data to estimate
 // turn budgets before dispatch. Prevents both over-allocation (wasted budget)
@@ -317,9 +318,12 @@ pub fn predict_budget_with_historical(
     if let Some(avg_turns) = historical_avg {
         // WHY: Blend historical average with characteristic-based prediction.
         // Historical data gets 30% weight, characteristics get 70%.
+        // kanon:ignore RUST/as-cast — historical_avg is a positive f64 bounded by realistic turn counts; truncation is safe and intended
         let historical_initial = avg_turns as u32;
+        // kanon:ignore RUST/as-cast — blended values are bounded by clamp below and fit safely in u32
         let blended_initial = (f64::from(prediction.initial_turns) * 0.7
             + f64::from(historical_initial) * 0.3) as u32;
+        // kanon:ignore RUST/as-cast — resume ratio produces positive u32 bounded by BASE_TURNS_HIGH*RESUME_RATIO_HIGH < 200
         let blended_resume = (f64::from(blended_initial) * 0.6) as u32;
         let ceiling = max_turns.unwrap_or(DEFAULT_MAX_TURNS);
         let clamped_initial = blended_initial.clamp(ABSOLUTE_MIN_TURNS, ceiling);
@@ -386,14 +390,17 @@ fn base_allocation_for_complexity(complexity: Complexity) -> (u32, u32) {
     match complexity {
         Complexity::Low => (
             BASE_TURNS_LOW,
+            // kanon:ignore RUST/as-cast — resume ratio produces positive u32 bounded by BASE_TURNS_LOW*RESUME_RATIO_LOW < 200
             (f64::from(BASE_TURNS_LOW) * RESUME_RATIO_LOW) as u32,
         ),
         Complexity::Medium => (
             BASE_TURNS_MEDIUM,
+            // kanon:ignore RUST/as-cast — resume ratio produces positive u32 bounded by BASE_TURNS_MEDIUM*RESUME_RATIO_MEDIUM < 200
             (f64::from(BASE_TURNS_MEDIUM) * RESUME_RATIO_MEDIUM) as u32,
         ),
         Complexity::High => (
             BASE_TURNS_HIGH,
+            // kanon:ignore RUST/as-cast — resume ratio produces positive u32 bounded by BASE_TURNS_HIGH*RESUME_RATIO_HIGH < 200
             (f64::from(BASE_TURNS_HIGH) * RESUME_RATIO_HIGH) as u32,
         ),
     }
@@ -461,6 +468,7 @@ fn complexity_score_adjustment(score: u32) -> f64 {
 fn apply_adjustments(base: u32, adjustments: &[f64], max_turns: u32) -> u32 {
     let factor: f64 = adjustments.iter().product();
     let adjusted = f64::from(base) * factor;
+    // kanon:ignore RUST/as-cast — clamp produces non-negative f64 bounded by max_turns which fits in u32
     adjusted.clamp(f64::from(ABSOLUTE_MIN_TURNS), f64::from(max_turns)) as u32
 }
 

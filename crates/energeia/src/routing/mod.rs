@@ -102,6 +102,7 @@ pub(crate) enum RoutingMode {
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DispatchRoutingConfig {
     /// Routing mode. Defaults to `static`.
     pub(crate) mode: RoutingMode,

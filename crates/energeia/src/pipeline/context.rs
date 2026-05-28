@@ -46,6 +46,7 @@ pub(crate) struct PipelineContext {
 
     // --- Set by preparation stage ---
     /// Unique identifier for this dispatch run (ULID string).
+    // kanon:ignore RUST/primitive-for-domain-id — internal pipeline context field; ULID stored as String by design for logging/serialization compat
     pub(crate) dispatch_id: String,
     /// Wall-clock start time for the entire dispatch.
     pub(crate) start: Instant,

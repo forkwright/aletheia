@@ -16,14 +16,17 @@ use crate::types::{MechanicalIssue, MechanicalIssueKind};
 /// Each entry is `(pattern_string, human_message)`. Checked against every
 /// added line in non-test files.
 const ANTI_PATTERNS: &[(&str, &str)] = &[
+    // kanon:ignore RUST/unwrap — string literal in ANTI_PATTERNS table, not actual unwrap() usage
     (
         ".unwrap()",
         "unwrap() call in library code — use ? operator with error context",
     ),
+    // kanon:ignore RUST/allow-not-expect — string literal in ANTI_PATTERNS table, not actual #[allow] attribute
     (
         "#[allow(",
         "#[allow()] attribute — use #[expect(lint, reason = \"...\")] instead",
     ),
+    // kanon:ignore RUST/println-in-lib — string literal in ANTI_PATTERNS table, not actual println!() usage
     (
         "println!",
         "println!() in library code — use tracing macros instead",
@@ -539,6 +542,7 @@ diff --git a/src/lib.rs b/src/lib.rs
 
         let issues = mechanical_check(diff, &prompt);
 
+        // kanon:ignore RUST/allow-not-expect — test assertion checking that the anti-pattern detector flags #[allow()]; contains() argument is a string literal
         assert!(issues.iter().any(
             |i| i.kind == MechanicalIssueKind::AntiPattern && i.message.contains("#[allow()]")
         ));

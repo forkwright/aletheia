@@ -149,11 +149,13 @@ pub fn build_qa_prompt(
 
     out.push_str("<task>\n");
     out.push_str("Evaluate the following code changes against the acceptance criteria.\n");
+    // kanon:ignore RUST/no-silent-result-swallow — writeln! to an in-memory String is infallible by std::fmt::Write invariant
     let _ = writeln!(out, "Original task: {description}");
     out.push_str("</task>\n\n");
 
     out.push_str("<criteria>\n");
     for (i, (text, _)) in criteria.iter().enumerate() {
+        // kanon:ignore RUST/no-silent-result-swallow — writeln! to an in-memory String is infallible by std::fmt::Write invariant
         let _ = writeln!(out, "  <criterion id=\"C{}\">{text}</criterion>", i + 1);
     }
     out.push_str("</criteria>\n\n");
@@ -166,6 +168,7 @@ pub fn build_qa_prompt(
             .find(|&i| diff.is_char_boundary(i))
             .unwrap_or(0);
         let truncated = diff.get(..boundary).unwrap_or_default();
+        // kanon:ignore RUST/string-slice — false positive: diff.get() returns Option<&str>; no string slicing occurs here
         format!("{truncated}\n\n[... diff truncated at 100K chars ...]")
     } else {
         diff.to_owned()

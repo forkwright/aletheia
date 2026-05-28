@@ -252,6 +252,7 @@ pub enum SessionEvent {
 #[non_exhaustive]
 pub struct SessionResult {
     /// The Agent SDK session identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — wire-protocol/deserialization type; changing to newtype would be a breaking API change across crates
     pub session_id: String,
     /// Total cost in USD.
     pub cost_usd: f64,

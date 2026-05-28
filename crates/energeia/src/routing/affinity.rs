@@ -31,6 +31,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use aletheia_routing::store::RollingStats;
 use aletheia_routing::types::{RequestFeatures, TurnOutcome};
 use aletheia_routing::{BoxFuture, Router, RouterError, RoutingDecision};
 use tracing::instrument;
@@ -40,7 +41,6 @@ use super::persona::PersonaRouter;
 use super::persona::{ModelTier, PersonaRole};
 use super::store::AfterActionStore;
 use super::{ProviderId, TaskCategory};
-use aletheia_routing::store::RollingStats;
 
 // ---------------------------------------------------------------------------
 // AffinityScore

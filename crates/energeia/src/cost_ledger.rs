@@ -85,6 +85,7 @@ impl BlastRadiusCost {
 /// ```
 #[derive(Debug, Clone)]
 pub struct CostLedger {
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — CostLedger uses synchronous short-held locks for HashMap ops that never cross await points; tokio::Mutex would add unnecessary async boundary overhead for this non-async API
     inner: Arc<Mutex<HashMap<String, BlastRadiusCost>>>,
 }
 
@@ -99,6 +100,7 @@ impl CostLedger {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            // kanon:ignore RUST/no-arc-mutex-anti-pattern — same invariant as field: non-async API with short-held locks
             inner: Arc::new(Mutex::new(HashMap::new())),
         }
     }

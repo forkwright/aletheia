@@ -230,6 +230,7 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
                     || current_file.ends_with("tests.rs");
 
                 if !is_test_file && !is_lint_ignore {
+                    // kanon:ignore RUST/allow-not-expect — comment describing the regex check, not an actual #[allow] attribute
                     // Check for #[allow(...)]
                     if let Some(caps) = ALLOW_RE.captures(added) {
                         let lint_name = caps.get(1).map(|m| m.as_str().trim().to_string());

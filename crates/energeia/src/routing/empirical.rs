@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use aletheia_routing::types::{RequestFeatures, TurnOutcome};
 use aletheia_routing::{BoxFuture, Router, RouterError, RoutingDecision};
+use tracing::Instrument;
 
 use super::store::AfterActionStore;
 use super::{ProviderId, StaticRouter, TaskCategory};
@@ -217,9 +218,12 @@ impl Router for EmpiricalRouter {
         // so the hot response path is never blocked.
         let store = Arc::clone(&self.store);
         let outcome = outcome.clone();
-        tokio::spawn(async move {
-            store.record_outcome(&outcome).await;
-        });
+        tokio::spawn(
+            async move {
+                store.record_outcome(&outcome).await;
+            }
+            .instrument(tracing::Span::current()),
+        );
         Ok(())
     }
 }
