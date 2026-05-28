@@ -26,6 +26,7 @@ pub(crate) const MAX_MEMORY_ENTRIES: usize = 200;
 #[serde(from = "MemoryHeaderRaw")]
 pub struct MemoryHeader {
     /// Source identifier (fact ID, document reference, or path).
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub source_id: String,
     /// Short name or title for this memory entry.
     pub name: String,
@@ -117,8 +118,10 @@ impl MemoryManifest {
         use std::fmt::Write;
         let mut out = String::with_capacity(self.headers.len() * 80);
         for h in &self.headers {
+            // kanon:ignore RUST/no-silent-result-swallow — write! into String is infallible (String's Write impl never errors); the Result discard is the idiomatic fmt-write pattern.
             let _ = write!(out, "- {} {}", h.source_id, h.name);
             if let Some(desc) = &h.description {
+                // kanon:ignore RUST/no-silent-result-swallow — write! into String is infallible (String's Write impl never errors).
                 let _ = write!(out, ": {desc}");
             }
             out.push('\n');

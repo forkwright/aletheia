@@ -13,6 +13,7 @@
 #[derive(Debug, Clone)]
 pub struct SourceLinkedFact {
     /// Fact identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub fact_id: String,
     /// The stored fact content.
     pub content: String,
@@ -26,6 +27,7 @@ pub struct SourceLinkedFact {
 #[derive(Debug, Clone)]
 pub struct StalenessResult {
     /// The fact that was checked.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub fact_id: String,
     /// Whether the fact is still consistent with its source.
     pub status: StalenessStatus,

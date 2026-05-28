@@ -64,8 +64,11 @@ fn classify_observation_type(c: &mut Criterion) {
     let debt = "debt: the validation function is duplicated";
     c.bench_function("classify_observation_type", |b| {
         b.iter(|| {
+            // kanon:ignore RUST/no-silent-result-swallow — bench loop measures classify() throughput; the result is discarded by design to keep the inner loop free of branching.
             let _ = ObservationType::classify(black_box(bug));
+            // kanon:ignore RUST/no-silent-result-swallow — bench loop measures classify() throughput; the result is discarded by design to keep the inner loop free of branching.
             let _ = ObservationType::classify(black_box(idea));
+            // kanon:ignore RUST/no-silent-result-swallow — bench loop measures classify() throughput; the result is discarded by design to keep the inner loop free of branching.
             let _ = ObservationType::classify(black_box(debt));
         });
     });

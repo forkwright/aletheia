@@ -85,6 +85,7 @@ pub struct LessonConfig {
     /// PR number for linking.
     pub pr_number: Option<u32>,
     /// The nous agent this lesson belongs to.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub nous_id: String,
     /// Source identifier (e.g., "pr-merge:123").
     pub source: String,

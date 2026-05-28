@@ -668,7 +668,7 @@ mod tests {
             matches!(result, Err(EpistemeError::RerankerFailed { .. })),
             "rerank should fail clearly when scoring is not implemented"
         );
-        let msg = format!("{}", result.unwrap_err());
+        let msg = result.unwrap_err().to_string();
         assert!(
             msg.contains("not yet implemented"),
             "error message should explain scoring is not yet implemented: {msg}"

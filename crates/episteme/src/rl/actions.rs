@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 /// still-missing Phase 05c parameter inventory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Action {
     /// Keep a memory item regardless of ordinary decay pressure.
     Pin {

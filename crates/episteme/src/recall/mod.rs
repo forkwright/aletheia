@@ -123,8 +123,10 @@ pub struct ScoredResult {
     /// Source type (fact, message, note, document).
     pub source_type: String,
     /// Source ID.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub source_id: String,
     /// Which nous this belongs to.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub nous_id: String,
     /// Raw factor scores.
     pub factors: FactorScores,
@@ -762,6 +764,7 @@ pub fn filter_by_visibility(candidates: Vec<ScoredResult>, min: Visibility) -> V
 
 /// Project recall scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ProjectRecallScope {
     /// Return all projects and global results.
     Global,

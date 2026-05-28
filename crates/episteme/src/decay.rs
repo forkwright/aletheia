@@ -32,6 +32,7 @@ pub const DEFAULT_MAX_CROSS_AGENT_MULTIPLIER: f64 = 1.75;
 
 /// Configuration for multi-factor decay computation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DecayConfig {
     /// Weight for recency factor (hours since last access). Default: 0.35
     pub recency: f64,

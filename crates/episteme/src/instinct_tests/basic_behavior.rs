@@ -4,9 +4,10 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
+use eidos::workspace::ProjectId;
+
 use super::super::*;
 use crate::knowledge::parse_timestamp;
-use eidos::workspace::ProjectId;
 
 fn ts(s: &str) -> jiff::Timestamp {
     parse_timestamp(s).expect("valid test timestamp")

@@ -19,6 +19,7 @@ use super::{EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult, InitFailedSnaf
 
 /// Configuration for an `OpenAI`-compatible embedding provider.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct OpenAiCompatConfig {
     /// Base URL for the target endpoint — typically ends in `/v1`. Example:
@@ -92,6 +93,7 @@ impl OpenAiEmbeddingProvider {
     pub fn new(config: &OpenAiCompatConfig) -> EmbeddingResult<Self> {
         // WHY: reqwest with rustls-no-provider needs an explicit crypto provider.
         // This is idempotent — subsequent calls silently fail and are ignored.
+        // kanon:ignore RUST/no-silent-result-swallow — install_default() returns Err once the provider is already installed; that's the intended steady state, not an error.
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let runtime = tokio::runtime::Runtime::new().map_err(|e| {
@@ -170,6 +172,7 @@ impl OpenAiEmbeddingProvider {
 
         let status = response.status().as_u16();
         if !response.status().is_success() {
+            // kanon:ignore RUST/no-result-unwrap-or-default — we are already on the error path; empty body is an acceptable degraded message when the response body cannot be read.
             let body = response.text().await.unwrap_or_default();
             // WHY: bounded slice so we do not paste a multi-megabyte HTML
             // error page into the error chain.

@@ -85,6 +85,8 @@ fn exact_match_rate_from_questions(value: &serde_json::Value) -> Option<f64> {
         })
         .count();
 
+    // kanon:ignore RUST/as-cast — hits/questions.len() are usize; f64 conversion is fine for the [0.0,1.0] rate output (loss-of-precision irrelevant well under 2^53).
+    // kanon:ignore RUST/as-cast — see above (second cast on the same expression).
     Some(hits as f64 / questions.len() as f64)
 }
 
