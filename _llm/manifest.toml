@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-28T05:20:50Z"
+generated_at = "2026-05-28T06:16:08Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -273,7 +273,7 @@ l3_token_estimate = 2257
 [[crates]]
 name = "dokimion"
 path = "crates/eval"
-source_hash = "3c689658917fd3f73d1d867a4b47fe33367934386192c55dbc246b19541483d2"
+source_hash = "4e93a99ab09ea158775ca52d40591cd0d59fb56d5acfb32b06a17db214e0227e"
 l3_token_estimate = 8198
 
 [[crates]]
@@ -441,7 +441,7 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "81426a000859f095bb9b46f2bb92527d02ff1b97f4d38ca344600e3285556e3a"
+source_hash = "a2586ee653cd982d13f13e6be545dc3804e92d8d29d0ca179d50112c1bd3fbc8"
 l3_token_estimate = 14981
 
 [[crates]]
@@ -465,8 +465,8 @@ l3_token_estimate = 23333
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "c76fd612fa77c359d94c6875ae475d9529ffd750baaab76ddbbbed81a0c48bcc"
-l3_token_estimate = 21930
+source_hash = "815547a98a184c49884c5caeb75905f74284177d7afa264fc8e1ca70444577e9"
+l3_token_estimate = 22042
 
 [[crates]]
 name = "thesauros"
