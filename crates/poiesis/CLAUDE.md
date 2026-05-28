@@ -41,6 +41,8 @@ Report tooling family: format-agnostic document model, Typst-based PDF primary r
 | `DocxSummary` | `doc/src/lib.rs` | Text summary of an inspected DOCX file |
 | `Linter` | `lint/src/lib.rs` | Report prose linter (banned words, citations, structure) |
 | `Verifier` | `verify/src/lib.rs` | Numeric-claim verifier (arithmetic eval, cross-claim refs) |
+| `Chart` | `charts/src/model.rs` | Parse-don't-validate chart model: kind, series, axes, fact citations |
+| `render_chart` | `charts/src/render.rs` | SVG emitter entry point (per-kind arms + `charts-vega` fallback) |
 
 ## Template slug convention (poiesis-typst)
 

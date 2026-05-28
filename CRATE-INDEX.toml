@@ -261,6 +261,16 @@ test-core = "test tier fixtures"
 test-full = "full test tier fixtures"
 test-support = "mock executor and spec helpers"
 
+[crates.poiesis-charts]
+path = "crates/poiesis/charts"
+layer = "tool"
+purpose = "Typed chart model + deterministic SVG emitter (Rust path) + Vega-Lite fallback for poiesis"
+depends_on = ["poiesis-core"]
+used_by = []
+
+[crates.poiesis-charts.features]
+charts-vega = "Vega-Lite fallback for heatmap/boxplot/sankey/candlestick and log/time scales"
+
 [crates.poiesis-core]
 path = "crates/poiesis/core"
 layer = "types"
