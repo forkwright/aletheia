@@ -304,6 +304,14 @@ default = "pdf + odt"
 odt = "ODT backend via zip"
 pdf = "PDF backend via krilla"
 
+[crates.poiesis-theme]
+path = "crates/poiesis/theme"
+layer = "types"
+purpose = "Theme registry, token model, and brand-asset sinks (CSS, OOXML clrScheme, Pandoc doc-vars) for poiesis"
+depends_on = []
+used_by = []
+features = {}
+
 [crates.proskenion]
 path = "crates/theatron/proskenion"
 layer = "desktop"

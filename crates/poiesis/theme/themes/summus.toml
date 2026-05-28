@@ -1,0 +1,121 @@
+# summus — the seed/flagship theme.
+#
+# Seed values come from the apodeixis Phase-00 spec 03 (forkwright/kanon#978):
+# the brand palette and typography that drove the offsite deck. Every later
+# theme — brand variants, dark modes, partner themes — adds a sibling
+# `<name>.toml` here; no code change is required.
+#
+# Rule: a tone or surface references a role NAME. The only place raw hex
+# lives is in [color.role]. Roles → tones/surfaces drop-in remap freely.
+
+[meta]
+id = "summus"
+title = "Summus"
+description = "Flagship theme: navy + teal + accent rose, Geist sans / Newsreader serif."
+
+[color.role]
+navy = "#232E54"
+navy_2 = "#1A2342"
+navy_3 = "#354068"
+teal = "#318891"
+teal_2 = "#2A7680"
+mint = "#6BD2A4"
+rose = "#B87264"
+gray = "#4A4A4A"
+ink = "#1A1F36"
+mute = "#6B7280"
+rule = "#E5E7EB"
+bg = "#FFFFFF"
+bg_soft = "#FAFAF8"
+canvas_dark = "#0E1117"
+
+[color.tone]
+positive = "teal"
+before = "rose"
+neutral = "navy"
+accent = "teal"
+
+[color.surface]
+page = "bg"
+page_alt = "bg_soft"
+ink = "ink"
+muted = "mute"
+rule = "rule"
+dark_bg = "canvas_dark"
+dark_ink = "bg"
+
+[type.family]
+sans = ["Geist", "Inter", "system-ui", "sans-serif"]
+serif = ["Newsreader", "Georgia", "serif"]
+mono = ["Geist Mono", "ui-monospace", "monospace"]
+
+# Pixel sizes at base_canvas = 1920x1080.
+[type.scale]
+hero = 128
+title = 64
+subtitle = 44
+body = 32
+small = 26
+micro = 20
+
+[type.role.title]
+family = "sans"
+weight = 600
+size = "title"
+color = "ink"
+leading = 1.1
+
+[type.role.subtitle]
+family = "sans"
+weight = 400
+size = "subtitle"
+color = "muted"
+leading = 1.2
+
+[type.role.hero_number]
+family = "sans"
+weight = 700
+size = "hero"
+color = "accent"
+tracking = -0.02
+leading = 1.0
+
+[type.role.eyebrow]
+family = "sans"
+weight = 500
+size = "micro"
+color = "muted"
+tracking = 0.08
+
+[type.role.body]
+family = "serif"
+weight = 400
+size = "body"
+color = "ink"
+leading = 1.45
+
+[space]
+xs = 8
+sm = 16
+md = 24
+lg = 40
+xl = 64
+
+[grid]
+base_canvas = [1920, 1080]
+aspect = "16:9"
+columns = 12
+gutter = 24
+margin = 96
+
+[table]
+header_fill = "navy"
+header_ink = "bg"
+zebra = "page_alt"
+border = "rule"
+no_vertical_borders = true
+
+[chart]
+series = ["accent", "before", "neutral", "mint", "gray"]
+gridline = "rule"
+label = "muted"

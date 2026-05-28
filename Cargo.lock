@@ -6572,6 +6572,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "poiesis-theme"
+version = "0.28.1"
+dependencies = [
+ "indexmap 2.14.0",
+ "jiff",
+ "regex",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tempfile",
+ "toml 1.1.2+spec-1.1.0",
+]
+
+[[package]]
 name = "poiesis-typst"
 version = "0.28.1"
 dependencies = [
