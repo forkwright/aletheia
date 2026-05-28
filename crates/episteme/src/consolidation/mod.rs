@@ -95,11 +95,11 @@ pub enum ConsolidationError {
 
 /// Why a consolidation was triggered.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "variant fields (entity_id, fact_count, cluster_id) are self-documenting by name"
 )]
+#[non_exhaustive]
 pub enum ConsolidationTrigger {
     /// An entity accumulated more than the threshold of active facts.
     EntityOverflow {
@@ -214,10 +214,12 @@ pub struct FactMultiplicity {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsolidationAuditRecord {
     /// Unique audit ID.
+    // kanon:ignore RUST/primitive-for-domain-id — serialization type for Datalog/JSON audit records uses string IDs for compatibility
     pub id: String,
     /// What triggered this consolidation.
     pub trigger_type: String,
     /// Entity or cluster ID that triggered it.
+    // kanon:ignore RUST/primitive-for-domain-id — serialization type for Datalog/JSON audit records uses string IDs for compatibility
     pub trigger_id: String,
     /// Number of original facts.
     pub original_count: usize,

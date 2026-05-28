@@ -41,8 +41,10 @@ pub(crate) const SIMILARITY_THRESHOLD: f64 = 0.8;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillCandidate {
     /// Unique identifier (ULID as string).
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
     pub id: String,
     /// Which nous this candidate belongs to.
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
     pub nous_id: String,
     /// Normalised signature of the representative tool call sequence.
     pub signature: SequenceSignature,

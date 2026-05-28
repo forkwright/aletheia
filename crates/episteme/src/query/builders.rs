@@ -13,6 +13,7 @@ pub struct QueryBuilder {
 
 impl QueryBuilder {
     /// Create an empty query builder.
+    // kanon:ignore RUST/must-use-result-builder — return type QueryBuilder is itself #[must_use]; adding #[must_use] here trips clippy::double_must_use
     pub(crate) fn new() -> Self {
         Self {
             lines: Vec::new(),
@@ -21,6 +22,7 @@ impl QueryBuilder {
     }
 
     /// Start a `:put` operation against a relation.
+    // kanon:ignore RUST/must-use-result-builder — return type PutBuilder is itself #[must_use]; adding #[must_use] here trips clippy::double_must_use
     pub(crate) fn put(self, relation: Relation) -> PutBuilder {
         PutBuilder {
             parent: self,
@@ -32,6 +34,7 @@ impl QueryBuilder {
     }
 
     /// Start a `:rm` operation against a relation.
+    // kanon:ignore RUST/must-use-result-builder — return type RmBuilder is itself #[must_use]; adding #[must_use] here trips clippy::double_must_use
     pub(crate) fn rm(self, relation: Relation) -> RmBuilder {
         RmBuilder {
             parent: self,
@@ -41,6 +44,7 @@ impl QueryBuilder {
     }
 
     /// Start a `?[...] := *relation{...}` scan query.
+    // kanon:ignore RUST/must-use-result-builder — return type ScanBuilder is itself #[must_use]; adding #[must_use] here trips clippy::double_must_use
     pub(crate) fn scan(self, relation: Relation) -> ScanBuilder {
         ScanBuilder {
             parent: self,
@@ -139,6 +143,7 @@ impl PutBuilder {
     ///
     /// If no explicit `row()` was called, generates a single row from field
     /// names (convention: `$field_name` for each field).
+    // kanon:ignore RUST/must-use-result-builder — return type QueryBuilder is itself #[must_use]; adding #[must_use] here trips clippy::double_must_use
     pub(crate) fn done(mut self) -> QueryBuilder {
         if self.rows.is_empty() {
             let auto_row: Vec<String> = self.all_fields.iter().map(|f| format!("${f}")).collect();
@@ -243,6 +248,7 @@ impl ScanBuilder {
     }
 
     /// Finish the scan, returning the parent `QueryBuilder`.
+    // kanon:ignore RUST/must-use-result-builder — return type QueryBuilder is itself #[must_use]; adding #[must_use] here trips clippy::double_must_use
     pub(crate) fn done(mut self) -> QueryBuilder {
         let select_list = self.select.join(", ");
         let binding_list = self.bindings.join(", ");
@@ -260,10 +266,12 @@ impl ScanBuilder {
 
         if let Some(ref ord) = self.order {
             use std::fmt::Write;
+            // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
             let _ = write!(line, "\n:order {ord}");
         }
         if let Some(ref lim) = self.limit {
             use std::fmt::Write;
+            // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
             let _ = write!(line, "\n:limit {lim}");
         }
 
@@ -290,6 +298,7 @@ impl RmBuilder {
     }
 
     /// Finish the `:rm`, returning the parent `QueryBuilder`.
+    // kanon:ignore RUST/must-use-result-builder — return type QueryBuilder is itself #[must_use]; adding #[must_use] here trips clippy::double_must_use
     pub(crate) fn done(mut self) -> QueryBuilder {
         let field_list = self.key_fields.join(", ");
         let params: Vec<String> = self.key_fields.iter().map(|f| format!("${f}")).collect();

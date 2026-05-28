@@ -45,11 +45,11 @@ impl Relation {
 
 /// Fields in the `facts` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "field enum variants are self-documenting Datalog column names"
 )]
+#[non_exhaustive]
 pub enum FactsField {
     Id,
     ValidFrom,
@@ -75,11 +75,11 @@ pub enum FactsField {
 
 /// Fields in the `entities` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "field enum variants are self-documenting Datalog column names"
 )]
+#[non_exhaustive]
 pub enum EntitiesField {
     Id,
     Name,
@@ -91,11 +91,11 @@ pub enum EntitiesField {
 
 /// Fields in the `relationships` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "field enum variants are self-documenting Datalog column names"
 )]
+#[non_exhaustive]
 pub enum RelationshipsField {
     Src,
     Dst,
@@ -106,11 +106,11 @@ pub enum RelationshipsField {
 
 /// Fields in the `embeddings` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "field enum variants are self-documenting Datalog column names"
 )]
+#[non_exhaustive]
 pub enum EmbeddingsField {
     Id,
     Content,
@@ -123,11 +123,11 @@ pub enum EmbeddingsField {
 
 /// Fields in the `fact_entities` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "field enum variants are self-documenting Datalog column names"
 )]
+#[non_exhaustive]
 pub enum FactEntitiesField {
     FactId,
     EntityId,
@@ -136,11 +136,11 @@ pub enum FactEntitiesField {
 
 /// Fields in the `merge_audit` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "field enum variants are self-documenting Datalog column names"
 )]
+#[non_exhaustive]
 pub enum MergeAuditField {
     CanonicalId,
     MergedId,
@@ -153,11 +153,11 @@ pub enum MergeAuditField {
 
 /// Fields in the `pending_merges` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "field enum variants are self-documenting Datalog column names"
 )]
+#[non_exhaustive]
 pub enum PendingMergesField {
     EntityA,
     EntityB,
@@ -173,11 +173,11 @@ pub enum PendingMergesField {
 
 /// Fields in the `causal_edges` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "field enum variants are self-documenting Datalog column names"
 )]
+#[non_exhaustive]
 pub enum CausalEdgesField {
     Cause,
     Effect,

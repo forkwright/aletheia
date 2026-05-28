@@ -19,11 +19,11 @@ use crate::skills::{SkillCandidate, ToolCallRecord};
 /// Errors from the skill extraction pipeline.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "snafu error variant fields (message, location) are self-documenting via display format"
 )]
+#[non_exhaustive]
 pub enum SkillExtractionError {
     /// The LLM provider returned an error.
     #[snafu(display("LLM extraction failed: {message}"))]
@@ -330,33 +330,43 @@ fn build_extraction_prompt(
 ) -> String {
     let mut prompt = String::with_capacity(1024);
 
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(prompt, "## Candidate Pattern");
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(prompt, "- Recurrence count: {}", candidate.recurrence_count);
     if let Some(ref pattern) = candidate.pattern_type {
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(prompt, "- Detected pattern type: {pattern:?}");
     }
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(
         prompt,
         "- Heuristic score: {:.2}",
         candidate.heuristic_score
     );
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(
         prompt,
         "- Normalized tool sequence: {}",
         candidate.signature.normalized.join(" → ")
     );
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(
         prompt,
         "- Sessions observed: {}",
         candidate.session_refs.len()
     );
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(prompt);
 
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(prompt, "## Observed Tool Call Sequences");
     for (i, seq) in tool_call_sequences.iter().enumerate() {
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(prompt, "\n### Session {} ({} calls)", i + 1, seq.len());
         for (j, tc) in seq.iter().enumerate() {
             let status = if tc.is_error { " [ERROR]" } else { "" };
+            // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
             let _ = writeln!(
                 prompt,
                 "{}. {} ({}ms){}",
@@ -415,6 +425,7 @@ pub struct PendingSkill {
     /// The extracted skill content.
     pub skill: SkillContent,
     /// The candidate that was promoted to trigger extraction.
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
     pub candidate_id: String,
     /// Review status: `"pending_review"`, `"approved"`, `"rejected"`.
     pub status: String,
