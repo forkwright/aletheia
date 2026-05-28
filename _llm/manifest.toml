@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-25T10:30:32Z"
+generated_at = "2026-05-28T01:29:03Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -237,7 +237,7 @@ l3_token_estimate = 910
 [[crates]]
 name = "aletheia-lexica"
 path = "crates/aletheia-lexica"
-source_hash = "2a8b1b2bba03ebf8789a20e2ceda72fd29a301326ad4b2a1814f89452648b956"
+source_hash = "a4c65dd6fae1244235b65fd10b3c2f5225e6d18384a1f3f7ab0a41d8c87ae668"
 l3_token_estimate = 1530
 
 [[crates]]
@@ -363,7 +363,7 @@ l3_token_estimate = 11778
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "c3e83a2ce81986e8bf75c28f8275ed51c74f3e44cc9d920dfb84ad62c3804c89"
+source_hash = "28e6e040304a534b30e03e663e63c7a175de1c7dfb3126f4f2d3eae309710ef0"
 l3_token_estimate = 11827
 
 [[crates]]
