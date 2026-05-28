@@ -39,6 +39,13 @@ use crate::render::canvas::{Canvas, PlotBox};
 use crate::scale::{self, Scale};
 use crate::theme::{ColorMode, ResolvedTheme};
 
+// WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
+// literal mandated by the SVG spec. Renderers (browsers, ImageMagick,
+// LibreOffice) match it as an opaque string; it is never fetched. Substituting
+// `https://` produces SVG that browsers refuse to render (the namespace string
+// must match the spec verbatim). See SVG 1.1 §1.3.
+const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
+
 /// Emit the combo chart SVG.
 ///
 /// Caller invariants (enforced by [`Chart::validate`](crate::model::Chart::validate)):
@@ -124,10 +131,11 @@ fn build_scales(col_series: &Series, line_series: &Series, plot: &PlotBox) -> (S
 fn emit_svg_open(out: &mut String, chart: &Chart, canvas: &Canvas) {
     let _ = write!(
         out,
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" \
+        "<svg xmlns=\"{ns}\" \
          viewBox=\"0 0 {w} {h}\" \
          preserveAspectRatio=\"{aspect}\" \
          role=\"img\" aria-label=\"{aria}\">",
+        ns = SVG_NAMESPACE,
         w = canvas.width(),
         h = canvas.height(),
         aspect = canvas.preserve_aspect_ratio(),
