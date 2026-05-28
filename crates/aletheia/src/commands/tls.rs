@@ -1,6 +1,8 @@
 //! `aletheia tls`: TLS certificate management.
 
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use clap::Subcommand;
 use snafu::prelude::*;
@@ -39,9 +41,53 @@ pub(crate) fn run(action: &Action) -> Result<()> {
     }
 }
 
+fn validate_san(san: &str) -> Result<()> {
+    let trimmed = san.trim();
+    if trimmed.is_empty() {
+        whatever!("tls generate: --san must not be empty or whitespace");
+    }
+    if trimmed != san {
+        whatever!("tls generate: --san '{san}' contains leading/trailing whitespace");
+    }
+    if san.contains(char::is_whitespace) {
+        whatever!("tls generate: --san '{san}' contains whitespace");
+    }
+    if IpAddr::from_str(san).is_ok() {
+        return Ok(());
+    }
+    let host = san.strip_prefix("*.").unwrap_or(san);
+    if host.is_empty() {
+        whatever!("tls generate: --san '{san}' has no hostname after wildcard");
+    }
+    for label in host.split('.') {
+        if label.is_empty() {
+            whatever!(
+                "tls generate: --san '{san}' has an empty DNS label (consecutive dots or leading/trailing dot)"
+            );
+        }
+        if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            whatever!(
+                "tls generate: --san '{san}' has invalid character in DNS label '{label}' (expected ASCII letters, digits, or '-')"
+            );
+        }
+        if label.starts_with('-') || label.ends_with('-') {
+            whatever!(
+                "tls generate: --san '{san}' has DNS label '{label}' starting or ending with '-'"
+            );
+        }
+    }
+    Ok(())
+}
+
 fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) -> Result<()> {
     if days == 0 {
         whatever!("tls generate: --days must be at least 1");
+    }
+    if sans.is_empty() {
+        whatever!("tls generate: --san must specify at least one hostname or IP");
+    }
+    for san in sans {
+        validate_san(san)?;
     }
 
     std::fs::create_dir_all(output_dir)
@@ -78,4 +124,55 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
     println!("Valid for {days} days");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_san;
+
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    #[test]
+    fn accepts_valid_dns_names() {
+        validate_san("localhost").unwrap();
+        validate_san("example.com").unwrap();
+        validate_san("foo.bar.baz.example.com").unwrap();
+        validate_san("api-v2.svc.local").unwrap();
+        validate_san("*.example.com").unwrap();
+    }
+
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    #[test]
+    fn accepts_valid_ipv4_and_ipv6() {
+        validate_san("127.0.0.1").unwrap();
+        validate_san("10.0.0.1").unwrap();
+        validate_san("::1").unwrap();
+        validate_san("2001:db8::1").unwrap();
+    }
+
+    #[test]
+    fn rejects_empty_or_whitespace_only() {
+        assert!(validate_san("").is_err());
+        assert!(validate_san("   ").is_err());
+        assert!(validate_san("\t").is_err());
+    }
+
+    #[test]
+    fn rejects_embedded_whitespace_and_multi_token() {
+        assert!(validate_san("foo bar").is_err());
+        assert!(validate_san("foo\tbar").is_err());
+        assert!(validate_san(" leading.example.com").is_err());
+        assert!(validate_san("trailing.example.com ").is_err());
+    }
+
+    #[test]
+    fn rejects_malformed_wildcards_and_labels() {
+        assert!(validate_san("*.bad*").is_err());
+        assert!(validate_san("*.").is_err());
+        assert!(validate_san("a..b").is_err());
+        assert!(validate_san(".leading-dot").is_err());
+        assert!(validate_san("trailing-dot.").is_err());
+        assert!(validate_san("-leadinghyphen.com").is_err());
+        assert!(validate_san("trailinghyphen-.com").is_err());
+        assert!(validate_san("under_score.com").is_err());
+    }
 }
