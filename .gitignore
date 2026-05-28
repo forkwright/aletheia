@@ -136,3 +136,8 @@ bom.cdx.json
 instance.example/eval/datasets/
 target/
 *.swp
+
+# Dispatch worker artifacts (written into worktrees by the kanon dispatch harness)
+.dispatch-prompt.md
+.dispatch.err
+.dispatch*
