@@ -16,6 +16,7 @@ use snafu::ResultExt;
 use tracing::warn;
 
 use crate::error::{self, Result};
+use crate::sensitive::key_is_sensitive;
 
 /// Prefix marking an encrypted config value.
 pub(crate) const ENCRYPTED_PREFIX: &str = "enc:";
@@ -299,18 +300,6 @@ pub fn encrypt_config_file(toml_path: &Path, primary_key: &[u8; KEY_LEN]) -> Res
     Ok(count)
 }
 
-/// Keys in TOML whose string values are considered sensitive and eligible for
-/// encryption. Matches the patterns used by `redact.rs`.
-const SENSITIVE_TOML_KEYS: &[&str] = &[
-    "signingKey",
-    "signing_key",
-    "token",
-    "secret",
-    "password",
-    "apiKey",
-    "api_key",
-];
-
 /// Recursively decrypt all `enc:`-prefixed string values in a TOML value tree.
 ///
 /// If `primary_key` is `None`, logs a warning for each encrypted value found
@@ -399,10 +388,7 @@ fn encrypt_recursive(
 }
 
 fn is_sensitive_key(key: &str) -> bool {
-    let lower = key.to_lowercase();
-    SENSITIVE_TOML_KEYS
-        .iter()
-        .any(|s| lower == s.to_lowercase())
+    key_is_sensitive(key)
 }
 
 #[cfg(test)]
@@ -607,6 +593,29 @@ mod tests {
             decrypted, "my-secret-key",
             "decrypted sensitive value should match original"
         );
+    }
+
+    #[test]
+    fn encrypt_covers_auth_token_refresh_token_session_secret() {
+        // REGRESSION (#4254): these were redacted on display but left in
+        // plaintext at rest. After unifying on substring matching, they
+        // must all be encrypted.
+        let key = fixture_key();
+        let toml_str = r#"
+            [providers.openai]
+            api_key = "sk-openai-plaintext"
+            auth_token = "bearer-secret"
+            refresh_token = "refresh-secret"
+            session_secret = "session-secret"
+        "#;
+        let mut value: toml::Value = toml::from_str(toml_str).unwrap();
+        let count = encrypt_sensitive_values(&mut value, &key).unwrap();
+
+        assert_eq!(count, 4, "all four sensitive fields must be encrypted");
+        for field in ["api_key", "auth_token", "refresh_token", "session_secret"] {
+            let v = value["providers"]["openai"][field].as_str().unwrap();
+            assert!(is_encrypted(v), "{field} must be encrypted at rest");
+        }
     }
 
     #[test]

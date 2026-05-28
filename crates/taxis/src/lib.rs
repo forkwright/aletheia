@@ -29,6 +29,10 @@ pub mod redact;
 pub mod registry;
 /// Hot-reload classification: restart vs live update.
 pub mod reload;
+/// Shared "is this config key sensitive?" predicate used by redaction and
+/// at-rest encryption. Kept private to the crate so the two paths cannot
+/// drift again.
+mod sensitive;
 /// Test-only helpers (EnvJail) for unit + integration tests.
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
