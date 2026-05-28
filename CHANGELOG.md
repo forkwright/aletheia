@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.28.1](https://github.com/forkwright/aletheia/compare/v0.28.0...v0.28.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* **aletheia/add-nous:** default model to claude-sonnet-4-6 (aligns with init) ([#4231](https://github.com/forkwright/aletheia/issues/4231)) ([020a316](https://github.com/forkwright/aletheia/commit/020a316b78176300776302f50513179d7ac7da3f))
+* **aletheia/backup:** verify rejects non-fjall directories instead of scaffolding them ([#4232](https://github.com/forkwright/aletheia/issues/4232)) ([e1f83c5](https://github.com/forkwright/aletheia/commit/e1f83c55e6f2af01752e1a6d84bb6d6d7326db94))
+* **aletheia/benchmark:** reject malformed --url, zero --timeout/--max-questions/--retrieval-k, empty --nous-id ([#4259](https://github.com/forkwright/aletheia/issues/4259)) ([e68d284](https://github.com/forkwright/aletheia/commit/e68d284c75c34cb82fb98c20ccca855399a0bd4f))
+* **aletheia/eval:** reject malformed --url, zero --timeout, and zero --top-k ([#4255](https://github.com/forkwright/aletheia/issues/4255)) ([6a9e786](https://github.com/forkwright/aletheia/commit/6a9e786d219e3bb921cd0e38ab6ff8d586e62a3e))
+* **aletheia/ingest:** validate inputs before knowledge-store check ([#4243](https://github.com/forkwright/aletheia/issues/4243)) ([f331d5e](https://github.com/forkwright/aletheia/commit/f331d5e534327da560620f1f4bc43071be1b8c7f)), closes [#4239](https://github.com/forkwright/aletheia/issues/4239)
+* **aletheia/maintenance:** size status table columns to longest name ([#4251](https://github.com/forkwright/aletheia/issues/4251)) ([fa7cb7c](https://github.com/forkwright/aletheia/commit/fa7cb7c9cc52a9da12b8e35771bb17d9837c47e7))
+* **aletheia/memory:** reject zero counts and empty --nous-id ([#4267](https://github.com/forkwright/aletheia/issues/4267)) ([2e65841](https://github.com/forkwright/aletheia/commit/2e65841c5849685eb6a3eabca87d6362c9313865))
+* **aletheia/migrate-memory:** add project_id and visibility to imported Fact ([#4276](https://github.com/forkwright/aletheia/issues/4276)) ([9286c89](https://github.com/forkwright/aletheia/commit/9286c89a599642c6d0f0aefea18d4433d131bd7e))
+* **aletheia/prompt-audit:** reject --limit 0 and empty --nous ([#4265](https://github.com/forkwright/aletheia/issues/4265)) ([9a36c9e](https://github.com/forkwright/aletheia/commit/9a36c9ed616329862bd3ebe40a6a41eaac60b072))
+* **aletheia/prompt-audit:** surface unparseable-record count to operator ([#4246](https://github.com/forkwright/aletheia/issues/4246)) ([f9d7dcc](https://github.com/forkwright/aletheia/commit/f9d7dcc118cde247068b0c95a435dcc637c727d1))
+* **aletheia/prompt-audit:** validate --since as YYYY-MM-DD (not lex-string compare) ([#4237](https://github.com/forkwright/aletheia/issues/4237)) ([05f74ae](https://github.com/forkwright/aletheia/commit/05f74ae9bd36ef9e68a3dfc81512314f558151fb))
+* **aletheia/tls:** validate --san entries (reject empty, whitespace, malformed DNS) ([#4261](https://github.com/forkwright/aletheia/issues/4261)) ([8985152](https://github.com/forkwright/aletheia/commit/8985152664d49f5a0b86a28a333696d6516b633e))
+* **aletheia:** reject empty --nous-id / --model / --target-id on review-skills, add-nous, import ([#4270](https://github.com/forkwright/aletheia/issues/4270)) ([8f7e18a](https://github.com/forkwright/aletheia/commit/8f7e18a733da2c698f36f5495e0b552b7683663a))
+* **aletheia:** reject empty --nous-id / SESSION_ID + malformed --url on session-export, seed-skills, export-skills ([#4263](https://github.com/forkwright/aletheia/issues/4263)) ([0cf8674](https://github.com/forkwright/aletheia/commit/0cf8674ead5cb140c0977ff2e6a6f80c8596aecc))
+* **aletheia:** reject malformed --url in repl, review-skills, ingest, memory ([#4274](https://github.com/forkwright/aletheia/issues/4274)) ([b603454](https://github.com/forkwright/aletheia/commit/b603454ecf5e741d83493a7e1e66355447d1f273))
+* **aletheia:** rewrite KS-not-initialized error to point at real recovery ([#4249](https://github.com/forkwright/aletheia/issues/4249)) ([105d052](https://github.com/forkwright/aletheia/commit/105d052fcfe72ff2d2e727a957aae22d08d4de7b))
+* **diaporeia/mcp:** unbreak `aletheia mcp` stdio + HTTP transport startup ([#4272](https://github.com/forkwright/aletheia/issues/4272)) ([c297434](https://github.com/forkwright/aletheia/commit/c297434b026dbf8e31849085440aac9260c33cc6))
+* **episteme/embedding-eval:** report file-not-found as IO error, not 'parse line 0' ([#4257](https://github.com/forkwright/aletheia/issues/4257)) ([a866e13](https://github.com/forkwright/aletheia/commit/a866e13ff55ee2dff2b3cd595c75f094cf19254b))
+* **lint:** drive aletheia top-level (non-commands) rust-lint to zero ([#4216](https://github.com/forkwright/aletheia/issues/4216)) ([5e293c5](https://github.com/forkwright/aletheia/commit/5e293c5f0e65cb27e8ad1663cb8fed5c748540f9))
+* **lint:** drive aletheia-memory-mcp rust-lint to near-zero (3 security findings flagged for T0) ([#4197](https://github.com/forkwright/aletheia/issues/4197)) ([414baa6](https://github.com/forkwright/aletheia/commit/414baa66b3aedcd0e23be8289b47a18bb3e32b89))
+* **lint:** drive episteme {skill,skills,query,consolidation} rust-lint to zero ([#4225](https://github.com/forkwright/aletheia/issues/4225)) ([de54277](https://github.com/forkwright/aletheia/commit/de54277e639bbbfe448e958d3e11fa5835578812))
+* **lint:** drive episteme tail rust-lint to zero (49 → 0; workspace baseline now 6) ([#4229](https://github.com/forkwright/aletheia/issues/4229)) ([226196f](https://github.com/forkwright/aletheia/commit/226196f202892d949ef5dbdc0833b996679df860))
+* **lint:** drive episteme/knowledge_store rust-lint violations to zero ([#4227](https://github.com/forkwright/aletheia/issues/4227)) ([915018e](https://github.com/forkwright/aletheia/commit/915018ef5c2df48ec9a8b08029d2fbef2aad20f0))
+* **lint:** drive fuzz harness rust-lint to zero ([#4223](https://github.com/forkwright/aletheia/issues/4223)) ([17e6089](https://github.com/forkwright/aletheia/commit/17e60890e0cfc23022b346bbee62e0f266e242f6))
+* **lint:** drive nous rust-lint violations to zero ([#4218](https://github.com/forkwright/aletheia/issues/4218)) ([cc693f4](https://github.com/forkwright/aletheia/commit/cc693f4160dd7b2c9df229d22616013929e6be47))
+* **lint:** drive theatron/dokimion/pylon rust-lint stragglers to zero ([#4222](https://github.com/forkwright/aletheia/issues/4222)) ([799d1be](https://github.com/forkwright/aletheia/commit/799d1be64d965590fd53bcb105bfc325d4a810fc))
+* **lint:** drive theatron/koilon rust-lint violations to zero ([#4217](https://github.com/forkwright/aletheia/issues/4217)) ([b3bab82](https://github.com/forkwright/aletheia/commit/b3bab82c9eb33b13f641947205acc78544b897f9))
+* **lint:** drive theatron/skene+proskenion rust-lint violations to zero ([#4220](https://github.com/forkwright/aletheia/issues/4220)) ([88fc020](https://github.com/forkwright/aletheia/commit/88fc0206e56121305171bfe071f5110bfe35065e))
+
 ## [0.28.0](https://github.com/forkwright/aletheia/compare/v0.27.0...v0.28.0) (2026-05-28)
 
 
