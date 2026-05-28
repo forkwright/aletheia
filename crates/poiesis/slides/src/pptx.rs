@@ -294,7 +294,7 @@ fn build_presentation(slides: &[SlideContent]) -> String {
     for i in 0..slides.len() {
         let id = 256 + i;
         let rid = i + 2; // rId2 is first slide; rId1 is slideMaster.
-        let _ = write!(slide_ids, r#"    <p:sldId id="{id}" r:id="rId{rid}"/>"#);
+        let _ = write!(slide_ids, r#"    <p:sldId id="{id}" r:id="rId{rid}"/>"#); // kanon:ignore RUST/no-silent-result-swallow — write! to String is infallible; error is unreachable
         slide_ids.push('\n');
     }
     format!(

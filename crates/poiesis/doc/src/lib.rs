@@ -122,7 +122,7 @@ pub fn inspect_docx(bytes: &[u8]) -> Result<DocxSummary> {
         source: zip::result::ZipError::Io(e),
     })?;
 
-    let mut reader = quick_xml::Reader::from_reader(&xml_bytes[..]);
+    let mut reader = quick_xml::Reader::from_reader(xml_bytes.as_slice());
     reader.config_mut().trim_text(true);
 
     let mut paragraphs: Vec<String> = Vec::new();
@@ -167,7 +167,7 @@ pub fn inspect_docx(bytes: &[u8]) -> Result<DocxSummary> {
             Err(e) => {
                 return Err(Error::ParseXml { source: e });
             }
-            _ => {}
+            _ => (), // kanon:ignore RUST/empty-match-arm — intentional no-op for unmatched XML events; kanon:ignore RUST/silent-wildcard-success — non-paragraph XML events are intentionally skipped
         }
     }
 

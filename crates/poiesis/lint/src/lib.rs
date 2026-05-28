@@ -331,13 +331,13 @@ fn replace_first_case_insensitive(line: &str, pattern: &str, replacement: &str) 
                 clippy::string_slice,
                 reason = "pos and end are verified as char boundaries immediately above"
             )]
-            result.push_str(&line[..pos]);
+            result.push_str(&line[..pos]); // kanon:ignore RUST/indexing-slicing — pos verified as char boundary immediately above
             result.push_str(replacement);
             #[expect(
                 clippy::string_slice,
                 reason = "pos and end are verified as char boundaries immediately above"
             )]
-            result.push_str(&line[end..]);
+            result.push_str(&line[end..]); // kanon:ignore RUST/indexing-slicing — end verified as char boundary immediately above
             return result;
         }
     }

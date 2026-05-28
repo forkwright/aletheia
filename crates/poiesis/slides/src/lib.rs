@@ -132,7 +132,7 @@ pub fn render_pptx(data: &Value) -> Result<Vec<u8>> {
 
     let doc = Document {
         metadata: Metadata {
-            title: first_title.unwrap_or_default(),
+            title: first_title.unwrap_or_default(), // kanon:ignore RUST/no-result-unwrap-or-default — Option<String> default is empty string; missing title is semantically default
             author: None,
             created: None,
         },
@@ -200,7 +200,7 @@ pub fn inspect_pptx(bytes: &[u8]) -> Result<PresentationSummary> {
             (String::new(), Vec::new())
         } else {
             let mut iter = texts.into_iter();
-            let t = iter.next().unwrap_or_default();
+            let t = iter.next().unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default — Option<String> default is empty string; missing title is semantically empty
             (t, iter.collect())
         };
 
@@ -268,7 +268,7 @@ fn extract_text_runs(xml: &str) -> Result<Vec<String>> {
                     message: e.to_string(),
                 });
             }
-            _ => {}
+            _ => (), // kanon:ignore RUST/empty-match-arm — intentional no-op for unmatched XML events
         }
         buf.clear();
     }
