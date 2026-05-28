@@ -131,3 +131,13 @@ SECURITY/hardcoded-loopback-url:crates/theatron/proskenion/src/views/connect.rs
 SECURITY/hardcoded-loopback-url:crates/theatron/proskenion/src/views/settings/servers.rs
 SECURITY/hardcoded-loopback-url:crates/theatron/proskenion/src/views/settings/wizard.rs
 SECURITY/hardcoded-loopback-url:crates/theatron/skene/src/discovery.rs
+
+# WHY: knowledge_store source files exceed 800-line limit (facts 1677 / marshal 1354 / migration 912 / mod 1123). Each is a coherent unit (the facts/embeddings/relationship CRUD surface for that table) and ~half of each file is its #[cfg(test)] block. A real split would carve out test modules and per-table CRUD sub-modules — tracked as follow-up, not in scope for the lint-to-zero campaign.
+RUST/file-too-long:crates/episteme/src/knowledge_store/facts.rs
+RUST/file-too-long:crates/episteme/src/knowledge_store/marshal.rs
+RUST/file-too-long:crates/episteme/src/knowledge_store/migration.rs
+RUST/file-too-long:crates/episteme/src/knowledge_store/mod.rs
+
+# WHY: every .expect() in these files lives inside the file's #[cfg(test)] mod tests block (verified — facts.rs: 95 calls all >= line 904; marshal.rs: 7 calls all >= line 917; both files' test modules start at those offsets). Test failures are test bugs, not production panics.
+RUST/expect:crates/episteme/src/knowledge_store/facts.rs
+RUST/expect:crates/episteme/src/knowledge_store/marshal.rs

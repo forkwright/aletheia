@@ -541,6 +541,7 @@ impl KnowledgeStore {
                 let mut rm_params = BTreeMap::new();
                 rm_params.insert("src".to_owned(), DataValue::Str(from_id.as_str().into()));
                 rm_params.insert("dst".to_owned(), DataValue::Str(dst.into()));
+                // kanon:ignore RUST/no-silent-result-swallow — stale row cleanup after merge; non-fatal if missing
                 let _ = self.run_mut(&queries::rm_relationship(), rm_params);
                 continue;
             }
@@ -559,6 +560,7 @@ impl KnowledgeStore {
                 "dst".to_owned(),
                 DataValue::Str(extract_str(&row[1])?.into()),
             );
+            // kanon:ignore RUST/no-silent-result-swallow — stale row cleanup after merge; non-fatal if missing
             let _ = self.run_mut(&queries::rm_relationship(), rm_params);
         }
 
@@ -598,6 +600,7 @@ impl KnowledgeStore {
                 let mut rm_params = BTreeMap::new();
                 rm_params.insert("src".to_owned(), DataValue::Str(src.into()));
                 rm_params.insert("dst".to_owned(), DataValue::Str(from_id.as_str().into()));
+                // kanon:ignore RUST/no-silent-result-swallow — stale row cleanup after merge; non-fatal if missing
                 let _ = self.run_mut(&queries::rm_relationship(), rm_params);
                 continue;
             }
@@ -616,6 +619,7 @@ impl KnowledgeStore {
                 DataValue::Str(extract_str(&row[0])?.into()),
             );
             rm_params.insert("dst".to_owned(), DataValue::Str(from_id.as_str().into()));
+            // kanon:ignore RUST/no-silent-result-swallow — stale row cleanup after merge; non-fatal if missing
             let _ = self.run_mut(&queries::rm_relationship(), rm_params);
         }
 
@@ -667,6 +671,7 @@ impl KnowledgeStore {
                 "entity_id".to_owned(),
                 DataValue::Str(from_id.as_str().into()),
             );
+            // kanon:ignore RUST/no-silent-result-swallow — stale row cleanup after merge; non-fatal if missing
             let _ = self.run_mut(&queries::rm_fact_entity(), rm_params);
         }
 

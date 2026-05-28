@@ -26,8 +26,10 @@ use crate::engine::{DataValue, ScriptMutability};
 #[derive(Debug, Clone, PartialEq)]
 pub struct DerivedFact {
     /// The entity this derived fact is about.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration pending
     pub entity_id: String,
     /// The rule that produced this fact. One of [`crate::derived_rules::RULE_IDS`].
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration pending
     pub rule_id: String,
     /// The inferred content string (format depends on rule family).
     pub derived_content: String,
