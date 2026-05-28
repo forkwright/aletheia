@@ -70,6 +70,8 @@ pub(crate) enum ExportFormat {
 }
 
 pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBuf>) -> Result<()> {
+    validate_action(&action)?;
+
     // WHY: the knowledge store uses an exclusive fjall lock; opening it while the
     // server holds the lock causes a confusing error. Detect a running server and
     // route 'check' through the HTTP API instead of direct store access.
@@ -126,6 +128,191 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
             "memory subcommands require the 'recall' feature.\n  \
              Build with: cargo build --features recall"
         );
+    }
+}
+
+/// Fail-fast on argument shapes that would silently produce empty or misleading
+/// output: zero counts and empty/whitespace nous-ids. Same family as the
+/// validators in `benchmark.rs`, `eval.rs`, `prompt_audit.rs`, and
+/// `session_export.rs` (refs #4255 / #4259 / #4263 / #4265).
+fn validate_action(action: &Action) -> Result<()> {
+    match action {
+        Action::Check { .. } => Ok(()),
+        Action::Sample { count, nous_id } => {
+            if *count == 0 {
+                whatever!("--count must be greater than 0");
+            }
+            if let Some(id) = nous_id
+                && id.trim().is_empty()
+            {
+                whatever!("--nous-id cannot be empty or whitespace");
+            }
+            Ok(())
+        }
+        Action::Dedup { nous_id, .. } => {
+            if nous_id.trim().is_empty() {
+                whatever!("--nous-id cannot be empty or whitespace");
+            }
+            Ok(())
+        }
+        Action::Patterns { nous_id, limit } => {
+            if *limit == 0 {
+                whatever!("--limit must be greater than 0");
+            }
+            if let Some(id) = nous_id
+                && id.trim().is_empty()
+            {
+                whatever!("--nous-id cannot be empty or whitespace");
+            }
+            Ok(())
+        }
+        Action::ExportGraph { nous_id, .. } => {
+            if let Some(id) = nous_id
+                && id.trim().is_empty()
+            {
+                whatever!("--nous-id cannot be empty or whitespace");
+            }
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod validation_tests {
+    use std::path::PathBuf;
+
+    use super::{Action, ExportFormat, validate_action};
+
+    #[test]
+    fn check_always_passes() {
+        validate_action(&Action::Check { json: false }).unwrap();
+        validate_action(&Action::Check { json: true }).unwrap();
+    }
+
+    #[test]
+    fn sample_rejects_zero_count() {
+        let err = validate_action(&Action::Sample {
+            count: 0,
+            nous_id: None,
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("--count"),
+            "error mentions --count: {err}"
+        );
+    }
+
+    #[test]
+    fn sample_rejects_empty_nous_id() {
+        for empty in ["", "   ", "\t", "\n"] {
+            let err = validate_action(&Action::Sample {
+                count: 10,
+                nous_id: Some(empty.to_owned()),
+            })
+            .unwrap_err();
+            assert!(
+                err.to_string().contains("--nous-id"),
+                "error mentions --nous-id for {empty:?}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn sample_accepts_well_formed_args() {
+        validate_action(&Action::Sample {
+            count: 10,
+            nous_id: None,
+        })
+        .unwrap();
+        validate_action(&Action::Sample {
+            count: 1,
+            nous_id: Some("alice".to_owned()),
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn dedup_rejects_empty_nous_id() {
+        for empty in ["", "  "] {
+            let err = validate_action(&Action::Dedup {
+                nous_id: empty.to_owned(),
+                dry_run: false,
+            })
+            .unwrap_err();
+            assert!(
+                err.to_string().contains("--nous-id"),
+                "error mentions --nous-id for {empty:?}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn dedup_accepts_well_formed_args() {
+        validate_action(&Action::Dedup {
+            nous_id: "alice".to_owned(),
+            dry_run: true,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn patterns_rejects_zero_limit() {
+        let err = validate_action(&Action::Patterns {
+            nous_id: None,
+            limit: 0,
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("--limit"),
+            "error mentions --limit: {err}"
+        );
+    }
+
+    #[test]
+    fn patterns_rejects_empty_nous_id() {
+        let err = validate_action(&Action::Patterns {
+            nous_id: Some(" ".to_owned()),
+            limit: 20,
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("--nous-id"),
+            "error mentions --nous-id: {err}"
+        );
+    }
+
+    #[test]
+    fn export_graph_rejects_empty_nous_id() {
+        let err = validate_action(&Action::ExportGraph {
+            format: ExportFormat::Dot,
+            nous_id: Some(String::new()),
+            scope: None,
+            output_path: PathBuf::from("/tmp/out.dot"),
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("--nous-id"),
+            "error mentions --nous-id: {err}"
+        );
+    }
+
+    #[test]
+    fn export_graph_accepts_well_formed_args() {
+        validate_action(&Action::ExportGraph {
+            format: ExportFormat::Json,
+            nous_id: None,
+            scope: None,
+            output_path: PathBuf::from("/tmp/out.json"),
+        })
+        .unwrap();
+        validate_action(&Action::ExportGraph {
+            format: ExportFormat::Graphml,
+            nous_id: Some("alice".to_owned()),
+            scope: None,
+            output_path: PathBuf::from("/tmp/out.graphml"),
+        })
+        .unwrap();
     }
 }
 
