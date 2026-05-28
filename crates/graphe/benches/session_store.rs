@@ -22,7 +22,7 @@ use koina::ulid::Ulid;
 
 /// Build an in-memory store for one iteration's worth of work.
 fn fresh_store() -> SessionStore {
-    SessionStore::open_in_memory().expect("in-memory store opens")
+    SessionStore::open_in_memory().expect("in-memory store opens") // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark
 }
 
 /// `create_session` is on every new conversation. Cost is dominated by
@@ -48,7 +48,7 @@ fn create_session(c: &mut Criterion) {
                     black_box(None),
                     black_box(Some("claude-sonnet-4-6")),
                 )
-                .expect("session create");
+                .expect("session create"); // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark
             black_box(session);
         });
     });
@@ -62,7 +62,7 @@ fn append_message(c: &mut Criterion) {
     let session_id = Ulid::new().to_string();
     store
         .create_session(&session_id, "nous-bench", "primary", None, None)
-        .expect("session create");
+        .expect("session create"); // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark
 
     c.bench_function("append_message", |b| {
         b.iter(|| {
@@ -75,7 +75,7 @@ fn append_message(c: &mut Criterion) {
                     black_box(None),
                     black_box(3),
                 )
-                .expect("append");
+                .expect("append"); // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark
             black_box(seq);
         });
     });
@@ -89,13 +89,13 @@ fn find_session_by_id(c: &mut Criterion) {
     let session_id = Ulid::new().to_string();
     store
         .create_session(&session_id, "nous-bench", "primary", None, None)
-        .expect("session create");
+        .expect("session create"); // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark
 
     c.bench_function("find_session_by_id", |b| {
         b.iter(|| {
             let session = store
                 .find_session_by_id(black_box(&session_id))
-                .expect("query");
+                .expect("query"); // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark
             black_box(session);
         });
     });

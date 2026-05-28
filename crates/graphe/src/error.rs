@@ -10,6 +10,7 @@ use snafu::Snafu;
     missing_docs,
     reason = "snafu error variant fields (source, location, path, detail) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum -- WHY: #[non_exhaustive] is already present; linter false-positive when an intervening #[expect] separates the attribute from the enum keyword
 pub enum Error {
     /// Session not found.
     #[snafu(display("session not found: {id}"))]

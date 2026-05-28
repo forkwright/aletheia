@@ -47,7 +47,7 @@ pub struct AgentFile {
     reason = "portability struct fields are self-documenting by name"
 )]
 pub struct NousInfo {
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     pub name: Option<String>,
     pub model: Option<String>,
     pub config: serde_json::Value,
@@ -73,7 +73,7 @@ pub struct WorkspaceData {
     reason = "portability struct fields are self-documenting by name"
 )]
 pub struct ExportedSession {
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     pub session_key: String,
     pub status: String,
     pub session_type: String,
@@ -141,7 +141,7 @@ pub struct MemoryData {
     reason = "portability struct fields are self-documenting by name"
 )]
 pub struct ExportedVector {
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     pub text: String,
     pub metadata: serde_json::Value,
 }
