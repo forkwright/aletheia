@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — skill loader and formatter; module split planned with knowledge-store refactor
 //! Skill loading for bootstrap context assembly.
 //!
 //! Queries mneme for skills relevant to the current task and returns them
@@ -77,16 +78,18 @@ pub(crate) fn format_skill_as_markdown(skill: &mneme::skill::SkillContent) -> St
     if !skill.steps.is_empty() {
         md.push_str("\n\n**Steps:**\n");
         for (i, step) in skill.steps.iter().enumerate() {
-            // SAFETY: writeln! on String is infallible
+            // kanon:ignore RUST/no-silent-result-swallow — writeln! on String is infallible
             let _ = writeln!(md, "{}. {}", i + 1, step);
         }
     }
 
     if !skill.tools_used.is_empty() {
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
         let _ = write!(md, "\n**Tools:** {}", skill.tools_used.join(", "));
     }
 
     if !skill.domain_tags.is_empty() {
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
         let _ = write!(md, "\n**Tags:** {}", skill.domain_tags.join(", "));
     }
 

@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — manager orchestration; actor lifecycle extraction planned in #3753
 //! Manages all nous actor instances.
 
 use std::collections::{BTreeMap, HashMap};
@@ -132,6 +133,7 @@ impl NousManager {
             vector_search,
             session_store,
             #[cfg(feature = "knowledge-store")]
+            // kanon:ignore RUST/no-result-unwrap-or-default — Option<HashMap>; empty map when knowledge-store feature is absent
             knowledge_stores: knowledge_stores.unwrap_or_default(),
             packs,
             router,
@@ -171,6 +173,7 @@ impl NousManager {
 
     /// Signal that all actors are spawned and the system is ready for inbound messages.
     pub fn ready(&self) {
+        // kanon:ignore RUST/no-silent-result-swallow — watch channel has at least one subscriber (health check)
         let _ = self.ready_tx.send(true);
         info!(count = self.actors.len(), "system ready");
     }
@@ -207,6 +210,7 @@ impl NousManager {
 
         if let Some(old) = self.actors.remove(&id) {
             warn!(nous_id = %id, "replacing existing actor");
+            // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown of replaced actor
             let _ = old.handle.shutdown().await;
             // WHY: take join handle before awaiting: must not hold MutexGuard across .await
             let join_opt = old

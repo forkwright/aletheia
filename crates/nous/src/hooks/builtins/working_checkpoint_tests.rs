@@ -4,10 +4,11 @@
 
 use std::sync::Arc;
 
+use organon::types::WorkingCheckpointStore;
+
 use crate::hooks::{HookResult, QueryContext, TurnContext, TurnHook};
 use crate::pipeline::{PipelineContext, TurnResult, TurnUsage};
 use crate::working_memory::FjallWorkingCheckpointStore;
-use organon::types::WorkingCheckpointStore;
 
 use super::WorkingCheckpointInjector;
 

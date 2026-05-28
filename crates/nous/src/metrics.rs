@@ -217,7 +217,9 @@ fn record_pipeline_event(name: &str, labels: &[(&str, String)], value: f64) {
                 record_turn(nous_id);
             }
         }
-        _ => {}
+        _ => {
+            // Other event types have no associated metrics.
+        }
     }
 }
 
@@ -233,6 +235,7 @@ fn label<'a>(labels: &'a [(&str, String)], key: &str) -> Option<&'a str> {
 /// WHY: Tool failures at warn level need a metrics counter so operators can
 /// set alerts on systematic tool problems. Closes #3284.
 pub(crate) fn record_tool_failure(nous_id: &str, tool_name: &str) {
+    tracing::warn!(nous_id, tool_name, "tool execution failed");
     TOOL_FAILURES_TOTAL
         .get_or_create(&NousToolLabels {
             nous_id: nous_id.to_owned(),
@@ -246,6 +249,7 @@ pub(crate) fn record_tool_failure(nous_id: &str, tool_name: &str) {
 /// WHY: Silently dropped streaming events are invisible contract violations.
 /// This counter surfaces the drop rate for alerting. Closes #3285.
 pub(crate) fn record_stream_event_dropped(nous_id: &str, reason: &str) {
+    tracing::debug!(nous_id, reason, "streaming event dropped");
     STREAM_EVENTS_DROPPED_TOTAL
         .get_or_create(&NousReasonLabels {
             nous_id: nous_id.to_owned(),

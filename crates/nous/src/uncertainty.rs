@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — uncertainty quantification with calibration curves; extraction planned in #3754
 //! Uncertainty quantification: calibration of agent confidence estimates.
 //!
 //! Persisted in a fjall keyspace. Calibration points are kept per-agent and

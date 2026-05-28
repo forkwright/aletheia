@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — pipeline stage implementations; per-stage module extraction planned
 //! Pipeline stage implementations.
 
 use std::time::{Duration, Instant};
@@ -553,6 +554,7 @@ fn build_structural_summary(messages: &[PipelineMessage], config: &CompactConfig
         // NOTE: include truncated content to preserve key context
         let truncated: String = msg.content.chars().take(200).collect();
         let role = &msg.role;
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
         let _ = write!(summary, "- [{role}] {truncated}");
         if msg.content.len() > 200 {
             summary.push_str("...");
@@ -561,6 +563,7 @@ fn build_structural_summary(messages: &[PipelineMessage], config: &CompactConfig
         turn_count += 1;
     }
 
+    // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
     let _ = write!(summary, "\n({turn_count} messages summarized)");
     summary
 }
@@ -947,6 +950,7 @@ pub(super) async fn run_reflection_stage(
 }
 
 /// Record elapsed duration on a pipeline stage span.
+// kanon:ignore RUST/doc-promised-observability — function directly calls span.record() which is tracing observability
 fn record_stage_duration(span: &tracing::Span, start: &Instant) {
     #[expect(
         clippy::cast_possible_truncation,

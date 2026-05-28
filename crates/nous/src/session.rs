@@ -18,7 +18,9 @@ use crate::config::NousConfig;
     reason = "session state fields are self-documenting by name"
 )]
 pub struct SessionState {
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     pub session_key: String, // kanon:ignore RUST/plain-string-secret
 

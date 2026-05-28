@@ -109,6 +109,7 @@ pub(crate) fn run_microcompaction(
                 reason = "usize→u64: marker length is small, always fits in u64"
             )]
             let marker_tokens = (marker.len() as u64).div_ceil(4); // kanon:ignore RUST/as-cast
+            // kanon:ignore RUST/no-result-unwrap-or-default — marker length always fits i64; zero on overflow is safe
             msg.token_estimate = i64::try_from(marker_tokens).unwrap_or_default();
             msg.content = marker;
             metrics.results_cleared += 1;
@@ -162,10 +163,6 @@ pub(crate) fn run_microcompaction(
 /// we look for patterns indicating tool output.
 ///
 /// Returns `(tool_type, created_at)` if the message looks like a tool result.
-#[expect(
-    clippy::string_slice,
-    reason = "metadata prefix is ASCII-only ([tool:<name>@<timestamp>]), byte indices are safe"
-)]
 fn parse_tool_result_metadata(msg: &PipelineMessage) -> Option<(ToolResultType, jiff::Timestamp)> {
     // WHY: tool result messages carry metadata in a structured prefix
     // Format: "[tool:<name>@<timestamp>] <content>"
@@ -177,10 +174,10 @@ fn parse_tool_result_metadata(msg: &PipelineMessage) -> Option<(ToolResultType, 
         return None;
     }
     let end_bracket = content.find(']')?;
-    let metadata = &content[6..end_bracket];
+    let metadata = content.get(6..end_bracket)?;
     let at_pos = metadata.find('@')?;
-    let tool_name = &metadata[..at_pos];
-    let timestamp_str = &metadata[at_pos + 1..];
+    let tool_name = metadata.get(..at_pos)?;
+    let timestamp_str = metadata.get(at_pos + 1..)?;
     let created_at: jiff::Timestamp = timestamp_str.parse().ok()?;
     let tool_type = ToolResultType::classify(tool_name);
     Some((tool_type, created_at))

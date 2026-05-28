@@ -206,7 +206,7 @@ fn redact_credit_cards(input: &str) -> String {
         .re;
     let m = marker("credit_card");
     re.replace_all(input, |caps: &regex::Captures<'_>| {
-        let raw = &caps[0];
+        let raw = caps.get(0).map_or("", |m| m.as_str());
         let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
         // Credit cards are 13–19 digits.
         if (13..=19).contains(&digits.len()) && luhn_valid(&digits) {
@@ -257,8 +257,9 @@ pub fn redact(input: &str) -> (String, bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use proptest::prelude::*;
+
+    use super::*;
 
     // WHY: Fake Anthropic API key shapes used as redactor fixtures. These are
     // not real credentials — they exist solely to drive the `sk-ant-*` pattern

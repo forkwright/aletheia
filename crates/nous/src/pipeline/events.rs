@@ -8,6 +8,7 @@ use koina::event::{InternalEvent, LogLevel};
 /// A pipeline stage completed successfully.
 pub(crate) struct StageCompleted {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub(crate) nous_id: String,
     /// Stage name (context, recall, history, guard, execute, finalize).
     pub(crate) stage: &'static str,
@@ -46,6 +47,7 @@ impl InternalEvent for StageCompleted {
 /// A pipeline stage encountered an error.
 pub(crate) struct StageError {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub(crate) nous_id: String,
     /// Stage name.
     pub(crate) stage: &'static str,
@@ -81,6 +83,7 @@ impl InternalEvent for StageError {
 /// A pipeline turn completed.
 pub(crate) struct TurnCompleted {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub(crate) nous_id: String,
     /// Model name.
     pub(crate) model: String,
@@ -126,6 +129,7 @@ impl InternalEvent for TurnCompleted {
 /// Post-turn self-audit completed.
 pub(crate) struct SelfAuditCompleted {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub(crate) nous_id: String,
     /// Number of checks run.
     pub(crate) checks: usize,
@@ -161,6 +165,7 @@ impl InternalEvent for SelfAuditCompleted {
 /// Self-tuning proposals were evaluated for operator consumption.
 pub(crate) struct TuningProposalsEvaluated {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub(crate) nous_id: String,
     /// Number of proposal outcomes generated.
     pub(crate) outcomes: usize,
@@ -194,6 +199,7 @@ impl InternalEvent for TuningProposalsEvaluated {
 /// A pipeline stage was skipped (e.g. recall without embedding provider).
 pub(crate) struct StageSkipped {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub(crate) nous_id: String,
     /// Stage name.
     pub(crate) stage: &'static str,
@@ -221,6 +227,7 @@ impl InternalEvent for StageSkipped {
 /// A pipeline stage timed out.
 pub(crate) struct StageTimeout {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub(crate) nous_id: String,
     /// Stage name.
     pub(crate) stage: &'static str,

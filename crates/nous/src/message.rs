@@ -90,6 +90,7 @@ impl fmt::Display for NousLifecycle {
 #[derive(Debug, Clone)]
 pub struct NousStatus {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
     /// Current lifecycle state.
     pub lifecycle: NousLifecycle,

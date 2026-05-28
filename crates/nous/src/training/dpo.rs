@@ -33,6 +33,7 @@ use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+// kanon:ignore RUST/std-mutex-in-async — DpoExtractor is sync-only O(1) state; std::sync::Mutex is correct for LazyLock global
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,7 @@ use tracing::{debug, info};
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive]; false positive from attribute ordering
 pub enum DpoError {
     /// Failed to create the DPO output directory.
     #[snafu(display("failed to create DPO directory {}: {source}", path.display()))]
@@ -96,6 +98,7 @@ pub struct DpoPair {
     /// The original assistant response that was corrected (dispreferred).
     pub rejected: String,
     /// Session identifier linking the pair to its conversation.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub session_id: String,
     /// Turn number of the rejected response.
     pub rejected_turn: u64,

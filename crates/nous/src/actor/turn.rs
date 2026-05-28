@@ -32,6 +32,7 @@ impl Drop for StreamSenderGuard {
 }
 
 pub(super) struct StreamingTurnRequest {
+    // kanon:ignore RUST/plain-string-secret — session_key is a HashMap lookup identifier (not an auth secret)
     pub session_key: String,
     pub session_id: Option<String>,
     pub content: String,

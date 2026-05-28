@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — provider dispatch loop; extraction into submodules tracked in #3752
 //! Dispatch helpers: tool execution, signal classification, message conversion.
 
 use std::collections::hash_map::DefaultHasher;

@@ -403,6 +403,7 @@ fn format_corrections_section(corrections: &[Correction]) -> String {
 
     for (i, correction) in corrections.iter().enumerate() {
         use std::fmt::Write as _;
+        // kanon:ignore RUST/no-silent-result-swallow — writeln! on String is infallible
         let _ = writeln!(section, "{}. {}", i + 1, correction.text);
     }
 

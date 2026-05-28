@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — pipeline turn orchestration; stage extraction into submodules planned
 //! Message processing pipeline.
 
 use std::collections::VecDeque;
@@ -332,6 +333,7 @@ impl LoopDetector {
     /// // WHY: The `input_hash` (not full input) is used for comparison to keep
     /// // memory usage bounded. Collisions are unlikely with a good hash and
     /// // false positives only trigger warnings, not immediate halts.
+    // kanon:ignore RUST/doc-promised-observability — doc comment describes algorithm, not tracing; function is pure logic
     pub fn record(&mut self, tool_name: &str, input_hash: &str, is_error: bool) -> LoopVerdict {
         let signature = format!("{tool_name}:{input_hash}");
         self.history.push_back(CallRecord {
@@ -670,6 +672,7 @@ pub use crate::degraded_mode::DegradedMode;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     /// Tool call ID.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
     /// Tool name.
     pub name: String,
@@ -955,6 +958,7 @@ pub(crate) async fn run_pipeline(
                 session_key: &input.session.session_key,
                 timestamp: &now,
             };
+            // kanon:ignore RUST/no-silent-result-swallow — hook failure must not abort the turn
             let _ = hook_registry.run_session_start(&session_start_ctx).await;
         }
 
@@ -1041,6 +1045,7 @@ pub(crate) async fn run_pipeline(
                 tokens_after: 0, // Not known until after compaction
                 distillation_number: 1,
             };
+            // kanon:ignore RUST/no-silent-result-swallow — hook failure must not abort the turn
             let _ = hook_registry.run_before_compact(&compact_ctx).await;
         }
 

@@ -92,6 +92,7 @@ pub(crate) struct ActorServices {
 pub(crate) struct ActorStores {
     /// Shared session persistence. Lock guards fjall store access; held
     /// briefly for session/message CRUD, never across `.await` points.
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex guards fjall store access; never held across await
     session_store: Option<Arc<Mutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")]
     knowledge_store: Option<Arc<KnowledgeStore>>,
@@ -183,6 +184,7 @@ impl NousActor {
         oikos: Arc<Oikos>,
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+        // kanon:ignore RUST/no-arc-mutex-anti-pattern — same: SessionStore lock held only for sync CRUD ops
         session_store: Option<Arc<Mutex<SessionStore>>>,
         #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
         tool_services: Option<Arc<ToolServices>>,
@@ -385,6 +387,8 @@ impl NousActor {
                             self.handle_status(reply);
                         }
                         NousMessage::Ping { reply } => {
+                            // kanon:ignore RUST/no-silent-result-swallow — oneshot receiver may have dropped; no recovery possible
+                            // kanon:ignore RUST/no-silent-result-swallow — oneshot receiver may have dropped; no recovery possible
                             let _ = reply.send(());
                         }
                         NousMessage::Sleep => {
@@ -395,6 +399,7 @@ impl NousActor {
                         }
                         NousMessage::Recover { reply } => {
                             let recovered = self.recover();
+                            // kanon:ignore RUST/no-silent-result-swallow — oneshot receiver may have dropped; no recovery possible
                             let _ = reply.send(recovered);
                         }
                         NousMessage::ReloadConfig {
@@ -405,6 +410,7 @@ impl NousActor {
                             config.apply_recall_profile(&mut pipeline_config);
                             self.config = *config;
                             self.pipeline_config = *pipeline_config;
+                            // kanon:ignore RUST/no-silent-result-swallow — oneshot receiver may have dropped; no recovery possible
                             let _ = reply.send(());
                         }
                         NousMessage::Shutdown => {
@@ -492,6 +498,7 @@ impl NousActor {
             panic_count: self.runtime.pipeline_panic_count,
             uptime: self.runtime.started_at.elapsed(),
         };
+        // kanon:ignore RUST/no-silent-result-swallow — oneshot receiver may have dropped; no recovery possible
         let _ = reply.send(status);
     }
 

@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — execute stage orchestration; split into dispatch/response modules planned
 //! Execute stage: LLM call and tool iteration loop.
 
 mod dispatch;
