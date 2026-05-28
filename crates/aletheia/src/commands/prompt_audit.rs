@@ -62,6 +62,22 @@ pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()>
     }
 }
 
+/// Reject `--limit 0` (would silently return 1 record due to the post-push
+/// break check) and empty/whitespace `--nous` (would silently filter
+/// everything out). Same shape as the `validate_args` helpers in
+/// `benchmark.rs` / `eval.rs` / `agent_io.rs` (#4259 / #4263).
+fn validate_list_args(limit: usize, nous: Option<&str>) -> Result<()> {
+    if limit == 0 {
+        snafu::whatever!("--limit must be greater than 0");
+    }
+    if let Some(n) = nous
+        && n.trim().is_empty()
+    {
+        snafu::whatever!("--nous must not be empty");
+    }
+    Ok(())
+}
+
 fn list_records(
     log_dir: &Path,
     since: Option<&str>,
@@ -69,6 +85,7 @@ fn list_records(
     limit: usize,
     json: bool,
 ) -> Result<()> {
+    validate_list_args(limit, nous)?;
     // WHY: parse --since eagerly so bogus input like "not-a-date" or
     // "2026-13-99" fails loudly instead of being string-prefix-compared
     // against the filename stem (which silently filters everything in or
@@ -320,6 +337,45 @@ mod tests {
             ],
         );
         list_records(dir, None, None, 50, false).expect("call succeeds even with corrupt lines");
+    }
+
+    #[test]
+    fn list_records_rejects_zero_limit() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let dir = tmp.path();
+        let err = list_records(dir, None, None, 0, true).expect_err("expected error for --limit 0");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("--limit must be greater than 0"),
+            "expected --limit error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn list_records_rejects_empty_nous_filter() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let dir = tmp.path();
+        for bogus in ["", "   ", "\t"] {
+            let err = list_records(dir, None, Some(bogus), 50, true)
+                .expect_err(&format!("expected error for --nous '{bogus}'"));
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains("--nous must not be empty"),
+                "expected --nous error for '{bogus}', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn list_records_accepts_well_formed_nous_filter() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let dir = tmp.path();
+        write_jsonl(
+            dir,
+            "2026-05-28.jsonl",
+            &[&rec_jsonl("2026-05-28T08:00:00Z", "syn")],
+        );
+        list_records(dir, None, Some("syn"), 50, true).expect("well-formed nous filter passes");
     }
 
     #[test]
