@@ -18,7 +18,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use koina::id::{NousId, SessionId, ToolName};
 use taxis::config::ToolLimitsConfig;
@@ -146,11 +146,9 @@ impl ToolExecutor for MockToolExecutor {
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         let result = {
-            #[expect(
-                clippy::expect_used,
-                reason = "test-support: mock mutex is never poisoned in tests"
-            )]
-            let mut inner = self.inner.lock().expect("mock mutex poisoned"); // kanon:ignore RUST/expect
+            // Recover the guard even if another test thread panicked while holding
+            // the lock, so a poisoned mock never cascades panics into unrelated tests.
+            let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
             match &mut inner.mode {
                 MockMode::Text(t) => Ok(ToolResult::text(t.clone())),
                 MockMode::Error(e) => Ok(ToolResult::error(e.clone())),

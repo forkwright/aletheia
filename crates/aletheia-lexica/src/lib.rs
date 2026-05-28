@@ -12,12 +12,13 @@ pub mod stopwords;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn modules_are_reachable() {
-        assert!(!super::adjectives::UNFALSIFIABLE_ADJECTIVES.is_empty());
-        assert!(!super::keywords::CODING_KEYWORDS.is_empty());
-        assert!(!super::prefixes::CORRECTION_PREFIXES.is_empty());
-        assert!(!super::stopwords::ENGLISH_STOPWORDS.is_empty());
+        assert!(!adjectives::UNFALSIFIABLE_ADJECTIVES.is_empty());
+        assert!(!keywords::CODING_KEYWORDS.is_empty());
+        assert!(!prefixes::CORRECTION_PREFIXES.is_empty());
+        assert!(!stopwords::ENGLISH_STOPWORDS.is_empty());
     }
 }
