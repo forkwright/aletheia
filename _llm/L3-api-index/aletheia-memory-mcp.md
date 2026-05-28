@@ -128,6 +128,7 @@ pub struct NousSearchParams {
 ```rust
 pub struct NousNeighborsParams {
     /// ID of the seed fact whose entity neighbors should be returned.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
 }
 ```
@@ -137,6 +138,7 @@ pub struct NousAnnotateParams {
     /// Session ID for the annotation (identifies the agent or source).
     pub session_id: Option<String>,
     /// Fact ID to annotate.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
     /// Annotation content — agent-authored note or observation.
     pub content: String,
@@ -148,8 +150,10 @@ pub struct NousAnnotateParams {
 ```rust
 pub struct NousSupersedeParams {
     /// ID of the fact being superseded.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub old_fact_id: String,
     /// ID of the new fact that supersedes it.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub new_fact_id: String,
     /// Reason for supersession.
     pub reason: String,
@@ -161,6 +165,7 @@ pub struct NousSupersedeParams {
 ```rust
 pub struct NousForgetParams {
     /// ID of the fact to forget.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
     /// Reason for forgetting.
     pub reason: String,
