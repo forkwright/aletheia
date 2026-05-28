@@ -121,6 +121,7 @@ pub enum DeploymentTarget {
 /// Matches on this in `crates/aletheia/src/runtime/setup.rs` to pick between
 /// the Anthropic HTTP client, OpenAI-compatible HTTP client, or a subprocess
 /// adapter.
+// kanon:ignore RUST/no-debug-derive-on-public-types — ProviderKind is a classification enum with no secret fields; derived Debug leaks only non-secret metadata
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]

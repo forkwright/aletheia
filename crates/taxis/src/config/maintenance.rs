@@ -240,6 +240,7 @@ impl Default for SandboxSettings {
 /// - `"auto"` (default): instance credential file → env vars → Claude Code credentials
 /// - `"api-key"`: only instance credential file and env vars
 /// - `"claude-code"`: prefer Claude Code's `~/.claude/.credentials.json`
+// kanon:ignore RUST/no-debug-derive-on-public-types — CredentialConfig holds only env-var names and strategy strings, not actual secrets; derived Debug leaks no credentials
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]

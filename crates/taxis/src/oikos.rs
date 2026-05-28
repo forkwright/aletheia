@@ -311,6 +311,7 @@ impl Oikos {
     ///
     /// Returns an error if the path does not
     /// exist or is not a directory.
+    // kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
     pub fn validate_workspace_path(&self, workspace: &str) -> crate::error::Result<()> {
         use crate::error::WorkspacePathInvalidSnafu;
 
@@ -339,8 +340,10 @@ impl Oikos {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of transient test file; failure is non-fatal
             let _ = std::fs::set_permissions(&test_file, std::fs::Permissions::from_mode(0o600));
         }
+        // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of transient test file; failure is non-fatal
         let _ = std::fs::remove_file(&test_file);
         Ok(())
     }

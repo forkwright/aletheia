@@ -61,12 +61,14 @@ pub fn interpolate_env_vars(content: &str) -> Result<String> {
             clippy::string_slice,
             reason = "dollar_pos from str::find is a valid UTF-8 boundary"
         )]
+        // kanon:ignore RUST/indexing-slicing — dollar_pos from str::find on rest, always a valid UTF-8 boundary
         result.push_str(&rest[..dollar_pos]);
         #[expect(
             clippy::string_slice,
             reason = "dollar_pos + 2 skips ASCII '$' + '{', always a valid UTF-8 boundary"
         )]
         {
+            // kanon:ignore RUST/indexing-slicing — dollar_pos + 2 skips ASCII '${', always a valid UTF-8 boundary
             rest = &rest[dollar_pos + 2..];
         }
 
@@ -79,12 +81,14 @@ pub fn interpolate_env_vars(content: &str) -> Result<String> {
             clippy::string_slice,
             reason = "close_pos from str::find is a valid UTF-8 boundary"
         )]
+        // kanon:ignore RUST/indexing-slicing — close_pos from str::find on rest, always a valid UTF-8 boundary
         let expr = &rest[..close_pos];
         #[expect(
             clippy::string_slice,
             reason = "close_pos + 1 skips ASCII '}', always a valid UTF-8 boundary"
         )]
         {
+            // kanon:ignore RUST/indexing-slicing — close_pos + 1 skips ASCII '}', always a valid UTF-8 boundary
             rest = &rest[close_pos + 1..];
         }
 
@@ -103,11 +107,13 @@ fn resolve_expr(expr: &str) -> Result<String> {
             clippy::string_slice,
             reason = "sep is a valid UTF-8 boundary returned by str::find on ASCII ':-'"
         )]
+        // kanon:ignore RUST/indexing-slicing — sep from str::find on expr, always a valid UTF-8 boundary
         let var = &expr[..sep];
         #[expect(
             clippy::string_slice,
             reason = "sep + 2 skips ASCII ':-', valid UTF-8 boundary"
         )]
+        // kanon:ignore RUST/indexing-slicing — sep + 2 skips ASCII ':-', always a valid UTF-8 boundary
         let default = &expr[sep + 2..];
         Ok(env::var(var).unwrap_or_else(|_| default.to_owned()))
     } else if let Some(sep) = expr.find(":?") {
@@ -115,11 +121,13 @@ fn resolve_expr(expr: &str) -> Result<String> {
             clippy::string_slice,
             reason = "sep is a valid UTF-8 boundary returned by str::find on ASCII ':?'"
         )]
+        // kanon:ignore RUST/indexing-slicing — sep from str::find on expr, always a valid UTF-8 boundary
         let var = &expr[..sep];
         #[expect(
             clippy::string_slice,
             reason = "sep + 2 skips ASCII ':?', valid UTF-8 boundary"
         )]
+        // kanon:ignore RUST/indexing-slicing — sep + 2 skips ASCII ':?', always a valid UTF-8 boundary
         let message = &expr[sep + 2..];
         env::var(var).map_err(|_env_err| {
             EnvVarRequiredSnafu {
@@ -129,6 +137,7 @@ fn resolve_expr(expr: &str) -> Result<String> {
             .build()
         })
     } else {
+        // kanon:ignore RUST/no-result-unwrap-or-default — plain ${VAR} spec defines empty string as the fallback when the variable is unset
         Ok(env::var(expr).unwrap_or_default())
     }
 }

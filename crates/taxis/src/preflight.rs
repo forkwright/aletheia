@@ -148,8 +148,10 @@ fn check_data_writable(data_dir: &Path, failures: &mut Vec<String>) {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
+                // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of transient probe file; failure is non-fatal
                 let _ = std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o600));
             }
+            // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of transient probe file; failure is non-fatal
             let _ = std::fs::remove_file(&probe);
         }
         Err(e) => {

@@ -170,6 +170,7 @@ impl WorkspaceSchema {
 pub(crate) fn validate_agent_workspaces(
     config: &AletheiaConfig,
     oikos: &Oikos,
+    // kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
 ) -> Result<(), WorkspaceSchemaError> {
     let schema = WorkspaceSchema::standard();
     let mut all_failures: Vec<String> = Vec::new();

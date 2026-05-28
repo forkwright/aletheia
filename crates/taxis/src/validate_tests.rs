@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — comprehensive validation tests for all config sections
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
@@ -882,6 +883,7 @@ fn validate_startup_rejects_agent_workspace_missing_soul() {
 /// the disabled state in every log aggregator.
 #[test]
 #[tracing_test::traced_test]
+// kanon:ignore RUST/doc-promised-observability — test verifies warn! emission from the function under test via tracing_test::traced_test
 fn warn_if_auth_disabled_emits_security_warning() {
     let mut config = AletheiaConfig::default();
     config.gateway.auth.mode = "none".to_owned();

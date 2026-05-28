@@ -288,7 +288,7 @@ impl Default for CachingConfig {
 #[serde(rename_all = "camelCase")]
 pub struct NousDefinition {
     /// Unique agent identifier (matches the `nous/{id}/` directory name).
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire/serde config field: id maps to the agent's directory name in TOML, not a runtime domain identifier
     /// Human-readable display name.
     #[serde(default)]
     pub name: Option<String>,

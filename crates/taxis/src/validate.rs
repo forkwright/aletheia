@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — config section validators are discrete functions naturally colocated with their dispatch table
 //! Config section validation: rejects invalid values before persisting.
 
 use serde_json::Value;
@@ -28,6 +29,7 @@ pub struct ValidationError {
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
+// kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
 pub(crate) fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
     let value = serde_json::to_value(config).unwrap_or(Value::Null);
     let Value::Object(ref sections) = value else {
@@ -68,6 +70,7 @@ pub(crate) fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationE
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
+// kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
 pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
 
@@ -131,6 +134,7 @@ const REQUIRED_INSTANCE_SUBDIRS: &[&str] = &["config", "data", "nous"];
     clippy::double_must_use,
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
+// kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
 pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
 

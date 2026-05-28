@@ -15,6 +15,7 @@ use snafu::Snafu;
     missing_docs,
     reason = "snafu error variant fields (source, location, path, reason) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive]; false positive from attribute ordering
 pub enum Error {
     /// The instance root directory does not exist.
     #[snafu(display("instance root not found: {}", path.display()))]
