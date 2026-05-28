@@ -153,7 +153,7 @@ pub(crate) async fn run_completion(
                 timeout_secs = timeout.as_secs(),
                 "Codex subprocess timed out, killing"
             );
-            let _ = child.kill().await;
+            let _ = child.kill().await; // kanon:ignore RUST/no-silent-result-swallow WHY: best-effort kill on timeout path; already returning an Err
             Err(error::ApiRequestSnafu {
                 message: format!("Codex subprocess timed out after {}s", timeout.as_secs()),
             }

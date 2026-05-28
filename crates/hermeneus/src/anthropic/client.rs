@@ -111,7 +111,7 @@ fn is_loopback_url(url: &str) -> bool {
 fn build_http_client() -> Result<Client> {
     // WHY: reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
     // install_default() is idempotent: subsequent calls return Err and are ignored.
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    let _ = rustls::crypto::ring::default_provider().install_default(); // kanon:ignore RUST/no-silent-result-swallow WHY: install_default is idempotent; Err on second call is expected and safe to discard
 
     // WHY: client-level timeout is a safety net for the full request lifecycle.
     // Non-streaming requests override with NON_STREAMING_TIMEOUT per-request.

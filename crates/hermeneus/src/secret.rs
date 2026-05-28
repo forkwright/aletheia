@@ -14,6 +14,7 @@ use snafu::Snafu;
 
 /// Errors from secret vault operations.
 #[derive(Debug, Snafu)]
+// kanon:ignore RUST/no-debug-derive-on-public-types WHY: Snafu macro requires Debug derive; error type contains no secret values
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum SecretError {

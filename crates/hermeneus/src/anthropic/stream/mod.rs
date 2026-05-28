@@ -12,11 +12,11 @@ use crate::types::{StopReason, Usage};
 
 /// Event emitted during streaming completion.
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 #[expect(
     missing_docs,
     reason = "variant fields (text, thinking, partial_json, index, block_type, usage, stop_reason) are self-documenting by name"
 )]
+#[non_exhaustive]
 pub enum StreamEvent {
     /// Incremental text content.
     TextDelta { text: String },
