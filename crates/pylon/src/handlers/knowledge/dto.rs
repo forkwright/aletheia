@@ -101,7 +101,7 @@ pub struct ForgetRequest {
     pub reason: String,
 }
 
-fn default_forget_reason() -> String {
+pub(crate) fn default_forget_reason() -> String {
     "user_requested".to_string()
 }
 

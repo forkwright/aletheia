@@ -18,7 +18,7 @@ use super::{ForgetRequest, UpdateConfidenceRequest, UpdateSensitivityRequest};
     path = "/api/v1/knowledge/facts/{id}/forget",
     params(("id" = String, Path, description = "Fact ID")),
     request_body(
-        content = serde_json::Value,
+        content = Option<serde_json::Value>,
         description = "Optional forget reason: `{reason?}` (default: user_requested)",
         content_type = "application/json"
     ),
@@ -37,7 +37,7 @@ pub async fn forget_fact(
     State(state): State<KnowledgeState>,
     claims: Claims,
     Path(id): Path<String>,
-    Json(body): Json<ForgetRequest>,
+    body: Option<Json<ForgetRequest>>,
 ) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
     #[cfg(feature = "knowledge-store")]
@@ -47,7 +47,7 @@ pub async fn forget_fact(
             location: snafu::location!(),
         })?;
         let reason = body
-            .reason
+            .map_or_else(super::dto::default_forget_reason, |Json(b)| b.reason)
             .parse::<mneme::knowledge::ForgetReason>()
             .unwrap_or(mneme::knowledge::ForgetReason::UserRequested);
         return match store.forget_fact_async(fact_id, reason).await {
