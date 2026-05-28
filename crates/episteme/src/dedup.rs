@@ -258,7 +258,20 @@ pub(crate) fn name_in_aliases(
 }
 
 /// Cosine similarity between two f32 vectors.
-#[cfg(test)]
+///
+/// Returns 0.0 for mismatched dimensions, empty vectors, or any vector with
+/// zero magnitude. The result is *clamped* to `[0.0, 1.0]` so the dedup
+/// composite score stays in its declared domain even when an embedding
+/// provider returns slightly out-of-range values due to floating-point
+/// drift. (`embed_sim` is the second-largest weight in the merge formula —
+/// a slightly-negative value here would silently lower the score.)
+#[cfg_attr(
+    not(any(feature = "mneme-engine", test)),
+    expect(
+        dead_code,
+        reason = "exposed for the dedup pipeline gated behind mneme-engine"
+    )
+)]
 pub(crate) fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
@@ -274,7 +287,7 @@ pub(crate) fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     if denom < f64::EPSILON {
         return 0.0;
     }
-    dot / denom
+    (dot / denom).clamp(0.0, 1.0)
 }
 
 /// Lightweight entity data for dedup processing (avoids full Entity struct dependency on engine).
@@ -287,6 +300,38 @@ pub(crate) struct EntityInfo {
     pub(crate) aliases: Vec<String>,
     pub(crate) relationship_count: u32,
     pub(crate) created_at: jiff::Timestamp,
+    /// Cached embedding of [`Self::name`] loaded from the entities relation
+    /// (`name_embedding` column, added in schema v13). `None` for entities
+    /// inserted before the v13 migration, or while no `EmbeddingProvider`
+    /// was in scope; `make_embedding_lookup` returns 0.0 for any pair
+    /// involving a `None`.
+    pub(crate) name_embedding: Option<Vec<f32>>,
+}
+
+/// Build a pairwise cosine-similarity lookup over `entities.name_embedding`.
+///
+/// Returns a closure suitable for [`generate_candidates`]; the closure
+/// computes [`cosine_similarity`] between the cached `name_embedding`s of
+/// the two entities and returns 0.0 when either is absent or the lookup
+/// misses (defensive: an unknown id should not silently inflate
+/// `embed_sim`).
+///
+/// This is the production replacement for the historical `|_, _| 0.0`
+/// closures at `find_duplicate_entities` and `run_entity_dedup` that made
+/// `MergeDecision::AutoMerge` (≥ 0.90) structurally unreachable (#4165).
+#[cfg(any(feature = "mneme-engine", test))]
+pub(crate) fn make_embedding_lookup(
+    entities: &[EntityInfo],
+) -> impl Fn(&EntityId, &EntityId) -> f64 + '_ {
+    use std::collections::HashMap;
+    let map: HashMap<&str, &[f32]> = entities
+        .iter()
+        .filter_map(|e| e.name_embedding.as_deref().map(|v| (e.id.as_str(), v)))
+        .collect();
+    move |a, b| match (map.get(a.as_str()), map.get(b.as_str())) {
+        (Some(va), Some(vb)) => cosine_similarity(va, vb),
+        _ => 0.0,
+    }
 }
 
 /// Phase 1: Generate candidate merge pairs from a list of entities.

@@ -20,7 +20,8 @@
 //!         visibility: String }
 //!
 //! entities { id: String => name: String, entity_type: String, aliases: String,
-//!            created_at: String, updated_at: String }
+//!            created_at: String, updated_at: String,
+//!            name_embedding: <F32; DIM>? }
 //!
 //! relationships { src: String, dst: String => relation: String, weight: Float,
 //!                 created_at: String }
@@ -94,6 +95,11 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         project_id: String?,
         visibility: String default 'private'
     }",
+    // WHY: index 1 is a sentinel — `init_schema` skips this entry and runs
+    // the dim-parameterized `entities_ddl(self.dim)` instead so the relation
+    // carries a `name_embedding: <F32; DIM>?` column for the dedup pipeline
+    // (#4165 Path A). The literal here documents the pre-v13 shape but is
+    // not executed against any database.
     r":create entities {
         id: String =>
         name: String,
@@ -174,6 +180,27 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         contributed_at: String
     }",
 ];
+
+/// Datalog DDL for the entities relation. Dimension is parameterized so the
+/// `name_embedding` column can hold a fixed-size F32 vector matching the
+/// configured embedding provider. Nullable: entities created before the
+/// dedup-reachability fix (#4165) and entities inserted while no provider is
+/// configured leave the column NULL; the dedup pipeline treats NULL as
+/// `embed_sim = 0.0` for those pairs (degraded-mode behaviour).
+#[instrument]
+pub fn entities_ddl(dim: usize) -> String {
+    format!(
+        r":create entities {{
+            id: String =>
+            name: String,
+            entity_type: String,
+            aliases: String,
+            created_at: String,
+            updated_at: String,
+            name_embedding: <F32; {dim}>?
+        }}"
+    )
+}
 
 /// Datalog DDL for the embeddings relation. Dimension is parameterized.
 #[instrument]
@@ -496,7 +523,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 12;
+    const SCHEMA_VERSION: i64 = 13;
 
     /// Open an in-memory knowledge store with default configuration.
     ///
@@ -732,10 +759,20 @@ impl KnowledgeStore {
             if current_version < 12 {
                 self.migrate_v11_to_v12()?;
             }
+            if current_version < 13 {
+                self.migrate_v12_to_v13()?;
+            }
             return Ok(());
         }
 
-        for ddl in KNOWLEDGE_DDL {
+        // WHY: skip KNOWLEDGE_DDL[1] — the entities relation needs a
+        // dim-parameterized `name_embedding` column for the dedup pipeline
+        // (#4165 Path A). It is created explicitly via `entities_ddl(self.dim)`
+        // below; the static literal at index 1 is documentation-only.
+        for (i, ddl) in KNOWLEDGE_DDL.iter().enumerate() {
+            if i == 1 {
+                continue;
+            }
             self.db
                 .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
                 .map_err(|e| {
@@ -745,6 +782,16 @@ impl KnowledgeStore {
                     .build()
                 })?;
         }
+
+        let entities_script = entities_ddl(self.dim);
+        self.db
+            .run(&entities_script, BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         let emb_ddl = embeddings_ddl(self.dim);
         self.db

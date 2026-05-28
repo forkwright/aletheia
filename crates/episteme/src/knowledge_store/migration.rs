@@ -2,7 +2,7 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
-use super::{KNOWLEDGE_DDL, KnowledgeStore, fts_ddl};
+use super::{KNOWLEDGE_DDL, KnowledgeStore, entities_ddl, fts_ddl};
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
@@ -907,6 +907,118 @@ impl KnowledgeStore {
             })?;
 
         tracing::info!("knowledge schema migration v11 -> v12 complete");
+        Ok(())
+    }
+
+    /// Migrate v12 → v13: add `name_embedding` to `entities`.
+    ///
+    /// Wires Path A of the memory-dedup reachability fix (#4165). The
+    /// dedup pipeline weights `embed_sim` at 0.30; with no column to store
+    /// per-entity name embeddings, both production callers passed
+    /// `|_, _| 0.0`, capping the composite score at 0.70 and making
+    /// `MergeDecision::AutoMerge` (≥ 0.90) structurally unreachable. This
+    /// migration adds a nullable `name_embedding: <F32; DIM>?` column;
+    /// existing rows are backfilled with NULL (preserving prior behaviour),
+    /// and callers with an [`EmbeddingProvider`] in scope can populate
+    /// embeddings via [`KnowledgeStore::update_entity_name_embedding`] or
+    /// the dedup-time backfill in
+    /// [`KnowledgeStore::run_entity_dedup_with_embeddings`].
+    ///
+    /// [`EmbeddingProvider`]: crate::embedding::EmbeddingProvider
+    pub(super) fn migrate_v12_to_v13(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        tracing::info!("migrating knowledge schema v12 -> v13");
+
+        let all_entities = self
+            .db
+            .run(
+                r"?[id, name, entity_type, aliases, created_at, updated_at] :=
+                    *entities{id, name, entity_type, aliases, created_at, updated_at}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v12->v13 read entities: {e}"),
+                }
+                .build()
+            })?;
+
+        self.db
+            .run(
+                "::remove entities",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v12->v13 remove entities: {e}"),
+                }
+                .build()
+            })?;
+
+        let entities_script = entities_ddl(self.dim);
+        self.db
+            .run(&entities_script, BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v12->v13 recreate entities: {e}"),
+                }
+                .build()
+            })?;
+
+        for row in &all_entities.rows {
+            let script = r"
+                ?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] <- [[
+                    $id, $name, $entity_type, $aliases, $created_at, $updated_at, null
+                ]]
+                :put entities {id => name, entity_type, aliases, created_at, updated_at, name_embedding}
+            ";
+            let mut params = BTreeMap::new();
+            for (i, name) in [
+                "id",
+                "name",
+                "entity_type",
+                "aliases",
+                "created_at",
+                "updated_at",
+            ]
+            .iter()
+            .enumerate()
+            {
+                if let Some(val) = row.get(i) {
+                    params.insert((*name).to_owned(), val.clone());
+                }
+            }
+            self.db
+                .run(script, params, ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v12->v13 reinsert entity: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v12->v13 version write failed: {e}"),
+                }
+                .build()
+            })?;
+
+        tracing::info!("knowledge schema migration v12 -> v13 complete");
         Ok(())
     }
 }

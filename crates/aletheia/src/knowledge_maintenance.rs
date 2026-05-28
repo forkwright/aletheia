@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use mneme::embedding::{EmbeddingProvider, is_degraded_provider};
 use mneme::knowledge::FactType;
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::recall::RecallEngine;
@@ -15,11 +16,33 @@ use oikonomos::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceReport};
 /// `KnowledgeStore`. All methods are blocking (`CozoDB` is sync).
 pub(crate) struct KnowledgeMaintenanceAdapter {
     store: Arc<KnowledgeStore>,
+    /// Embedding provider passed through to the dedup pipeline so it can
+    /// populate `entities.name_embedding` before scoring (#4165 Path A).
+    /// `None` (or a degraded sentinel) keeps `embed_sim = 0.0`, which
+    /// preserves pre-fix behaviour for installs without an embedding
+    /// provider configured.
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
 }
 
 impl KnowledgeMaintenanceAdapter {
     pub(crate) fn new(store: Arc<KnowledgeStore>) -> Self {
-        Self { store }
+        Self {
+            store,
+            embedding_provider: None,
+        }
+    }
+
+    /// Attach an embedding provider to the dedup pipeline.
+    ///
+    /// When set, [`Self::deduplicate_entities`] backfills any NULL
+    /// `entities.name_embedding`s through this provider before running
+    /// the merge-score pipeline, so the 0.30-weighted `embed_sim` term
+    /// becomes a real signal and the `AutoMerge` threshold (0.90) is
+    /// reachable. A degraded sentinel is accepted but skipped at
+    /// backfill time to avoid log spam.
+    pub(crate) fn with_embedding_provider(mut self, provider: Arc<dyn EmbeddingProvider>) -> Self {
+        self.embedding_provider = Some(provider);
+        self
     }
 }
 
@@ -111,15 +134,30 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         })
     }
 
-    /// Deduplicates entities by delegating to `KnowledgeStore::run_entity_dedup`.
+    /// Deduplicates entities by delegating to
+    /// [`KnowledgeStore::run_entity_dedup_with_embeddings`].
+    ///
+    /// When an [`EmbeddingProvider`] is attached and is not a degraded
+    /// sentinel, this backfills any NULL `entities.name_embedding`s
+    /// before scoring. That is the wire that makes the
+    /// `MergeDecision::AutoMerge` threshold (≥ 0.90) reachable from this
+    /// scheduled task — without embeddings the maximum composite score
+    /// is 0.70 (#4165 Path A).
     fn deduplicate_entities(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
-        let records = self.store.run_entity_dedup(nous_id).map_err(|e| {
-            oikonomos::error::TaskFailedSnafu {
-                task_id: "entity-dedup".to_owned(),
-                reason: e.to_string(),
-            }
-            .build()
-        })?;
+        let provider_ref = self
+            .embedding_provider
+            .as_deref()
+            .filter(|p| !is_degraded_provider(*p));
+        let records = self
+            .store
+            .run_entity_dedup_with_embeddings(nous_id, provider_ref)
+            .map_err(|e| {
+                oikonomos::error::TaskFailedSnafu {
+                    task_id: "entity-dedup".to_owned(),
+                    reason: e.to_string(),
+                }
+                .build()
+            })?;
 
         #[expect(clippy::as_conversions, reason = "usize→u64: record count fits in u64")]
         let merged = records.len() as u64;

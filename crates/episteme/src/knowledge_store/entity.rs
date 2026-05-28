@@ -131,14 +131,23 @@ impl KnowledgeStore {
     /// Find duplicate entity candidates for a given nous.
     ///
     /// Loads all entities, groups by type, and runs the 3-phase candidate
-    /// generation + scoring pipeline. Returns all candidates (auto-merge + review).
+    /// generation + scoring pipeline. Returns all candidates (auto-merge +
+    /// review).
+    ///
+    /// Cosine similarity is computed over the entities' cached
+    /// `name_embedding` column (schema v13+). Entities without a stored
+    /// embedding contribute `embed_sim = 0.0` for any pair they participate
+    /// in — i.e. the pre-#4165 behaviour for degraded-mode installs.
+    /// Callers that want to populate embeddings first should use
+    /// [`KnowledgeStore::backfill_entity_name_embeddings`].
     #[instrument(skip(self))]
     pub fn find_duplicate_entities(
         &self,
         nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>> {
         let entities = self.load_entity_infos(nous_id)?;
-        let candidates = crate::dedup::generate_candidates(&entities, &|_a, _b| 0.0);
+        let embed_lookup = crate::dedup::make_embedding_lookup(&entities);
+        let candidates = crate::dedup::generate_candidates(&entities, &embed_lookup);
         Ok(candidates)
     }
 
@@ -277,13 +286,16 @@ impl KnowledgeStore {
         Ok(results)
     }
 
-    /// Approve a pending merge: execute it.
+    /// Approve a pending merge by executing it.
+    ///
+    /// Drains a candidate that
+    /// [`KnowledgeStore::run_entity_dedup`] left in the `pending_merges`
+    /// queue (score in `[0.70, 0.90)`); the operator picks which side
+    /// survives and `execute_merge` redirects edges, transfers
+    /// `fact_entities`, preserves the merged name as an alias, and clears
+    /// the pending-merge row (#4165 Path A).
     #[instrument(skip(self))]
-    #[expect(
-        dead_code,
-        reason = "entity dedup pipeline — no callers yet including tests"
-    )]
-    pub(crate) fn approve_merge(
+    pub fn approve_merge(
         &self,
         canonical_id: &crate::id::EntityId,
         merged_id: &crate::id::EntityId,
@@ -297,11 +309,7 @@ impl KnowledgeStore {
         clippy::used_underscore_binding,
         reason = "nous_id reserved for future filtering"
     )]
-    #[expect(
-        dead_code,
-        reason = "entity dedup pipeline — no callers yet including tests"
-    )]
-    pub(crate) fn get_merge_history(
+    pub fn get_merge_history(
         &self,
         _nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {
@@ -342,6 +350,15 @@ impl KnowledgeStore {
     /// 3. Execute auto-merges, store review candidates as pending
     ///
     /// Returns the list of completed merge records.
+    ///
+    /// Cosine similarity is computed over each entity's cached
+    /// `name_embedding` column (schema v13+) — entities without a stored
+    /// embedding contribute `embed_sim = 0.0`. Callers that want
+    /// `AutoMerge` to be reachable in production (the design weights
+    /// `embed_sim` at 0.30 and the `AutoMerge` threshold is 0.90) should
+    /// populate embeddings first via
+    /// [`KnowledgeStore::run_entity_dedup_with_embeddings`] or
+    /// [`KnowledgeStore::backfill_entity_name_embeddings`].
     #[instrument(skip(self))]
     pub fn run_entity_dedup(
         &self,
@@ -352,7 +369,8 @@ impl KnowledgeStore {
             return Ok(Vec::new());
         }
 
-        let candidates = crate::dedup::generate_candidates(&entities, &|_a, _b| 0.0);
+        let embed_lookup = crate::dedup::make_embedding_lookup(&entities);
+        let candidates = crate::dedup::generate_candidates(&entities, &embed_lookup);
         let (auto_merge, review) = crate::dedup::classify_candidates(candidates);
 
         for c in &review {
@@ -397,6 +415,207 @@ impl KnowledgeStore {
         Ok(records)
     }
 
+    /// Set (or clear) the `name_embedding` for a single entity.
+    ///
+    /// Writes only the embedding column — the entity's name, type,
+    /// aliases, and timestamps are preserved as-is. Pass `None` to clear
+    /// a stored embedding, or `Some(vec)` to install one whose length
+    /// matches the configured `KnowledgeConfig::dim`.
+    ///
+    /// Returns
+    /// `Err(EmbeddingDimensionMismatch)` if the supplied vector's length
+    /// does not match `self.dim` (a wrong-dim write would corrupt the
+    /// stored column type and silently break subsequent dedup runs).
+    ///
+    /// Wires the at-creation half of the #4165 Path A lifecycle: callers
+    /// in the extraction pipeline that hold an
+    /// [`EmbeddingProvider`](crate::embedding::EmbeddingProvider) compute
+    /// the name embedding once and call this method directly after
+    /// `insert_entity`.
+    #[instrument(skip(self, name_embedding), fields(entity_id = %entity_id))]
+    pub fn update_entity_name_embedding(
+        &self,
+        entity_id: &crate::id::EntityId,
+        name_embedding: Option<Vec<f32>>,
+    ) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{Array1, DataValue, Vector};
+
+        if let Some(ref v) = name_embedding {
+            snafu::ensure!(
+                v.len() == self.dim,
+                crate::error::EmbeddingDimensionMismatchSnafu {
+                    expected: self.dim,
+                    actual: v.len(),
+                }
+            );
+        }
+
+        let entity = self.load_entity(entity_id)?;
+        let mut params = BTreeMap::new();
+        params.insert("id".to_owned(), DataValue::Str(entity_id.as_str().into()));
+        params.insert(
+            "name".to_owned(),
+            DataValue::Str(entity.name.as_str().into()),
+        );
+        params.insert(
+            "entity_type".to_owned(),
+            DataValue::Str(entity.entity_type.as_str().into()),
+        );
+        params.insert(
+            "aliases".to_owned(),
+            DataValue::Str(entity.aliases.join(",").into()),
+        );
+        params.insert(
+            "created_at".to_owned(),
+            DataValue::Str(crate::knowledge::format_timestamp(&entity.created_at).into()),
+        );
+        params.insert(
+            "updated_at".to_owned(),
+            DataValue::Str(crate::knowledge::format_timestamp(&jiff::Timestamp::now()).into()),
+        );
+        let emb_value = name_embedding.map_or(DataValue::Null, |v| {
+            DataValue::Vec(Vector::F32(Array1::from(v)))
+        });
+        params.insert("name_embedding".to_owned(), emb_value);
+        self.run_mut(&queries::upsert_entity(), params)
+    }
+
+    /// Read the stored `name_embedding` for a single entity, if any.
+    ///
+    /// Returns `Ok(None)` when the column is NULL (never populated, or
+    /// the entity predates the v13 migration). Returns `Err` when the
+    /// entity does not exist.
+    #[instrument(skip(self), fields(entity_id = %entity_id))]
+    pub fn get_entity_name_embedding(
+        &self,
+        entity_id: &crate::id::EntityId,
+    ) -> crate::error::Result<Option<Vec<f32>>> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let mut params = BTreeMap::new();
+        params.insert("id".to_owned(), DataValue::Str(entity_id.as_str().into()));
+        let script = r"?[name_embedding] :=
+            *entities{id, name_embedding},
+            id = $id";
+        let rows = self.run_read(script, params)?;
+        let row = rows.rows.into_iter().next().ok_or_else(|| {
+            crate::error::EngineQuerySnafu {
+                message: format!("entity not found: {entity_id}"),
+            }
+            .build()
+        })?;
+        super::marshal::extract_optional_f32_vec(&row[0])
+    }
+
+    /// Populate `name_embedding` for entities whose column is NULL.
+    ///
+    /// Walks every entity returned by [`load_entity_infos`], embeds those
+    /// whose `name_embedding` is `None` via `provider`, and writes the
+    /// result back through [`update_entity_name_embedding`]. Returns the
+    /// number of rows that were filled in.
+    ///
+    /// This is the lazy half of the #4165 Path A lifecycle: degraded-mode
+    /// installs and rows that predate v13 stay at `embed_sim = 0.0` until
+    /// a future dedup run is invoked with a provider in scope. Individual
+    /// embedding failures are logged and counted but do not abort the
+    /// scan — partial backfill is more useful than no backfill when only
+    /// a subset of names trips the embedding model.
+    ///
+    /// [`load_entity_infos`]: Self::load_entity_infos
+    /// [`update_entity_name_embedding`]: Self::update_entity_name_embedding
+    #[instrument(skip(self, provider))]
+    pub fn backfill_entity_name_embeddings(
+        &self,
+        provider: &dyn crate::embedding::EmbeddingProvider,
+        nous_id: &str,
+    ) -> crate::error::Result<u64> {
+        // WHY: avoid backfilling against a degraded sentinel — every
+        // call would return an error and inflate the failure counter
+        // without making the dedup pipeline any more accurate.
+        if crate::embedding::is_degraded_provider(provider) {
+            tracing::warn!(
+                nous_id,
+                "backfill_entity_name_embeddings: provider is degraded; skipping"
+            );
+            return Ok(0);
+        }
+
+        let entities = self.load_entity_infos(nous_id)?;
+        let mut filled: u64 = 0;
+        let mut failures: u32 = 0;
+        for e in &entities {
+            if e.name_embedding.is_some() {
+                continue;
+            }
+            match provider.embed(&e.name) {
+                Ok(vec) => {
+                    if let Err(err) = self.update_entity_name_embedding(&e.id, Some(vec)) {
+                        tracing::warn!(
+                            entity_id = %e.id,
+                            error = %err,
+                            "backfill: failed to write name_embedding"
+                        );
+                        failures = failures.saturating_add(1);
+                    } else {
+                        filled = filled.saturating_add(1);
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        entity_id = %e.id,
+                        error = %err,
+                        "backfill: failed to embed entity name"
+                    );
+                    failures = failures.saturating_add(1);
+                }
+            }
+        }
+        if failures > 0 {
+            tracing::info!(
+                filled,
+                failures,
+                "backfill_entity_name_embeddings complete (with failures)"
+            );
+        }
+        Ok(filled)
+    }
+
+    /// Run the dedup pipeline after backfilling missing name embeddings.
+    ///
+    /// When `provider` is `Some`, calls
+    /// [`backfill_entity_name_embeddings`](Self::backfill_entity_name_embeddings)
+    /// to populate any NULL `name_embedding`s before delegating to
+    /// [`run_entity_dedup`](Self::run_entity_dedup). When `provider` is
+    /// `None`, behaves identically to `run_entity_dedup` — degraded-mode
+    /// installs continue to produce review-tier candidates only, since
+    /// the maximum composite score without embeddings is 0.70 (#4165).
+    ///
+    /// Backfill failure (e.g. the provider rate-limited) is non-fatal:
+    /// the dedup scan still runs over whatever embeddings did land, so
+    /// callers always get *some* progress. Whichever entities were
+    /// successfully embedded contribute real `embed_sim` values; the rest
+    /// stay at 0.0 for this pass.
+    #[instrument(skip(self, provider))]
+    pub fn run_entity_dedup_with_embeddings(
+        &self,
+        nous_id: &str,
+        provider: Option<&dyn crate::embedding::EmbeddingProvider>,
+    ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {
+        if let Some(p) = provider
+            && let Err(e) = self.backfill_entity_name_embeddings(p, nous_id)
+        {
+            tracing::warn!(
+                nous_id,
+                error = %e,
+                "backfill_entity_name_embeddings failed; falling back to embedded-or-null dedup"
+            );
+        }
+        self.run_entity_dedup(nous_id)
+    }
+
     /// Load all entities as lightweight `EntityInfo` structs.
     pub(super) fn load_entity_infos(
         &self,
@@ -404,13 +623,16 @@ impl KnowledgeStore {
     ) -> crate::error::Result<Vec<crate::dedup::EntityInfo>> {
         use std::collections::BTreeMap;
 
-        let script = r"?[id, name, entity_type, aliases, created_at] :=
-            *entities{id, name, entity_type, aliases, created_at}";
+        // WHY (#4165 Path A): pull `name_embedding` alongside the other
+        // entity fields so the dedup pipeline can compute real cosine
+        // similarity for the `embed_sim` term in the merge score.
+        let script = r"?[id, name, entity_type, aliases, created_at, name_embedding] :=
+            *entities{id, name, entity_type, aliases, created_at, name_embedding}";
         let rows = self.run_read(script, BTreeMap::new())?;
 
         let mut entities = Vec::new();
         for row in &rows.rows {
-            if row.len() < 5 {
+            if row.len() < 6 {
                 continue;
             }
             let id_str = extract_str(&row[0])?;
@@ -427,6 +649,7 @@ impl KnowledgeStore {
             };
             let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
                 .unwrap_or_else(jiff::Timestamp::now);
+            let name_embedding = super::marshal::extract_optional_f32_vec(&row[5])?;
 
             let rel_count = self.count_relationships(&id_str)?;
 
@@ -438,6 +661,7 @@ impl KnowledgeStore {
                 aliases,
                 relationship_count: u32::try_from(rel_count).unwrap_or(0),
                 created_at,
+                name_embedding,
             });
         }
         Ok(entities)
@@ -686,7 +910,7 @@ impl KnowledgeStore {
     ) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::DataValue;
+        use crate::engine::{Array1, DataValue, Vector};
         let entity = self.load_entity(entity_id)?;
         let lower_new = new_alias.to_lowercase();
 
@@ -699,6 +923,15 @@ impl KnowledgeStore {
         let mut aliases = entity.aliases;
         aliases.push(new_alias.to_owned());
         let aliases_str = aliases.join(",");
+
+        // WHY (#4165 Path A): the entities upsert now also requires
+        // `$name_embedding` — preserve the existing column value so the
+        // alias update does not silently clear a previously-populated
+        // embedding.
+        let existing_embedding = self.get_entity_name_embedding(entity_id)?;
+        let emb_value = existing_embedding.map_or(DataValue::Null, |v| {
+            DataValue::Vec(Vector::F32(Array1::from(v)))
+        });
 
         let mut params = BTreeMap::new();
         params.insert("id".to_owned(), DataValue::Str(entity_id.as_str().into()));
@@ -716,6 +949,7 @@ impl KnowledgeStore {
             "created_at".to_owned(),
             DataValue::Str(crate::knowledge::format_timestamp(&entity.created_at).into()),
         );
+        params.insert("name_embedding".to_owned(), emb_value);
         self.run_mut(&queries::upsert_entity(), params)
     }
 

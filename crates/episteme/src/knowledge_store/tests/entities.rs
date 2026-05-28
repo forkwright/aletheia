@@ -262,3 +262,281 @@ fn insert_entity_unicode() {
         .expect("neighborhood query");
     assert!(rows.is_empty() || !rows.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// #4165 Path A — end-to-end pipeline tests
+//
+// `dedup_tests.rs` covers `generate_candidates` + `make_embedding_lookup` in
+// isolation; the tests below exercise the actual `KnowledgeStore` API —
+// schema v13 column, `update_entity_name_embedding`, `find_duplicate_entities`,
+// `run_entity_dedup`, and the `approve_merge` queue. This is the reachability
+// proof that the pipeline survives the journey through Cozo storage round-trips.
+// ---------------------------------------------------------------------------
+
+/// Pre-fix shape: insert two near-identical entities without populating
+/// `name_embedding`, then run the production `run_entity_dedup`. The bug
+/// the design doc described — no auto-merges possible — must reproduce.
+#[test]
+fn dedup_pipeline_without_embeddings_reproduces_bug_4165() {
+    let store = make_store();
+    let mut e1 = make_entity("e1", "Acme Corporation", "organization");
+    e1.aliases = vec!["Acme".to_owned()];
+    let mut e2 = make_entity("e2", "acme corporation", "organization");
+    e2.aliases = vec!["Acme".to_owned()];
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+
+    let records = store
+        .run_entity_dedup("test-nous")
+        .expect("dedup should succeed even with no embeddings");
+    assert!(
+        records.is_empty(),
+        "pre-fix shape (no embeddings stored) must produce zero auto-merges — this is the unreachability bug #4165 documented"
+    );
+
+    // The pair should still land in the review queue (score 0.70).
+    let pending = store
+        .get_pending_merges("test-nous")
+        .expect("read pending merges");
+    assert_eq!(
+        pending.len(),
+        1,
+        "the pair should be queued for review even without embeddings"
+    );
+}
+
+/// Reachability: populate both entities' `name_embedding`s, run the
+/// production `run_entity_dedup`, and assert a real auto-merge was
+/// executed. This is the end-to-end proof that #4165 Path A reaches
+/// `MergeDecision::AutoMerge` from production code.
+#[test]
+fn dedup_pipeline_with_embeddings_reaches_auto_merge() {
+    let store = make_store();
+    let mut e1 = make_entity("e1", "Acme Corporation", "organization");
+    e1.aliases = vec!["Acme".to_owned()];
+    let mut e2 = make_entity("e2", "acme corporation", "organization");
+    e2.aliases = vec!["Acme".to_owned()];
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+
+    // DIM=4 from `test_fixtures::DIM`; identical unit vectors yield
+    // cosine = 1.0 — the test-shape equivalent of "the provider thinks
+    // these names mean the same thing".
+    let emb = vec![1.0_f32, 0.0, 0.0, 0.0];
+    let e1_id = crate::id::EntityId::new("e1").expect("valid test id");
+    let e2_id = crate::id::EntityId::new("e2").expect("valid test id");
+    store
+        .update_entity_name_embedding(&e1_id, Some(emb.clone()))
+        .expect("write e1 name_embedding");
+    store
+        .update_entity_name_embedding(&e2_id, Some(emb))
+        .expect("write e2 name_embedding");
+
+    // Round-trip check that the embedding survives storage.
+    let roundtrip = store
+        .get_entity_name_embedding(&e1_id)
+        .expect("read e1 name_embedding");
+    assert!(
+        matches!(roundtrip, Some(ref v) if v.len() == 4),
+        "stored name_embedding must round-trip with the configured dim"
+    );
+
+    let records = store
+        .run_entity_dedup("test-nous")
+        .expect("dedup with embeddings");
+    assert_eq!(
+        records.len(),
+        1,
+        "with name embeddings stored, the production dedup pipeline must reach AutoMerge — proves #4165 Path A is wired end-to-end"
+    );
+    let record = &records[0];
+    assert!(
+        record.merge_score >= 0.90,
+        "executed merge score must clear the AutoMerge threshold; got {}",
+        record.merge_score
+    );
+
+    // After auto-merge, the merged entity is gone and only canonical remains.
+    let surviving = store.list_entities().expect("list_entities");
+    assert_eq!(
+        surviving.len(),
+        1,
+        "auto-merge must collapse the duplicate pair to a single canonical entity"
+    );
+}
+
+/// Reachability via `find_duplicate_entities`: returns candidates whose
+/// `embed_similarity` is the real cosine of the stored vectors, not 0.0.
+#[test]
+fn find_duplicate_entities_returns_real_embed_similarity() {
+    let store = make_store();
+    let e1 = make_entity("e1", "Differential Equation", "concept");
+    let e2 = make_entity("e2", "Difference Equation", "concept");
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+
+    let e1_id = crate::id::EntityId::new("e1").expect("valid test id");
+    let e2_id = crate::id::EntityId::new("e2").expect("valid test id");
+    // 30° apart → cosine ≈ 0.866 (well above 0 but below 1).
+    store
+        .update_entity_name_embedding(&e1_id, Some(vec![1.0_f32, 0.0, 0.0, 0.0]))
+        .expect("e1 emb");
+    store
+        .update_entity_name_embedding(&e2_id, Some(vec![0.866_025_4_f32, 0.5, 0.0, 0.0]))
+        .expect("e2 emb");
+
+    let candidates = store
+        .find_duplicate_entities("test-nous")
+        .expect("find_duplicate_entities");
+    assert_eq!(candidates.len(), 1, "JW similar names form one candidate");
+    let c = &candidates[0];
+    assert!(
+        c.embed_similarity > 0.85 && c.embed_similarity < 0.95,
+        "find_duplicate_entities must surface real cosine similarity from stored embeddings; got {}",
+        c.embed_similarity
+    );
+}
+
+/// `update_entity_name_embedding` must reject vectors whose length does
+/// not match `KnowledgeConfig::dim`. A silent wrong-dim write would
+/// corrupt the typed column and break every subsequent dedup run.
+#[test]
+fn update_entity_name_embedding_rejects_wrong_dimension() {
+    let store = make_store();
+    let entity = make_entity("e1", "Alice", "person");
+    store.insert_entity(&entity).expect("insert entity");
+    let id = crate::id::EntityId::new("e1").expect("valid test id");
+    let wrong_dim = vec![1.0_f32; 7]; // DIM is 4 in tests
+    let err = store
+        .update_entity_name_embedding(&id, Some(wrong_dim))
+        .expect_err("must reject wrong-dim embedding");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("dimension"),
+        "error message should mention dimension; got: {msg}"
+    );
+}
+
+/// `update_entity_name_embedding(_, None)` clears a stored embedding —
+/// useful for tests, operators reverting a bad backfill, and admission
+/// policies that disqualify a stored vector after the fact.
+#[test]
+fn update_entity_name_embedding_clears_with_none() {
+    let store = make_store();
+    let entity = make_entity("e1", "Alice", "person");
+    store.insert_entity(&entity).expect("insert entity");
+    let id = crate::id::EntityId::new("e1").expect("valid test id");
+    store
+        .update_entity_name_embedding(&id, Some(vec![1.0_f32, 0.0, 0.0, 0.0]))
+        .expect("set embedding");
+    assert!(
+        store
+            .get_entity_name_embedding(&id)
+            .expect("get embedding")
+            .is_some(),
+        "embedding should be present after set"
+    );
+    store
+        .update_entity_name_embedding(&id, None)
+        .expect("clear embedding");
+    assert!(
+        store
+            .get_entity_name_embedding(&id)
+            .expect("get embedding")
+            .is_none(),
+        "embedding should be cleared after None write"
+    );
+}
+
+/// `approve_merge` is the operational half of #4165 Path A. Insert two
+/// entities that land in the review queue (score in `[0.70, 0.90)`),
+/// then approve the merge and assert that:
+///   1. The merged entity is gone.
+///   2. The canonical entity carries the merged name as an alias.
+///   3. `pending_merges` no longer contains the pair.
+///   4. `merge_audit` records the resolution.
+#[test]
+fn approve_merge_drains_review_queue() {
+    let store = make_store();
+    // Two entities that match on every non-embedding signal: cap at 0.70
+    // → review tier, not auto-merge.
+    let mut e1 = make_entity("e1", "Acme Corporation", "organization");
+    e1.aliases = vec!["Acme".to_owned()];
+    let mut e2 = make_entity("e2", "acme corporation", "organization");
+    e2.aliases = vec!["Acme".to_owned()];
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+
+    let records = store
+        .run_entity_dedup("test-nous")
+        .expect("dedup populates pending_merges");
+    assert!(
+        records.is_empty(),
+        "no auto-merge expected for embed=null pair"
+    );
+    let pending = store
+        .get_pending_merges("test-nous")
+        .expect("pending merges");
+    assert_eq!(pending.len(), 1, "pair should be queued for review");
+
+    let e1_id = crate::id::EntityId::new("e1").expect("valid test id");
+    let e2_id = crate::id::EntityId::new("e2").expect("valid test id");
+    let record = store
+        .approve_merge(&e1_id, &e2_id)
+        .expect("approve_merge must succeed for queued pair");
+    assert_eq!(record.canonical_entity_id, e1_id);
+    assert_eq!(record.merged_entity_id, e2_id);
+
+    let surviving = store.list_entities().expect("list_entities");
+    assert_eq!(surviving.len(), 1, "approved merge must collapse the pair");
+    assert_eq!(surviving[0].id, e1_id);
+    // NOTE: `add_alias_to_entity` skips adding the merged name when it
+    // matches the canonical name case-insensitively; with names that
+    // collide on lowercase ("Acme Corporation" vs "acme corporation")
+    // no new alias is introduced. The pre-existing "Acme" alias must
+    // still be preserved as the audit trail for the merged identity.
+    assert!(
+        surviving[0]
+            .aliases
+            .iter()
+            .any(|a| a.eq_ignore_ascii_case("Acme")),
+        "canonical entity must preserve its existing aliases through merge: got {:?}",
+        surviving[0].aliases
+    );
+
+    let pending_after = store
+        .get_pending_merges("test-nous")
+        .expect("pending merges after approve");
+    assert!(
+        pending_after.is_empty(),
+        "approved row must be removed from pending_merges; got {} remaining",
+        pending_after.len()
+    );
+
+    let history = store
+        .get_merge_history("test-nous")
+        .expect("merge_audit history");
+    assert_eq!(
+        history.len(),
+        1,
+        "approved merge must be recorded in merge_audit"
+    );
+}
+
+/// Schema v13 invariant: a freshly initialised store must accept reads
+/// against the `name_embedding` column. This guards against future
+/// refactors that drop the column from the static DDL or skip the
+/// dim-parameterised `entities_ddl` branch in `init_schema`.
+#[test]
+fn entities_relation_has_name_embedding_column_in_fresh_store() {
+    let store = make_store();
+    let rows = store
+        .run_query(
+            r"?[id, name_embedding] := *entities{id, name_embedding}",
+            std::collections::BTreeMap::new(),
+        )
+        .expect(
+            "fresh store must accept a query against the name_embedding column — schema v13 contract",
+        );
+    assert!(rows.is_empty(), "empty store should return no rows");
+}

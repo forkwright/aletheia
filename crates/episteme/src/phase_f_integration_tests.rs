@@ -99,6 +99,7 @@ fn dedup_candidate_generation_finds_duplicate_instinct_patterns() {
             aliases: vec![],
             relationship_count: 5,
             created_at: ts_a,
+            name_embedding: None,
         },
         EntityInfo {
             id: EntityId::new("instinct-grep-2").expect("valid test id"),
@@ -107,6 +108,7 @@ fn dedup_candidate_generation_finds_duplicate_instinct_patterns() {
             aliases: vec![],
             relationship_count: 3,
             created_at: ts_b,
+            name_embedding: None,
         },
     ];
 

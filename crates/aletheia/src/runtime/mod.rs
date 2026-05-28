@@ -615,8 +615,14 @@ impl RuntimeBuilder {
 
             #[cfg(feature = "recall")]
             if let Some(ks) = knowledge_store_for_daemon.as_ref() {
+                // WHY (#4165 Path A): hand the embedding provider to the
+                // dedup task so it can populate `entities.name_embedding`
+                // before scoring. Without this, the maintenance task
+                // reports merges executed but the AutoMerge threshold
+                // (≥ 0.90) is structurally unreachable.
                 let km_executor = Arc::new(
-                    crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(Arc::clone(ks)),
+                    crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(Arc::clone(ks))
+                        .with_embedding_provider(Arc::clone(&embedding_provider)),
                 );
                 daemon_runner = daemon_runner.with_knowledge_maintenance(km_executor);
             }

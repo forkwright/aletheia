@@ -114,11 +114,15 @@ fn test_builder_matches_supersede_fact() {
 
 #[test]
 fn test_builder_matches_upsert_entity() {
+    // Includes the v13 `name_embedding` column added by #4165 Path A —
+    // the dedup pipeline needs a stable place to cache per-entity name
+    // embeddings so cosine similarity becomes a real signal in the
+    // merge-score composite.
     let original = r"
-    ?[id, name, entity_type, aliases, created_at, updated_at] <- [
-        [$id, $name, $entity_type, $aliases, $created_at, $updated_at]
+    ?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] <- [
+        [$id, $name, $entity_type, $aliases, $created_at, $updated_at, $name_embedding]
     ]
-    :put entities {id => name, entity_type, aliases, created_at, updated_at}
+    :put entities {id => name, entity_type, aliases, created_at, updated_at, name_embedding}
 ";
     let built = queries::upsert_entity();
     assert_eq!(

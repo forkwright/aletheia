@@ -202,6 +202,7 @@ fn test_field_names_match_schema() {
         "aliases",
         "created_at",
         "updated_at",
+        "name_embedding",
     ];
     let entities_enum: Vec<&str> = [
         EntitiesField::Id,
@@ -210,6 +211,7 @@ fn test_field_names_match_schema() {
         EntitiesField::Aliases,
         EntitiesField::CreatedAt,
         EntitiesField::UpdatedAt,
+        EntitiesField::NameEmbedding,
     ]
     .iter()
     .map(|f| f.name())

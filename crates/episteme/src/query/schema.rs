@@ -87,6 +87,10 @@ pub enum EntitiesField {
     Aliases,
     CreatedAt,
     UpdatedAt,
+    /// Nullable embedding of [`Self::Name`]; populated by the dedup pipeline
+    /// (#4165) when an `EmbeddingProvider` is in scope. NULL for entities
+    /// inserted in degraded mode or before the v13 schema migration.
+    NameEmbedding,
 }
 
 /// Fields in the `relationships` relation.

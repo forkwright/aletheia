@@ -41,6 +41,7 @@ impl Field for EntitiesField {
             Self::Aliases => "aliases",
             Self::CreatedAt => "created_at",
             Self::UpdatedAt => "updated_at",
+            Self::NameEmbedding => "name_embedding",
         }
     }
 }
