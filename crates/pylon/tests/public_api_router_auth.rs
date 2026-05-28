@@ -15,7 +15,8 @@ use symbolon::types::Role;
 
 mod common;
 use common::{
-    TestEnv, bearer, issue_test_token, issue_test_token_as, permissive_security, read_body_json,
+    TestEnv, bearer, issue_test_token, issue_test_token_as, issue_test_token_scoped,
+    permissive_security, read_body_json,
 };
 
 // Split: build_router construction + auth contracts.
@@ -322,6 +323,116 @@ async fn knowledge_write_routes_reject_valid_bearer_with_readonly_role() {
             "{} {}",
             route.method,
             route.path
+        );
+    }
+}
+
+// ── scoped tokens must not reach agents outside their scope ────────────────
+
+/// Per-agent routes that take an `{id}` path parameter and therefore must
+/// reject a token whose `nous_id` scope does not match the requested agent.
+fn nous_per_agent_routes() -> [(Method, &'static str); 3] {
+    [
+        (Method::GET, "/api/v1/nous/other-agent"),
+        (Method::GET, "/api/v1/nous/other-agent/tools"),
+        (Method::POST, "/api/v1/nous/other-agent/recover"),
+    ]
+}
+
+#[tokio::test]
+async fn nous_routes_reject_token_scoped_to_a_different_agent() {
+    // WHY: a JWT scoped to nous_id=syn must not be able to read status,
+    // enumerate tools, or trigger recovery on `other-agent`. Without
+    // `require_nous_access` on these handlers, an Operator token scoped to
+    // one agent could affect every other agent in the system.
+    let env = TestEnv::new().await;
+    let token = issue_test_token_scoped(&env.state, Role::Operator, "syn");
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for (method, path) in nous_per_agent_routes() {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method.clone())
+                    .uri(path)
+                    .header("authorization", bearer(&token))
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("router response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "{method} {path} must reject cross-agent scoped tokens",
+        );
+        let body = read_body_json(response).await;
+        assert_eq!(
+            body["error"]["code"], "forbidden",
+            "{method} {path} must use the forbidden error envelope"
+        );
+    }
+}
+
+#[tokio::test]
+async fn nous_routes_admit_token_scoped_to_matching_agent() {
+    // WHY: the scope check must be additive — a token scoped to `syn`
+    // still reaches handlers for `/api/v1/nous/syn/...`. Asserts the new
+    // `require_nous_access` calls do not break the happy path.
+    let env = TestEnv::builder().with_actor(true).build().await;
+    let token = issue_test_token_scoped(&env.state, Role::Operator, "syn");
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let response = router
+        .clone()
+        .oneshot(
+            Request::get("/api/v1/nous/syn/tools")
+                .header("authorization", bearer(&token))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "matching scope must reach the handler"
+    );
+}
+
+#[tokio::test]
+async fn nous_list_hides_other_agents_from_scoped_token() {
+    // WHY: a token scoped to a single nous_id should not be able to
+    // enumerate other agents via GET /api/v1/nous, even if those agents
+    // are public. The list filters by the caller's scope (#enumeration).
+    let env = TestEnv::new().await;
+    let token = issue_test_token_scoped(&env.state, Role::Operator, "syn");
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let response = router
+        .clone()
+        .oneshot(
+            Request::get(format!("{API_V1}/nous"))
+                .header("authorization", bearer(&token))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_body_json(response).await;
+    let entries = body["nous"]
+        .as_array()
+        .expect("nous list must be an array");
+    for entry in entries {
+        let id = entry["id"].as_str().expect("entry must have id");
+        assert_eq!(
+            id, "syn",
+            "scoped token must only see its own agent; saw `{id}`"
         );
     }
 }
