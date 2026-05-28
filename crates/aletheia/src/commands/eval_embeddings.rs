@@ -204,10 +204,21 @@ fn print_table(run: &mneme::embedding_eval::EvalRunResult) {
     println!();
 }
 
+/// Reject obviously-broken inputs up-front so operators don't get a
+/// meaningless table (e.g. `Recall@0: 0.0%`) instead of an error.
+fn validate_args(args: &EvalEmbeddingsArgs) -> Result<()> {
+    if args.top_k == 0 {
+        snafu::whatever!("--top-k must be greater than 0 (got 0; Recall@0 is undefined)");
+    }
+    Ok(())
+}
+
 /// Entry point for the `eval-embeddings` subcommand.
 pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
     use mneme::embedding::{EmbeddingConfig, create_provider};
     use mneme::embedding_eval::{EvalDataset, compare_models};
+
+    validate_args(args)?;
 
     // Load dataset.
     let dataset = EvalDataset::from_jsonl_file(&args.dataset)
@@ -282,5 +293,38 @@ pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
                 .map_or(0.0, |c| c.recall_at_k * 100.0),
             run.baseline.recall_at_k * 100.0,
         )
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    fn args_with(top_k: usize) -> EvalEmbeddingsArgs {
+        EvalEmbeddingsArgs {
+            dataset: PathBuf::from("/dev/null"),
+            corpus: None,
+            top_k,
+            baseline_provider: "candle".to_owned(),
+            candidate_provider: None,
+            json: false,
+        }
+    }
+
+    #[test]
+    fn validate_rejects_top_k_zero() {
+        let err = validate_args(&args_with(0)).unwrap_err();
+        assert!(
+            err.to_string().contains("--top-k must be greater than 0"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_positive_top_k() {
+        validate_args(&args_with(1)).unwrap();
+        validate_args(&args_with(5)).unwrap();
+        validate_args(&args_with(100)).unwrap();
     }
 }
