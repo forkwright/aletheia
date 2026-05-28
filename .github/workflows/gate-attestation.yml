@@ -14,7 +14,7 @@ concurrency:
 jobs:
   gate-attestation:
     name: gate-attestation
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Pass trusted automation PRs
         if: ${{ github.actor == 'dependabot[bot]' || github.actor == 'release-please[bot]' }}

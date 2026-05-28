@@ -34,7 +34,7 @@ jobs:
     # finding fails the job — suppressions require a deny.toml entry with
     # a WHY comment, not silent --ignore flags.
     name: cargo deny
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -67,7 +67,7 @@ jobs:
     # path; running cargo-audit independently protects against bugs or
     # config drift disabling one of the two. See standards/CI.md.
     name: cargo audit
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
