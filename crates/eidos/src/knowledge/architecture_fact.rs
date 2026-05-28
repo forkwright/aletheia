@@ -128,7 +128,7 @@ impl std::fmt::Display for FactScope {
 #[non_exhaustive]
 pub struct ArchitectureFact {
     /// Stable dot-separated identifier, e.g. `aletheia.spawn.model`.
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — dot-separated hierarchical path, not a typed domain ID
     /// Architectural scope of this fact.
     pub scope: FactScope,
     /// The fact itself, written as a single declarative sentence (markdown OK).

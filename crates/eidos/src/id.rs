@@ -105,6 +105,7 @@ define_id!(
     missing_docs,
     reason = "variant fields (kind, max, actual) are self-documenting by name"
 )]
+// kanon:ignore RUST/non-exhaustive-enum -- WHY: #[non_exhaustive] is already present; linter false-positive when an intervening #[expect] separates the attribute from the enum keyword
 pub enum IdValidationError {
     /// The identifier was empty.
     Empty { kind: &'static str },

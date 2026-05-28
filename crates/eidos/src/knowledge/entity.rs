@@ -46,9 +46,9 @@ pub struct EmbeddedChunk {
     /// Source type (fact, message, note, document).
     pub source_type: String,
     /// Source ID (fact ID, message `session_id:seq`, etc.).
-    pub source_id: String,
+    pub source_id: String, // kanon:ignore RUST/primitive-for-domain-id — polymorphic source reference string, not a single domain ID type
     /// Which nous this belongs to (empty = shared).
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — cross-crate nous identifier from koina, serialized as string here
     /// The embedding vector (dimension depends on model).
     pub embedding: Vec<f32>,
     /// When embedded.
@@ -65,7 +65,7 @@ pub struct RecallResult {
     /// Source type.
     pub source_type: String,
     /// Source ID.
-    pub source_id: String,
+    pub source_id: String, // kanon:ignore RUST/primitive-for-domain-id — polymorphic source reference string, not a single domain ID type
     /// Data-sovereignty classification for the underlying fact, carried
     /// from [`Fact::sensitivity`] so the recall pipeline can filter results
     /// by the active provider's deployment target (#3404, #3413). Defaults
