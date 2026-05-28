@@ -723,3 +723,142 @@ async fn unarchive_active_session_succeeds() {
     let body = body_json(resp).await;
     assert_eq!(body["status"], "active");
 }
+
+// ── scope enforcement on session reads ─────────────────────────────────────
+
+/// Authed request issued with a token scoped to `scope_nous_id`.
+fn scoped_get(uri: &str, scope_nous_id: &str) -> axum::http::Request<axum::body::Body> {
+    let token = token_scoped_to(symbolon::types::Role::Operator, scope_nous_id);
+    axum::http::Request::get(uri)
+        .header(
+            "authorization",
+            format!("{}{token}", koina::http::BEARER_PREFIX),
+        )
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn get_session_rejects_token_scoped_to_a_different_agent() {
+    // WHY: GET /api/v1/sessions/{id} loaded by id only — without a scope
+    // check, a token scoped to `audit-bot` could read any `syn` session's
+    // metadata (created_at, message_count, origin display name).
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let resp = router
+        .clone()
+        .oneshot(scoped_get(
+            &format!("/api/v1/sessions/{id}"),
+            "audit-bot",
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "forbidden");
+}
+
+#[tokio::test]
+async fn get_session_accepts_token_scoped_to_matching_agent() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let resp = router
+        .clone()
+        .oneshot(scoped_get(&format!("/api/v1/sessions/{id}"), "syn"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn history_rejects_token_scoped_to_a_different_agent() {
+    // WHY: GET /api/v1/sessions/{id}/history previously did not scope-check.
+    // A token scoped to `audit-bot` could read the full message history of
+    // any `syn` session — the most sensitive read in the sessions surface.
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let resp = router
+        .clone()
+        .oneshot(scoped_get(
+            &format!("/api/v1/sessions/{id}/history"),
+            "audit-bot",
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "forbidden");
+}
+
+#[tokio::test]
+async fn history_accepts_token_scoped_to_matching_agent() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let resp = router
+        .clone()
+        .oneshot(scoped_get(
+            &format!("/api/v1/sessions/{id}/history"),
+            "syn",
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn list_sessions_rejects_query_filter_outside_scope() {
+    // WHY: ?nous_id=other-agent with a token scoped to `syn` previously
+    // returned that agent's sessions. The handler now rejects mismatched
+    // explicit filters rather than silently rewriting them, so a scoped
+    // caller can never observe other agents' session ids.
+    let (router, _dir) = app().await;
+
+    let resp = router
+        .clone()
+        .oneshot(scoped_get(
+            "/api/v1/sessions?nous_id=audit-bot",
+            "syn",
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn list_sessions_implicitly_filters_to_scope_when_no_query() {
+    // WHY: a bare GET /api/v1/sessions from a scoped token must implicitly
+    // filter to that scope. Without this filter, the list would enumerate
+    // every session for every agent.
+    let (router, _dir) = app().await;
+
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let resp = router
+        .clone()
+        .oneshot(scoped_get("/api/v1/sessions", "syn"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .expect("paginated response has items array");
+    assert_eq!(items.len(), 1, "scoped list returns only the in-scope session");
+    assert_eq!(items[0]["id"], id);
+    assert_eq!(items[0]["nous_id"], "syn");
+}

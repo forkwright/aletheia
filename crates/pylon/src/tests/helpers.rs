@@ -69,6 +69,15 @@ pub(super) fn token_for_role(role: symbolon::types::Role) -> String {
         .expect("test token")
 }
 
+/// Test helper: issue a JWT scoped to `nous_id`. Combined with the `Claims`
+/// extractor, the production `require_nous_access` helper rejects calls
+/// targeting any other agent's resources.
+pub(super) fn token_scoped_to(role: symbolon::types::Role, nous_id: &str) -> String {
+    test_jwt_manager()
+        .issue_access("test-user", role, Some(nous_id))
+        .expect("test scoped token")
+}
+
 pub(super) async fn test_state() -> (Arc<AppState>, tempfile::TempDir) {
     test_state_with_provider_private_and_auth_mode(true, false, "token").await
 }
