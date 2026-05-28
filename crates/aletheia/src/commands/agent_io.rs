@@ -17,6 +17,15 @@ fn validate_nous_id(nous_id: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_target_id(target_id: Option<&str>) -> Result<()> {
+    if let Some(id) = target_id
+        && id.trim().is_empty()
+    {
+        whatever!("--target-id must not be empty");
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ExportArgs {
     /// Agent (nous) ID to export
@@ -435,6 +444,7 @@ fn capitalize(s: &str) -> String {
     reason = "import orchestrates config, workspace, and session store — sequential by nature"
 )]
 pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
+    validate_target_id(args.target_id.as_deref())?;
     let json = std::fs::read_to_string(&args.file)
         .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
     let agent_file: mneme::portability::AgentFile =
@@ -952,6 +962,7 @@ pub(crate) async fn review_skills(
     instance_root: Option<&PathBuf>,
     args: &ReviewSkillsArgs,
 ) -> Result<()> {
+    validate_nous_id(&args.nous_id)?;
     guard_knowledge_lock(&args.url).await?;
 
     #[cfg(feature = "recall")]
@@ -1188,6 +1199,35 @@ mod tests {
     fn validate_nous_id_accepts_well_formed() {
         assert!(validate_nous_id("pronoea").is_ok());
         assert!(validate_nous_id("agent-with-hyphens").is_ok());
+    }
+
+    #[test]
+    fn validate_target_id_accepts_absent() {
+        assert!(validate_target_id(None).is_ok());
+    }
+
+    #[test]
+    fn validate_target_id_accepts_well_formed() {
+        assert!(validate_target_id(Some("pronoea")).is_ok());
+        assert!(validate_target_id(Some("agent-with-hyphens")).is_ok());
+    }
+
+    #[test]
+    fn validate_target_id_rejects_empty() {
+        let err = validate_target_id(Some("")).unwrap_err();
+        assert!(
+            err.to_string().contains("--target-id must not be empty"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_target_id_rejects_whitespace_only() {
+        let err = validate_target_id(Some("   ")).unwrap_err();
+        assert!(
+            err.to_string().contains("--target-id must not be empty"),
+            "got: {err}"
+        );
     }
 
     fn sample_agent_file() -> AgentFile {

@@ -27,6 +27,7 @@ pub(crate) struct AddNousArgs {
 pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> Result<()> {
     validate_name(&args.name)?;
     validate_provider(&args.provider)?;
+    validate_model(&args.model)?;
 
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
@@ -69,6 +70,13 @@ fn validate_provider(provider: &str) -> Result<()> {
         "anthropic" | "openai" => Ok(()),
         other => whatever!("unsupported provider: {other}\nSupported providers: anthropic, openai"),
     }
+}
+
+fn validate_model(model: &str) -> Result<()> {
+    if model.trim().is_empty() {
+        whatever!("--model must not be empty");
+    }
+    Ok(())
 }
 
 fn check_credential(provider: &str) {
@@ -383,6 +391,30 @@ mod tests {
             validate_provider("google").is_err(),
             "unknown provider should be rejected"
         );
+    }
+
+    #[test]
+    fn validate_model_rejects_empty() {
+        let err = validate_model("").unwrap_err();
+        assert!(
+            err.to_string().contains("--model must not be empty"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_model_rejects_whitespace_only() {
+        let err = validate_model("   ").unwrap_err();
+        assert!(
+            err.to_string().contains("--model must not be empty"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_model_accepts_well_formed() {
+        assert!(validate_model("claude-sonnet-4-6").is_ok());
+        assert!(validate_model("gpt-4o").is_ok());
     }
 
     #[test]
