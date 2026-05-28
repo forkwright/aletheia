@@ -825,12 +825,15 @@ fn find_content_hash_duplicates(
 #[cfg(feature = "recall")]
 fn run_patterns(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
-    _nous_id: Option<&str>,
+    nous_id: Option<&str>,
     limit: u16,
 ) -> Result<()> {
-    println!("=== Knowledge Graph Patterns ===\n");
+    match nous_id {
+        Some(nid) => println!("=== Knowledge Graph Patterns (nous: {nid}) ===\n"),
+        None => println!("=== Knowledge Graph Patterns ===\n"),
+    }
 
-    let cooccurrence = find_entity_cooccurrence(store, i64::from(limit))?;
+    let cooccurrence = find_entity_cooccurrence(store, nous_id, i64::from(limit))?;
     if cooccurrence.is_empty() {
         println!("Entity co-occurrence: no patterns found");
     } else {
@@ -842,7 +845,7 @@ fn run_patterns(
 
     println!();
 
-    let chains = find_relationship_chains(store, i64::from(limit))?;
+    let chains = find_relationship_chains(store, nous_id, i64::from(limit))?;
     if chains.is_empty() {
         println!("Relationship chains: no patterns found");
     } else {
@@ -854,7 +857,7 @@ fn run_patterns(
 
     println!();
 
-    let hubs = find_hub_entities(store, i64::from(limit))?;
+    let hubs = find_hub_entities(store, nous_id, i64::from(limit))?;
     if hubs.is_empty() {
         println!("Hub entities: no patterns found");
     } else {
@@ -870,14 +873,24 @@ fn run_patterns(
 #[cfg(feature = "recall")]
 fn find_entity_cooccurrence(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    nous_id: Option<&str>,
     limit: i64,
 ) -> Result<Vec<(String, String, i64)>> {
+    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
+    let mut params = BTreeMap::new();
+    let nous_join = match nous_id {
+        Some(nid) => {
+            params.insert("nid".to_owned(), DataValue::Str(nid.into()));
+            ",\n            *facts{id: fid, nous_id: $nid}"
+        }
+        None => "",
+    };
     let script = format!(
         r"
         cooccur[ea, eb, count(fid)] :=
             *fact_entities{{fact_id: fid, entity_id: ea}},
-            *fact_entities{{fact_id: fid, entity_id: eb}},
+            *fact_entities{{fact_id: fid, entity_id: eb}}{nous_join},
             ea < eb
 
         ?[name_a, name_b, cnt] :=
@@ -891,7 +904,7 @@ fn find_entity_cooccurrence(
         "
     );
     let result = store
-        .run_query(&script, BTreeMap::new())
+        .run_query(&script, params)
         .whatever_context("co-occurrence query failed")?;
     Ok((0..result.row_count())
         .filter_map(|i| {
@@ -906,20 +919,35 @@ fn find_entity_cooccurrence(
 #[cfg(feature = "recall")]
 fn find_relationship_chains(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    nous_id: Option<&str>,
     limit: i64,
 ) -> Result<Vec<(String, i64)>> {
+    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
-    let script = format!(
-        r"
-        ?[relation, count(src)] :=
-            *relationships{{src, relation}}
+    let mut params = BTreeMap::new();
+    let body = match nous_id {
+        Some(nid) => {
+            params.insert("nid".to_owned(), DataValue::Str(nid.into()));
+            r"
+        in_nous[eid] :=
+            *fact_entities{fact_id: fid, entity_id: eid},
+            *facts{id: fid, nous_id: $nid}
 
-        :sort -count(src)
-        :limit {limit}
+        ?[relation, count(src)] :=
+            *relationships{src, relation},
+            in_nous[src]
         "
-    );
+        }
+        None => {
+            r"
+        ?[relation, count(src)] :=
+            *relationships{src, relation}
+        "
+        }
+    };
+    let script = format!("{body}\n        :sort -count(src)\n        :limit {limit}\n        ");
     let result = store
-        .run_query(&script, BTreeMap::new())
+        .run_query(&script, params)
         .whatever_context("relationship chain query failed")?;
     Ok((0..result.row_count())
         .filter_map(|i| {
@@ -933,16 +961,39 @@ fn find_relationship_chains(
 #[cfg(feature = "recall")]
 fn find_hub_entities(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    nous_id: Option<&str>,
     limit: i64,
 ) -> Result<Vec<(String, i64)>> {
+    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
-    let script = format!(
-        r"
-        degree[eid, count(other)] :=
-            *relationships{{src: eid, dst: other}}
-        degree[eid, count(other)] :=
-            *relationships{{src: other, dst: eid}}
+    let mut params = BTreeMap::new();
+    let degree_rules = match nous_id {
+        Some(nid) => {
+            params.insert("nid".to_owned(), DataValue::Str(nid.into()));
+            r"
+        in_nous[eid] :=
+            *fact_entities{fact_id: fid, entity_id: eid},
+            *facts{id: fid, nous_id: $nid}
 
+        degree[eid, count(other)] :=
+            *relationships{src: eid, dst: other},
+            in_nous[eid]
+        degree[eid, count(other)] :=
+            *relationships{src: other, dst: eid},
+            in_nous[eid]
+        "
+        }
+        None => {
+            r"
+        degree[eid, count(other)] :=
+            *relationships{src: eid, dst: other}
+        degree[eid, count(other)] :=
+            *relationships{src: other, dst: eid}
+        "
+        }
+    };
+    let script = format!(
+        r"{degree_rules}
         ?[name, total] :=
             degree[eid, cnt],
             total = cnt,
@@ -953,7 +1004,7 @@ fn find_hub_entities(
         "
     );
     let result = store
-        .run_query(&script, BTreeMap::new())
+        .run_query(&script, params)
         .whatever_context("hub entity query failed")?;
     Ok((0..result.row_count())
         .filter_map(|i| {
