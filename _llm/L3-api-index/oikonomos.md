@@ -670,6 +670,7 @@ impl ProbeSet {
 ```rust
 pub struct ProbeResult {
     /// Stable probe identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — ProbeResult is a serialization type used in probe audit summaries; probe_id is a stable string key from the static probe set, not a domain entity ID
     pub probe_id: String,
     /// Category of probe.
     pub category: ProbeCategory,
@@ -807,6 +808,7 @@ pub enum ProsocheCheckKind {
 ```rust
 pub struct ProsocheState {
     /// The nous identity this audit is running for.
+    // kanon:ignore RUST/primitive-for-domain-id — ProsocheState is an ephemeral audit input struct; nous_id is passed as &str from the runner and converted to String for serialization
     pub nous_id: String,
     /// Known stated goals for this nous (free-text lines).
     ///
@@ -828,6 +830,7 @@ pub struct ProsocheState {
 ```rust
 pub struct FactSnapshot {
     /// Stable fact identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — FactSnapshot is an ephemeral audit input; fact_id comes from external knowledge graph facts as raw strings
     pub fact_id: String,
     /// Full text content of the fact.
     pub content: String,
@@ -841,6 +844,7 @@ pub struct FactSnapshot {
 ```rust
 pub struct SessionSnapshot {
     /// Session identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — SessionSnapshot is an ephemeral audit input; session_id comes from external session metadata as raw strings
     pub session_id: String,
     /// Total turn count in the session.
     pub turn_count: u32,
@@ -978,6 +982,7 @@ pub struct AuditReport {
     /// ISO 8601 timestamp when this audit ran.
     pub audited_at: String,
     /// The nous identity this audit covers.
+    // kanon:ignore RUST/primitive-for-domain-id — AuditReport is a serialization envelope; nous_id is copied from the input state for provenance, not a cross-crate domain ID
     pub nous_id: String,
     /// All findings from all checks, in check order.
     pub findings: Vec<Finding>,
@@ -1185,10 +1190,12 @@ pub enum Schedule {
 ```rust
 pub struct TaskDef {
     /// Unique task identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — TaskDef::id is a user-configured cron task identifier from TOML/JSON, not a typed domain entity ID
     pub id: String,
     /// Human-readable name.
     pub name: String,
     /// Which nous this task belongs to.
+    // kanon:ignore RUST/primitive-for-domain-id — TaskDef::nous_id is a string reference to a runtime nous actor name, configured externally
     pub nous_id: String,
     /// When to run.
     pub schedule: Schedule,
@@ -1287,6 +1294,7 @@ pub enum BuiltinTask {
 ```rust
 pub struct TaskStatus {
     /// Unique task identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — TaskStatus::id mirrors TaskDef::id, a user-configured string identifier
     pub id: String,
     /// Human-readable task name.
     pub name: String,
@@ -1333,6 +1341,7 @@ pub struct OpenIssue {
 ```rust
 pub struct IssuePromptTask {
     /// Stable daemon task id.
+    // kanon:ignore RUST/primitive-for-domain-id — IssuePromptTask::id is a synthetic daemon task identifier derived from an issue number, not a domain entity ID
     pub id: String,
     /// Human-readable task name.
     pub name: String,
@@ -1394,6 +1403,7 @@ impl TaskStateStore {
 ```rust
 pub struct TaskState {
     /// Task ID matching `TaskDef::id`.
+    // kanon:ignore RUST/primitive-for-domain-id — TaskState::task_id mirrors TaskDef::id, a user-configured cron task identifier persisted as raw string
     pub task_id: String,
     /// ISO 8601 timestamp of the last execution (success or failure).
     pub last_run_ts: Option<String>,
@@ -1552,6 +1562,7 @@ pub enum ProcessState {
 ```rust
 pub struct RestartEvent {
     /// Process identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — RestartEvent::process_id is a runtime process handle identifier string, not a typed domain entity ID
     pub process_id: String,
     /// What triggered the restart.
     pub cause: RestartCause,
@@ -1580,6 +1591,7 @@ pub enum RestartCause {
 ```rust
 pub struct ProcessStatus {
     /// Process identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — ProcessStatus::id is a runtime process handle identifier string, not a typed domain entity ID
     pub id: String,
     /// Current state.
     pub state: ProcessState,

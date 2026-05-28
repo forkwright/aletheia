@@ -405,7 +405,7 @@ pub fn read_usage (conn: &Connection) -> Result<Vec<UsageRecord>>
 ```rust
 pub struct DistillationRecord {
     /// Owning session.
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: mirrors legacy SQLite schema byte-for-byte; newtype would break serde deserialization
     /// Message count before distillation.
     pub messages_before: i64,
     /// Message count after distillation.
@@ -590,12 +590,10 @@ CREATE TABLE blackboard (
 ";
 ```
 
-> Create an empty v32 SQLite DB file at `path`.
 ```rust
 pub fn build_empty_v32 (path: &Path)
 ```
 
-> Insert one session row.
 ```rust
 pub fn insert_session (
     conn: &Connection,
@@ -609,7 +607,6 @@ pub fn insert_session (
 )
 ```
 
-> Insert one message row.
 ```rust
 pub fn insert_message (
     conn: &Connection,
@@ -623,7 +620,6 @@ pub fn insert_message (
 )
 ```
 
-> Insert one distillation row.
 ```rust
 pub fn insert_distillation (
     conn: &Connection,
@@ -637,7 +633,6 @@ pub fn insert_distillation (
 )
 ```
 
-> Insert one agent_note row.
 ```rust
 pub fn insert_note (
     conn: &Connection,
@@ -649,7 +644,6 @@ pub fn insert_note (
 )
 ```
 
-> Insert one usage row.
 ```rust
 pub fn insert_usage (
     conn: &Connection,

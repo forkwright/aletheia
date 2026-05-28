@@ -392,6 +392,120 @@ pub fn score_complexity (input: &ComplexityInput<'_>) -> ComplexityScore
 pub fn route_model (input: &ComplexityInput<'_>, config: &ComplexityConfig) -> RoutingDecision
 ```
 
+## `src/complexity/tier1.rs`
+
+> A deterministic handler for `NoLlm`-tier prompts.
+> 
+> Implementors inspect the user's message and either return a direct
+> response string or decline (returning `None`) to let the next handler
+> try. Handlers must be `Send + Sync` for use in multi-threaded runtimes.
+```rust
+pub trait Tier1Handler : Send + Sync {
+    fn name (&self) -> &str;
+    fn try_handle (&self, prompt: &str) -> Option<String>;
+}
+```
+
+> Registry of [`Tier1Handler`]s tried in registration order.
+> 
+> Call [`Tier1Registry::dispatch`] to find the first matching handler.
+> An empty registry always returns `None`.
+```rust
+pub struct Tier1Registry {
+    handlers: Vec<Box<dyn Tier1Handler>>,
+}
+```
+
+```rust
+impl Tier1Registry {
+    pub fn new () -> Self;
+    pub fn register (&mut self, handler: Box<dyn Tier1Handler>);
+    pub fn handler_names (&self) -> impl Iterator<Item = &str>;
+    pub fn dispatch (&self, prompt: &str) -> Option<String>;
+    pub fn len (&self) -> usize;
+    pub fn is_empty (&self) -> bool;
+}
+```
+
+> Handler that matches a prompt against a regex and returns a template
+> response with named captures substituted.
+> 
+> Template variables use the form `${name}` and are replaced with the
+> corresponding named capture group from the regex match. If a capture
+> group is absent, the variable is replaced with an empty string.
+> 
+> # Example
+> 
+> ```rust
+> use hermeneus::complexity::tier1::{RegexReplaceHandler, Tier1Handler};
+> 
+> // Match simple arithmetic and return a fixed message.
+> let handler = RegexReplaceHandler::new(
+>     "arithmetic-guard",
+>     r"(?i)^what is \d+\s*[+\-]\s*\d+\??$",
+>     "I can answer arithmetic. Use a calculator for precise results.",
+> ).unwrap();
+> assert!(handler.try_handle("what is 2+2?").is_some());
+> ```
+```rust
+pub struct RegexReplaceHandler {
+    name: String,
+    pattern: Regex,
+    template: String,
+}
+```
+
+```rust
+impl RegexReplaceHandler {
+    pub fn new (name: &str, pattern: &str, template: &str) -> Result<Self, regex::Error>;
+}
+```
+
+> Handler that matches a prompt via case-insensitive exact match and returns
+> a fixed response.
+> 
+> Whitespace is trimmed before comparison. Useful for single-token
+> acknowledgement turns ("yes", "no", "ok", "done") that should not consume
+> an LLM call.
+> 
+> # Example
+> 
+> ```rust
+> use hermeneus::complexity::tier1::{ExactMatchHandler, Tier1Handler};
+> 
+> let handler = ExactMatchHandler::new("ack-ok", "ok", "Acknowledged.");
+> assert!(handler.try_handle("  OK  ").is_some());
+> assert!(handler.try_handle("ok I think we should").is_none());
+> ```
+```rust
+pub struct ExactMatchHandler {
+    name: String,
+    expected: String,
+    response: String,
+}
+```
+
+```rust
+impl ExactMatchHandler {
+    pub fn new (name: &str, expected: &str, response: &str) -> Self;
+}
+```
+
+> Build a `Tier1Registry` pre-populated with the default built-in handlers.
+> 
+> Built-in handlers cover the most common `NoLlm`-tier patterns:
+> single-token acknowledgements (`ok`, `yes`, `no`, etc.) and simple
+> greetings (`hi`, `hello`, `hey`) that appear in the existing
+> `SIMPLE_RESPONSE` regex in the complexity scorer.
+> 
+> # Errors
+> 
+> Returns an error if any built-in handler regex is invalid (should never
+> occur in practice since all patterns are compile-time constants).
+```rust
+pub fn default_registry () -> Result<Tier1Registry, regex::Error>
+```
+
 ## `src/concurrency.rs`
 
 ```rust
@@ -1179,6 +1293,25 @@ impl ProviderRegistry {
 }
 ```
 
+## `src/seat_bridged.rs`
+
+> Contract for providers that bridge to an OAuth seat via a local CLI subprocess.
+> 
+> Implementors spawn a child process, feed it the prompt, collect output, and
+> map the result to Hermeneus types. Authentication is fully owned by the CLI;
+> the provider never touches OAuth tokens.
+> 
+> The trait is intentionally thin: it surfaces only the fields needed for
+> diagnostics and configuration. Actual completion calls go through the
+> [`LlmProvider`](crate::provider::LlmProvider) trait as usual.
+```rust
+pub trait SeatBridgedProvider : crate::provider::LlmProvider {
+    fn cli_binary (&self) -> &PathBuf;
+    fn subprocess_timeout (&self) -> Duration;
+    fn cli_product_name (&self) -> &'static str;
+}
+```
+
 ## `src/secret.rs`
 
 ```rust
@@ -1588,6 +1721,23 @@ pub struct CitationConfig {
 ```
 
 ```rust
+pub enum OutputFormat {
+    /// Constrain output to a JSON Schema.
+    JsonSchema {
+        /// Descriptive name for the schema.
+        name: String,
+        /// The JSON Schema definition.
+        schema: serde_json::Value,
+        /// Whether to enforce strict schema adherence.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        strict: Option<bool>,
+    },
+    /// Plain text output.
+    Text,
+}
+```
+
+```rust
 pub enum Citation {
     // kanon:ignore RUST/pub-visibility
     /// Citation by character offset within a document.
@@ -1649,6 +1799,9 @@ pub struct CompletionRequest {
     pub metadata: Option<RequestMetadata>,
     /// Enable citation tracking in responses.
     pub citations: Option<CitationConfig>,
+    /// Structured output format (e.g. JSON Schema).
+    /// When `None`, providers default to plain text.
+    pub output_format: Option<OutputFormat>,
 }
 ```
 

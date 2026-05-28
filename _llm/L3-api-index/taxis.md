@@ -161,6 +161,13 @@ pub struct RecallSettings {
     /// not enabled, the pipeline falls back to baseline ranking.
     #[serde(default)]
     pub reranker_url: Option<String>,
+    /// Filesystem path to a local ONNX cross-encoder model for in-process reranking.
+    ///
+    /// When set alongside `reranker_url`, the URL takes precedence.  This path
+    /// is only consulted when `reranker_url` is `None` and the
+    /// `local-reranker` feature is enabled.  Default: `None`.
+    #[serde(default)]
+    pub reranker_model_path: Option<String>,
 }
 ```
 
@@ -245,7 +252,7 @@ pub struct CachingConfig {
 ```rust
 pub struct NousDefinition {
     /// Unique agent identifier (matches the `nous/{id}/` directory name).
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire/serde config field: id maps to the agent's directory name in TOML, not a runtime domain identifier
     /// Human-readable display name.
     #[serde(default)]
     pub name: Option<String>,
@@ -952,6 +959,10 @@ pub enum ProviderKind {
     /// Claude Code subprocess adapter (delegates to the `claude` CLI).
     /// Requires the `cc-provider` feature flag on hermeneus.
     ClaudeCode,
+    /// Codex CLI subprocess adapter (delegates to the `codex` CLI).
+    /// Requires the `codex-provider` feature flag on hermeneus.
+    #[serde(rename = "codex_oauth", alias = "codex-oauth")]
+    CodexOauth,
 }
 ```
 
@@ -975,7 +986,7 @@ pub struct LlmProviderConfig {
     /// HTTP base URL override. Required for OpenAI-compatible providers
     /// (e.g., `http://127.0.0.1:8088/v1` for local llama.cpp). Optional for
     /// Anthropic (defaults to `https://api.anthropic.com`). Ignored for
-    /// the Claude Code subprocess adapter.
+    /// subprocess adapters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
     /// Environment variable name holding the API key. Read at startup via
@@ -985,7 +996,8 @@ pub struct LlmProviderConfig {
     pub api_key_env: Option<String>,
     /// `OpenAI` API family to use. If omitted, `providerType = "openai"`
     /// defaults to `responses`, while `openai-compatible` defaults to
-    /// `chat-completions` for local/proxy compatibility.
+    /// `chat-completions` for local/proxy compatibility. Ignored for
+    /// subprocess adapters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_family: Option<OpenAiApiFamily>,
     /// Where this provider's traffic terminates. Drives the
@@ -1546,7 +1558,7 @@ pub struct ObservabilitySettings {
 ```
 
 ```rust
-pub struct AletheiaConfig { // kanon:ignore RUST/config-deny-unknown-fields
+pub struct AletheiaConfig {
     /// Agent definitions and shared defaults.
     pub agents: AgentsConfig,
     /// HTTP gateway settings (port, bind address, auth, TLS, CORS).
@@ -1725,15 +1737,17 @@ pub struct ChannelBinding {
     /// Source pattern: phone number, group ID, or "*" for default.
     pub source: String,
     /// Nous ID to route to.
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde config field: nous_id is a TOML routing string, not a runtime domain identifier
     pub nous_id: String,
     /// Session key pattern. Supports `{source}` and `{group}` placeholders.
     #[serde(default = "default_session_pattern")]
-    pub session_key: String, // kanon:ignore RUST/plain-string-secret
+    // kanon:ignore RUST/plain-string-secret
+    pub session_key: String,
 }
 ```
 
 ```rust
-pub struct EmbeddingSettings { // kanon:ignore RUST/config-deny-unknown-fields
+pub struct EmbeddingSettings {
     /// Provider type: "mock", "candle".
     pub provider: String,
     /// Provider-specific model name.
@@ -1744,14 +1758,16 @@ pub struct EmbeddingSettings { // kanon:ignore RUST/config-deny-unknown-fields
 ```
 
 ```rust
-pub struct ChannelsConfig { // kanon:ignore RUST/config-deny-unknown-fields
+pub struct ChannelsConfig {
     /// Signal messenger transport configuration.
     pub signal: SignalConfig,
+    /// Matrix messenger transport configuration.
+    pub matrix: MatrixConfig,
 }
 ```
 
 ```rust
-pub struct SignalConfig { // kanon:ignore RUST/config-deny-unknown-fields
+pub struct SignalConfig {
     /// Whether the Signal channel is active.
     pub enabled: bool,
     /// Named Signal accounts keyed by account label.
@@ -1760,7 +1776,7 @@ pub struct SignalConfig { // kanon:ignore RUST/config-deny-unknown-fields
 ```
 
 ```rust
-pub struct SignalAccountConfig { // kanon:ignore RUST/config-deny-unknown-fields
+pub struct SignalAccountConfig {
     /// Whether this account is active.
     pub enabled: bool,
     /// Hostname for the signal-cli JSON-RPC HTTP interface.
@@ -1769,6 +1785,33 @@ pub struct SignalAccountConfig { // kanon:ignore RUST/config-deny-unknown-fields
     pub http_port: u16,
     /// Whether to auto-start the receive loop for this account on server boot.
     pub auto_start: bool,
+}
+```
+
+```rust
+pub struct MatrixConfig {
+    /// Whether the Matrix channel is active.
+    pub enabled: bool,
+    /// Named Matrix accounts keyed by account label.
+    pub accounts: HashMap<String, MatrixAccountConfig>,
+}
+```
+
+```rust
+pub struct MatrixAccountConfig {
+    /// Whether this account is active.
+    pub enabled: bool,
+    /// Matrix homeserver base URL, e.g. `https://matrix.example.org`.
+    pub homeserver: String,
+    /// Environment variable that contains the Matrix access token.
+    // kanon:ignore RUST/plain-string-secret
+    pub access_token_env: String,
+    /// Matrix user ID for this account. Used to ignore echoed self messages.
+    pub user_id: Option<String>,
+    /// Whether to auto-start the `/sync` receive loop on server boot.
+    pub auto_start: bool,
+    /// Optional initial `/sync` since token.
+    pub initial_since: Option<String>,
 }
 ```
 

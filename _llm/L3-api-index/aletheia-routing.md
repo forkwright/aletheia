@@ -40,6 +40,71 @@ pub struct NoOpRouter {
 }
 ```
 
+> A static router that records after-action outcomes into a shared store.
+> 
+> This is the interactive-runtime counterpart to the richer dispatch
+> empirical routers: it does not change provider selection, but it prevents
+> completed turns from being discarded when the binary has not enabled an
+> empirical selection policy.
+```rust
+pub struct RecordingRouter {
+    /// Shared empirical outcome store.
+    store: Arc<AfterActionStore>,
+    /// Static provider/model returned for route calls.
+    provider: Arc<str>,
+}
+```
+
+```rust
+impl RecordingRouter {
+    pub fn new (store: Arc<AfterActionStore>, provider: impl Into<Arc<str>>) -> Self;
+}
+```
+
+> A router combinator that falls through to a secondary router when the
+> primary router's confidence is below a threshold.
+> 
+> WHY(#3969): the Q-learner (and any learned router) needs a way to defer to
+> a static or rule-based fallback when it has insufficient data to make a
+> high-confidence decision. `FallthroughRouter` is that combinator: it runs
+> the primary router first, and if `confidence < threshold` (or the primary
+> returns `None` confidence), delegates to the secondary.
+> 
+> Both `after_action` calls are forwarded to the primary router only. The
+> secondary is a read-only fallback; recording against it would corrupt the
+> primary's training signal.
+> 
+> # Example
+> 
+> ```rust
+> # use aletheia_routing::{FallthroughRouter, NoOpRouter};
+> # use std::sync::Arc;
+> let primary = Arc::new(NoOpRouter { provider: Arc::from("learned") });
+> let fallback = Arc::new(NoOpRouter { provider: Arc::from("static") });
+> // Fall through to `fallback` when primary confidence < 0.5.
+> let router = FallthroughRouter::new(primary, fallback, 0.5);
+> ```
+```rust
+pub struct FallthroughRouter {
+    /// Primary router — queried first on every `route` call.
+    primary: Arc<dyn Router>,
+    /// Fallback router — used when primary confidence is below threshold.
+    fallback: Arc<dyn Router>,
+    /// Minimum confidence required to accept the primary decision.
+    ///
+    /// Must be in `[0.0, 1.0]`. A value of `0.0` means always accept the
+    /// primary decision; `1.0` means always fall through.
+    threshold: f64,
+}
+```
+
+```rust
+impl FallthroughRouter {
+    pub fn new (primary: Arc<dyn Router>, fallback: Arc<dyn Router>, threshold: f64) -> Self;
+    pub fn threshold (&self) -> f64;
+}
+```
+
 ## `src/store.rs`
 
 ```rust
@@ -107,14 +172,6 @@ impl AfterActionStore {
 }
 ```
 
-> Parse a category string from a JSONL record.
-> 
-> Returns [`TaskCategory::Feature`] for unrecognised strings so that new
-> categories added in future PRs degrade gracefully on old store data.
-```rust
-pub fn parse_category (s: &str) -> TaskCategory
-```
-
 ## `src/types.rs`
 
 ```rust
@@ -151,6 +208,21 @@ impl ProviderId {
 ```
 
 ```rust
+pub enum RoutingBoundary {
+    /// External cloud provider allowed. Widest boundary; permits all providers.
+    ///
+    /// This is the default so routers that have not been updated to pass a
+    /// boundary never accidentally restrict routing.
+    #[default]
+    Cloud,
+    /// Only local-hosted or embedded providers (no external API calls).
+    LocalHosted,
+    /// Only in-process providers (fully air-gapped).
+    Embedded,
+}
+```
+
+```rust
 pub struct RequestFeatures {
     /// Candidate provider IDs eligible for selection.
     ///
@@ -168,6 +240,17 @@ pub struct RequestFeatures {
     ///
     /// Used by category-inference helpers when `task_category` is absent.
     pub prompt_text: Option<Arc<str>>,
+
+    /// Maximum allowed deployment boundary for this request.
+    ///
+    /// Routers that respect sovereignty must not select providers whose
+    /// deployment target exceeds this boundary. Defaults to
+    /// [`RoutingBoundary::Cloud`] so existing call-sites are not broken.
+    ///
+    /// WHY(#3969): the Q-learner and fallthrough router need this in context
+    /// so they can filter candidates by sovereignty without out-of-band state.
+    #[doc(hidden)]
+    pub deployment_target: RoutingBoundary,
 }
 ```
 
@@ -178,6 +261,7 @@ impl RequestFeatures {
         task_category: Option<TaskCategory>,
         prompt_text: Option<Arc<str>>,
     ) -> Self;
+    pub fn with_deployment_target (mut self, boundary: RoutingBoundary) -> Self;
     pub fn effective_category (&self) -> TaskCategory;
 }
 ```

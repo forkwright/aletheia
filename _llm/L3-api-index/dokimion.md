@@ -168,6 +168,7 @@ pub type EvalClient = crate::client::EvalClient;
 
 ```rust
 pub struct BenchmarkQuestion {
+    // kanon:ignore RUST/primitive-for-domain-id — benchmark question id from external dataset JSON, not a domain newtype
     /// Unique identifier for this question within the benchmark.
     pub id: String,
     /// The conversations (sessions) to ingest before asking this question.
@@ -199,6 +200,7 @@ pub struct BenchmarkMetadata {
     pub timestamp: String,
     /// Aletheia version string from `/api/health`.
     pub aletheia_version: String,
+    // kanon:ignore RUST/primitive-for-domain-id — nous_id deserialized from API response; newtype would require custom Deserialize
     /// Nous agent ID used for the benchmark.
     pub nous_id: String,
     /// Model identifier from the nous agent configuration.
@@ -216,6 +218,7 @@ pub struct BenchmarkMetadata {
 
 ```rust
 pub struct QuestionResult {
+    // kanon:ignore RUST/primitive-for-domain-id — benchmark result id mirrors external dataset question id
     /// Question id.
     pub id: String,
     /// Category.
@@ -326,8 +329,10 @@ pub async fn load_locomo (path: impl AsRef<Path> + Send) -> std::io::Result<loco
 
 ```rust
 pub struct BenchmarkRunnerConfig {
+    // kanon:ignore RUST/primitive-for-domain-id — nous_id deserialized from API response; newtype would require custom Deserialize
     /// Nous ID that will receive the benchmark session.
     pub nous_id: String,
+    // kanon:ignore RUST/plain-string-secret — session_key_prefix is a human-readable benchmark key prefix, not a credential
     /// Prefix for `session_key` so multiple runs don't collide.
     pub session_key_prefix: String,
     /// Per-question timeout. If the assistant hasn't emitted `message_complete`
@@ -472,6 +477,7 @@ pub struct NousListResponse {
 
 ```rust
 pub struct NousSummary {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     pub id: String,
     pub model: String,
     pub status: String,
@@ -480,6 +486,7 @@ pub struct NousSummary {
 
 ```rust
 pub struct NousStatus {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     pub id: String,
     pub model: String,
     pub context_window: u32,
@@ -497,8 +504,11 @@ pub struct NousStatus {
 
 ```rust
 pub struct SessionResponse {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     pub id: String,
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     pub nous_id: String,
+    // kanon:ignore RUST/plain-string-secret — session_key is an API response DTO field, not a stored credential
     pub session_key: String,
     pub status: SessionStatus,
     pub model: Option<String>,
@@ -537,6 +547,7 @@ pub struct KnowledgeSearchResponse {
 
 ```rust
 pub struct KnowledgeFact {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     /// Unique fact identifier.
     pub id: String,
     /// Fact content text.
@@ -669,6 +680,7 @@ pub struct EvalRecord {
     pub timestamp: String,
     /// Evaluation category (e.g., "health", "cognitive", "session").
     pub eval_type: String,
+    // kanon:ignore RUST/primitive-for-domain-id — scenario_id for JSONL training data output, mirrors external scenario ids
     /// Scenario identifier.
     pub scenario_id: String,
     /// Whether the scenario passed.
