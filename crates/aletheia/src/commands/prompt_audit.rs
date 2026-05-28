@@ -69,6 +69,18 @@ fn list_records(
     limit: usize,
     json: bool,
 ) -> Result<()> {
+    // WHY: parse --since eagerly so bogus input like "not-a-date" or
+    // "2026-13-99" fails loudly instead of being string-prefix-compared
+    // against the filename stem (which silently filters everything in or
+    // out depending on lex order).
+    let since_date: Option<jiff::civil::Date> = match since {
+        Some(s) => Some(
+            s.parse::<jiff::civil::Date>()
+                .whatever_context("invalid --since (expected YYYY-MM-DD)")?,
+        ),
+        None => None,
+    };
+
     if !log_dir.exists() {
         println!("no audit log directory at {}", log_dir.display());
         return Ok(());
@@ -87,11 +99,12 @@ fn list_records(
     // WHY: sort descending by filename (YYYY-MM-DD). Newest day first.
     files.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
 
-    if let Some(since) = since {
+    if let Some(since) = since_date {
         files.retain(|e| {
             e.file_name()
                 .to_str()
                 .and_then(|n| n.strip_suffix(".jsonl"))
+                .and_then(|d| d.parse::<jiff::civil::Date>().ok())
                 .is_some_and(|d| d >= since)
         });
     }
@@ -206,5 +219,67 @@ fn shorten(s: &str, max: usize) -> String {
         // human-readable output correct rather than aborting the list.
         let prefix = s.get(..end).unwrap_or(s);
         format!("{prefix}…")
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixture writes jsonl files into a tempdir before exercising list_records"
+)]
+mod tests {
+    use super::*;
+
+    fn write_jsonl(dir: &Path, name: &str, lines: &[&str]) {
+        std::fs::write(dir.join(name), lines.join("\n")).expect("write fixture");
+    }
+
+    fn rec_jsonl(timestamp: &str, nous: &str) -> String {
+        format!(
+            r#"{{"timestamp":"{timestamp}","nous_id":"{nous}","session_id":"s","turn_id":"t","provider":"anthropic","deployment_target":"cloud","model":"m","system_prompt_hash":"","system_prompt_bytes":0,"message_count":0,"token_count_estimate":0,"fact_ids_included":[],"tool_names":[]}}"#
+        )
+    }
+
+    #[test]
+    fn list_records_rejects_invalid_since_strings() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let dir = tmp.path();
+        write_jsonl(
+            dir,
+            "2026-05-28.jsonl",
+            &[&rec_jsonl("2026-05-28T08:00:00Z", "syn")],
+        );
+
+        for bogus in ["not-a-date", "2026-13-99", "garbage", "0"] {
+            let err = list_records(dir, Some(bogus), None, 50, true)
+                .expect_err(&format!("expected error for --since '{bogus}'"));
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains("invalid --since"),
+                "expected error mentioning --since for '{bogus}', got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn list_records_accepts_valid_since_and_uses_date_compare() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let dir = tmp.path();
+        write_jsonl(
+            dir,
+            "2025-05-28.jsonl",
+            &[&rec_jsonl("2025-05-28T08:00:00Z", "old")],
+        );
+        write_jsonl(
+            dir,
+            "2026-05-28.jsonl",
+            &[&rec_jsonl("2026-05-28T08:00:00Z", "new")],
+        );
+
+        list_records(dir, Some("1900-01-01"), None, 50, true).expect("ancient since should pass");
+        list_records(dir, Some("9999-12-31"), None, 50, true)
+            .expect("future since should pass (no rows)");
+        list_records(dir, Some("2026-01-01"), None, 50, true).expect("mid since should pass");
     }
 }
