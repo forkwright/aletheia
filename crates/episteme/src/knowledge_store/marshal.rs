@@ -142,6 +142,13 @@ pub(super) fn entity_to_params(
         "updated_at".to_owned(),
         DataValue::Str(crate::knowledge::format_timestamp(&entity.updated_at).into()),
     );
+    // WHY (#4165 Path A): the entities relation gained a nullable
+    // `name_embedding` column in v13. `Entity` does not carry the embedding
+    // (cross-crate change avoided); callers populate it via
+    // `KnowledgeStore::update_entity_name_embedding` or the dedup-time
+    // backfill. Default to Null here so `insert_entity` preserves prior
+    // behaviour for callers without an `EmbeddingProvider` in scope.
+    p.insert("name_embedding".to_owned(), DataValue::Null);
     p
 }
 
@@ -885,6 +892,39 @@ pub(super) fn extract_int(val: &crate::engine::DataValue) -> crate::error::Resul
         }
         .build()
     })
+}
+
+/// Extract a nullable `<F32; DIM>` vector column from a `DataValue`.
+///
+/// Returns `None` for `DataValue::Null` (e.g. an entity row whose
+/// `name_embedding` has not been populated yet); returns `Some` for a
+/// stored vector. Used by the dedup pipeline to feed real cosine
+/// similarity into the merge score (#4165 Path A).
+#[cfg(feature = "mneme-engine")]
+pub(super) fn extract_optional_f32_vec(
+    val: &crate::engine::DataValue,
+) -> crate::error::Result<Option<Vec<f32>>> {
+    use crate::engine::{DataValue, Vector};
+    match val {
+        DataValue::Null => Ok(None),
+        DataValue::Vec(Vector::F32(arr)) => Ok(Some(arr.to_vec())),
+        DataValue::Vec(Vector::F64(arr)) => {
+            // WHY: callers only ever write F32; defensively coerce F64 in
+            // case a stored column was widened by a future migration so the
+            // dedup pipeline does not silently fall back to embed_sim=0.0.
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_possible_truncation,
+                reason = "narrowing F64 → F32 for embedding storage parity; precision loss is acceptable here because cosine-similarity inputs are already normalised"
+            )]
+            let v: Vec<f32> = arr.iter().map(|x| *x as f32).collect();
+            Ok(Some(v))
+        }
+        other => Err(crate::error::ConversionSnafu {
+            message: format!("expected Vec(F32) or Null, got {other:?}"),
+        }
+        .build()),
+    }
 }
 
 #[cfg(feature = "mneme-engine")]

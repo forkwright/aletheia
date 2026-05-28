@@ -209,7 +209,12 @@ fn fresh_store_migrates_to_current_schema() {
 
     let store = KnowledgeStore::open_mem().expect("open_mem should succeed");
     let v = store.schema_version().expect("read schema version");
-    assert_eq!(v, 12, "fresh store should initialize at schema version 12");
+    // #4165 Path A bumped to v13 to add the nullable `name_embedding`
+    // column on the entities relation.
+    assert_eq!(
+        v, 13,
+        "fresh store should initialize at the current schema version"
+    );
 
     // Probe the new relations exist by querying them (empty result is fine).
     let probe_pubs = store.run_query("?[id] := *published_facts{id}", BTreeMap::new());

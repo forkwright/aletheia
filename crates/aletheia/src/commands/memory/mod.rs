@@ -34,6 +34,45 @@ pub(crate) enum Action {
         #[arg(long)]
         dry_run: bool,
     },
+    /// List entity merge candidates that are queued for review.
+    ///
+    /// Drains the `pending_merges` queue populated by `memory dedup` —
+    /// scores in `[0.70, 0.90)` that did not auto-merge (#4165 Path A).
+    DedupPending {
+        /// Nous agent ID whose review queue to list
+        #[arg(long)]
+        nous_id: String,
+    },
+    /// Approve a queued entity merge and execute it.
+    ///
+    /// Resolves a review-tier candidate by merging `merged_id` into
+    /// `canonical_id` — edges are redirected, `fact_entities` are
+    /// transferred, the merged name is preserved as an alias, and the
+    /// pending-merge row is cleared. The operator picks which side
+    /// survives by argument order (#4165 Path A).
+    DedupApprove {
+        /// Nous agent ID owning the pending merge
+        #[arg(long)]
+        nous_id: String,
+        /// Entity ID that should survive the merge
+        #[arg(long)]
+        canonical_id: String,
+        /// Entity ID that should be absorbed into the canonical entity
+        #[arg(long)]
+        merged_id: String,
+    },
+    /// Reject a queued entity merge and remove it from the review queue.
+    DedupReject {
+        /// Nous agent ID owning the pending merge
+        #[arg(long)]
+        nous_id: String,
+        /// First entity in the pending pair (`entity_a`)
+        #[arg(long)]
+        entity_a: String,
+        /// Second entity in the pending pair (`entity_b`)
+        #[arg(long)]
+        entity_b: String,
+    },
     /// Extract recurring patterns from the knowledge graph
     Patterns {
         /// Nous agent ID to analyze
@@ -118,6 +157,17 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
                 scope,
                 output_path,
             } => run_export_graph(&store, format, nous_id.as_deref(), scope, &output_path),
+            Action::DedupPending { nous_id } => run_dedup_pending(&store, &nous_id),
+            Action::DedupApprove {
+                nous_id,
+                canonical_id,
+                merged_id,
+            } => run_dedup_approve(&store, &nous_id, &canonical_id, &merged_id),
+            Action::DedupReject {
+                nous_id,
+                entity_a,
+                entity_b,
+            } => run_dedup_reject(&store, &nous_id, &entity_a, &entity_b),
         }
     }
 
@@ -149,7 +199,7 @@ fn validate_action(action: &Action) -> Result<()> {
             }
             Ok(())
         }
-        Action::Dedup { nous_id, .. } => {
+        Action::Dedup { nous_id, .. } | Action::DedupPending { nous_id } => {
             if nous_id.trim().is_empty() {
                 whatever!("--nous-id cannot be empty or whitespace");
             }
@@ -171,6 +221,44 @@ fn validate_action(action: &Action) -> Result<()> {
                 && id.trim().is_empty()
             {
                 whatever!("--nous-id cannot be empty or whitespace");
+            }
+            Ok(())
+        }
+        Action::DedupApprove {
+            nous_id,
+            canonical_id,
+            merged_id,
+        } => {
+            if nous_id.trim().is_empty() {
+                whatever!("--nous-id cannot be empty or whitespace");
+            }
+            if canonical_id.trim().is_empty() {
+                whatever!("--canonical-id cannot be empty or whitespace");
+            }
+            if merged_id.trim().is_empty() {
+                whatever!("--merged-id cannot be empty or whitespace");
+            }
+            if canonical_id.trim() == merged_id.trim() {
+                whatever!("--canonical-id and --merged-id must differ");
+            }
+            Ok(())
+        }
+        Action::DedupReject {
+            nous_id,
+            entity_a,
+            entity_b,
+        } => {
+            if nous_id.trim().is_empty() {
+                whatever!("--nous-id cannot be empty or whitespace");
+            }
+            if entity_a.trim().is_empty() {
+                whatever!("--entity-a cannot be empty or whitespace");
+            }
+            if entity_b.trim().is_empty() {
+                whatever!("--entity-b cannot be empty or whitespace");
+            }
+            if entity_a.trim() == entity_b.trim() {
+                whatever!("--entity-a and --entity-b must differ");
             }
             Ok(())
         }
@@ -773,6 +861,121 @@ fn run_dedup(
         }
     }
 
+    Ok(())
+}
+
+/// List entity merge candidates queued for review.
+///
+/// Drains [`pending_merges`] populated by `memory dedup` runs — composite
+/// scores in `[0.70, 0.90)` that did not auto-merge. Without this listing
+/// step the queue was a write-only "roach motel" (#4165 B), since
+/// `approve_merge` had no callers anywhere in the codebase.
+#[cfg(feature = "recall")]
+fn run_dedup_pending(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    nous_id: &str,
+) -> Result<()> {
+    let pending = store
+        .get_pending_merges(nous_id)
+        .whatever_context("pending merge query failed")?;
+
+    if pending.is_empty() {
+        println!("No pending entity merges for nous {nous_id}.");
+        return Ok(());
+    }
+
+    println!(
+        "Pending entity merges for nous {nous_id} ({}):",
+        pending.len()
+    );
+    for p in &pending {
+        println!(
+            "  {} <-> {} (score: {:.2}, name_sim: {:.2}, embed_sim: {:.2}, type_match: {}, alias_overlap: {})",
+            p.entity_a,
+            p.entity_b,
+            p.merge_score,
+            p.name_similarity,
+            p.embed_similarity,
+            p.type_match,
+            p.alias_overlap,
+        );
+        println!("    names: {:?} <-> {:?}", p.name_a, p.name_b);
+        println!(
+            "    approve: aletheia memory dedup-approve --nous-id {nous_id} \\
+                     --canonical-id <choose> --merged-id <other>"
+        );
+    }
+
+    Ok(())
+}
+
+/// Approve a queued entity merge.
+///
+/// Executes [`approve_merge`](mneme::knowledge_store::KnowledgeStore::approve_merge)
+/// — redirects relationships, transfers `fact_entities`, preserves the merged
+/// name as an alias, deletes the merged entity, and removes the pending
+/// row. Operator chooses which side survives via argument order. The
+/// merge is *not* gated by the auto-merge threshold: this is the explicit
+/// approval path for review-tier candidates the auto-merge math rejects
+/// by design (#4165 Path A).
+#[cfg(feature = "recall")]
+fn run_dedup_approve(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    nous_id: &str,
+    canonical_id: &str,
+    merged_id: &str,
+) -> Result<()> {
+    let canonical = mneme::id::EntityId::new(canonical_id)
+        .whatever_context("--canonical-id is not a valid entity id")?;
+    let merged = mneme::id::EntityId::new(merged_id)
+        .whatever_context("--merged-id is not a valid entity id")?;
+
+    let record = store
+        .approve_merge(&canonical, &merged)
+        .whatever_context("approve_merge failed")?;
+
+    println!(
+        "Approved merge for nous {nous_id}: {canonical} absorbed {merged_name} ({facts} facts, {edges} edges).",
+        canonical = record.canonical_entity_id,
+        merged_name = record.merged_entity_name,
+        facts = record.facts_transferred,
+        edges = record.relationships_redirected,
+    );
+
+    Ok(())
+}
+
+/// Reject a queued entity merge by removing it from the review queue.
+///
+/// Tries both `(a, b)` and `(b, a)` orderings since `pending_merges` may
+/// store either; the underlying call swallows the second ordering's
+/// failure as a debug log if there is nothing to remove.
+#[cfg(feature = "recall")]
+fn run_dedup_reject(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    nous_id: &str,
+    entity_a: &str,
+    entity_b: &str,
+) -> Result<()> {
+    use mneme::engine::DataValue;
+    use std::collections::BTreeMap;
+
+    let mut params = BTreeMap::new();
+    params.insert("entity_a".to_owned(), DataValue::Str(entity_a.into()));
+    params.insert("entity_b".to_owned(), DataValue::Str(entity_b.into()));
+    let script = r"?[entity_a, entity_b] <- [[$entity_a, $entity_b]]
+                   :rm pending_merges{entity_a, entity_b}";
+    // WHY: pending_merges may store either (a,b) or (b,a) order; swallow
+    // the second ordering's not-found error since at most one row matches.
+    let _ = store
+        .run_mut_query(script, params)
+        .whatever_context("pending_merges remove failed")?;
+    let mut params2 = BTreeMap::new();
+    params2.insert("entity_a".to_owned(), DataValue::Str(entity_b.into()));
+    params2.insert("entity_b".to_owned(), DataValue::Str(entity_a.into()));
+    let _ = store.run_mut_query(script, params2);
+
+    println!("Rejected pending merge for nous {nous_id}: {entity_a} <-> {entity_b}.");
     Ok(())
 }
 

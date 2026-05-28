@@ -249,14 +249,28 @@ pub(crate) fn supersede_fact() -> String {
 }
 
 /// Insert or update an entity.
-/// Params: `$id`, `$name`, `$entity_type`, `$aliases`, `$created_at`, `$updated_at`.
+/// Params: `$id`, `$name`, `$entity_type`, `$aliases`, `$created_at`,
+/// `$updated_at`, `$name_embedding`.
+///
+/// `$name_embedding` may be `DataValue::Null` for callers without an
+/// `EmbeddingProvider` in scope; the dedup pipeline treats NULL as
+/// `embed_sim = 0.0`. See `KnowledgeStore::update_entity_name_embedding`
+/// and `KnowledgeStore::run_entity_dedup_with_embeddings` for the
+/// backfill path (#4165 / Path A).
 #[must_use]
 pub(crate) fn upsert_entity() -> String {
     use EntitiesField::*;
     QueryBuilder::new()
         .put(Relation::Entities)
         .keys(&[Id])
-        .values(&[Name, EntityType, Aliases, CreatedAt, UpdatedAt])
+        .values(&[
+            Name,
+            EntityType,
+            Aliases,
+            CreatedAt,
+            UpdatedAt,
+            NameEmbedding,
+        ])
         .done()
         .build_script()
 }
