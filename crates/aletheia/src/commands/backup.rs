@@ -140,6 +140,18 @@ fn run_verify(path: &Path) -> Result<()> {
 }
 
 pub(crate) fn verify_backup(path: &Path) -> Result<VerifyResult> {
+    // WHY: FjallDb::open_existing eagerly creates `version`, `keyspaces/`, and
+    // a fresh journal in the target directory if it doesn't already look like a
+    // fjall store. That makes `backup verify <empty-dir>` report PASS while
+    // silently dropping ~64 MB of fjall scaffolding into the user's path. Guard
+    // against that by requiring the fjall marker file before opening.
+    if !path.join("version").is_file() {
+        whatever!(
+            "not a fjall backup (missing `version` marker): {}",
+            path.display()
+        );
+    }
+
     let fdb = koina::fjall::FjallDb::open_existing(path)
         .map_err(|e| crate::error::Error::msg(format!("failed to open backup: {e}")))?;
 
@@ -529,5 +541,24 @@ mod tests {
     fn verify_backup_nonexistent_path_fails() {
         let result = run_verify(Path::new("/tmp/nonexistent-fjall-backup-xyz"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_backup_rejects_non_fjall_directory() {
+        // WHY: A bare or unrelated directory must not be silently scaffolded
+        // into a fjall store by `backup verify`; that would corrupt the user's
+        // path and falsely report PASS.
+        let tmp = tempfile::tempdir().unwrap();
+        let msg = match verify_backup(tmp.path()) {
+            Ok(_) => panic!("expected rejection of non-fjall dir"),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            msg.contains("not a fjall backup"),
+            "unexpected error: {msg}"
+        );
+        // The pre-check must not create any fjall scaffolding.
+        assert!(!tmp.path().join("version").exists());
+        assert!(!tmp.path().join("keyspaces").exists());
     }
 }
