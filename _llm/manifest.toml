@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-25T10:30:32Z"
+generated_at = "2026-05-28T00:47:23Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -441,8 +441,8 @@ l3_token_estimate = 1286
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "be9500b6d70748e043699bac0a4aec84523a9129fe25cf04d258fe55fd44ed1a"
-l3_token_estimate = 14947
+source_hash = "2524b105199df4efd79f230313e927eedc67d4f3b4f80cc412bfc81ac99a0205"
+l3_token_estimate = 14981
 
 [[crates]]
 name = "skene"
