@@ -110,6 +110,7 @@ fn list_records(
     }
 
     let mut records: Vec<PromptAuditRecord> = Vec::new();
+    let mut skipped = 0_usize;
     for entry in files {
         let content = std::fs::read_to_string(entry.path())
             .whatever_context("failed to read audit log file")?;
@@ -131,6 +132,7 @@ fn list_records(
                     }
                 }
                 Err(e) => {
+                    skipped += 1;
                     tracing::warn!(error = %e, "skipping malformed audit record");
                 }
             }
@@ -165,6 +167,16 @@ fn list_records(
             );
         }
     }
+    // WHY: surface parse failures to the operator. Without this the user only
+    // sees "no audit records matched" even when the directory holds N corrupt
+    // or schema-drifted files — they would have no signal that the log exists
+    // but isn't readable. JSON mode keeps stdout machine-parseable; the
+    // skipped count goes to stderr.
+    if skipped > 0 {
+        eprintln!(
+            "note: skipped {skipped} unparseable record(s) (run with RUST_LOG=warn to see details)"
+        );
+    }
     Ok(())
 }
 
@@ -187,6 +199,7 @@ fn show_record(log_dir: &Path, timestamp: &str) -> Result<()> {
 
     let content =
         std::fs::read_to_string(&path).whatever_context("failed to read audit log file")?;
+    let mut skipped = 0_usize;
     for line in content.lines() {
         if line.trim().is_empty() {
             continue;
@@ -194,6 +207,7 @@ fn show_record(log_dir: &Path, timestamp: &str) -> Result<()> {
         let rec: PromptAuditRecord = match serde_json::from_str(line) {
             Ok(r) => r,
             Err(e) => {
+                skipped += 1;
                 tracing::warn!(error = %e, "skipping malformed record");
                 continue;
             }
@@ -205,6 +219,15 @@ fn show_record(log_dir: &Path, timestamp: &str) -> Result<()> {
         }
     }
 
+    // WHY: distinguish "the day file held N records but none matched the
+    // requested timestamp AND M were unparseable" from "day file was clean
+    // but the timestamp wasn't there". Operators chasing a missing record
+    // need to know whether the file is corrupt.
+    if skipped > 0 {
+        snafu::whatever!(
+            "no record at {timestamp} ({skipped} unparseable record(s) skipped — run with RUST_LOG=warn to see details)"
+        );
+    }
     snafu::whatever!("no record at {timestamp}");
 }
 
@@ -281,5 +304,39 @@ mod tests {
         list_records(dir, Some("9999-12-31"), None, 50, true)
             .expect("future since should pass (no rows)");
         list_records(dir, Some("2026-01-01"), None, 50, true).expect("mid since should pass");
+    }
+
+    #[test]
+    fn list_records_does_not_silently_swallow_malformed_lines() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let dir = tmp.path();
+        write_jsonl(
+            dir,
+            "2026-05-28.jsonl",
+            &[
+                &rec_jsonl("2026-05-28T08:00:00Z", "syn"),
+                r#"{"not":"a record"}"#,
+                "{not even json",
+            ],
+        );
+        list_records(dir, None, None, 50, false).expect("call succeeds even with corrupt lines");
+    }
+
+    #[test]
+    fn show_record_with_only_corrupt_lines_reports_skipped_count() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let dir = tmp.path();
+        write_jsonl(
+            dir,
+            "2026-05-28.jsonl",
+            &[r#"{"not":"a record"}"#, "{not even json"],
+        );
+        let err =
+            show_record(dir, "2026-05-28T08:00:00Z").expect_err("should error: no matching record");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("2 unparseable"),
+            "error should mention skipped count, got: {msg}"
+        );
     }
 }
