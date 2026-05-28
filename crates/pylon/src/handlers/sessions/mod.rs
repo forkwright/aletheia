@@ -157,15 +157,26 @@ pub async fn create(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn list_sessions(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Query(params): Query<ListSessionsParams>,
 ) -> Result<Json<ListSessionsResponse>, ApiError> {
     use crate::pagination::{DEFAULT_LIMIT, MAX_LIMIT, PaginatedResponse};
 
-    let nous_id = params.nous_id;
+    // WHY: a token scoped to a single nous_id may only see its own agent's
+    // sessions, regardless of the `nous_id` query parameter. Without this
+    // override, a scoped caller could pass `?nous_id=other-agent` and read
+    // every session for that agent. If the caller's scope contradicts the
+    // requested filter, reject the request rather than silently rewriting it.
+    let nous_id = match (claims.nous_id.as_deref(), params.nous_id.as_deref()) {
+        (Some(scoped), Some(requested)) if scoped != requested => {
+            return Err(ApiError::forbidden("access denied for this agent"));
+        }
+        (Some(scoped), _) => Some(scoped.to_owned()),
+        (None, requested) => requested.map(str::to_owned),
+    };
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
     let state_clone = state.clone();
@@ -217,13 +228,14 @@ pub async fn list_sessions(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn get_session(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<SessionResponse>, ApiError> {
     let session = find_session(&state, &id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
     // WHY: archived sessions must not be visible via normal GET (#3196).
     // The unarchive endpoint uses `find_session` directly (any status),
     // so this filter only affects the read path.
@@ -483,14 +495,15 @@ pub async fn rename(
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn history(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
     Query(params): Query<HistoryParams>,
 ) -> Result<Json<HistoryResponse>, ApiError> {
-    let _ = find_session(&state, &id).await?;
+    let session = find_session(&state, &id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
 
     // WHY: Cap limit at max_history_limit and apply a sensible default so a single
     // request cannot fetch an unbounded number of messages.
