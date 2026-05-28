@@ -11,15 +11,18 @@ use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
     // 1. ContentBlock tagged-enum deserialization (includes ToolUse variant).
     //    Malformed JSON, unexpected `type` tags, missing fields, extra fields.
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<hermeneus::types::ContentBlock>(data);
 
     // 2. ToolCall deserialization: the struct persisted per-turn.
     //    Unexpected types in `input` (Value), missing optional `result`, etc.
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<nous::pipeline::ToolCall>(data);
 
     // 3. ToolName validation: arbitrary strings against the allowlist regex.
     //    Empty, oversized (>128), unicode, special chars, null bytes.
     if let Ok(s) = std::str::from_utf8(data) {
+        // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
         let _ = koina::id::ToolName::new(s);
     }
 
@@ -51,16 +54,20 @@ fuzz_target!(|data: &[u8]| {
                         let (name, hash) = part.split_at(mid);
                         // WHY: is_error derived from byte to exercise both paths.
                         let is_error = mid % 2 == 0;
+                        // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
                         let _ = detector.record(name, hash, is_error);
                     }
                 }
             }
             // Verify invariants hold after arbitrary input.
+            // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
             let _ = detector.call_count();
+            // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
             let _ = detector.pattern_count();
         }
     }
 
     // 6. InteractionSignal serde roundtrip: enum variant coverage.
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<nous::pipeline::InteractionSignal>(data);
 });
