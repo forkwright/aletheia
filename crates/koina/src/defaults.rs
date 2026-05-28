@@ -5,11 +5,22 @@
 /// Default configuration file path relative to instance root.
 pub const DEFAULT_CONFIG_PATH: &str = "config/aletheia.toml";
 
-/// Default LLM model identifier (full form).
-pub const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
-
-/// Default LLM model identifier (short form used in config files).
-pub const DEFAULT_MODEL_SHORT: &str = "claude-sonnet-4-6";
+/// Default LLM model identifier.
+///
+/// Single source of truth for the model every aletheia subsystem defaults to
+/// when no explicit model is configured: `aletheia init` scaffold, `add-nous`
+/// CLI default, runtime spawn fallback (`SONNET_MODEL`), pylon request
+/// fallback, `agent_io` export fallback, melete distillation default, taxis
+/// `ModelSpec` default, and theatron wizard model picker.
+///
+/// Defining the default in two places (formerly `DEFAULT_MODEL` and
+/// `DEFAULT_MODEL_SHORT`, #4235) routed `aletheia init` to one model and
+/// runtime spawn/distillation to a different one — a silent downgrade
+/// invisible at config time. Keep this as the only model default constant in
+/// the workspace; `crates/koina/tests/model_default_consistency.rs` walks the
+/// source tree and fails loudly if a second `DEFAULT_MODEL*` constant
+/// reappears.
+pub const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 
 /// Default nous-agent identifier created by `aletheia init -y` and assumed by
 /// CLI subcommands that take `--nous-id`. Single source of truth so that

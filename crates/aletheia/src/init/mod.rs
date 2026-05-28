@@ -100,7 +100,7 @@ impl Default for Answers {
             root: PathBuf::from("./instance"),
             api_key: None,
             api_provider: "anthropic".to_owned(),
-            model: koina::defaults::DEFAULT_MODEL_SHORT.to_owned(),
+            model: koina::defaults::DEFAULT_MODEL.to_owned(),
             agent_id: koina::defaults::DEFAULT_AGENT_ID.to_owned(),
             agent_name: "Pronoea".to_owned(),
             bind: "localhost".to_owned(),
@@ -134,7 +134,7 @@ fn build_non_interactive_answers(
         root,
         api_key,
         api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
-        model: model.unwrap_or_else(|| koina::defaults::DEFAULT_MODEL_SHORT.to_owned()),
+        model: model.unwrap_or_else(|| koina::defaults::DEFAULT_MODEL.to_owned()),
         auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
         credential_source,
         ..Answers::default()
@@ -285,7 +285,7 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
 
     let model: &str = cliclack::select("Default model")
         .item(
-            koina::defaults::DEFAULT_MODEL_SHORT,
+            koina::defaults::DEFAULT_MODEL,
             "claude-sonnet-4-6 (recommended)",
             "",
         )
