@@ -400,6 +400,29 @@ pub async fn update_section(
         });
     }
 
+    // WHY(#3383, #4240): the auth.mode = "none" opt-in gate applies only to
+    // config PUTs through the API — operators with filesystem-level control
+    // over aletheia.toml are trusted, and `warn_if_auth_disabled` keeps the
+    // posture visible at server startup and on `check-config`. Without this
+    // separation, a fresh `aletheia init -y` produced a config that
+    // `check-config` then rejected.
+    if section == "gateway"
+        && let Err(err) = taxis::validate::validate_auth_mode_policy(&body_value)
+    {
+        return Err(ApiError::ValidationFailed {
+            errors: err
+                .errors
+                .into_iter()
+                .map(|msg| FieldError {
+                    field: section.clone(),
+                    code: "auth_mode_none_requires_opt_in".to_owned(),
+                    message: msg,
+                })
+                .collect(),
+            location: snafu::location!(),
+        });
+    }
+
     let mut config = state.config.write().await;
     let mut config_value = serde_json::to_value(&*config).map_err(|e| ApiError::Internal {
         message: format!("failed to serialize config: {e}"),

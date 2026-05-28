@@ -95,6 +95,20 @@ impl RuntimeBuilder {
             all_ok = false;
         }
 
+        // WHY(#4240): mirror the server-startup `warn_if_auth_disabled` so
+        // `check-config` reports the disabled-auth posture without failing.
+        // The hard env-opt-in gate fires at the config API (`PUT /config/gateway`),
+        // not when reading a TOML file — operators with filesystem control of
+        // aletheia.toml are trusted.
+        if self.config.gateway.auth.mode == "none" {
+            print_line(format_args!(
+                "  [warn] gateway.auth: mode = \"none\" — all requests served as role '{}'; \
+                 the config API still requires {}=1 to accept this via PUT",
+                self.config.gateway.auth.none_role,
+                taxis::validate::ALLOW_AUTH_NONE_ENV,
+            ));
+        }
+
         print_line(format_args!(""));
         if all_ok {
             print_line(format_args!("Configuration OK"));

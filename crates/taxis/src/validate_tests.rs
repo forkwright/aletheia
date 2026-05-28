@@ -247,11 +247,12 @@ fn provider_aliases_deserialize_to_typed_config() {
 /// without a mutex the opt-in gate flips under another test's feet.
 static AUTH_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// `auth.mode = "none"` is rejected by default: disabling authentication
-/// must be an explicit opt-in so a config PUT cannot silently remove access
-/// control. (#3383)
+/// `auth.mode = "none"` via the config API is rejected unless the operator
+/// has explicitly opted in via `ALETHEIA_ALLOW_AUTH_NONE=1`. This is the
+/// `validate_auth_mode_policy` gate that callers must invoke in addition to
+/// the structural `validate_section`. (#3383, #4240)
 #[test]
-fn auth_mode_none_env_gate() {
+fn auth_mode_none_policy_env_gate() {
     let _guard = AUTH_ENV_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -266,12 +267,13 @@ fn auth_mode_none_env_gate() {
         std::env::remove_var(crate::validate::ALLOW_AUTH_NONE_ENV);
     }
 
-    // Without opt-in: reject, and point the operator at the env var.
     let section = json!({ "auth": { "mode": "none" } });
-    let rejected = validate_section("gateway", &section);
+
+    // Without opt-in: policy gate rejects, error points the operator at the env var.
+    let rejected = crate::validate::validate_auth_mode_policy(&section);
     assert!(
         rejected.is_err(),
-        "auth_mode = none must be rejected without env opt-in"
+        "auth_mode = none must be rejected by the policy gate without env opt-in"
     );
     let err = rejected.unwrap_err();
     assert!(
@@ -281,7 +283,15 @@ fn auth_mode_none_env_gate() {
         "error should mention the env-var opt-in: {err:?}"
     );
 
-    // With opt-in: accept.
+    // Structural validation alone is permissive: a config PUT must call BOTH
+    // validate_section AND validate_auth_mode_policy to preserve the gate.
+    let structural = validate_section("gateway", &section);
+    assert!(
+        structural.is_ok(),
+        "validate_section is now structural-only and must accept mode=none: {structural:?}"
+    );
+
+    // With opt-in: policy gate accepts.
     #[expect(
         unsafe_code,
         reason = "std::env::set_var requires unsafe in edition 2024; serialised via AUTH_ENV_LOCK"
@@ -290,7 +300,7 @@ fn auth_mode_none_env_gate() {
     unsafe {
         std::env::set_var(crate::validate::ALLOW_AUTH_NONE_ENV, "1");
     }
-    let accepted = validate_section("gateway", &section);
+    let accepted = crate::validate::validate_auth_mode_policy(&section);
 
     #[expect(
         unsafe_code,
@@ -304,6 +314,50 @@ fn auth_mode_none_env_gate() {
     assert!(
         accepted.is_ok(),
         "auth_mode = none must be accepted with env opt-in: {accepted:?}"
+    );
+}
+
+/// File-load path (server startup, `check-config`) accepts `auth.mode = "none"`
+/// regardless of the env opt-in; the gate is policy-level, not structural.
+/// Operators with filesystem control of aletheia.toml are trusted; visibility
+/// is preserved via the loud `warn_if_auth_disabled` emission. (#4240)
+#[test]
+fn validate_section_gateway_accepts_mode_none_without_opt_in() {
+    let _guard = AUTH_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+    #[expect(
+        unsafe_code,
+        reason = "std::env::remove_var requires unsafe in edition 2024; serialised via AUTH_ENV_LOCK"
+    )]
+    // SAFETY: `AUTH_ENV_LOCK` serialises ALLOW_AUTH_NONE_ENV mutations across tests.
+    unsafe {
+        std::env::remove_var(crate::validate::ALLOW_AUTH_NONE_ENV);
+    }
+
+    let section = json!({ "auth": { "mode": "none" } });
+    let outcome = validate_section("gateway", &section);
+    assert!(
+        outcome.is_ok(),
+        "validate_section('gateway', mode=none) must accept on the file-load path: {outcome:?}"
+    );
+}
+
+/// Structural mode validation still rejects unknown auth modes — this is not
+/// a policy gate and applies to all paths. (#3383)
+#[test]
+fn validate_section_gateway_rejects_unknown_auth_mode() {
+    let section = json!({ "auth": { "mode": "telepathy" } });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "unknown auth.mode must be rejected as a structural error"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("telepathy")),
+        "error should mention the bad mode: {err:?}"
     );
 }
 
