@@ -737,7 +737,7 @@ The session history remains in the archive. Start a fresh session for new work.
 
 ### Configuration
 
-The distillation model defaults to `claude-sonnet-4-20250514`. To use a cheaper model for summaries, set `distillation_model` under `[agents.defaults]` in `instance/config/aletheia.toml`. This field is hot-reloadable (no restart needed).
+The distillation model defaults to the workspace-wide `koina::defaults::DEFAULT_MODEL` (currently `claude-sonnet-4-6`; the single source of truth, see #4235). To use a cheaper model for summaries, set `distillation_model` under `[agents.defaults]` in `instance/config/aletheia.toml`. This field is hot-reloadable (no restart needed).
 
 ---
 

@@ -20,7 +20,7 @@ pub(crate) struct AddNousArgs {
     pub provider: String,
 
     /// Model identifier.
-    #[arg(long, default_value = koina::defaults::DEFAULT_MODEL_SHORT)]
+    #[arg(long, default_value = koina::defaults::DEFAULT_MODEL)]
     pub model: String,
 }
 

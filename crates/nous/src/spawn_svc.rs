@@ -349,6 +349,16 @@ mod tests {
         (dir, oikos)
     }
 
+    // WHY (#4235): the Coder/Researcher role templates now resolve to
+    // `koina::defaults::DEFAULT_MODEL` (Sonnet 4.6), not the old date-pinned
+    // Sonnet 4.0 literal. The mock provider's supported-models list must
+    // include the workspace default so `spawn_and_run` can route Coder tasks.
+    const SUPPORTED_MOCK_MODELS: &[&str] = &[
+        koina::defaults::DEFAULT_MODEL,
+        "claude-sonnet-4-20250514",
+        "claude-haiku-4-5-20251001",
+    ];
+
     fn make_providers() -> Arc<ProviderRegistry> {
         let response = CompletionResponse {
             id: "msg_mock".to_owned(),
@@ -368,8 +378,7 @@ mod tests {
         };
         let mut providers = ProviderRegistry::new();
         providers.register(Box::new(
-            MockProvider::with_responses(vec![response])
-                .models(&["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"]),
+            MockProvider::with_responses(vec![response]).models(SUPPORTED_MOCK_MODELS),
         ));
         Arc::new(providers)
     }
@@ -407,9 +416,12 @@ mod tests {
     async fn spawn_inherits_empirical_router_and_records_outcome() {
         let (_dir, oikos) = make_oikos();
         let store = Arc::new(AfterActionStore::in_memory());
+        // WHY (#4235): align the router fixture with the Coder role template's
+        // model (`koina::defaults::DEFAULT_MODEL`) so the AfterActionStore key
+        // matches the model the spawn pipeline actually selects.
         let router: Arc<dyn aletheia_routing::Router> = Arc::new(RecordingRouter::new(
             Arc::clone(&store),
-            "claude-sonnet-4-20250514",
+            koina::defaults::DEFAULT_MODEL,
         ));
         let svc = make_spawn_service(oikos).with_runtime_services(InheritedSpawnServices {
             embedding_provider: None,
@@ -438,7 +450,7 @@ mod tests {
 
         assert!(!result.is_error, "unexpected error: {}", result.content);
 
-        let provider = ProviderId::new("claude-sonnet-4-20250514");
+        let provider = ProviderId::new(koina::defaults::DEFAULT_MODEL);
         for _ in 0..20 {
             if let Some(stats) = store
                 .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
@@ -458,11 +470,16 @@ mod tests {
     #[test]
     fn spawn_uses_role_default_model() {
         use crate::roles::Role;
-        assert_eq!(Role::Coder.template().model, "claude-sonnet-4-20250514");
+        // WHY (#4235): Coder/Researcher templates inherit from `SONNET_MODEL
+        // = koina::defaults::DEFAULT_MODEL`. Assert against the constant so
+        // template/model drift is caught at the call site, not in production.
+        // Reviewer/Explorer/Runner pin specific dated IDs locally
+        // (Opus 4.0 / Haiku 4.5); those remain literal here.
+        assert_eq!(Role::Coder.template().model, koina::defaults::DEFAULT_MODEL);
         assert_eq!(Role::Reviewer.template().model, "claude-opus-4-20250514");
         assert_eq!(
             Role::Researcher.template().model,
-            "claude-sonnet-4-20250514"
+            koina::defaults::DEFAULT_MODEL
         );
         assert_eq!(Role::Explorer.template().model, "claude-haiku-4-5-20251001");
         assert_eq!(Role::Runner.template().model, "claude-haiku-4-5-20251001");
@@ -527,7 +544,7 @@ mod tests {
         }
 
         fn supported_models(&self) -> &[&str] {
-            &["claude-sonnet-4-20250514"]
+            SUPPORTED_MOCK_MODELS
         }
 
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]

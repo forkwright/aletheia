@@ -84,7 +84,7 @@ mod tests {
                 .and_then(|v| v.get("model"))
                 .and_then(|v| v.get("primary"))
                 .and_then(toml::Value::as_str),
-            Some(koina::defaults::DEFAULT_MODEL_SHORT)
+            Some(koina::defaults::DEFAULT_MODEL)
         );
         let list = agents
             .get("list")
@@ -208,7 +208,7 @@ mod tests {
         );
         assert_eq!(
             config["agents"]["defaults"]["model"]["primary"].as_str(),
-            Some(koina::defaults::DEFAULT_MODEL_SHORT),
+            Some(koina::defaults::DEFAULT_MODEL),
             "default model should be claude-sonnet-4-6"
         );
     }

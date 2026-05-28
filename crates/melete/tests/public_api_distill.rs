@@ -14,12 +14,14 @@ mod distill_config {
     use melete::distill::{DistillConfig, DistillSection};
 
     #[test]
-    fn default_uses_claude_sonnet_primary_model() {
-        // WHY: downstream callers read `config.model` straight through to the
-        // provider. Silently changing the default would re-route every
-        // distillation to a different model at potentially higher cost.
+    fn default_uses_workspace_default_model() {
+        // WHY: distillation's default model must track the workspace
+        // `koina::defaults::DEFAULT_MODEL` constant. Pinning a literal here
+        // is what produced #4235 — `aletheia init` defaulted to Sonnet 4.6
+        // while distillation silently downgraded to Sonnet 4.0. Assert
+        // against the constant so any future drift fails this test loudly.
         let config = DistillConfig::default();
-        assert_eq!(config.model, "claude-sonnet-4-20250514");
+        assert_eq!(config.model, koina::defaults::DEFAULT_MODEL);
     }
 
     #[test]

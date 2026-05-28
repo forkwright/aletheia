@@ -460,10 +460,14 @@ async fn distill_whitespace_only_response_returns_empty_summary_error() {
 
 #[test]
 fn config_default_model() {
+    // WHY (#4235): pin against the workspace-wide `DEFAULT_MODEL` constant
+    // rather than a literal, so distillation cannot silently diverge from
+    // what `aletheia init` and `add-nous` scaffold.
     let config = DistillConfig::default();
     assert_eq!(
-        config.model, "claude-sonnet-4-20250514",
-        "default model should be claude-sonnet-4-20250514"
+        config.model,
+        koina::defaults::DEFAULT_MODEL,
+        "default model should match koina::defaults::DEFAULT_MODEL"
     );
 }
 

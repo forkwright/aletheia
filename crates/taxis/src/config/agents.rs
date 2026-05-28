@@ -255,7 +255,7 @@ pub struct ModelSpec {
 impl Default for ModelSpec {
     fn default() -> Self {
         Self {
-            primary: koina::defaults::DEFAULT_MODEL_SHORT.to_owned(),
+            primary: koina::defaults::DEFAULT_MODEL.to_owned(),
             fallbacks: Vec::new(),
             retries_before_fallback: 2,
         }
