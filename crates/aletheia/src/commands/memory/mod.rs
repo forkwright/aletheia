@@ -75,7 +75,7 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
     // WHY: the knowledge store uses an exclusive fjall lock; opening it while the
     // server holds the lock causes a confusing error. Detect a running server and
     // route 'check' through the HTTP API instead of direct store access.
-    if let Ok(true) = is_server_running(url).await {
+    if is_server_running(url).await? {
         match action {
             Action::Check { json } => return run_check_via_api(url, json).await,
             _ => {
@@ -314,10 +314,43 @@ mod validation_tests {
         })
         .unwrap();
     }
+
+    #[tokio::test]
+    async fn is_server_running_rejects_empty_url() {
+        let err = super::is_server_running("").await.unwrap_err();
+        assert!(
+            err.to_string().contains("--url is not a valid URL"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn is_server_running_rejects_malformed_url() {
+        let err = super::is_server_running("not-a-url").await.unwrap_err();
+        assert!(
+            err.to_string().contains("--url is not a valid URL"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn is_server_running_returns_false_for_unreachable_well_formed_url() {
+        let res = super::is_server_running("http://127.0.0.1:1")
+            .await
+            .unwrap();
+        assert!(!res, "expected false when no listener; got {res}");
+    }
 }
 
 /// Check if a server is running at `url` by hitting the health endpoint.
+///
+/// Rejects malformed URLs up-front so a parse failure does not silently coerce
+/// to "server not running" and let the caller fall through to direct knowledge
+/// store access with garbage in `--url`.
 async fn is_server_running(url: &str) -> Result<bool> {
+    if let Err(e) = reqwest::Url::parse(url) {
+        whatever!("--url is not a valid URL: {e} (got {:?})", url);
+    }
     let endpoint = format!("{url}/api/health");
     match reqwest::get(&endpoint).await {
         Ok(resp) => Ok(resp.status().is_success() || resp.status().as_u16() == 503),
