@@ -137,28 +137,37 @@ impl TestHarness {
         register_tools: bool,
         with_knowledge_store: bool,
     ) -> Self {
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         let dir = tempfile::TempDir::new().expect("tmpdir");
         let root = dir.path();
 
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         std::fs::create_dir_all(root.join("nous").join(TEST_NOUS_ID)).expect("mkdir nous");
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
         #[expect(
             clippy::disallowed_methods,
             reason = "integration tests write fixture files to temp directories; synchronous I/O is required in setup"
         )]
+        // kanon:ignore RUST/blocking-in-async — test fixture writes to temp directory; synchronous I/O required in setup
         std::fs::write(
             root.join("nous").join(TEST_NOUS_ID).join("SOUL.md"),
             "You are a test agent.",
         )
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         .expect("write SOUL.md");
         #[expect(
             clippy::disallowed_methods,
             reason = "integration tests write fixture files to temp directories; synchronous I/O is required in setup"
         )]
+        // kanon:ignore RUST/blocking-in-async — test fixture writes to temp directory; synchronous I/O required in setup
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         std::fs::write(root.join("theke").join("USER.md"), "Test user.").expect("write USER.md");
 
         let oikos = Arc::new(Oikos::from_root(root));
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         let store = SessionStore::open_in_memory().expect("in-memory store");
 
         let mut provider_registry = ProviderRegistry::new();
@@ -167,6 +176,7 @@ impl TestHarness {
 
         let mut tool_registry = ToolRegistry::new();
         if register_tools {
+            // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
             organon::builtins::register_all(&mut tool_registry).expect("register builtins");
         }
         let tool_registry = Arc::new(tool_registry);
@@ -182,6 +192,7 @@ impl TestHarness {
                         ..KnowledgeConfig::default()
                     },
                 )
+                // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
                 .expect("open tempfile fjall knowledge store"),
             )
         } else {
@@ -230,6 +241,7 @@ impl TestHarness {
         nous_manager
             .spawn(nous_config, PipelineConfig::default())
             .await
+            // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
             .expect("spawn nous");
 
         let jwt_config = JwtConfig {
@@ -253,6 +265,7 @@ impl TestHarness {
             oikos,
             jwt_manager: Arc::clone(&jwt_manager),
             auth_facade: Arc::new(
+                // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
                 AuthFacade::in_memory(AuthConfig { jwt: jwt_config }).expect("auth facade"),
             ),
             start_time: Instant::now(),
@@ -290,6 +303,7 @@ impl TestHarness {
     pub fn knowledge_store(&self) -> Arc<KnowledgeStore> {
         self.knowledge_store
             .as_ref()
+            // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
             .expect("knowledge store harness")
             .clone()
     }
@@ -303,6 +317,7 @@ impl TestHarness {
     pub fn embedding_provider(&self) -> Arc<dyn EmbeddingProvider> {
         self.embedding_provider
             .as_ref()
+            // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
             .expect("knowledge store harness")
             .clone()
     }
@@ -312,6 +327,7 @@ impl TestHarness {
     pub fn auth_token(&self) -> String {
         self.jwt_manager
             .issue_access("test-user", Role::Operator, None)
+            // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
             .expect("test token")
     }
 
@@ -359,8 +375,11 @@ impl TestHarness {
 
         match body {
             Some(b) => builder
+                // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
                 .body(Body::from(serde_json::to_vec(&b).expect("serialize")))
+                // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
                 .expect("request"),
+            // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
             None => builder.body(Body::empty()).expect("request"),
         }
     }
@@ -371,6 +390,7 @@ impl TestHarness {
         Request::get(uri)
             .header("authorization", format!("Bearer {token}"))
             .body(Body::empty())
+            // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
             .expect("request")
     }
 
@@ -396,7 +416,9 @@ impl TestHarness {
                 "session_key": key
             })),
         );
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         let resp = router.clone().oneshot(req).await.expect("oneshot");
+        // kanon:ignore RUST/bare-assert — HTTP status assertion in test helper; failure context obvious from line
         assert_eq!(resp.status(), StatusCode::CREATED);
         body_json(resp).await
     }
@@ -415,7 +437,9 @@ impl TestHarness {
             &format!("/api/v1/sessions/{session_id}/messages"),
             Some(serde_json::json!({ "content": content })),
         );
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         let resp = router.clone().oneshot(req).await.expect("send message");
+        // kanon:ignore RUST/bare-assert — HTTP status assertion in test helper; failure context obvious from line
         assert_eq!(resp.status(), StatusCode::OK);
         body_string(resp).await
     }
@@ -428,7 +452,9 @@ impl TestHarness {
             .clone()
             .oneshot(self.authed_get(&format!("/api/v1/sessions/{session_id}/history")))
             .await
+            // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
             .expect("get history");
+        // kanon:ignore RUST/bare-assert — HTTP status assertion in test helper; failure context obvious from line
         assert_eq!(resp.status(), StatusCode::OK);
         body_json(resp).await
     }
@@ -437,12 +463,15 @@ impl TestHarness {
     pub async fn start_tcp_server(self) -> (String, String, Self) {
         let token = self.auth_token();
         let router = self.router();
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         let addr = listener.local_addr().expect("local_addr");
         let base_url = format!("http://{addr}"); // kanon:ignore SECURITY/insecure-transport
 
         tokio::spawn(
             async move {
+                // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
                 axum::serve(listener, router).await.expect("serve");
             }
             .instrument(tracing::info_span!("test_server")),
@@ -456,7 +485,9 @@ impl TestHarness {
 pub async fn body_json(response: axum::response::Response) -> serde_json::Value {
     let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         .expect("read body");
+    // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
     serde_json::from_slice(&bytes).expect("parse json")
 }
 
@@ -464,6 +495,8 @@ pub async fn body_json(response: axum::response::Response) -> serde_json::Value 
 pub async fn body_string(response: axum::response::Response) -> String {
     let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         .expect("read body");
+    // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
     String::from_utf8(bytes.to_vec()).expect("utf8")
 }
