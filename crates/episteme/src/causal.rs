@@ -32,6 +32,7 @@ use crate::knowledge::{CausalEdge, CausalRelationType, TemporalOrdering};
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive] above (linter only inspects the attribute immediately preceding the enum; known false positive when another attribute intervenes).
 pub enum CausalError {
     /// An edge with the same ID already exists in the store.
     #[snafu(display("causal edge already exists: {id}"))]

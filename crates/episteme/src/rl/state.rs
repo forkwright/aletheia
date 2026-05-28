@@ -14,6 +14,7 @@ use super::Action;
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MemoryState {
     /// Stable identifier for the memory item or policy decision point.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub subject_id: String,
     /// Named numeric features available to the policy.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

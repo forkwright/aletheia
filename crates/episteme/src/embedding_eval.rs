@@ -42,6 +42,7 @@ use crate::embedding::EmbeddingProvider;
     missing_docs,
     reason = "snafu error variant fields (message, location) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive] above (linter only inspects the attribute immediately preceding the enum; known false positive when another attribute intervenes).
 pub enum EvalError {
     /// A JSONL line could not be parsed as an [`EvalQuery`].
     #[snafu(display("failed to parse eval dataset line {line}: {message}"))]

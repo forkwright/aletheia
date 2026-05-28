@@ -32,6 +32,7 @@ use crate::knowledge::EpistemicTier;
     missing_docs,
     reason = "snafu error variant fields (message, location) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive] above (linter only inspects the attribute immediately preceding the enum; known false positive when another attribute intervenes).
 pub enum ConflictError {
     /// The LLM classification call failed.
     #[snafu(display("conflict classification failed: {message}"))]

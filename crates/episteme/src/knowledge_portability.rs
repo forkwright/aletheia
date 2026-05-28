@@ -19,13 +19,16 @@ pub(crate) fn export_knowledge(
     nous_id: &str,
     store: &crate::knowledge_store::KnowledgeStore,
 ) -> Option<graphe::portability::KnowledgeExport> {
+    // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot: missing data on any leg yields an empty list (then the caller short-circuits to None below) rather than blocking the export.
     let facts = store
         .query_facts(nous_id, "9999-01-01T00:00:00Z", 100_000)
         .ok()
         .unwrap_or_default();
 
+    // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot; see WHY above.
     let entities = query_all_entities(store).unwrap_or_default();
 
+    // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot; see WHY above.
     let relationships = query_all_relationships(store).unwrap_or_default();
 
     if facts.is_empty() && entities.is_empty() && relationships.is_empty() {

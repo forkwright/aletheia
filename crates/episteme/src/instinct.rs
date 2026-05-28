@@ -66,6 +66,7 @@ pub struct ToolObservation {
     /// Brief summary of the context that prompted this tool call (≤100 chars).
     pub context_summary: String,
     /// Which nous made the observation.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub nous_id: String,
     /// Optional git-remote-derived project partition for this observation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -569,14 +570,18 @@ pub(crate) fn promote_cross_project_patterns(
                 accum.first_observed = Some(pattern.first_observed);
             }
             None => accum.first_observed = Some(pattern.first_observed),
-            _ => {}
+            _ => {
+                // Existing accum.first_observed is already <= pattern.first_observed → keep it.
+            }
         }
         match accum.last_observed {
             Some(ref ts) if pattern.last_observed > *ts => {
                 accum.last_observed = Some(pattern.last_observed);
             }
             None => accum.last_observed = Some(pattern.last_observed),
-            _ => {}
+            _ => {
+                // Existing accum.last_observed is already >= pattern.last_observed → keep it.
+            }
         }
     }
 

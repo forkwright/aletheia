@@ -594,6 +594,7 @@ impl crate::knowledge_store::KnowledgeStore {
 
         let result = self.run_query(crate::succession::NOUS_KNOWLEDGE_PROFILE, params)?;
 
+        // kanon:ignore RUST/no-result-unwrap-or-default — knowledge profile is best-effort context; if volatility load fails we proceed with empty scores rather than propagate.
         let volatility_scores = self.load_volatility_scores().unwrap_or_default();
 
         let mut top_entities = Vec::new();

@@ -282,8 +282,11 @@ fn greedy_decode(
 /// Falls back to direct JSON parse if the markers are absent.
 fn parse_nuextract_json(decoded: &str) -> BookkeepingResult<serde_json::Value> {
     let json_str = if let Some(start) = decoded.find("<|output|>") {
+        // kanon:ignore RUST/indexing-slicing — `start` is a valid byte offset returned by str::find on this exact &str; `+ "<|output|>".len()` lands on the byte after the literal marker, which is by construction a valid char boundary.
         let after = &decoded[start + "<|output|>".len()..];
         if let Some(end) = after.find("<|end|>") {
+            // kanon:ignore RUST/indexing-slicing — `end` is a valid byte offset from str::find on `after`.
+            // kanon:ignore RUST/string-slice — same: str::find returns a char-boundary byte index, so slicing is safe.
             after[..end].trim()
         } else {
             after.trim()
@@ -341,6 +344,7 @@ fn parse_extraction_json(value: serde_json::Value) -> BookkeepingResult<Extracti
                 })
                 .collect()
         })
+        // kanon:ignore RUST/no-result-unwrap-or-default — chain returns Option<Vec<_>> (Value::as_array → Option, .map → Option); fallback is the documented empty-list default when the JSON key is absent or not an array.
         .unwrap_or_default();
 
     let relationships = value
@@ -367,6 +371,7 @@ fn parse_extraction_json(value: serde_json::Value) -> BookkeepingResult<Extracti
                 })
                 .collect()
         })
+        // kanon:ignore RUST/no-result-unwrap-or-default — chain returns Option<Vec<_>> (Value::as_array → Option, .map → Option); fallback is the documented empty-list default when the JSON key is absent or not an array.
         .unwrap_or_default();
 
     let facts = value
@@ -395,6 +400,7 @@ fn parse_extraction_json(value: serde_json::Value) -> BookkeepingResult<Extracti
                 })
                 .collect()
         })
+        // kanon:ignore RUST/no-result-unwrap-or-default — chain returns Option<Vec<_>> (Value::as_array → Option, .map → Option); fallback is the documented empty-list default when the JSON key is absent or not an array.
         .unwrap_or_default();
 
     Ok(Extraction {

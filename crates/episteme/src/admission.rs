@@ -197,6 +197,7 @@ impl StructuredAdmissionPolicy {
         reason = "method takes &self for API consistency; will use config for weight tuning"
     )]
     fn score_utility(&self, fact: &Fact) -> f64 {
+        // kanon:ignore RUST/as-cast — usize→f64 for a sigmoid input; precision is irrelevant for content-length scoring and try_from(usize)→f64 doesn't exist.
         let len = fact.content.len() as f64;
         // Sigmoid centered at 50 chars, steepness 0.05
         1.0 / (1.0 + (-0.05 * (len - 50.0)).exp())

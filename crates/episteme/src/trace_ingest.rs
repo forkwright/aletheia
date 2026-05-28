@@ -207,6 +207,7 @@ impl Visit for EventVisitor {
 /// );
 /// ```
 pub struct TraceIngestLayer {
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — parking_lot::Mutex (sync), held only across local buffer.push()/drain operations inside a tracing Layer callback; never held across an await.
     buffer: std::sync::Arc<Mutex<Vec<TraceEvent>>>,
 }
 
@@ -223,6 +224,7 @@ impl TraceIngestLayer {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            // kanon:ignore RUST/no-arc-mutex-anti-pattern — parking_lot::Mutex (sync); see field-level WHY on TraceIngestLayer.buffer.
             buffer: std::sync::Arc::new(Mutex::new(Vec::new())),
         }
     }

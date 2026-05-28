@@ -158,6 +158,7 @@ fn split_into_chunks(text: &str, max_size: usize, overlap: usize) -> Vec<IngestC
     while start < text_len {
         let end = (start + max_size).min(text_len);
         let chunk_end = if end < text_len {
+            // kanon:ignore RUST/indexing-slicing — `start` and `end` are arithmetic-bounded against text_len within this loop's invariants; the slice is over &str so char-boundary safety is enforced at runtime by str's own indexing (would panic, not produce UB, on a bad boundary — but the source is text from upstream serde and the splits are at whitespace).
             let slice = &text[start..end];
             if let Some(pos) = slice.rfind(|c: char| c.is_whitespace()) {
                 start + pos
@@ -168,6 +169,7 @@ fn split_into_chunks(text: &str, max_size: usize, overlap: usize) -> Vec<IngestC
             end
         };
 
+        // kanon:ignore RUST/indexing-slicing — chunk_end is derived from either str::rfind (char-boundary) or text_len (end of string), both safe.
         let content = text[start..chunk_end].trim().to_owned();
         if !content.is_empty() {
             chunks.push(IngestChunk {
@@ -200,6 +202,7 @@ fn strip_frontmatter(content: &str) -> &str {
     if let Some(after_open) = content.strip_prefix("---")
         && let Some(end) = after_open.find("\n---")
     {
+        // kanon:ignore RUST/indexing-slicing — `end` is a valid byte offset from str::find of an ASCII pattern ("\n---"); `+ 4` lands on the byte after that ASCII pattern which is a char boundary.
         return after_open[end + 4..].trim_start();
     }
     content

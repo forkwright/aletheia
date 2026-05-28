@@ -43,6 +43,7 @@ pub(crate) struct DomainVolatility {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct KnowledgeProfile {
     /// The nous whose profile this is.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub nous_id: String,
     /// Top entities by fact count, with their volatility scores.
     pub top_entities: Vec<EntityProfile>,

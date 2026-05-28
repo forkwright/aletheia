@@ -8,6 +8,7 @@ use snafu::Snafu;
     missing_docs,
     reason = "snafu error variant fields (source, message, location) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive] above (linter only inspects the attribute immediately preceding the enum; known false positive when another attribute intervenes).
 pub enum ExtractionError {
     /// The LLM response could not be parsed as valid extraction JSON.
     ///

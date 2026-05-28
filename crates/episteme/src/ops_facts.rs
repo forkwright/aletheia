@@ -20,6 +20,7 @@ use crate::knowledge::{
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OpsSnapshot {
     /// Which nous these metrics belong to.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub nous_id: String,
     /// Total active sessions at snapshot time.
     pub active_session_count: u64,

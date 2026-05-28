@@ -57,6 +57,7 @@ pub const DEFAULT_MIN_CONFIDENCE: f64 = 0.60;
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive] above (linter only inspects the attribute immediately preceding the enum; known false positive when another attribute intervenes).
 pub enum RuleProposalError {
     /// Failed to serialize proposals to TOML.
     #[snafu(display("failed to serialize rule proposals to TOML: {source}"))]
