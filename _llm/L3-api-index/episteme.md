@@ -557,10 +557,12 @@ pub struct FactMultiplicity {
 ```rust
 pub struct ConsolidationAuditRecord {
     /// Unique audit ID.
+    // kanon:ignore RUST/primitive-for-domain-id — serialization type for Datalog/JSON audit records uses string IDs for compatibility
     pub id: String,
     /// What triggered this consolidation.
     pub trigger_type: String,
     /// Entity or cluster ID that triggered it.
+    // kanon:ignore RUST/primitive-for-domain-id — serialization type for Datalog/JSON audit records uses string IDs for compatibility
     pub trigger_id: String,
     /// Number of original facts.
     pub original_count: usize,
@@ -3597,8 +3599,10 @@ pub fn export_skills_to_cc (
 ```rust
 pub struct SkillCandidate {
     /// Unique identifier (ULID as string).
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
     pub id: String,
     /// Which nous this candidate belongs to.
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
     pub nous_id: String,
     /// Normalised signature of the representative tool call sequence.
     pub signature: SequenceSignature,
@@ -3785,6 +3789,7 @@ pub struct PendingSkill {
     /// The extracted skill content.
     pub skill: SkillContent,
     /// The candidate that was promoted to trigger extraction.
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
     pub candidate_id: String,
     /// Review status: `"pending_review"`, `"approved"`, `"rejected"`.
     pub status: String,
