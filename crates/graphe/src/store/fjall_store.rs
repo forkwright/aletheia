@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — single-file store implementation; splitting would break private method cohesion
 //! Fjall-backed session store.
 //!
 //! Pure-Rust LSM-tree storage via `fjall`. Zero C dependencies.
@@ -486,7 +487,7 @@ impl SessionStore {
             let upper = {
                 let mut s = prefix.clone();
                 let last = s.pop().unwrap_or('\0');
-                s.push(char::from_u32(last as u32 + 1).unwrap_or('\u{FFFF}'));
+                s.push(char::from_u32(u32::from(last) + 1).unwrap_or('\u{FFFF}'));
                 s
             };
 
@@ -764,9 +765,9 @@ impl SessionStore {
 
         let now = now_iso();
         let msg = Message {
-            id: msg_id_counter as i64,
+            id: msg_id_counter as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
             session_id: session_id.to_owned(),
-            seq: seq as i64,
+            seq: seq as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
             role,
             content: content.to_owned(),
             tool_call_id: tool_call_id.map(str::to_owned),
@@ -811,7 +812,7 @@ impl SessionStore {
         })?;
 
         debug!(session_id, seq, %role, token_estimate, "appended message");
-        Ok(seq as i64)
+        Ok(seq as i64) // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
     }
 
     /// Get non-distilled messages, newest `limit` in chronological order.
@@ -1084,10 +1085,10 @@ impl SessionStore {
         let new_msg_id = current_msg_id + 1;
         tx.insert(&counters_part, "msg_id", encode_u64(new_msg_id));
 
-        let token_estimate = (content.len() as i64 + 3) / 4;
+        let token_estimate = (content.len() as i64 + 3) / 4; // kanon:ignore RUST/as-cast — token estimate heuristic; content length fits in i64 for all realistic inputs
         let now = now_iso();
         let summary_msg = Message {
-            id: new_msg_id as i64,
+            id: new_msg_id as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
             session_id: session_id.to_owned(),
             seq: 0,
             role: Role::System,
@@ -1305,7 +1306,7 @@ impl SessionStore {
         drop(snap);
 
         let note = AgentNote {
-            id: global_id as i64,
+            id: global_id as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
             session_id: session_id.to_owned(),
             nous_id: nous_id.to_owned(),
             category: category.to_owned(),
@@ -1329,7 +1330,7 @@ impl SessionStore {
             .build()
         })?;
 
-        Ok(global_id as i64)
+        Ok(global_id as i64) // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
     }
 
     /// Get notes for a session.
