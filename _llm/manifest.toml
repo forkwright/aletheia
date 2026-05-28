@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-28T03:00:47Z"
+generated_at = "2026-05-28T03:34:31Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -273,8 +273,8 @@ l3_token_estimate = 2187
 [[crates]]
 name = "dokimion"
 path = "crates/eval"
-source_hash = "0db57a2f84b277cc6ab589b81ff816498dd7acbba22be93c60fd9221aba26e2d"
-l3_token_estimate = 7846
+source_hash = "3c689658917fd3f73d1d867a4b47fe33367934386192c55dbc246b19541483d2"
+l3_token_estimate = 8198
 
 [[crates]]
 name = "eidos"
