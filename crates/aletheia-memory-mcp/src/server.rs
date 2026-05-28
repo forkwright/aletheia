@@ -158,6 +158,7 @@ impl MemoryServer {
     /// Returns `Err(WriteUnauthorized)` if:
     ///   - Write token is not configured
     ///   - Provided token does not match
+    // kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
     pub(crate) fn validate_write_token(&self, provided: &str) -> error::Result<()> {
         use subtle::ConstantTimeEq;
 
