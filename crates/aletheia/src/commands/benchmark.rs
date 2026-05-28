@@ -96,7 +96,36 @@ pub(crate) async fn run(args: BenchmarkArgs) -> Result<()> {
     }
 }
 
+/// Reject obviously-broken inputs before loading datasets or talking to the
+/// server. Otherwise `--timeout 0` / `--max-questions 0` / `--retrieval-k 0`
+/// quietly exit with an empty report (looking like a passing run), and a
+/// malformed `--url` or empty `--nous-id` only surfaces via downstream HTTP
+/// errors that read like a server-down or missing-agent problem.
+fn validate_args(args: &RunArgs) -> Result<()> {
+    if args.timeout == 0 {
+        whatever!(
+            "--timeout must be greater than 0 seconds (got 0; a zero timeout fails every question instantly)"
+        );
+    }
+    if args.max_questions == Some(0) {
+        whatever!("--max-questions must be greater than 0 when set (got 0; nothing would run)");
+    }
+    if args.retrieval_k == Some(0) {
+        whatever!(
+            "--retrieval-k must be greater than 0 when set (got 0; recall@0 / NDCG@0 are not meaningful)"
+        );
+    }
+    if args.nous_id.trim().is_empty() {
+        whatever!("--nous-id must not be empty");
+    }
+    if let Err(e) = reqwest::Url::parse(&args.url) {
+        whatever!("--url is not a valid URL: {e} (got {:?})", args.url);
+    }
+    Ok(())
+}
+
 async fn run_longmemeval(args: RunArgs) -> Result<()> {
+    validate_args(&args)?;
     let dataset = dokimion::benchmarks::load_longmemeval(&args.dataset)
         .await
         .whatever_context("failed to load LongMemEval dataset")?;
@@ -104,6 +133,7 @@ async fn run_longmemeval(args: RunArgs) -> Result<()> {
 }
 
 async fn run_locomo(args: RunArgs) -> Result<()> {
+    validate_args(&args)?;
     let dataset = dokimion::benchmarks::load_locomo(&args.dataset)
         .await
         .whatever_context("failed to load LoCoMo dataset")?;
@@ -360,4 +390,93 @@ fn print_report_json(report: &BenchmarkReport) -> std::result::Result<(), serde_
     let json = serde_json::to_string_pretty(report)?;
     println!("{json}");
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    fn base_args() -> RunArgs {
+        RunArgs {
+            dataset: PathBuf::from("/tmp/does-not-matter.json"),
+            url: "http://127.0.0.1:18789".to_owned(),
+            token: None,
+            nous_id: "benchmark".to_owned(),
+            max_questions: None,
+            timeout: 120,
+            json: false,
+            output: None,
+            baseline_out: None,
+            retrieval_k: None,
+            judge_endpoint: None,
+            judge_model: "gpt-4o".to_owned(),
+            judge_api_key: None,
+        }
+    }
+
+    #[test]
+    fn validate_rejects_timeout_zero() {
+        let mut a = base_args();
+        a.timeout = 0;
+        let err = validate_args(&a).unwrap_err();
+        assert!(
+            err.to_string().contains("--timeout must be greater than 0"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_max_questions_zero() {
+        let mut a = base_args();
+        a.max_questions = Some(0);
+        let err = validate_args(&a).unwrap_err();
+        assert!(err.to_string().contains("--max-questions"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_retrieval_k_zero() {
+        let mut a = base_args();
+        a.retrieval_k = Some(0);
+        let err = validate_args(&a).unwrap_err();
+        assert!(err.to_string().contains("--retrieval-k"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_empty_nous_id() {
+        let mut a = base_args();
+        a.nous_id = String::new();
+        let err = validate_args(&a).unwrap_err();
+        assert!(err.to_string().contains("--nous-id"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_whitespace_only_nous_id() {
+        let mut a = base_args();
+        a.nous_id = "   ".to_owned();
+        let err = validate_args(&a).unwrap_err();
+        assert!(err.to_string().contains("--nous-id"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_malformed_url() {
+        let mut a = base_args();
+        a.url = "not a url".to_owned();
+        let err = validate_args(&a).unwrap_err();
+        assert!(
+            err.to_string().contains("--url is not a valid URL"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_well_formed_args() {
+        validate_args(&base_args()).unwrap();
+        let mut a = base_args();
+        a.url = "https://example.com:8443/path".to_owned();
+        a.max_questions = Some(5);
+        a.retrieval_k = Some(10);
+        a.timeout = 1;
+        validate_args(&a).unwrap();
+    }
 }
