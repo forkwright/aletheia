@@ -285,7 +285,7 @@ mod tests {
         let (buf, sub) = setup(&[], &[], 200);
         tracing::subscriber::with_default(sub, || {
             tracing::info!(
-                details = "key is sk-proj-abcdefghij1234567890abcdef end", // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape in tracing field; redaction self-test only
+                details = "key is sk-proj-abcdefghij1234567890abcdef end", // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape in tracing field; redaction self-test only
                 "api check"
             );
         });

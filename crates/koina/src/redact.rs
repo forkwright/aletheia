@@ -47,14 +47,14 @@ mod tests {
 
     #[test]
     fn redacts_anthropic_api_key() {
-        let input = "using key sk-ant-api03-abcdef123456_789XYZ for requests"; // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape used by redaction self-test; not a real credential
+        let input = "using key sk-ant-api03-abcdef123456_789XYZ for requests"; // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction self-test; not a real credential
         let output = redact_sensitive(input);
         assert_eq!(output, "using key sk-ant-*** for requests");
     }
 
     #[test]
     fn redacts_generic_sk_key() {
-        let input = "key: sk-proj-abcdefghij1234567890abcdef"; // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape used by redaction self-test; not a real credential
+        let input = "key: sk-proj-abcdefghij1234567890abcdef"; // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction self-test; not a real credential
         let output = redact_sensitive(input);
         assert_eq!(output, "key: sk-***");
     }
