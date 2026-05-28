@@ -3554,13 +3554,17 @@ pub struct SkillParseError {
 
 > Parse a SKILL.md file into structured skill content.
 > 
-> Supports optional YAML frontmatter (delimited by `---`) with `tools` and
-> `domains` fields. Falls back to extracting from markdown sections.
+> Accepts two title shapes (Claude-Code-compatible):
+> 1. YAML frontmatter with `name:` (body may omit `# Title`).
+> 2. Body `# Title` heading (frontmatter optional).
+> 
+> Description is taken from frontmatter `description:` when present, else
+> from the body text after the H1, else from a `## When to Use` section.
 > 
 > # Errors
 > 
-> Returns an error if the document is empty, missing a top-level heading,
-> or has no description.
+> Returns an error naming the missing route(s) when no title can be found
+> on either path, or when no description can be derived.
 ```rust
 pub fn parse_skill_md (source: &str, slug: &str) -> Result<SkillContent, SkillParseError>
 ```
