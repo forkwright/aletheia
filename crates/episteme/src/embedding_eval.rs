@@ -28,7 +28,7 @@
 //! println!("Recall@5: {}", run.baseline.recall_at_k);
 //! ```
 
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 use tracing::instrument;
 
 use crate::embedding::EmbeddingProvider;
@@ -71,6 +71,15 @@ pub enum EvalError {
     #[snafu(display("embedding failed during eval: {message}"))]
     EmbedFailed {
         message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Reading the JSONL dataset from disk failed.
+    #[snafu(display("cannot read eval dataset {}: {source}", path.display()))]
+    IoFailed {
+        path: std::path::PathBuf,
+        source: std::io::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -134,14 +143,11 @@ impl EvalDataset {
     ///
     /// # Errors
     ///
-    /// Returns [`EvalError::ParseFailed`] if reading or parsing fails.
+    /// Returns [`EvalError::IoFailed`] if the file cannot be read, or
+    /// [`EvalError::ParseFailed`] if any non-blank line is malformed.
     pub fn from_jsonl_file(path: &std::path::Path) -> EvalResult<Self> {
-        let contents = std::fs::read_to_string(path).map_err(|e| {
-            ParseFailedSnafu {
-                line: 0_usize,
-                message: format!("cannot read {}: {e}", path.display()),
-            }
-            .build()
+        let contents = std::fs::read_to_string(path).context(IoFailedSnafu {
+            path: path.to_path_buf(),
         })?;
         Self::from_jsonl_str(&contents)
     }
@@ -512,6 +518,27 @@ mod tests {
     fn parse_bad_json_returns_error() {
         let result = EvalDataset::from_jsonl_str("not json at all");
         assert!(result.is_err(), "bad json should return error");
+    }
+
+    #[test]
+    fn missing_jsonl_file_returns_io_error_not_parse_error() {
+        let result =
+            EvalDataset::from_jsonl_file(std::path::Path::new("/tmp/__no_such_eval_dataset__"));
+        let err = result.expect_err("missing file must error");
+        assert!(
+            matches!(err, EvalError::IoFailed { .. }),
+            "expected IoFailed for missing file, got {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.starts_with("cannot read eval dataset "),
+            "io error message should start with 'cannot read eval dataset', got: {msg}"
+        );
+        // The misleading "parse … line 0" framing must no longer appear.
+        assert!(
+            !msg.contains("parse"),
+            "io error must not mention parsing, got: {msg}"
+        );
     }
 
     #[test]
