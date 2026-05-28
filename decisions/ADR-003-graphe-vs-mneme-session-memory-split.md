@@ -1,9 +1,14 @@
-<!-- Operator-review-pending: agent-drafted under DIRECTIVE v20; T0 metis review required before status moves Proposed → Accepted -->
 # ADR-002: graphe vs mneme session memory split
 
 ## Status
 
-Proposed
+Accepted 2026-05-28 by T0 (metis CC) per operator approval on plan greedy-swimming-barto.md
+
+### Non-goals (added at acceptance)
+
+- No cross-fleet promotion of `mneme` or `graphe`. Aletheia is the only consumer of the session-memory stack (per the cross-fleet-need framework: no other agent harness exists in the fleet that would consume these).
+- `eidos` and `krites` stay aletheia-internal. The recon's earlier signal that these were extraction candidates was wrong under the strict framework reading.
+- The split documented here remains aletheia-internal; if a second agent harness ever materializes, this ADR is revisited, not amended in flight.
 
 ## Context
 
