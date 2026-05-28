@@ -63,6 +63,7 @@ struct HistoryMessage {
 }
 
 pub(crate) async fn run(args: &SessionExportArgs) -> Result<()> {
+    validate_args(args)?;
     let client = build_client(args.token.as_deref())?;
 
     let session = fetch_session(&client, &args.url, &args.session_id).await?;
@@ -74,6 +75,16 @@ pub(crate) async fn run(args: &SessionExportArgs) -> Result<()> {
     };
 
     write_output(&rendered, args.output.as_deref())
+}
+
+fn validate_args(args: &SessionExportArgs) -> Result<()> {
+    if args.session_id.trim().is_empty() {
+        whatever!("<SESSION_ID> must not be empty");
+    }
+    if let Err(e) = reqwest::Url::parse(&args.url) {
+        whatever!("--url is not a valid URL: {e} (got {:?})", args.url);
+    }
+    Ok(())
 }
 
 fn build_client(token: Option<&str>) -> Result<reqwest::Client> {
@@ -249,5 +260,61 @@ fn capitalize_first(s: &str) -> String {
             s.push_str(chars.as_str());
             s
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_args() -> SessionExportArgs {
+        SessionExportArgs {
+            session_id: "valid-session-id".to_owned(),
+            format: ExportFormat::Md,
+            output: None,
+            url: "http://127.0.0.1:18789".to_owned(),
+            token: None,
+        }
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    fn validate_rejects_empty_session_id() {
+        let mut a = base_args();
+        a.session_id = String::new();
+        let err = validate_args(&a).unwrap_err();
+        assert!(
+            err.to_string().contains("<SESSION_ID> must not be empty"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    fn validate_rejects_whitespace_only_session_id() {
+        let mut a = base_args();
+        a.session_id = "   ".to_owned();
+        let err = validate_args(&a).unwrap_err();
+        assert!(
+            err.to_string().contains("<SESSION_ID> must not be empty"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    fn validate_rejects_malformed_url() {
+        let mut a = base_args();
+        a.url = "not a url".to_owned();
+        let err = validate_args(&a).unwrap_err();
+        assert!(
+            err.to_string().contains("--url is not a valid URL"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_well_formed_args() {
+        assert!(validate_args(&base_args()).is_ok());
     }
 }

@@ -10,6 +10,13 @@ use snafu::prelude::*;
 
 use crate::error::Result;
 
+fn validate_nous_id(nous_id: &str) -> Result<()> {
+    if nous_id.trim().is_empty() {
+        whatever!("--nous-id must not be empty");
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ExportArgs {
     /// Agent (nous) ID to export
@@ -680,6 +687,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
 pub(crate) fn seed_skills(instance_root: Option<&PathBuf>, args: &SeedSkillsArgs) -> Result<()> {
     use mneme::skill::{SkillContent, parse_skill_md, scan_skill_dir};
 
+    validate_nous_id(&args.nous_id)?;
     let dir = &args.dir;
     let nous_id = &args.nous_id;
     let entries = scan_skill_dir(dir)
@@ -852,6 +860,10 @@ pub(crate) async fn export_skills(
     instance_root: Option<&PathBuf>,
     args: &ExportSkillsArgs,
 ) -> Result<()> {
+    validate_nous_id(&args.nous_id)?;
+    if let Err(e) = reqwest::Url::parse(&args.url) {
+        whatever!("--url is not a valid URL: {e} (got {:?})", args.url);
+    }
     guard_knowledge_lock(&args.url).await?;
     #[cfg(feature = "recall")]
     {
@@ -1152,6 +1164,30 @@ mod tests {
         assert_eq!(capitalize("my-agent"), "My-agent");
         assert_eq!(capitalize(""), "");
         assert_eq!(capitalize("A"), "A");
+    }
+
+    #[test]
+    fn validate_nous_id_rejects_empty() {
+        let err = validate_nous_id("").unwrap_err();
+        assert!(
+            err.to_string().contains("--nous-id must not be empty"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_nous_id_rejects_whitespace_only() {
+        let err = validate_nous_id("   ").unwrap_err();
+        assert!(
+            err.to_string().contains("--nous-id must not be empty"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_nous_id_accepts_well_formed() {
+        assert!(validate_nous_id("pronoea").is_ok());
+        assert!(validate_nous_id("agent-with-hyphens").is_ok());
     }
 
     fn sample_agent_file() -> AgentFile {
