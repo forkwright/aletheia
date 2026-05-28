@@ -21,6 +21,16 @@ pub(crate) struct MigrateArgs {
     /// Show what would be copied without making changes
     #[arg(long)]
     pub dry_run: bool,
+    /// Follow symbolic links encountered in the source tree.
+    ///
+    /// By default `migrate` pre-walks the source and refuses if any symlink
+    /// is found, because they frequently introduce cycles
+    /// (`data/loop -> ../data`) or escape the source root. Refusing up-front
+    /// avoids the prior failure mode where a cycle would only blow up
+    /// mid-copy, leaving a partially populated destination behind. Pass
+    /// this flag if you understand the risks and want the legacy behavior.
+    #[arg(long)]
+    pub follow_symlinks: bool,
 }
 
 // ── Dispatch ───────────────────────────────────────────────────────────────
@@ -69,6 +79,10 @@ pub(crate) fn run(args: &MigrateArgs) -> Result<()> {
         if !entries.is_empty() {
             whatever!("destination directory is not empty: {}", dest.display());
         }
+    }
+
+    if !args.follow_symlinks {
+        reject_if_symlinks(&source, &source)?;
     }
 
     let mut manifest = MigrateManifest::default();
@@ -149,6 +163,32 @@ fn canonicalize_partial(path: &Path) -> PathBuf {
         ancestor = parent;
     }
     path.to_path_buf()
+}
+
+// WHY: Pre-walk the source tree using `symlink_metadata` so we never follow a
+// symbolic link. This catches cycle-prone setups (`data/loop -> ../data`) and
+// escape-the-root setups before `copy_tree` writes anything to disk. Refusing
+// up-front is strictly safer than the prior behavior, which only blew up
+// mid-copy (ELOOP) after leaving a partial destination behind.
+fn reject_if_symlinks(src: &Path, source_root: &Path) -> Result<()> {
+    let metadata =
+        std::fs::symlink_metadata(src).whatever_context("failed to read source metadata")?;
+    if metadata.file_type().is_symlink() {
+        whatever!(
+            "refusing to follow symbolic link in source tree: {}\n\
+             (relative to source root {}; pass --follow-symlinks to override)",
+            src.display(),
+            source_root.display(),
+        );
+    }
+    if !metadata.is_dir() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(src).whatever_context("failed to read directory")? {
+        let entry = entry.whatever_context("failed to read directory entry")?;
+        reject_if_symlinks(&entry.path(), source_root)?;
+    }
+    Ok(())
 }
 
 fn copy_tree(src: &Path, dst: &Path, manifest: &mut MigrateManifest) -> Result<()> {
@@ -474,6 +514,7 @@ mod tests {
             source: tmp.path().to_path_buf(),
             dest: PathBuf::from("/tmp/nonexistent-dest-migrate-xyz"),
             dry_run: false,
+            follow_symlinks: false,
         };
         let result = run(&args);
         assert!(result.is_err(), "should fail without config and data");
@@ -498,6 +539,7 @@ mod tests {
             source: tmp.path().to_path_buf(),
             dest: dest.path().to_path_buf(),
             dry_run: false,
+            follow_symlinks: false,
         };
         let result = run(&args);
         assert!(result.is_err(), "should fail when dest not empty");
@@ -519,6 +561,7 @@ mod tests {
             source: src.path().to_path_buf(),
             dest: dest.path().to_path_buf(),
             dry_run: true,
+            follow_symlinks: false,
         };
         run(&args).unwrap();
 
@@ -540,6 +583,7 @@ mod tests {
             source: src.path().to_path_buf(),
             dest: dest.path().join("migrated"),
             dry_run: false,
+            follow_symlinks: false,
         };
         run(&args).unwrap();
 
@@ -567,6 +611,7 @@ mod tests {
             source: src.path().to_path_buf(),
             dest: dest.path().join("migrated"),
             dry_run: false,
+            follow_symlinks: false,
         };
         run(&args).unwrap();
 
@@ -605,6 +650,7 @@ mod tests {
             source: src.path().to_path_buf(),
             dest: dest.path().join("migrated"),
             dry_run: false,
+            follow_symlinks: false,
         };
         run(&args).unwrap();
 
@@ -627,6 +673,7 @@ mod tests {
             source: tmp.path().to_path_buf(),
             dest: tmp.path().to_path_buf(),
             dry_run: false,
+            follow_symlinks: false,
         };
         let result = run(&args);
         assert!(result.is_err());
@@ -644,6 +691,7 @@ mod tests {
             source: tmp.path().to_path_buf(),
             dest: tmp.path().join("sub/dest"),
             dry_run: false,
+            follow_symlinks: false,
         };
         let result = run(&args);
         assert!(result.is_err());
@@ -653,5 +701,112 @@ mod tests {
                 .to_string()
                 .contains("inside the source")
         );
+    }
+
+    // WHY: The exact bug from #4233 — a `data/loop -> ../data` cycle used to
+    // ELOOP partway through a copy, leaving ~40 nested directories on disk.
+    // The pre-walk must reject up-front so the destination stays untouched.
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_cycle_in_source_by_default() {
+        let src = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(src.path().join("config")).unwrap();
+        std::fs::create_dir_all(src.path().join("data")).unwrap();
+        std::fs::write(src.path().join("config/aletheia.toml"), "").unwrap();
+        std::os::unix::fs::symlink("../data", src.path().join("data/loop")).unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_target = dest.path().join("migrated");
+
+        let args = MigrateArgs {
+            source: src.path().to_path_buf(),
+            dest: dest_target.clone(),
+            dry_run: false,
+            follow_symlinks: false,
+        };
+        let result = run(&args);
+        assert!(result.is_err(), "should reject symlink by default");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("symbolic link") && msg.contains("--follow-symlinks"),
+            "expected symlink/override message: {msg}"
+        );
+        assert!(
+            !dest_target.exists(),
+            "destination must not be created when pre-walk rejects",
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_file_in_source_by_default() {
+        let src = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(src.path().join("config")).unwrap();
+        std::fs::create_dir_all(src.path().join("data")).unwrap();
+        std::fs::write(src.path().join("config/aletheia.toml"), "").unwrap();
+        std::fs::write(src.path().join("data/real.txt"), "hi").unwrap();
+        std::os::unix::fs::symlink("./real.txt", src.path().join("data/link.txt")).unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let args = MigrateArgs {
+            source: src.path().to_path_buf(),
+            dest: dest.path().join("migrated"),
+            dry_run: false,
+            follow_symlinks: false,
+        };
+        let result = run(&args);
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("link.txt"),
+            "error should name the offending symlink path",
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_during_dry_run_too() {
+        let src = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(src.path().join("config")).unwrap();
+        std::fs::create_dir_all(src.path().join("data")).unwrap();
+        std::fs::write(src.path().join("config/aletheia.toml"), "").unwrap();
+        std::os::unix::fs::symlink("../data", src.path().join("data/loop")).unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let args = MigrateArgs {
+            source: src.path().to_path_buf(),
+            dest: dest.path().join("migrated"),
+            dry_run: true,
+            follow_symlinks: false,
+        };
+        let result = run(&args);
+        assert!(result.is_err(), "dry-run should also refuse to follow");
+    }
+
+    // WHY: The opt-in escape hatch must still work — the test uses a
+    // non-cycling file-target symlink so we exercise --follow-symlinks
+    // without triggering the cycle bug. After the migrate, the symlink
+    // target's contents are present at the link's name in the destination
+    // (legacy `std::fs::copy` semantics — it copies the target).
+    #[cfg(unix)]
+    #[test]
+    fn follow_symlinks_flag_allows_non_cycle_symlinks() {
+        let src = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(src.path().join("config")).unwrap();
+        std::fs::create_dir_all(src.path().join("data")).unwrap();
+        std::fs::write(src.path().join("config/aletheia.toml"), "").unwrap();
+        std::fs::write(src.path().join("data/real.txt"), "hello").unwrap();
+        std::os::unix::fs::symlink("./real.txt", src.path().join("data/link.txt")).unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let args = MigrateArgs {
+            source: src.path().to_path_buf(),
+            dest: dest.path().join("migrated"),
+            dry_run: false,
+            follow_symlinks: true,
+        };
+        run(&args).unwrap();
+
+        let copied = std::fs::read_to_string(dest.path().join("migrated/data/link.txt")).unwrap();
+        assert_eq!(copied, "hello");
     }
 }
