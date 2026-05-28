@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — integration test module; line count driven by scenario coverage
 //! Integration tests: organon tool executors → mneme session store.
 //!
 //! Tests the `note` and `blackboard` tools with real `SessionStore` adapters,

@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — integration test module; line count driven by scenario coverage
 //! R722 substrate canary suite — operator-independent end-to-end verification.
 //!
 //! Exercises W1+W2+W7+W8+defense layer invariants against synthetic
