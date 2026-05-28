@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — RuntimeBuilder and its impls are tightly coupled; splitting would require exposing private fields
 //! [`RuntimeBuilder`]: single-site construction of all server subsystems.
 
 #[cfg(feature = "recall")]

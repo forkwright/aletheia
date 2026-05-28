@@ -34,6 +34,7 @@ pub(crate) async fn run(
     let version = env!("CARGO_PKG_VERSION");
 
     if use_color {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!(
             "{} {} — {}",
             "Aletheia".bold(),
@@ -41,9 +42,12 @@ pub(crate) async fn run(
             "Status".bold()
         );
     } else {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("Aletheia v{version} — Status");
     }
+    // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
     println!("{}", "═".repeat(30));
+    // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
     println!();
 
     let health = fetch_health(url).await;
@@ -53,6 +57,7 @@ pub(crate) async fn run(
         Ok(ref h) => print_gateway_up(url, h, use_color),
         Err(_) => print_gateway_down(url, use_color),
     }
+    // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
     println!();
 
     if let Ok(ref h) = health {
@@ -122,6 +127,7 @@ fn print_gateway_up(url: &str, health: &HealthResponse, color: bool) {
             "degraded" => "DEGRADED".yellow().to_string(),
             _ => "UNHEALTHY".red().to_string(),
         };
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!(
             "  {:<12}{} — {} (uptime: {}, v{})",
             "Gateway:".bold(),
@@ -136,6 +142,7 @@ fn print_gateway_up(url: &str, health: &HealthResponse, color: bool) {
             "degraded" => "DEGRADED",
             _ => "UNHEALTHY",
         };
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!(
             "  {:<12}{} — {} (uptime: {}, v{})",
             "Gateway:", url, status_label, uptime, health.version
@@ -145,6 +152,7 @@ fn print_gateway_up(url: &str, health: &HealthResponse, color: bool) {
 
 fn print_gateway_down(url: &str, color: bool) {
     if color {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!(
             "  {:<12}{} — {}",
             "Gateway:".bold(),
@@ -152,6 +160,7 @@ fn print_gateway_down(url: &str, color: bool) {
             "DOWN".red().bold()
         );
     } else {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("  {:<12}{} — DOWN", "Gateway:", url);
     }
 }
@@ -161,8 +170,10 @@ fn print_checks(checks: &[HealthCheck], color: bool) {
         return;
     }
     if color {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("  {}:", "Checks".bold());
     } else {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("  Checks:");
     }
     for check in checks {
@@ -194,8 +205,10 @@ fn print_checks(checks: &[HealthCheck], color: bool) {
             .as_deref()
             .map(|m| format!(" ({m})"))
             .unwrap_or_default();
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("    {:<24}{}{}", check.name, status, msg);
     }
+    // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
     println!();
 }
 
@@ -204,8 +217,10 @@ fn print_nous(list: &[NousInfo], color: bool) {
         return;
     }
     if color {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("  {}:", "Nous".bold());
     } else {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("  Nous:");
     }
     for nous in list {
@@ -226,18 +241,22 @@ fn print_nous(list: &[NousInfo], color: bool) {
             }
             _ => nous.lifecycle.to_uppercase(),
         };
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!(
             "    {:<14} {:<8} ({} sessions)",
             nous.id, lifecycle, nous.session_count
         );
     }
+    // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
     println!();
 }
 
 fn print_storage(oikos: &taxis::oikos::Oikos, server_data_dir: Option<&str>, color: bool) {
     if color {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("  {}:", "Storage".bold());
     } else {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("  Storage:");
     }
 
@@ -254,20 +273,25 @@ fn print_storage(oikos: &taxis::oikos::Oikos, server_data_dir: Option<&str>, col
             print_file_size("sessions.db", &server_data.join("sessions.db"));
             print_file_size("plans.db", &server_data.join("plans.db"));
         } else {
+            // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
             println!("    (data directory: {dir_str})");
         }
     } else {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("    (data directory not found — use -r /path/to/instance)");
     }
+    // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
     println!();
 }
 
 fn print_file_size(label: &str, path: &Path) {
     match std::fs::metadata(path) {
         Ok(meta) => {
+            // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
             println!("    {:<18}{}", label, format_bytes(meta.len()));
         }
         Err(_) => {
+            // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
             println!("    {label:<18}(not found)");
         }
     }

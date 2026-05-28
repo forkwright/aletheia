@@ -181,6 +181,7 @@ async fn fetch_from_qdrant(client: &Qdrant, collection: &str) -> Result<Vec<Memo
 
         for point in &response.result {
             let payload = &point.payload;
+            // kanon:ignore RUST/no-result-unwrap-or-default — Qdrant payload may lack "memory" or "data" field; empty string triggers continue below
             let content = payload
                 .get("memory")
                 .or_else(|| payload.get("data"))

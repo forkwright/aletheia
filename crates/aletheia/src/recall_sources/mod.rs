@@ -25,6 +25,7 @@ pub(crate) struct SourceResult {
     /// Relevance score in `[0.0, 1.0]` (higher = more relevant).
     pub relevance: f64,
     /// Source-specific identifier (paper ID, model ID, etc.).
+    // kanon:ignore RUST/primitive-for-domain-id — source_id is opaque external identifier (paper ID, model ID); type varies by recall source
     pub source_id: String,
 }
 

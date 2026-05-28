@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — cohesive tool registry: config parsing, MCP client, HTTP proxy, and schema conversion are interdependent
 //! Pluggable external tool registry: config-driven tool discovery and execution.
 //!
 //! Reads the `[tools]` section from `aletheia.toml` and registers external tool
@@ -519,6 +520,7 @@ fn input_schema_from_mcp(tool: &rmcp::model::Tool) -> InputSchema {
                 .map(ToOwned::to_owned)
                 .collect()
         })
+        // kanon:ignore RUST/no-result-unwrap-or-default — serde_json "required" field is optional; empty vec is correct default when absent
         .unwrap_or_default();
     let mut properties = IndexMap::new();
     if let Some(props) = schema
@@ -671,6 +673,7 @@ impl ToolExecutor for ExternalToolExecutor {
             match response {
                 Ok(resp) => {
                     let status = resp.status();
+                    // kanon:ignore RUST/no-result-unwrap-or-default — HTTP response body read failure is non-fatal; status code is primary signal
                     let body = resp.text().await.unwrap_or_default();
                     if status.is_success() {
                         Ok(ToolResult::text(body))
