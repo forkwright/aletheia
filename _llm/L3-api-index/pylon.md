@@ -8,40 +8,6 @@ For implementation context, read the source directly (`L4`).
 ## `src/error.rs`
 
 ```rust
-pub struct ErrorResponse {
-    /// The error body.
-    pub error: ErrorBody,
-}
-```
-
-```rust
-pub struct ErrorBody {
-    /// Machine-readable error code (e.g. `"session_not_found"`).
-    pub code: String,
-    /// Human-readable error message.
-    pub message: String,
-    /// Per-request correlation ID for tracing errors across logs and client reports.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_id: Option<String>,
-    /// Optional structured details (e.g. retry timing, validation errors).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<serde_json::Value>,
-}
-```
-
-```rust
-pub struct FieldError {
-    /// Request body or query parameter field name (e.g. `"nous_id"`).
-    pub field: String,
-    /// Stable machine-readable error code (e.g. `"required"`, `"range"`,
-    /// `"format"`, `"too_long"`).
-    pub code: String,
-    /// Human-readable description of the error.
-    pub message: String,
-}
-```
-
-```rust
 pub enum ApiError {
     /// Requested session does not exist (404).
     #[snafu(display("session not found: {id}"))]
@@ -147,18 +113,43 @@ pub enum ApiError {
 }
 ```
 
-## `src/event_bus.rs`
+## `src/error_dto.rs`
 
 ```rust
-pub struct DomainEvent {
-    /// Event topic (e.g. `fact.created`, `turn.complete`).
-    pub topic: String,
-    /// Structured event payload.
-    pub payload: serde_json::Value,
-    /// ISO-8601 timestamp of emission.
-    pub at: String,
+pub struct ErrorResponse {
+    /// The error body.
+    pub error: ErrorBody,
 }
 ```
+
+```rust
+pub struct ErrorBody {
+    /// Machine-readable error code (e.g. `"session_not_found"`).
+    pub code: String,
+    /// Human-readable error message.
+    pub message: String,
+    /// Per-request correlation ID for tracing errors across logs and client reports.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    /// Optional structured details (e.g. retry timing, validation errors).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
+}
+```
+
+```rust
+pub struct FieldError {
+    /// Request body or query parameter field name (e.g. `"nous_id"`).
+    pub field: String,
+    /// Stable machine-readable error code (e.g. `"required"`, `"range"`,
+    /// `"format"`, `"too_long"`).
+    pub code: String,
+    /// Human-readable description of the error.
+    pub message: String,
+}
+```
+
+## `src/event_bus.rs`
 
 ```rust
 impl DomainEvent {
@@ -185,6 +176,19 @@ impl EventBus {
 }
 ```
 
+## `src/event_bus_dto.rs`
+
+```rust
+pub struct DomainEvent {
+    /// Event topic (e.g. `fact.created`, `turn.complete`).
+    pub topic: String,
+    /// Structured event payload.
+    pub payload: serde_json::Value,
+    /// ISO-8601 timestamp of emission.
+    pub at: String,
+}
+```
+
 ## `src/extract.rs`
 
 ```rust
@@ -199,117 +203,6 @@ pub struct Claims {
 ```
 
 ## `src/handlers/config.rs`
-
-```rust
-pub struct ConfigUpdateResponse {
-    /// Name of the config section that was updated.
-    pub section: String,
-    /// The updated config section value.
-    pub config: Value,
-    /// Field paths that require a restart to take effect.
-    pub restart_required: Vec<String>,
-}
-```
-
-```rust
-pub struct ConfigReloadResponse {
-    /// Number of hot-reloadable values that were updated.
-    pub hot_reloaded: usize,
-    /// Field paths that changed but require a restart to take effect.
-    pub restart_required: Vec<String>,
-    /// All changed field paths (both hot and cold).
-    pub changed: Vec<String>,
-}
-```
-
-```rust
-pub struct AgentsConfig {
-        #[schema(value_type = Object)]
-        pub defaults: Option<Value>,
-        pub list: Option<Vec<Value>>,
-    }
-```
-
-```rust
-pub struct GatewayConfig {
-        pub port: Option<u16>,
-        pub bind: Option<String>,
-        #[schema(value_type = Object)]
-        pub auth: Option<Value>,
-        #[schema(value_type = Object)]
-        pub tls: Option<Value>,
-        #[schema(value_type = Object)]
-        pub cors: Option<Value>,
-        #[schema(value_type = Object)]
-        pub body_limit: Option<Value>,
-        #[schema(value_type = Object)]
-        pub csrf: Option<Value>,
-        #[schema(value_type = Object)]
-        pub rate_limit: Option<Value>,
-    }
-```
-
-```rust
-pub struct ChannelsConfig {
-        #[schema(value_type = Object)]
-        pub signal: Option<Value>,
-        #[schema(value_type = Object)]
-        pub matrix: Option<Value>,
-    }
-```
-
-```rust
-pub struct ChannelBinding {
-        pub channel: Option<String>,
-        pub source: Option<String>,
-        pub nous_id: Option<String>,
-        pub session_key: Option<String>,
-    }
-```
-
-```rust
-pub struct EmbeddingSettings {
-        pub provider: Option<String>,
-        pub model: Option<String>,
-        pub dimension: Option<usize>,
-    }
-```
-
-```rust
-pub struct DataConfig {
-        #[schema(value_type = Object)]
-        pub retention: Option<Value>,
-    }
-```
-
-```rust
-pub struct MaintenanceConfig {
-        #[schema(value_type = Object)]
-        pub trace_rotation: Option<Value>,
-        #[schema(value_type = Object)]
-        pub drift_detection: Option<Value>,
-        #[schema(value_type = Object)]
-        pub db_monitoring: Option<Value>,
-        #[schema(value_type = Object)]
-        pub disk_space: Option<Value>,
-        #[schema(value_type = Object)]
-        pub retention: Option<Value>,
-        pub knowledge_maintenance_enabled: Option<bool>,
-        #[schema(value_type = Object)]
-        pub watchdog: Option<Value>,
-        #[schema(value_type = Object)]
-        pub cron_tasks: Option<Value>,
-        #[schema(value_type = Object)]
-        pub backup: Option<Value>,
-    }
-```
-
-```rust
-pub struct ModelPricing {
-        pub input_cost_per_mtok: Option<f64>,
-        pub output_cost_per_mtok: Option<f64>,
-    }
-```
 
 ```rust
 pub enum ConfigSectionPayload {
@@ -356,6 +249,119 @@ pub async fn update_section (
 ) -> Result<impl IntoResponse, ApiError>
 ```
 
+## `src/handlers/config_dto.rs`
+
+```rust
+pub struct ConfigUpdateResponse {
+    /// Name of the config section that was updated.
+    pub section: String,
+    /// The updated config section value.
+    pub config: Value,
+    /// Field paths that require a restart to take effect.
+    pub restart_required: Vec<String>,
+}
+```
+
+```rust
+pub struct ConfigReloadResponse {
+    /// Number of hot-reloadable values that were updated.
+    pub hot_reloaded: usize,
+    /// Field paths that changed but require a restart to take effect.
+    pub restart_required: Vec<String>,
+    /// All changed field paths (both hot and cold).
+    pub changed: Vec<String>,
+}
+```
+
+```rust
+pub struct AgentsConfig {
+    #[schema(value_type = Object)]
+    pub defaults: Option<Value>,
+    pub list: Option<Vec<Value>>,
+}
+```
+
+```rust
+pub struct GatewayConfig {
+    pub port: Option<u16>,
+    pub bind: Option<String>,
+    #[schema(value_type = Object)]
+    pub auth: Option<Value>,
+    #[schema(value_type = Object)]
+    pub tls: Option<Value>,
+    #[schema(value_type = Object)]
+    pub cors: Option<Value>,
+    #[schema(value_type = Object)]
+    pub body_limit: Option<Value>,
+    #[schema(value_type = Object)]
+    pub csrf: Option<Value>,
+    #[schema(value_type = Object)]
+    pub rate_limit: Option<Value>,
+}
+```
+
+```rust
+pub struct ChannelsConfig {
+    #[schema(value_type = Object)]
+    pub signal: Option<Value>,
+    #[schema(value_type = Object)]
+    pub matrix: Option<Value>,
+}
+```
+
+```rust
+pub struct ChannelBinding {
+    pub channel: Option<String>,
+    pub source: Option<String>,
+    pub nous_id: Option<String>,
+    pub session_key: Option<String>,
+}
+```
+
+```rust
+pub struct EmbeddingSettings {
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub dimension: Option<usize>,
+}
+```
+
+```rust
+pub struct DataConfig {
+    #[schema(value_type = Object)]
+    pub retention: Option<Value>,
+}
+```
+
+```rust
+pub struct MaintenanceConfig {
+    #[schema(value_type = Object)]
+    pub trace_rotation: Option<Value>,
+    #[schema(value_type = Object)]
+    pub drift_detection: Option<Value>,
+    #[schema(value_type = Object)]
+    pub db_monitoring: Option<Value>,
+    #[schema(value_type = Object)]
+    pub disk_space: Option<Value>,
+    #[schema(value_type = Object)]
+    pub retention: Option<Value>,
+    pub knowledge_maintenance_enabled: Option<bool>,
+    #[schema(value_type = Object)]
+    pub watchdog: Option<Value>,
+    #[schema(value_type = Object)]
+    pub cron_tasks: Option<Value>,
+    #[schema(value_type = Object)]
+    pub backup: Option<Value>,
+}
+```
+
+```rust
+pub struct ModelPricing {
+    pub input_cost_per_mtok: Option<f64>,
+    pub output_cost_per_mtok: Option<f64>,
+}
+```
+
 ## `src/handlers/events.rs`
 
 ```rust
@@ -386,6 +392,8 @@ pub async fn check (State(state): State<HealthState>) -> impl IntoResponse
 ```rust
 pub async fn deprecated_health_check (State(state): State<HealthState>) -> impl IntoResponse
 ```
+
+## `src/handlers/health_dto.rs`
 
 ```rust
 pub struct HealthResponse {
@@ -445,14 +453,14 @@ pub async fn get_quality_metrics (
 pub async fn get_token_metrics (
     State(state): State<InsightsState>,
     Query(query): Query<MetricsQuery>,
-) -> Json<TokenMetricsResponse>
+) -> Result<Json<TokenMetricsResponse>, ApiError>
 ```
 
 ```rust
 pub async fn get_cost_metrics (
     State(state): State<InsightsState>,
     Query(query): Query<MetricsQuery>,
-) -> Json<CostMetricsResponse>
+) -> Result<Json<CostMetricsResponse>, ApiError>
 ```
 
 ```rust
@@ -460,6 +468,16 @@ pub async fn get_journal (Query(query): Query<JournalQuery>) -> Json<Vec<Journal
 ```
 
 ## `src/handlers/knowledge/bulk_import.rs`
+
+```rust
+pub async fn import_facts (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    body: axum::body::Bytes,
+) -> Result<Json<BulkImportResponse>, ApiError>
+```
+
+## `src/handlers/knowledge/bulk_import_dto.rs`
 
 ```rust
 pub struct BulkImportRequest {
@@ -483,59 +501,7 @@ pub struct ImportFactError {
 }
 ```
 
-```rust
-pub async fn import_facts (
-    State(state): State<KnowledgeState>,
-    claims: Claims,
-    body: axum::body::Bytes,
-) -> Result<Json<BulkImportResponse>, ApiError>
-```
-
-## `src/handlers/knowledge/ingest.rs`
-
-```rust
-pub struct IngestRequest {
-    /// Raw content to ingest.
-    pub content: String,
-    /// Format: markdown, text, json, jsonl.
-    #[serde(default)]
-    pub format: String,
-    /// Nous agent ID that will own the extracted facts.
-    pub nous_id: String,
-}
-```
-
-```rust
-pub struct IngestFactError {
-    /// Index of the fact in the batch.
-    pub index: usize,
-    /// Fact ID if available.
-    pub id: Option<String>,
-    /// Error message.
-    pub message: String,
-}
-```
-
-```rust
-pub struct IngestResponse {
-    /// Number of facts successfully inserted.
-    pub inserted: usize,
-    /// Number of facts skipped due to errors.
-    pub skipped: usize,
-    /// Per-fact error details.
-    pub errors: Vec<IngestFactError>,
-}
-```
-
-```rust
-pub async fn ingest (
-    State(state): State<KnowledgeState>,
-    claims: Claims,
-    Json(body): Json<IngestRequest>,
-) -> Result<Json<IngestResponse>, ApiError>
-```
-
-## `src/handlers/knowledge/mod.rs`
+## `src/handlers/knowledge/dto.rs`
 
 ```rust
 pub struct FactsQuery {
@@ -693,6 +659,71 @@ pub struct TimelineResponse {
 }
 ```
 
+```rust
+pub struct GraphCheckReport {
+    /// Total number of facts stored.
+    pub fact_count: usize,
+    /// Total number of entities stored.
+    pub entity_count: usize,
+    /// Total number of relationships stored.
+    pub relationship_count: usize,
+    /// Entities with no facts or relationships (potential orphans).
+    pub orphaned_entity_count: usize,
+    /// Edges that reference missing endpoint entities.
+    pub dangling_edge_count: usize,
+    /// Overall health: `"healthy"` or `"issues_found"`.
+    pub status: &'static str,
+}
+```
+
+## `src/handlers/knowledge/ingest.rs`
+
+```rust
+pub async fn ingest (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Json(body): Json<IngestRequest>,
+) -> Result<Json<IngestResponse>, ApiError>
+```
+
+## `src/handlers/knowledge/ingest_dto.rs`
+
+```rust
+pub struct IngestRequest {
+    /// Raw content to ingest.
+    pub content: String,
+    /// Format: markdown, text, json, jsonl.
+    #[serde(default)]
+    pub format: String,
+    /// Nous agent ID that will own the extracted facts.
+    pub nous_id: String,
+}
+```
+
+```rust
+pub struct IngestFactError {
+    /// Index of the fact in the batch.
+    pub index: usize,
+    /// Fact ID if available.
+    pub id: Option<String>,
+    /// Error message.
+    pub message: String,
+}
+```
+
+```rust
+pub struct IngestResponse {
+    /// Number of facts successfully inserted.
+    pub inserted: usize,
+    /// Number of facts skipped due to errors.
+    pub skipped: usize,
+    /// Per-fact error details.
+    pub errors: Vec<IngestFactError>,
+}
+```
+
+## `src/handlers/knowledge/mod.rs`
+
 > 
 > # Cancel safety
 > 
@@ -739,23 +770,6 @@ pub async fn entity_relationships (
 ```
 
 ```rust
-pub struct GraphCheckReport {
-    /// Total number of facts stored.
-    pub fact_count: usize,
-    /// Total number of entities stored.
-    pub entity_count: usize,
-    /// Total number of relationships stored.
-    pub relationship_count: usize,
-    /// Entities with no facts or relationships (potential orphans).
-    pub orphaned_entity_count: usize,
-    /// Edges that reference missing endpoint entities.
-    pub dangling_edge_count: usize,
-    /// Overall health: `"healthy"` or `"issues_found"`.
-    pub status: &'static str,
-}
-```
-
-```rust
 pub async fn check_graph_health (
     State(state): State<KnowledgeState>,
 ) -> impl axum::response::IntoResponse
@@ -773,7 +787,7 @@ pub async fn forget_fact (
     State(state): State<KnowledgeState>,
     claims: Claims,
     Path(id): Path<String>,
-    Json(body): Json<ForgetRequest>,
+    body: Option<Json<ForgetRequest>>,
 ) -> Result<StatusCode, ApiError>
 ```
 
@@ -847,6 +861,16 @@ pub async fn timeline (
 ## `src/handlers/knowledge/webhook.rs`
 
 ```rust
+pub async fn webhook_ingest (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Json(body): Json<WebhookIngestRequest>,
+) -> Result<Json<WebhookIngestResponse>, ApiError>
+```
+
+## `src/handlers/knowledge/webhook_dto.rs`
+
+```rust
 pub struct WebhookIngestRequest {
     /// Nous agent ID that will own the facts.
     pub nous_id: String,
@@ -865,16 +889,8 @@ pub struct WebhookIngestResponse {
     /// Number of facts skipped due to errors.
     pub skipped: usize,
     /// Per-fact error details.
-    pub errors: Vec<crate::handlers::knowledge::ingest::IngestFactError>,
+    pub errors: Vec<crate::handlers::knowledge::IngestFactError>,
 }
-```
-
-```rust
-pub async fn webhook_ingest (
-    State(state): State<KnowledgeState>,
-    claims: Claims,
-    Json(body): Json<WebhookIngestRequest>,
-) -> Result<Json<WebhookIngestResponse>, ApiError>
 ```
 
 ## `src/handlers/metrics.rs`
@@ -914,6 +930,16 @@ pub async fn recover (
 ```
 
 ```rust
+pub async fn create (
+    State(state): State<NousState>,
+    claims: Claims,
+    Json(body): Json<AgentDefinition>,
+) -> Result<impl IntoResponse, ApiError>
+```
+
+## `src/handlers/nous_dto.rs`
+
+```rust
 pub struct AgentDefinition {
     /// Agent identifier (alphanumeric and hyphens only).
     pub id: String,
@@ -937,14 +963,6 @@ pub struct CreateAgentResponse {
     /// Whether the agent requires a server restart to become active.
     pub restart_required: bool,
 }
-```
-
-```rust
-pub async fn create (
-    State(state): State<NousState>,
-    claims: Claims,
-    Json(body): Json<AgentDefinition>,
-) -> Result<impl IntoResponse, ApiError>
 ```
 
 ```rust
@@ -1133,7 +1151,7 @@ pub async fn reconnect_turn (
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError>
 ```
 
-## `src/handlers/sessions/types.rs`
+## `src/handlers/sessions/types_dto.rs`
 
 ```rust
 pub struct CreateSessionRequest {
@@ -1165,7 +1183,7 @@ pub struct StreamTurnRequest {
     /// User message text.
     pub message: String,
     /// Session key for deduplication (defaults to "main").
-    #[serde(default = "default_session_key")]
+    #[serde(default = "super::default_session_key")]
     pub session_key: String,
 }
 ```
@@ -1569,7 +1587,7 @@ pub fn spawn_stale_cleanup (
 pub async fn openapi_json (State(state): State<Arc<AppState>>) -> impl IntoResponse
 ```
 
-## `src/pagination.rs`
+## `src/pagination_dto.rs`
 
 ```rust
 pub struct PaginatedResponse<T> {
