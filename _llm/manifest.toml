@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-28T12:46:06Z"
+generated_at = "2026-05-28T17:21:40Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -225,7 +225,7 @@ l3_token_estimate = 4901
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "039569a38a593f1dabd415e2de16cdfbc953912973b2cec664b0537c5efa34b6"
+source_hash = "af1353aa23491529bbc48d06ac8471c3b70791907b4d1f37b5ecd3a33ae499b5"
 l3_token_estimate = 167
 
 [[crates]]
@@ -441,7 +441,7 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "81426a000859f095bb9b46f2bb92527d02ff1b97f4d38ca344600e3285556e3a"
+source_hash = "11fbdd79d995f828e3c1758991e46f81cf4b42698505464b3f8fc3fc7edaf25c"
 l3_token_estimate = 14981
 
 [[crates]]
@@ -459,8 +459,8 @@ l3_token_estimate = 6587
 [[crates]]
 name = "taxis"
 path = "crates/taxis"
-source_hash = "7480023984e55d11bf3f86677d932368abaa7a7f5b046ef8a1c999a5a63a8c74"
-l3_token_estimate = 23333
+source_hash = "232d8a15cee06fa01b36f9e51b64dee4beb114098a83a275568a31ce10b8bb0f"
+l3_token_estimate = 23358
 
 [[crates]]
 name = "theatron"
