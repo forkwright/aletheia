@@ -31,6 +31,7 @@ pub(crate) enum DiscussionStatus {
 /// A single option the agent proposes for a discussion question.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct DiscussionOption {
+    // kanon:ignore RUST/primitive-for-domain-id — Discussion state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
     pub(crate) title: String,
     pub(crate) description: String,
@@ -56,7 +57,9 @@ pub(crate) struct DiscussionHistoryEntry {
 /// A single discussion item -- a gray-area question needing human input.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct Discussion {
+    // kanon:ignore RUST/primitive-for-domain-id — Discussion state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
+    // kanon:ignore RUST/primitive-for-domain-id — Discussion state mirrors server-side string IDs from the planning API
     pub(crate) project_id: String,
     pub(crate) question: String,
     pub(crate) context: String,

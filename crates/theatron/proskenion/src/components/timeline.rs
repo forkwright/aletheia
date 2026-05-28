@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TimelineBlock {
     /// Unique identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — TimelineBlock id is a local rendering identifier, not a cross-crate domain entity ID
     pub(crate) id: String,
     /// Display label.
     pub(crate) label: String,

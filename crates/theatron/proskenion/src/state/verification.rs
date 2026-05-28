@@ -49,6 +49,7 @@ pub(crate) struct VerificationGap {
 /// Verification result for a single requirement.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct RequirementVerification {
+    // kanon:ignore RUST/primitive-for-domain-id — Verification state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
     pub(crate) title: String,
     /// Version tier (e.g., `"v1"`, `"v2"`).
@@ -64,6 +65,7 @@ pub(crate) struct RequirementVerification {
 /// Full verification result for a project.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct VerificationResult {
+    // kanon:ignore RUST/primitive-for-domain-id — Verification state mirrors server-side string IDs from the planning API
     pub(crate) project_id: String,
     pub(crate) requirements: Vec<RequirementVerification>,
     pub(crate) last_verified_at: String,

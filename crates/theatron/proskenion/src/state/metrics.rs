@@ -144,6 +144,7 @@ impl TokenSeriesPoint {
 #[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
 pub(crate) struct AgentTokenRow {
     #[serde(default)]
+    // kanon:ignore RUST/primitive-for-domain-id — Metrics row id mirrors the external API string identifier
     pub id: String,
     #[serde(default)]
     pub name: String,
@@ -292,6 +293,7 @@ pub(crate) struct CostSeriesPoint {
 #[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
 pub(crate) struct AgentCostRow {
     #[serde(default)]
+    // kanon:ignore RUST/primitive-for-domain-id — Metrics row id mirrors the external API string identifier
     pub id: String,
     #[serde(default)]
     pub name: String,

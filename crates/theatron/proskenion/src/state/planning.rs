@@ -28,6 +28,7 @@ pub(crate) struct ProjectPhaseInfo {
 /// A planning project returned from `GET /api/planning/projects`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct Project {
+    // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
     pub(crate) name: String,
     #[serde(default)]
@@ -142,6 +143,7 @@ impl RequirementPriority {
 /// A single planning requirement.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Requirement {
+    // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
     pub(crate) title: String,
     #[serde(default)]
@@ -169,7 +171,9 @@ pub(crate) enum ProposalStatus {
 /// Agent-proposed change to a requirement's category.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct CategoryProposal {
+    // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
+    // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
     pub(crate) requirement_id: String,
     pub(crate) requirement_title: String,
     pub(crate) current_category: RequirementCategory,
@@ -195,6 +199,7 @@ pub(crate) enum PhaseStatus {
 /// A roadmap phase.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct Phase {
+    // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
     pub(crate) name: String,
     #[serde(default)]
@@ -211,7 +216,9 @@ pub(crate) struct Phase {
 /// Dependency edge between two phases.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct PhaseDependency {
+    // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
     pub(crate) from_phase_id: String,
+    // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
     pub(crate) to_phase_id: String,
 }
 

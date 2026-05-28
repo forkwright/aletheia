@@ -143,6 +143,7 @@ impl FlagSeverity {
 #[serde(try_from = "EntityRaw")]
 pub(crate) struct Entity {
     /// Unique identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — Entity/Relationship memory state mirrors server-side string IDs from the knowledge API
     pub id: String,
     /// Primary display name.
     pub name: String,
@@ -231,8 +232,10 @@ pub(crate) struct EntityProperty {
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct Relationship {
     /// Relationship ID.
+    // kanon:ignore RUST/primitive-for-domain-id — Entity/Relationship memory state mirrors server-side string IDs from the knowledge API
     pub id: String,
     /// Related entity ID.
+    // kanon:ignore RUST/primitive-for-domain-id — Entity/Relationship memory state mirrors server-side string IDs from the knowledge API
     pub entity_id: String,
     /// Related entity name.
     pub entity_name: String,
@@ -269,6 +272,7 @@ impl RelationshipDirection {
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct EntityMemory {
     /// Memory ID.
+    // kanon:ignore RUST/primitive-for-domain-id — Entity/Relationship memory state mirrors server-side string IDs from the knowledge API
     pub id: String,
     /// Content text.
     pub content: String,
