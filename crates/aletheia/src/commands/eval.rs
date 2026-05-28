@@ -30,7 +30,25 @@ pub(crate) struct EvalArgs {
     pub jsonl_output: Option<String>,
 }
 
+/// Reject obviously-broken inputs before talking to the server, so operators
+/// get a precise error instead of a generic "no scenarios passed" downstream.
+fn validate_args(args: &EvalArgs) -> Result<()> {
+    if args.timeout == 0 {
+        whatever!(
+            "--timeout must be greater than 0 seconds (got 0; a zero timeout fails every scenario instantly)"
+        );
+    }
+    // The scenario-list path never reaches the network, so don't reject its URL.
+    if args.scenario.as_deref() != Some("list")
+        && let Err(e) = reqwest::Url::parse(&args.url)
+    {
+        whatever!("--url is not a valid URL: {e} (got {:?})", args.url);
+    }
+    Ok(())
+}
+
 pub(crate) async fn run(args: EvalArgs) -> Result<()> {
+    validate_args(&args)?;
     let EvalArgs {
         url,
         token,
@@ -94,4 +112,51 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         whatever!("{} scenario(s) failed", report.failed);
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    fn args_with(url: &str, timeout: u64, scenario: Option<&str>) -> EvalArgs {
+        EvalArgs {
+            url: url.to_owned(),
+            token: None,
+            scenario: scenario.map(str::to_owned),
+            json: false,
+            timeout,
+            jsonl_output: None,
+        }
+    }
+
+    #[test]
+    fn validate_rejects_timeout_zero() {
+        let err = validate_args(&args_with("http://127.0.0.1:18789", 0, None)).unwrap_err();
+        assert!(
+            err.to_string().contains("--timeout must be greater than 0"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_malformed_url() {
+        let err = validate_args(&args_with("not a url", 30, None)).unwrap_err();
+        assert!(
+            err.to_string().contains("--url is not a valid URL"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_skips_url_check_for_scenario_list() {
+        // `--scenario list` never touches the network; URL doesn't matter.
+        validate_args(&args_with("not a url", 30, Some("list"))).unwrap();
+    }
+
+    #[test]
+    fn validate_accepts_well_formed_args() {
+        validate_args(&args_with("http://127.0.0.1:18789", 30, None)).unwrap();
+        validate_args(&args_with("https://example.com:8443/path", 1, Some("ping"))).unwrap();
+    }
 }
