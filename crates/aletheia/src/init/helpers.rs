@@ -93,7 +93,7 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(
             list[0].get("id").and_then(toml::Value::as_str),
-            Some("pronoea")
+            Some(koina::defaults::DEFAULT_AGENT_ID)
         );
         assert_eq!(
             list[0].get("name").and_then(toml::Value::as_str),
