@@ -27,12 +27,19 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 3
     steps:
+      # WHY: bypass keys off the PR author login, not github.actor. The actor
+      # changes to a maintainer login whenever someone re-runs the workflow
+      # (e.g. clicking "Re-run failed jobs" on an automation PR), which silently
+      # re-arms the attribution scan on bot PRs. The PR author is the stable
+      # identity worth waiving — same class of bug as gate-attestation #4084.
       - name: Pass trusted automation PRs
-        if: ${{ github.actor == 'dependabot[bot]' || github.actor == 'release-please[bot]' || github.actor == 'github-actions[bot]' }}
-        run: echo "AI attribution check waived for trusted automation actor."
+        if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'release-please[bot]' || github.event.pull_request.user.login == 'github-actions[bot]' }}
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: echo "AI attribution check waived for trusted automation PR author ${PR_AUTHOR}."
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        if: ${{ github.actor != 'dependabot[bot]' && github.actor != 'release-please[bot]' && github.actor != 'github-actions[bot]' }}
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -44,7 +51,7 @@ jobs:
       # must update too; there is no automated cross-repo sync, so any drift
       # observed should be filed as a friction issue against this workflow.
       - name: Scan PR body and title for AI attribution
-        if: ${{ github.actor != 'dependabot[bot]' && github.actor != 'release-please[bot]' && github.actor != 'github-actions[bot]' }}
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -78,7 +85,7 @@ jobs:
           echo "PR body and title clean of AI attribution."
 
       - name: Scan PR commits for AI attribution
-        if: ${{ github.actor != 'dependabot[bot]' && github.actor != 'release-please[bot]' && github.actor != 'github-actions[bot]' }}
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
         run: |
           set -euo pipefail
 

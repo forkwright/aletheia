@@ -16,18 +16,26 @@ jobs:
     name: gate-attestation
     runs-on: self-hosted
     steps:
+      # WHY: bypass keys off the PR author login, not github.actor. The actor
+      # changes to a maintainer login whenever someone re-runs the workflow
+      # (e.g. clicking "Re-run failed jobs" on a dependabot PR), which silently
+      # re-armed the trailer check on automation PRs and started rejecting them
+      # — see #4084 where a forkwright re-run flipped a dependabot PR red.
+      # The PR author is the stable identity worth waiving.
       - name: Pass trusted automation PRs
-        if: ${{ github.actor == 'dependabot[bot]' || github.actor == 'release-please[bot]' }}
-        run: echo "Gate attestation waived for trusted automation actor."
+        if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'release-please[bot]' }}
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: echo "Gate attestation waived for trusted automation PR author ${PR_AUTHOR}."
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        if: ${{ github.actor != 'dependabot[bot]' && github.actor != 'release-please[bot]' }}
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Verify Gate-Passed trailer
-        if: ${{ github.actor != 'dependabot[bot]' && github.actor != 'release-please[bot]' }}
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: |
           commits=$(git log --format="%H" "origin/${{ github.base_ref }}..HEAD")
           if [ -z "$commits" ]; then
