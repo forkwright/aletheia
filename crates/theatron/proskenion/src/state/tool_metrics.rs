@@ -99,6 +99,7 @@ pub(crate) struct ToolInvocation {
     #[serde(default)]
     pub tool_name: String,
     #[serde(default)]
+    // kanon:ignore RUST/primitive-for-domain-id — ToolInvocation agent_id mirrors the external API string identifier
     pub agent_id: String,
     #[serde(default)]
     pub timestamp: String,

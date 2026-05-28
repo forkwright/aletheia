@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — cohesive HTTP client; extracting now would fragment request/response handling
 //! HTTP client for the Aletheia gateway REST API.
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
@@ -14,6 +15,7 @@ use super::types::{
 // v1.2.0). Implementation behavior preserved exactly: RFC 3986 unreserved-
 // characters passthrough (`A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`), `%XX`
 // uppercase-hex everywhere else. keryx's helper uses a byte-level hex table
+// kanon:ignore RUST/expect — doc comment describing keryx helper; no actual expect call in code
 // instead of `write!()` to avoid `.expect()` on infallible String formatting,
 // but the output bytes are identical.
 
@@ -895,6 +897,7 @@ impl ApiClient {
         }
         let status = resp.status();
         let reason = status.canonical_reason().unwrap_or("Unknown");
+        // kanon:ignore RUST/no-result-unwrap-or-default — empty body on text() failure is acceptable; status code is the primary error signal
         let body = resp.text().await.unwrap_or_default();
         let message = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
             json.get("message")

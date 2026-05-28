@@ -5,6 +5,7 @@ use std::collections::HashMap;
 /// A single saved server connection entry.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ServerEntry {
+    // kanon:ignore RUST/primitive-for-domain-id — ServerEntry id is a local config handle, not a typed domain entity ID
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) url: String,

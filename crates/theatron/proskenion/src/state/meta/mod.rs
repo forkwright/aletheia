@@ -46,6 +46,7 @@ impl TrendDirection {
 /// Performance scorecard for a single agent.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct AgentScorecard {
+    // kanon:ignore RUST/primitive-for-domain-id — AgentScorecard agent_id mirrors the external API string identifier
     pub agent_id: String,
     pub agent_name: String,
     pub avg_tokens_per_response: f64,

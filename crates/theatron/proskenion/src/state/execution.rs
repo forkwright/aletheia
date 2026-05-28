@@ -35,6 +35,7 @@ pub(crate) enum WaveStatus {
 /// A single step within an execution plan.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct PlanStep {
+    // kanon:ignore RUST/primitive-for-domain-id — Execution state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
     pub(crate) description: String,
     pub(crate) status: StepStatus,
@@ -52,6 +53,7 @@ pub(crate) struct PlanStep {
 /// An execution plan assigned to an agent within a wave.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct ExecutionPlan {
+    // kanon:ignore RUST/primitive-for-domain-id — Execution state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
     pub(crate) title: String,
     #[serde(default)]
@@ -143,6 +145,7 @@ impl Wave {
 /// Full execution state for a project.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct ExecutionState {
+    // kanon:ignore RUST/primitive-for-domain-id — Execution state mirrors server-side string IDs from the planning API
     pub(crate) project_id: String,
     pub(crate) waves: Vec<Wave>,
 }

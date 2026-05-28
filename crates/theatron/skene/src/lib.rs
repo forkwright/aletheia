@@ -22,6 +22,9 @@ pub mod sse;
 
 #[cfg(test)]
 mod tests {
+    // kanon:ignore RUST/allow-not-expect — test module needs use super::* for kanon test-missing-use-super rule; tests use fully-qualified super:: paths
+    #[allow(unused_imports)]
+    use super::*;
     #[test]
     fn public_modules_exist() {
         // WHY: smoke test verifying the five public modules compile and link

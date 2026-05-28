@@ -33,6 +33,7 @@ pub(crate) enum CheckpointStatus {
 /// A single requirement validated by this checkpoint.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct CheckpointRequirement {
+    // kanon:ignore RUST/primitive-for-domain-id — Checkpoint state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
     pub(crate) title: String,
     pub(crate) met: bool,
@@ -57,7 +58,9 @@ pub(crate) struct CheckpointDecision {
 /// A single checkpoint approval gate.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct Checkpoint {
+    // kanon:ignore RUST/primitive-for-domain-id — Checkpoint state mirrors server-side string IDs from the planning API
     pub(crate) id: String,
+    // kanon:ignore RUST/primitive-for-domain-id — Checkpoint state mirrors server-side string IDs from the planning API
     pub(crate) project_id: String,
     pub(crate) title: String,
     pub(crate) description: String,

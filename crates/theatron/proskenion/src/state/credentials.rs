@@ -55,6 +55,7 @@ impl ValidationStatus {
 /// with "..." (e.g., `"...ab12"`). Full key values must never be stored here.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CredentialEntry {
+    // kanon:ignore RUST/primitive-for-domain-id — CredentialEntry id mirrors the external provider string identifier
     pub(crate) id: String,
     pub(crate) provider: String,
     pub(crate) role: CredentialRole,
