@@ -42,6 +42,7 @@ fn serialize_option_secret<S: serde::Serializer>(
 ///
 /// Accepts both `"token"` (native format) and `"accessToken"` (Claude Code OAuth
 /// output) for backward compatibility. Serialization always writes `"token"`.
+// kanon:ignore RUST/no-debug-derive-on-public-types — CredentialFile redacts the token field via SecretString's custom Debug; derived Debug is safe
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialFile {
     /// Access token (API key or OAuth access token).
@@ -197,6 +198,7 @@ impl CredentialFile {
             && let Err(e) = commit_key_file(path, guard.path())
         {
             // Guard's drop will clean up key tmp; manually clean cred tmp.
+            // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of temp credential file on commit failure
             let _ = std::fs::remove_file(&cred_tmp);
             return Err(e);
         }
@@ -207,6 +209,7 @@ impl CredentialFile {
         }
 
         if let Err(e) = std::fs::rename(&cred_tmp, path) {
+            // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of temp credential file on rename failure
             let _ = std::fs::remove_file(&cred_tmp);
             // NOTE: key file was already renamed; it's valid on its own
             return Err(e);

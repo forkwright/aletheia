@@ -516,6 +516,7 @@ mod tests {
     use super::*;
 
     fn memory_store() -> AuthStore {
+        // kanon:ignore RUST/expect — test helper invariant; panic aborts the test run
         AuthStore::open_in_memory().expect("open in-memory fjall auth store")
     }
 

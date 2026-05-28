@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 /// Circuit breaker state.
+// kanon:ignore RUST/no-debug-derive-on-public-types — CircuitState is a three-state enum with no sensitive data; Debug is required for metrics and log output
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CircuitState {
@@ -30,6 +31,7 @@ impl std::fmt::Display for CircuitState {
 }
 
 /// Configuration for the circuit breaker.
+// kanon:ignore RUST/no-debug-derive-on-public-types — CircuitBreakerConfig is a plain config struct with no secrets; Debug is safe for diagnostics
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
     /// Number of failures within the window to trip the circuit.

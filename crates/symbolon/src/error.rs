@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use snafu::Snafu;
 
 /// Errors from authentication and authorization operations.
+// kanon:ignore RUST/no-debug-derive-on-public-types -- WHY: error enum; Debug is required by std::error::Error and Result ergonomics. Variants carry only error messages, RBAC identity metadata (role, action, entity, id), paths, and source errors — never plaintext credentials or tokens.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]

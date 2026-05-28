@@ -32,6 +32,7 @@ pub struct AuthService {
 pub type AuthFacade = AuthService;
 
 /// Claims returned after a token is verified as an administrator token.
+// kanon:ignore RUST/no-debug-derive-on-public-types — AdminClaims carries only non-secret identity metadata (sub, role, nous_id); Debug is safe for observability
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdminClaims {
     /// Subject identifier for the authenticated administrator.
