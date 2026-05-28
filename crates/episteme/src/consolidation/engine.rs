@@ -92,6 +92,7 @@ impl KnowledgeStore {
 
         let mut candidates = Vec::new();
         for i in 0..result.row_count() {
+            // kanon:ignore RUST/no-result-unwrap-or-default — missing query column handled by EntityId::new failure below
             let entity_id_str = result.get_string(i, "entity_id").unwrap_or_default();
             let fact_count = i64_as_usize(result.get_i64(i, "fact_count").unwrap_or(0));
             let entity_id = EntityId::new(entity_id_str).map_err(|e| {
@@ -419,9 +420,12 @@ impl KnowledgeStore {
 
         let source_count_i64 = result.get_i64(0, "source_count").unwrap_or(0);
         let source_count = u32::try_from(source_count_i64).unwrap_or(0);
+        // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
         let first_observed = result.get_string(0, "first_observed").unwrap_or_default();
+        // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
         let last_observed = result.get_string(0, "last_observed").unwrap_or_default();
         let time_spread_seconds = result.get_i64(0, "time_spread_seconds").unwrap_or(0);
+        // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
         let recorded_at = result.get_string(0, "recorded_at").unwrap_or_default();
 
         Ok(Some(FactMultiplicity {
@@ -600,6 +604,7 @@ impl KnowledgeStore {
             Ok(None)
         } else {
             Ok(Some(
+                // kanon:ignore RUST/no-result-unwrap-or-default — optional timestamp: empty string yields Ok(None) upstream
                 result.get_string(0, "consolidated_at").unwrap_or_default(),
             ))
         }
@@ -767,17 +772,20 @@ fn compute_multiplicity(
 fn parse_fact_rows(rows: &[Vec<DataValue>]) -> Vec<(FactId, String, f64, String)> {
     rows.iter()
         .filter_map(|row| {
+            // kanon:ignore RUST/no-result-unwrap-or-default — malformed row filtered out by let-else None below
             let Ok(id) = FactId::new(row.first().and_then(|v| v.get_str()).unwrap_or_default())
             else {
                 return None;
             };
             let content = row
+                // kanon:ignore RUST/no-result-unwrap-or-default — malformed row content defaults to empty string
                 .get(1)
                 .and_then(|v| v.get_str())
                 .unwrap_or_default()
                 .to_owned();
             let confidence = row.get(2).and_then(DataValue::get_float).unwrap_or(0.0);
             let recorded_at = row
+                // kanon:ignore RUST/no-result-unwrap-or-default — malformed row timestamp defaults to empty string
                 .get(3)
                 .and_then(|v| v.get_str())
                 .unwrap_or_default()

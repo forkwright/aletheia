@@ -206,8 +206,10 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
         }
     }
 
+    // kanon:ignore RUST/indexing-slicing — `&[][..]` is an empty-slice literal default for map_or; not real indexing
     let steps = extract_steps(sections.get("steps").map_or(&[][..], |v| v.as_slice()));
     let tools_used = if fm_tools.is_empty() {
+        // kanon:ignore RUST/indexing-slicing — `&[][..]` is an empty-slice literal default for map_or; not real indexing
         extract_tools(sections.get("tools used").map_or(&[][..], |v| v.as_slice()))
     } else {
         fm_tools
@@ -416,41 +418,52 @@ pub fn format_skill_md(skill: &SkillContent) -> String {
     let mut md = String::with_capacity(512);
 
     md.push_str("---\n");
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(md, "name: {}", skill.name);
     let desc_needs_quoting = skill.description.contains(':')
         || skill.description.contains('#')
         || skill.description.contains('"');
     if desc_needs_quoting {
         let escaped = skill.description.replace('"', r#"\""#);
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(md, "description: \"{escaped}\"");
     } else {
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(md, "description: {}", skill.description);
     }
     if !skill.tools_used.is_empty() {
         // WHY: Write both keys: CC reads 'allowed-tools'; parse_skill_md reads 'tools'.
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(md, "allowed-tools: {}", skill.tools_used.join(", "));
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(md, "tools: [{}]", skill.tools_used.join(", "));
     }
     if !skill.domain_tags.is_empty() {
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(md, "domains: [{}]", skill.domain_tags.join(", "));
     }
     if !skill.triggers.is_empty() {
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(md, "triggers: [{}]", skill.triggers.join(", "));
     }
     if skill.always {
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(md, "always: true");
     }
     md.push_str("---\n\n");
 
     // WHY: Title heading is required for parse_skill_md round-trip.
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(md, "# {}\n", skill.name);
 
     md.push_str("## When to Use\n");
+    // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(md, "{}\n", skill.description);
 
     if !skill.steps.is_empty() {
         md.push_str("## Steps\n");
         for (i, step) in skill.steps.iter().enumerate() {
+            // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
             let _ = writeln!(md, "{}. {}", i + 1, step);
         }
         md.push('\n');
@@ -459,6 +472,7 @@ pub fn format_skill_md(skill: &SkillContent) -> String {
     if !skill.tools_used.is_empty() {
         md.push_str("## Tools Used\n");
         for tool in &skill.tools_used {
+            // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
             let _ = writeln!(md, "- {tool}");
         }
         md.push('\n');
@@ -466,6 +480,7 @@ pub fn format_skill_md(skill: &SkillContent) -> String {
 
     if !skill.domain_tags.is_empty() {
         md.push_str("## Tags\n");
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
         let _ = writeln!(md, "{}", skill.domain_tags.join(", "));
     }
 

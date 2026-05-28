@@ -12,6 +12,7 @@ use super::*;
 use crate::consolidation::ConsolidationResult;
 use crate::test_fixtures::make_store;
 
+// kanon:ignore RUST/doc-promised-observability — doc comment describes data-flow invariants, not tracing
 /// Requirement #3634: consolidating N source facts into one Fact must
 /// preserve the source count so downstream recall and conflict resolution
 /// can weight by convergence strength.
