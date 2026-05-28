@@ -104,6 +104,7 @@ impl JwtConfig {
     /// Returns an error if `auth_mode` is not `"none"` and the signing
     /// key is still the built-in insecure placeholder.
     #[must_use = "validation result must be checked before proceeding"]
+    // kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason via snafu; Ok(()) means validation passed
     pub fn validate_for_auth_mode(&self, auth_mode: &str) -> Result<()> {
         if auth_mode != "none" && self.has_insecure_key() {
             tracing::error!(

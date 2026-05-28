@@ -17,6 +17,7 @@ use super::pkce::url_encode;
 use super::{OAuthProvider, OAuthRequiredAction};
 
 /// Errors from Device Code authentication flow.
+// kanon:ignore RUST/no-debug-derive-on-public-types -- WHY: error enum; Debug is required by std::error::Error and Result ergonomics. Every variant carries only OAuth error codes/descriptions, source errors, and a location — no secrets, tokens, or credentials.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
@@ -154,6 +155,7 @@ struct TokenErrorResponse {
 }
 
 /// Extended OAuth provider configuration with device authorization endpoint.
+// kanon:ignore RUST/no-debug-derive-on-public-types — DeviceOAuthProvider is a config struct with no secrets; Debug is safe for diagnostics and CLI output
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct DeviceOAuthProvider {

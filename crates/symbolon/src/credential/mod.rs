@@ -27,6 +27,7 @@ pub use refresh::{
 pub use pkce::OAuthProvider;
 
 /// Caller-rendered action emitted by interactive OAuth credential flows.
+// kanon:ignore RUST/no-debug-derive-on-public-types — OAuthRequiredAction is a UI-facing action enum with no secrets; Debug is required for CLI logging
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum OAuthRequiredAction {

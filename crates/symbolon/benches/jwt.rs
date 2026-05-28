@@ -33,6 +33,7 @@ fn jwt_issue_access(c: &mut Criterion) {
         b.iter(|| {
             let token = manager
                 .issue_access(black_box("alice"), Role::Operator, None)
+                // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark run
                 .expect("issue access");
             black_box(token)
         });
@@ -45,6 +46,7 @@ fn jwt_issue_access_with_nous_scope(c: &mut Criterion) {
         b.iter(|| {
             let token = manager
                 .issue_access(black_box("alice"), Role::Operator, Some(black_box("syn")))
+                // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark run
                 .expect("issue access");
             black_box(token)
         });
@@ -55,10 +57,14 @@ fn jwt_validate_round_trip(c: &mut Criterion) {
     let manager = make_manager();
     let token = manager
         .issue_access("alice", Role::Operator, None)
+        // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark run
         .expect("issue access");
     c.bench_function("jwt_validate_round_trip", |b| {
         b.iter(|| {
-            let claims = manager.validate(black_box(&token)).expect("validate");
+            let claims = manager
+                .validate(black_box(&token))
+                // kanon:ignore RUST/expect — bench setup invariant; panic aborts the benchmark run
+                .expect("validate");
             black_box(claims)
         });
     });

@@ -142,6 +142,7 @@ impl TempFileGuard {
         reason = "guard invariant: path is Some until defuse() is called, and callers always access path before defuse"
     )]
     pub(crate) fn path(&self) -> &Path {
+        // kanon:ignore RUST/expect — guard invariant: path is Some until defuse() is called, and callers always access path before defuse
         self.path.as_deref().expect("guard already defused")
     }
 
@@ -154,6 +155,7 @@ impl TempFileGuard {
 impl Drop for TempFileGuard {
     fn drop(&mut self) {
         if let Some(ref path) = self.path {
+            // kanon:ignore RUST/no-silent-result-swallow — best-effort temp file cleanup in Drop; failure is harmless
             let _ = std::fs::remove_file(path);
         }
     }

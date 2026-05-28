@@ -20,6 +20,7 @@ use super::OAuthRequiredAction;
 use super::file_ops::CredentialFile;
 
 /// Errors from PKCE authentication flow.
+// kanon:ignore RUST/no-debug-derive-on-public-types -- WHY: error enum; Debug is required by std::error::Error and Result ergonomics. Every variant carries only OAuth error codes/descriptions, source errors, and a location — no secrets, tokens, or PKCE verifiers.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
@@ -166,10 +167,12 @@ pub type Result<T> = std::result::Result<T, PkceError>;
 
 /// OAuth 2.0 provider configuration for PKCE flow.
 // kanon:ignore RUST/plain-string-secret
+// kanon:ignore RUST/no-debug-derive-on-public-types — OAuthProvider is a config struct with no secrets; Debug is safe for diagnostics and CLI output
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct OAuthProvider {
     /// OAuth client identifier.
+    // kanon:ignore RUST/primitive-for-domain-id -- WHY: OAuth client_id is a provider-assigned public identifier carried in config and on the wire; a newtype would break serde/config interop without adding safety.
     pub client_id: String,
     /// Authorization endpoint URL.
     pub authorization_url: String,
@@ -305,6 +308,7 @@ pub(crate) fn url_encode(s: &str) -> String {
             _ => {
                 result.push('%');
                 // INVARIANT: writing to a String via fmt::Write cannot fail.
+                // kanon:ignore RUST/no-silent-result-swallow — fmt::Write to String is infallible; write! returns Result for trait consistency only
                 let _ = write!(result, "{byte:02X}");
             }
         }
@@ -399,6 +403,7 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
         clippy::string_slice,
         reason = "i from find('?'), i+1 is valid boundary"
     )]
+    // kanon:ignore RUST/indexing-slicing — i from find('?') on the same string, i+1 is a valid UTF-8 boundary
     let query = query_start.map_or("", |i| &path[i + 1..]);
 
     // Parse query parameters
@@ -408,11 +413,14 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
         if let Some(eq_pos) = pair.find('=') {
             // SAFETY: eq_pos from find('='), always a valid byte boundary
             #[expect(clippy::string_slice, reason = "eq_pos from find('='), valid boundary")]
+            // kanon:ignore RUST/indexing-slicing — eq_pos from find('=') on the same string, valid byte boundary
             let key = &pair[..eq_pos];
             #[expect(
                 clippy::string_slice,
                 reason = "eq_pos from find('='), eq_pos+1 is valid"
             )]
+            // kanon:ignore RUST/indexing-slicing — eq_pos from find('=') on the same string, eq_pos+1 is a valid byte boundary
+            // kanon:ignore RUST/no-result-unwrap-or-default — a url_decode failure on a callback query param degrades to an empty value, which fails downstream code/state validation (auth error), never a silent success; clippy::unwrap_or_default forbids the unwrap_or_else(String::new) form
             let value = url_decode(&pair[eq_pos + 1..]).unwrap_or_default();
 
             match key {
@@ -514,6 +522,7 @@ fn start_callback_server(
 
     std::thread::spawn(move || {
         let result = handle_callback_connection(&listener, &expected_state);
+        // kanon:ignore RUST/no-silent-result-swallow — oneshot receiver may be dropped after timeout; send failure is harmless
         let _ = tx.send(result);
     });
 
@@ -543,6 +552,7 @@ fn handle_callback_connection(
                 // State matches
             }
             _ => {
+                // kanon:ignore RUST/no-silent-result-swallow — error response is best-effort after state mismatch; client may have closed connection
                 let _ = send_error_response(
                     &mut stream,
                     "Invalid state parameter. Possible CSRF attack.",
@@ -558,6 +568,7 @@ fn handle_callback_connection(
                 .error_description
                 .clone()
                 .unwrap_or_else(|| error.clone());
+            // kanon:ignore RUST/no-silent-result-swallow — error response is best-effort after OAuth error; client may have closed connection
             let _ = send_error_response(&mut stream, &message);
             return Err(PkceError::AuthorizationError {
                 error: error.clone(),
@@ -567,15 +578,18 @@ fn handle_callback_connection(
         }
 
         if data.code.is_none() {
+            // kanon:ignore RUST/no-silent-result-swallow — error response is best-effort when code is missing; client may have closed connection
             let _ = send_error_response(&mut stream, "Missing authorization code.");
             return Err(PkceError::MissingCode {
                 location: snafu::location!(),
             });
         }
 
+        // kanon:ignore RUST/no-silent-result-swallow — success response is best-effort; client may have closed connection
         let _ = send_success_response(&mut stream);
         Ok(data)
     } else {
+        // kanon:ignore RUST/no-silent-result-swallow — error response is best-effort for invalid request; client may have closed connection
         let _ = send_error_response(&mut stream, "Invalid request.");
         Err(PkceError::MissingCode {
             location: snafu::location!(),
