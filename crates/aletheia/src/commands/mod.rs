@@ -64,7 +64,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
     match cmd {
         Command::Init(a) => {
             init::run(init::RunArgs {
-                root: a.instance_root,
+                root: instance_root.cloned().or(a.instance_root),
                 yes: a.yes,
                 non_interactive: a.non_interactive,
                 // codequality:ignore -- raw CLI string immediately wrapped in SecretString
