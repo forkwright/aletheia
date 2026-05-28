@@ -15,6 +15,7 @@ use crate::error::Result;
 #[derive(Debug, Clone, Args)]
 pub(crate) struct SessionExportArgs {
     /// Session ID to export
+    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
     pub session_id: String,
 
     /// Output format: `md` (default) or `json`
@@ -170,7 +171,9 @@ async fn fetch_history(
 fn render_markdown(session: &SessionResponse, history: &HistoryResponse) -> String {
     let mut out = String::new();
 
+    // kanon:ignore RUST/no-silent-result-swallow — writing to a String never fails; std::fmt::Write returns Result for trait uniformity
     let _ = writeln!(out, "# Session: {}", session.session_key);
+    // kanon:ignore RUST/no-silent-result-swallow — writing to a String never fails
     let _ = writeln!(out, "Started: {}", session.created_at);
 
     for msg in &history.messages {
@@ -178,11 +181,14 @@ fn render_markdown(session: &SessionResponse, history: &HistoryResponse) -> Stri
         match msg.role.as_str() {
             "tool" => {
                 let name = msg.tool_name.as_deref().unwrap_or("unknown");
+                // kanon:ignore RUST/no-silent-result-swallow — writing to a String never fails
                 let _ = writeln!(out, "## Tool Call: {name} — {}", msg.created_at);
+                // kanon:ignore RUST/no-silent-result-swallow — writing to a String never fails
                 let _ = writeln!(out, "**Output:** {}", msg.content);
             }
             role => {
                 let heading = capitalize_first(role);
+                // kanon:ignore RUST/no-silent-result-swallow — writing to a String never fails
                 let _ = writeln!(out, "## {heading} — {}", msg.created_at);
                 out.push_str(&msg.content);
                 out.push('\n');

@@ -18,6 +18,7 @@ const MAX_IDENTIFIER_BYTES: usize = 256;
 #[derive(Debug, Clone, Args)]
 pub(crate) struct SessionCreateArgs {
     /// Nous agent identifier to bind the session to.
+    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
     pub nous_id: String,
 
     /// Client-chosen key for session deduplication.

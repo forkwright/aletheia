@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — module contains tightly-coupled memory subcommand implementations; splitting would hurt cohesion
 //! `aletheia memory`: knowledge graph inspection and maintenance.
 
 use std::path::PathBuf;
@@ -1004,15 +1005,21 @@ fn query_relationships_filtered(
 }
 
 #[cfg(feature = "recall")]
+fn query_get_string(result: &mneme::knowledge_store::QueryResult, row: usize, col: &str) -> String {
+    // kanon:ignore RUST/no-result-unwrap-or-default — query result parser helper; missing column yields empty default handled downstream
+    result.get_string(row, col).unwrap_or_default()
+}
+
+#[cfg(feature = "recall")]
 fn parse_entity_rows(
     result: &mneme::knowledge_store::QueryResult,
 ) -> Result<Vec<mneme::knowledge::Entity>> {
     let mut entities = Vec::with_capacity(result.row_count());
     for i in 0..result.row_count() {
-        let id_str = result.get_string(i, "id").unwrap_or_default();
-        let name = result.get_string(i, "name").unwrap_or_default();
-        let entity_type = result.get_string(i, "entity_type").unwrap_or_default();
-        let aliases_str = result.get_string(i, "aliases").unwrap_or_default();
+        let id_str = query_get_string(result, i, "id");
+        let name = query_get_string(result, i, "name");
+        let entity_type = query_get_string(result, i, "entity_type");
+        let aliases_str = query_get_string(result, i, "aliases");
         let aliases = if aliases_str.is_empty() {
             Vec::new()
         } else {
@@ -1021,14 +1028,12 @@ fn parse_entity_rows(
                 .map(|s| s.trim().to_owned())
                 .collect()
         };
-        let created_at = mneme::knowledge::parse_timestamp(
-            &result.get_string(i, "created_at").unwrap_or_default(),
-        )
-        .unwrap_or_else(jiff::Timestamp::now);
-        let updated_at = mneme::knowledge::parse_timestamp(
-            &result.get_string(i, "updated_at").unwrap_or_default(),
-        )
-        .unwrap_or_else(jiff::Timestamp::now);
+        let created_at =
+            mneme::knowledge::parse_timestamp(&query_get_string(result, i, "created_at"))
+                .unwrap_or_else(jiff::Timestamp::now);
+        let updated_at =
+            mneme::knowledge::parse_timestamp(&query_get_string(result, i, "updated_at"))
+                .unwrap_or_else(jiff::Timestamp::now);
 
         let id =
             mneme::id::EntityId::new(&id_str).whatever_context("invalid entity id in store")?;
@@ -1052,14 +1057,13 @@ fn parse_relationship_rows(
 
     let mut relationships = Vec::with_capacity(result.row_count());
     for i in 0..result.row_count() {
-        let src_str = result.get_string(i, "src").unwrap_or_default();
-        let dst_str = result.get_string(i, "dst").unwrap_or_default();
-        let relation = result.get_string(i, "relation").unwrap_or_default();
+        let src_str = query_get_string(result, i, "src");
+        let dst_str = query_get_string(result, i, "dst");
+        let relation = query_get_string(result, i, "relation");
         let weight = result.get_f64(i, "weight").unwrap_or(1.0);
-        let created_at = mneme::knowledge::parse_timestamp(
-            &result.get_string(i, "created_at").unwrap_or_default(),
-        )
-        .unwrap_or_else(jiff::Timestamp::now);
+        let created_at =
+            mneme::knowledge::parse_timestamp(&query_get_string(result, i, "created_at"))
+                .unwrap_or_else(jiff::Timestamp::now);
 
         let src = mneme::id::EntityId::new(&src_str)
             .whatever_context("invalid relationship src id in store")?;
