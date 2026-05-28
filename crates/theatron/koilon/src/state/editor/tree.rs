@@ -178,6 +178,7 @@ fn build_tree(
 fn load_git_status(root: &Path) -> HashMap<PathBuf, GitFileStatus> {
     let mut statuses = HashMap::new();
 
+    // kanon:ignore RUST/no-direct-process-command — git is the only supported VCS for workspace status; no abstraction needed
     let output = match std::process::Command::new("git")
         .args(["status", "--porcelain"])
         .current_dir(root)

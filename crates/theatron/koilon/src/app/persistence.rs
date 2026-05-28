@@ -33,6 +33,7 @@ pub(crate) fn save_command_history(config: &Config, history: &[String]) {
         None => return,
     };
     let content: String = history.iter().map(|s| format!("{s}\n")).collect();
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort persistence on shutdown; failure is non-critical
     let _ = koina::fs::write_restricted(&path, content.as_bytes());
 }
 
@@ -82,6 +83,7 @@ pub(crate) fn save_session_state(config: &Config, sessions: &HashMap<NousId, Ses
         .iter()
         .map(|(agent, session)| format!("{agent}:{session}\n"))
         .collect();
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort persistence on shutdown; failure is non-critical
     let _ = koina::fs::write_restricted(&path, content.as_bytes());
 }
 

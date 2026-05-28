@@ -117,6 +117,7 @@ pub(crate) async fn handle_prev_agent(app: &mut App) {
         } else {
             idx - 1
         };
+        // kanon:ignore RUST/indexing-slicing — prev is derived from a validated agent index (idx) and modulo arithmetic
         let id = app.dashboard.agents[prev].id.clone();
         app.dashboard.focused_agent = Some(id);
         app.load_focused_session().await;

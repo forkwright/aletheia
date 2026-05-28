@@ -236,5 +236,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage(percent_x),
             Constraint::Percentage((100 - percent_x) / 2),
         ])
+        // kanon:ignore RUST/indexing-slicing — v split with 3 constraints; index 1 always valid; inner split also 3 constraints
         .split(v[1])[1]
 }

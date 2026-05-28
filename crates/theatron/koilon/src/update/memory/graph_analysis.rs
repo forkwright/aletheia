@@ -253,9 +253,12 @@ fn compute_communities(
 }
 
 fn find(parent: &mut Vec<usize>, i: usize) -> usize {
+    // kanon:ignore RUST/indexing-slicing — i is always a valid union-find node index passed from union()
     if parent[i] != i {
+        // kanon:ignore RUST/indexing-slicing — parent[i] is always a valid node index
         parent[i] = find(parent, parent[i]);
     }
+    // kanon:ignore RUST/indexing-slicing — i is always a valid union-find node index
     parent[i]
 }
 
@@ -263,6 +266,7 @@ fn union(parent: &mut Vec<usize>, a: usize, b: usize) {
     let ra = find(parent, a);
     let rb = find(parent, b);
     if ra != rb {
+        // kanon:ignore RUST/indexing-slicing — ra is a valid root returned by find(); rb is a valid root
         parent[ra] = rb;
     }
 }
@@ -297,6 +301,8 @@ fn is_entity_stale(entity: &MemoryEntity, now: jiff::Timestamp) -> bool {
         return false;
     }
     let now_approx = now.strftime("%Y-%m-%d").to_string();
+    // kanon:ignore RUST/indexing-slicing — slice end is clamped to min(date_str.len(), 10), always in bounds
+    // kanon:ignore RUST/string-slice — slice end is clamped to min(date_str.len(), 10), always in bounds
     date_str < &now_approx[..date_str.len().min(10)]
         && days_between_approx(date_str, &now_approx) > STALE_THRESHOLD_DAYS
 }

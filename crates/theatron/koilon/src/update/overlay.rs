@@ -23,7 +23,10 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
                 }),
                 OverlayKind::SystemStatus => Overlay::SystemStatus,
                 OverlayKind::ContextBudget => Overlay::ContextBudget,
-                OverlayKind::Settings => unreachable!(),
+                OverlayKind::Settings => {
+                    // kanon:ignore RUST/unreachable-in-match — Settings overlay is dispatched through a dedicated handler, not the generic overlay router
+                    unreachable!()
+                }
                 OverlayKind::NotificationHistory => {
                     app.layout.notifications.mark_all_read();
                     Overlay::NotificationHistory { scroll: 0 }

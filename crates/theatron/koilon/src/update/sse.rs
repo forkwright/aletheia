@@ -142,6 +142,7 @@ pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, sessio
             agent.unread_count += 1;
             // Ring terminal bell for new messages on inactive agents.
             if app.layout.bell_enabled {
+                // kanon:ignore RUST/no-silent-result-swallow — best-effort terminal bell; failure is benign
                 let _ = std::io::Write::write_all(&mut std::io::stderr(), b"\x07");
             }
         }

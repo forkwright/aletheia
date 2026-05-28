@@ -50,6 +50,7 @@ fn detect_protocol() -> GraphicsProtocol {
     if env.var("KITTY_WINDOW_ID").is_some() {
         return GraphicsProtocol::Kitty;
     }
+    // kanon:ignore RUST/no-result-unwrap-or-default — env var lookup for terminal detection; empty fallback is correct
     let term_program = env.var("TERM_PROGRAM").unwrap_or_default();
     if term_program.eq_ignore_ascii_case("kitty") {
         return GraphicsProtocol::Kitty;
@@ -60,12 +61,14 @@ fn detect_protocol() -> GraphicsProtocol {
     if matches!(term_program_lower.as_str(), "foot" | "mlterm" | "wezterm") {
         return GraphicsProtocol::Sixel;
     }
+    // kanon:ignore RUST/no-result-unwrap-or-default — env var lookup for terminal detection; empty fallback is correct
     let term = env.var("TERM").unwrap_or_default();
     if term.contains("mlterm") {
         return GraphicsProtocol::Sixel;
     }
 
     // True color: COLORTERM is the standard signal
+    // kanon:ignore RUST/no-result-unwrap-or-default — env var lookup for terminal detection; empty fallback is correct
     let colorterm = env.var("COLORTERM").unwrap_or_default();
     if colorterm == "truecolor" || colorterm == "24bit" {
         return GraphicsProtocol::TrueColor;
@@ -253,7 +256,9 @@ fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static
                 image::Rgba([0, 0, 0, 0])
             };
 
+            // kanon:ignore RUST/indexing-slicing — Rgba pixel always has 4 channels; index 3 is alpha
             let top_visible = top[3] > 0;
+            // kanon:ignore RUST/indexing-slicing — Rgba pixel always has 4 channels; index 3 is alpha
             let bottom_visible = bottom[3] > 0;
 
             if !top_visible && !bottom_visible {
@@ -261,18 +266,22 @@ fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static
             } else if !top_visible {
                 spans.push(Span::styled(
                     "▄",
+                    // kanon:ignore RUST/indexing-slicing — Rgba pixel always has 4 channels; indices 0-2 are RGB
                     Style::default().fg(Color::Rgb(bottom[0], bottom[1], bottom[2])),
                 ));
             } else if !bottom_visible {
                 spans.push(Span::styled(
                     "▀",
+                    // kanon:ignore RUST/indexing-slicing — Rgba pixel always has 4 channels; indices 0-2 are RGB
                     Style::default().fg(Color::Rgb(top[0], top[1], top[2])),
                 ));
             } else {
                 spans.push(Span::styled(
                     "▀",
                     Style::default()
+                        // kanon:ignore RUST/indexing-slicing — Rgba pixel always has 4 channels; indices 0-2 are RGB
                         .fg(Color::Rgb(top[0], top[1], top[2]))
+                        // kanon:ignore RUST/indexing-slicing — Rgba pixel always has 4 channels; indices 0-2 are RGB
                         .bg(Color::Rgb(bottom[0], bottom[1], bottom[2])),
                 ));
             }

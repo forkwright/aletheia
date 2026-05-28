@@ -132,6 +132,7 @@ impl VirtualScroll {
         let first_item = self.item_at_line(top_line);
         let last_item = self.item_at_line(bottom_line.min(total));
 
+        // kanon:ignore RUST/indexing-slicing — first_item returned by item_at_line is always a valid prefix_sums index
         let first_item_start = self.prefix_sums[first_item];
         let line_offset =
             u16::try_from(top_line.saturating_sub(first_item_start)).unwrap_or(u16::MAX);
@@ -144,6 +145,7 @@ impl VirtualScroll {
             line_offset: if start < first_item {
                 // NOTE: Buffer items above are rendered; add their height so the
                 // line_offset is relative to the start of the rendered range, not first_item.
+                // kanon:ignore RUST/indexing-slicing — first_item and start are validated indices from item_at_line / range computation
                 let buffer_height: u64 = self.prefix_sums[first_item] - self.prefix_sums[start];
                 u16::try_from(buffer_height)
                     .unwrap_or(u16::MAX)

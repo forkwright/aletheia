@@ -115,9 +115,12 @@ async fn run_tui_inner(
             context: "enable mouse capture",
         },
     )?;
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort cursor style before run; terminal will be restored regardless
     let _ = crossterm::execute!(std::io::stderr(), cursor::SetCursorStyle::SteadyBlock);
     let result = run_loop(terminal, &mut app).await;
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort terminal cleanup on exit; failure is benign
     let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableMouseCapture);
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort cursor reset on exit; failure is benign
     let _ = crossterm::execute!(std::io::stderr(), cursor::SetCursorStyle::DefaultUserShape);
     ratatui::restore();
     // WHY: Drain background tasks before exit so in-flight API calls (tool
@@ -284,6 +287,7 @@ fn update_cursor_style(app: &App) {
     } else {
         SetCursorStyle::SteadyBlock
     };
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort cursor style update; failure is benign
     let _ = crossterm::execute!(std::io::stderr(), style);
 }
 

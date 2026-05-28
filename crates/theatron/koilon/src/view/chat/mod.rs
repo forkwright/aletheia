@@ -350,6 +350,7 @@ fn render_virtual_messages(
     }
 
     for idx in slice.range.clone() {
+        // kanon:ignore RUST/indexing-slicing — idx comes from VirtualScroll::visible_slice which only yields valid message indices
         let msg = &app.dashboard.messages[idx];
         let ctx = MessageCtx {
             inner_width,

@@ -195,6 +195,7 @@ pub(crate) fn sparkline(values: &[u32], width: usize) -> String {
             let idx = ((f64::from(v) / f64::from(max)) * 7.0)
                 .round()
                 .clamp(0.0, 7.0) as usize;
+            // kanon:ignore RUST/indexing-slicing — idx is clamped to [0.0, 7.0] before cast; BLOCKS has exactly 8 elements
             BLOCKS[idx]
         })
         .collect()

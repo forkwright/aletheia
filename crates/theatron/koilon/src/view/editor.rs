@@ -35,14 +35,19 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         let body = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(TREE_WIDTH), Constraint::Min(20)])
+            // kanon:ignore RUST/indexing-slicing — Layout.split() returns exactly as many Rects as constraints
             .split(layout[1]);
 
+        // kanon:ignore RUST/indexing-slicing — body is split with 2 constraints; index 0 is always valid
         render_file_tree(editor, frame, body[0], theme);
+        // kanon:ignore RUST/indexing-slicing — body is split with 2 constraints; index 1 is always valid
         render_content(app, frame, body[1], theme);
     } else {
+        // kanon:ignore RUST/indexing-slicing — layout is split with 3 constraints; index 1 is always valid
         render_content(app, frame, layout[1], theme);
     }
 
+    // kanon:ignore RUST/indexing-slicing — layout is split with 3 constraints; index 2 is always valid
     render_status_line(editor, frame, layout[2], theme);
 
     if editor.confirm_delete.is_some() {
@@ -195,6 +200,7 @@ fn render_content(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let start_row = tab.scroll_row;
     let end_row = (start_row + viewport_height).min(tab.content.len());
 
+    // kanon:ignore RUST/indexing-slicing — end_row is clamped to tab.content.len(); start_row ≤ end_row
     let code_to_highlight: String = tab.content[start_row..end_row].join("\n");
     let highlighted = app.highlighter.highlight(&code_to_highlight, &tab.language);
 

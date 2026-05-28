@@ -106,21 +106,27 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         .constraints(constraints)
         .split(area);
 
+    // kanon:ignore RUST/indexing-slicing — title_idx computed from boolean flags to match pushed constraints
     title_bar::render(app, frame, vertical[title_idx], theme);
 
     if has_banner {
+        // kanon:ignore RUST/indexing-slicing — vertical split includes banner constraint when has_banner is true
         notification::render_banner(app, frame, vertical[1], theme);
     }
 
     if show_tabs {
+        // kanon:ignore RUST/indexing-slicing — tab_idx computed from boolean flags to match pushed constraints
         tab_bar::render(app, frame, vertical[tab_idx], theme);
     }
 
     if palette_active {
+        // kanon:ignore RUST/indexing-slicing — bottom_idx computed from boolean flags to match pushed constraints
         command_palette::render(app, frame, vertical[bottom_idx], theme);
     } else if slash_active {
+        // kanon:ignore RUST/indexing-slicing — bottom_idx computed from boolean flags to match pushed constraints
         slash::render(app, frame, vertical[bottom_idx], theme);
     } else {
+        // kanon:ignore RUST/indexing-slicing — bottom_idx computed from boolean flags to match pushed constraints
         status_bar::render(app, frame, vertical[bottom_idx], theme);
     }
 
@@ -132,6 +138,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
             ]);
             let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
                 .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
+            // kanon:ignore RUST/indexing-slicing — old_toast_idx computed from boolean flags to match pushed constraints
             frame.render_widget(toast_widget, vertical[old_toast_idx]);
         } else if let Some(ref toast) = app.viewport.success_toast {
             let toast_line = ratatui::text::Line::from(vec![
@@ -140,6 +147,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
             ]);
             let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
                 .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
+            // kanon:ignore RUST/indexing-slicing — old_toast_idx computed from boolean flags to match pushed constraints
             frame.render_widget(toast_widget, vertical[old_toast_idx]);
         }
     }
@@ -161,6 +169,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         ]);
         let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
             .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
+        // kanon:ignore RUST/indexing-slicing — new_toast_idx computed from boolean flags to match pushed constraints
         frame.render_widget(toast_widget, vertical[new_toast_idx]);
     }
 
@@ -174,12 +183,16 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
                 Constraint::Length(SIDEBAR_WIDTH),
                 Constraint::Min(MIN_CHAT_WIDTH),
             ])
+            // kanon:ignore RUST/indexing-slicing — body_idx computed from boolean flags to match pushed constraints
             .split(vertical[body_idx]);
 
+        // kanon:ignore RUST/indexing-slicing — sidebar_and_rest split with 2 constraints; index 0 always valid
         sidebar::render(app, frame, sidebar_and_rest[0], theme);
+        // kanon:ignore RUST/indexing-slicing — sidebar_and_rest split with 2 constraints; index 0 always valid
         SIDEBAR_RECT.store_rect(sidebar_and_rest[0]);
 
         if show_ops {
+            // kanon:ignore RUST/indexing-slicing — sidebar_and_rest split with 2 constraints; index 1 always valid
             let ops_width =
                 ops::ops_pane_width(sidebar_and_rest[1].width, app.layout.ops.width_pct);
             let chat_ops = Layout::default()
@@ -188,18 +201,23 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
                     Constraint::Min(MIN_CHAT_WIDTH),
                     Constraint::Length(ops_width),
                 ])
+                // kanon:ignore RUST/indexing-slicing — sidebar_and_rest split with 2 constraints; index 1 always valid
                 .split(sidebar_and_rest[1]);
 
+            // kanon:ignore RUST/indexing-slicing — chat_ops split with 2 constraints; index 0 always valid
             let links = views::render_for_view(app, frame, chat_ops[0], theme);
+            // kanon:ignore RUST/indexing-slicing — chat_ops split with 2 constraints; index 1 always valid
             ops::render(app, frame, chat_ops[1], theme);
             links
         } else {
+            // kanon:ignore RUST/indexing-slicing — sidebar_and_rest split with 2 constraints; index 1 always valid
             views::render_for_view(app, frame, sidebar_and_rest[1], theme)
         }
     } else {
         SIDEBAR_RECT.store_rect(Rect::ZERO);
 
         if show_ops {
+            // kanon:ignore RUST/indexing-slicing — body_idx computed from boolean flags to match pushed constraints
             let ops_width = ops::ops_pane_width(vertical[body_idx].width, app.layout.ops.width_pct);
             let chat_ops = Layout::default()
                 .direction(Direction::Horizontal)
@@ -207,12 +225,16 @@ pub(crate) fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
                     Constraint::Min(MIN_CHAT_WIDTH),
                     Constraint::Length(ops_width),
                 ])
+                // kanon:ignore RUST/indexing-slicing — body_idx computed from boolean flags to match pushed constraints
                 .split(vertical[body_idx]);
 
+            // kanon:ignore RUST/indexing-slicing — chat_ops split with 2 constraints; index 0 always valid
             let links = views::render_for_view(app, frame, chat_ops[0], theme);
+            // kanon:ignore RUST/indexing-slicing — chat_ops split with 2 constraints; index 1 always valid
             ops::render(app, frame, chat_ops[1], theme);
             links
         } else {
+            // kanon:ignore RUST/indexing-slicing — body_idx computed from boolean flags to match pushed constraints
             views::render_for_view(app, frame, vertical[body_idx], theme)
         }
     };
@@ -326,10 +348,13 @@ fn render_chat_area(
         ])
         .split(area);
 
+    // kanon:ignore RUST/indexing-slicing — layout split with 4 constraints; index 1 always valid
     let osc_links = chat::render(app, frame, layout[1], theme);
     if app.interaction.filter.editing {
+        // kanon:ignore RUST/indexing-slicing — layout split with 4 constraints; index 2 always valid
         filter_bar::render(app, frame, layout[2], theme);
     }
+    // kanon:ignore RUST/indexing-slicing — layout split with 4 constraints; index 3 always valid
     input::render(app, frame, layout[3], theme);
     osc_links
 }

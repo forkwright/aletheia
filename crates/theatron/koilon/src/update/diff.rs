@@ -9,6 +9,7 @@ use crate::state::Overlay;
 pub(crate) async fn handle_diff_open(app: &mut App) {
     let workspace = app.config.workspace_root.clone();
     let output = tokio::task::spawn_blocking(move || {
+        // kanon:ignore RUST/no-direct-process-command — git is the only supported VCS for diff viewer; no abstraction needed
         let mut cmd = std::process::Command::new("git");
         cmd.args(["diff", "HEAD"]);
         if let Some(root) = workspace {

@@ -40,8 +40,10 @@ pub(crate) struct FactLifecycleMeta {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MemoryFact {
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde/external-id field from API response; newtype out of scope
     pub(crate) id: String,
     #[serde(default)]
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde/external-id field from API response; newtype out of scope
     pub(crate) nous_id: String,
     pub(crate) content: String,
     pub(crate) confidence: f64,
@@ -57,6 +59,7 @@ pub(crate) struct MemoryFact {
 /// An entity in the knowledge graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct MemoryEntity {
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde/external-id field from API response; newtype out of scope
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) entity_type: String,
@@ -87,6 +90,7 @@ pub(crate) struct MemoryTimelineEvent {
     pub(crate) timestamp: String,
     pub(crate) event_type: String,
     pub(crate) description: String,
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde/external-id field from API response; newtype out of scope
     pub(crate) fact_id: String,
     #[serde(default)]
     pub(crate) confidence: Option<f64>,
@@ -95,6 +99,7 @@ pub(crate) struct MemoryTimelineEvent {
 /// A similar fact result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SimilarFact {
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde/external-id field from API response; newtype out of scope
     pub(crate) id: String,
     pub(crate) content: String,
     pub(crate) similarity: f64,
@@ -172,6 +177,7 @@ pub(crate) struct GraphNodeCard {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MemorySearchResult {
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde/external-id field from API response; newtype out of scope
     pub(crate) id: String,
     pub(crate) content: String,
     pub(crate) confidence: f64,
