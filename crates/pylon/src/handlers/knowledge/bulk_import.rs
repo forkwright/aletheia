@@ -18,6 +18,7 @@ mod bulk_import_dto;
 // because bulk_import.rs uses it internally via bulk_import_dto:: path, not via
 // the re-export itself. The pub use is intentional for the public pylon surface.
 // kanon:ignore RUST/allow-not-expect WHY: unused_imports fires only under some target/cfg combinations (rustc sees ImportFactError as unused via the re-export, but --all-targets clippy sees it used through the bulk_import_dto:: path), so #[expect] would be unfulfilled and itself warn; #[allow] is the correct tool for a conditionally-unused re-export.
+// kanon:ignore RUST/prefer-expect-over-allow WHY: same as RUST/allow-not-expect above — kanon emits the rule under both legacy and current names depending on basanos build; suppressing both keeps gate green across versions.
 #[allow(unused_imports)]
 pub use bulk_import_dto::{BulkImportRequest, BulkImportResponse, ImportFactError};
 

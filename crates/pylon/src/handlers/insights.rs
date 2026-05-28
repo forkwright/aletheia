@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — cohesive insights surface: agent-perf, quality, token, cost, and journal handlers share helper bucketing/date-range/series functions and DTOs; splitting now would duplicate those helpers across sibling modules.
 //! Meta-insights handlers: agent performance, quality metrics, system journal.
 
 use std::collections::HashMap;
