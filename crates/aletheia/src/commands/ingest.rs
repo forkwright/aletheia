@@ -200,52 +200,85 @@ fn run_direct(
 
     let mut total_inserted = 0usize;
     let mut total_skipped = 0usize;
+    let mut errored: Vec<(PathBuf, String)> = Vec::new();
 
     for file in &files {
-        let content = std::fs::read_to_string(file)
-            .with_whatever_context(|_| format!("failed to read {}", file.display()))?;
-
-        let format_str = if args.format == "auto" {
-            detect_format(file).unwrap_or("text")
-        } else {
-            &args.format
-        };
-
-        let format = mneme::ingest::parse_format(format_str)
-            .ok_or_else(|| crate::error::Error::msg(format!("unsupported format: {format_str}")))?;
-
-        let config = mneme::ingest::IngestConfig::default();
-        let facts = mneme::ingest::ingest_content(&content, format, &config, &args.nous_id)
-            .with_whatever_context(|_| format!("failed to parse {}", file.display()))?;
-
-        if args.dry_run {
-            println!(
-                "[dry-run] {}: would insert {} facts",
-                file.display(),
-                facts.len()
-            );
-            continue;
-        }
-
-        let mut inserted = 0usize;
-        let mut skipped = 0usize;
-        for fact in &facts {
-            match store.insert_fact(fact) {
-                Ok(()) => inserted += 1,
-                Err(e) => {
-                    tracing::warn!(error = %e, fact_id = %fact.id, "fact insert failed");
-                    skipped += 1;
-                }
+        match process_file(file, args, store) {
+            Ok((inserted, skipped)) => {
+                total_inserted += inserted;
+                total_skipped += skipped;
+            }
+            Err(e) => {
+                // INVARIANT: per-file error is non-fatal — log + count + continue, so the rest of
+                // the directory still lands. Previously a single bad file aborted the whole ingest
+                // after partially mutating the store (#4164/B).
+                let msg = e.to_string();
+                tracing::warn!(file = %file.display(), error = %msg, "ingest skipping file");
+                eprintln!("[warn] {}: {msg}", file.display());
+                errored.push((file.clone(), msg));
             }
         }
-
-        println!("{}: inserted {inserted}, skipped {skipped}", file.display());
-        total_inserted += inserted;
-        total_skipped += skipped;
     }
 
-    println!("\nTotal: inserted {total_inserted}, skipped {total_skipped}");
+    println!(
+        "\nTotal: inserted {total_inserted}, skipped {total_skipped}, errored {} (of {} files)",
+        errored.len(),
+        files.len()
+    );
+    if !errored.is_empty() {
+        println!("\nFiles with errors:");
+        for (path, err) in &errored {
+            println!("  - {}: {err}", path.display());
+        }
+    }
     Ok(())
+}
+
+#[cfg(feature = "recall")]
+fn process_file(
+    file: &Path,
+    args: &IngestArgs,
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+) -> Result<(usize, usize)> {
+    let content = std::fs::read_to_string(file)
+        .with_whatever_context(|_| format!("failed to read {}", file.display()))?;
+
+    let format_str = if args.format == "auto" {
+        detect_format(file).unwrap_or("text")
+    } else {
+        &args.format
+    };
+
+    let format = mneme::ingest::parse_format(format_str)
+        .ok_or_else(|| crate::error::Error::msg(format!("unsupported format: {format_str}")))?;
+
+    let config = mneme::ingest::IngestConfig::default();
+    let facts = mneme::ingest::ingest_content(&content, format, &config, &args.nous_id)
+        .with_whatever_context(|_| format!("failed to parse {}", file.display()))?;
+
+    if args.dry_run {
+        println!(
+            "[dry-run] {}: would insert {} facts",
+            file.display(),
+            facts.len()
+        );
+        return Ok((0, 0));
+    }
+
+    let mut inserted = 0usize;
+    let mut skipped = 0usize;
+    for fact in &facts {
+        match store.insert_fact(fact) {
+            Ok(()) => inserted += 1,
+            Err(e) => {
+                tracing::warn!(error = %e, fact_id = %fact.id, "fact insert failed");
+                skipped += 1;
+            }
+        }
+    }
+
+    println!("{}: inserted {inserted}, skipped {skipped}", file.display());
+    Ok((inserted, skipped))
 }
 
 async fn read_path(path: &Path) -> Result<String> {
@@ -473,5 +506,81 @@ mod tests {
     async fn is_server_running_returns_false_for_unreachable_well_formed_url() {
         let res = is_server_running("http://127.0.0.1:1").await.unwrap();
         assert!(!res, "expected false when no listener; got {res}");
+    }
+
+    /// Regression for #4164/B: a directory containing one unparseable file
+    /// used to abort the whole ingest after partially mutating the store.
+    /// Now the bad file is logged + counted as errored and the remaining
+    /// files still go through. Uses dry-run so no store insert happens —
+    /// the failure surface being tested is the parse step (`ingest_content`),
+    /// which fires before the store call in `process_file`.
+    #[test]
+    fn run_direct_dry_run_continues_after_bad_file() {
+        #[cfg(feature = "recall")]
+        {
+            let dir = tempfile::tempdir().unwrap();
+            let docs = dir.path().join("docs");
+            std::fs::create_dir(&docs).unwrap();
+            std::fs::write(docs.join("good.md"), "# Section\nThe sky is blue.\n").unwrap();
+            // Malformed JSON — used to abort the entire dir ingest.
+            std::fs::write(docs.join("bad.json"), "{ not valid json").unwrap();
+            std::fs::write(docs.join("more.md"), "## Heading\nMore content.\n").unwrap();
+
+            let store_dir = dir.path().join("knowledge");
+            let config = mneme::knowledge_store::KnowledgeConfig::default();
+            let store =
+                mneme::knowledge_store::KnowledgeStore::open_fjall(&store_dir, config).unwrap();
+
+            let args = IngestArgs {
+                path: docs,
+                format: "auto".to_owned(),
+                nous_id: "alice".to_owned(),
+                dry_run: true,
+                url: "http://127.0.0.1:1".to_owned(),
+            };
+
+            let result = run_direct(&args, &store);
+            assert!(
+                result.is_ok(),
+                "run_direct should not propagate a per-file parse error; got {result:?}"
+            );
+        }
+    }
+
+    /// Same shape as the dry-run check, but exercise the live insert path:
+    /// the bad file must not abort the loop. We assert only `Ok(())` —
+    /// counting facts via the store would require a `CozoScript` query the
+    /// public surface doesn't expose, which is out-of-scope for this fix.
+    /// The dry-run case above covers the parse-error continuance contract.
+    #[test]
+    fn run_direct_live_continues_after_bad_file() {
+        #[cfg(feature = "recall")]
+        {
+            let dir = tempfile::tempdir().unwrap();
+            let docs = dir.path().join("docs");
+            std::fs::create_dir(&docs).unwrap();
+            std::fs::write(docs.join("a.md"), "# A\nfirst fact body.\n").unwrap();
+            std::fs::write(docs.join("b.json"), "{ malformed").unwrap();
+            std::fs::write(docs.join("c.md"), "# C\nthird fact body.\n").unwrap();
+
+            let store_dir = dir.path().join("knowledge");
+            let config = mneme::knowledge_store::KnowledgeConfig::default();
+            let store =
+                mneme::knowledge_store::KnowledgeStore::open_fjall(&store_dir, config).unwrap();
+
+            let args = IngestArgs {
+                path: docs,
+                format: "auto".to_owned(),
+                nous_id: "alice".to_owned(),
+                dry_run: false,
+                url: "http://127.0.0.1:1".to_owned(),
+            };
+
+            let result = run_direct(&args, &store);
+            assert!(
+                result.is_ok(),
+                "run_direct should return Ok despite the bad file: {result:?}"
+            );
+        }
     }
 }

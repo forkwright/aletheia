@@ -208,12 +208,30 @@ fn strip_frontmatter(content: &str) -> &str {
     content
 }
 
+/// Match an ATX-style Markdown heading line (`#`, `##`, …, `######` followed by
+/// whitespace or end-of-line).
+///
+/// Previously `split_by_headers` matched only `##`+ headings, which silently
+/// merged documents that used `#` as their section delimiter (#4164/D). The
+/// fix is to recognize any heading level; the first `#` line of a document
+/// effectively becomes the title of the leading section, matching the
+/// behavior every other Markdown tool exhibits.
+fn is_md_heading(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let hashes = trimmed.bytes().take_while(|b| *b == b'#').count();
+    if hashes == 0 || hashes > 6 {
+        return false;
+    }
+    let after = trimmed.get(hashes..).unwrap_or("");
+    after.is_empty() || after.starts_with(char::is_whitespace)
+}
+
 fn split_by_headers(content: &str) -> Vec<String> {
     let mut sections = Vec::new();
     let mut current = String::new();
 
     for line in content.lines() {
-        if line.trim_start().starts_with("##") {
+        if is_md_heading(line) {
             if !current.trim().is_empty() {
                 sections.push(current.trim().to_owned());
             }
@@ -355,6 +373,55 @@ mod tests {
         assert_eq!(sections[0], "intro");
         assert!(sections[1].starts_with("## Section A"));
         assert!(sections[2].starts_with("## Section B"));
+    }
+
+    /// Regression for #4164/D: H1 (`#`) headings used to be ignored,
+    /// silently merging a document like the one below into a single chunk.
+    #[test]
+    fn split_by_headers_recognizes_h1() {
+        let text = "# Section One\nThe sky is blue.\n\n# Section Two\nWater is wet.";
+        let sections = split_by_headers(text);
+        assert_eq!(sections.len(), 2, "expected H1 to split, got: {sections:?}");
+        assert!(sections[0].starts_with("# Section One"));
+        assert!(sections[1].starts_with("# Section Two"));
+    }
+
+    #[test]
+    fn split_by_headers_handles_mixed_levels() {
+        let text = "# Title\nlead\n## Sub A\na body\n### Detail\nd body\n## Sub B\nb body";
+        let sections = split_by_headers(text);
+        assert_eq!(sections.len(), 4);
+        assert!(sections[0].starts_with("# Title"));
+        assert!(sections[1].starts_with("## Sub A"));
+        assert!(sections[2].starts_with("### Detail"));
+        assert!(sections[3].starts_with("## Sub B"));
+    }
+
+    #[test]
+    fn is_md_heading_recognizes_levels_1_through_6() {
+        for level in 1..=6 {
+            let line = format!("{} title", "#".repeat(level));
+            assert!(is_md_heading(&line), "level {level} should be a heading");
+        }
+    }
+
+    #[test]
+    fn is_md_heading_rejects_non_headings() {
+        assert!(!is_md_heading("plain line"));
+        assert!(
+            !is_md_heading("#hashtag"),
+            "no space after # is not a heading"
+        );
+        assert!(!is_md_heading("####### too many"), "7+ # is not ATX");
+        assert!(!is_md_heading(""));
+    }
+
+    #[test]
+    fn ingest_markdown_chunks_by_h1() {
+        let md = "# A\ncontent a\n# B\ncontent b";
+        let config = IngestConfig::default();
+        let facts = ingest_content(md, IngestFormat::Markdown, &config, "syn").unwrap();
+        assert_eq!(facts.len(), 2);
     }
 
     #[test]
