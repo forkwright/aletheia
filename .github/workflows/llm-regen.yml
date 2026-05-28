@@ -176,11 +176,49 @@ jobs:
           # WHY: --auto-merge queues the PR for squash-merge once required
           # status checks pass. The branch is deleted automatically on merge.
           PR_BODY="Automated regeneration of _llm/ L3 API index.\n\nGate-Passed: kanon 0.1.0"
-          gh pr create \
+          NEW_PR_URL=$(gh pr create \
             --title "chore(_llm): regenerate L3 API index" \
             --body "$PR_BODY" \
             --base main \
-            --head "$BRANCH" || true
+            --head "$BRANCH") || NEW_PR_URL=""
+
+          # WHY: supersede prior open llm-regen PRs whose file scope is a
+          # subset of (or equal to) this PR's. Avoids stacked regen PRs that
+          # describe the same underlying state with stale content (per
+          # forkwright/aletheia#4287). Disjoint file scopes are left alone —
+          # they're independent updates from a different per-crate run.
+          if [ -n "$NEW_PR_URL" ]; then
+            NEW_PR=$(echo "$NEW_PR_URL" | grep -oE '[0-9]+$' | tail -1)
+            echo "Opened PR #$NEW_PR ($NEW_PR_URL)"
+
+            NEW_FILES=$(gh pr view "$NEW_PR" --json files \
+              --jq '.files[].path' | sort -u)
+
+            PRIORS=$(gh pr list --state open --json number,title \
+              --jq '.[] | select(.title == "chore(_llm): regenerate L3 API index") | .number')
+
+            for prior in $PRIORS; do
+              [ "$prior" = "$NEW_PR" ] && continue
+              PRIOR_FILES=$(gh pr view "$prior" --json files \
+                --jq '.files[].path' | sort -u)
+              if [ -z "$PRIOR_FILES" ]; then
+                echo "PR #$prior: file list not available; skipping supersession."
+                continue
+              fi
+              # Subset test: lines unique to PRIOR_FILES.
+              # Empty result ⇒ PRIOR_FILES ⊆ NEW_FILES ⇒ supersede.
+              EXTRA=$(comm -23 <(echo "$PRIOR_FILES") <(echo "$NEW_FILES"))
+              if [ -z "$EXTRA" ]; then
+                echo "PR #$prior file scope is subset of PR #$NEW_PR; closing as superseded."
+                gh pr close "$prior" --comment \
+                  "Superseded by #$NEW_PR (overlapping file scope; this PR's regen is a superset)."
+              else
+                echo "PR #$prior has files not in PR #$NEW_PR; leaving open as independent scope."
+              fi
+            done
+          else
+            echo "gh pr create returned empty; skipping supersession sweep."
+          fi
 
           # Enable auto-merge (idempotent — no-op if PR already set)
           gh pr merge "$BRANCH" --auto --squash --delete-branch 2>/dev/null || true
