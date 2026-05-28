@@ -425,9 +425,7 @@ async fn nous_list_hides_other_agents_from_scoped_token() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = read_body_json(response).await;
-    let entries = body["nous"]
-        .as_array()
-        .expect("nous list must be an array");
+    let entries = body["nous"].as_array().expect("nous list must be an array");
     for entry in entries {
         let id = entry["id"].as_str().expect("entry must have id");
         assert_eq!(

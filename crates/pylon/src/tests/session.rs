@@ -749,10 +749,7 @@ async fn get_session_rejects_token_scoped_to_a_different_agent() {
 
     let resp = router
         .clone()
-        .oneshot(scoped_get(
-            &format!("/api/v1/sessions/{id}"),
-            "audit-bot",
-        ))
+        .oneshot(scoped_get(&format!("/api/v1/sessions/{id}"), "audit-bot"))
         .await
         .unwrap();
 
@@ -807,10 +804,7 @@ async fn history_accepts_token_scoped_to_matching_agent() {
 
     let resp = router
         .clone()
-        .oneshot(scoped_get(
-            &format!("/api/v1/sessions/{id}/history"),
-            "syn",
-        ))
+        .oneshot(scoped_get(&format!("/api/v1/sessions/{id}/history"), "syn"))
         .await
         .unwrap();
 
@@ -827,10 +821,7 @@ async fn list_sessions_rejects_query_filter_outside_scope() {
 
     let resp = router
         .clone()
-        .oneshot(scoped_get(
-            "/api/v1/sessions?nous_id=audit-bot",
-            "syn",
-        ))
+        .oneshot(scoped_get("/api/v1/sessions?nous_id=audit-bot", "syn"))
         .await
         .unwrap();
 
@@ -858,7 +849,11 @@ async fn list_sessions_implicitly_filters_to_scope_when_no_query() {
     let items = body["items"]
         .as_array()
         .expect("paginated response has items array");
-    assert_eq!(items.len(), 1, "scoped list returns only the in-scope session");
+    assert_eq!(
+        items.len(),
+        1,
+        "scoped list returns only the in-scope session"
+    );
     assert_eq!(items[0]["id"], id);
     assert_eq!(items[0]["nous_id"], "syn");
 }
