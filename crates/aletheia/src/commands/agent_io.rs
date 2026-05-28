@@ -1136,8 +1136,13 @@ fn generate_simple_embedding(text: &str) -> Vec<f32> {
 /// Check if the server is running and holding the knowledge store lock.
 ///
 /// Returns an error with a helpful message if the server is reachable,
-/// preventing a confusing `FjallError::Locked` crash.
+/// preventing a confusing `FjallError::Locked` crash. A malformed `url`
+/// is rejected up-front so a parse failure does not silently coerce to
+/// "server not running" and let the caller proceed past the guard.
 pub(crate) async fn guard_knowledge_lock(url: &str) -> Result<()> {
+    if let Err(e) = reqwest::Url::parse(url) {
+        whatever!("--url is not a valid URL: {e} (got {:?})", url);
+    }
     let endpoint = format!("{url}/api/health");
     if let Ok(resp) = reqwest::get(&endpoint).await
         && (resp.status().is_success() || resp.status().as_u16() == 503)
@@ -1227,6 +1232,38 @@ mod tests {
         assert!(
             err.to_string().contains("--target-id must not be empty"),
             "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn guard_knowledge_lock_rejects_empty_url() {
+        let err = guard_knowledge_lock("").await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("--url is not a valid URL"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn guard_knowledge_lock_rejects_malformed_url() {
+        let err = guard_knowledge_lock("not-a-url").await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("--url is not a valid URL"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn guard_knowledge_lock_rejects_whitespace_url() {
+        let err = guard_knowledge_lock("   ").await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("--url is not a valid URL"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn guard_knowledge_lock_accepts_well_formed_url_when_no_server() {
+        // 127.0.0.1:1 is not bound — the reqwest call fails, but a well-formed
+        // URL should pass the parse check and return Ok(()) (no server detected).
+        let res = guard_knowledge_lock("http://127.0.0.1:1").await;
+        assert!(
+            res.is_ok(),
+            "expected Ok for well-formed URL with no listener; got: {res:?}"
         );
     }
 

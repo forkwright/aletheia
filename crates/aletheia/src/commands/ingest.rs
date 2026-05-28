@@ -32,7 +32,7 @@ pub(crate) struct IngestArgs {
 pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> Result<()> {
     validate_inputs(args)?;
 
-    if let Ok(true) = is_server_running(&args.url).await {
+    if is_server_running(&args.url).await? {
         return run_via_api(args).await;
     }
 
@@ -100,6 +100,9 @@ fn is_valid_format(s: &str) -> bool {
 }
 
 async fn is_server_running(url: &str) -> Result<bool> {
+    if let Err(e) = reqwest::Url::parse(url) {
+        whatever!("--url is not a valid URL: {e} (got {:?})", url);
+    }
     let endpoint = format!("{url}/api/health");
     match reqwest::get(&endpoint).await {
         Ok(resp) => Ok(resp.status().is_success() || resp.status().as_u16() == 503),
@@ -446,5 +449,29 @@ mod tests {
             validate_inputs(&args_with(input.clone(), fmt, "alice"))
                 .unwrap_or_else(|e| panic!("format {fmt} should be valid: {e}"));
         }
+    }
+
+    #[tokio::test]
+    async fn is_server_running_rejects_empty_url() {
+        let err = is_server_running("").await.unwrap_err();
+        assert!(
+            err.to_string().contains("--url is not a valid URL"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn is_server_running_rejects_malformed_url() {
+        let err = is_server_running("not-a-url").await.unwrap_err();
+        assert!(
+            err.to_string().contains("--url is not a valid URL"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn is_server_running_returns_false_for_unreachable_well_formed_url() {
+        let res = is_server_running("http://127.0.0.1:1").await.unwrap();
+        assert!(!res, "expected false when no listener; got {res}");
     }
 }
