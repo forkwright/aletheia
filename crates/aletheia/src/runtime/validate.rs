@@ -18,6 +18,7 @@ pub(super) fn validate_jwt(config: &AletheiaConfig) -> bool {
     if matches!(auth_mode, "token" | "jwt") {
         match jwt_key.as_deref() {
             Some("CHANGE-ME-IN-PRODUCTION") | None => {
+                // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
                 println!(
                     "  [FAIL] {jwt_check_label}: key is still the default placeholder\n         \
                      Set gateway.auth.signingKey in aletheia.toml or ALETHEIA_JWT_SECRET env var.\n         \
@@ -25,9 +26,13 @@ pub(super) fn validate_jwt(config: &AletheiaConfig) -> bool {
                 );
                 return false;
             }
-            Some(_) => println!("  [pass] {jwt_check_label}"),
+            Some(_) => {
+                // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
+                println!("  [pass] {jwt_check_label}");
+            }
         }
     } else {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("  [pass] {jwt_check_label} (auth mode '{auth_mode}' -- JWT not required)");
     }
     true
@@ -44,16 +49,19 @@ pub(super) fn validate_external_tools(oikos: &Oikos) -> bool {
     let mut tools_ok = true;
     for (name, entry) in &tools_config.required {
         if entry.kind == crate::external_tools::ExternalToolKind::Http && entry.endpoint.is_none() {
+            // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
             println!("  [FAIL] tools.required.{name}: missing endpoint");
             tools_ok = false;
         }
     }
     for (name, entry) in &tools_config.optional {
         if entry.kind == crate::external_tools::ExternalToolKind::Http && entry.endpoint.is_none() {
+            // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
             println!("  [warn] tools.optional.{name}: missing endpoint");
         }
     }
     if tools_ok {
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!(
             "  [pass] tools ({} required, {} optional)",
             tools_config.required.len(),

@@ -14,6 +14,7 @@ use super::{RecallSource, SourceResult};
 /// A single model card describing an LLM's capabilities.
 #[derive(Debug, Clone)]
 pub(crate) struct ModelCard {
+    // kanon:ignore RUST/primitive-for-domain-id — model ID is external provider catalog string, not an internal domain entity
     pub id: String,
     pub name: String,
     pub provider: String,

@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — setup factories are cohesive initialization helpers; no natural split point
 //! Setup helpers: factory functions for providers, registries, and channels.
 
 use std::sync::Arc;

@@ -84,6 +84,7 @@ pub(super) struct Answers {
     pub(super) api_key: Option<SecretString>,
     pub(super) api_provider: String,
     pub(super) model: String,
+    // kanon:ignore RUST/primitive-for-domain-id — init wizard collects raw user input before validation and scaffold
     pub(super) agent_id: String,
     pub(super) agent_name: String,
     pub(super) bind: String,
@@ -251,6 +252,7 @@ fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> 
 
     if is_non_interactive {
         tracing::info!(path = %answers.root.display(), "instance created");
+        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!(
             "Instance created at {}\nRun 'aletheia -r {}' to start the server.",
             answers.root.display(),
