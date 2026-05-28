@@ -1613,6 +1613,182 @@ workspace = "nous/{agent_id}"
         assert_eq!(history[0].content, "round trip");
     }
 
+    /// Phase-0 pinning tests for #4163. The export → import round-trip is
+    /// silently lossy in four ways (A: distilled messages dropped from export;
+    /// B: `working_state`/`memory`/`knowledge` never serialized; C: import resets
+    /// session timestamps/status/metrics; D: import resets per-message
+    /// timestamp and `is_distilled`). The two tests below pin C and A — the
+    /// dimensions that have observable round-trip surfaces today — so a
+    /// silent regression of the existing behavior fails CI.
+    ///
+    /// These tests deliberately assert the *bug* as the current spec. When
+    /// #4163 picks a contract (faithful backup vs intentional fresh-start
+    /// clone vs hybrid `--full`), the assertions flip from "documents the
+    /// bug" to either "proof of fix" (option 1/3) or "documents intent"
+    /// (option 2). Either way the tests catch silent regressions today.
+    #[test]
+    fn export_import_round_trip_pins_session_resurrection_4163_c() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
+        let session = source_store
+            .create_session("ses-resurrect", "alice", "main", None, Some("mock-model"))
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::User, "before archive", None, None, 7)
+            .unwrap();
+        // Archive the session at the source so we can verify that the
+        // destination resurrects it as Active (the core #4163/C symptom).
+        source_store
+            .update_session_status(&session.id, SessionStatus::Archived)
+            .unwrap();
+
+        let source_session_before_export = source_store
+            .find_session_by_id(&session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            source_session_before_export.status,
+            SessionStatus::Archived,
+            "source session should be archived before export"
+        );
+        let source_created_at = source_session_before_export.created_at.clone();
+        drop(source_store);
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                // The session is archived, so we must pass --archived for export
+                // to include it; otherwise the active-only filter at agent_io.rs:312
+                // drops it.
+                archived: true,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        let dest_store = mneme::store::SessionStore::open(&dest_oikos.sessions_db()).unwrap();
+        let dest_sessions = dest_store.list_sessions(Some("alice")).unwrap();
+        assert_eq!(dest_sessions.len(), 1);
+        let dest_session = &dest_sessions[0];
+
+        // #4163/C — status: archived sessions come back as Active. If this
+        // ever flips to Archived, the import path is honoring exported state
+        // and the docs/--help wording can be updated to match.
+        assert_eq!(
+            dest_session.status,
+            SessionStatus::Active,
+            "PINNING #4163/C: archived → Active. Flip this assertion if the import \
+             path is changed to honor the exported session status."
+        );
+
+        // #4163/C — timestamps: import stamps `now`, so the destination
+        // created_at is later than (and not equal to) the source's.
+        assert_ne!(
+            dest_session.created_at, source_created_at,
+            "PINNING #4163/C: import overwrites created_at with `now`. Flip this \
+             assertion if the import path is changed to preserve exported timestamps."
+        );
+
+        // #4163/C — metrics: distillation_count zeroed. (message_count *is*
+        // recalculated from the inserted messages, so it tracks the imported
+        // history length and is not part of the bug.)
+        assert_eq!(
+            dest_session.metrics.distillation_count, 0,
+            "PINNING #4163/C: distillation_count reset to 0 on import."
+        );
+    }
+
+    /// Phase-0 pinning test for #4163/A — `export_agent` reads session
+    /// history via `get_history`, which silently filters out
+    /// `is_distilled == true` messages. So if a session has had distilled
+    /// turns folded into a summary, those turns never make it into the
+    /// `.agent.json`. This test marks two of three messages as distilled
+    /// before exporting and asserts the export only carries the surviving
+    /// non-distilled tail (1 message). Flip the expected count to 3 if the
+    /// export path is changed to include distilled rows.
+    #[test]
+    fn export_drops_distilled_messages_4163_a() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
+        let session = source_store
+            .create_session("ses-distill", "alice", "main", None, Some("mock-model"))
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::User, "old 1", None, None, 100)
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::User, "old 2", None, None, 150)
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::User, "keep this", None, None, 50)
+            .unwrap();
+        // Distill seqs 1 and 2 — only "keep this" should remain visible to
+        // `get_history`, and only "keep this" should land in the export.
+        source_store
+            .mark_messages_distilled(&session.id, &[1, 2])
+            .unwrap();
+        drop(source_store);
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&export_path).unwrap()).unwrap();
+        assert_eq!(exported.sessions.len(), 1);
+        assert_eq!(
+            exported.sessions[0].messages.len(),
+            1,
+            "PINNING #4163/A: export drops distilled messages and only the \
+             non-distilled tail survives. Flip this expected count to 3 if the \
+             export path is changed to include distilled rows."
+        );
+        assert_eq!(
+            exported.sessions[0].messages[0].content, "keep this",
+            "only the non-distilled message should remain in the export"
+        );
+    }
+
     #[test]
     fn seed_skills_persists_to_fjall_store() {
         let dir = tempfile::tempdir().unwrap();
