@@ -20,6 +20,7 @@ pub struct ChildSessionProgress {
     /// Current child-session lifecycle state.
     pub status: ChildSessionProgressStatus,
     /// Agent SDK session identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — public progress-reporting type; changing to newtype would be a breaking API change across crates
     pub child_session_id: String,
     /// Bounded text excerpt observed from the child session, when available.
     pub output_excerpt: Option<String>,

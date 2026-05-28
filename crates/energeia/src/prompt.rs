@@ -150,12 +150,14 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
         clippy::string_slice,
         reason = "close_pos is a byte offset from str::find on ASCII delimiters, always a valid UTF-8 boundary"
     )]
+    // kanon:ignore RUST/indexing-slicing — close_pos is a byte offset from str::find on ASCII delimiter bytes, always a valid UTF-8 boundary
     let yaml_str = &after_open[..close_pos];
     let body_start = close_pos + "\n---\n".len();
     #[expect(
         clippy::string_slice,
         reason = "body_start is computed from ASCII delimiter length added to a valid boundary, always aligned"
     )]
+    // kanon:ignore RUST/indexing-slicing — body_start is computed from ASCII delimiter length added to a valid boundary, always aligned
     let body = after_open[body_start..].trim_start_matches('\n').to_owned();
 
     let fm: Frontmatter = serde_yaml::from_str(yaml_str).map_err(|e| {
@@ -285,6 +287,7 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
             PromptStatus::Blocked
         };
         // NOTE: All nodes were just added above; set_status cannot fail here.
+        // kanon:ignore RUST/no-silent-result-swallow — all nodes were just added above; set_status on a known-existing node is infallible
         let _ = dag.set_status(spec.number, initial);
     }
 

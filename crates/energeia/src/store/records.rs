@@ -170,6 +170,7 @@ pub struct NewLesson {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservationRecord {
     /// Unique identifier for this observation.
+    // kanon:ignore RUST/primitive-for-domain-id — public record type persisted to store; changing to newtype would require migration and breaking API change
     pub id: String,
     /// Project this observation relates to.
     pub project: String,

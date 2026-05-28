@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — session manager orchestrates spawn, monitor, budget enforcement, and resume escalation as a cohesive lifecycle; splitting would fragment the state machine
 // WHY: Per-prompt executor that spawns a session, monitors events, enforces
 // budget limits, and handles multi-stage resume escalation. Produces a
 // SessionOutcome that records cost, turns, duration, and terminal status.

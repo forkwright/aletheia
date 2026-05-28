@@ -108,6 +108,7 @@ pub(crate) struct ResultMessage {
         dead_code,
         reason = "deserialized from wire but read via EventStream.session_id"
     )]
+    // kanon:ignore RUST/primitive-for-domain-id — wire-protocol deserialization field; serde requires primitive String for this schema
     pub(crate) session_id: String,
     #[serde(default)]
     pub(crate) result: Option<String>,

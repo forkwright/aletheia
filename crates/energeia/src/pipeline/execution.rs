@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — execution stage is inherently sequential: group iteration, DAG updates, QA, and corrective generation cannot be decomposed without breaking the single-pass invariant
 // WHY: Execution stage drives the frontier group loop: checks budget/cancel
 // before each group, builds the group prompt list (skipping blocked prompts),
 // drains correctives into the current group, then delegates to
@@ -71,6 +72,7 @@ impl PipelineStage for ExecutionStage {
                     continue;
                 };
                 if has_failed_dependency(n, ctx.dag_mut()) {
+                    // kanon:ignore RUST/no-silent-result-swallow — node was verified present via prompt_map lookup; set_status on existing node is infallible
                     let _ = ctx.dag_mut().set_status(n, PromptStatus::Blocked);
                     ctx.outcomes.push(SessionOutcome {
                         prompt_number: n,
@@ -111,6 +113,7 @@ impl PipelineStage for ExecutionStage {
 
             // Mark prompts as InProgress before execution.
             for p in &group_prompts {
+                // kanon:ignore RUST/no-silent-result-swallow — prompt was just added to the group from prompt_map; set_status is infallible here
                 let _ = ctx.dag_mut().set_status(p.number, PromptStatus::InProgress);
             }
 
@@ -323,6 +326,7 @@ fn mark_dependents_blocked(failed_number: u32, dag: &mut PromptDag) {
         .collect();
 
     for n in dependents {
+        // kanon:ignore RUST/no-silent-result-swallow — dependents are filtered from nodes already in the DAG; set_status is infallible
         let _ = dag.set_status(n, PromptStatus::Blocked);
     }
 }
@@ -335,6 +339,7 @@ fn collect_skipped(numbers: &[u32], dag: &mut PromptDag, reason: &str) -> Vec<Se
     numbers
         .iter()
         .map(|&n| {
+            // kanon:ignore RUST/no-silent-result-swallow — n comes from the numbers slice which originates from the DAG; set_status is infallible
             let _ = dag.set_status(n, PromptStatus::Failed);
             SessionOutcome {
                 prompt_number: n,

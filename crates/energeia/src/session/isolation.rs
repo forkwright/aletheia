@@ -3,6 +3,7 @@
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+// kanon:ignore RUST/no-direct-process-command — run_git helper wraps git invocation; no project-wide Command wrapper exists for this use case
 use std::process::Command;
 
 use compact_str::CompactString;
@@ -290,7 +291,8 @@ where
         .into_iter()
         .map(|arg| arg.as_ref().to_os_string())
         .collect();
-    let output = Command::new("git") // kanon:ignore RUST/no-direct-process-command
+    // kanon:ignore RUST/no-direct-process-command — run_git helper wraps git invocation; no project-wide Command wrapper exists for this use case
+    let output = Command::new("git")
         .arg("-C")
         .arg(repo)
         .args(&args)

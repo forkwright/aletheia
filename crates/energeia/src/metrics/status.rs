@@ -41,6 +41,7 @@ pub struct StatusDashboard {
 #[non_exhaustive]
 pub struct RecentOutcome {
     /// Dispatch identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — public metrics summary type; changing to newtype would be a breaking API change
     pub dispatch_id: String,
     /// Project this dispatch belongs to.
     pub project: String,

@@ -69,6 +69,7 @@ impl SessionHandle for ProcessSessionHandle {
 
             // Wait for the child process to avoid zombies.
             if let Some(ref mut child) = self.child {
+                // kanon:ignore RUST/no-silent-result-swallow — zombie prevention: we only need to reap the child, any error is irrelevant to session result
                 let _ = child.wait().await;
             }
             // Take child so Drop doesn't kill it again.
@@ -132,6 +133,7 @@ impl Drop for ProcessSessionHandle {
         // SAFETY: start_kill() is non-async and sends SIGKILL to the child.
         // This is the kill-on-drop safety net for sessions not explicitly waited.
         if let Some(ref mut child) = self.child {
+            // kanon:ignore RUST/no-silent-result-swallow — kill-on-drop safety net: best-effort SIGKILL in Drop, error is unactionable
             let _ = child.start_kill();
         }
     }

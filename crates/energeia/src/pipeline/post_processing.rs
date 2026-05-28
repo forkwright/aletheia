@@ -303,6 +303,7 @@ fn compute_prompt_hash(prompts: &[crate::prompt::PromptSpec]) -> crate::error::R
         .fold(String::with_capacity(hash.len() * 2), |mut acc, b| {
             use std::fmt::Write;
             // intentional: write to String cannot fail
+            // kanon:ignore RUST/no-silent-result-swallow — write! to an in-memory String is infallible by std::fmt::Write invariant
             let _ = write!(acc, "{b:02x}");
             acc
         });

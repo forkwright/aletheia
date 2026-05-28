@@ -99,6 +99,7 @@ impl DispatchSpec {
 #[non_exhaustive]
 pub struct DispatchResult {
     /// Unique identifier for this dispatch run.
+    // kanon:ignore RUST/primitive-for-domain-id — public result type; changing to newtype would be a breaking API change across crates
     pub dispatch_id: String,
     /// Per-prompt outcomes in execution order.
     pub outcomes: Vec<SessionOutcome>,

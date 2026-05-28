@@ -77,6 +77,7 @@ pub fn compute_merge_order(prs: &[ClassifiedPr]) -> Vec<Vec<u64>> {
                     .filter_map(|n| colors.get(n).copied())
                     .collect()
             })
+            // kanon:ignore RUST/no-result-unwrap-or-default — Option<HashSet> from map->collect; default is the correct empty-set sentinel for graph coloring
             .unwrap_or_default();
 
         let mut color = 0;
