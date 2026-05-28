@@ -30,6 +30,8 @@ pub(crate) struct IngestArgs {
 }
 
 pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> Result<()> {
+    validate_inputs(args)?;
+
     if let Ok(true) = is_server_running(&args.url).await {
         return run_via_api(args).await;
     }
@@ -55,12 +57,44 @@ pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> R
 
     #[cfg(not(feature = "recall"))]
     {
-        let _ = (args, instance_root);
+        let _ = instance_root;
         whatever!(
             "ingest requires the 'recall' feature.\n  \
              Build with: cargo build --features recall"
         );
     }
+}
+
+fn validate_inputs(args: &IngestArgs) -> Result<()> {
+    if args.nous_id.trim().is_empty() {
+        whatever!("--nous-id must not be empty");
+    }
+    if !is_valid_format(&args.format) {
+        whatever!(
+            "unsupported --format: {}\n  \
+             expected one of: auto, markdown, md, text, plain_text, json, jsonl",
+            args.format
+        );
+    }
+    if !args.path.exists() {
+        whatever!("path does not exist: {}", args.path.display());
+    }
+    Ok(())
+}
+
+fn is_valid_format(s: &str) -> bool {
+    matches!(
+        s.to_ascii_lowercase().as_str(),
+        "auto"
+            | "markdown"
+            | "md"
+            | "text"
+            | "plain_text"
+            | "plaintext"
+            | "plain text"
+            | "json"
+            | "jsonl"
+    )
 }
 
 async fn is_server_running(url: &str) -> Result<bool> {
@@ -343,5 +377,72 @@ mod tests {
             0,
             "dry-run must not contact the API"
         );
+    }
+
+    fn args_with(path: PathBuf, format: &str, nous_id: &str) -> IngestArgs {
+        IngestArgs {
+            path,
+            format: format.to_owned(),
+            nous_id: nous_id.to_owned(),
+            dry_run: true,
+            url: "http://127.0.0.1:1".to_owned(),
+        }
+    }
+
+    #[test]
+    fn validate_inputs_rejects_empty_nous_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("x.txt");
+        std::fs::write(&input, "hi").unwrap();
+        let err = validate_inputs(&args_with(input, "auto", "  ")).unwrap_err();
+        assert!(
+            err.to_string().contains("--nous-id must not be empty"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_inputs_rejects_unknown_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("x.txt");
+        std::fs::write(&input, "hi").unwrap();
+        let err = validate_inputs(&args_with(input, "wat", "alice")).unwrap_err();
+        assert!(
+            err.to_string().contains("unsupported --format"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_inputs_rejects_missing_path() {
+        let err = validate_inputs(&args_with(
+            PathBuf::from("/no/such/path/aletheia-test"),
+            "auto",
+            "alice",
+        ))
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("path does not exist"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_inputs_accepts_known_formats() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("x.txt");
+        std::fs::write(&input, "hi").unwrap();
+        for fmt in [
+            "auto",
+            "markdown",
+            "md",
+            "text",
+            "plain_text",
+            "json",
+            "jsonl",
+        ] {
+            validate_inputs(&args_with(input.clone(), fmt, "alice"))
+                .unwrap_or_else(|e| panic!("format {fmt} should be valid: {e}"));
+        }
     }
 }
