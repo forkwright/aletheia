@@ -42,11 +42,21 @@ pub fn streamable_http_router_with_config(
     state: Arc<DiaporeiaState>,
     config: rmcp::transport::streamable_http_server::StreamableHttpServerConfig,
 ) -> axum::Router {
+    // Snapshot the rate-limit config (and bind) ONCE at setup using try_read,
+    // so the per-session factory below stays sync. The same snapshot is reused
+    // for every session in this transport's lifetime; config-reload between
+    // sessions is rare and acceptable to miss until the next transport startup.
+    let (bind, rate_cfg) = state.config.try_read().map_or_else(
+        |_| {
+            (
+                "localhost".to_owned(),
+                taxis::config::McpRateLimitConfig::default(),
+            )
+        },
+        |cfg| (cfg.gateway.bind.clone(), cfg.mcp.rate_limit.clone()),
+    );
+
     if state.auth_mode == "none" {
-        let bind = state
-            .config
-            .try_read()
-            .map_or_else(|_| "localhost".to_owned(), |cfg| cfg.gateway.bind.clone());
         let is_loopback = bind == "localhost" || bind == "127.0.0.1" || bind == "::1";
 
         if is_loopback {
@@ -65,7 +75,7 @@ pub fn streamable_http_router_with_config(
 
     let auth_state = Arc::clone(&state);
     let service = StreamableHttpService::new(
-        move || Ok(DiaporeiaServer::with_state(Arc::clone(&state))),
+        move || Ok(DiaporeiaServer::with_state(Arc::clone(&state), &rate_cfg)),
         LocalSessionManager::default().into(),
         config,
     );
@@ -83,7 +93,8 @@ pub fn streamable_http_router_with_config(
 /// closes or the shutdown token fires.
 #[tracing::instrument(skip_all)]
 pub async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
-    let server = DiaporeiaServer::with_state(state);
+    let rate_cfg = state.config.read().await.mcp.rate_limit.clone();
+    let server = DiaporeiaServer::with_state(state, &rate_cfg);
     let service = server
         .serve(rmcp::transport::io::stdio())
         .await

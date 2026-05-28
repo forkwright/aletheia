@@ -13,6 +13,7 @@ use rmcp::model::{
 use rmcp::tool_handler;
 
 use symbolon::types::Role;
+use taxis::config::McpRateLimitConfig;
 
 use crate::error::UnauthorizedSnafu;
 use crate::rate_limit::{RateLimiter, Tier};
@@ -35,22 +36,18 @@ pub struct DiaporeiaServer {
 }
 
 impl DiaporeiaServer {
-    /// Create a new server instance with shared state.
+    /// Create a new server instance with shared state and a rate-limit snapshot.
     ///
-    /// Each instance gets its own rate limiter (per-session limiting).
-    /// Configuration is read from the shared config at construction time.
+    /// Each instance gets its own rate limiter (per-session limiting). The
+    /// caller passes a `McpRateLimitConfig` snapshot taken at transport
+    /// setup time so this constructor can run inside a tokio runtime
+    /// (`tokio::sync::RwLock::blocking_read` panics from inside the runtime,
+    /// which is where both stdio and HTTP transports invoke this).
     #[must_use]
-    pub fn with_state(state: Arc<DiaporeiaState>) -> Self {
-        let rate_limiter = {
-            // NOTE: blocking read is acceptable here because this runs once per
-            // session creation, not in a hot loop. The RwLock is only contended
-            // during config reload.
-            let config = state.config.blocking_read();
-            Arc::new(RateLimiter::from_config(&config.mcp.rate_limit))
-        };
+    pub fn with_state(state: Arc<DiaporeiaState>, rate_cfg: &McpRateLimitConfig) -> Self {
         Self {
             state,
-            rate_limiter,
+            rate_limiter: Arc::new(RateLimiter::from_config(rate_cfg)),
             tool_router: Self::tool_router(),
         }
     }
