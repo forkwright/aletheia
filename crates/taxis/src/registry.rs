@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — static parameter registry: single data declaration of 50+ ParameterSpec entries
 //! Static parameter registry: metadata for every tunable constant.
 //!
 //! Each [`ParameterSpec`] describes one knob in the configuration surface:
@@ -30,6 +31,7 @@ impl std::fmt::Display for ParameterTier {
 
 /// Hint for which direction improves the outcome signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+// kanon:ignore RUST/non-exhaustive-enum — stable registry classification enum; variant additions are breaking changes by design
 pub enum TuningDirection {
     /// Increasing the value generally improves the outcome signal.
     Higher,
@@ -52,6 +54,7 @@ impl std::fmt::Display for TuningDirection {
 /// A typed default value for a parameter.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(untagged)]
+// kanon:ignore RUST/non-exhaustive-enum — stable registry value enum; variant additions are breaking changes by design
 pub enum ParameterValue {
     /// Integer parameter.
     Int(i64),

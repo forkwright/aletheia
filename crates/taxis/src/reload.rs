@@ -208,6 +208,7 @@ pub fn log_diff(diff: &ConfigDiff) {
     missing_docs,
     reason = "snafu error variant fields (source, location) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive]; false positive from attribute ordering
 pub enum ReloadError {
     /// Failed to load config from disk.
     #[snafu(display("failed to load config: {source}"))]

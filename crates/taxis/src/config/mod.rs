@@ -56,11 +56,13 @@ impl Default for ObservabilitySettings {
 }
 
 /// Root configuration for an Aletheia instance.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
+// kanon:ignore RUST/no-debug-derive-on-public-types
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[rustfmt::skip]
-pub struct AletheiaConfig { // kanon:ignore RUST/config-deny-unknown-fields
+// kanon:ignore RUST/config-deny-unknown-fields
+pub struct AletheiaConfig {
     /// Agent definitions and shared defaults.
     pub agents: AgentsConfig,
     /// HTTP gateway settings (port, bind address, auth, TLS, CORS).
@@ -244,7 +246,8 @@ pub struct ModelPricing {
 }
 
 /// Maps a channel source to a nous agent.
-#[derive(Debug, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
+// kanon:ignore RUST/no-debug-derive-on-public-types
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelBinding {
     /// Channel type (e.g., "signal").
@@ -252,10 +255,12 @@ pub struct ChannelBinding {
     /// Source pattern: phone number, group ID, or "*" for default.
     pub source: String,
     /// Nous ID to route to.
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde config field: nous_id is a TOML routing string, not a runtime domain identifier
     pub nous_id: String,
     /// Session key pattern. Supports `{source}` and `{group}` placeholders.
     #[serde(default = "default_session_pattern")]
-    pub session_key: String, // kanon:ignore RUST/plain-string-secret
+    // kanon:ignore RUST/plain-string-secret
+    pub session_key: String,
 }
 
 fn default_session_pattern() -> String {
@@ -267,7 +272,8 @@ fn default_session_pattern() -> String {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[rustfmt::skip]
-pub struct EmbeddingSettings { // kanon:ignore RUST/config-deny-unknown-fields
+// kanon:ignore RUST/config-deny-unknown-fields
+pub struct EmbeddingSettings {
     /// Provider type: "mock", "candle".
     pub provider: String,
     /// Provider-specific model name.
@@ -291,7 +297,8 @@ impl Default for EmbeddingSettings {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[rustfmt::skip]
-pub struct ChannelsConfig { // kanon:ignore RUST/config-deny-unknown-fields
+// kanon:ignore RUST/config-deny-unknown-fields
+pub struct ChannelsConfig {
     /// Signal messenger transport configuration.
     pub signal: SignalConfig,
     /// Matrix messenger transport configuration.
@@ -303,7 +310,8 @@ pub struct ChannelsConfig { // kanon:ignore RUST/config-deny-unknown-fields
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[rustfmt::skip]
-pub struct SignalConfig { // kanon:ignore RUST/config-deny-unknown-fields
+// kanon:ignore RUST/config-deny-unknown-fields
+pub struct SignalConfig {
     /// Whether the Signal channel is active.
     pub enabled: bool,
     /// Named Signal accounts keyed by account label.
@@ -324,7 +332,8 @@ impl Default for SignalConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[rustfmt::skip]
-pub struct SignalAccountConfig { // kanon:ignore RUST/config-deny-unknown-fields
+// kanon:ignore RUST/config-deny-unknown-fields
+pub struct SignalAccountConfig {
     /// Whether this account is active.
     pub enabled: bool,
     /// Hostname for the signal-cli JSON-RPC HTTP interface.
@@ -351,7 +360,8 @@ impl Default for SignalAccountConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[rustfmt::skip]
-pub struct MatrixConfig { // kanon:ignore RUST/config-deny-unknown-fields
+// kanon:ignore RUST/config-deny-unknown-fields
+pub struct MatrixConfig {
     /// Whether the Matrix channel is active.
     pub enabled: bool,
     /// Named Matrix accounts keyed by account label.
@@ -359,17 +369,20 @@ pub struct MatrixConfig { // kanon:ignore RUST/config-deny-unknown-fields
 }
 
 /// Configuration for a single Matrix account.
+// kanon:ignore RUST/no-debug-derive-on-public-types — MatrixAccountConfig holds only homeserver URL and env-var name, not actual tokens; derived Debug leaks no secrets
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[rustfmt::skip]
-pub struct MatrixAccountConfig { // kanon:ignore RUST/config-deny-unknown-fields
+// kanon:ignore RUST/config-deny-unknown-fields
+pub struct MatrixAccountConfig {
     /// Whether this account is active.
     pub enabled: bool,
     /// Matrix homeserver base URL, e.g. `https://matrix.example.org`.
     pub homeserver: String,
     /// Environment variable that contains the Matrix access token.
-    pub access_token_env: String, // kanon:ignore RUST/plain-string-secret
+    // kanon:ignore RUST/plain-string-secret
+    pub access_token_env: String,
     /// Matrix user ID for this account. Used to ignore echoed self messages.
     pub user_id: Option<String>,
     /// Whether to auto-start the `/sync` receive loop on server boot.
