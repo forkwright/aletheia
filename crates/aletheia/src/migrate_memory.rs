@@ -19,7 +19,7 @@ use mneme::embedding::{
 use mneme::id::{EmbeddingId, FactId};
 use mneme::knowledge::{
     EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-    far_future, parse_timestamp,
+    Visibility, far_future, parse_timestamp,
 };
 use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 use taxis::loader::load_config;
@@ -299,6 +299,8 @@ fn import_fact(
         content: record.content.clone(),
         fact_type: String::new(),
         scope: None,
+        // Qdrant-migrated facts predate project partitioning; they are global.
+        project_id: None,
         temporal: FactTemporal {
             valid_from,
             valid_to: far_future(),
@@ -321,6 +323,7 @@ fn import_fact(
             last_accessed_at: None,
         },
         sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: Visibility::Private,
     };
     knowledgedb
         .insert_fact(&fact)
