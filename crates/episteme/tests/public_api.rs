@@ -611,11 +611,14 @@ mod parse_skill_md {
 
     #[test]
     fn rejects_empty_document() {
+        // WHY (#4234): an empty document has neither a frontmatter `name:`
+        // nor a body `# Title`, so it fails the title gate with the
+        // both-routes-named message.
         let err = parse_skill_md("", "my-skill").expect_err("empty must error");
         assert_eq!(err.path, "my-skill");
         assert!(
-            err.reason.contains("empty"),
-            "expected 'empty document' reason, got: {}",
+            err.reason.contains("missing title"),
+            "expected missing-title reason, got: {}",
             err.reason
         );
     }

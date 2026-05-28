@@ -130,13 +130,17 @@ impl std::fmt::Display for SkillParseError {
 
 /// Parse a SKILL.md file into structured skill content.
 ///
-/// Supports optional YAML frontmatter (delimited by `---`) with `tools` and
-/// `domains` fields. Falls back to extracting from markdown sections.
+/// Accepts two title shapes (Claude-Code-compatible):
+/// 1. YAML frontmatter with `name:` (body may omit `# Title`).
+/// 2. Body `# Title` heading (frontmatter optional).
+///
+/// Description is taken from frontmatter `description:` when present, else
+/// from the body text after the H1, else from a `## When to Use` section.
 ///
 /// # Errors
 ///
-/// Returns an error if the document is empty, missing a top-level heading,
-/// or has no description.
+/// Returns an error naming the missing route(s) when no title can be found
+/// on either path, or when no description can be derived.
 pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillParseError> {
     let err = |reason: &str| SkillParseError {
         path: slug.to_owned(),
@@ -144,34 +148,23 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
     };
 
     let (frontmatter, body) = split_frontmatter(source);
-
-    let mut fm_tools: Vec<String> = Vec::new();
-    let mut fm_domains: Vec<String> = Vec::new();
-    let mut fm_triggers: Vec<String> = Vec::new();
-    let mut fm_always = false;
-    if let Some(fm) = frontmatter {
-        for line in fm.lines() {
-            let line = line.trim();
-            if let Some(rest) = line.strip_prefix("tools:") {
-                fm_tools = parse_yaml_array(rest);
-            } else if let Some(rest) = line.strip_prefix("domains:") {
-                fm_domains = parse_yaml_array(rest);
-            } else if let Some(rest) = line.strip_prefix("triggers:") {
-                fm_triggers = parse_yaml_array(rest);
-            } else if let Some(rest) = line.strip_prefix("always:") {
-                fm_always = rest.trim().eq_ignore_ascii_case("true");
-            }
-        }
-    }
+    let fm = parse_frontmatter(frontmatter);
 
     let mut lines = body.lines().peekable();
     while lines.peek().is_some_and(|l| l.trim().is_empty()) {
         lines.next();
     }
 
-    let title_line = lines.next().ok_or_else(|| err("empty document"))?;
-    if !title_line.starts_with("# ") {
-        return Err(err("missing top-level heading (# Title)"));
+    let has_h1 = lines.peek().is_some_and(|l| l.starts_with("# "));
+    if has_h1 {
+        lines.next();
+    } else if fm.name.is_none() {
+        // WHY: title can come from frontmatter `name:` (Claude-Code shape) or
+        // a body `# Title` (legacy aletheia shape). Naming both routes in the
+        // error keeps the failure mode legible — see #4234.
+        return Err(err(
+            "missing title: no `name:` in YAML frontmatter and no `# Title` heading in body",
+        ));
     }
 
     let mut desc_lines = Vec::new();
@@ -185,7 +178,7 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
             desc_lines.push(trimmed.to_owned());
         }
     }
-    let mut description = desc_lines.join(" ");
+    let mut description = fm.description.unwrap_or_else(|| desc_lines.join(" "));
 
     let mut current_section = String::new();
     let mut sections: std::collections::HashMap<String, Vec<String>> =
@@ -208,17 +201,17 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
 
     // kanon:ignore RUST/indexing-slicing — `&[][..]` is an empty-slice literal default for map_or; not real indexing
     let steps = extract_steps(sections.get("steps").map_or(&[][..], |v| v.as_slice()));
-    let tools_used = if fm_tools.is_empty() {
+    let tools_used = if fm.tools.is_empty() {
         // kanon:ignore RUST/indexing-slicing — `&[][..]` is an empty-slice literal default for map_or; not real indexing
         extract_tools(sections.get("tools used").map_or(&[][..], |v| v.as_slice()))
     } else {
-        fm_tools
+        fm.tools
     };
 
-    let domain_tags = if fm_domains.is_empty() {
+    let domain_tags = if fm.domains.is_empty() {
         derive_domain_tags(slug)
     } else {
-        fm_domains
+        fm.domains
     };
 
     if description.is_empty()
@@ -228,7 +221,11 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
     }
 
     if description.is_empty() {
-        return Err(err("no description found"));
+        // WHY: name the routes that were tried so a hand-authored SKILL.md
+        // can be fixed without diffing against the parser source — see #4234.
+        return Err(err(
+            "missing description: no `description:` in YAML frontmatter, no body text after the title, and no `## When to Use` section",
+        ));
     }
 
     Ok(SkillContent {
@@ -238,9 +235,51 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
         tools_used,
         domain_tags,
         origin: "seeded".to_owned(),
-        triggers: fm_triggers,
-        always: fm_always,
+        triggers: fm.triggers,
+        always: fm.always,
     })
+}
+
+/// YAML frontmatter fields extracted from a SKILL.md document.
+#[derive(Debug, Default)]
+struct SkillFrontmatter {
+    name: Option<String>,
+    description: Option<String>,
+    tools: Vec<String>,
+    domains: Vec<String>,
+    triggers: Vec<String>,
+    always: bool,
+}
+
+/// Extract SKILL.md frontmatter fields from the raw YAML block (if any).
+fn parse_frontmatter(raw: Option<&str>) -> SkillFrontmatter {
+    let mut fm = SkillFrontmatter::default();
+    let Some(raw) = raw else {
+        return fm;
+    };
+    for line in raw.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("name:") {
+            let value = parse_yaml_scalar(rest);
+            if !value.is_empty() {
+                fm.name = Some(value);
+            }
+        } else if let Some(rest) = line.strip_prefix("description:") {
+            let value = parse_yaml_scalar(rest);
+            if !value.is_empty() {
+                fm.description = Some(value);
+            }
+        } else if let Some(rest) = line.strip_prefix("tools:") {
+            fm.tools = parse_yaml_array(rest);
+        } else if let Some(rest) = line.strip_prefix("domains:") {
+            fm.domains = parse_yaml_array(rest);
+        } else if let Some(rest) = line.strip_prefix("triggers:") {
+            fm.triggers = parse_yaml_array(rest);
+        } else if let Some(rest) = line.strip_prefix("always:") {
+            fm.always = rest.trim().eq_ignore_ascii_case("true");
+        }
+    }
+    fm
 }
 
 /// Split optional YAML frontmatter from body.
@@ -257,6 +296,24 @@ fn split_frontmatter(source: &str) -> (Option<&str>, &str) {
     } else {
         (None, source)
     }
+}
+
+/// Parse a YAML scalar value (the bit after `key:`).
+///
+/// Strips surrounding whitespace and a single layer of matching single or
+/// double quotes. Returns the empty string for values that are missing,
+/// whitespace-only, or empty after quote stripping.
+fn parse_yaml_scalar(s: &str) -> String {
+    let s = s.trim();
+    let stripped = s
+        .strip_prefix('"')
+        .and_then(|inner| inner.strip_suffix('"'))
+        .or_else(|| {
+            s.strip_prefix('\'')
+                .and_then(|inner| inner.strip_suffix('\''))
+        })
+        .unwrap_or(s);
+    stripped.to_owned()
 }
 
 /// Parse a simple YAML inline array like `[web_fetch, web_search]`.

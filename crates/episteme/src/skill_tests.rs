@@ -95,21 +95,130 @@ fn parse_skill_derives_domain_tags_from_slug() {
 
 #[test]
 fn parse_skill_missing_heading_fails() {
+    // WHY (#4234): with no frontmatter `name:` AND no body `# Title`, the
+    // error must name *both* routes that were tried — silent rejection of a
+    // hand-authored SKILL.md was the failure mode the issue surfaced.
     let bad = "No heading here\n\n## Steps\n1. Do stuff";
     let err = parse_skill_md(bad, "bad-skill").expect_err("bad skill md must fail");
     assert!(
-        err.reason.contains("missing top-level heading"),
-        "error reason should mention missing heading"
+        err.reason.contains("missing title"),
+        "error reason should mention missing title, got: {}",
+        err.reason
+    );
+    assert!(
+        err.reason.contains("`name:`") && err.reason.contains("`# Title`"),
+        "error reason should name both the frontmatter and body routes, got: {}",
+        err.reason
     );
 }
 
 #[test]
 fn parse_skill_empty_doc_fails() {
+    // WHY (#4234): empty doc has neither route — same title error as above.
     let err = parse_skill_md("", "empty").expect_err("empty skill md must fail");
     assert!(
-        err.reason.contains("empty document"),
-        "error reason should mention empty document"
+        err.reason.contains("missing title"),
+        "error reason should mention missing title, got: {}",
+        err.reason
     );
+}
+
+#[test]
+fn parse_skill_frontmatter_only_no_h1_succeeds() {
+    // WHY (#4234): Claude-Code-style SKILL.md files use frontmatter `name:`
+    // + `description:` with no body `# Title`. Aletheia must accept this
+    // shape — silent rejection was the bug.
+    let src = "---\nname: example\ndescription: A test skill\n---\nBody without H1.\n";
+    let skill = parse_skill_md(src, "example").expect("frontmatter-only SKILL.md must parse");
+    assert_eq!(skill.name, "example", "name should match slug");
+    assert_eq!(
+        skill.description, "A test skill",
+        "description should come from frontmatter when no body description present"
+    );
+}
+
+#[test]
+fn parse_skill_frontmatter_description_overrides_body() {
+    // WHY (#4234): when both routes provide a description, frontmatter wins
+    // (it's the canonical, machine-readable source). Pins the precedence.
+    let src = "---\nname: example\ndescription: From frontmatter\n---\n# Example\nFrom body.\n";
+    let skill = parse_skill_md(src, "example").expect("parse ok");
+    assert_eq!(
+        skill.description, "From frontmatter",
+        "frontmatter description should take precedence over body text"
+    );
+}
+
+#[test]
+fn parse_skill_frontmatter_with_h1_still_works() {
+    // WHY (#4234): the aletheia exporter writes both `name:` in frontmatter
+    // AND a body `# Title`. This regression test pins that round-trip.
+    let src =
+        "---\nname: example\ndescription: Round-trip test\n---\n\n# Example\n\n## Steps\n1. Go\n";
+    let skill = parse_skill_md(src, "example").expect("round-trip shape must parse");
+    assert_eq!(skill.description, "Round-trip test");
+    assert_eq!(skill.steps, vec!["Go"]);
+}
+
+#[test]
+fn parse_skill_no_name_no_h1_with_description_still_fails() {
+    // WHY (#4234): description alone is not enough — title is required.
+    // Pins that the title gate is independent of the description gate.
+    let src = "---\ndescription: A test skill\n---\nBody without title.\n";
+    let err = parse_skill_md(src, "slug").expect_err("must fail without title");
+    assert!(
+        err.reason.contains("missing title"),
+        "error should mention missing title, got: {}",
+        err.reason
+    );
+}
+
+#[test]
+fn parse_skill_frontmatter_name_no_description_fails() {
+    // WHY (#4234): with `name:` but no description anywhere, the error must
+    // name all three description routes that were tried.
+    let src = "---\nname: example\n---\n";
+    let err = parse_skill_md(src, "example").expect_err("must fail without description");
+    assert!(
+        err.reason.contains("missing description"),
+        "error should mention missing description, got: {}",
+        err.reason
+    );
+    assert!(
+        err.reason.contains("`description:`")
+            && err.reason.contains("body text")
+            && err.reason.contains("When to Use"),
+        "error should name all three description routes, got: {}",
+        err.reason
+    );
+}
+
+#[test]
+fn parse_skill_frontmatter_description_quoted() {
+    // WHY (#4234): the aletheia exporter quotes descriptions containing
+    // colons. The parser must strip those quotes when re-reading.
+    let src = "---\nname: example\ndescription: \"Error handling: a deep dive\"\n---\nBody.\n";
+    let skill = parse_skill_md(src, "example").expect("parse ok");
+    assert_eq!(
+        skill.description, "Error handling: a deep dive",
+        "frontmatter quote-stripping should restore the original description"
+    );
+}
+
+#[test]
+fn parse_skill_frontmatter_empty_name_falls_back_to_h1() {
+    // WHY (#4234): an empty `name:` value is treated as absent — the H1 gate
+    // re-engages so we don't accept blank-name skills silently.
+    let src_no_h1 = "---\nname:\ndescription: x\n---\nBody.\n";
+    let err = parse_skill_md(src_no_h1, "slug").expect_err("empty name + no H1 must fail");
+    assert!(
+        err.reason.contains("missing title"),
+        "empty name should not satisfy title requirement, got: {}",
+        err.reason
+    );
+
+    let src_with_h1 = "---\nname:\ndescription: x\n---\n# Title\nBody.\n";
+    parse_skill_md(src_with_h1, "slug").expect("empty name + H1 must parse");
 }
 
 #[test]
@@ -129,8 +238,9 @@ fn parse_skill_no_description_at_all_fails() {
     let err = parse_skill_md(md, "no-desc")
         .expect_err("skill without any description must fail to parse");
     assert!(
-        err.reason.contains("no description"),
-        "error reason should mention missing description"
+        err.reason.contains("missing description"),
+        "error reason should mention missing description, got: {}",
+        err.reason
     );
 }
 
