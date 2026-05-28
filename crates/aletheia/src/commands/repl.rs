@@ -67,8 +67,10 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
 
     if !knowledge_path.exists() && !oikos.knowledge_db().exists() {
         snafu::whatever!(
-            "knowledge store not found at {}\n  \
-             Has this instance been initialized with recall enabled?",
+            "knowledge store not initialized at {}\n  \
+             The store is created lazily by the running server. Either:\n    \
+               1. Start the server once to bootstrap it:  aletheia\n    \
+               2. Or route this command through a running server with --url",
             knowledge_path.display()
         );
     }
