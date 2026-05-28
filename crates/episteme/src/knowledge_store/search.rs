@@ -258,6 +258,9 @@ impl KnowledgeStore {
                 if let Some(vis_str) = row.get(2).and_then(|v| v.get_str())
                     && !vis_str.is_empty()
                 {
+                    // kanon:ignore RUST/no-result-unwrap-or-default — Visibility::default() IS the documented
+                    // fallback for unknown/legacy values from storage; clippy::manual_unwrap_or rejects an
+                    // explicit Ok/Err match here.
                     result.visibility = vis_str
                         .parse::<crate::knowledge::Visibility>()
                         .unwrap_or_default();
