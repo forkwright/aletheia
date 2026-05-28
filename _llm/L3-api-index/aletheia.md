@@ -10,7 +10,9 @@ For implementation context, read the source directly (`L4`).
 ```rust
 pub struct Error {
     message: String,
+    // kanon:ignore RUST/box-dyn-error — snafu Whatever pattern: generic error source for ergonomic wrapping in binary crate
     #[snafu(source(from(Box<dyn std::error::Error + Send + Sync>, Some)))]
+    // kanon:ignore RUST/box-dyn-error — snafu Whatever pattern: generic error source for ergonomic wrapping in binary crate
     source: Option<Box<dyn std::error::Error + Send + Sync>>,
 }
 ```
