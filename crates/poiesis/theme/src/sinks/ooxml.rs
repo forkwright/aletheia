@@ -6,6 +6,13 @@ use crate::error::{SinkSnafu, ThemeError};
 use crate::resolved::ResolvedTheme;
 use crate::tokens::HexColor;
 
+// WHY: the `xmlns:a` value below is the ECMA-376 DrawingML namespace
+// identifier — a fixed URI literal mandated by the OOXML spec. PowerPoint and
+// LibreOffice match it as an opaque string; it is never fetched. Substituting
+// `https://` breaks every Office consumer (the namespace string must match
+// the spec verbatim). See ECMA-376 Part 1 §A.4.1.
+const OOXML_DRAWINGML_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
 /// Emit the OOXML `theme1.xml` body — the `<a:clrScheme>` + `<a:fontScheme>`
 /// that `PowerPoint` and `LibreOffice` read at file open to populate accent
 /// swatches and the theme font picker.
@@ -49,8 +56,9 @@ fn write_theme_xml(out: &mut String, theme: &ResolvedTheme) -> std::fmt::Result 
     )?;
     writeln!(
         out,
-        r#"<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="{}">"#,
-        escape_xml(theme.id.as_str())
+        r#"<a:theme xmlns:a="{ns}" name="{name}">"#,
+        ns = OOXML_DRAWINGML_NS,
+        name = escape_xml(theme.id.as_str())
     )?;
     writeln!(out, "  <a:themeElements>")?;
 
@@ -213,10 +221,9 @@ mod tests {
     fn ooxml_emits_well_formed_root() {
         let xml = emit_theme_xml(&summus()).expect("emit summus theme1.xml");
         assert!(xml.starts_with("<?xml"), "XML prolog missing");
+        let expected_open = format!(r#"<a:theme xmlns:a="{OOXML_DRAWINGML_NS}""#);
         assert!(
-            xml.contains(
-                r#"<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main""#
-            ),
+            xml.contains(&expected_open),
             "drawingml namespace must appear: {xml}"
         );
         assert!(xml.contains("</a:theme>"), "closing tag missing");
