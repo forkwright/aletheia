@@ -1059,6 +1059,15 @@ pub enum EvalError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Reading the JSONL dataset from disk failed.
+    #[snafu(display("cannot read eval dataset {}: {source}", path.display()))]
+    IoFailed {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 ```
 
@@ -1493,6 +1502,7 @@ pub struct LessonConfig {
     /// PR number for linking.
     pub pr_number: Option<u32>,
     /// The nous agent this lesson belongs to.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub nous_id: String,
     /// Source identifier (e.g., "pr-merge:123").
     pub source: String,
@@ -2005,6 +2015,7 @@ pub struct ToolObservation {
     /// Brief summary of the context that prompted this tool call (≤100 chars).
     pub context_summary: String,
     /// Which nous made the observation.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub nous_id: String,
     /// Optional git-remote-derived project partition for this observation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2067,8 +2078,10 @@ pub struct KnowledgeImportResult {
 ```rust
 pub struct DerivedFact {
     /// The entity this derived fact is about.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration pending
     pub entity_id: String,
     /// The rule that produced this fact. One of [`crate::derived_rules::RULE_IDS`].
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration pending
     pub rule_id: String,
     /// The inferred content string (format depends on rule family).
     pub derived_content: String,
@@ -2570,6 +2583,7 @@ impl KnowledgeStore {
 ```rust
 pub struct MemoryHeader {
     /// Source identifier (fact ID, document reference, or path).
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub source_id: String,
     /// Short name or title for this memory entry.
     pub name: String,
@@ -2612,6 +2626,7 @@ pub fn register (registry: &mut Registry)
 ```rust
 pub struct OpsSnapshot {
     /// Which nous these metrics belong to.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub nous_id: String,
     /// Total active sessions at snapshot time.
     pub active_session_count: u64,
@@ -2999,8 +3014,10 @@ pub struct ScoredResult {
     /// Source type (fact, message, note, document).
     pub source_type: String,
     /// Source ID.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub source_id: String,
     /// Which nous this belongs to.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub nous_id: String,
     /// Raw factor scores.
     pub factors: FactorScores,
@@ -3250,6 +3267,7 @@ impl LongMemEvalReward {
 ```rust
 pub struct MemoryState {
     /// Stable identifier for the memory item or policy decision point.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub subject_id: String,
     /// Named numeric features available to the policy.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -3884,6 +3902,7 @@ pub fn signature_similarity (a: &SequenceSignature, b: &SequenceSignature) -> f6
 ```rust
 pub struct SourceLinkedFact {
     /// Fact identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub fact_id: String,
     /// The stored fact content.
     pub content: String,
@@ -3897,6 +3916,7 @@ pub struct SourceLinkedFact {
 ```rust
 pub struct StalenessResult {
     /// The fact that was checked.
+    // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
     pub fact_id: String,
     /// Whether the fact is still consistent with its source.
     pub status: StalenessStatus,
@@ -4116,6 +4136,7 @@ pub const OPS_DDL: &[&str] = &[
 > ```
 ```rust
 pub struct TraceIngestLayer {
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — parking_lot::Mutex (sync), held only across local buffer.push()/drain operations inside a tracing Layer callback; never held across an await.
     buffer: std::sync::Arc<Mutex<Vec<TraceEvent>>>,
 }
 ```
