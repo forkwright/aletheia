@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-25T10:30:32Z"
+generated_at = "2026-05-28T03:00:47Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -369,19 +369,19 @@ l3_token_estimate = 11827
 [[crates]]
 name = "poiesis-core"
 path = "crates/poiesis/core"
-source_hash = "2c48442ac02073611edf488212b289de61f0fb20dbad25e3a8cfd4be99152b3e"
+source_hash = "9811022b7ab7f2b7dbb1d11595904dd3368f875ca3b4657e438fe99d62a5c15a"
 l3_token_estimate = 851
 
 [[crates]]
 name = "poiesis-diff"
 path = "crates/poiesis/diff"
-source_hash = "f81ea2f293b4ac02d453e38a0e3c08345f1aba71e29980367f68043a09a55a18"
+source_hash = "da01d2d2387304aa39625d6ce466f835713afb4bd9bf3e50c01ed09032be0b94"
 l3_token_estimate = 446
 
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "c7f94f49722367f0b98d6ed3abf887b9d69e6a96513176b13b6d0ffeb670b667"
+source_hash = "3a66c9df875c8666c1b92d7e914c75cad245dc178bf098ea7e8d19a66657bee7"
 l3_token_estimate = 476
 
 [[crates]]
@@ -399,7 +399,7 @@ l3_token_estimate = 456
 [[crates]]
 name = "poiesis-lint"
 path = "crates/poiesis/lint"
-source_hash = "e383b6301b7ca0ab17c45f55c9a767fdd7b07b1ec82eb17f784182b76d5fd0e2"
+source_hash = "de719b792a5a6a7cb254fb0fa998e67a70b54f5b6bec2171d388763fcebaf180"
 l3_token_estimate = 841
 
 [[crates]]
@@ -411,32 +411,32 @@ l3_token_estimate = 302
 [[crates]]
 name = "poiesis-sheet"
 path = "crates/poiesis/sheet"
-source_hash = "ba5a1a0f1d91e7c13ae627b43cd98058f8b774f940be2f7196791936b56ba002"
+source_hash = "46d1e6f2ae3fd94c2d7701e57e449e373c4c26e6794f3589b4dba7d343a5e4f8"
 l3_token_estimate = 664
 
 [[crates]]
 name = "poiesis-slides"
 path = "crates/poiesis/slides"
-source_hash = "3e2c15728f3e45dee011018be481222bbeb285217f485245d021ace26c58cf07"
+source_hash = "6a58b500e89a7c10191b0f9fc5b4b0b35d6933799dfd2594ecf0b883a875a30c"
 l3_token_estimate = 600
 
 [[crates]]
 name = "poiesis-text"
 path = "crates/poiesis/text"
-source_hash = "c395bd401048fd15b0f935751fab9167bf9979bb94fd5106cc47102aa9dbb459"
+source_hash = "608436b1510d232f1e9962ca8cc92c2a91426195230e85ec4c909f674ddef7a6"
 l3_token_estimate = 547
 
 [[crates]]
 name = "poiesis-typst"
 path = "crates/poiesis/typst"
-source_hash = "85a9fd21db305ff153263ea523805110cba0b91c537d35bb15669f950dae39ae"
+source_hash = "4e22a49f88f02025c1e02067f0a36921d1424005c81ce75d43bed18395c4e341"
 l3_token_estimate = 398
 
 [[crates]]
 name = "poiesis-verify"
 path = "crates/poiesis/verify"
-source_hash = "29bcf848cf1ac1d2ab8489029cee14e2830289e8b6c790cd624736ab022e554e"
-l3_token_estimate = 1286
+source_hash = "0b365e6388d5f4bc65caa21d083acf5b3f54dbc71f9f0b4cd5d37cf155166d12"
+l3_token_estimate = 1354
 
 [[crates]]
 name = "pylon"

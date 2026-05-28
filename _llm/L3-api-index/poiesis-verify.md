@@ -54,7 +54,7 @@ impl Verifier {
 ```rust
 pub struct ClaimResult {
     /// Claim identifier.
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — claim id is deserialized from external manifest; newtype would break serde compatibility
     /// Verbatim claim text.
     pub text: String,
     /// The numeric value asserted.
@@ -123,7 +123,7 @@ pub struct VerifyManifest {
 ```rust
 pub struct Claim {
     /// Unique, stable identifier used by reference sources.
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — claim id is deserialized from external manifest; newtype would break serde compatibility
     /// Verbatim text of the claim as it appears in the report.
     pub text: String,
     /// The numeric value asserted by the claim.
