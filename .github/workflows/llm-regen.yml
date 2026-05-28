@@ -13,8 +13,22 @@
 name: _llm Regeneration
 
 on:
+  # WHY: paths-ignore skips the run entirely when every changed file is in a
+  # path that cannot affect L3 output. The L3 extractor only reads `*.rs`
+  # files (scripts/llm-extract-l3.py), so doc-only or self-trigger pushes
+  # (chore(_llm) merges) burn runner time without producing a new regen PR.
+  # The internal `detect` step still no-ops on mixed pushes; this is the
+  # cheap event-level pre-filter for the pure-skip case.
   push:
     branches: [main]
+    paths-ignore:
+      - "_llm/**"
+      - "docs/**"
+      - "planning/**"
+      - "decisions/**"
+      - ".github/**"
+      - "instance.example/**"
+      - "**.md"
 
 permissions:
   contents: write
