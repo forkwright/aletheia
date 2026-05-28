@@ -237,6 +237,59 @@ fn classify_auto_merge_and_review() {
     assert!(total >= 1);
 }
 
+/// Pins the failure mode named in aletheia#4165(A): with the production
+/// embedding-similarity closure (`|_,_| 0.0`) — the ONLY closure any production
+/// caller passes — the `AutoMerge` bucket is mathematically unreachable.
+///
+/// Max achievable score under embed=0.0 for two identical-name, same-type,
+/// alias-overlapping entities is:
+///   0.4·name(1.0) + 0.3·embed(0.0) + 0.2·type(1.0) + 0.1·alias(1.0) = 0.70
+/// The `AutoMerge` threshold is 0.90. So under the production closure no candidate
+/// can ever reach `AutoMerge` — `run_entity_dedup` always returns zero records
+/// and the maintenance task's `"N entities merged automatically"` log is
+/// structurally always N=0.
+///
+/// This test asserts that property using the SAME fixture as
+/// `classify_auto_merge_and_review` above: the sibling test feeds embed=0.95
+/// and proves `AutoMerge` works *with* embeddings; this test feeds embed=0.0
+/// and proves `AutoMerge` is unreachable *without* them. The pair flips green→red
+/// the moment a real embedding path is wired (per the operator decision in
+/// `planning/research/memory-dedup-reachability.md`), making the change visible.
+#[test]
+fn auto_merge_unreachable_under_production_embedding_closure() {
+    let entities = vec![
+        entity("e1", "Alice Test", "person", vec!["AT"], 2, "2026-01-01"),
+        entity("e2", "alice test", "person", vec!["AT"], 1, "2026-01-02"),
+        entity("e3", "Alicia Test", "person", vec![], 1, "2026-01-03"),
+    ];
+    let candidates = generate_candidates(&entities, &no_embed);
+    let (auto_merge, review) = classify_candidates(candidates);
+    assert!(
+        auto_merge.is_empty(),
+        "production-shape embed closure (always-0.0) must keep auto_merge empty: \
+         max achievable score is 0.4 + 0 + 0.2 + 0.1 = 0.70 < 0.90 AutoMerge threshold; \
+         saw {} candidate(s) with scores [{}]",
+        auto_merge.len(),
+        auto_merge
+            .iter()
+            .map(|c| format!("{:.3}", c.merge_score))
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
+    assert!(
+        !review.is_empty(),
+        "the e1/e2 exact-name pair should still surface as Review under embed=0.0 \
+         (score 0.70 = Review threshold), so operators can drain via the review queue"
+    );
+    for c in &review {
+        assert!(
+            c.merge_score < 0.90,
+            "Review candidate score {:.3} must be below AutoMerge threshold",
+            c.merge_score
+        );
+    }
+}
+
 #[test]
 fn canonical_most_relationships() {
     let a = entity("e1", "Alice Test", "person", vec![], 5, "2026-01-02");
