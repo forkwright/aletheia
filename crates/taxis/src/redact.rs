@@ -4,6 +4,7 @@ use serde_json::Value;
 use tracing::debug;
 
 use crate::config::AletheiaConfig;
+use crate::sensitive::key_is_sensitive;
 
 const REDACTED: &str = "***";
 
@@ -13,9 +14,6 @@ const SENSITIVE_LEAVES: &[&[&str]] = &[
     &["gateway", "tls", "keyPath"],
     &["gateway", "tls", "certPath"],
 ];
-
-/// Object keys at any depth whose values are unconditionally redacted.
-const SENSITIVE_KEYS: &[&str] = &["token", "secret", "password", "apiKey", "api_key"];
 
 /// Serialize config to JSON, then redact sensitive fields.
 #[must_use]
@@ -40,12 +38,19 @@ fn redact_sensitive_leaves(root: &mut Value) {
     }
 }
 
+/// Test-only re-export of the recursive redaction pass so the cross-module
+/// property test in `sensitive` can exercise this code path without going
+/// through `redact()` (which requires a fully-populated `AletheiaConfig`).
+#[cfg(test)]
+pub(crate) fn redact_sensitive_keys_for_test(value: &mut Value) {
+    redact_sensitive_keys(value);
+}
+
 fn redact_sensitive_keys(value: &mut Value) {
     match value {
         Value::Object(map) => {
             for (key, val) in map.iter_mut() {
-                let key_lower = key.to_lowercase();
-                if SENSITIVE_KEYS.iter().any(|s| key_lower.contains(s)) {
+                if key_is_sensitive(key) {
                     if val.is_string() {
                         *val = Value::String(REDACTED.to_owned());
                     }
