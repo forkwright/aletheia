@@ -22,7 +22,7 @@ pub struct JudgeScore {
 }
 
 /// Configuration for the LLM judge endpoint.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LlmJudgeConfig {
     /// OpenAI-compatible chat completions URL.
     pub endpoint: String,
@@ -34,6 +34,19 @@ pub struct LlmJudgeConfig {
     pub max_tokens: u32,
     /// Temperature (default 0.0 for deterministic judging).
     pub temperature: f32,
+}
+
+impl core::fmt::Debug for LlmJudgeConfig {
+    // WHY: hand-rolled Debug redacts api_key so structured logs / panics never leak the bearer token.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("LlmJudgeConfig")
+            .field("endpoint", &self.endpoint)
+            .field("model", &self.model)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("max_tokens", &self.max_tokens)
+            .field("temperature", &self.temperature)
+            .finish()
+    }
 }
 
 // kanon:ignore RUST/hardcoded-model — default judge model constant for LLM-as-judge evaluator

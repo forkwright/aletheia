@@ -85,13 +85,15 @@ pub use skene::sse::SseStream;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn public_types_accessible() {
         // WHY: smoke test verifying re-exports compile and link correctly
-        let _ = std::any::type_name::<super::ApiClient>();
-        let _ = std::any::type_name::<super::NousId>();
-        let _ = std::any::type_name::<super::SessionId>();
-        let _ = std::any::type_name::<super::StreamEvent>();
-        let _ = std::any::type_name::<super::SseEvent>();
+        let _ = std::any::type_name::<ApiClient>();
+        let _ = std::any::type_name::<NousId>();
+        let _ = std::any::type_name::<SessionId>();
+        let _ = std::any::type_name::<StreamEvent>();
+        let _ = std::any::type_name::<SseEvent>();
     }
 }
