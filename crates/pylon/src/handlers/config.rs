@@ -32,7 +32,7 @@ pub use config_dto::{
     DataConfig, EmbeddingSettings, GatewayConfig, MaintenanceConfig, ModelPricing,
 };
 
-pub use section_schemas::*;
+pub use section_schemas::*; // kanon:ignore RUST/barrel-reexport -- WHY: section_schemas is a private submodule; the pub use glob is the intended public API surface for config endpoint types
 
 #[expect(missing_docs, reason = "OpenAPI schema mirrors taxis config shapes")]
 mod section_schemas {
@@ -41,10 +41,11 @@ mod section_schemas {
         AgentsConfig, ChannelBinding, ChannelsConfig, DataConfig, EmbeddingSettings, GatewayConfig,
         MaintenanceConfig, ModelPricing,
     };
+    use std::collections::HashMap;
+
     use axum::body::Body;
     use axum::extract::FromRequest;
     use serde_json::Value;
-    use std::collections::HashMap;
     use utoipa::PartialSchema;
 
     /// Typed payload for `PUT /api/v1/config/{section}`.

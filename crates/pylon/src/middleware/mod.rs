@@ -1,7 +1,8 @@
 //! Custom middleware layers for pylon.
 
-use axum::body::Body;
 use std::sync::Arc;
+
+use axum::body::Body;
 
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{Method, StatusCode};
