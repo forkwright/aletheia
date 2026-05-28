@@ -7,6 +7,7 @@
 use snafu::Snafu;
 
 /// Errors produced by the memory MCP server.
+// kanon:ignore RUST/no-debug-derive-on-public-types — error variants contain only non-sensitive display messages and locations
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
@@ -14,6 +15,7 @@ use snafu::Snafu;
     missing_docs,
     reason = "snafu error variant fields are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum -- WHY: #[non_exhaustive] is already present; linter false-positive when intervening #[expect] separates the attribute from the enum keyword
 pub enum Error {
     /// Failed to open the knowledge store.
     #[snafu(display("failed to open knowledge store: {message}"))]

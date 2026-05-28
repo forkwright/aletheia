@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — MCP tool implementations with inline datalog scripts; splitting would fragment the #[tool_router] impl and break the single-file routing convention.
 //! MCP tool implementations for the memory server.
 //!
 //! Read tools (`nous_search`, `nous_neighbors`, `nous_list_topics`, `nous_stats`)
@@ -26,6 +27,7 @@ use crate::error::{InvalidInputSnafu, KnowledgeStoreSnafu, SerializationSnafu};
 use crate::server::MemoryServer;
 
 /// Parameters for `nous_search`.
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only query text and limit; no sensitive data
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct NousSearchParams {
     /// Free-text query string; matched via BM25 against current fact content.
@@ -36,9 +38,11 @@ pub struct NousSearchParams {
 }
 
 /// Parameters for `nous_neighbors`.
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only a fact ID; no sensitive data
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct NousNeighborsParams {
     /// ID of the seed fact whose entity neighbors should be returned.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
 }
 
@@ -49,6 +53,7 @@ pub struct NousAnnotateParams {
     /// Session ID for the annotation (identifies the agent or source).
     pub session_id: Option<String>,
     /// Fact ID to annotate.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
     /// Annotation content — agent-authored note or observation.
     pub content: String,
@@ -61,8 +66,10 @@ pub struct NousAnnotateParams {
 #[non_exhaustive]
 pub struct NousSupersedeParams {
     /// ID of the fact being superseded.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub old_fact_id: String,
     /// ID of the new fact that supersedes it.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub new_fact_id: String,
     /// Reason for supersession.
     pub reason: String,
@@ -75,6 +82,7 @@ pub struct NousSupersedeParams {
 #[non_exhaustive]
 pub struct NousForgetParams {
     /// ID of the fact to forget.
+    // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
     /// Reason for forgetting.
     pub reason: String,
@@ -523,6 +531,7 @@ impl MemoryServer {
                     })?;
                 let fact_count = fact_count_result
                     .get_i64(0, "count(id)")
+                    // kanon:ignore RUST/no-result-unwrap-or-default — count query returns zero rows when no facts match; 0 is the semantically correct default
                     .unwrap_or_default();
 
                 // WHY: datalog rule heads use `name[args]`; concat! keeps each
@@ -546,6 +555,7 @@ impl MemoryServer {
                     })?;
                 let topic_count = topic_count_result
                     .get_i64(0, "count(fact_type)")
+                    // kanon:ignore RUST/no-result-unwrap-or-default — count query returns zero rows when no topics match; 0 is the semantically correct default
                     .unwrap_or_default();
 
                 let last_updated_script = r"
