@@ -1,0 +1,69 @@
+# WHY: Self-hosted runner hosts accumulate disk pressure from Docker
+# dangling images and old `_diag/Worker_*` logs. On 2026-05-28 the
+# verda host hit 100% on `/dev/vda4`, which killed the Runner.Worker
+# mid-step and surfaced as an opaque "cargo deny failure" on PR #4312
+# (root-caused in #4320). A daily prune keeps the headroom that lets
+# the next disk spike fail loudly instead of silently.
+name: Runner Housekeeping
+
+on:
+  schedule:
+    # NOTE: 03:00 UTC daily, off-peak for CI but well before the 11:00
+    # UTC Security run so a freshly-pruned host meets the heavy job.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: prune docker + runner diag
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Report disk before
+        run: df -h / | head -2
+
+      - name: Prune dangling docker images and stopped containers
+        # WHY: `system prune` reclaims build cache, dangling images,
+        # stopped containers, and unused networks. `--filter until=72h`
+        # preserves anything touched in the last three days (covers a
+        # long weekend of active builds). Failures are non-fatal — a
+        # missing Docker daemon should not block housekeeping.
+        run: |
+          if command -v docker >/dev/null 2>&1; then
+            docker system prune -af --filter "until=72h" 2>&1 | tail -10
+          else
+            echo "docker not present on runner; skipping"
+          fi
+        continue-on-error: true
+
+      - name: Prune old runner _diag logs
+        # WHY: `_diag/Worker_*` and `_diag/Runner_*` files accumulate
+        # at ~1 file per job. RUNNER_TEMP points at `<root>/_work/_temp`,
+        # so two `dirname` jumps land on the runner installation root
+        # where `_diag/` lives. Delete entries older than 7 days; the
+        # current day is preserved for live debugging.
+        run: |
+          set -u
+          if [ -z "${RUNNER_TEMP:-}" ]; then
+            echo "RUNNER_TEMP unset; cannot derive runner root"
+            exit 0
+          fi
+          runner_root="$(dirname "$(dirname "$RUNNER_TEMP")")"
+          diag_dir="$runner_root/_diag"
+          if [ ! -d "$diag_dir" ]; then
+            echo "no _diag at $diag_dir; skipping"
+            exit 0
+          fi
+          echo "pruning $diag_dir"
+          find "$diag_dir" -type f \( -name "Worker_*" -o -name "Runner_*" \) -mtime +7 -print -delete | wc -l
+        continue-on-error: true
+
+      - name: Report disk after
+        run: df -h / | head -2
