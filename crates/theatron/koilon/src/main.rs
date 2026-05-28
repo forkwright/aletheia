@@ -29,6 +29,7 @@ struct Cli {
     clippy::expect_used,
     reason = "ring crypto provider installation fails only if called twice, which is a programming error"
 )]
+// kanon:ignore RUST/box-dyn-error — binary entry point uses Box<dyn Error> for ergonomic top-level error propagation
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     rustls::crypto::ring::default_provider()
         .install_default()

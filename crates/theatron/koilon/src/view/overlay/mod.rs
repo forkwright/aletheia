@@ -140,6 +140,8 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 Span::styled(format!("  {:<HELP_KEY_COLUMN_WIDTH$}", kb.keys), key_style);
             // Truncate description if too long, with ellipsis
             let desc = if kb.description.len() > desc_max_width && desc_max_width > 3 {
+                // kanon:ignore RUST/indexing-slicing — slice end is clamped and guarded by len() > desc_max_width > 3
+                // kanon:ignore RUST/string-slice — slice end is clamped and guarded by len() > desc_max_width > 3
                 format!("{}...", &kb.description[..desc_max_width.saturating_sub(3)])
             } else {
                 kb.description.to_string()
@@ -227,6 +229,7 @@ fn render_tool_approval(
         )),
     ];
 
+    // kanon:ignore RUST/no-result-unwrap-or-default — serde_json::to_string_pretty on Value should never fail; empty fallback is harmless
     let input_str = serde_json::to_string_pretty(&approval.input).unwrap_or_default();
     for line in input_str.lines().take(TOOL_APPROVAL_INPUT_LINES) {
         lines.push(Line::from(Span::styled(
@@ -720,5 +723,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage(percent_x),
             Constraint::Percentage((100 - percent_x) / 2),
         ])
+        // kanon:ignore RUST/indexing-slicing — popup_layout split with 3 constraints; index 1 always valid; inner split also 3 constraints
         .split(popup_layout[1])[1]
 }

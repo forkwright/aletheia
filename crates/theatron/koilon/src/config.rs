@@ -145,6 +145,7 @@ impl Config {
         cli_agent: Option<String>,
         cli_session: Option<String>,
     ) -> Result<Self> {
+        // kanon:ignore RUST/no-result-unwrap-or-default — missing config file is a normal first-run state; empty default is correct
         let file_config = Self::load_file().unwrap_or_default();
 
         let workspace_root = RealSystem
@@ -229,6 +230,7 @@ impl Config {
     pub(crate) fn clear_credentials(&self) -> Result<()> {
         let path = Self::config_path()?;
         if path.exists() {
+            // kanon:ignore RUST/no-result-unwrap-or-default — missing config file is normal; empty default is correct
             let mut file_config = Self::load_file().unwrap_or_default();
             file_config.token = None;
             let toml_str = toml::to_string(&file_config).context(TomlSnafu)?;

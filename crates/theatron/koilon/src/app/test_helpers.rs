@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use super::*;
 
 pub(crate) fn test_app() -> App {
+    // kanon:ignore RUST/no-silent-result-swallow — idempotent crypto-provider install in test helper
     let _ = rustls::crypto::ring::default_provider().install_default();
     let config = Config {
         url: "http://localhost:18789".to_string(), // kanon:ignore SECURITY/hardcoded-loopback-url -- test fixture, hardcoded loopback for in-process test harness // kanon:ignore SECURITY/hardcoded-loopback-url -- test fixture, hardcoded loopback for in-process test harness,
@@ -23,6 +24,7 @@ pub(crate) fn test_app() -> App {
         &config.url,
         config.token.as_ref().map(|t| t.expose_secret().to_owned()),
     )
+    // kanon:ignore RUST/expect — test helper; panics with context on impossible failures
     .expect("ApiClient::new with localhost URL should not fail");
     let theme = THEME.clone();
 

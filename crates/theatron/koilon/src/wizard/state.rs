@@ -143,6 +143,7 @@ impl EditState {
 
     pub(crate) fn move_right(&mut self) {
         if self.cursor < self.buffer.len() {
+            // kanon:ignore RUST/indexing-slicing — cursor is guarded by the preceding len() check
             self.cursor = self.buffer[self.cursor..]
                 .char_indices()
                 .nth(1)
@@ -406,8 +407,9 @@ fn make_ready_step() -> StepState {
 // ─── WizardAnswers ────────────────────────────────────────────────────────────
 
 /// Configuration answers collected by the setup wizard.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WizardAnswers {
+    // kanon:ignore RUST/no-debug-derive-on-public-types — manual Debug impl redacts api_key below
     /// Instance root directory.
     pub root: PathBuf,
     /// API provider (`"anthropic"` or `"openai"`).
@@ -427,11 +429,31 @@ pub struct WizardAnswers {
     /// Operator role description for `USER.md`.
     pub user_role: String,
     /// Agent identifier (alphanumeric + hyphens/underscores).
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde/external-id field from user input; newtype out of scope
     pub agent_id: String,
     /// Agent display name.
     pub agent_name: String,
     /// Primary model identifier.
     pub model: String,
+}
+
+impl std::fmt::Debug for WizardAnswers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WizardAnswers")
+            .field("root", &self.root)
+            .field("api_provider", &self.api_provider)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("credential_source", &self.credential_source)
+            .field("bind", &self.bind)
+            .field("auth_mode", &self.auth_mode)
+            .field("timezone", &self.timezone)
+            .field("user_name", &self.user_name)
+            .field("user_role", &self.user_role)
+            .field("agent_id", &self.agent_id)
+            .field("agent_name", &self.agent_name)
+            .field("model", &self.model)
+            .finish()
+    }
 }
 
 // ─── WizardState ─────────────────────────────────────────────────────────────
@@ -585,6 +607,7 @@ impl WizardState {
             .get(step)
             .and_then(|s| s.fields.get(field))
             .map(|f| f.value.clone())
+            // kanon:ignore RUST/no-result-unwrap-or-default — out-of-bounds wizard field yields empty string as safe default
             .unwrap_or_default()
     }
 }

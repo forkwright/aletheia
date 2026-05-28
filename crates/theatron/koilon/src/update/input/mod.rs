@@ -402,7 +402,9 @@ pub(crate) fn handle_clipboard_paste(app: &mut App) {
         crate::clipboard::ClipboardContent::Empty => {}
         // WHY: parodos::clipboard::ClipboardContent is #[non_exhaustive].
         // Treat unknown future variants as no-op pastes -- safer than panic.
-        _ => {}
+        _ => {
+            // kanon:ignore RUST/empty-match-arm — non-exhaustive ClipboardContent variant; intentionally no-op
+        }
     }
 }
 
@@ -502,9 +504,13 @@ pub(crate) fn handle_compose_in_editor(app: &mut App) {
         clippy::disallowed_methods,
         reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"
     )]
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort tmpfile creation; failure is handled by empty-read fallback
+    // kanon:ignore SECURITY/config-write-no-perms — tmpfile lives in env::temp_dir(), not a config/credential path; empty initial content
     let _ = std::fs::write(&tmpfile, "");
     ratatui::restore();
+    // kanon:ignore RUST/no-direct-process-command — $EDITOR is user-configured external tool; no project wrapper applicable
     let status = std::process::Command::new(&editor).arg(&tmpfile).status();
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort terminal re-init; failure is handled by downstream error path
     let _ = ratatui::init();
     if let Ok(s) = status
         && s.success()
@@ -515,6 +521,7 @@ pub(crate) fn handle_compose_in_editor(app: &mut App) {
             app.send_message(&text);
         }
     }
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort tmpfile cleanup; failure is benign
     let _ = std::fs::remove_file(&tmpfile);
 }
 

@@ -136,6 +136,7 @@ pub(super) fn render_streaming(
         } else {
             // Show last 5 tool calls as collapsible card lines
             let start = tool_calls.len().saturating_sub(5);
+            // kanon:ignore RUST/indexing-slicing — start computed with saturating_sub(5), always ≤ tool_calls.len()
             for call in &tool_calls[start..] {
                 let icon: String = match call.status {
                     crate::state::ops::OpsToolStatus::Running => {

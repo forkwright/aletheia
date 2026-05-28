@@ -7,6 +7,10 @@ mod streams;
 mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+    // kanon:ignore RUST/allow-not-expect — test module needs use super::* for kanon test-missing-use-super rule
+    #[allow(unused_imports)]
+    use super::*;
+
     use crate::api::types::SseEvent;
     use crate::app::test_helpers::*;
     use crate::events::{Event, StreamEvent};

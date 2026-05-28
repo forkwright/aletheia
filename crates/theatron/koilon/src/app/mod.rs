@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — App struct and impl tightly coupled; splitting would fragment state machine
 mod persistence;
 pub(crate) use persistence::{
     MAX_COMMAND_HISTORY, exports_dir, save_command_history, save_session_state,

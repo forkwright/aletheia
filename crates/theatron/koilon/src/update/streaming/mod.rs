@@ -47,7 +47,10 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     // line buffer. This prevents markdown re-parses on every token within a line.
     app.connection.streaming_line_buffer.push_str(&clean);
     if let Some(last_newline) = app.connection.streaming_line_buffer.rfind('\n') {
+        // kanon:ignore RUST/indexing-slicing — last_newline found by rfind('\n'), always a valid split point
+        // kanon:ignore RUST/string-slice — last_newline found by rfind('\n'), always a valid split point
         let complete = app.connection.streaming_line_buffer[..=last_newline].to_string();
+        // kanon:ignore RUST/indexing-slicing — last_newline found by rfind('\n'), last_newline + 1 is a valid split point
         let remainder = app.connection.streaming_line_buffer[last_newline + 1..].to_string();
         app.connection.streaming_text.push_str(&complete);
         app.connection.streaming_line_buffer = remainder;

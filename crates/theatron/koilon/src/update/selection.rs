@@ -93,6 +93,7 @@ pub(crate) fn handle_message_action(app: &mut App, action: MessageActionKind) {
 }
 
 fn action_copy(app: &mut App, idx: usize) {
+    // kanon:ignore RUST/indexing-slicing — idx is validated by handle_message_action before dispatch
     let text = &app.dashboard.messages[idx].text;
     match crate::clipboard::copy_to_clipboard(text) {
         Ok(()) => show_toast(app, "Copied to clipboard"),
@@ -104,6 +105,7 @@ fn action_copy(app: &mut App, idx: usize) {
 }
 
 fn action_yank_code_block(app: &mut App, idx: usize) {
+    // kanon:ignore RUST/indexing-slicing — idx is validated by handle_message_action before dispatch
     let text = &app.dashboard.messages[idx].text;
     if let Some(code) = extract_first_code_block(text) {
         match crate::clipboard::copy_to_clipboard(&code) {
@@ -125,10 +127,12 @@ fn action_yank_code_block(app: &mut App, idx: usize) {
 }
 
 fn action_edit(app: &mut App, idx: usize) {
+    // kanon:ignore RUST/indexing-slicing — idx is validated by handle_message_action before dispatch
     if app.dashboard.messages[idx].role != "user" {
         show_toast(app, "Can only edit user messages");
         return;
     }
+    // kanon:ignore RUST/indexing-slicing — idx is validated by handle_message_action before dispatch
     let text = app.dashboard.messages[idx].text.clone();
     app.dashboard.messages.remove(idx);
     app.interaction.selected_message = None;
@@ -138,6 +142,7 @@ fn action_edit(app: &mut App, idx: usize) {
 }
 
 fn action_delete(app: &mut App, idx: usize) {
+    // kanon:ignore RUST/indexing-slicing — idx is validated by handle_message_action before dispatch
     if app.dashboard.messages[idx].role != "user" {
         show_toast(app, "Can only delete user messages");
         return;
@@ -157,17 +162,20 @@ fn action_delete(app: &mut App, idx: usize) {
 }
 
 fn action_open_links(app: &mut App, idx: usize) {
+    // kanon:ignore RUST/indexing-slicing — idx is validated by handle_message_action before dispatch
     let text = &app.dashboard.messages[idx].text;
     let urls = extract_urls(text);
     match urls.len() {
         0 => show_toast(app, "No links found"),
         1 => {
+            // kanon:ignore RUST/indexing-slicing — guarded by urls.len() == 1 match arm
             if let Err(e) = open::that(&urls[0]) {
                 tracing::error!("failed to open URL: {e}");
                 show_toast(app, "Failed to open link");
             }
         }
         n => {
+            // kanon:ignore RUST/indexing-slicing — n arm matches urls.len() >= 2 (0 and 1 handled above)
             if let Err(e) = open::that(&urls[0]) {
                 tracing::error!("failed to open URL: {e}");
                 show_toast(app, "Failed to open link");
@@ -179,6 +187,7 @@ fn action_open_links(app: &mut App, idx: usize) {
 }
 
 fn action_inspect(app: &mut App, idx: usize) {
+    // kanon:ignore RUST/indexing-slicing — idx is validated by handle_message_action before dispatch
     let msg = &app.dashboard.messages[idx];
     if msg.tool_calls.is_empty() {
         show_toast(app, "No tool calls to inspect");
@@ -193,6 +202,7 @@ fn action_inspect(app: &mut App, idx: usize) {
 }
 
 fn action_quote_in_reply(app: &mut App, idx: usize) {
+    // kanon:ignore RUST/indexing-slicing — idx is validated by handle_message_action before dispatch
     let text = &app.dashboard.messages[idx].text;
     let quoted: String = text.lines().map(|l| format!("> {l}\n")).collect();
     if app.interaction.input.text.is_empty() {
@@ -208,6 +218,7 @@ fn action_quote_in_reply(app: &mut App, idx: usize) {
 fn sync_selection_context(app: &mut App) {
     app.interaction.selection = match app.interaction.selected_message {
         Some(idx) if idx < app.dashboard.messages.len() => {
+            // kanon:ignore RUST/indexing-slicing — idx is guarded by the preceding len() check in the match guard
             let msg = &app.dashboard.messages[idx];
             match msg.role.as_str() {
                 "user" => SelectionContext::UserMessage { index: idx },

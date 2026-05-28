@@ -158,9 +158,13 @@ pub(crate) fn collapse_to_replacements(hunks: &[DiffHunk]) -> Vec<DiffHunk> {
                             i += 2;
                             continue;
                         }
+                        // kanon:ignore RUST/indexing-slicing — i is bounded by the while loop condition i < changes.len()
                         collapsed.push(changes[i].clone());
                     }
-                    _ => collapsed.push(changes[i].clone()),
+                    _ => {
+                        // kanon:ignore RUST/indexing-slicing — i is bounded by the while loop condition i < changes.len()
+                        collapsed.push(changes[i].clone())
+                    }
                 }
                 i += 1;
             }

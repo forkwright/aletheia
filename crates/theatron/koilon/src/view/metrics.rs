@@ -40,10 +40,15 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         ])
         .split(area);
 
+    // kanon:ignore RUST/indexing-slicing — Layout.split() returns exactly as many Rects as constraints
     render_summary(app, frame, layout[0], theme);
+    // kanon:ignore RUST/indexing-slicing — Layout.split() returns exactly as many Rects as constraints
     render_health(app, frame, layout[1], theme);
+    // kanon:ignore RUST/indexing-slicing — Layout.split() returns exactly as many Rects as constraints
     render_sparkline(app, frame, layout[2], theme);
+    // kanon:ignore RUST/indexing-slicing — Layout.split() returns exactly as many Rects as constraints
     render_agent_table(app, frame, layout[3], theme);
+    // kanon:ignore RUST/indexing-slicing — Layout.split() returns exactly as many Rects as constraints
     render_status_bar(frame, layout[4], theme);
 }
 

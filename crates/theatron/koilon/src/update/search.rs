@@ -183,6 +183,7 @@ fn build_results(app: &App, query: &str) -> Vec<SearchResult> {
                     .as_ref()
                     .and_then(|id| app.dashboard.agents.iter().find(|a| &a.id == id))
                     .map(|a| a.name.clone())
+                    // kanon:ignore RUST/no-result-unwrap-or-default — no agent focused yields empty name as search placeholder
                     .unwrap_or_default();
                 let agent_id = app
                     .dashboard

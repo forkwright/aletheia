@@ -45,15 +45,21 @@ pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: 
         ])
         .split(area);
 
+    // kanon:ignore RUST/indexing-slicing — Layout.split() returns exactly as many Rects as constraints
     render_tab_bar(app, frame, layout[0], theme);
 
     match app.layout.memory.tab {
+        // kanon:ignore RUST/indexing-slicing — layout is split with 3 constraints; index 1 is always valid
         MemoryTab::Facts => render_facts_table(app, frame, layout[1], theme),
+        // kanon:ignore RUST/indexing-slicing — layout is split with 3 constraints; index 1 is always valid
         MemoryTab::Graph => render_graph_view(app, frame, layout[1], theme),
+        // kanon:ignore RUST/indexing-slicing — layout is split with 3 constraints; index 1 is always valid
         MemoryTab::Drift => render_drift_view(app, frame, layout[1], theme),
+        // kanon:ignore RUST/indexing-slicing — layout is split with 3 constraints; index 1 is always valid
         MemoryTab::Timeline => render_timeline_view(app, frame, layout[1], theme),
     }
 
+    // kanon:ignore RUST/indexing-slicing — layout is split with 3 constraints; index 2 is always valid
     render_memory_status(app, frame, layout[2], theme);
 }
 
@@ -187,6 +193,7 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         let start = app.layout.memory.fact_list.scroll_offset;
         let end = (start + visible_height).min(filtered_facts.len());
 
+        // kanon:ignore RUST/indexing-slicing — end is clamped to filtered_facts.len(); start ≤ end
         for &(original_idx, fact) in &filtered_facts[start..end] {
             let is_selected = original_idx == app.layout.memory.fact_list.selected;
             let marker = if is_selected { "▸ " } else { "  " };
@@ -324,6 +331,7 @@ fn render_entity_list(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         let start = app.layout.memory.graph.entity_scroll_offset;
         let end = (start + visible_height).min(app.layout.memory.graph.entity_stats.len());
 
+        // kanon:ignore RUST/indexing-slicing — end is clamped to entity_stats.len(); start ≤ end
         for (offset, stat) in app.layout.memory.graph.entity_stats[start..end]
             .iter()
             .enumerate()

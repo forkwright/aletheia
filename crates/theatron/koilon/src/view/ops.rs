@@ -187,6 +187,8 @@ fn render_thinking_block(
         let text_lines: Vec<&str> = thinking.text.lines().collect();
         let truncated = text_lines.len() > THINKING_TRUNCATE_LINES;
         let display_lines = if truncated {
+            // kanon:ignore RUST/indexing-slicing — truncated only true when len() > THINKING_TRUNCATE_LINES
+            // kanon:ignore RUST/string-slice — truncated only true when len() > THINKING_TRUNCATE_LINES
             &text_lines[..THINKING_TRUNCATE_LINES]
         } else {
             &text_lines
@@ -369,6 +371,8 @@ fn render_tool_call(
             let output_lines: Vec<&str> = output.lines().collect();
             let truncated = output_lines.len() > TOOL_OUTPUT_TRUNCATE_LINES;
             let display_lines = if truncated {
+                // kanon:ignore RUST/indexing-slicing — truncated only true when len() > TOOL_OUTPUT_TRUNCATE_LINES
+                // kanon:ignore RUST/string-slice — truncated only true when len() > TOOL_OUTPUT_TRUNCATE_LINES
                 &output_lines[..TOOL_OUTPUT_TRUNCATE_LINES]
             } else {
                 &output_lines
@@ -460,6 +464,7 @@ fn render_summary_row(
                 format!("{}m{}s", secs / 60, secs % 60)
             }
         })
+        // kanon:ignore RUST/no-result-unwrap-or-default — elapsed duration is None for running ops; empty string is correct placeholder
         .unwrap_or_default();
 
     let summary = &ops.summary;

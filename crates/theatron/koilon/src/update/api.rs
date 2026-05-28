@@ -246,6 +246,7 @@ fn chrono_compact_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
+        // kanon:ignore RUST/no-result-unwrap-or-default — SystemTime::now is always after UNIX_EPOCH; zero fallback is harmless
         .unwrap_or_default()
         .as_secs();
     format!("{:x}", secs)
