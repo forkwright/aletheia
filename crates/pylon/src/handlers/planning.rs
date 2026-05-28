@@ -364,13 +364,9 @@ mod tests {
     async fn get_verification_returns_real_result() {
         let dir = tempfile::tempdir().unwrap();
         let project_id = write_project(dir.path(), true);
-        let result = load_project_verification(
-            dir.path().to_path_buf(),
-            project_id.clone(),
-            None,
-        )
-        .await
-        .unwrap();
+        let result = load_project_verification(dir.path().to_path_buf(), project_id.clone(), None)
+            .await
+            .unwrap();
 
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["project_id"], project_id);
