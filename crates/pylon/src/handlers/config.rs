@@ -340,6 +340,49 @@ pub async fn reload_config(
     ))
 }
 
+/// Run both structural and auth-policy validation for an incoming
+/// config PUT body.
+///
+/// WHY(#3383, #4240): `validate_section` is structural-only — it accepts
+/// `auth.mode = "none"` so file-load callers (`check-config`, server
+/// startup) do not falsely reject configs operators write directly. The
+/// API-level opt-in gate against silently disabling auth lives here and
+/// fires *only* on the config PUT path. Keeping this split in a helper
+/// also keeps `update_section` under the clippy too-many-lines limit.
+fn validate_section_for_put(section: &str, body: &Value) -> Result<(), ApiError> {
+    if let Err(err) = taxis::validate::validate_section(section, body) {
+        return Err(ApiError::ValidationFailed {
+            errors: err
+                .errors
+                .into_iter()
+                .map(|msg| FieldError {
+                    field: section.to_owned(),
+                    code: "invalid".to_owned(),
+                    message: msg,
+                })
+                .collect(),
+            location: snafu::location!(),
+        });
+    }
+    if section == "gateway"
+        && let Err(err) = taxis::validate::validate_auth_mode_policy(body)
+    {
+        return Err(ApiError::ValidationFailed {
+            errors: err
+                .errors
+                .into_iter()
+                .map(|msg| FieldError {
+                    field: section.to_owned(),
+                    code: "auth_mode_none_requires_opt_in".to_owned(),
+                    message: msg,
+                })
+                .collect(),
+            location: snafu::location!(),
+        });
+    }
+    Ok(())
+}
+
 /// PUT /api/v1/config/{section}: update and persist a config section.
 ///
 /// # Cancel safety
@@ -385,43 +428,7 @@ pub async fn update_section(
         | ConfigSectionPayload::Pricing(v) => v,
     };
 
-    if let Err(err) = taxis::validate::validate_section(&section, &body_value) {
-        return Err(ApiError::ValidationFailed {
-            errors: err
-                .errors
-                .into_iter()
-                .map(|msg| FieldError {
-                    field: section.clone(),
-                    code: "invalid".to_owned(),
-                    message: msg,
-                })
-                .collect(),
-            location: snafu::location!(),
-        });
-    }
-
-    // WHY(#3383, #4240): the auth.mode = "none" opt-in gate applies only to
-    // config PUTs through the API — operators with filesystem-level control
-    // over aletheia.toml are trusted, and `warn_if_auth_disabled` keeps the
-    // posture visible at server startup and on `check-config`. Without this
-    // separation, a fresh `aletheia init -y` produced a config that
-    // `check-config` then rejected.
-    if section == "gateway"
-        && let Err(err) = taxis::validate::validate_auth_mode_policy(&body_value)
-    {
-        return Err(ApiError::ValidationFailed {
-            errors: err
-                .errors
-                .into_iter()
-                .map(|msg| FieldError {
-                    field: section.clone(),
-                    code: "auth_mode_none_requires_opt_in".to_owned(),
-                    message: msg,
-                })
-                .collect(),
-            location: snafu::location!(),
-        });
-    }
+    validate_section_for_put(&section, &body_value)?;
 
     let mut config = state.config.write().await;
     let mut config_value = serde_json::to_value(&*config).map_err(|e| ApiError::Internal {
