@@ -50,6 +50,7 @@ impl Scenario for ConversationSendSse {
                 )?;
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after conversation scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -106,6 +107,7 @@ impl Scenario for ConversationHistoryReflects {
                     second_role == Some(&MessageRole::Assistant),
                     format!("second message should be assistant, got {second_role:?}"),
                 )?;
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after conversation scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -154,6 +156,7 @@ impl Scenario for ConversationMultiTurn {
                         history.messages.len()
                     ),
                 )?;
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after conversation scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }

@@ -47,6 +47,7 @@ impl Scenario for ToolFileReadContent {
                 let text = sse::extract_text(&events);
                 assert_eval(!text.is_empty(), "Tool use response should not be empty")?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -99,6 +100,7 @@ impl Scenario for ToolFileWriteReadRoundtrip {
                     "Tool capability response should not be empty",
                 )?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -148,6 +150,7 @@ impl Scenario for ToolWebSearchStructured {
                 let text = sse::extract_text(&events);
                 assert_eval(!text.is_empty(), "Web search response should not be empty")?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -197,6 +200,7 @@ impl Scenario for ToolMultiToolChain {
                 let text = sse::extract_text(&events);
                 assert_eval(!text.is_empty(), "Multi-tool response should not be empty")?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -248,6 +252,7 @@ impl Scenario for ToolInvalidInputError {
                     "Error handling response should not be empty",
                 )?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }

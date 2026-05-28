@@ -19,6 +19,7 @@ pub struct EvalRecord {
     pub timestamp: String,
     /// Evaluation category (e.g., "health", "cognitive", "session").
     pub eval_type: String,
+    // kanon:ignore RUST/primitive-for-domain-id — scenario_id for JSONL training data output, mirrors external scenario ids
     /// Scenario identifier.
     pub scenario_id: String,
     /// Whether the scenario passed.

@@ -36,6 +36,7 @@ pub mod tags;
 mod tag_tests;
 
 #[cfg(test)]
+// kanon:ignore RUST/test-missing-use-super — tests reference symbols via fully-qualified `crate::` paths; no items need importing from super
 mod tests {
     #[test]
     fn public_modules_accessible() {

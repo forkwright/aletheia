@@ -38,6 +38,7 @@ mod provider_impl;
 pub use provider_impl::{BuiltinProvider, CompositeProvider};
 
 #[cfg(test)]
+// kanon:ignore RUST/test-missing-use-super — tests reference symbols via fully-qualified `crate::` paths; no items need importing from super
 mod tests {
     use crate::provider::EvalProvider;
     use crate::provider::provider_impl::{BuiltinProvider, CompositeProvider};

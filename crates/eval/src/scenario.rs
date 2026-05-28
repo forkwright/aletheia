@@ -141,6 +141,7 @@ pub(crate) fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
 ///
 /// When neither `expected_contains` nor `expected_pattern` is set, accepts any
 /// non-empty response and logs a warning about missing validation criteria.
+// kanon:ignore RUST/validate-returns-unit — semantic validation returns Ok/Err; no meaningful value to parse beyond pass/fail
 #[tracing::instrument(skip(text), fields(scenario_id = meta.id, text_len = text.len()))]
 pub(crate) fn validate_response(meta: &ScenarioMeta, text: &str) -> Result<()> {
     if meta.expected_contains.is_none() && meta.expected_pattern.is_none() {

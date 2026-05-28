@@ -46,6 +46,7 @@ impl Scenario for ConflictBalancedAnalysis {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -90,6 +91,7 @@ impl Scenario for ConflictDirectCorrection {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -138,6 +140,7 @@ impl Scenario for ConflictBoundaryAcknowledgment {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -188,6 +191,7 @@ impl Scenario for ConflictNuancedPosition {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -238,6 +242,7 @@ impl Scenario for ConflictScopeRedirect {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }

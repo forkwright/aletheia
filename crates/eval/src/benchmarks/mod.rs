@@ -61,6 +61,7 @@ pub use self::metrics::{BenchmarkScore, score_answer};
 /// A single question/answer pair backed by prior conversation context.
 #[derive(Debug, Clone)]
 pub struct BenchmarkQuestion {
+    // kanon:ignore RUST/primitive-for-domain-id — benchmark question id from external dataset JSON, not a domain newtype
     /// Unique identifier for this question within the benchmark.
     pub id: String,
     /// The conversations (sessions) to ingest before asking this question.
@@ -99,6 +100,7 @@ pub struct BenchmarkMetadata {
     pub timestamp: String,
     /// Aletheia version string from `/api/health`.
     pub aletheia_version: String,
+    // kanon:ignore RUST/primitive-for-domain-id — nous_id deserialized from API response; newtype would require custom Deserialize
     /// Nous agent ID used for the benchmark.
     pub nous_id: String,
     /// Model identifier from the nous agent configuration.
@@ -131,6 +133,7 @@ impl Default for BenchmarkMetadata {
 /// Result of scoring a single benchmark question.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuestionResult {
+    // kanon:ignore RUST/primitive-for-domain-id — benchmark result id mirrors external dataset question id
     /// Question id.
     pub id: String,
     /// Category.

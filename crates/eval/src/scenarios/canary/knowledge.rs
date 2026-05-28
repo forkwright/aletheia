@@ -46,6 +46,7 @@ impl Scenario for KnowledgeExtractTechnical {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -96,6 +97,7 @@ impl Scenario for KnowledgeDetectContradiction {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -147,6 +149,7 @@ impl Scenario for KnowledgeUpdateRevision {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -196,6 +199,7 @@ impl Scenario for KnowledgeAmbiguousLowConfidence {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -248,6 +252,7 @@ impl Scenario for KnowledgeMetaCategorization {
                     "Meta-knowledge response should not be empty",
                 )?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }

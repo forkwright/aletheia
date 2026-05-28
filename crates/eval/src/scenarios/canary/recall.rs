@@ -46,6 +46,7 @@ impl Scenario for RecallInsertQueryRoundtrip {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -98,6 +99,7 @@ impl Scenario for RecallSemanticSearch {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -158,6 +160,7 @@ impl Scenario for RecallConflictDetection {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -213,6 +216,7 @@ impl Scenario for RecallTemporalOrdering {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -263,6 +267,7 @@ impl Scenario for RecallEmptyKnowledgeGraceful {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
