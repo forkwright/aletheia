@@ -8,7 +8,7 @@ use axum::response::IntoResponse;
 use symbolon::types::Role;
 
 use crate::error::{ApiError, ErrorResponse, FieldError, NousNotFoundSnafu, ValidationFailedSnafu};
-use crate::extract::{Claims, require_role};
+use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::NousState;
 
 #[path = "nous_dto.rs"]
@@ -30,11 +30,18 @@ pub use nous_dto::{
 )]
 pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousListResponse> {
     let include_private = claims.role >= Role::Operator;
+    let scoped = claims.nous_id.as_deref();
     let nous: Vec<NousSummary> = state
         .nous_manager
         .configs()
         .into_iter()
         .filter(|c| include_private || !c.private)
+        // WHY: a token scoped to a single agent must not see other agents in
+        // the discovery list. Without this filter, a scoped Operator could
+        // enumerate every agent's id, model, and name even though the per-
+        // handler `require_nous_access` blocks them from acting on those
+        // agents.
+        .filter(|c| scoped.is_none_or(|s| s == c.id.as_ref()))
         .map(|c| NousSummary {
             id: c.id.to_string(),
             name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
@@ -64,9 +71,10 @@ pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousLi
 )]
 pub async fn get_status(
     State(state): State<NousState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<NousStatus>, ApiError> {
+    require_nous_access(&claims, &id)?;
     let config = state
         .nous_manager
         .get_config(&id)
@@ -115,9 +123,10 @@ pub async fn get_status(
 )]
 pub async fn tools(
     State(state): State<NousState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
+    require_nous_access(&claims, &id)?;
     let config = state
         .nous_manager
         .get_config(&id)
@@ -171,6 +180,7 @@ pub async fn recover(
     Path(id): Path<String>,
 ) -> Result<Json<RecoverResponse>, ApiError> {
     require_role(&claims, Role::Operator)?;
+    require_nous_access(&claims, &id)?;
     let handle = state
         .nous_manager
         .get(&id)

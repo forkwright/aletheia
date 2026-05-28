@@ -227,6 +227,16 @@ pub fn issue_test_token_as(state: &AppState, role: Role) -> String {
         .expect("issue test token")
 }
 
+/// Issue a JWT scoped to a single `nous_id`, mirroring how an agent-scoped
+/// token would be minted in production. Combined with `Claims` extraction,
+/// scope enforcement via `require_nous_access` rejects cross-agent calls.
+pub fn issue_test_token_scoped(state: &AppState, role: Role, nous_id: &str) -> String {
+    state
+        .jwt_manager
+        .issue_access("test-user", role, Some(nous_id))
+        .expect("issue test token")
+}
+
 pub fn bearer(token: &str) -> String {
     format!("{BEARER_PREFIX}{token}")
 }
