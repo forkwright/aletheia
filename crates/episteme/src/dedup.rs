@@ -52,21 +52,23 @@ pub struct EntityMergeCandidate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum MergeDecision {
-    /// Score ≥ 0.90: merge automatically.
+    /// Score ≥ `tuning.auto_merge_threshold` (default 0.90): merge automatically.
     AutoMerge,
-    /// 0.70 ≤ score < 0.90: queue for human review.
+    /// `tuning.review_threshold` ≤ score < `tuning.auto_merge_threshold`
+    /// (default 0.70..0.90): queue for human review.
     Review,
-    /// Score < 0.70: skip.
+    /// Score < `tuning.review_threshold` (default 0.70): skip.
     Skip,
 }
 
 impl MergeDecision {
-    /// Classify a merge score into a decision.
+    /// Classify a merge score into a decision against the supplied tuning.
+    #[cfg(any(feature = "mneme-engine", test))]
     #[must_use]
-    pub(crate) fn from_score(score: f64) -> Self {
-        if score >= 0.90 {
+    pub(crate) fn from_score(score: f64, tuning: &DedupTuning) -> Self {
+        if score >= tuning.auto_merge_threshold {
             Self::AutoMerge
-        } else if score >= 0.70 {
+        } else if score >= tuning.review_threshold {
             Self::Review
         } else {
             Self::Skip
@@ -93,31 +95,113 @@ pub struct MergeRecord {
     pub merged_at: jiff::Timestamp,
 }
 
-/// Default score weights for the merge formula.
+/// Default name-similarity weight in the composite merge score.
 ///
-/// Callers should prefer values from `taxis::config::AgentBehaviorDefaults::knowledge_dedup_weight_*`.
+/// Operators tuning this should set `knowledge_dedup_weight_name` in
+/// `taxis::config::AgentBehaviorDefaults`; runtime callers should build a
+/// [`DedupTuning`] from that config and pass it into [`generate_candidates`].
 #[cfg(any(feature = "mneme-engine", test))]
 pub const DEFAULT_WEIGHT_NAME: f64 = 0.4;
+/// Default embedding-similarity weight in the composite merge score.
+///
+/// See [`DEFAULT_WEIGHT_NAME`] for the config plumbing pattern.
 #[cfg(any(feature = "mneme-engine", test))]
 pub const DEFAULT_WEIGHT_EMBED: f64 = 0.3;
+/// Default `entity_type`-match weight in the composite merge score.
 #[cfg(any(feature = "mneme-engine", test))]
 pub const DEFAULT_WEIGHT_TYPE: f64 = 0.2;
+/// Default alias-overlap weight in the composite merge score.
 #[cfg(any(feature = "mneme-engine", test))]
 pub const DEFAULT_WEIGHT_ALIAS: f64 = 0.1;
 
 /// Default Jaro-Winkler threshold for candidate generation.
 ///
-/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_dedup_jw_threshold`.
+/// See [`DedupTuning`] for the config-driven path operators should prefer.
 #[cfg(any(feature = "mneme-engine", test))]
 pub const DEFAULT_JW_THRESHOLD: f64 = 0.85;
 
 /// Default embedding cosine threshold for candidate generation.
 ///
-/// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_dedup_embed_threshold`.
+/// See [`DedupTuning`] for the config-driven path operators should prefer.
 #[cfg(any(feature = "mneme-engine", test))]
 pub const DEFAULT_EMBED_THRESHOLD: f64 = 0.80;
 
-/// Compute the weighted merge score.
+/// Default composite score at which `MergeDecision::AutoMerge` fires.
+#[cfg(any(feature = "mneme-engine", test))]
+pub const DEFAULT_AUTO_MERGE_THRESHOLD: f64 = 0.90;
+
+/// Default composite score above which candidates queue for `MergeDecision::Review`.
+#[cfg(any(feature = "mneme-engine", test))]
+pub const DEFAULT_REVIEW_THRESHOLD: f64 = 0.70;
+
+/// Runtime-tunable parameters for the dedup pipeline.
+///
+/// Mirrors the `taxis::config::AgentBehaviorDefaults::knowledge_dedup_*`
+/// configuration keys; CLI and maintenance callers build one from the
+/// resolved agent config and pass it into the dedup entry points so
+/// operator changes actually take effect (#4165 D). Tests and crate-internal
+/// callers can use [`DedupTuning::DEFAULT`] for the pre-config behaviour.
+///
+/// **Invariant**: the score weights are scaled by similarity and
+/// match-flag values that range in `[0.0, 1.0]`, so the maximum reachable
+/// composite score is `weight_name + weight_embed + weight_type +
+/// weight_alias`. Operators tuning the weights must keep the auto-merge
+/// threshold reachable (otherwise the pipeline is back in the
+/// "unreachable `AutoMerge`" failure mode that #4165 fixed).
+#[cfg(any(feature = "mneme-engine", test))]
+#[derive(Debug, Clone, Copy)]
+pub struct DedupTuning {
+    /// Weight applied to the name similarity term. Default
+    /// [`DEFAULT_WEIGHT_NAME`].
+    pub weight_name: f64,
+    /// Weight applied to the embedding similarity term. Default
+    /// [`DEFAULT_WEIGHT_EMBED`].
+    pub weight_embed: f64,
+    /// Weight applied to the `entity_type`-match term. Default
+    /// [`DEFAULT_WEIGHT_TYPE`].
+    pub weight_type: f64,
+    /// Weight applied to the alias-overlap term. Default
+    /// [`DEFAULT_WEIGHT_ALIAS`].
+    pub weight_alias: f64,
+    /// Minimum Jaro-Winkler score that admits a pair as a candidate.
+    /// Default [`DEFAULT_JW_THRESHOLD`].
+    pub jw_threshold: f64,
+    /// Minimum cosine embedding similarity that admits a pair as a
+    /// candidate. Default [`DEFAULT_EMBED_THRESHOLD`].
+    pub embed_threshold: f64,
+    /// Composite score above which the pipeline auto-merges without
+    /// operator review. Default [`DEFAULT_AUTO_MERGE_THRESHOLD`].
+    pub auto_merge_threshold: f64,
+    /// Composite score above which a candidate queues for operator
+    /// review. Default [`DEFAULT_REVIEW_THRESHOLD`].
+    pub review_threshold: f64,
+}
+
+#[cfg(any(feature = "mneme-engine", test))]
+impl DedupTuning {
+    /// Default tuning matching the pre-config behaviour: classic
+    /// 0.4/0.3/0.2/0.1 weights, 0.85 JW floor, 0.80 embed floor,
+    /// 0.90 auto-merge, 0.70 review.
+    pub const DEFAULT: Self = Self {
+        weight_name: DEFAULT_WEIGHT_NAME,
+        weight_embed: DEFAULT_WEIGHT_EMBED,
+        weight_type: DEFAULT_WEIGHT_TYPE,
+        weight_alias: DEFAULT_WEIGHT_ALIAS,
+        jw_threshold: DEFAULT_JW_THRESHOLD,
+        embed_threshold: DEFAULT_EMBED_THRESHOLD,
+        auto_merge_threshold: DEFAULT_AUTO_MERGE_THRESHOLD,
+        review_threshold: DEFAULT_REVIEW_THRESHOLD,
+    };
+}
+
+#[cfg(any(feature = "mneme-engine", test))]
+impl Default for DedupTuning {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Compute the weighted merge score under `tuning`.
 #[cfg(any(feature = "mneme-engine", test))]
 #[must_use]
 pub(crate) fn compute_merge_score(
@@ -125,13 +209,14 @@ pub(crate) fn compute_merge_score(
     embed_similarity: f64,
     type_match: bool,
     alias_overlap: bool,
+    tuning: &DedupTuning,
 ) -> f64 {
     let type_val = if type_match { 1.0 } else { 0.0 };
     let alias_val = if alias_overlap { 1.0 } else { 0.0 };
-    DEFAULT_WEIGHT_NAME * name_similarity
-        + DEFAULT_WEIGHT_EMBED * embed_similarity
-        + DEFAULT_WEIGHT_TYPE * type_val
-        + DEFAULT_WEIGHT_ALIAS * alias_val
+    tuning.weight_name * name_similarity
+        + tuning.weight_embed * embed_similarity
+        + tuning.weight_type * type_val
+        + tuning.weight_alias * alias_val
 }
 
 /// Compute Jaro-Winkler similarity between two strings (case-insensitive).
@@ -338,14 +423,19 @@ pub(crate) fn make_embedding_lookup(
 ///
 /// Finds pairs within the same `entity_type` where at least one of:
 /// - Exact name match (case-insensitive)
-/// - Jaro-Winkler similarity ≥ 0.85
+/// - Jaro-Winkler similarity ≥ `tuning.jw_threshold`
+/// - Embedding similarity ≥ `tuning.embed_threshold`
 /// - Any shared alias or name-in-alias match
 ///
-/// Embedding similarity is passed as an optional precomputed map; if absent, defaults to 0.0.
+/// The composite score uses the weights on `tuning`. Embedding similarity
+/// is supplied by the closure — for pairs whose stored `name_embedding`
+/// is `None`, [`make_embedding_lookup`] returns `0.0` so the pipeline
+/// degrades to the pre-fix score range (#4165 Path A).
 #[cfg(any(feature = "mneme-engine", test))]
 pub(crate) fn generate_candidates(
     entities: &[EntityInfo],
     embed_similarities: &dyn Fn(&EntityId, &EntityId) -> f64,
+    tuning: &DedupTuning,
 ) -> Vec<EntityMergeCandidate> {
     let mut candidates = Vec::new();
 
@@ -361,15 +451,16 @@ pub(crate) fn generate_candidates(
             let alias_overlap = aliases_overlap(&a.aliases, &b.aliases)
                 || name_in_aliases(&a.name, &b.aliases, &b.name, &a.aliases);
             let is_exact_match = a.name.to_lowercase() == b.name.to_lowercase();
-            let is_jw_match = name_sim >= DEFAULT_JW_THRESHOLD;
+            let is_jw_match = name_sim >= tuning.jw_threshold;
             let embed_sim = embed_similarities(&a.id, &b.id);
-            let is_embed_match = embed_sim >= DEFAULT_EMBED_THRESHOLD;
+            let is_embed_match = embed_sim >= tuning.embed_threshold;
 
             if !is_exact_match && !is_jw_match && !is_embed_match && !alias_overlap {
                 continue;
             }
 
-            let merge_score = compute_merge_score(name_sim, embed_sim, type_match, alias_overlap);
+            let merge_score =
+                compute_merge_score(name_sim, embed_sim, type_match, alias_overlap, tuning);
 
             candidates.push(EntityMergeCandidate {
                 entity_a: a.id.clone(),
@@ -388,16 +479,17 @@ pub(crate) fn generate_candidates(
     candidates
 }
 
-/// Phase 2: Classify candidates into auto-merge, review, or skip.
+/// Phase 2: Classify candidates into auto-merge, review, or skip under `tuning`.
 #[cfg(any(feature = "mneme-engine", test))]
 pub(crate) fn classify_candidates(
     candidates: Vec<EntityMergeCandidate>,
+    tuning: &DedupTuning,
 ) -> (Vec<EntityMergeCandidate>, Vec<EntityMergeCandidate>) {
     let mut auto_merge = Vec::new();
     let mut review = Vec::new();
 
     for c in candidates {
-        match MergeDecision::from_score(c.merge_score) {
+        match MergeDecision::from_score(c.merge_score, tuning) {
             MergeDecision::AutoMerge => auto_merge.push(c),
             MergeDecision::Review => review.push(c),
             // NOTE: score below threshold, candidate discarded

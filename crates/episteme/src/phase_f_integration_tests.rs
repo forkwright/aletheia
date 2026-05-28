@@ -85,7 +85,9 @@ fn preference_fact_type_has_8760_base_stability_hours() {
 
 #[test]
 fn dedup_candidate_generation_finds_duplicate_instinct_patterns() {
-    use crate::dedup::{EntityInfo, MergeDecision, compute_merge_score, generate_candidates};
+    use crate::dedup::{
+        DedupTuning, EntityInfo, MergeDecision, compute_merge_score, generate_candidates,
+    };
     use crate::id::EntityId;
 
     let ts_a = ts("2026-03-01T00:00:00Z");
@@ -112,7 +114,7 @@ fn dedup_candidate_generation_finds_duplicate_instinct_patterns() {
         },
     ];
 
-    let candidates = generate_candidates(&entities, &|_, _| 0.0);
+    let candidates = generate_candidates(&entities, &|_, _| 0.0, &DedupTuning::DEFAULT);
     assert!(
         !candidates.is_empty(),
         "exact name match for same-type instinct entities should produce a candidate"
@@ -130,16 +132,22 @@ fn dedup_candidate_generation_finds_duplicate_instinct_patterns() {
         "same entity_type means type_match=true"
     );
 
-    let score = compute_merge_score(candidates[0].name_similarity, 0.0, true, false);
+    let score = compute_merge_score(
+        candidates[0].name_similarity,
+        0.0,
+        true,
+        false,
+        &DedupTuning::DEFAULT,
+    );
     assert!(
         score >= 0.0,
         "merge score should be non-negative for exact name match"
     );
     assert!(score <= 1.0, "merge score should be at most 1.0");
 
-    let all_signals_score = compute_merge_score(1.0, 1.0, true, true);
+    let all_signals_score = compute_merge_score(1.0, 1.0, true, true, &DedupTuning::DEFAULT);
     assert_eq!(
-        MergeDecision::from_score(all_signals_score),
+        MergeDecision::from_score(all_signals_score, &DedupTuning::DEFAULT),
         MergeDecision::AutoMerge,
         "perfect name + embed + type + alias → auto-merge"
     );

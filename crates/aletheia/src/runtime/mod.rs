@@ -620,9 +620,19 @@ impl RuntimeBuilder {
                 // before scoring. Without this, the maintenance task
                 // reports merges executed but the AutoMerge threshold
                 // (≥ 0.90) is structurally unreachable.
+                //
+                // WHY (#4165 D): build a DedupTuning from the resolved
+                // AgentBehaviorDefaults so operator-tunable
+                // `knowledge_dedup_*` keys actually take effect in the
+                // scheduled maintenance task instead of silently using
+                // hardcoded module constants.
+                let dedup_tuning = crate::knowledge_maintenance::tuning_from_behavior(
+                    &self.config.agents.defaults.behavior,
+                );
                 let km_executor = Arc::new(
                     crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(Arc::clone(ks))
-                        .with_embedding_provider(Arc::clone(&embedding_provider)),
+                        .with_embedding_provider(Arc::clone(&embedding_provider))
+                        .with_tuning(dedup_tuning),
                 );
                 daemon_runner = daemon_runner.with_knowledge_maintenance(km_executor);
             }
