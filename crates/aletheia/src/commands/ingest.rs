@@ -1,5 +1,6 @@
 //! `aletheia ingest`: file-based knowledge ingestion.
 
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
@@ -17,6 +18,7 @@ pub(crate) struct IngestArgs {
     pub format: String,
     /// Nous agent ID that will own the extracted facts.
     #[arg(short, long, default_value = "default")]
+    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
     pub nous_id: String,
     /// Preview without mutating the knowledge store.
     #[arg(long)]
@@ -241,8 +243,8 @@ async fn read_path(path: &Path) -> Result<String> {
                 if let Ok(mut file) = tokio::fs::File::open(&path).await
                     && file.read_to_string(&mut content).await.is_ok()
                 {
-                    use std::fmt::Write as _;
-                    let _ = writeln!(combined, "\n\n--- {} ---\n", path.display());
+                    // kanon:ignore RUST/no-silent-result-swallow — writing to a String never fails; std::fmt::Write returns Result for trait uniformity
+                    let _ = writeln!(combined, "\n\n--- {} ---", path.display());
                     combined.push_str(&content);
                 }
             }

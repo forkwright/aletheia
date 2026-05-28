@@ -30,6 +30,7 @@ pub(crate) async fn do_daemon() -> Result<()> {
         .with_context(|| format!("failed to create {}", instance_root.display()))?;
     let crash_log_path = instance_root.join("logs").join("daemon-stderr.log");
     if let Some(parent) = crash_log_path.parent() {
+        // kanon:ignore RUST/no-silent-result-swallow — best-effort parent dir creation; stderr file creation below will fail with clear error if dir is missing
         let _ = std::fs::create_dir_all(parent);
     }
     let stderr_file =

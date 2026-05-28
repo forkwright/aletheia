@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — module contains tightly-coupled agent I/O CLI command implementations; splitting would hurt cohesion
 //! Agent import/export and skill management commands.
 
 use std::collections::HashMap;
@@ -12,6 +13,7 @@ use crate::error::Result;
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ExportArgs {
     /// Agent (nous) ID to export
+    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
     pub nous_id: String,
     /// Output file path (default: `{nous-id}-{date}.agent.json`)
     #[arg(short, long)]
@@ -62,6 +64,7 @@ pub(crate) struct SeedSkillsArgs {
     pub dir: PathBuf,
     /// Agent (nous) ID to attribute skills to
     #[arg(short, long)]
+    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
     pub nous_id: String,
     /// Overwrite existing skills with the same name
     #[arg(long)]
@@ -75,6 +78,7 @@ pub(crate) struct SeedSkillsArgs {
 pub(crate) struct ExportSkillsArgs {
     /// Agent (nous) ID whose skills to export
     #[arg(short, long)]
+    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
     pub nous_id: String,
     /// Output directory (default: .claude/skills)
     #[arg(short, long, default_value = ".claude/skills")]
@@ -92,6 +96,7 @@ pub(crate) struct ExportSkillsArgs {
 pub(crate) struct ReviewSkillsArgs {
     /// Agent (nous) ID whose pending skills to review
     #[arg(short, long)]
+    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
     pub nous_id: String,
     /// Action: list, approve, reject
     #[arg(short, long, default_value = "list")]

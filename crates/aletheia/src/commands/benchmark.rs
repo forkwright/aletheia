@@ -32,6 +32,7 @@ pub(crate) enum BenchmarkAction {
     List,
 }
 
+// kanon:ignore RUST/struct-too-many-fields — CLI args struct for benchmark runner; each field is a distinct command-line option
 #[derive(Debug, Clone, Args)]
 pub(crate) struct RunArgs {
     /// Path to the benchmark dataset JSON file
@@ -46,6 +47,7 @@ pub(crate) struct RunArgs {
     pub token: Option<String>,
     /// Nous agent ID to test
     #[arg(long, default_value = "benchmark")]
+    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
     pub nous_id: String,
     /// Maximum number of questions to evaluate (useful for smoke tests)
     #[arg(long)]
