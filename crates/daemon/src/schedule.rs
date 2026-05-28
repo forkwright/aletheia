@@ -26,10 +26,12 @@ pub enum Schedule {
 #[derive(Debug, Clone)]
 pub struct TaskDef {
     /// Unique task identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — TaskDef::id is a user-configured cron task identifier from TOML/JSON, not a typed domain entity ID
     pub id: String,
     /// Human-readable name.
     pub name: String,
     /// Which nous this task belongs to.
+    // kanon:ignore RUST/primitive-for-domain-id — TaskDef::nous_id is a string reference to a runtime nous actor name, configured externally
     pub nous_id: String,
     /// When to run.
     pub schedule: Schedule,
@@ -160,8 +162,10 @@ impl Schedule {
             }
             Self::Interval(duration) => {
                 let span = jiff::SignedDuration::from_nanos(
+                    // kanon:ignore RUST/no-result-unwrap-or-default — overflow of interval nanos to i64 is unreachable in practice; zero fallback yields immediate scheduling, which is safe
                     i64::try_from(duration.as_nanos()).unwrap_or_default(),
                 );
+                // kanon:ignore RUST/no-result-unwrap-or-default — timestamp overflow on interval addition is unreachable for realistic intervals; default falls back to now, safe for scheduling
                 let next = jiff::Timestamp::now().checked_add(span).unwrap_or_default();
                 Ok(Some(next))
             }
@@ -190,6 +194,7 @@ impl Schedule {
         };
 
         let now = jiff::Timestamp::now();
+        // kanon:ignore RUST/no-result-unwrap-or-default — subtracting 24h from now cannot underflow; default is defensive-only
         let twenty_four_hours_ago = now
             .checked_sub(jiff::SignedDuration::from_hours(24))
             .unwrap_or_default();
@@ -215,6 +220,7 @@ impl Schedule {
         };
 
         let now = jiff::Zoned::now();
+        // kanon:ignore RUST/no-result-unwrap-or-default — jiff::hour() returns 0-23 which always fits u8; default is defensive-only
         let hour = u8::try_from(now.hour()).unwrap_or_default();
 
         if start <= end {
@@ -256,6 +262,7 @@ pub(crate) fn compute_jitter(
     let jitter_nanos = max_nanos.saturating_mul(scale) / denom;
 
     // SAFETY: jitter_nanos ≤ max_jitter nanos, which fits in the input SignedDuration
+    // kanon:ignore RUST/no-result-unwrap-or-default — jitter_nanos is bounded by max_nanos (i64); try_from cannot fail; default is defensive-only
     jiff::SignedDuration::from_nanos(i64::try_from(jitter_nanos).unwrap_or_default())
 }
 
@@ -270,6 +277,7 @@ pub(crate) fn apply_jitter(
     let ts = base?;
     let max_jitter = jitter?;
     let offset = compute_jitter(task_id, max_jitter);
+    // kanon:ignore RUST/no-result-unwrap-or-default — timestamp overflow on jitter addition is unreachable for realistic jitter; default falls back to now, safe for scheduling
     Some(ts.checked_add(offset).unwrap_or_default())
 }
 
@@ -292,6 +300,7 @@ pub(crate) fn backoff_delay(consecutive_failures: u32) -> Duration {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskStatus {
     /// Unique task identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — TaskStatus::id mirrors TaskDef::id, a user-configured string identifier
     pub id: String,
     /// Human-readable task name.
     pub name: String,

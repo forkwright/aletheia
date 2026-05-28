@@ -230,6 +230,7 @@ impl ProbeSet {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProbeResult {
     /// Stable probe identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — ProbeResult is a serialization type used in probe audit summaries; probe_id is a stable string key from the static probe set, not a domain entity ID
     pub probe_id: String,
     /// Category of probe.
     pub category: ProbeCategory,

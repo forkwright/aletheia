@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — cohesive prosoche audit framework: trait + impls + report structs belong together
 //! Prosoche self-audit framework: structured attention-quality checks.
 //!
 //! Implements REQ-01 and REQ-02 from Phase 05:
@@ -98,6 +99,7 @@ impl std::fmt::Display for ProsocheCheckKind {
 #[derive(Debug, Clone, Default)]
 pub struct ProsocheState {
     /// The nous identity this audit is running for.
+    // kanon:ignore RUST/primitive-for-domain-id — ProsocheState is an ephemeral audit input struct; nous_id is passed as &str from the runner and converted to String for serialization
     pub nous_id: String,
     /// Known stated goals for this nous (free-text lines).
     ///
@@ -119,6 +121,7 @@ pub struct ProsocheState {
 #[derive(Debug, Clone)]
 pub struct FactSnapshot {
     /// Stable fact identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — FactSnapshot is an ephemeral audit input; fact_id comes from external knowledge graph facts as raw strings
     pub fact_id: String,
     /// Full text content of the fact.
     pub content: String,
@@ -132,6 +135,7 @@ pub struct FactSnapshot {
 #[derive(Debug, Clone)]
 pub struct SessionSnapshot {
     /// Session identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — SessionSnapshot is an ephemeral audit input; session_id comes from external session metadata as raw strings
     pub session_id: String,
     /// Total turn count in the session.
     pub turn_count: u32,
@@ -684,6 +688,7 @@ pub struct AuditReport {
     /// ISO 8601 timestamp when this audit ran.
     pub audited_at: String,
     /// The nous identity this audit covers.
+    // kanon:ignore RUST/primitive-for-domain-id — AuditReport is a serialization envelope; nous_id is copied from the input state for provenance, not a cross-crate domain ID
     pub nous_id: String,
     /// All findings from all checks, in check order.
     pub findings: Vec<Finding>,

@@ -10,6 +10,7 @@ use snafu::Snafu;
     missing_docs,
     reason = "snafu error variant fields (source, location, context) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — #[non_exhaustive] is present on line 8; #[expect] attribute between it and pub enum triggers false positive
 pub enum Error {
     /// Invalid cron expression.
     #[snafu(display("invalid cron expression '{expression}': {reason}"))]

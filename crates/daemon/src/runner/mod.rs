@@ -41,6 +41,7 @@ pub mod systemd;
 mod tracking;
 pub(crate) use output::truncate_output;
 
+// kanon:ignore RUST/struct-too-many-fields — TaskRunner is a cohesive actor struct: all fields are required for per-nous task scheduling, execution, and lifecycle management
 /// Per-nous background task runner.
 pub struct TaskRunner {
     nous_id: String,

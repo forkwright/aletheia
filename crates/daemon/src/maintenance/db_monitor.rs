@@ -175,6 +175,7 @@ impl DbMonitor {
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
+                // kanon:ignore RUST/no-result-unwrap-or-default — fallback to empty string is safe: extension check below skips unnamed files
                 .unwrap_or_default();
 
             if !std::path::Path::new(name)

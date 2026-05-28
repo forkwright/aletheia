@@ -642,6 +642,7 @@ fn truncate_content(s: &str, max_len: usize) -> String {
             clippy::string_slice,
             reason = "end is computed from char_indices: guaranteed to be a char boundary"
         )]
+        // kanon:ignore RUST/indexing-slicing — end computed from char_indices at position max_len; guaranteed char boundary
         let prefix = &s[..end];
         format!("{prefix}...")
     }
