@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-28T03:00:47Z"
+generated_at = "2026-05-28T04:43:22Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -243,8 +243,8 @@ l3_token_estimate = 1530
 [[crates]]
 name = "aletheia-memory-mcp"
 path = "crates/aletheia-memory-mcp"
-source_hash = "6252efff536efe563f3800b0ef25ae206341194725f31a17209e0deb4c379fbe"
-l3_token_estimate = 1133
+source_hash = "daefbe1b09b0d5e3f30ac98b6761ea1f5f53f4224e4d3c1e022154eb442d1ea1"
+l3_token_estimate = 1309
 
 [[crates]]
 name = "aletheia-routing"
