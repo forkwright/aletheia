@@ -2132,9 +2132,37 @@ impl KnowledgeStore {
         &self,
         _nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>>;
+    pub fn approve_merge (
+        &self,
+        canonical_id: &crate::id::EntityId,
+        merged_id: &crate::id::EntityId,
+    ) -> crate::error::Result<crate::dedup::MergeRecord>;
+    pub fn get_merge_history (
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
     pub fn run_entity_dedup (
         &self,
         nous_id: &str,
+    ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
+    pub fn update_entity_name_embedding (
+        &self,
+        entity_id: &crate::id::EntityId,
+        name_embedding: Option<Vec<f32>>,
+    ) -> crate::error::Result<()>;
+    pub fn get_entity_name_embedding (
+        &self,
+        entity_id: &crate::id::EntityId,
+    ) -> crate::error::Result<Option<Vec<f32>>>;
+    pub fn backfill_entity_name_embeddings (
+        &self,
+        provider: &dyn crate::embedding::EmbeddingProvider,
+        nous_id: &str,
+    ) -> crate::error::Result<u64>;
+    pub fn run_entity_dedup_with_embeddings (
+        &self,
+        nous_id: &str,
+        provider: Option<&dyn crate::embedding::EmbeddingProvider>,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
 }
 ```
@@ -2261,6 +2289,11 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         project_id: String?,
         visibility: String default 'private'
     }",
+    // WHY: index 1 is a sentinel — `init_schema` skips this entry and runs
+    // the dim-parameterized `entities_ddl(self.dim)` instead so the relation
+    // carries a `name_embedding: <F32; DIM>?` column for the dedup pipeline
+    // (#4165 Path A). The literal here documents the pre-v13 shape but is
+    // not executed against any database.
     r":create entities {
         id: String =>
         name: String,
@@ -2341,6 +2374,10 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         contributed_at: String
     }",
 ];
+```
+
+```rust
+pub fn entities_ddl (dim: usize) -> String
 ```
 
 ```rust
@@ -2790,6 +2827,10 @@ pub enum EntitiesField {
     Aliases,
     CreatedAt,
     UpdatedAt,
+    /// Nullable embedding of [`Self::Name`]; populated by the dedup pipeline
+    /// (#4165) when an `EmbeddingProvider` is in scope. NULL for entities
+    /// inserted in degraded mode or before the v13 schema migration.
+    NameEmbedding,
 }
 ```
 
@@ -3554,13 +3595,17 @@ pub struct SkillParseError {
 
 > Parse a SKILL.md file into structured skill content.
 > 
-> Supports optional YAML frontmatter (delimited by `---`) with `tools` and
-> `domains` fields. Falls back to extracting from markdown sections.
+> Accepts two title shapes (Claude-Code-compatible):
+> 1. YAML frontmatter with `name:` (body may omit `# Title`).
+> 2. Body `# Title` heading (frontmatter optional).
+> 
+> Description is taken from frontmatter `description:` when present, else
+> from the body text after the H1, else from a `## When to Use` section.
 > 
 > # Errors
 > 
-> Returns an error if the document is empty, missing a top-level heading,
-> or has no description.
+> Returns an error naming the missing route(s) when no title can be found
+> on either path, or when no description can be derived.
 ```rust
 pub fn parse_skill_md (source: &str, slug: &str) -> Result<SkillContent, SkillParseError>
 ```

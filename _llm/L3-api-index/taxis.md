@@ -2468,6 +2468,10 @@ pub fn auth_none_lan_opt_in_enabled () -> bool
 ```
 
 ```rust
+pub fn validate_auth_mode_policy (gateway_value: &Value) -> Result<(), ValidationError>
+```
+
+```rust
 pub fn auth_none_opt_in_enabled () -> bool
 ```
 
