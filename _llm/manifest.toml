@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-25T10:30:32Z"
+generated_at = "2026-05-28T02:16:32Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -309,8 +309,8 @@ l3_token_estimate = 4647
 [[crates]]
 name = "hermeneus"
 path = "crates/hermeneus"
-source_hash = "d1bbabd008e639ebb2aa07613b1a5e02c5493bcf4d608149a9dc072091d6e567"
-l3_token_estimate = 12019
+source_hash = "0b354fb749d56c843359e7b28b06e99216a7936734b8e03c1865f171231f63eb"
+l3_token_estimate = 13187
 
 [[crates]]
 name = "integration-tests"
