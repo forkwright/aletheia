@@ -13,10 +13,12 @@ fuzz_target!(|data: &[u8]| {
     // 1. AletheiaConfig from JSON: the runtime config update path.
     //    Tests camelCase rename, default handling, nested struct parsing,
     //    HashMap keys, Vec elements, and enum variants.
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<taxis::config::AletheiaConfig>(data);
 
     // 2. AletheiaConfig from TOML: the file-based config loading path.
     if let Ok(s) = std::str::from_utf8(data) {
+        // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
         let _ = toml::from_str::<taxis::config::AletheiaConfig>(s);
     }
 
@@ -39,17 +41,25 @@ fuzz_target!(|data: &[u8]| {
         ];
 
         for section in SECTIONS {
+            // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
             let _ = taxis::validate::validate_section(section, &value);
         }
     }
 
     // 4. Individual config struct deserialization: tighter surface coverage.
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<taxis::config::GatewayConfig>(data);
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<taxis::config::AgentsConfig>(data);
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<taxis::config::ChannelsConfig>(data);
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<taxis::config::MaintenanceSettings>(data);
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<taxis::config::CredentialConfig>(data);
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<taxis::config::EmbeddingSettings>(data);
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<taxis::config::NousDefinition>(data);
 
     // 5. JSON roundtrip of default config: ensures serialize/deserialize symmetry.

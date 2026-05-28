@@ -29,6 +29,7 @@ static FACT_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 fuzz_target!(|data: &[u8]| {
     // 1. Fact JSON deserialization: malformed content, invalid confidence,
     //    missing fields, unexpected types, oversized payloads.
+    // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
     let _ = serde_json::from_slice::<Fact>(data);
 
     // 2. Timestamp parsing: ISO 8601, date-only, far-future sentinel,
@@ -46,13 +47,17 @@ fuzz_target!(|data: &[u8]| {
         }
 
         // 3. FactType classification: keyword heuristics on arbitrary strings.
+        // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
         let _ = FactType::classify(s);
+        // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
         let _ = FactType::from_str_lossy(s);
 
         // 4. ForgetReason parsing: enum from string.
+        // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
         let _ = s.parse::<ForgetReason>();
 
         // 5. EpistemicTier serde roundtrip.
+        // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
         let _ = serde_json::from_str::<EpistemicTier>(s);
     }
 
@@ -176,6 +181,7 @@ fuzz_target!(|data: &[u8]| {
             // The fact we just inserted should be retrievable (unless the store
             // hit an internal limit). We don't assert exact count because other
             // fuzz iterations may have inserted facts concurrently.
+            // kanon:ignore RUST/no-silent-result-swallow — fuzz harness; malformed input is expected and errors are intentionally discarded
             let _ = facts.len();
         }
     }
