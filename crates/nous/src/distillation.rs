@@ -55,7 +55,11 @@ impl Default for DistillTriggerConfig {
         let b = taxis::config::AgentBehaviorDefaults::default();
         Self {
             max_history_share: 0.7,
-            model: "claude-sonnet-4-20250514".to_owned(),
+            // WHY (#4235): nous distillation overrides melete's DistillConfig::default()
+            // model via `model: config.model.clone()` (orchestrate fn). Pinning a literal
+            // here re-introduced the silent Sonnet-4.0 downgrade #4235 collapsed at the
+            // koina level — route through DEFAULT_MODEL so both layers stay aligned.
+            model: koina::defaults::DEFAULT_MODEL.to_owned(),
             verbatim_tail: 3,
             context_token_trigger: b.distillation_context_token_trigger,
             message_count_trigger: b.distillation_message_count_trigger as i64,
