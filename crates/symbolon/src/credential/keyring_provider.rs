@@ -30,6 +30,7 @@ impl KeyringCredentialProvider {
     }
 
     /// Create a provider with custom service and username identifiers.
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn with_identifiers(
         service: impl Into<String>,
