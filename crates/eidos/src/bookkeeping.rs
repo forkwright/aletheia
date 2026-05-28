@@ -133,7 +133,7 @@ pub struct ExtractedFact {
 #[derive(Debug, Clone)]
 pub struct ExtractedToolCall {
     /// Tool call ID.
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — raw provider-assigned tool call ID, not a knowledge-domain identifier
     /// Tool name.
     pub name: String,
     /// Input parameters.

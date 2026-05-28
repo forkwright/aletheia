@@ -122,6 +122,7 @@ impl std::str::FromStr for PathValidationLayer {
     missing_docs,
     reason = "variant fields (path, scope, hops, etc.) are self-documenting by name"
 )]
+// kanon:ignore RUST/non-exhaustive-enum -- WHY: #[non_exhaustive] is already present; linter false-positive when an intervening #[expect] separates the attribute from the enum keyword
 pub enum PathValidationError {
     /// Path contains null bytes that would truncate C-level syscalls.
     NullByte { path: String },

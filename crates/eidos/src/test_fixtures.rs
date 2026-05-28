@@ -15,7 +15,7 @@ use crate::knowledge::{
 
 /// Parse an ISO 8601 timestamp for test data. Panics on invalid input.
 pub fn test_ts(s: &str) -> jiff::Timestamp {
-    parse_timestamp(s).expect("valid test timestamp in test helper")
+    parse_timestamp(s).expect("valid test timestamp in test helper") // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
 }
 
 /// Build a minimal `Fact` with sensible test defaults.
@@ -27,7 +27,7 @@ pub fn test_ts(s: &str) -> jiff::Timestamp {
 /// ```
 pub fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
     Fact {
-        id: FactId::new(id).expect("valid test id"),
+        id: FactId::new(id).expect("valid test id"), // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         nous_id: nous_id.to_owned(),
         content: content.to_owned(),
         fact_type: String::new(),
@@ -62,7 +62,7 @@ pub fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
 /// Build a minimal `Entity` with sensible test defaults.
 pub fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
     Entity {
-        id: EntityId::new(id).expect("valid test id"),
+        id: EntityId::new(id).expect("valid test id"), // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         name: name.to_owned(),
         entity_type: entity_type.to_owned(),
         aliases: vec![],
@@ -74,8 +74,8 @@ pub fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
 /// Build a minimal `Relationship` with sensible test defaults.
 pub fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relationship {
     Relationship {
-        src: EntityId::new(src).expect("valid test id"),
-        dst: EntityId::new(dst).expect("valid test id"),
+        src: EntityId::new(src).expect("valid test id"), // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        dst: EntityId::new(dst).expect("valid test id"), // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         relation: relation.to_owned(),
         weight,
         created_at: test_ts("2026-03-01T00:00:00Z"),

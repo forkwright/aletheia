@@ -10,7 +10,7 @@ const DEFAULT_MAX_SHARD_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Configuration for training data capture.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct TrainingConfig {
     /// Whether training data capture is enabled.
     pub enabled: bool,
@@ -129,7 +129,7 @@ pub struct ToolOutcome {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RecalledFact {
     /// Stable identifier of the recalled source (fact / note / document id).
-    pub source_id: String,
+    pub source_id: String, // kanon:ignore RUST/primitive-for-domain-id — polymorphic source reference string, not a single domain ID type
     /// Source type label (e.g. `"fact"`, `"note"`, `"document"`).
     pub source_type: String,
     /// Final weighted recall score in `[0.0, 1.0]`.
@@ -172,9 +172,9 @@ pub struct TrainingRecord {
     #[serde(default)]
     pub schema_version: u32,
     /// Session identifier (groups turns within a conversation).
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — cross-crate session identifier, serialized as string here
     /// Nous agent identifier that handled the turn.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — cross-crate nous identifier from koina, serialized as string here
     /// The user's input message.
     pub user_message: String,
     /// The assistant's response content.

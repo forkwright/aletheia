@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — integration test covering full public API surface; splitting reduces cohesion
 //! Integration tests for eidos's public API surface.
 //!
 //! WHY: eidos is the foundational knowledge-types crate for the memory

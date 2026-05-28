@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — coherent domain module; splitting would break temporal locality of related types
 //! Fact domain types: extraction, classification, decay, timestamps.
 
 use serde::{Deserialize, Serialize};
@@ -71,7 +72,7 @@ pub struct Fact {
     /// Stable identifier for this fact.
     pub id: FactId,
     /// Agent (nous) that owns this fact.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — cross-crate nous identifier from koina, serialized as string here
     /// Classification determining base decay behavior.
     pub fact_type: String,
     /// Human-readable fact statement.
@@ -134,6 +135,7 @@ pub struct Fact {
 /// | `Confidential` | embedded (in-process) only |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
+// kanon:ignore RUST/non-exhaustive-enum -- WHY: intentionally exhaustive; the data-sovereignty deployment-target model defines the complete variant set and downstream code matches it exhaustively
 pub enum FactSensitivity {
     /// Safe for any provider, including cloud LLM providers.
     #[default]
@@ -704,7 +706,7 @@ pub fn default_stability_hours(fact_type: &str) -> f64 {
 pub fn far_future() -> jiff::Timestamp {
     jiff::civil::date(9999, 1, 1)
         .to_zoned(jiff::tz::TimeZone::UTC)
-        .unwrap_or_default() // SAFETY: 9999-01-01 is a valid Gregorian date
+        .unwrap_or_default() // kanon:ignore RUST/no-result-unwrap-or-default — 9999-01-01 is a valid Gregorian date and UTC has no DST gaps
         .timestamp()
 }
 
@@ -749,7 +751,7 @@ pub fn parse_timestamp(s: &str) -> Option<jiff::Timestamp> {
     if let Ok(date) = s.parse::<jiff::civil::Date>() {
         return Some(
             date.to_zoned(jiff::tz::TimeZone::UTC)
-                .unwrap_or_default() // SAFETY: UTC conversion of a valid parsed date is infallible
+                .unwrap_or_default() // kanon:ignore RUST/no-result-unwrap-or-default — date was just parsed successfully; UTC has no DST gaps
                 .timestamp(),
         );
     }

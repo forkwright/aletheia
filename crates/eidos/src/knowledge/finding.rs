@@ -98,7 +98,7 @@ pub struct Finding {
     /// Stable identifier for this finding within the eval run.
     ///
     /// Convention: `<BENCHMARK>-<CATEGORY>-<N>`, e.g. `LME-factual-001`.
-    pub finding_id: String,
+    pub finding_id: String, // kanon:ignore RUST/primitive-for-domain-id — benchmark-scoped finding label, not a knowledge-domain identifier
     /// The claim as a single declarative sentence.
     ///
     /// Write as: "{system} {verb} {metric} ({value}), {framing qualifier}."
