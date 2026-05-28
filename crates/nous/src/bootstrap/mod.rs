@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — bootstrap assembly pipeline; modularization tracked in #3750
 //! Context bootstrap assembly.
 //!
 //! Reads workspace files through the taxis cascade, estimates tokens,

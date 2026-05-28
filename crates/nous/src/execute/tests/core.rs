@@ -1,13 +1,15 @@
+// kanon:ignore RUST/file-too-long — core execute test suite; kept single-file for shared test helpers
 #![expect(
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"
 )]
 //! Core execute loop tests.
-use super::*;
 use std::sync::{Arc, Mutex};
 
 use hermeneus::error as llm_error;
 use hermeneus::provider::{DeploymentTarget, LlmProvider};
+
+use super::*;
 
 struct FallbackSequenceProvider {
     responses: Mutex<Vec<hermeneus::error::Result<CompletionResponse>>>,

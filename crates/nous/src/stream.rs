@@ -9,6 +9,7 @@ use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
     missing_docs,
     reason = "variant fields (tool_id, tool_name, input, result, is_error, duration_ms) are self-documenting by name"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive]; false positive from attribute ordering
 pub enum TurnStreamEvent {
     /// LLM streaming delta forwarded from the provider.
     LlmDelta(LlmStreamEvent),

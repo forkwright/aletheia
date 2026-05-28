@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — training capture orchestration; shard/manifest logic extraction planned
 //! Training data capture: sharded JSONL writer for conversation turns.
 //!
 //! Captures successful conversation turns as structured records for future
@@ -57,6 +58,7 @@ use tracing::{debug, warn};
     missing_docs,
     reason = "snafu error variant fields (source, path) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive]; false positive from attribute ordering
 pub enum TrainingCaptureError {
     /// Failed to create the training data directory.
     #[snafu(display("failed to create training directory {}: {source}", path.display()))]
@@ -169,6 +171,7 @@ impl CaptureStopReason {
 /// Bundles the per-turn fields into a single record so the call sites
 /// remain self-documenting and so the function signature stays under the
 /// workspace's `too_many_arguments` threshold.
+// kanon:ignore RUST/struct-too-many-fields — bundles per-turn fields to avoid too_many_arguments threshold; fields are independent
 #[derive(Debug, Clone)]
 pub struct CaptureInput<'a> {
     /// Session identifier the turn belongs to.
@@ -451,6 +454,7 @@ impl TrainingCapture {
 
         // Load or initialize manifest
         let mut manifest = if manifest_path.exists() {
+            // kanon:ignore RUST/no-result-unwrap-or-default — manifest read failure yields empty string; serde handles empty gracefully
             let content = fs::read_to_string(&manifest_path).unwrap_or_default();
             serde_json::from_str(&content).unwrap_or_else(|_| TrainingManifest::new())
         } else {
@@ -466,6 +470,7 @@ impl TrainingCapture {
         {
             let meta =
                 fs::metadata(&legacy_path).context(ReadMetadataSnafu { path: &legacy_path })?;
+            // kanon:ignore RUST/no-result-unwrap-or-default — legacy file read failure yields empty string; zero lines is safe fallback
             let line_count = fs::read_to_string(&legacy_path)
                 .unwrap_or_default()
                 .lines()

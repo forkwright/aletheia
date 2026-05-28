@@ -165,6 +165,7 @@ pub struct DomainScore {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCompetence {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     /// Per-domain scores.
     pub domains: Vec<DomainScore>,

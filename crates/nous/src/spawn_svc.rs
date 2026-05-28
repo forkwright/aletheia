@@ -40,6 +40,7 @@ pub struct SpawnServiceImpl {
     oikos: Arc<Oikos>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex for SessionStore in block_in_place bridge
     session_store: Option<Arc<Mutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")]
     knowledge_store: Option<Arc<KnowledgeStore>>,
@@ -56,6 +57,7 @@ pub struct InheritedSpawnServices {
     /// Shared vector search backend inherited from the parent runtime.
     pub vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     /// Durable session store used to persist spawned-agent turns.
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — same: passed to sync trait adapter
     pub session_store: Option<Arc<Mutex<SessionStore>>>,
     /// Knowledge store selected for spawned-agent recall and memory tools.
     #[cfg(feature = "knowledge-store")]
@@ -110,6 +112,7 @@ impl SpawnServiceImpl {
 
     /// Complete the service cycle after `ToolServices` is built.
     pub fn set_tool_services(&self, services: Arc<ToolServices>) {
+        // kanon:ignore RUST/no-silent-result-swallow — set once during initialization; duplicate calls are programmer error
         let _ = self.tool_services.set(services);
     }
 }
@@ -282,12 +285,14 @@ impl SpawnService for SpawnServiceImpl {
                 let result =
                     tokio::time::timeout(timeout, handle.send_turn(&session_key, &task)).await;
 
+                // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown of ephemeral actor
                 let _ = handle.shutdown().await;
                 let _ = join_handle.await;
                 if let Some(router) = router.as_ref() {
                     router.unregister(&spawn_id).await;
                 }
 
+                // kanon:ignore RUST/no-silent-result-swallow — best-effort temp dir cleanup
                 let _ = tokio::fs::remove_dir_all(&nous_dir).await;
 
                 match result {

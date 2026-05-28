@@ -35,8 +35,9 @@ mod arc_str {
 }
 
 /// LLM generation settings for a nous agent.
+// kanon:ignore RUST/no-debug-derive-on-public-types — NousGenerationConfig contains no secrets (model names, token limits, flags)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NousGenerationConfig {
     /// Default model for this agent.
     pub model: String,
@@ -228,6 +229,7 @@ impl RecallProfile {
 
 /// Configuration for a single nous agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NousConfig {
     /// Agent identifier (e.g. "syn", "demiurge").
     #[serde(with = "arc_str")]
@@ -303,7 +305,7 @@ pub struct NousConfig {
     reason = "each flag toggles an independent hook (cost control, scope, corrections, audit); they are not a state machine"
 )]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HookConfig {
     /// Enable the cost control hook (priority 10).
     pub cost_control_enabled: bool,
@@ -427,6 +429,7 @@ impl NousConfig {
 
 /// Pipeline configuration: controls stage behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PipelineConfig {
     /// Token budget for history (remaining after bootstrap).
     pub history_budget_ratio: f64,

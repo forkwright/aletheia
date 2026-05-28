@@ -31,6 +31,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+// kanon:ignore RUST/std-mutex-in-async — PromptAuditLog methods are synchronous; std::sync::Mutex is correct for sync code
 use std::sync::Mutex;
 
 use jiff::Timestamp;
@@ -48,6 +49,7 @@ use tracing::{debug, warn};
     missing_docs,
     reason = "snafu error variant fields (source, path) are self-documenting via display format"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive]; false positive from attribute ordering
 pub enum PromptAuditError {
     /// Failed to create the audit log directory.
     #[snafu(display("failed to create prompt audit directory {}: {source}", path.display()))]
@@ -88,6 +90,7 @@ pub type FactSensitivity = String;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilteredFact {
     /// Fact identifier from the knowledge store.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
     /// Sensitivity tier that caused the filter to exclude the fact.
     pub sensitivity: FactSensitivity,
@@ -101,10 +104,13 @@ pub struct PromptAuditRecord {
     /// When the request was assembled (UTC).
     pub timestamp: Timestamp,
     /// Nous agent identifier (e.g. `"syn"`).
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     /// Session identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub session_id: String,
     /// Turn identifier (ULID). Stable across actor restarts for a given turn.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub turn_id: String,
     /// LLM provider name (`"anthropic"`, `"cc"`, etc.).
     pub provider: String,
@@ -146,7 +152,7 @@ pub fn hash_system_prompt(prompt: Option<&str>) -> String {
             let mut out = String::with_capacity(digest.len() * 2);
             for byte in &digest {
                 use std::fmt::Write;
-                // kanon:ignore RUST/expect — write! on String is infallible.
+                // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
                 let _ = write!(out, "{byte:02x}");
             }
             out

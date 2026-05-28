@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — distillation orchestration; extraction refactor planned in #3751
 //! Distillation wiring: trigger logic and orchestration.
 
 use snafu::ResultExt;

@@ -261,6 +261,7 @@ impl TaskRegistry {
             .get_mut(&task_id)
             .ok_or_else(|| NotFoundSnafu { task_id }.build())?;
 
+        // kanon:ignore RUST/no-silent-result-swallow — progress channel receiver may have dropped; no recovery possible
         let _ = entry.progress_tx.send(ProgressEvent::Error(error.clone()));
 
         entry.error_snapshot = Some(error);
@@ -307,6 +308,7 @@ impl TaskRegistry {
             .get(&task_id)
             .ok_or_else(|| NotFoundSnafu { task_id }.build())?;
 
+        // kanon:ignore RUST/no-silent-result-swallow — progress channel receiver may have dropped; no recovery possible
         let _ = entry.progress_tx.send(ProgressEvent::OutputChunk(data));
         Ok(())
     }

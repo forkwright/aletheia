@@ -393,9 +393,10 @@ async fn status_includes_uptime() {
 
 // ── empirical router: after-action recording ────────────────────────────────
 
+use std::time::Duration;
+
 use aletheia_routing::types::{ProviderId, TaskCategory};
 use aletheia_routing::{AfterActionStore, RecordingRouter};
-use std::time::Duration;
 
 #[tokio::test]
 async fn turn_records_after_action_outcome_in_empirical_store() {

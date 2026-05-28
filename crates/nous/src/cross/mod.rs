@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — cross-nous messaging module; knowledge sub-module extraction planned
 //! Cross-nous messaging: fire-and-forget, request-response, and delivery audit.
 
 use std::collections::HashMap;
@@ -41,6 +42,7 @@ impl AddressMask {
     missing_docs,
     reason = "variant fields (reason) are self-documenting by name"
 )]
+// kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive]; false positive from attribute ordering
 pub enum DeliveryState {
     /// Message created but not yet sent.
     Pending,

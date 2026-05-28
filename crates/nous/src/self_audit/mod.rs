@@ -56,6 +56,7 @@ pub struct ToolCallRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorrectionRecord {
     /// Session in which the correction occurred.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub session_id: String,
     /// Turn number where the operator corrected the nous.
     pub turn_number: u32,
@@ -88,6 +89,7 @@ pub struct SessionContinuityStats {
 #[derive(Debug, Clone, Default)]
 pub struct CheckContext {
     /// Which nous is being audited.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     /// Recent tool call outcomes for this nous.
     pub recent_tool_calls: Vec<ToolCallRecord>,
@@ -154,6 +156,7 @@ pub struct AuditCheckResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditReport {
     /// Which nous was audited.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     /// What triggered this audit.
     pub trigger: AuditTrigger,
@@ -256,6 +259,7 @@ impl SelfAuditor {
 
     /// Record an agent action and return `true` if the event-based threshold
     /// has been reached (caller should trigger an audit).
+    // kanon:ignore RUST/doc-promised-observability — doc comment describes counter logic, not tracing; function is pure state update
     pub fn record_action(&self) -> bool {
         let prev = self.action_counter.fetch_add(1, Ordering::Relaxed);
         let new_count = prev.saturating_add(1);

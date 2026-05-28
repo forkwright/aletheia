@@ -38,6 +38,7 @@ use organon::types::{BlackboardEntry, BlackboardStore, NoteEntry, NoteStore};
 ///
 /// See the module-level doc for the full rationale.  The guard is held only
 /// for the duration of `f` and dropped before returning.
+// kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex guarding fjall SessionStore; lock acquired via block_in_place
 fn with_store<F, T>(store: &Arc<Mutex<SessionStore>>, f: F) -> T
 where
     F: FnOnce(&SessionStore) -> T,
@@ -66,6 +67,7 @@ fn store_err(e: impl std::fmt::Display) -> StoreError {
 ///
 /// The inner lock guards fjall session-store access; acquired via `block_in_place`
 /// to avoid holding it across async boundaries.
+// kanon:ignore RUST/no-arc-mutex-anti-pattern — same: std::sync::Mutex in block_in_place sync bridge
 pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>); // kanon:ignore RUST/pub-visibility
 
 impl NoteStore for SessionNoteAdapter {
@@ -109,6 +111,7 @@ impl NoteStore for SessionNoteAdapter {
 ///
 /// The inner lock guards fjall session-store access; acquired via `block_in_place`
 /// to avoid holding it across async boundaries.
+// kanon:ignore RUST/no-arc-mutex-anti-pattern — same: std::sync::Mutex in block_in_place sync bridge
 pub struct SessionBlackboardAdapter(pub Arc<Mutex<SessionStore>>); // kanon:ignore RUST/pub-visibility
 
 impl BlackboardStore for SessionBlackboardAdapter {

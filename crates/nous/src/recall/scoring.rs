@@ -163,6 +163,7 @@ pub(crate) fn format_section(results: &[&ScoredResult], inject_metadata: bool) -
     );
 
     for r in results {
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
         let _ = write!(out, "\n- [{:.2}] {}", r.score, r.content);
         if inject_metadata {
             let _ = write!(

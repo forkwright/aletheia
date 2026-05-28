@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — recall stage with vector/BM25/sensitivity filtering; extraction planned
 //! Recall pipeline stage: retrieves relevant knowledge and injects into context.
 
 mod reranking;
@@ -58,6 +59,7 @@ pub struct RecallStageResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecallFilteredFact {
     /// Source fact ID.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
     /// Sensitivity that exceeded the active deployment target.
     pub sensitivity: FactSensitivity,

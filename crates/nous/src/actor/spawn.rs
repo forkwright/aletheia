@@ -46,6 +46,7 @@ pub(crate) fn spawn(
     oikos: Arc<Oikos>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex for SessionStore in block_in_place bridge
     session_store: Option<Arc<Mutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
     tool_services: Option<Arc<organon::types::ToolServices>>,
@@ -122,6 +123,7 @@ pub struct DaemonSpawnParams {
     /// Optional vector search (shared with parent).
     pub vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     /// Optional session store (shared with parent).
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — same: passed to sync trait adapter
     pub session_store: Option<Arc<Mutex<SessionStore>>>,
     /// Optional knowledge store (shared with parent).
     #[cfg(feature = "knowledge-store")]

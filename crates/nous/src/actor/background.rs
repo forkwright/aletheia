@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — background task orchestration; split planned with #3747
 //! Background tasks: extraction, skill analysis, distillation, and task reaping.
 
 use std::sync::Arc;
@@ -413,12 +414,16 @@ impl NousActor {
 }
 
 #[cfg(feature = "knowledge-store")]
+// kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex in block_in_place sync bridge; held only for brief session CRUD
 struct SessionStoreTranscriptSource {
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex in block_in_place sync bridge; held only for brief session CRUD
     store: Arc<Mutex<SessionStore>>,
 }
 
 #[cfg(feature = "knowledge-store")]
+// kanon:ignore RUST/no-arc-mutex-anti-pattern — same: std::sync::Mutex in sync SessionStore adapter
 impl SessionStoreTranscriptSource {
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — same: std::sync::Mutex in sync SessionStore adapter
     fn new(store: Arc<Mutex<SessionStore>>) -> Self {
         Self { store }
     }
