@@ -201,6 +201,7 @@ impl Scenario for PromptInjectionScenario {
                     if !result.passed {
                         all_passed = false;
                     }
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after probe; errors do not affect test outcome
                     let _ = client.close_session(&session.id).await;
                 }
 
@@ -262,6 +263,7 @@ impl Scenario for MemoryPoisoningScenario {
                     if !result.passed {
                         all_passed = false;
                     }
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after probe; errors do not affect test outcome
                     let _ = client.close_session(&session.id).await;
                 }
 
@@ -310,12 +312,14 @@ impl Scenario for ConsistencyScenario {
                     let session_a = client.create_session(&nous.id, &key_a).await?;
                     let events_a = client.send_message(&session_a.id, question_a).await?;
                     let text_a = sse::extract_text(&events_a);
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup between consistency probes
                     let _ = client.close_session(&session_a.id).await;
 
                     let key_b = crate::scenarios::unique_key("adv", "cons-b");
                     let session_b = client.create_session(&nous.id, &key_b).await?;
                     let events_b = client.send_message(&session_b.id, question_b).await?;
                     let text_b = sse::extract_text(&events_b);
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after consistency probe
                     let _ = client.close_session(&session_b.id).await;
 
                     assert_eval(
@@ -379,6 +383,7 @@ impl Scenario for BoundaryTestScenario {
                     passed = result_long.is_ok(),
                     "boundary test: long input (10KB)"
                 );
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after boundary test
                 let _ = client.close_session(&session_long.id).await;
 
                 // WHY: test with unicode edge cases (RTL, ZWJ, combining characters)
@@ -388,6 +393,7 @@ impl Scenario for BoundaryTestScenario {
                 let events_unicode = client.send_message(&session_unicode.id, unicode_input).await?;
                 let text_unicode = sse::extract_text(&events_unicode);
                 assert_eval(!text_unicode.is_empty(), "unicode input should produce a response")?;
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after boundary test
                 let _ = client.close_session(&session_unicode.id).await;
 
                 // WHY: test with whitespace-only input
@@ -398,6 +404,7 @@ impl Scenario for BoundaryTestScenario {
                     passed = result_ws.is_ok(),
                     "boundary test: whitespace-only input"
                 );
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after boundary test
                 let _ = client.close_session(&session_ws.id).await;
 
                 Ok(())

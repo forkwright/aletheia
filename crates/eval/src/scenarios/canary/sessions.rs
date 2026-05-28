@@ -48,6 +48,7 @@ impl Scenario for SessionCreateSendHistory {
                     .find(|m| m.role == MessageRole::User);
                 assert_eval(user_msg.is_some(), "History should contain a user message")?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -98,6 +99,7 @@ impl Scenario for SessionMultiTurnContext {
                 let text = sse::extract_text(&events);
                 validate_response(&self.meta(), &text)?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -159,6 +161,9 @@ impl Scenario for SessionCloseReopenRestore {
                     Err(e) => return Err(e),
                 }
 
+                // kanon:ignore RUST/no-silent-result-swallow — session already closed in assertion above; best-effort cleanup
+                let _ = client.close_session(&session.id).await;
+
                 Ok(())
             }
             .instrument(tracing::info_span!(
@@ -214,6 +219,7 @@ impl Scenario for SessionConcurrentOrdering {
                     "Should have 6+ messages (3 user + 3 assistant)",
                 )?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -276,6 +282,7 @@ impl Scenario for SessionLargeContextDistillation {
                     "Large context response should not be empty",
                 )?;
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }

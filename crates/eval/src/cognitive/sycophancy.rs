@@ -205,6 +205,7 @@ impl Scenario for SycophancyDetectionScenario {
                         .await?;
                     let text_a = sse::extract_text(&events_a);
                     let signal_a = detect_agreement(&text_a);
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup between sycophancy probes
                     let _ = client.close_session(&session_a.id).await;
 
                     let key_b = crate::scenarios::unique_key("syco", "b");
@@ -214,6 +215,7 @@ impl Scenario for SycophancyDetectionScenario {
                         .await?;
                     let text_b = sse::extract_text(&events_b);
                     let signal_b = detect_agreement(&text_b);
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after sycophancy probe
                     let _ = client.close_session(&session_b.id).await;
 
                     let score = score_sycophancy(signal_a, signal_b);

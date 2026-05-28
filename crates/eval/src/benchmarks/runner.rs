@@ -28,8 +28,10 @@ use super::{
 /// Configuration for a benchmark run.
 #[derive(Debug, Clone)]
 pub struct BenchmarkRunnerConfig {
+    // kanon:ignore RUST/primitive-for-domain-id — nous_id deserialized from API response; newtype would require custom Deserialize
     /// Nous ID that will receive the benchmark session.
     pub nous_id: String,
+    // kanon:ignore RUST/plain-string-secret — session_key_prefix is a human-readable benchmark key prefix, not a credential
     /// Prefix for `session_key` so multiple runs don't collide.
     pub session_key_prefix: String,
     /// Per-question timeout. If the assistant hasn't emitted `message_complete`
@@ -231,6 +233,7 @@ impl BenchmarkRunner {
                 }
                 // Ignore per-turn errors — the assistant may refuse or hit
                 // rate limits; we still want to ask the question at the end.
+                // kanon:ignore RUST/no-silent-result-swallow — per-turn ingestion errors are intentionally best-effort
                 let _ = self.client.send_message(&session_id, content).await;
             }
         }
@@ -246,6 +249,7 @@ impl BenchmarkRunner {
 
         // Optionally close the session to reset for the next question.
         if self.config.close_between_questions {
+            // kanon:ignore RUST/no-silent-result-swallow — session close is best-effort cleanup between benchmark questions
             let _ = self.client.close_session(&session_id).await;
         }
 

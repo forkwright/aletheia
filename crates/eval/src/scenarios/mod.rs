@@ -34,6 +34,7 @@ pub(super) fn unique_key(prefix: &str, suffix: &str) -> String {
         "eval-{prefix}-{suffix}-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
+            // kanon:ignore RUST/no-result-unwrap-or-default — UNIX_EPOCH is always in the past; fallback to 0 is safe
             .unwrap_or_default()
             .as_millis()
     )

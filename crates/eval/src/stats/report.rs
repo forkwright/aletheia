@@ -34,6 +34,7 @@ use super::{
 ///
 /// Carries every field required for honest published reporting of benchmark
 /// results, following the quantified-self pipeline's reporting discipline.
+// kanon:ignore RUST/option-bool-pair — significant_raw and significant_adjusted are independent statistical states, not a boolean pair
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComparisonReport {
     /// Human-readable label for this comparison.

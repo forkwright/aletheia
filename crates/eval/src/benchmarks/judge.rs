@@ -36,6 +36,7 @@ pub struct LlmJudgeConfig {
     pub temperature: f32,
 }
 
+// kanon:ignore RUST/hardcoded-model — default judge model constant for LLM-as-judge evaluator
 /// Default LLM-judge model. Overridable via [`LlmJudgeConfig::model`].
 pub const DEFAULT_JUDGE_MODEL: &str = "gpt-4o";
 
@@ -101,6 +102,7 @@ impl LlmJudge {
         let resp = req.send().await.context(error::HttpSnafu)?;
         if !resp.status().is_success() {
             let status = resp.status().as_u16();
+            // kanon:ignore RUST/no-result-unwrap-or-default — error path body fallback; empty string is the correct default when response body cannot be read
             let body_text = resp.text().await.unwrap_or_default();
             return error::UnexpectedStatusSnafu {
                 endpoint: self.config.endpoint.clone(),

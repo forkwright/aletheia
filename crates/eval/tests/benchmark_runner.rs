@@ -11,6 +11,7 @@ use dokimion::benchmarks::{BenchmarkRunner, BenchmarkRunnerConfig, EvalClient, M
 use wiremock::matchers::{method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+// kanon:ignore RUST/box-dyn-error — integration test uses Box<dyn Error> for ergonomic test result propagation
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 /// Initialize the rustls default crypto provider once per test run.
@@ -22,6 +23,7 @@ fn init_crypto() {
 
 /// Build an SSE response body that emits a single `text_delta` and a
 /// `message_complete` event. This mimics the aletheia streaming format.
+// kanon:ignore RUST/doc-promised-observability — doc uses "emits" in SSE protocol sense, not tracing observability
 fn sse_response(text: &str) -> String {
     format!(
         "event: text_delta\n\

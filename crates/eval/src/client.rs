@@ -337,6 +337,7 @@ pub struct NousListResponse {
 /// Summary of a nous agent from the list endpoint.
 #[derive(Debug, Clone, Deserialize)]
 pub struct NousSummary {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     pub id: String,
     pub model: String,
     pub status: String,
@@ -345,6 +346,7 @@ pub struct NousSummary {
 /// Detailed nous status from the `/api/v1/nous/{id}` endpoint.
 #[derive(Debug, Clone, Deserialize)]
 pub struct NousStatus {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     pub id: String,
     pub model: String,
     pub context_window: u32,
@@ -362,8 +364,11 @@ pub struct NousStatus {
 /// Session details from the `/api/v1/sessions/{id}` endpoint.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SessionResponse {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     pub id: String,
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     pub nous_id: String,
+    // kanon:ignore RUST/plain-string-secret — session_key is an API response DTO field, not a stored credential
     pub session_key: String,
     pub status: SessionStatus,
     pub model: Option<String>,
@@ -402,6 +407,7 @@ pub struct KnowledgeSearchResponse {
 /// A fact returned by the knowledge search API.
 #[derive(Debug, Clone, Deserialize)]
 pub struct KnowledgeFact {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     /// Unique fact identifier.
     pub id: String,
     /// Fact content text.

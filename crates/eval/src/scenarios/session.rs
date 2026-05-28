@@ -48,6 +48,7 @@ impl Scenario for SessionCreateAndGet {
                 )?;
                 let fetched = client.get_session(&session.id).await?;
                 assert_eq_eval(&fetched.id, &session.id, "fetched session id should match")?;
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after session scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }

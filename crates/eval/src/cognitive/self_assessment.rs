@@ -117,6 +117,7 @@ impl Scenario for SelfAssessmentScenario {
                     }
                 }
 
+                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after self-assessment scenario
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
