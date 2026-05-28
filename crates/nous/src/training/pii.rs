@@ -335,10 +335,10 @@ mod tests {
 
     #[test]
     fn redacts_openai_api_key() {
-        let (out, changed) = redact("OPENAI=sk-proj-abcdefghij1234567890ABCDEF0123456789"); // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape for PII detection test; not a real credential
+        let (out, changed) = redact("OPENAI=sk-proj-abcdefghij1234567890ABCDEF0123456789"); // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape for PII detection test; not a real credential
         assert!(changed);
         assert!(out.contains("[REDACTED:"));
-        assert!(!out.contains("sk-proj-abcdefghij1234567890ABCDEF0123456789")); // kanon:ignore SECURITY/hardcoded-openai-api-key -- synthetic key shape for PII detection test; not a real credential
+        assert!(!out.contains("sk-proj-abcdefghij1234567890ABCDEF0123456789")); // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape for PII detection test; not a real credential
     }
 
     #[test]
