@@ -70,6 +70,7 @@ pub struct DaemonSpawnParams {
     /// Optional vector search (shared with parent).
     pub vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     /// Optional session store (shared with parent).
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — same: passed to sync trait adapter
     pub session_store: Option<Arc<Mutex<SessionStore>>>,
     /// Optional knowledge store (shared with parent).
     #[cfg(feature = "knowledge-store")]
@@ -97,18 +98,10 @@ pub fn spawn_for_daemon (
 
 ## `src/adapters.rs`
 
-> Adapts `SessionStore` note methods to the `NoteStore` trait.
-> 
-> The inner lock guards fjall session-store access; acquired via `block_in_place`
-> to avoid holding it across async boundaries.
 ```rust
 pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>);
 ```
 
-> Adapts `SessionStore` blackboard methods to the `BlackboardStore` trait.
-> 
-> The inner lock guards fjall session-store access; acquired via `block_in_place`
-> to avoid holding it across async boundaries.
 ```rust
 pub struct SessionBlackboardAdapter(pub Arc<Mutex<SessionStore>>);
 ```
@@ -162,6 +155,7 @@ pub type FactSensitivity = String;
 ```rust
 pub struct FilteredFact {
     /// Fact identifier from the knowledge store.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
     /// Sensitivity tier that caused the filter to exclude the fact.
     pub sensitivity: FactSensitivity,
@@ -173,10 +167,13 @@ pub struct PromptAuditRecord {
     /// When the request was assembled (UTC).
     pub timestamp: Timestamp,
     /// Nous agent identifier (e.g. `"syn"`).
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     /// Session identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub session_id: String,
     /// Turn identifier (ULID). Stable across actor restarts for a given turn.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub turn_id: String,
     /// LLM provider name (`"anthropic"`, `"cc"`, etc.).
     pub provider: String,
@@ -739,6 +736,7 @@ pub struct DomainScore {
 ```rust
 pub struct AgentCompetence {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     /// Per-domain scores.
     pub domains: Vec<DomainScore>,
@@ -2178,6 +2176,7 @@ pub enum NousLifecycle {
 ```rust
 pub struct NousStatus {
     /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
     /// Current lifecycle state.
     pub lifecycle: NousLifecycle,
@@ -2437,6 +2436,7 @@ pub struct TurnResult {
 ```rust
 pub struct ToolCall {
     /// Tool call ID.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
     /// Tool name.
     pub name: String,
@@ -2599,6 +2599,7 @@ pub struct RecallStageResult {
 ```rust
 pub struct RecallFilteredFact {
     /// Source fact ID.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
     /// Sensitivity that exceeded the active deployment target.
     pub sensitivity: FactSensitivity,
@@ -3035,6 +3036,7 @@ pub struct ToolCallRecord {
 ```rust
 pub struct CorrectionRecord {
     /// Session in which the correction occurred.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub session_id: String,
     /// Turn number where the operator corrected the nous.
     pub turn_number: u32,
@@ -3064,6 +3066,7 @@ pub struct SessionContinuityStats {
 ```rust
 pub struct CheckContext {
     /// Which nous is being audited.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     /// Recent tool call outcomes for this nous.
     pub recent_tool_calls: Vec<ToolCallRecord>,
@@ -3117,6 +3120,7 @@ pub struct AuditCheckResult {
 ```rust
 pub struct AuditReport {
     /// Which nous was audited.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     /// What triggered this audit.
     pub trigger: AuditTrigger,
@@ -3186,7 +3190,9 @@ pub fn query_audit_history (
 
 ```rust
 pub struct SessionState {
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub nous_id: String,
     pub session_key: String, // kanon:ignore RUST/plain-string-secret
 
@@ -3256,6 +3262,7 @@ pub struct SpawnServiceImpl {
     oikos: Arc<Oikos>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex for SessionStore in block_in_place bridge
     session_store: Option<Arc<Mutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")]
     knowledge_store: Option<Arc<KnowledgeStore>>,
@@ -3274,6 +3281,7 @@ pub struct InheritedSpawnServices {
     /// Shared vector search backend inherited from the parent runtime.
     pub vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     /// Durable session store used to persist spawned-agent turns.
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — same: passed to sync trait adapter
     pub session_store: Option<Arc<Mutex<SessionStore>>>,
     /// Knowledge store selected for spawned-agent recall and memory tools.
     #[cfg(feature = "knowledge-store")]
@@ -3721,6 +3729,7 @@ pub struct DpoPair {
     /// The original assistant response that was corrected (dispreferred).
     pub rejected: String,
     /// Session identifier linking the pair to its conversation.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub session_id: String,
     /// Turn number of the rejected response.
     pub rejected_turn: u64,

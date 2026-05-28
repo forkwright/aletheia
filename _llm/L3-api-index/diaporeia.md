@@ -217,7 +217,7 @@ pub struct DiaporeiaServer {
 
 ```rust
 impl DiaporeiaServer {
-    pub fn with_state (state: Arc<DiaporeiaState>) -> Self;
+    pub fn with_state (state: Arc<DiaporeiaState>, rate_cfg: &McpRateLimitConfig) -> Self;
 }
 ```
 

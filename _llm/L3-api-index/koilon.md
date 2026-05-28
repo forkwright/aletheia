@@ -1738,6 +1738,7 @@ pub fn is_tty () -> bool
 
 ```rust
 pub struct WizardAnswers {
+    // kanon:ignore RUST/no-debug-derive-on-public-types — manual Debug impl redacts api_key below
     /// Instance root directory.
     pub root: PathBuf,
     /// API provider (`"anthropic"` or `"openai"`).
@@ -1757,6 +1758,7 @@ pub struct WizardAnswers {
     /// Operator role description for `USER.md`.
     pub user_role: String,
     /// Agent identifier (alphanumeric + hyphens/underscores).
+    // kanon:ignore RUST/primitive-for-domain-id — wire/serde/external-id field from user input; newtype out of scope
     pub agent_id: String,
     /// Agent display name.
     pub agent_name: String,

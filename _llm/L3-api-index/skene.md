@@ -518,6 +518,7 @@ pub struct VerificationGap {
 ```rust
 pub struct RequirementVerification {
     /// Requirement identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — skene verification type mirrors server-side string IDs directly
     pub id: String,
     /// Human-readable title.
     pub title: String,
@@ -539,6 +540,7 @@ pub struct RequirementVerification {
 ```rust
 pub struct ProjectVerificationResult {
     /// Project identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — skene verification type mirrors server-side string IDs directly
     pub project_id: String,
     /// Per-requirement verification results.
     pub requirements: Vec<RequirementVerification>,
