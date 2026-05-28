@@ -131,11 +131,8 @@ fn state_shutdown_token_propagates_cancellation() {
 #[test]
 fn server_constructs_from_state() {
     let (state, _jwt, _tmp) = StateBuilder::new().build();
-
-    // WHY: `with_state` performs a blocking read of the config RwLock. Running
-    // it in a plain `#[test]` (no tokio runtime entered) avoids the
-    // "Cannot block the current thread from within a runtime" panic.
-    let server = DiaporeiaServer::with_state(Arc::clone(&state));
+    let rate_cfg = state.config.try_read().unwrap().mcp.rate_limit.clone();
+    let server = DiaporeiaServer::with_state(Arc::clone(&state), &rate_cfg);
 
     // Cloning the server must produce an independent handle that shares state.
     let _clone = server.clone();
@@ -147,6 +144,19 @@ fn server_is_send_sync_and_clone() {
     assert_send_sync::<DiaporeiaServer>();
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn server_constructs_from_inside_tokio_runtime() {
+    // REGRESSION: `aletheia mcp` (stdio) panicked at startup because
+    // `with_state` previously held a `blocking_read()` on the config
+    // `tokio::sync::RwLock` — which panics with "Cannot block the
+    // current thread from within a runtime" when invoked from inside
+    // the runtime. The transport now snapshots the rate-limit config
+    // before constructing the server. This test guards both transports.
+    let (state, _jwt, _tmp) = StateBuilder::new().build();
+    let rate_cfg = state.config.read().await.mcp.rate_limit.clone();
+    let _server = DiaporeiaServer::with_state(Arc::clone(&state), &rate_cfg);
+}
+
 #[test]
 fn multiple_servers_share_same_state() {
     // WHY: pylon mounts its own DiaporeiaServer and any test/tooling may
@@ -156,9 +166,10 @@ fn multiple_servers_share_same_state() {
     // but they all share session store, nous manager, and shutdown token.
     let (state, _jwt, _tmp) = StateBuilder::new().build();
     let initial_strong = Arc::strong_count(&state);
+    let rate_cfg = state.config.try_read().unwrap().mcp.rate_limit.clone();
 
-    let server_a = DiaporeiaServer::with_state(Arc::clone(&state));
-    let server_b = DiaporeiaServer::with_state(Arc::clone(&state));
+    let server_a = DiaporeiaServer::with_state(Arc::clone(&state), &rate_cfg);
+    let server_b = DiaporeiaServer::with_state(Arc::clone(&state), &rate_cfg);
 
     // Both servers hold strong references to the shared state.
     assert!(
@@ -185,7 +196,8 @@ fn server_construction_snapshots_config_independently_of_later_mutations() {
     // must not panic or deadlock an already-constructed server — the server
     // owns its own rate limiter after construction.
     let (state, _jwt, _tmp) = StateBuilder::new().build();
-    let server = DiaporeiaServer::with_state(Arc::clone(&state));
+    let rate_cfg = state.config.try_read().unwrap().mcp.rate_limit.clone();
+    let server = DiaporeiaServer::with_state(Arc::clone(&state), &rate_cfg);
 
     // Mutate the shared config after construction. This must not panic or
     // affect the live server's behaviour.

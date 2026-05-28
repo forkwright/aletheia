@@ -44,17 +44,9 @@ use common::{StateBuilder, issue_token};
 // -------------------------------------------------------------------
 
 /// Build a test router in stateless+json mode.
-///
-/// WHY: `DiaporeiaServer::with_state` uses `blocking_read()` which panics
-/// when called from within a tokio runtime. We construct the server on a
-/// dedicated OS thread and clone it into the service factory.
 fn test_router(state: &Arc<DiaporeiaState>) -> axum::Router {
-    let server = std::thread::spawn({
-        let state = Arc::clone(state);
-        move || DiaporeiaServer::with_state(state)
-    })
-    .join()
-    .expect("construct server on blocking thread");
+    let rate_cfg = state.config.try_read().unwrap().mcp.rate_limit.clone();
+    let server = DiaporeiaServer::with_state(Arc::clone(state), &rate_cfg);
 
     let auth_state = Arc::clone(state);
     let service = rmcp::transport::streamable_http_server::tower::StreamableHttpService::new(
