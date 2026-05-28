@@ -291,20 +291,21 @@ pub fn auth_none_lan_opt_in_enabled() -> bool {
 fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     check_port(value, "port", "port", errors);
 
+    // WHY: structural validity only — accept any of the three known auth modes.
+    // The `auth.mode = "none"` policy gate (env-var opt-in) lives in
+    // [`validate_auth_mode_policy`] so it fires only when a config PUT through
+    // the config API attempts to disable auth, not when a TOML file containing
+    // `mode = "none"` is loaded at startup or inspected by `check-config`.
+    // Operators have filesystem-level control of the file; the loud startup
+    // warning emitted by [`warn_if_auth_disabled`] handles operator visibility.
+    // (#3383 — original opt-in; #4240 — separated from file-load path)
     if let Some(auth) = value.get("auth")
         && let Some(mode) = auth.get("mode").and_then(Value::as_str)
+        && !VALID_AUTH_MODES.contains(&mode)
     {
-        if !VALID_AUTH_MODES.contains(&mode) {
-            errors.push(format!(
-                "gateway.auth.mode '{mode}' is invalid; must be one of: none, token, jwt"
-            ));
-        } else if mode == "none" && !auth_none_opt_in_enabled() {
-            errors.push(format!(
-                "gateway.auth.mode = \"none\" disables all authentication and is \
-                 rejected by default; set the environment variable {ALLOW_AUTH_NONE_ENV}=1 \
-                 on the server process to opt in (intended for local dev only)"
-            ));
-        }
+        errors.push(format!(
+            "gateway.auth.mode '{mode}' is invalid; must be one of: none, token, jwt"
+        ));
     }
 
     if let Some(cors) = value.get("cors") {
@@ -314,6 +315,47 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     if let Some(body_limit) = value.get("bodyLimit") {
         check_positive_u64(body_limit, "maxBytes", errors);
     }
+}
+
+/// Reject `gateway.auth.mode = "none"` unless the operator has set
+/// `ALETHEIA_ALLOW_AUTH_NONE=1`. This is the config-API-level gate that
+/// prevents a config PUT from silently disabling authentication.
+///
+/// Call this *in addition to* [`validate_section`] when handling a
+/// `PUT /config/gateway` request. Server startup and `check-config` do not
+/// call this — operators with filesystem-level control of `aletheia.toml`
+/// are trusted, and the loud [`warn_if_auth_disabled`] emission keeps the
+/// posture visible. (#3383, #4240)
+///
+/// # Errors
+///
+/// Returns [`ValidationError`] if `auth.mode = "none"` and the env opt-in
+/// is not set. Any other gateway section value (or absent `auth.mode`) is
+/// accepted.
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
+// kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
+pub fn validate_auth_mode_policy(gateway_value: &Value) -> Result<(), ValidationError> {
+    let Some(auth) = gateway_value.get("auth") else {
+        return Ok(());
+    };
+    let Some(mode) = auth.get("mode").and_then(Value::as_str) else {
+        return Ok(());
+    };
+    if mode == "none" && !auth_none_opt_in_enabled() {
+        return ValidationSnafu {
+            errors: vec![format!(
+                "gateway.auth.mode = \"none\" disables all authentication and is \
+                 rejected by default; set the environment variable {ALLOW_AUTH_NONE_ENV}=1 \
+                 on the server process to opt in (intended for local dev only)"
+            )],
+        }
+        .fail();
+    }
+    Ok(())
 }
 
 /// Return `true` when the operator has set `ALETHEIA_ALLOW_AUTH_NONE=1`.

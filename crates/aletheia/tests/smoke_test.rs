@@ -226,6 +226,68 @@ fn init_with_missing_api_key_fails_usefully() {
     );
 }
 
+// ── Init -> check-config round trip exits 0 ──────────────────────────────────
+
+/// `aletheia init -y` followed by `aletheia check-config` against the same
+/// instance must exit 0 — a fresh init should always produce a config that
+/// check-config accepts. Regression test for #4240, which fixed the case
+/// where init wrote `gateway.auth.mode = "none"` but check-config rejected
+/// it as a hard FAIL unless the operator had set `ALETHEIA_ALLOW_AUTH_NONE=1`.
+#[test]
+fn init_yes_followed_by_check_config_exits_zero() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let instance_path = tmp.path().join("instance");
+
+    let init_out = aletheia()
+        .args([
+            "init",
+            "--instance-root",
+            instance_path
+                .to_str()
+                .expect("instance path is valid UTF-8"),
+            "--yes",
+        ])
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("ALETHEIA_ALLOW_AUTH_NONE")
+        .output()
+        .expect("failed to run aletheia init");
+    assert!(
+        init_out.status.success(),
+        "init -y must exit 0; got {:?}\nstdout: {}\nstderr: {}",
+        init_out.status.code(),
+        String::from_utf8_lossy(&init_out.stdout),
+        String::from_utf8_lossy(&init_out.stderr),
+    );
+
+    let check_out = aletheia()
+        .args([
+            "-r",
+            instance_path
+                .to_str()
+                .expect("instance path is valid UTF-8"),
+            "check-config",
+        ])
+        .env_remove("ALETHEIA_ALLOW_AUTH_NONE")
+        .output()
+        .expect("failed to run aletheia check-config");
+
+    let stdout = String::from_utf8_lossy(&check_out.stdout);
+    let stderr = String::from_utf8_lossy(&check_out.stderr);
+    assert!(
+        check_out.status.success(),
+        "check-config on fresh init must exit 0; got {:?}\nstdout: {stdout}\nstderr: {stderr}",
+        check_out.status.code(),
+    );
+    assert!(
+        stdout.contains("Configuration OK"),
+        "check-config output should report Configuration OK; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("[warn] gateway.auth"),
+        "check-config must surface the disabled-auth posture as a [warn], not a [FAIL]; got: {stdout}"
+    );
+}
+
 // ── Import: missing file produces useful error ───────────────────────────────
 
 #[test]
