@@ -2,6 +2,7 @@
 //! Agent import/export and skill management commands.
 
 use std::collections::HashMap;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -14,14 +15,67 @@ fn validate_nous_id(nous_id: &str) -> Result<()> {
     if nous_id.trim().is_empty() {
         whatever!("--nous-id must not be empty");
     }
+    validate_agent_id_for_paths(nous_id, "--nous-id")?;
+    Ok(())
+}
+
+/// Validate an agent ID that will be used to derive on-disk paths.
+///
+/// The ID is consumed as a directory name (`nous/<id>`) and embedded in
+/// config — any traversal segment, separator, or NUL byte makes the
+/// import able to write outside the instance root. Matches the rules
+/// `add-nous` enforces on freshly created agents.
+fn validate_agent_id_for_paths(id: &str, source: &str) -> Result<()> {
+    if id.is_empty() {
+        whatever!("{source} must not be empty");
+    }
+    if id.contains('\0') {
+        whatever!("{source} must not contain NUL bytes");
+    }
+    if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        whatever!("{source} must contain only alphanumeric characters and hyphens (got {id:?})");
+    }
+    if id.starts_with('-') || id.ends_with('-') {
+        whatever!("{source} must not start or end with a hyphen (got {id:?})");
+    }
     Ok(())
 }
 
 fn validate_target_id(target_id: Option<&str>) -> Result<()> {
-    if let Some(id) = target_id
-        && id.trim().is_empty()
-    {
-        whatever!("--target-id must not be empty");
+    if let Some(id) = target_id {
+        if id.trim().is_empty() {
+            whatever!("--target-id must not be empty");
+        }
+        validate_agent_id_for_paths(id, "--target-id")?;
+    }
+    Ok(())
+}
+
+/// Validate a workspace-relative file path supplied by an imported
+/// `.agent.json`. The path is joined to the nous directory; any
+/// absolute, traversal, or NUL-containing path could escape the
+/// instance root and write arbitrary files.
+fn validate_workspace_relative_path(path: &str) -> Result<()> {
+    if path.is_empty() {
+        whatever!("workspace file path must not be empty");
+    }
+    if path.contains('\0') {
+        whatever!("workspace file path must not contain NUL bytes (got {path:?})");
+    }
+    let p = Path::new(path);
+    if p.is_absolute() {
+        whatever!("workspace file path must be relative (got {path:?})");
+    }
+    for component in p.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir => {
+                whatever!("workspace file path must not contain '..' segments (got {path:?})");
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                whatever!("workspace file path must be relative (got {path:?})");
+            }
+        }
     }
     Ok(())
 }
@@ -449,6 +503,18 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
     let agent_file: mneme::portability::AgentFile =
         serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
+
+    // SECURITY (#4241): if --target-id is absent, the imported nous.id is
+    // used directly to derive on-disk paths. Validate before any I/O.
+    if args.target_id.is_none() {
+        validate_agent_id_for_paths(&agent_file.nous.id, "imported nous.id")?;
+    }
+    for path in agent_file.workspace.files.keys() {
+        validate_workspace_relative_path(path)?;
+    }
+    for path in &agent_file.workspace.binary_files {
+        validate_workspace_relative_path(path)?;
+    }
 
     let nous_id = args
         .target_id
@@ -1207,6 +1273,26 @@ mod tests {
     }
 
     #[test]
+    fn validate_nous_id_rejects_path_traversal() {
+        let err = validate_nous_id("../escape").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--nous-id") && msg.contains("alphanumeric"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn validate_nous_id_rejects_absolute_path() {
+        let err = validate_nous_id("/etc/passwd").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--nous-id") && msg.contains("alphanumeric"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
     fn validate_target_id_accepts_absent() {
         assert!(validate_target_id(None).is_ok());
     }
@@ -1233,6 +1319,84 @@ mod tests {
             err.to_string().contains("--target-id must not be empty"),
             "got: {err}"
         );
+    }
+
+    #[test]
+    fn validate_target_id_rejects_path_traversal() {
+        let err = validate_target_id(Some("../../../tmp/escaped")).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--target-id") && msg.contains("alphanumeric"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn validate_target_id_rejects_absolute_path() {
+        let err = validate_target_id(Some("/tmp/abs")).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--target-id") && msg.contains("alphanumeric"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn validate_target_id_rejects_separators() {
+        for bad in ["a/b", "a\\b", "..", "."] {
+            let err = validate_target_id(Some(bad)).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("--target-id") && msg.contains("alphanumeric"),
+                "for {bad:?} got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_target_id_rejects_nul_byte() {
+        let err = validate_target_id(Some("agent\0name")).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("NUL"), "got: {msg}");
+    }
+
+    #[test]
+    fn validate_agent_id_for_paths_rejects_leading_hyphen() {
+        let err = validate_agent_id_for_paths("-agent", "id").unwrap_err();
+        assert!(err.to_string().contains("hyphen"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_workspace_relative_path_accepts_well_formed() {
+        assert!(validate_workspace_relative_path("SOUL.md").is_ok());
+        assert!(validate_workspace_relative_path("subdir/file.txt").is_ok());
+        assert!(validate_workspace_relative_path("a/b/c.md").is_ok());
+    }
+
+    #[test]
+    fn validate_workspace_relative_path_rejects_parent_traversal() {
+        let err = validate_workspace_relative_path("../escape.txt").unwrap_err();
+        assert!(err.to_string().contains(".."), "got: {err}");
+        let err = validate_workspace_relative_path("subdir/../../escape").unwrap_err();
+        assert!(err.to_string().contains(".."), "got: {err}");
+    }
+
+    #[test]
+    fn validate_workspace_relative_path_rejects_absolute() {
+        let err = validate_workspace_relative_path("/etc/passwd").unwrap_err();
+        assert!(err.to_string().contains("relative"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_workspace_relative_path_rejects_nul() {
+        let err = validate_workspace_relative_path("a\0b").unwrap_err();
+        assert!(err.to_string().contains("NUL"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_workspace_relative_path_rejects_empty() {
+        let err = validate_workspace_relative_path("").unwrap_err();
+        assert!(err.to_string().contains("empty"), "got: {err}");
     }
 
     #[tokio::test]
@@ -1557,6 +1721,98 @@ workspace = "nous/{agent_id}"
         let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
         let sessions = store.list_sessions(Some("imported-agent")).unwrap();
         assert!(sessions.is_empty(), "sessions should be skipped");
+    }
+
+    /// Regression for #4241: a `.agent.json` whose `nous.id` contains
+    /// a traversal pattern must be rejected before any I/O.
+    #[test]
+    fn import_agent_rejects_traversal_nous_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let mut agent_file = sample_agent_file();
+        agent_file.nous.id = "../../../tmp/evil-from-file".to_owned();
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("evil.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: true,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+        };
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("imported nous.id") && msg.contains("alphanumeric"),
+            "got: {msg}"
+        );
+    }
+
+    /// Regression for #4241: a workspace file path with `..` must be
+    /// rejected before any file is written.
+    #[test]
+    fn import_agent_rejects_traversal_workspace_filename() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let mut agent_file = sample_agent_file();
+        agent_file.workspace.files.insert(
+            "../../../tmp/evil-by-filename.txt".to_owned(),
+            "PWNED".to_owned(),
+        );
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("evil2.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: true,
+            skip_workspace: false,
+            force: false,
+            dry_run: false,
+        };
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("workspace file path"), "got: {msg}");
+    }
+
+    /// Regression for #4241: `--target-id ../escaped` must be rejected
+    /// before any file is written, regardless of the file contents.
+    #[test]
+    fn import_agent_rejects_traversal_target_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let agent_file = sample_agent_file();
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("benign.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: Some("../../../../tmp/escaped".to_owned()),
+            skip_sessions: true,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+        };
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--target-id") && msg.contains("alphanumeric"),
+            "got: {msg}"
+        );
     }
 
     #[test]
