@@ -168,6 +168,14 @@ pub const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
 pub const DEFAULT_MODEL_SHORT: &str = "claude-sonnet-4-6";
 ```
 
+> Default nous-agent identifier created by `aletheia init -y` and assumed by
+> CLI subcommands that take `--nous-id`. Single source of truth so that
+> `init`'s scaffolded agent and `ingest`'s default flag value cannot drift
+> (#4245).
+```rust
+pub const DEFAULT_AGENT_ID: &str = "pronoea";
+```
+
 > Default maximum output tokens per LLM response.
 ```rust
 pub const MAX_OUTPUT_TOKENS: u32 = 16_384;
