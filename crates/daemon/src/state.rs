@@ -16,6 +16,7 @@ use crate::error::Result;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskState {
     /// Task ID matching `TaskDef::id`.
+    // kanon:ignore RUST/primitive-for-domain-id — TaskState::task_id mirrors TaskDef::id, a user-configured cron task identifier persisted as raw string
     pub task_id: String,
     /// ISO 8601 timestamp of the last execution (success or failure).
     pub last_run_ts: Option<String>,
@@ -35,6 +36,7 @@ pub use fjall_store::TaskStateStore;
 /// WHY: the daemon only activates for workspaces that have explicitly opted in.
 /// Autonomous execution in an unaware workspace violates user trust.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DaemonConfig {
     /// Whether daemon mode is enabled for this workspace.
     #[serde(default)]
@@ -266,6 +268,7 @@ impl Drop for WorkspaceGuard {
         );
         // NOTE: closing `_file` releases the flock automatically.
         // We also try to clean up the lock file, but failure is not critical.
+        // kanon:ignore RUST/no-silent-result-swallow — best-effort lock file cleanup in Drop; failure is harmless (flock released on fd close)
         let _ = std::fs::remove_file(&self.path);
     }
 }

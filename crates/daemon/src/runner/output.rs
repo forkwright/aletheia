@@ -34,7 +34,11 @@ pub(crate) fn truncate_output(
         return output.to_owned();
     }
 
+    // kanon:ignore RUST/indexing-slicing — bounds checked: total > brief_head + brief_tail before slicing
+    // kanon:ignore RUST/string-slice — slicing Vec<&str> (not String); bounds checked above
     let head = &lines[..brief_head];
+    // kanon:ignore RUST/indexing-slicing — bounds checked: total > brief_head + brief_tail before slicing
+    // kanon:ignore RUST/string-slice — slicing Vec<&str> (not String); bounds checked above
     let tail = &lines[total - brief_tail..];
     let omitted = total - brief_head - brief_tail;
 

@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — single builtin dispatch match arm; splitting would fragment logic
 //! Task action execution: commands and builtins.
 
 use std::path::{Path, PathBuf};

@@ -104,6 +104,7 @@ impl PromptAuditRotator {
                 context: format!("reading mtime for {}", path.display()),
             })?;
 
+            // kanon:ignore RUST/no-result-unwrap-or-default — future mtime is treated as not expired; zero duration correctly skips pruning
             let age = now.duration_since(modified).unwrap_or_default();
             if age > max_age {
                 let size = metadata.len();

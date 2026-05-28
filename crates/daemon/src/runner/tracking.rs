@@ -72,6 +72,7 @@ impl TaskRunner {
                 .checked_add(jiff::SignedDuration::from_nanos(
                     i64::try_from(delay.as_nanos()).unwrap_or(i64::MAX),
                 ))
+                // kanon:ignore RUST/no-result-unwrap-or-default — timestamp overflow on backoff addition is unreachable for realistic delays; default falls back to epoch, always < scheduled_next
                 .unwrap_or_default();
 
             task.next_run = match scheduled_next {

@@ -43,6 +43,7 @@ struct RawIssue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssuePromptTask {
     /// Stable daemon task id.
+    // kanon:ignore RUST/primitive-for-domain-id — IssuePromptTask::id is a synthetic daemon task identifier derived from an issue number, not a domain entity ID
     pub id: String,
     /// Human-readable task name.
     pub name: String,
@@ -98,6 +99,7 @@ fn format_issue_prompt(issue: &OpenIssue) -> String {
 /// enablement, the daemon never sends itself follow-up prompts. Without rate
 /// limits, a misidentified attention item could trigger an unbounded loop.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SelfPromptConfig {
     /// Whether self-prompting is enabled.
     #[serde(default)]
@@ -148,6 +150,7 @@ impl SelfPromptLimiter {
     ///
     /// Prunes expired entries as a side effect.
     pub(crate) fn is_allowed(&mut self, nous_id: &str) -> bool {
+        // kanon:ignore RUST/no-result-unwrap-or-default — subtracting 1h from now cannot underflow; default is defensive-only
         let cutoff = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(1))
             .unwrap_or_default();

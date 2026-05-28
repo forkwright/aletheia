@@ -92,6 +92,7 @@ pub enum ProcessState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestartEvent {
     /// Process identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — RestartEvent::process_id is a runtime process handle identifier string, not a typed domain entity ID
     pub process_id: String,
     /// What triggered the restart.
     pub cause: RestartCause,
@@ -134,6 +135,7 @@ impl std::fmt::Display for RestartCause {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessStatus {
     /// Process identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — ProcessStatus::id is a runtime process handle identifier string, not a typed domain entity ID
     pub id: String,
     /// Current state.
     pub state: ProcessState,
