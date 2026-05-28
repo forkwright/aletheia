@@ -17,7 +17,7 @@ pub(crate) struct IngestArgs {
     #[arg(short, long, default_value = "auto")]
     pub format: String,
     /// Nous agent ID that will own the extracted facts.
-    #[arg(short, long, default_value = "default")]
+    #[arg(short, long, default_value = koina::defaults::DEFAULT_AGENT_ID)]
     // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
     pub nous_id: String,
     /// Preview without mutating the knowledge store.
@@ -425,6 +425,19 @@ mod tests {
             dry_run: true,
             url: "http://127.0.0.1:1".to_owned(),
         }
+    }
+
+    /// Regression for #4245: the CLI `--nous-id` default must equal the
+    /// agent id that `init -y` scaffolds. Both now resolve to the shared
+    /// `koina::defaults::DEFAULT_AGENT_ID` constant, so this test plus the
+    /// `scaffold_creates_pronoea_agent` assertion in `init::helpers` pin the
+    /// two callsites against one source of truth.
+    #[test]
+    fn ingest_default_nous_id_matches_shared_default_agent_id() {
+        use clap::Parser as _;
+
+        let args = IngestArgs::try_parse_from(["ingest", "/tmp/x"]).unwrap();
+        assert_eq!(args.nous_id, koina::defaults::DEFAULT_AGENT_ID);
     }
 
     #[test]

@@ -15,7 +15,7 @@ aletheia ingest <PATH> [--format <FORMAT>] [--nous-id <ID>] [--dry-run] [--url <
 | Flag        | Default                       | Meaning                                                    |
 | ----------- | ----------------------------- | ---------------------------------------------------------- |
 | `--format`  | `auto`                        | One of `markdown`, `md`, `text`, `plain_text`, `json`, `jsonl`, `auto` |
-| `--nous-id` | `default`                     | Owning nous (agent) for ingested facts                     |
+| `--nous-id` | `pronoea`                     | Owning nous (agent) for ingested facts; matches the agent `init -y` scaffolds. Override with `--nous-id <ID>` to target a different nous. |
 | `--dry-run` | off                           | Parse + report but do not write to the store               |
 | `--url`     | `http://127.0.0.1:18789`      | Forward to a running server instead of writing directly    |
 

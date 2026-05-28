@@ -101,7 +101,7 @@ impl Default for Answers {
             api_key: None,
             api_provider: "anthropic".to_owned(),
             model: koina::defaults::DEFAULT_MODEL_SHORT.to_owned(),
-            agent_id: "pronoea".to_owned(),
+            agent_id: koina::defaults::DEFAULT_AGENT_ID.to_owned(),
             agent_name: "Pronoea".to_owned(),
             bind: "localhost".to_owned(),
             auth_mode: "none".to_owned(),
