@@ -72,12 +72,30 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                         .whatever_context("failed to serialize status")?
                 );
             } else {
-                println!("{:<24} {:<8} {:<6} Last Run", "Task", "Enabled", "Runs");
-                println!("{}", "-".repeat(60));
+                let name_w = statuses
+                    .iter()
+                    .map(|s| s.name.len())
+                    .max()
+                    .unwrap_or(4)
+                    .max("Task".len());
+                let runs_w = statuses
+                    .iter()
+                    .map(|s| s.run_count.to_string().len())
+                    .max()
+                    .unwrap_or(1)
+                    .max("Runs".len());
+                println!(
+                    "{:<name_w$} {:<8} {:<runs_w$} Last Run",
+                    "Task", "Enabled", "Runs"
+                );
+                println!("{}", "-".repeat(name_w + 1 + 8 + 1 + runs_w + 1 + 8));
                 for s in &statuses {
                     let last = s.last_run.as_deref().unwrap_or("never");
                     let enabled = if s.enabled { "yes" } else { "no" };
-                    println!("{:<24} {:<8} {:<6} {}", s.name, enabled, s.run_count, last);
+                    println!(
+                        "{:<name_w$} {:<8} {:<runs_w$} {}",
+                        s.name, enabled, s.run_count, last
+                    );
                 }
             }
         }
