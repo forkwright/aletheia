@@ -197,9 +197,9 @@ pub(crate) fn format_diagnostics(world: &TypstWorld, diagnostics: &[SourceDiagno
             })
             .unwrap_or_else(|| "<unknown>".to_owned());
 
-        let _ = writeln!(out, "{severity}: {location}: {}", diag.message);
+        let _ = writeln!(out, "{severity}: {location}: {}", diag.message); // kanon:ignore RUST/no-silent-result-swallow — writeln! to String is infallible; error is unreachable
         for hint in &diag.hints {
-            let _ = writeln!(out, "  hint: {hint}");
+            let _ = writeln!(out, "  hint: {hint}"); // kanon:ignore RUST/no-silent-result-swallow — writeln! to String is infallible; error is unreachable
         }
     }
     out

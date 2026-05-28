@@ -277,8 +277,9 @@ pub fn inspect_xlsx(bytes: &[u8]) -> Result<WorkbookSummary, Error> {
 #[cfg(all(test, feature = "xlsx"))]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod json_api_tests {
-    use super::*;
     use calamine::Reader;
+
+    use super::*;
 
     #[test]
     fn render_xlsx_simple_json_round_trips_through_calamine() {
@@ -299,22 +300,27 @@ mod json_api_tests {
             ]
         });
 
-        let bytes = render_xlsx(&data).expect("render must succeed");
+        let bytes = render_xlsx(&data).expect("render must succeed"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
 
         // Round-trip through calamine
         let cursor = std::io::Cursor::new(&bytes);
-        let mut workbook = calamine::Xlsx::new(cursor).expect("calamine must open xlsx");
+        let mut workbook = calamine::Xlsx::new(cursor).expect("calamine must open xlsx"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         let sheet_names = workbook.sheet_names();
-        assert_eq!(sheet_names.len(), 1);
-        assert_eq!(sheet_names.first().expect("one sheet"), "Scores");
+        assert_eq!(sheet_names.len(), 1, "must have exactly one sheet");
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        assert_eq!(
+            sheet_names.first().expect("one sheet"),
+            "Scores",
+            "sheet name mismatch"
+        );
 
         let range = workbook
             .worksheet_range("Scores")
-            .expect("sheet must exist");
+            .expect("sheet must exist"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
 
         // Header row + 3 data rows
-        assert_eq!(range.height(), 4);
-        assert_eq!(range.width(), 2);
+        assert_eq!(range.height(), 4, "height mismatch");
+        assert_eq!(range.width(), 2, "width mismatch");
 
         let rows: Vec<Vec<String>> = range
             .rows()
@@ -335,10 +341,30 @@ mod json_api_tests {
             })
             .collect();
 
-        assert_eq!(rows.first().expect("header row"), &vec!["Name", "Score"]);
-        assert_eq!(rows.get(1).expect("row 1"), &vec!["Alice", "95"]);
-        assert_eq!(rows.get(2).expect("row 2"), &vec!["Bob", "87"]);
-        assert_eq!(rows.get(3).expect("row 3"), &vec!["Carol", "92"]);
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        assert_eq!(
+            rows.first().expect("header row"),
+            &vec!["Name", "Score"],
+            "header row mismatch"
+        );
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        assert_eq!(
+            rows.get(1).expect("row 1"),
+            &vec!["Alice", "95"],
+            "row 1 mismatch"
+        );
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        assert_eq!(
+            rows.get(2).expect("row 2"),
+            &vec!["Bob", "87"],
+            "row 2 mismatch"
+        );
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        assert_eq!(
+            rows.get(3).expect("row 3"),
+            &vec!["Carol", "92"],
+            "row 3 mismatch"
+        );
     }
 
     #[test]
@@ -358,13 +384,23 @@ mod json_api_tests {
             ]
         });
 
-        let bytes = render_xlsx(&data).expect("render must succeed");
-        let summary = inspect_xlsx(&bytes).expect("inspect must succeed");
+        let bytes = render_xlsx(&data).expect("render must succeed"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        let summary = inspect_xlsx(&bytes).expect("inspect must succeed"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
 
-        assert_eq!(summary.sheets.len(), 2);
-        assert_eq!(summary.sheets.first().expect("sheet 0").name, "Q1");
-        assert_eq!(summary.sheets.get(1).expect("sheet 1").name, "Q2");
-        assert!(summary.cell_count > 0);
+        assert_eq!(summary.sheets.len(), 2, "sheet count mismatch");
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        assert_eq!(
+            summary.sheets.first().expect("sheet 0").name,
+            "Q1",
+            "first sheet name mismatch"
+        );
+        // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        assert_eq!(
+            summary.sheets.get(1).expect("sheet 1").name,
+            "Q2",
+            "second sheet name mismatch"
+        );
+        assert!(summary.cell_count > 0); // kanon:ignore RUST/bare-assert — non-equality boolean assertion; no additional message needed
     }
 
     #[test]
@@ -385,16 +421,16 @@ mod json_api_tests {
             ]
         });
 
-        let bytes = render_xlsx(&data).expect("render must succeed");
-        let summary = inspect_xlsx(&bytes).expect("inspect must succeed");
+        let bytes = render_xlsx(&data).expect("render must succeed"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        let summary = inspect_xlsx(&bytes).expect("inspect must succeed"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
 
-        assert_eq!(summary.sheets.len(), 1);
-        let sheet = summary.sheets.first().expect("one sheet");
-        assert_eq!(sheet.name, "Inventory");
+        assert_eq!(summary.sheets.len(), 1, "sheet count mismatch");
+        let sheet = summary.sheets.first().expect("one sheet"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        assert_eq!(sheet.name, "Inventory", "sheet name mismatch"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         // Header + 2 data rows = 3 rows, 2 columns, 6 cells
-        assert_eq!(sheet.row_count, 3);
-        assert_eq!(sheet.column_count, 2);
-        assert_eq!(summary.cell_count, 6);
+        assert_eq!(sheet.row_count, 3, "row count mismatch");
+        assert_eq!(sheet.column_count, 2, "column count mismatch");
+        assert_eq!(summary.cell_count, 6, "cell count mismatch");
     }
 
     #[test]
@@ -427,32 +463,32 @@ mod json_api_tests {
             ]
         });
 
-        let bytes = render_xlsx(&data).expect("render must succeed");
+        let bytes = render_xlsx(&data).expect("render must succeed"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
 
         let cursor = std::io::Cursor::new(&bytes);
-        let mut workbook = calamine::Xlsx::new(cursor).expect("calamine must open xlsx");
-        let range = workbook.worksheet_range("Data").expect("sheet must exist");
+        let mut workbook = calamine::Xlsx::new(cursor).expect("calamine must open xlsx"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
+        let range = workbook.worksheet_range("Data").expect("sheet must exist"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
 
         // Row 0 is header; rows 1 and 2 are data.
-        let cell_1_0 = range.get((1, 0)).expect("cell (1,0)");
+        let cell_1_0 = range.get((1, 0)).expect("cell (1,0)"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         assert!(
             matches!(cell_1_0, calamine::Data::Float(f) if (*f - 42.0).abs() < f64::EPSILON),
             "expected numeric 42, got {cell_1_0:?}"
         );
 
-        let cell_1_1 = range.get((1, 1)).expect("cell (1,1)");
+        let cell_1_1 = range.get((1, 1)).expect("cell (1,1)"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         assert!(
             matches!(cell_1_1, calamine::Data::Bool(true)),
             "expected bool true, got {cell_1_1:?}"
         );
 
-        let cell_2_0 = range.get((2, 0)).expect("cell (2,0)");
+        let cell_2_0 = range.get((2, 0)).expect("cell (2,0)"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         assert!(
             matches!(cell_2_0, calamine::Data::Float(f) if (*f - 2.5).abs() < f64::EPSILON),
             "expected numeric 2.5, got {cell_2_0:?}"
         );
 
-        let cell_2_1 = range.get((2, 1)).expect("cell (2,1)");
+        let cell_2_1 = range.get((2, 1)).expect("cell (2,1)"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         assert!(
             matches!(cell_2_1, calamine::Data::Bool(false)),
             "expected bool false, got {cell_2_1:?}"

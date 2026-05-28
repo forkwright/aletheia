@@ -87,7 +87,7 @@ impl Verifier {
 #[derive(Debug, Clone, Serialize)]
 pub struct ClaimResult {
     /// Claim identifier.
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — claim id is deserialized from external manifest; newtype would break serde compatibility
     /// Verbatim claim text.
     pub text: String,
     /// The numeric value asserted.
@@ -206,7 +206,7 @@ fn verify_claim(claim: &Claim, resolved_claims: &HashMap<String, f64>) -> ClaimR
 fn resolve_source(source: &Source, resolved_claims: &HashMap<String, f64>) -> Option<f64> {
     match source {
         Source::Sql { .. } => None,
-        Source::Derived { formula, .. } => arithmetic::eval(formula).ok(),
+        Source::Derived { formula, .. } => arithmetic::eval(formula).ok(), // kanon:ignore RUST/silent-error-ok — arithmetic eval failure falls back to None; error detail not needed for source resolution
         Source::Ref { ref_id } => resolved_claims.get(ref_id.as_str()).copied(),
     }
 }

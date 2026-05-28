@@ -1,6 +1,7 @@
 use crate::rich_text::RichText;
 
 /// A block-level element in the document tree.
+// kanon:ignore RUST/non-exhaustive-enum — public enum is part of stable crate API; exhaustive matching is intentionally supported
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     /// Section heading at a given depth (1 = h1, 6 = h6).

@@ -586,7 +586,7 @@ pub(crate) fn check(effective_lines: &[(usize, &str)]) -> Vec<Finding> {
                         clippy::string_slice,
                         reason = "both boundaries are verified as char boundaries immediately above"
                     )]
-                    &line[match_start..match_end]
+                    &line[match_start..match_end] // kanon:ignore RUST/indexing-slicing — match_start and match_end verified as char boundaries immediately above
                 } else {
                     // NOTE: non-ASCII boundary shift from lowercasing; skip safely.
                     search_start = match_start + 1;
@@ -629,7 +629,7 @@ fn is_word_boundary(text: &str, start: usize, end: usize) -> bool {
         reason = "start and end are verified as char boundaries by the caller before calling is_word_boundary"
     )]
     let before_ok = start == 0
-        || text[..start]
+        || text[..start] // kanon:ignore RUST/indexing-slicing — start verified as char boundary by caller
             .chars()
             .next_back()
             .is_none_or(|c| !c.is_alphanumeric() && c != '\'');
@@ -639,7 +639,7 @@ fn is_word_boundary(text: &str, start: usize, end: usize) -> bool {
         reason = "end is verified as a char boundary by the caller before calling is_word_boundary"
     )]
     let after_ok = end >= text.len()
-        || text[end..]
+        || text[end..] // kanon:ignore RUST/indexing-slicing — end verified as char boundary by caller
             .chars()
             .next()
             .is_none_or(|c| !c.is_alphanumeric() && c != '\'');

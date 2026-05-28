@@ -196,7 +196,7 @@ pub(crate) fn diff_workbooks_impl(a: &[u8], b: &[u8]) -> Result<Vec<CellDiff>> {
                         after: Some(value_b.clone()),
                     });
                 }
-                _ => {}
+                _ => (), // kanon:ignore RUST/empty-match-arm — intentional no-op for matching cells; kanon:ignore RUST/silent-wildcard-success — cells with identical values require no diff action
             }
         }
 

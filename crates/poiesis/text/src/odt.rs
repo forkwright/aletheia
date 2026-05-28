@@ -227,7 +227,7 @@ fn render_block(block: &Block, out: &mut String) {
         }
         Block::List { ordered, items } => {
             let list_style = if *ordered { "OL" } else { "UL" };
-            let _ = writeln!(out, "      <text:list text:style-name=\"{list_style}\">");
+            let _ = writeln!(out, "      <text:list text:style-name=\"{list_style}\">"); // kanon:ignore RUST/no-silent-result-swallow — writeln! to String is infallible; error is unreachable
             for item in items {
                 let _ = writeln!(
                     out,

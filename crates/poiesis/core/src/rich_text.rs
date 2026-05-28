@@ -29,6 +29,7 @@ impl From<String> for RichText {
 }
 
 /// A single styled inline run of text.
+// kanon:ignore RUST/non-exhaustive-enum — public enum is part of stable crate API; exhaustive matching is intentionally supported
 #[derive(Debug, Clone, PartialEq)]
 pub enum Span {
     /// Unstyled text.
