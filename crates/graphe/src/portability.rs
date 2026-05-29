@@ -12,11 +12,18 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 /// Agent file format version.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "reference value for TS/Rust wire compatibility")
-)]
-pub(crate) const AGENT_FILE_VERSION: u32 = 1;
+///
+/// - **v1** (pre-#4163): silently lossy — distilled messages dropped from
+///   exports, `working_state`/`memory`/`knowledge` never serialized,
+///   `status`/`created_at`/metrics reset on import.
+/// - **v2** (#4163): faithful round-trip. Producers populate every populated
+///   slot from live stores; consumers preserve session status, timestamps,
+///   metrics, and per-message `created_at`/`is_distilled` on import.
+///
+/// The version bump declares the fidelity contract: consumers MUST reject
+/// older versions (or pipe them through a migration) so they cannot silently
+/// drop fields that v2 expects to round-trip.
+pub const AGENT_FILE_VERSION: u32 = 2;
 
 /// Portable agent file: wire-compatible with the TypeScript `AgentFile` format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -340,7 +347,7 @@ mod tests {
 
     #[test]
     fn format_version_constant() {
-        assert_eq!(AGENT_FILE_VERSION, 1);
+        assert_eq!(AGENT_FILE_VERSION, 2);
     }
 
     #[test]

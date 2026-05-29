@@ -258,6 +258,22 @@ pub fn record_backup_duration (duration_secs: f64, success: bool)
 
 ## `src/portability.rs`
 
+> Agent file format version.
+> 
+> - **v1** (pre-#4163): silently lossy  -  distilled messages dropped from
+>   exports, `working_state`/`memory`/`knowledge` never serialized,
+>   `status`/`created_at`/metrics reset on import.
+> - **v2** (#4163): faithful round-trip. Producers populate every populated
+>   slot from live stores; consumers preserve session status, timestamps,
+>   metrics, and per-message `created_at`/`is_distilled` on import.
+> 
+> The version bump declares the fidelity contract: consumers MUST reject
+> older versions (or pipe them through a migration) so they cannot silently
+> drop fields that v2 expects to round-trip.
+```rust
+pub const AGENT_FILE_VERSION: u32 = 2;
+```
+
 ```rust
 pub struct AgentFile {
     pub version: u32,
