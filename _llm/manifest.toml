@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-29T14:31:27Z"
+generated_at = "2026-05-29T18:52:52Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -20,7 +20,7 @@ l3_token_estimate = 4901
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "a44ed509c0296adedb47d6e456c310c612853fd5844397476dce9cd31fce5093"
+source_hash = "4c7eb4f454163d164792fe4c7f334633fc1348188a4d7fcf8048b6dc697fc408"
 l3_token_estimate = 167
 
 [[crates]]

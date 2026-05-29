@@ -1,7 +1,7 @@
 //! Self-signed X.509 certificate generation.
 //!
 //! Hand-rolled replacement for the previous third-party cert generator.
-//! Uses `ring` for ECDSA P-256 key generation + signing and hand-rolled ASN.1 DER.
+//! Uses `p256` for ECDSA P-256 key generation + signing and hand-rolled ASN.1 DER.
 
 #![expect(
     clippy::indexing_slicing,
@@ -20,7 +20,10 @@ use std::net::IpAddr;
 use std::str::FromStr;
 
 use jiff::Timestamp;
-use ring::signature::KeyPair;
+use p256::ecdsa::signature::Signer as _;
+use p256::ecdsa::{DerSignature, SigningKey};
+use p256::elliptic_curve::pkcs8::EncodePrivateKey;
+use rand_core::{OsRng, RngCore as _};
 use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
@@ -49,23 +52,14 @@ pub(crate) fn generate(
     days: u32,
     common_name: &str,
 ) -> Result<SelfSignedCert, Error> {
-    let rng = ring::rand::SystemRandom::new();
+    let mut rng = OsRng;
 
     // ---- key pair ----
-    let pkcs8_doc = ring::signature::EcdsaKeyPair::generate_pkcs8(
-        &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING,
-        &rng,
-    )
-    .map_err(|_e| Error::KeyGen)?;
+    let signing_key = SigningKey::random(&mut rng);
+    let pkcs8_doc = signing_key.to_pkcs8_der().map_err(|_e| Error::KeyGen)?;
 
-    let key_pair = ring::signature::EcdsaKeyPair::from_pkcs8(
-        &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING,
-        pkcs8_doc.as_ref(),
-        &rng,
-    )
-    .map_err(|_e| Error::KeyParse)?;
-
-    let pub_key = key_pair.public_key().as_ref();
+    let pub_point = signing_key.verifying_key().to_encoded_point(false);
+    let pub_key = pub_point.as_bytes();
 
     // ---- times ----
     let now = Timestamp::now();
@@ -75,7 +69,7 @@ pub(crate) fn generate(
 
     // ---- serial number (16 random bytes, positive) ----
     let mut serial = [0u8; 16];
-    ring::rand::SecureRandom::fill(&rng, &mut serial).map_err(|_e| Error::KeyGen)?;
+    rng.fill_bytes(&mut serial);
     serial[0] &= 0x7f; // ensure positive
 
     // ---- build TBS certificate ----
@@ -143,7 +137,7 @@ pub(crate) fn generate(
     let tbs_der = tbs.finish();
 
     // ---- sign ----
-    let sig = key_pair.sign(&rng, &tbs_der).map_err(|_e| Error::Sign)?;
+    let sig: DerSignature = signing_key.try_sign(&tbs_der).map_err(|_e| Error::Sign)?;
 
     // ---- assemble certificate ----
     let mut cert = Writer::new();
@@ -152,11 +146,11 @@ pub(crate) fn generate(
         writer.sequence(|w| {
             w.oid(&[1, 2, 840, 10045, 4, 3, 2]); // ecdsa-with-SHA256
         });
-        writer.bit_string(sig.as_ref(), 0);
+        writer.bit_string(sig.as_bytes(), 0);
     });
 
     let cert_pem = pem::encode(&pem::Pem::new("CERTIFICATE", cert.finish()));
-    let key_pem = pem::encode(&pem::Pem::new("PRIVATE KEY", pkcs8_doc.as_ref().to_vec()));
+    let key_pem = pem::encode(&pem::Pem::new("PRIVATE KEY", pkcs8_doc.as_bytes().to_vec()));
 
     Ok(SelfSignedCert { cert_pem, key_pem })
 }

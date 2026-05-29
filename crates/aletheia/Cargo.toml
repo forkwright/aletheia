@@ -87,7 +87,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
-ring = { version = "0.17", default-features = false }
+p256 = { workspace = true }
+rand_core = { version = "0.6", features = ["getrandom"] }
 
 indexmap = { workspace = true }
 jiff = { workspace = true }
