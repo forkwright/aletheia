@@ -1,0 +1,2 @@
+# WHY: OSV-Scanner does not read cargo-audit's .cargo/audit.toml or
+# cargo-deny's deny.toml. Keep this ignore list in sync with both files.

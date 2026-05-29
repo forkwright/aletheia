@@ -5,7 +5,9 @@ on:
     tags: ["v*"]
 
 permissions:
+  attestations: write
   contents: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -138,19 +140,24 @@ jobs:
         if: matrix.cross
         run: cargo install cross --locked
 
+      - name: Install cargo-auditable
+        if: ${{ !matrix.cross }}
+        run: cargo install cargo-auditable --locked --version 0.7.4
+
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cargo auditable build --release --target "$BUILD_TARGET" --features recall,embed-candle
         env:
           BUILD_TARGET: ${{ matrix.target }}
 
       - name: Build (cross)
         if: ${{ matrix.cross }}
-        run: cross build --release --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cross auditable build --release --target "$BUILD_TARGET" --features recall,embed-candle
         env:
           BUILD_TARGET: ${{ matrix.target }}
 
       - name: Package tarball
+        id: artifact
         run: |
           version="${VERSION}"
           dir="aletheia-${version}"
@@ -161,6 +168,7 @@ jobs:
           cp "target/${BUILD_TARGET}/release/aletheia" "${ARTIFACT}-${version}"
           echo "TARBALL=${ARTIFACT}-${version}.tar.gz" >> "$GITHUB_ENV"
           echo "BINARY=${ARTIFACT}-${version}" >> "$GITHUB_ENV"
+          echo "bin=${ARTIFACT}-${version}" >> "$GITHUB_OUTPUT"
         env:
           ARTIFACT: ${{ matrix.artifact }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -189,6 +197,66 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0
+        with:
+          artifact-name: ${{ steps.artifact.outputs.bin }}.cdx.json
+          format: cyclonedx-json
+          output-file: ${{ steps.artifact.outputs.bin }}.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0
+        with:
+          artifact-name: ${{ steps.artifact.outputs.bin }}.spdx.json
+          format: spdx-json
+          output-file: ${{ steps.artifact.outputs.bin }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Upload SBOMs
+        run: |
+          gh release upload "${GITHUB_REF#refs/tags/}" \
+            "$BINARY.cdx.json" \
+            "$BINARY.spdx.json" \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest binary provenance
+        id: attest-provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: ${{ steps.artifact.outputs.bin }}
+
+      - name: Attest CycloneDX SBOM
+        id: attest-cyclonedx-sbom
+        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6 # v1
+        with:
+          subject-path: ${{ steps.artifact.outputs.bin }}
+          sbom-path: ${{ steps.artifact.outputs.bin }}.cdx.json
+
+      - name: Attest SPDX SBOM
+        id: attest-spdx-sbom
+        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6 # v1
+        with:
+          subject-path: ${{ steps.artifact.outputs.bin }}
+          sbom-path: ${{ steps.artifact.outputs.bin }}.spdx.json
+
+      - name: Upload attestation bundles
+        run: |
+          cp "${{ steps.attest-provenance.outputs.bundle-path }}" "$BINARY.provenance.intoto.jsonl"
+          cp "${{ steps.attest-cyclonedx-sbom.outputs.bundle-path }}" "$BINARY.cdx.intoto.jsonl"
+          cp "${{ steps.attest-spdx-sbom.outputs.bundle-path }}" "$BINARY.spdx.intoto.jsonl"
+          gh release upload "${GITHUB_REF#refs/tags/}" \
+            "$BINARY.provenance.intoto.jsonl" \
+            "$BINARY.cdx.intoto.jsonl" \
+            "$BINARY.spdx.intoto.jsonl" \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   sbom:
     needs: [test]
     runs-on: ubuntu-latest
@@ -210,7 +278,7 @@ jobs:
           printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
           chmod 0600 ~/.git-credentials
 
-      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+      - uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0
         with:
           artifact-name: aletheia-sbom.spdx.json
           output-file: aletheia-sbom.spdx.json
