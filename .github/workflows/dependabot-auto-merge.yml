@@ -16,6 +16,12 @@ concurrency:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
+    # WHY: the watch step below polls `gh pr checks --watch` with no upper
+    # bound — when a required check stays queued (e.g. during the #4320
+    # disk-OOM blind window), this job would otherwise hold an Actions
+    # slot for the full 360-min hosted ceiling. 30 min covers a normal
+    # verification cycle and surfaces indefinite queues quickly.
+    timeout-minutes: 30
     if: github.actor == 'dependabot[bot]'
     steps:
       - name: Fetch Dependabot metadata

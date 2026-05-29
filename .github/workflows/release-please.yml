@@ -18,6 +18,10 @@ concurrency:
 jobs:
   release-please:
     runs-on: self-hosted
+    # WHY: self-hosted has no default ceiling. release-please-action is
+    # GitHub-API-bound; a network or SDK retry loop must not hold the
+    # only aletheia runner indefinitely.
+    timeout-minutes: 10
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}

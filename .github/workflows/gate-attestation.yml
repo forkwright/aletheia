@@ -15,6 +15,11 @@ jobs:
   gate-attestation:
     name: gate-attestation
     runs-on: self-hosted
+    # WHY: self-hosted runners have NO default per-job ceiling. The job
+    # body is a `git log` walk and a single `grep -q "^Gate-Passed:"`
+    # check; bounded by PR commit count. 5 min protects every other PR
+    # from a hung trailer scan freezing the only aletheia runner.
+    timeout-minutes: 5
     steps:
       # WHY: bypass keys off the PR author login, not github.actor. The actor
       # changes to a maintainer login whenever someone re-runs the workflow

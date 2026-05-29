@@ -19,6 +19,10 @@ concurrency:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
+    # WHY: per matrix target — toolchain pull + cargo-fuzz install
+    # (~5 min cold) + 300s of fuzzing + artifact upload. 60 min leaves
+    # comfortable headroom without letting a hung fuzz target burn a slot.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

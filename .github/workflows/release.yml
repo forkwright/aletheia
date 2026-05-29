@@ -14,6 +14,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -41,6 +42,7 @@ jobs:
     # WHY: ensures optional features compile; if they break, nobody knows until someone
     # enables them locally. See standards/RUST.md "Feature Flags" section.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -100,6 +102,7 @@ jobs:
             artifact: aletheia-macos-aarch64
             cross: false
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     env:
       CARGO_TERM_COLOR: always
     steps:
@@ -189,6 +192,7 @@ jobs:
   sbom:
     needs: [test]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
