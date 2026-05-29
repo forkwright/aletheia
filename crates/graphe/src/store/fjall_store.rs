@@ -1562,6 +1562,240 @@ impl SessionStore {
     }
 }
 
+// ── Portability (issue #4163) ──────────────────────────────────────────────
+//
+// Raw entry points that bypass the distilled-message filter and preserve
+// caller-supplied timestamps/metrics. Used by the agent portability code
+// (`aletheia agent export`/`import`) to round-trip an agent without silent
+// data loss. Recall and serve paths must NOT call these — they would leak
+// distilled summaries to the LLM and wedge the `idx:nous:...:upd:...`
+// index with past timestamps.
+
+#[cfg(feature = "portability")]
+impl SessionStore {
+    /// Get message history including distilled messages, preserving seq order.
+    ///
+    /// Unlike [`Self::get_history`], the distilled flag is not used to filter
+    /// rows: every message persisted for `session_id` is returned. This is the
+    /// faithful read used by agent export — the recall path must continue to
+    /// use [`Self::get_history`].
+    ///
+    /// # Errors
+    /// Returns an error if the partition scan fails.
+    #[instrument(skip(self))]
+    pub fn get_history_raw(&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>> {
+        use std::collections::VecDeque;
+
+        use fjall::Readable;
+
+        let messages_part = self.partition("messages")?;
+        let prefix = format!("{session_id}:");
+        let upper = format!("{session_id};\x00");
+        let snap = self.db.read_tx();
+
+        let limit = limit.and_then(|lim| usize::try_from(lim).ok());
+        let mut messages: VecDeque<Message> = VecDeque::new();
+        for guard in snap.range(&messages_part, prefix.as_str()..upper.as_str()) {
+            let (k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall get_history_raw: {e}")))?;
+            // Skip the `next_seq:{session_id}` counter row, which shares the
+            // partition but is not a Message.
+            if k.starts_with(b"next_seq:") {
+                continue;
+            }
+            let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
+            messages.push_back(msg);
+            if let Some(lim) = limit
+                && messages.len() > lim
+            {
+                messages.pop_front();
+            }
+        }
+
+        Ok(messages.into_iter().collect())
+    }
+
+    /// Insert a message at its declared seq, preserving caller-supplied
+    /// `created_at` and `is_distilled` and NOT mutating session metrics or
+    /// `updated_at`.
+    ///
+    /// The `next_seq` counter is advanced to `max(current, msg.seq)` and the
+    /// global `msg_id` counter to `max(current, msg.id)` so a subsequent
+    /// [`Self::append_message`] will not collide.
+    ///
+    /// The owning session must already exist (call [`Self::import_session`]
+    /// first when restoring from an export).
+    ///
+    /// # Errors
+    /// Returns an error if the session does not exist or any commit fails.
+    #[instrument(skip(self, msg), fields(session_id = %msg.session_id, seq = msg.seq))]
+    pub fn insert_message_raw(&self, msg: &Message) -> Result<()> {
+        use fjall::Readable;
+
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let messages_part = self.partition("messages")?;
+        let sessions_part = self.partition("sessions")?;
+        let counters_part = self.partition("counters")?;
+
+        // Refuse if the session does not exist — the message would be
+        // orphaned and never appear in list/recall views.
+        let snap = self.db.read_tx();
+        if snap
+            .get(&sessions_part, msg.session_id.as_str())
+            .map_err(|e| storage_error(format!("fjall insert_message_raw session check: {e}")))?
+            .is_none()
+        {
+            return Err(error::SessionNotFoundSnafu {
+                id: msg.session_id.clone(),
+            }
+            .build());
+        }
+
+        let next_seq_key = format!("next_seq:{}", msg.session_id);
+        let current_seq = snap
+            .get(&messages_part, next_seq_key.as_str())
+            .map_err(|e| storage_error(format!("fjall insert_message_raw seq read: {e}")))?
+            .map_or(0u64, |b| decode_u64(&b));
+        let current_msg_id = snap
+            .get(&counters_part, "msg_id")
+            .map_err(|e| storage_error(format!("fjall insert_message_raw msg_id read: {e}")))?
+            .map_or(0u64, |b| decode_u64(&b));
+        drop(snap);
+
+        let msg_seq_u64 = u64::try_from(msg.seq).map_err(|src| {
+            storage_error(format!(
+                "insert_message_raw: negative seq {}: {src}",
+                msg.seq
+            ))
+        })?;
+        let msg_id_u64 = u64::try_from(msg.id).map_err(|src| {
+            storage_error(format!("insert_message_raw: negative id {}: {src}", msg.id))
+        })?;
+        let new_next_seq = current_seq.max(msg_seq_u64);
+        let new_msg_id = current_msg_id.max(msg_id_u64);
+
+        let msg_key = format!("{}:{}", msg.session_id, pad_u64(msg_seq_u64));
+        let msg_data = serde_json::to_vec(msg).context(error::StoredJsonSnafu)?;
+
+        let mut tx = self.db.write_tx();
+        tx.insert(&messages_part, msg_key.as_str(), msg_data.as_slice());
+        tx.insert(
+            &messages_part,
+            next_seq_key.as_str(),
+            encode_u64(new_next_seq),
+        );
+        tx.insert(&counters_part, "msg_id", encode_u64(new_msg_id));
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall insert_message_raw commit: {e}"),
+            }
+            .build()
+        })?;
+        Ok(())
+    }
+
+    /// Write a session record preserving every caller-supplied field
+    /// (`status`, `created_at`, `updated_at`, `metrics`, `origin`).
+    ///
+    /// Indexes are written using the supplied `updated_at`, so a list scan
+    /// observes the imported session at its true age — not "now". This is
+    /// what keeps maintenance sweepers honest after an import.
+    ///
+    /// Idempotency: returns an error if a session with the same `id` already
+    /// exists, or if the `(nous_id, session_key)` slot is occupied by a
+    /// *different* session id, unless `force` is true. Re-importing the same
+    /// session id with `force=true` overwrites cleanly.
+    ///
+    /// # Errors
+    /// Returns an error on idempotency violation (without force) or any
+    /// commit failure.
+    #[instrument(skip(self, session), fields(id = %session.id, nous_id = %session.nous_id))]
+    pub fn import_session(&self, session: &Session, force: bool) -> Result<Session> {
+        use fjall::Readable;
+
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let sessions_part = self.partition("sessions")?;
+
+        let snap = self.db.read_tx();
+        let existing_self = snap
+            .get(&sessions_part, session.id.as_str())
+            .map_err(|e| storage_error(format!("fjall import_session existing: {e}")))?;
+        let key_idx = Self::session_key_index_key(&session.nous_id, &session.session_key);
+        let existing_key_owner = snap
+            .get(&sessions_part, key_idx.as_str())
+            .map_err(|e| storage_error(format!("fjall import_session key idx: {e}")))?
+            .map(|b| String::from_utf8_lossy(&b).into_owned());
+        drop(snap);
+
+        if !force {
+            if existing_self.is_some() {
+                return Err(storage_error(format!(
+                    "import_session: session '{}' already exists (use force to overwrite)",
+                    session.id
+                )));
+            }
+            if let Some(owner) = existing_key_owner.as_deref()
+                && owner != session.id.as_str()
+            {
+                return Err(storage_error(format!(
+                    "import_session: ({}, {}) is already owned by session '{}' \
+                     (use force to overwrite)",
+                    session.nous_id, session.session_key, owner
+                )));
+            }
+        }
+
+        // If forcing an overwrite where session_id exists with a different
+        // updated_at, remove the stale nous index entry so listings don't
+        // duplicate or shadow the import.
+        let mut tx = self.db.write_tx();
+        if let Some(prev_bytes) = existing_self {
+            let prev: Session =
+                serde_json::from_slice(&prev_bytes).context(error::StoredJsonSnafu)?;
+            if prev.updated_at != session.updated_at {
+                let stale_idx =
+                    Self::session_nous_index_key(&prev.nous_id, &prev.updated_at, &prev.id);
+                tx.remove(&sessions_part, stale_idx.as_str());
+            }
+        }
+
+        // Stamp provenance — same as write_session would do, but with the
+        // imported session's timestamps already in place.
+        let mut stamped = session.clone();
+        stamped.artefact_meta = Some(stamped.stamp());
+        let data = serde_json::to_vec(&stamped).context(error::StoredJsonSnafu)?;
+
+        tx.insert(&sessions_part, session.id.as_str(), data.as_slice());
+        tx.insert(&sessions_part, key_idx.as_str(), session.id.as_bytes());
+        let nous_idx =
+            Self::session_nous_index_key(&session.nous_id, &session.updated_at, &session.id);
+        tx.insert(&sessions_part, nous_idx.as_str(), b"");
+
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall import_session commit: {e}"),
+            }
+            .build()
+        })?;
+
+        metrics::record_session_created(&session.nous_id, session.session_type.as_str());
+        info!(
+            id = session.id,
+            nous_id = session.nous_id,
+            status = %session.status,
+            "imported session"
+        );
+        Ok(stamped)
+    }
+}
+
 /// Check whether a blackboard row has expired.
 fn is_expired(row: &BlackboardRow) -> bool {
     let Some(ref expires_at) = row.expires_at else {

@@ -466,6 +466,14 @@ impl SessionStore {
 }
 ```
 
+```rust
+impl SessionStore {
+    pub fn get_history_raw (&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>>;
+    pub fn insert_message_raw (&self, msg: &Message) -> Result<()>;
+    pub fn import_session (&self, session: &Session, force: bool) -> Result<Session>;
+}
+```
+
 ## `src/types.rs`
 
 ```rust
