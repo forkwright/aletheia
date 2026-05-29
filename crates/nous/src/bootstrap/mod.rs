@@ -417,6 +417,18 @@ const WORKSPACE_FILES: &[WorkspaceFileSpec] = &[
         load_tier: LoadTier::Always,
         slot: BootstrapSlot::SoulPersona,
     },
+    // WHY(#4109): voice-exemplar cueing — inject a sample of the operator's
+    // communication style near the top of the context to anchor model output
+    // style from the first token. VOICE.md is scaffolded by `aletheia init`
+    // and may contain writing examples, anti-patterns, and style notes.
+    // Optional: silently absent when the file does not exist.
+    WorkspaceFileSpec {
+        filename: "VOICE.md",
+        priority: SectionPriority::Optional,
+        truncatable: true,
+        load_tier: LoadTier::Always,
+        slot: BootstrapSlot::SoulPersona,
+    },
     WorkspaceFileSpec {
         filename: "USER.md",
         priority: SectionPriority::Important,
@@ -783,6 +795,20 @@ impl<'a> BootstrapAssembler<'a> {
         for section in sections {
             if budget.can_fit(section.tokens) {
                 budget.consume(section.tokens);
+                included.push(section);
+            } else if section.priority == SectionPriority::Required {
+                // WHY(#4109): Required sections (SOUL.md) are the primary identity
+                // channel. Including them even when the budget is exhausted prevents
+                // persona drift when the system prompt is compressed under token
+                // pressure. An over-budget Required section is always better than a
+                // missing one — the model cannot know who it is without it.
+                budget.consume(section.tokens);
+                warn!(
+                    section = section.name,
+                    tokens = section.tokens,
+                    remaining = budget.remaining(),
+                    "required section included despite budget exhaustion"
+                );
                 included.push(section);
             } else if section.truncatable && budget.remaining() > self.min_truncation_budget {
                 debug!(

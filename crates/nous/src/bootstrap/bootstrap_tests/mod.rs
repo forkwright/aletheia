@@ -12,6 +12,7 @@ mod assemble_llm;
 mod assemble_packs;
 mod cache;
 mod conditional;
+mod daimon_constraints;
 mod slot_precedence;
 
 pub(super) fn setup_oikos(nous_id: &str, files: &[(&str, &str)]) -> (TempDir, Oikos) {
