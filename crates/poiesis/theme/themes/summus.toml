@@ -119,3 +119,22 @@ no_vertical_borders = true
 series = ["accent", "before", "neutral", "mint", "gray"]
 gridline = "rule"
 label = "muted"
+
+[type.role.label]
+family = "sans"
+weight = 500
+size = "small"
+color = "muted"
+
+[type.role.annotation]
+family = "mono"
+weight = 400
+size = "micro"
+color = "muted"
+
+[type.role.heading]
+family = "serif"
+weight = 600
+size = "subtitle"
+color = "ink"
+leading = 1.2

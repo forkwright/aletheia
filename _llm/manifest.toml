@@ -242,7 +242,7 @@ l3_token_estimate = 547
 [[crates]]
 name = "poiesis-theme"
 path = "crates/poiesis/theme"
-source_hash = "97c04b52c16938ff2f3ca2c49cd14bcb8d9d381b7f4b1d3fa2ea9a372c1a397b"
+source_hash = "8ede7742f7876087b95591058aec36446f999e355e177ae83fb9bd3472aa24f7"
 l3_token_estimate = 4379
 
 [[crates]]
