@@ -112,6 +112,12 @@ pub(crate) async fn run(args: Args) -> Result<()> {
             // not a non-existent aletheia "knowledge-store" feature.
             #[cfg(feature = "recall")]
             knowledge_store: runtime.state.knowledge_store.clone(),
+            note_store: Some(Arc::new(nous::adapters::SessionNoteAdapter(Arc::clone(
+                &runtime.state.session_store,
+            )))),
+            blackboard_store: Some(Arc::new(nous::adapters::SessionBlackboardAdapter(
+                Arc::clone(&runtime.state.session_store),
+            ))),
         });
         let mcp_router = diaporeia::transport::streamable_http_router(diaporeia_state);
         info!("diaporeia MCP server mounted at /mcp");

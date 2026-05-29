@@ -37,6 +37,12 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         shutdown: runtime.shutdown_token.clone(),
         #[cfg(feature = "recall")]
         knowledge_store: runtime.state.knowledge_store.clone(),
+        note_store: Some(Arc::new(nous::adapters::SessionNoteAdapter(Arc::clone(
+            &runtime.state.session_store,
+        )))),
+        blackboard_store: Some(Arc::new(nous::adapters::SessionBlackboardAdapter(
+            Arc::clone(&runtime.state.session_store),
+        ))),
     });
 
     diaporeia::transport::serve_stdio(diaporeia_state)

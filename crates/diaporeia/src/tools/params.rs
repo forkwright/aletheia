@@ -3,7 +3,7 @@
 //! Each struct derives `schemars::JsonSchema` for automatic JSON Schema generation.
 
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Parameters for creating a session.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -147,6 +147,87 @@ pub(crate) struct CredsSetParams {
 pub(crate) struct CredsRmParams {
     /// Name of the secret to remove.
     pub name: String,
+}
+
+/// Parameters for `memory_note`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub(crate) struct MemoryNoteParams {
+    /// Session ID to scope the note to.
+    pub session_id: String,
+    /// Action: "add", "list", or "delete".
+    pub action: String,
+    /// Note content (required for "add").
+    #[serde(default)]
+    pub content: Option<String>,
+    /// Category label (optional for "add", defaults to "context").
+    #[serde(default)]
+    pub category: Option<String>,
+    /// Note ID (required for "delete").
+    #[serde(default)]
+    pub note_id: Option<i64>,
+}
+
+/// Parameters for `memory_blackboard`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub(crate) struct MemoryBlackboardParams {
+    /// Action: "write", "read", "list", or "delete".
+    pub action: String,
+    /// Key for the blackboard entry.
+    #[serde(default)]
+    pub key: Option<String>,
+    /// Value to write (required for "write").
+    #[serde(default)]
+    pub value: Option<String>,
+    /// Author identifier (required for "write" and "delete").
+    #[serde(default)]
+    pub author: Option<String>,
+    /// TTL in seconds (required for "write").
+    #[serde(default)]
+    pub ttl_seconds: Option<i64>,
+}
+
+/// Parameters for `memory_search`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub(crate) struct MemorySearchParams {
+    /// Semantic query string.
+    pub query: String,
+    /// Nous ID to scope results (optional).
+    #[serde(default)]
+    pub nous_id: Option<String>,
+    /// Max results to return. Defaults to 10.
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+/// Parameters for `memory_correct`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub(crate) struct MemoryCorrectParams {
+    /// ID of the fact to correct.
+    pub fact_id: String,
+    /// New content for the fact.
+    pub new_content: String,
+    /// Nous ID context for the operation.
+    #[serde(default)]
+    pub nous_id: Option<String>,
+}
+
+/// Parameters for `memory_retract`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub(crate) struct MemoryRetractParams {
+    /// ID of the fact to retract.
+    pub fact_id: String,
+    /// Optional reason for retraction.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// Parameters for `memory_forget`.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub(crate) struct MemoryForgetParams {
+    /// ID of the fact to forget.
+    pub fact_id: String,
+    /// Reason for forgetting.
+    pub reason: String,
 }
 
 #[cfg(test)]

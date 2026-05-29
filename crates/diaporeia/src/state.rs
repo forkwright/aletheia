@@ -14,6 +14,7 @@ use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
+use organon::types::{BlackboardStore, NoteStore};
 use symbolon::jwt::JwtManager;
 use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
@@ -51,6 +52,10 @@ pub struct DiaporeiaState {
     /// `mcp.knowledge_graph.enabled` is `false`.
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Session notes store for the `memory_note` tool.
+    pub note_store: Option<Arc<dyn NoteStore>>,
+    /// Shared blackboard store for the `memory_blackboard` tool.
+    pub blackboard_store: Option<Arc<dyn BlackboardStore>>,
 }
 
 #[cfg(test)]

@@ -128,6 +128,8 @@ impl StateBuilder {
             shutdown: CancellationToken::new(),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
+            note_store: None,
+            blackboard_store: None,
         });
 
         (state, jwt_manager, self.instance_root)
