@@ -21,6 +21,17 @@ use crate::model::{NumFormat, Unit};
 /// Format a number for axis ticks / data labels.
 ///
 /// `unit` is only consulted when `format == NumFormat::FromUnit`.
+///
+/// # Examples
+///
+/// ```
+/// use poiesis_charts::format::format_number;
+/// use poiesis_charts::{NumFormat, Unit};
+///
+/// assert_eq!(format_number(1500.0, NumFormat::Compact, Unit::Number), "1.5k");
+/// assert_eq!(format_number(99.0, NumFormat::Int, Unit::Number), "99");
+/// assert_eq!(format_number(12.5, NumFormat::Percent, Unit::Percent), "12.5%");
+/// ```
 #[must_use]
 pub fn format_number(value: f64, format: NumFormat, unit: Unit) -> String {
     let effective = if matches!(format, NumFormat::FromUnit) {
