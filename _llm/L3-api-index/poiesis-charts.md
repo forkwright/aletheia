@@ -491,6 +491,22 @@ impl Canvas {
 }
 ```
 
+## `src/render/kinds/area.rs`
+
+> Emit the area chart SVG.
+> 
+> Caller invariants (enforced by [`Chart::validate`]):
+> - `chart.kind == ChartKind::Area`
+> - one or more series, each with one or more points
+```rust
+pub fn emit (
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    canvas: &Canvas,
+    mode: ColorMode,
+) -> Result<String>
+```
+
 ## `src/render/kinds/bar.rs`
 
 > Emit the bar chart SVG.
@@ -544,6 +560,22 @@ pub fn emit (
 
 ## `src/render/kinds/doughnut.rs`
 
+```rust
+pub fn emit (
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    canvas: &Canvas,
+    mode: ColorMode,
+) -> Result<String>
+```
+
+## `src/render/kinds/line.rs`
+
+> Emit the line chart SVG.
+> 
+> Caller invariants (enforced by [`Chart::validate`]):
+> - `chart.kind == ChartKind::Line`
+> - one or more series, each with one or more points
 ```rust
 pub fn emit (
     chart: &Chart,
