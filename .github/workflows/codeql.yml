@@ -20,6 +20,7 @@ jobs:
   analyze-actions:
     name: Analyze (actions)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write
       contents: read
@@ -42,6 +43,7 @@ jobs:
   analyze-rust:
     name: Analyze (rust)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write
       contents: read

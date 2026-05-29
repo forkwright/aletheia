@@ -16,6 +16,13 @@ concurrency:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
+    # WHY: `gh pr checks --watch --interval 30 --required` is structurally an
+    # infinite loop — it exits only when polled checks reach a terminal state.
+    # During the #4319/#4320 runner OOM-disk window the required checks never
+    # reached terminal, which would have held this Actions slot until GitHub's
+    # 6h hosted ceiling forced it. 30 min covers a long honest verification
+    # cycle and fails clearly on indefinite queue. See #4331.
+    timeout-minutes: 30
     if: github.actor == 'dependabot[bot]'
     steps:
       - name: Fetch Dependabot metadata

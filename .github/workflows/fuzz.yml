@@ -19,6 +19,7 @@ concurrency:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
