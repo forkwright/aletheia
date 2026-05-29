@@ -2166,6 +2166,9 @@ impl KnowledgeStore {
         rel: &crate::knowledge::Relationship,
     ) -> crate::error::Result<()>;
     pub fn list_entities (&self) -> crate::error::Result<Vec<crate::knowledge::Entity>>;
+    pub fn list_all_relationships (
+        &self,
+    ) -> crate::error::Result<Vec<crate::knowledge::Relationship>>;
     pub fn find_duplicate_entities (
         &self,
         nous_id: &str,
