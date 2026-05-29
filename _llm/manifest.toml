@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-28T15:38:55Z"
+generated_at = "2026-05-29T00:24:18Z"
 
 [levels.L1]
 path = "L1-workspace.md"
@@ -225,7 +225,7 @@ l3_token_estimate = 4901
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "039569a38a593f1dabd415e2de16cdfbc953912973b2cec664b0537c5efa34b6"
+source_hash = "a44ed509c0296adedb47d6e456c310c612853fd5844397476dce9cd31fce5093"
 l3_token_estimate = 167
 
 [[crates]]
@@ -291,8 +291,8 @@ l3_token_estimate = 19912
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "6a589a98da9dec5996b781efec73523adf57f12ac5ff0123de04f915655ff86a"
-l3_token_estimate = 30551
+source_hash = "1d5a145c13813e0aa7dc24b360778abbf26efbe8c929d57d15b678e9609e95fc"
+l3_token_estimate = 31549
 
 [[crates]]
 name = "gnosis"
@@ -345,7 +345,7 @@ l3_token_estimate = 4097
 [[crates]]
 name = "mneme"
 path = "crates/mneme"
-source_hash = "eda076baf6fdb4d78c945e1056655a808737bee8f8bac8e4ac3de4f32faaeb0e"
+source_hash = "2474fcc4e1f19429effcf1643692989ec8708c66e68e0b83e0acef0784a3abe4"
 l3_token_estimate = 51
 
 [[crates]]

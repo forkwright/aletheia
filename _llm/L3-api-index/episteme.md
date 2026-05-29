@@ -815,11 +815,12 @@ pub struct EntityMergeCandidate {
 
 ```rust
 pub enum MergeDecision {
-    /// Score ≥ 0.90: merge automatically.
+    /// Score ≥ `tuning.auto_merge_threshold` (default 0.90): merge automatically.
     AutoMerge,
-    /// 0.70 ≤ score < 0.90: queue for human review.
+    /// `tuning.review_threshold` ≤ score < `tuning.auto_merge_threshold`
+    /// (default 0.70..0.90): queue for human review.
     Review,
-    /// Score < 0.70: skip.
+    /// Score < `tuning.review_threshold` (default 0.70): skip.
     Skip,
 }
 ```
@@ -865,6 +866,47 @@ pub const DEFAULT_JW_THRESHOLD: f64 = 0.85;
 
 ```rust
 pub const DEFAULT_EMBED_THRESHOLD: f64 = 0.80;
+```
+
+```rust
+pub const DEFAULT_AUTO_MERGE_THRESHOLD: f64 = 0.90;
+```
+
+```rust
+pub const DEFAULT_REVIEW_THRESHOLD: f64 = 0.70;
+```
+
+```rust
+pub struct DedupTuning {
+    /// Weight applied to the name similarity term. Default
+    /// [`DEFAULT_WEIGHT_NAME`].
+    pub weight_name: f64,
+    /// Weight applied to the embedding similarity term. Default
+    /// [`DEFAULT_WEIGHT_EMBED`].
+    pub weight_embed: f64,
+    /// Weight applied to the `entity_type`-match term. Default
+    /// [`DEFAULT_WEIGHT_TYPE`].
+    pub weight_type: f64,
+    /// Weight applied to the alias-overlap term. Default
+    /// [`DEFAULT_WEIGHT_ALIAS`].
+    pub weight_alias: f64,
+    /// Minimum Jaro-Winkler score that admits a pair as a candidate.
+    /// Default [`DEFAULT_JW_THRESHOLD`].
+    pub jw_threshold: f64,
+    /// Minimum cosine embedding similarity that admits a pair as a
+    /// candidate. Default [`DEFAULT_EMBED_THRESHOLD`].
+    pub embed_threshold: f64,
+    /// Composite score above which the pipeline auto-merges without
+    /// operator review. Default [`DEFAULT_AUTO_MERGE_THRESHOLD`].
+    pub auto_merge_threshold: f64,
+    /// Composite score above which a candidate queues for operator
+    /// review. Default [`DEFAULT_REVIEW_THRESHOLD`].
+    pub review_threshold: f64,
+}
+```
+
+```rust
+impl DedupTuning
 ```
 
 ## `src/derived_rules.rs`
@@ -2128,13 +2170,57 @@ impl KnowledgeStore {
         &self,
         nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>>;
+    pub fn find_duplicate_entities_with_tuning (
+        &self,
+        nous_id: &str,
+        tuning: &crate::dedup::DedupTuning,
+    ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>>;
     pub fn get_pending_merges (
         &self,
         _nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>>;
+    pub fn approve_merge (
+        &self,
+        canonical_id: &crate::id::EntityId,
+        merged_id: &crate::id::EntityId,
+    ) -> crate::error::Result<crate::dedup::MergeRecord>;
+    pub fn get_merge_history (
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
     pub fn run_entity_dedup (
         &self,
         nous_id: &str,
+    ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
+    pub fn run_entity_dedup_with_tuning (
+        &self,
+        nous_id: &str,
+        tuning: &crate::dedup::DedupTuning,
+    ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
+    pub fn update_entity_name_embedding (
+        &self,
+        entity_id: &crate::id::EntityId,
+        name_embedding: Option<Vec<f32>>,
+    ) -> crate::error::Result<()>;
+    pub fn get_entity_name_embedding (
+        &self,
+        entity_id: &crate::id::EntityId,
+    ) -> crate::error::Result<Option<Vec<f32>>>;
+    pub fn backfill_entity_name_embeddings (
+        &self,
+        provider: &dyn crate::embedding::EmbeddingProvider,
+        nous_id: &str,
+    ) -> crate::error::Result<u64>;
+    pub fn run_entity_dedup_with_embeddings (
+        &self,
+        nous_id: &str,
+        provider: Option<&dyn crate::embedding::EmbeddingProvider>,
+    ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
+    pub fn run_entity_dedup_with_embeddings_and_tuning (
+        &self,
+        nous_id: &str,
+        provider: Option<&dyn crate::embedding::EmbeddingProvider>,
+        tuning: &crate::dedup::DedupTuning,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
 }
 ```
@@ -2261,6 +2347,11 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         project_id: String?,
         visibility: String default 'private'
     }",
+    // WHY: index 1 is a sentinel — `init_schema` skips this entry and runs
+    // the dim-parameterized `entities_ddl(self.dim)` instead so the relation
+    // carries a `name_embedding: <F32; DIM>?` column for the dedup pipeline
+    // (#4165 Path A). The literal here documents the pre-v13 shape but is
+    // not executed against any database.
     r":create entities {
         id: String =>
         name: String,
@@ -2341,6 +2432,10 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         contributed_at: String
     }",
 ];
+```
+
+```rust
+pub fn entities_ddl (dim: usize) -> String
 ```
 
 ```rust
@@ -2790,6 +2885,10 @@ pub enum EntitiesField {
     Aliases,
     CreatedAt,
     UpdatedAt,
+    /// Nullable embedding of [`Self::Name`]; populated by the dedup pipeline
+    /// (#4165) when an `EmbeddingProvider` is in scope. NULL for entities
+    /// inserted in degraded mode or before the v13 schema migration.
+    NameEmbedding,
 }
 ```
 
@@ -3554,13 +3653,17 @@ pub struct SkillParseError {
 
 > Parse a SKILL.md file into structured skill content.
 > 
-> Supports optional YAML frontmatter (delimited by `---`) with `tools` and
-> `domains` fields. Falls back to extracting from markdown sections.
+> Accepts two title shapes (Claude-Code-compatible):
+> 1. YAML frontmatter with `name:` (body may omit `# Title`).
+> 2. Body `# Title` heading (frontmatter optional).
+> 
+> Description is taken from frontmatter `description:` when present, else
+> from the body text after the H1, else from a `## When to Use` section.
 > 
 > # Errors
 > 
-> Returns an error if the document is empty, missing a top-level heading,
-> or has no description.
+> Returns an error naming the missing route(s) when no title can be found
+> on either path, or when no description can be derived.
 ```rust
 pub fn parse_skill_md (source: &str, slug: &str) -> Result<SkillContent, SkillParseError>
 ```
