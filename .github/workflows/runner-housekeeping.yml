@@ -65,5 +65,32 @@ jobs:
           find "$diag_dir" -type f \( -name "Worker_*" -o -name "Runner_*" \) -mtime +7 -print -delete | wc -l
         continue-on-error: true
 
+      - name: Reap stale agent workdirs
+        # WHY: Agent workdirs under ~/_*-* accumulate 10–260 GB each. Any
+        # workdir whose done.flag is older than 24h is safe to remove; the
+        # sentinel is written by the wrapper script after the agent exits.
+        # The 32 GB + 41 GB + 260 GB (DONE) observed on 2026-05-28 were
+        # this gap — the preflight and Docker prune above address future
+        # spikes but do not reclaim existing bloat. #4319 §c / #4323 §d
+        run: |
+          set -u
+          home="${HOME:-/home/ck}"
+          reaped=0
+          now=$(date +%s)
+          threshold=86400
+          for workdir in "$home"/_*-*/; do
+            [ -d "$workdir" ] || continue
+            flag="$workdir/done.flag"
+            [ -f "$flag" ] || continue
+            age=$(( now - $(stat -c %Y "$flag") ))
+            if [ "$age" -gt "$threshold" ]; then
+              echo "reaping $workdir (done.flag age ${age}s)"
+              rm -rf "$workdir"
+              reaped=$((reaped + 1))
+            fi
+          done
+          echo "reaped $reaped stale workdirs"
+        continue-on-error: true
+
       - name: Report disk after
         run: df -h / | head -2
