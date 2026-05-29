@@ -1,0 +1,30 @@
+[package]
+name = "poiesis-charts"
+version.workspace = true
+description = "Chart subsystem for poiesis: typed Chart model, deterministic SVG emitter, Vega-Lite fallback"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+poiesis-core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+insta = { version = "1", features = ["yaml"] }
+
+[features]
+default = []
+# Vega-Lite fallback for kinds the pure-Rust emitter does not own
+# (heatmap, boxplot, sankey, candlestick, faceted, regression, log/time scales).
+# Off by default: a chart spec that requires Vega-Lite while this feature is
+# disabled is a hard parse-time error, not a silent degrade.
+charts-vega = []

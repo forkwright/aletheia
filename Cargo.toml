@@ -30,6 +30,7 @@ members = [
     "crates/theatron",
     "crates/theatron/skene",
     "crates/theatron/koilon",
+    "crates/poiesis/charts",
     "crates/poiesis/core",
     "crates/poiesis/text",
     "crates/poiesis/sheet",
