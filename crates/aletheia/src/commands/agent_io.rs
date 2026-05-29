@@ -264,6 +264,65 @@ fn knowledge_path_for_nous(oikos: &Oikos, nous_id: &str) -> PathBuf {
     oikos.knowledge_cohort_db(cohort.as_ref())
 }
 
+/// Enumerate the agent's typed knowledge from the live store.
+///
+/// Returns `None` when the `recall` feature is disabled or when the
+/// knowledge store on disk is empty/unavailable — the export still succeeds
+/// without typed knowledge, the slot just stays unset.
+#[cfg(feature = "recall")]
+fn export_knowledge(
+    oikos: &Oikos,
+    nous_id: &str,
+) -> Result<Option<mneme::portability::KnowledgeExport>> {
+    use mneme::knowledge_store::KnowledgeStore;
+    use mneme::portability::KnowledgeExport;
+
+    let knowledge_path = knowledge_path_for_nous(oikos, nous_id);
+    if !knowledge_path.exists() {
+        return Ok(None);
+    }
+
+    let config = mneme::knowledge_store::KnowledgeConfig::default();
+    let Ok(store) = KnowledgeStore::open_fjall(&knowledge_path, config) else {
+        return Ok(None);
+    };
+
+    let facts: Vec<mneme::knowledge::Fact> = store
+        .list_all_facts(i64::MAX)
+        .with_whatever_context(|_| format!("failed to list facts for '{nous_id}'"))?
+        .into_iter()
+        .filter(|f| f.nous_id == nous_id)
+        .collect();
+
+    // Entities and relationships are workspace-global today (no nous_id
+    // column). We round-trip the full set so a faithful restore reproduces
+    // the source's graph view.
+    let entities = store
+        .list_entities()
+        .with_whatever_context(|_| format!("failed to list entities for '{nous_id}'"))?;
+    let relationships = store
+        .list_all_relationships()
+        .with_whatever_context(|_| format!("failed to list relationships for '{nous_id}'"))?;
+
+    if facts.is_empty() && entities.is_empty() && relationships.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(KnowledgeExport {
+        facts,
+        entities,
+        relationships,
+    }))
+}
+
+#[cfg(not(feature = "recall"))]
+fn export_knowledge(
+    _oikos: &Oikos,
+    _nous_id: &str,
+) -> Result<Option<mneme::portability::KnowledgeExport>> {
+    Ok(None)
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "agent export assembles config, workspace, sessions, messages, and notes into one portability file"
@@ -313,8 +372,11 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             continue;
         }
 
+        // #4163/A — `get_history` filters `is_distilled == true`, dropping the
+        // distilled tail. The portability raw entry point returns every row in
+        // seq order so an export-then-import round-trip stays faithful.
         let messages = store
-            .get_history(&session.id, limit)
+            .get_history_raw(&session.id, limit)
             .with_whatever_context(|_| format!("failed to read history for {}", session.id))?
             .into_iter()
             .map(|msg| ExportedMessage {
@@ -338,6 +400,20 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             })
             .collect();
 
+        // #4163/B — populate working_state from the live blackboard. The key
+        // convention `ws:{nous_id}:{session_id}` mirrors
+        // `nous::working_state::WorkingState::persist_key`. `distillation_priming`
+        // has a schema slot for forward compatibility but no live producer
+        // today; left `None` until that store materialises.
+        let ws_key = format!("ws:{}:{}", args.nous_id, session.id);
+        let working_state = match store
+            .blackboard_read(&ws_key)
+            .with_whatever_context(|_| format!("failed to read working_state for {}", session.id))?
+        {
+            Some(row) => serde_json::from_str::<serde_json::Value>(&row.value).ok(),
+            None => None,
+        };
+
         sessions.push(ExportedSession {
             id: session.id,
             session_key: session.session_key,
@@ -348,16 +424,22 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             distillation_count: session.metrics.distillation_count,
             created_at: session.created_at,
             updated_at: session.updated_at,
-            working_state: None,
+            working_state,
             distillation_priming: None,
             notes,
             messages,
         });
     }
 
+    // #4163/B — populate top-level knowledge from the live store (typed
+    // Facts/Entities/Relationships). Vectors + opaque graph (`memory`) are
+    // still gapped; tracked as the v2 known-gap so PR3/PR4 / a follow-up can
+    // close them without another version bump.
+    let knowledge = export_knowledge(&oikos, &args.nous_id)?;
+
     let exported_at = jiff::Timestamp::now().to_string();
     let agent_file = AgentFile {
-        version: 1,
+        version: mneme::portability::AGENT_FILE_VERSION,
         exported_at: exported_at.clone(),
         generator: format!("aletheia-rust/{}", env!("CARGO_PKG_VERSION")),
         nous: NousInfo {
@@ -374,7 +456,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         workspace,
         sessions,
         memory: None,
-        knowledge: None,
+        knowledge,
     };
 
     let output = args
@@ -1724,16 +1806,14 @@ workspace = "nous/{agent_id}"
         );
     }
 
-    /// Phase-0 pinning test for #4163/A — `export_agent` reads session
-    /// history via `get_history`, which silently filters out
-    /// `is_distilled == true` messages. So if a session has had distilled
-    /// turns folded into a summary, those turns never make it into the
-    /// `.agent.json`. This test marks two of three messages as distilled
-    /// before exporting and asserts the export only carries the surviving
-    /// non-distilled tail (1 message). Flip the expected count to 3 if the
-    /// export path is changed to include distilled rows.
+    /// #4163/A — `export_agent` now reads session history via
+    /// `get_history_raw`, so distilled messages survive the export. This was
+    /// previously a pinning test for the bug; with PR2 it flips into a
+    /// fidelity proof. The detailed per-field assertions (seq order,
+    /// `is_distilled` preservation, `created_at` exactness) are tightened
+    /// further in PR4.
     #[test]
-    fn export_drops_distilled_messages_4163_a() {
+    fn export_preserves_distilled_messages_4163_a() {
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -1778,14 +1858,85 @@ workspace = "nous/{agent_id}"
         assert_eq!(exported.sessions.len(), 1);
         assert_eq!(
             exported.sessions[0].messages.len(),
-            1,
-            "PINNING #4163/A: export drops distilled messages and only the \
-             non-distilled tail survives. Flip this expected count to 3 if the \
-             export path is changed to include distilled rows."
+            3,
+            "#4163/A: export must preserve distilled messages alongside the tail"
+        );
+        let mut by_seq: Vec<_> = exported.sessions[0].messages.iter().collect();
+        by_seq.sort_by_key(|m| m.seq);
+        assert_eq!(by_seq[0].content, "old 1");
+        assert!(by_seq[0].is_distilled, "distilled flag preserved on seq 1");
+        assert_eq!(by_seq[1].content, "old 2");
+        assert!(by_seq[1].is_distilled, "distilled flag preserved on seq 2");
+        assert_eq!(by_seq[2].content, "keep this");
+        assert!(
+            !by_seq[2].is_distilled,
+            "non-distilled tail still flagged correctly"
         );
         assert_eq!(
-            exported.sessions[0].messages[0].content, "keep this",
-            "only the non-distilled message should remain in the export"
+            exported.version,
+            mneme::portability::AGENT_FILE_VERSION,
+            "version bump to v2 declares the fidelity contract"
+        );
+    }
+
+    /// #4163/B — `export_agent` reads the per-session working state from the
+    /// blackboard at `ws:{nous_id}:{session_id}` and serializes it into the
+    /// `workingState` slot. Before PR2 this slot was hardcoded to `None`,
+    /// silently dropping any task stack / focus state on round-trip.
+    #[test]
+    fn export_preserves_working_state_4163_b() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
+        let session = source_store
+            .create_session("ses-ws", "alice", "main", None, Some("mock-model"))
+            .unwrap();
+        let ws_value = serde_json::json!({
+            "task_stack": [{"description": "ship #4163", "started_at": "2026-05-29T00:00:00Z"}],
+            "focus": {"file": "agent_io.rs"},
+            "updated_at": "2026-05-29T00:00:00Z"
+        });
+        let ws_key = format!("ws:alice:{}", session.id);
+        source_store
+            .blackboard_write(&ws_key, &ws_value.to_string(), "alice", 86_400)
+            .unwrap();
+        drop(source_store);
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&export_path).unwrap()).unwrap();
+        assert_eq!(exported.sessions.len(), 1);
+        let ws = exported.sessions[0].working_state.as_ref();
+        assert!(
+            ws.is_some(),
+            "working_state should be populated from blackboard"
+        );
+        let ws = ws.unwrap();
+        assert_eq!(
+            ws.get("focus").and_then(|f| f.get("file")),
+            Some(&serde_json::Value::String("agent_io.rs".to_owned()))
+        );
+        assert_eq!(
+            ws.get("task_stack")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::len),
+            Some(1)
         );
     }
 

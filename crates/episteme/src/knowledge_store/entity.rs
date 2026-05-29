@@ -128,6 +128,46 @@ impl KnowledgeStore {
         Ok(entities)
     }
 
+    /// List all relationships in the knowledge graph.
+    ///
+    /// Used by agent portability export (issue #4163) to round-trip the full
+    /// relationship set. Not part of the recall/serve hot path — recall uses
+    /// targeted hop queries, not full enumeration.
+    #[instrument(skip(self))]
+    pub fn list_all_relationships(
+        &self,
+    ) -> crate::error::Result<Vec<crate::knowledge::Relationship>> {
+        use std::collections::BTreeMap;
+
+        let script = r"?[src, dst, relation, weight, created_at] :=
+            *relationships{src, dst, relation, weight, created_at}
+            :order src";
+        let rows = self.run_read(script, BTreeMap::new())?;
+
+        let mut relationships = Vec::new();
+        for row in &rows.rows {
+            if row.len() < 5 {
+                continue;
+            }
+            let src = crate::id::EntityId::new(extract_str(&row[0])?)
+                .context(crate::error::InvalidIdSnafu)?;
+            let dst = crate::id::EntityId::new(extract_str(&row[1])?)
+                .context(crate::error::InvalidIdSnafu)?;
+            let relation = extract_str(&row[2])?;
+            let weight = extract_float(&row[3])?;
+            let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
+                .unwrap_or_else(jiff::Timestamp::now);
+            relationships.push(crate::knowledge::Relationship {
+                src,
+                dst,
+                relation,
+                weight,
+                created_at,
+            });
+        }
+        Ok(relationships)
+    }
+
     /// Find duplicate entity candidates for a given nous using default tuning.
     ///
     /// Convenience wrapper around

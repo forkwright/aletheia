@@ -102,7 +102,8 @@ pub mod error {
 /// [`WorkspaceData`](portability::WorkspaceData)
 pub mod portability {
     pub use graphe::portability::{
-        AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo, WorkspaceData,
+        AGENT_FILE_VERSION, AgentFile, ExportedMessage, ExportedNote, ExportedSession,
+        ExportedVector, GraphData, KnowledgeExport, MemoryData, NousInfo, WorkspaceData,
     };
 }
 
