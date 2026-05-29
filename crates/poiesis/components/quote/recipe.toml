@@ -1,0 +1,9 @@
+[slide]
+layout = "blank"
+
+[[shapes]]
+type = "text"
+zone = "body"
+text_field = "quote"
+style = "quote"
+font_size = 28

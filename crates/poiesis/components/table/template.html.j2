@@ -1,0 +1,26 @@
+<div class="zone-header">
+  <h2 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;color:var(--theme-text);">{{ fields.title }}</h2>
+</div>
+<div class="zone-content" style="overflow:auto;">
+  <table style="width:100%;border-collapse:collapse;font-family:var(--font-body);font-size:0.875rem;color:var(--theme-text);">
+    <thead>
+      <tr style="background:var(--theme-primary);color:#fff;">
+        {% for h in fields.headers %}
+        <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">{{ h }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in fields.rows %}
+      <tr{% if loop.index % 2 == 0 %} style="background:var(--theme-secondary);"{% endif %}>
+        {% for cell in row %}
+        <td style="padding:0.5rem 0.75rem;border-bottom:1px solid rgba(0,0,0,0.05);">{{ cell }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if fields.caption %}
+  <p style="font-size:0.75rem;color:var(--theme-text);opacity:0.5;margin-top:0.5rem;font-style:italic;">{{ fields.caption }}</p>
+  {% endif %}
+</div>

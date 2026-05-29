@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["title"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "chart_type": { "type": "string", "description": "e.g. 'bar', 'line', 'pie'" },
+    "caption": { "type": "string" },
+    "data_note": { "type": "string", "description": "Data source or description note" }
+  }
+}

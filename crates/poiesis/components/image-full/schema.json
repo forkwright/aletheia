@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["src", "alt"],
+  "properties": {
+    "src": { "type": "string", "minLength": 1, "description": "Image URL or relative path" },
+    "alt": { "type": "string", "minLength": 1 },
+    "caption": { "type": "string" }
+  }
+}
