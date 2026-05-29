@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["title", "items"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "items": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minLength": 1
+    },
+    "subtitle": { "type": "string" }
+  }
+}

@@ -1,0 +1,15 @@
+<div class="zone-header">
+  <h2 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;color:var(--theme-text);">{{ fields.title }}</h2>
+</div>
+<div class="zone-left-half" style="padding-right:1rem;">
+  {% if fields.left_title %}
+  <h3 style="font-family:var(--font-heading);font-size:1.1rem;font-weight:600;color:var(--theme-primary);margin-bottom:0.5rem;">{{ fields.left_title }}</h3>
+  {% endif %}
+  <p style="font-family:var(--font-body);font-size:1rem;color:var(--theme-text);line-height:1.6;">{{ fields.left }}</p>
+</div>
+<div class="zone-right-half" style="padding-left:1rem;border-left:2px solid var(--theme-secondary);">
+  {% if fields.right_title %}
+  <h3 style="font-family:var(--font-heading);font-size:1.1rem;font-weight:600;color:var(--theme-primary);margin-bottom:0.5rem;">{{ fields.right_title }}</h3>
+  {% endif %}
+  <p style="font-family:var(--font-body);font-size:1rem;color:var(--theme-text);line-height:1.6;">{{ fields.right }}</p>
+</div>

@@ -1,0 +1,24 @@
+[slide]
+layout = "blank"
+
+[[shapes]]
+type = "text"
+zone = "header"
+text_field = "title"
+style = "title"
+font_size = 40
+bold = true
+
+[[shapes]]
+type = "text"
+zone = "subheader"
+text_field = "subtitle"
+style = "subtitle"
+font_size = 24
+
+[[shapes]]
+type = "text"
+zone = "footer"
+text_field = "author"
+style = "caption"
+font_size = 16

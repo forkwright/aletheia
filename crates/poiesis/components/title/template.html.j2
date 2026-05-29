@@ -1,0 +1,12 @@
+<div class="zone-full" style="display:flex;flex-direction:column;justify-content:center;align-items:center;background:var(--theme-primary);color:#fff;">
+  <h1 style="font-family:var(--font-heading);font-size:3rem;font-weight:700;text-align:center;margin-bottom:1rem;">{{ fields.title }}</h1>
+  {% if fields.subtitle %}
+  <p style="font-family:var(--font-body);font-size:1.5rem;opacity:0.85;text-align:center;margin-bottom:0.5rem;">{{ fields.subtitle }}</p>
+  {% endif %}
+  {% if fields.author %}
+  <p style="font-family:var(--font-body);font-size:1rem;opacity:0.7;text-align:center;">{{ fields.author }}</p>
+  {% endif %}
+  {% if fields.date %}
+  <p style="font-family:var(--font-body);font-size:0.9rem;opacity:0.6;text-align:center;margin-top:0.25rem;">{{ fields.date }}</p>
+  {% endif %}
+</div>
