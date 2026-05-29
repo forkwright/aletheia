@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["metric", "label"],
+  "properties": {
+    "metric": { "type": "string", "minLength": 1, "description": "The KPI value, e.g. '94%' or '$2.4M'" },
+    "label": { "type": "string", "minLength": 1, "description": "Short label below the metric" },
+    "description": { "type": "string" },
+    "context": { "type": "string", "description": "Trend, timeframe, or comparison note" }
+  }
+}

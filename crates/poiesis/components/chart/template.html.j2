@@ -1,0 +1,17 @@
+<div class="zone-header">
+  <h2 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;color:var(--theme-text);">{{ fields.title }}</h2>
+  {% if fields.chart_type %}
+  <span style="font-family:var(--font-body);font-size:0.75rem;color:var(--theme-primary);text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">{{ fields.chart_type }} chart</span>
+  {% endif %}
+</div>
+<div class="zone-content" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.5rem;">
+  <div style="width:90%;height:65%;background:var(--theme-secondary);border:2px dashed var(--theme-primary);border-radius:4px;display:flex;align-items:center;justify-content:center;opacity:0.4;">
+    <span style="font-family:var(--font-body);font-size:1.25rem;color:var(--theme-text);">[ chart ]</span>
+  </div>
+  {% if fields.data_note %}
+  <p style="font-family:var(--font-body);font-size:0.75rem;color:var(--theme-text);opacity:0.5;text-align:center;">{{ fields.data_note }}</p>
+  {% endif %}
+  {% if fields.caption %}
+  <p style="font-family:var(--font-body);font-size:0.875rem;color:var(--theme-text);opacity:0.65;text-align:center;font-style:italic;">{{ fields.caption }}</p>
+  {% endif %}
+</div>

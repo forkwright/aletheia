@@ -1,0 +1,7 @@
+[slide]
+layout = "blank"
+
+[[shapes]]
+type = "image"
+zone = "full"
+image_field = "src"

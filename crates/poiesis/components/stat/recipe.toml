@@ -1,0 +1,17 @@
+[slide]
+layout = "center-kpi"
+
+[[shapes]]
+type = "text"
+zone = "center-kpi"
+text_field = "metric"
+style = "kpi"
+font_size = 72
+bold = true
+
+[[shapes]]
+type = "text"
+zone = "footer"
+text_field = "label"
+style = "label"
+font_size = 20

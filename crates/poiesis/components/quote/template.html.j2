@@ -1,0 +1,11 @@
+<div class="zone-full" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem;">
+  <blockquote style="font-family:var(--font-heading);font-size:2rem;font-weight:400;color:var(--theme-text);font-style:italic;text-align:center;max-width:80%;line-height:1.4;margin:0;">
+    &#8220;{{ fields.quote }}&#8221;
+  </blockquote>
+  <div style="margin-top:2rem;text-align:center;">
+    <span style="font-family:var(--font-body);font-size:1rem;font-weight:600;color:var(--theme-primary);">{{ fields.attribution }}</span>
+    {% if fields.title %}
+    <span style="font-family:var(--font-body);font-size:0.875rem;color:var(--theme-text);opacity:0.6;display:block;margin-top:0.25rem;">{{ fields.title }}</span>
+    {% endif %}
+  </div>
+</div>
