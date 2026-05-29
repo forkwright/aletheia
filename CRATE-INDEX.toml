@@ -314,6 +314,24 @@ default = "pdf + odt"
 odt = "ODT backend via zip"
 pdf = "PDF backend via krilla"
 
+[crates.poiesis-deck-layout]
+path = "crates/poiesis/deck-layout"
+layer = "types"
+purpose = "Slide layout solver — normalized zone coordinates, pixel CSS, and OOXML EMU output"
+depends_on = ["poiesis-core"]
+used_by = ["poiesis-deck"]
+features = {}
+
+[crates.poiesis-deck]
+path = "crates/poiesis/deck"
+layer = "tool"
+purpose = "HTML/CSS deck renderer — three-layer CSS compositor and minijinja slide engine"
+depends_on = ["poiesis-core", "poiesis-deck-layout"]
+used_by = []
+
+[crates.poiesis-deck.features]
+default = ""
+
 [crates.poiesis-theme]
 path = "crates/poiesis/theme"
 layer = "types"

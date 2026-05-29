@@ -1,0 +1,16 @@
+[package]
+name = "poiesis-deck-layout"
+version.workspace = true
+description = "Slide layout solver for deck rendering — shared by HTML/CSS and PPTX backends"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+poiesis-core = { path = "../core" }
+serde = { workspace = true }
