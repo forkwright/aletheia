@@ -9,7 +9,8 @@
    ```
 3. Download the tarball from [GitHub Releases](https://github.com/forkwright/aletheia/releases):
    ```bash
-   VERSION=v0.13.0
+   # Set VERSION to the release you are installing, e.g. v0.30.0
+   VERSION=vX.Y.Z
    curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
      -o aletheia.tar.gz
    ```
@@ -24,7 +25,7 @@
 6. Extract and replace the binary:
    ```bash
    tar xzf aletheia.tar.gz
-   sudo cp "aletheia-${VERSION}/aletheia" /usr/local/bin/aletheia
+   cp "aletheia-${VERSION}/aletheia" ~/.local/bin/aletheia
    ```
 7. Start the service:
    ```bash
