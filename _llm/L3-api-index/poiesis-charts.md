@@ -542,6 +542,34 @@ pub fn emit (
 ) -> Result<String>
 ```
 
+## `src/render/kinds/doughnut.rs`
+
+```rust
+pub fn emit (
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    canvas: &Canvas,
+    mode: ColorMode,
+) -> Result<String>
+```
+
+## `src/render/kinds/pie.rs`
+
+> Emit the pie chart SVG.
+> 
+> Caller invariants (enforced by [`Chart::validate`](crate::model::Chart::validate)):
+> - `chart.kind == ChartKind::Pie`
+> - `series.len() == 1`
+> - `points.len() >= 1`
+```rust
+pub fn emit (
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    canvas: &Canvas,
+    mode: ColorMode,
+) -> Result<String>
+```
+
 ## `src/render/kinds/scatter.rs`
 
 > Emit the scatter chart SVG.
