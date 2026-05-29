@@ -1,30 +1,31 @@
 #![deny(missing_docs)]
-//! poiesis-doc: DOCX write and inspect backend for poiesis.
+//! poiesis-doc: DOCX write, inspect, and Pandoc-dispatch backend for poiesis.
 //!
-//! This crate provides a narrow, JSON-first DOCX pipeline:
+//! This crate provides:
 //!
 //! - [`render_docx`] — build a `.docx` file from a JSON descriptor.
 //! - [`inspect_docx`] — extract paragraph text from an existing `.docx` file.
+//! - [`pandoc`] — Pandoc subprocess wrapper, AST serialization, and unified
+//!   dispatch (`render_doc`) for the full format matrix (B-012).
 //!
-//! ## Render schema (v1)
+//! ## Pandoc dispatch (B-012)
 //!
-//! ```json
-//! {
-//!   "title": "Optional Document Title",
-//!   "paragraphs": [
-//!     { "text": "First paragraph.", "style": "Heading1" },
-//!     { "text": "Second paragraph." }
-//!   ]
-//! }
-//! ```
+//! [`pandoc::render_doc`] routes by format:
+//! - PDF → `poiesis-typst` in-process fast-lane (default).
+//! - PDF with explicit `LaTeX` engine → Pandoc + `LaTeX`.
+//! - docx / odt / md / latex / html / epub → Pandoc subprocess.
 //!
-//! Only `paragraphs` (array of `{text, style?}`) is required. `style` is
-//! passed through to the DOCX paragraph style ID; common values are
-//! `Heading1`, `Heading2`, `Normal`, etc.
+//! # GPL-clean boundary
+//!
+//! `pandoc` is invoked as a subprocess only. This crate never links against
+//! the `pandoc` Rust crate.
 
 mod error;
 mod pandoc_probe;
 mod typst_bridge;
+
+/// Pandoc subprocess wrapper, AST serialization, and format dispatch (B-012).
+pub mod pandoc;
 
 pub use error::Error;
 pub use pandoc_probe::{PandocProbe, PandocProbeError};

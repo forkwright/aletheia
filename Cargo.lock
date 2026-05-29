@@ -7019,6 +7019,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
+ "tempfile",
  "tracing",
  "which 8.0.2",
  "zip 8.5.1",
