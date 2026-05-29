@@ -373,7 +373,6 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use poiesis_core::{Block, Document, Metadata, RichText};
@@ -408,9 +407,7 @@ mod tests {
         let result = render_doc(&doc, &DocOpts::docx());
         // In CI without pandoc, this must return NotInstalled — not a panic.
         match result {
-            Err(PandocError::NotInstalled { .. }) => {} // expected in CI
-            Ok(_) => {}                                 // pandoc available — fine
-            Err(PandocError::WriterFailed { .. }) => {} // pandoc present but write failed — ok
+            Ok(_) | Err(PandocError::NotInstalled { .. } | PandocError::WriterFailed { .. }) => {}
             Err(e) => panic!("unexpected error variant: {e:?}"),
         }
     }

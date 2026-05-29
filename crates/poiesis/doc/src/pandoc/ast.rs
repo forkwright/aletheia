@@ -172,7 +172,10 @@ fn span_to_pandoc(span: &Span) -> Value {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(clippy::indexing_slicing, reason = "test assertions on known-good JSON")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-good JSON"
+)]
 mod tests {
     use super::*;
     use poiesis_core::{Block, Document, Metadata, RichText};
