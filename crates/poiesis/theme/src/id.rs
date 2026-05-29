@@ -39,6 +39,17 @@ impl ThemeId {
     /// Returns [`InvalidThemeId`] if the candidate is empty, outside the
     /// length window, begins with a non-`[a-z]` character, or contains any
     /// character outside `[a-z0-9_-]`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use poiesis_theme::ThemeId;
+    ///
+    /// let id = ThemeId::parse("summus").unwrap();
+    /// assert_eq!(id.as_str(), "summus");
+    /// assert!(ThemeId::parse("BadName").is_err());
+    /// assert!(ThemeId::parse("").is_err());
+    /// ```
     pub fn parse(candidate: &str) -> Result<Self, InvalidThemeId> {
         if candidate.is_empty() {
             return Err(InvalidThemeId::Empty);
