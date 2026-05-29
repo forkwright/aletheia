@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.29.0](https://github.com/forkwright/aletheia/compare/v0.28.1...v0.29.0) (2026-05-29)
+
+
+### Features
+
+* **episteme,aletheia:** thread DedupTuning + nous-scope load_entity_infos ([#4165](https://github.com/forkwright/aletheia/issues/4165) D+E) ([#4332](https://github.com/forkwright/aletheia/issues/4332)) ([43ec789](https://github.com/forkwright/aletheia/commit/43ec7897e1dd6336dbe5d10a8dfbe5fb1988d56c))
+* **episteme,aletheia:** wire embedding similarity into entity dedup ([#4165](https://github.com/forkwright/aletheia/issues/4165) Path A) ([#4317](https://github.com/forkwright/aletheia/issues/4317)) ([f8f75fa](https://github.com/forkwright/aletheia/commit/f8f75fab2e7668448cb85e77042c47e838b63819))
+* **poiesis-theme:** scaffold theme registry, token model, three sinks ([#4316](https://github.com/forkwright/aletheia/issues/4316)) ([6dea898](https://github.com/forkwright/aletheia/commit/6dea898789010812beae70819111ef42f1d9ba3e))
+
+
+### Bug Fixes
+
+* **aletheia/config:** embed default-config snapshots so `config diff --from-version` works from installed binaries ([#4160](https://github.com/forkwright/aletheia/issues/4160)) ([#4295](https://github.com/forkwright/aletheia/issues/4295)) ([b88115c](https://github.com/forkwright/aletheia/commit/b88115c47014a7b9f8e358b3117712b9d975508b))
+* **aletheia/ingest:** per-file error continuance, H1 split, JSON schema docs ([#4164](https://github.com/forkwright/aletheia/issues/4164)) ([#4288](https://github.com/forkwright/aletheia/issues/4288)) ([ece9bbd](https://github.com/forkwright/aletheia/commit/ece9bbdd0b2f7a762ff75d9c6fe0db11bb96f525))
+* **aletheia/init+check-config:** separate auth.mode policy gate from structural validation ([#4240](https://github.com/forkwright/aletheia/issues/4240)) ([#4284](https://github.com/forkwright/aletheia/issues/4284)) ([9233301](https://github.com/forkwright/aletheia/commit/9233301c03d1bf78ae376b3b072ff268b41dd45a))
+* **aletheia/koina:** collapse DEFAULT_MODEL/DEFAULT_MODEL_SHORT to one constant ([#4235](https://github.com/forkwright/aletheia/issues/4235)) ([#4303](https://github.com/forkwright/aletheia/issues/4303)) ([0603962](https://github.com/forkwright/aletheia/commit/0603962474efdcc1a0c09ef3824b9223b089d3d2))
+* **aletheia/koina:** collapse DEFAULT_MODEL/DEFAULT_MODEL_SHORT to one constant ([#4235](https://github.com/forkwright/aletheia/issues/4235)) ([#4306](https://github.com/forkwright/aletheia/issues/4306)) ([d4e968b](https://github.com/forkwright/aletheia/commit/d4e968bd7dcccb1b59d8737584ef80204e840f97))
+* **aletheia/memory:** honor --nous-id in `memory patterns` queries ([#4268](https://github.com/forkwright/aletheia/issues/4268)) ([#4291](https://github.com/forkwright/aletheia/issues/4291)) ([91114d6](https://github.com/forkwright/aletheia/commit/91114d669f2c8240581146681426f83564bfdcc9))
+* **aletheia/memory:** pin auto-merge unreachable failure mode + honest --help ([#4165](https://github.com/forkwright/aletheia/issues/4165) F+C-cheap) ([#4314](https://github.com/forkwright/aletheia/issues/4314)) ([571e271](https://github.com/forkwright/aletheia/commit/571e271c9883656bccc4f81983da7b5b0acfcb2f))
+* **aletheia/migrate:** refuse symlinks by default with --follow-symlinks opt-in ([#4233](https://github.com/forkwright/aletheia/issues/4233)) ([#4297](https://github.com/forkwright/aletheia/issues/4297)) ([0eaf35c](https://github.com/forkwright/aletheia/commit/0eaf35c162941c684ea851c1fe5d1a8efdb856f9))
+* **aletheia/skills:** accept frontmatter `name:` as a valid title route ([#4234](https://github.com/forkwright/aletheia/issues/4234)) ([#4300](https://github.com/forkwright/aletheia/issues/4300)) ([cbd824a](https://github.com/forkwright/aletheia/commit/cbd824a4d1653c2b94f27488f3ad41045fe3895a))
+* **aletheia:** align ingest default --nous-id with init's scaffold ([#4245](https://github.com/forkwright/aletheia/issues/4245)) ([#4293](https://github.com/forkwright/aletheia/issues/4293)) ([198a07a](https://github.com/forkwright/aletheia/commit/198a07a454ef773d29c52a5823c4f85fe184641a))
+* **koina,nous:** add gitleaks+trufflehog scanner-ignore to synthetic API key fixtures (closes [#4119](https://github.com/forkwright/aletheia/issues/4119)) ([#4309](https://github.com/forkwright/aletheia/issues/4309)) ([73932b9](https://github.com/forkwright/aletheia/commit/73932b9970a8d4054ced043a293673bf97990098))
+* **pylon:** enforce nous_id scope on per-agent nous handlers ([#4313](https://github.com/forkwright/aletheia/issues/4313)) ([fc5f0c0](https://github.com/forkwright/aletheia/commit/fc5f0c0ee15dd71e66510027e9e7f2911dcc5f5b))
+* **pylon:** enforce nous_id scope on session read handlers ([#4315](https://github.com/forkwright/aletheia/issues/4315)) ([64e4a90](https://github.com/forkwright/aletheia/commit/64e4a90a3e9d69cd8fdd14ebbaa04a36c4694297))
+* **pylon:** require bearer auth on insights and planning v1 routes ([#4311](https://github.com/forkwright/aletheia/issues/4311)) ([2d243cb](https://github.com/forkwright/aletheia/commit/2d243cb15aac378f855cea3750877b09114ed35f))
+
+
+### Documentation
+
+* **planning:** memory dedup reachability — name two paths, recommend Path A ([#4165](https://github.com/forkwright/aletheia/issues/4165)) ([#4305](https://github.com/forkwright/aletheia/issues/4305)) ([85ae726](https://github.com/forkwright/aletheia/commit/85ae7262f26377daff14d970578bef43a9d6442d))
+
 ## [0.28.1](https://github.com/forkwright/aletheia/compare/v0.28.0...v0.28.1) (2026-05-28)
 
 
