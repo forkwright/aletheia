@@ -33,6 +33,12 @@ jobs:
     # and the RustSec advisory DB using deny.toml's ignore list. Any
     # finding fails the job — suppressions require a deny.toml entry with
     # a WHY comment, not silent --ignore flags.
+    #
+    # WHY: skip dependabot PRs — FLEET_REPO_TOKEN is unavailable to
+    # dependabot (GitHub Actions secret access restriction), so cargo-deny
+    # fails to resolve the private theatron git dep during graph resolution.
+    # The daily scheduled run on main catches any issues post-merge. #4102
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}
     name: cargo deny
     runs-on: self-hosted
     timeout-minutes: 15
