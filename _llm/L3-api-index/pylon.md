@@ -433,12 +433,14 @@ pub struct HealthCheck {
 ```rust
 pub async fn get_agent_perf (
     State(state): State<InsightsState>,
+    _claims: Claims,
 ) -> Json<AgentPerformanceListResponse>
 ```
 
 ```rust
 pub async fn get_agent_perf_one (
     State(state): State<InsightsState>,
+    _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<AgentPerformance>, ApiError>
 ```
@@ -446,12 +448,14 @@ pub async fn get_agent_perf_one (
 ```rust
 pub async fn get_quality_metrics (
     State(state): State<InsightsState>,
+    _claims: Claims,
 ) -> Json<QualityMetricsResponse>
 ```
 
 ```rust
 pub async fn get_token_metrics (
     State(state): State<InsightsState>,
+    _claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<TokenMetricsResponse>, ApiError>
 ```
@@ -459,12 +463,16 @@ pub async fn get_token_metrics (
 ```rust
 pub async fn get_cost_metrics (
     State(state): State<InsightsState>,
+    _claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<CostMetricsResponse>, ApiError>
 ```
 
 ```rust
-pub async fn get_journal (Query(query): Query<JournalQuery>) -> Json<Vec<JournalEvent>>
+pub async fn get_journal (
+    _claims: Claims,
+    Query(query): Query<JournalQuery>,
+) -> Json<Vec<JournalEvent>>
 ```
 
 ## `src/handlers/knowledge/bulk_import.rs`
@@ -908,7 +916,7 @@ pub async fn list (State(state): State<NousState>, claims: Claims) -> Json<NousL
 ```rust
 pub async fn get_status (
     State(state): State<NousState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<NousStatus>, ApiError>
 ```
@@ -916,7 +924,7 @@ pub async fn get_status (
 ```rust
 pub async fn tools (
     State(state): State<NousState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError>
 ```
@@ -1051,7 +1059,7 @@ pub async fn create (
 ```rust
 pub async fn list_sessions (
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Query(params): Query<ListSessionsParams>,
 ) -> Result<Json<ListSessionsResponse>, ApiError>
 ```
@@ -1059,7 +1067,7 @@ pub async fn list_sessions (
 ```rust
 pub async fn get_session (
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<SessionResponse>, ApiError>
 ```
@@ -1108,7 +1116,7 @@ pub async fn rename (
 ```rust
 pub async fn history (
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
     Query(params): Query<HistoryParams>,
 ) -> Result<Json<HistoryResponse>, ApiError>
@@ -2265,6 +2273,13 @@ pub fn issue_test_token (state: &AppState) -> String
 
 ```rust
 pub fn issue_test_token_as (state: &AppState, role: Role) -> String
+```
+
+> Issue a JWT scoped to a single `nous_id`, mirroring how an agent-scoped
+> token would be minted in production. Combined with `Claims` extraction,
+> scope enforcement via `require_nous_access` rejects cross-agent calls.
+```rust
+pub fn issue_test_token_scoped (state: &AppState, role: Role, nous_id: &str) -> String
 ```
 
 ```rust
