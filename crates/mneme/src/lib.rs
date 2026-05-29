@@ -267,6 +267,22 @@ pub mod knowledge_store {
     };
 }
 
+/// Entity dedup tuning (#4165 D): operator-configurable weights/thresholds
+/// the CLI and scheduled maintenance task feed into the dedup pipeline.
+///
+/// # Facade surface
+///
+/// [`DedupTuning`](dedup::DedupTuning) and the `DEFAULT_*` constants the
+/// runtime falls back to when no config override is available.
+#[cfg(feature = "mneme-engine")]
+pub mod dedup {
+    pub use episteme::dedup::{
+        DEFAULT_AUTO_MERGE_THRESHOLD, DEFAULT_EMBED_THRESHOLD, DEFAULT_JW_THRESHOLD,
+        DEFAULT_REVIEW_THRESHOLD, DEFAULT_WEIGHT_ALIAS, DEFAULT_WEIGHT_EMBED, DEFAULT_WEIGHT_NAME,
+        DEFAULT_WEIGHT_TYPE, DedupTuning,
+    };
+}
+
 /// Operational metrics registration for knowledge and session storage.
 ///
 /// # Facade surface

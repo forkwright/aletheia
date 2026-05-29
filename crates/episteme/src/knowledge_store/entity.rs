@@ -128,11 +128,27 @@ impl KnowledgeStore {
         Ok(entities)
     }
 
-    /// Find duplicate entity candidates for a given nous.
+    /// Find duplicate entity candidates for a given nous using default tuning.
     ///
-    /// Loads all entities, groups by type, and runs the 3-phase candidate
-    /// generation + scoring pipeline. Returns all candidates (auto-merge +
-    /// review).
+    /// Convenience wrapper around
+    /// [`find_duplicate_entities_with_tuning`](Self::find_duplicate_entities_with_tuning)
+    /// for callers that have no operator-configured
+    /// [`DedupTuning`](crate::dedup::DedupTuning) in scope.
+    #[instrument(skip(self))]
+    pub fn find_duplicate_entities(
+        &self,
+        nous_id: &str,
+    ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>> {
+        self.find_duplicate_entities_with_tuning(nous_id, &crate::dedup::DedupTuning::DEFAULT)
+    }
+
+    /// Find duplicate entity candidates for a given nous under explicit tuning.
+    ///
+    /// Loads all entities scoped to `nous_id` (via the `fact_entities` →
+    /// `facts.nous_id` join in
+    /// [`load_entity_infos`](Self::load_entity_infos)), groups by type, and
+    /// runs the 3-phase candidate generation + scoring pipeline. Returns
+    /// all candidates (auto-merge + review).
     ///
     /// Cosine similarity is computed over the entities' cached
     /// `name_embedding` column (schema v13+). Entities without a stored
@@ -140,14 +156,19 @@ impl KnowledgeStore {
     /// in — i.e. the pre-#4165 behaviour for degraded-mode installs.
     /// Callers that want to populate embeddings first should use
     /// [`KnowledgeStore::backfill_entity_name_embeddings`].
-    #[instrument(skip(self))]
-    pub fn find_duplicate_entities(
+    ///
+    /// `tuning` provides operator-configurable weights and thresholds
+    /// (#4165 D); pass [`DedupTuning::DEFAULT`](crate::dedup::DedupTuning::DEFAULT)
+    /// for the historical defaults.
+    #[instrument(skip(self, tuning))]
+    pub fn find_duplicate_entities_with_tuning(
         &self,
         nous_id: &str,
+        tuning: &crate::dedup::DedupTuning,
     ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>> {
         let entities = self.load_entity_infos(nous_id)?;
         let embed_lookup = crate::dedup::make_embedding_lookup(&entities);
-        let candidates = crate::dedup::generate_candidates(&entities, &embed_lookup);
+        let candidates = crate::dedup::generate_candidates(&entities, &embed_lookup, tuning);
         Ok(candidates)
     }
 
@@ -364,14 +385,30 @@ impl KnowledgeStore {
         &self,
         nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {
+        self.run_entity_dedup_with_tuning(nous_id, &crate::dedup::DedupTuning::DEFAULT)
+    }
+
+    /// Execute the dedup pipeline under the supplied `tuning`.
+    ///
+    /// Same semantics as [`run_entity_dedup`](Self::run_entity_dedup) but
+    /// with operator-configurable weights and thresholds (#4165 D). CLI
+    /// and maintenance callers build a [`DedupTuning`](crate::dedup::DedupTuning)
+    /// from `taxis::config::AgentBehaviorDefaults::knowledge_dedup_*` and
+    /// pass it through so config knobs actually take effect.
+    #[instrument(skip(self, tuning))]
+    pub fn run_entity_dedup_with_tuning(
+        &self,
+        nous_id: &str,
+        tuning: &crate::dedup::DedupTuning,
+    ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {
         let entities = self.load_entity_infos(nous_id)?;
         if entities.is_empty() {
             return Ok(Vec::new());
         }
 
         let embed_lookup = crate::dedup::make_embedding_lookup(&entities);
-        let candidates = crate::dedup::generate_candidates(&entities, &embed_lookup);
-        let (auto_merge, review) = crate::dedup::classify_candidates(candidates);
+        let candidates = crate::dedup::generate_candidates(&entities, &embed_lookup, tuning);
+        let (auto_merge, review) = crate::dedup::classify_candidates(candidates, tuning);
 
         for c in &review {
             self.store_pending_merge(c)?;
@@ -604,6 +641,27 @@ impl KnowledgeStore {
         nous_id: &str,
         provider: Option<&dyn crate::embedding::EmbeddingProvider>,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {
+        self.run_entity_dedup_with_embeddings_and_tuning(
+            nous_id,
+            provider,
+            &crate::dedup::DedupTuning::DEFAULT,
+        )
+    }
+
+    /// Backfill embeddings (if `provider` is `Some`) then run dedup under
+    /// the supplied `tuning`.
+    ///
+    /// This is the entry point the scheduled `entity-dedup` maintenance
+    /// task uses so that operator-configured
+    /// [`AgentBehaviorDefaults::knowledge_dedup_*`](https://docs.rs/taxis)
+    /// knobs actually flow through the merge decision (#4165 D).
+    #[instrument(skip(self, provider, tuning))]
+    pub fn run_entity_dedup_with_embeddings_and_tuning(
+        &self,
+        nous_id: &str,
+        provider: Option<&dyn crate::embedding::EmbeddingProvider>,
+        tuning: &crate::dedup::DedupTuning,
+    ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {
         if let Some(p) = provider
             && let Err(e) = self.backfill_entity_name_embeddings(p, nous_id)
         {
@@ -613,22 +671,51 @@ impl KnowledgeStore {
                 "backfill_entity_name_embeddings failed; falling back to embedded-or-null dedup"
             );
         }
-        self.run_entity_dedup(nous_id)
+        self.run_entity_dedup_with_tuning(nous_id, tuning)
     }
 
-    /// Load all entities as lightweight `EntityInfo` structs.
+    /// Load entities scoped to `nous_id` as lightweight `EntityInfo` structs.
+    ///
+    /// Restricts the result to entities reachable from a fact owned by
+    /// `nous_id` via the `fact_entities` join. The `entities` relation
+    /// itself carries no tenant column (entities are physically shared
+    /// across nouses inside a cohort store), so the only honest way to
+    /// scope the dedup input is to walk through the per-tenant `facts`
+    /// relation. Without this join, two nouses' entity sets would bleed
+    /// into each other during dedup once Path A's embedding wiring made
+    /// cross-tenant `AutoMerge` reachable (#4165 E / latent F).
+    ///
+    /// Entities not referenced by any fact (e.g. raw `insert_entity`
+    /// calls in unit-test fixtures) are excluded — they have no tenant
+    /// affiliation and could be merged into any nous's graph, which is
+    /// exactly the leak this scoping is meant to close. Test fixtures
+    /// that want their entities to participate in dedup must link them
+    /// via [`insert_fact_entity`](Self::insert_fact_entity) to a fact
+    /// owned by the target `nous_id`.
     pub(super) fn load_entity_infos(
         &self,
-        _nous_id: &str,
+        nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::EntityInfo>> {
         use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
 
         // WHY (#4165 Path A): pull `name_embedding` alongside the other
         // entity fields so the dedup pipeline can compute real cosine
         // similarity for the `embed_sim` term in the merge score.
+        //
+        // WHY (#4165 E): tenant-scope via fact_entities → facts.nous_id.
+        // The set-of-tuples semantics of Datalog deduplicate entities
+        // referenced by multiple facts within the same nous, so the
+        // returned vector never contains a given entity twice.
         let script = r"?[id, name, entity_type, aliases, created_at, name_embedding] :=
+            *facts{id: fact_id, nous_id},
+            nous_id == $nous_id,
+            *fact_entities{fact_id, entity_id: id},
             *entities{id, name, entity_type, aliases, created_at, name_embedding}";
-        let rows = self.run_read(script, BTreeMap::new())?;
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        let rows = self.run_read(script, params)?;
 
         let mut entities = Vec::new();
         for row in &rows.rows {

@@ -52,49 +52,67 @@ fn no_embed(_a: &EntityId, _b: &EntityId) -> f64 {
 
 #[test]
 fn decision_auto_merge_at_threshold() {
-    assert_eq!(MergeDecision::from_score(0.90), MergeDecision::AutoMerge);
+    assert_eq!(
+        MergeDecision::from_score(0.90, &DedupTuning::DEFAULT),
+        MergeDecision::AutoMerge
+    );
 }
 
 #[test]
 fn decision_auto_merge_above() {
-    assert_eq!(MergeDecision::from_score(0.95), MergeDecision::AutoMerge);
+    assert_eq!(
+        MergeDecision::from_score(0.95, &DedupTuning::DEFAULT),
+        MergeDecision::AutoMerge
+    );
 }
 
 #[test]
 fn decision_review_at_threshold() {
-    assert_eq!(MergeDecision::from_score(0.70), MergeDecision::Review);
+    assert_eq!(
+        MergeDecision::from_score(0.70, &DedupTuning::DEFAULT),
+        MergeDecision::Review
+    );
 }
 
 #[test]
 fn decision_review_between() {
-    assert_eq!(MergeDecision::from_score(0.80), MergeDecision::Review);
+    assert_eq!(
+        MergeDecision::from_score(0.80, &DedupTuning::DEFAULT),
+        MergeDecision::Review
+    );
 }
 
 #[test]
 fn decision_skip_below() {
-    assert_eq!(MergeDecision::from_score(0.69), MergeDecision::Skip);
+    assert_eq!(
+        MergeDecision::from_score(0.69, &DedupTuning::DEFAULT),
+        MergeDecision::Skip
+    );
 }
 
 #[test]
 fn decision_skip_zero() {
-    assert_eq!(MergeDecision::from_score(0.0), MergeDecision::Skip);
+    assert_eq!(
+        MergeDecision::from_score(0.0, &DedupTuning::DEFAULT),
+        MergeDecision::Skip
+    );
 }
 
 #[test]
 fn merge_score_perfect() {
-    let score = compute_merge_score(1.0, 1.0, true, true);
+    let score = compute_merge_score(1.0, 1.0, true, true, &DedupTuning::DEFAULT);
     assert!((score - 1.0).abs() < f64::EPSILON);
 }
 
 #[test]
 fn merge_score_formula_weights() {
-    let score = compute_merge_score(0.9, 0.8, true, false);
+    let score = compute_merge_score(0.9, 0.8, true, false, &DedupTuning::DEFAULT);
     assert!((score - 0.80).abs() < 1e-10);
 }
 
 #[test]
 fn merge_score_no_signals() {
-    let score = compute_merge_score(0.0, 0.0, false, false);
+    let score = compute_merge_score(0.0, 0.0, false, false, &DedupTuning::DEFAULT);
     assert!((score - 0.0).abs() < f64::EPSILON);
 }
 
@@ -170,7 +188,7 @@ fn exact_name_match_case_insensitive() {
         entity("e1", "Alice Test", "person", vec![], 2, "2026-01-01"),
         entity("e2", "alice test", "person", vec![], 1, "2026-01-02"),
     ];
-    let candidates = generate_candidates(&entities, &no_embed);
+    let candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
     assert_eq!(candidates.len(), 1);
     assert!((candidates[0].name_similarity - 1.0).abs() < f64::EPSILON);
 }
@@ -181,7 +199,7 @@ fn jaro_winkler_candidate() {
         entity("e1", "Alice Test", "person", vec![], 1, "2026-01-01"),
         entity("e2", "Alicia Test", "person", vec![], 1, "2026-01-01"),
     ];
-    let candidates = generate_candidates(&entities, &no_embed);
+    let candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
     assert_eq!(candidates.len(), 1);
     assert!(candidates[0].name_similarity >= 0.85);
 }
@@ -192,7 +210,7 @@ fn different_types_not_candidates() {
         entity("e1", "Alice Test", "person", vec![], 1, "2026-01-01"),
         entity("e2", "Alice Test", "organization", vec![], 1, "2026-01-01"),
     ];
-    let candidates = generate_candidates(&entities, &no_embed);
+    let candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
     assert!(candidates.is_empty());
 }
 
@@ -202,7 +220,7 @@ fn alias_overlap_triggers_candidate() {
         entity("e1", "Alice Test", "person", vec!["AT"], 1, "2026-01-01"),
         entity("e2", "A. Test", "person", vec!["AT"], 1, "2026-01-01"),
     ];
-    let candidates = generate_candidates(&entities, &no_embed);
+    let candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
     assert_eq!(candidates.len(), 1);
     assert!(candidates[0].alias_overlap);
 }
@@ -228,7 +246,7 @@ fn embedding_similarity_triggers_candidate() {
             0.0
         }
     };
-    let candidates = generate_candidates(&entities, &embed_fn);
+    let candidates = generate_candidates(&entities, &embed_fn, &DedupTuning::DEFAULT);
     assert_eq!(candidates.len(), 1);
     assert!(candidates[0].embed_similarity >= 0.80);
 }
@@ -281,7 +299,7 @@ fn pre_fix_regression_zero_embed_caps_at_review_tier() {
             "2026-01-02",
         ),
     ];
-    let candidates = generate_candidates(&entities, &no_embed);
+    let candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
     assert_eq!(candidates.len(), 1, "exactly one pair");
     let c = &candidates[0];
     assert!(
@@ -289,7 +307,7 @@ fn pre_fix_regression_zero_embed_caps_at_review_tier() {
         "without embedding similarity the merge score must cap at 0.70; got {}",
         c.merge_score
     );
-    let (auto_merge, _review) = classify_candidates(candidates);
+    let (auto_merge, _review) = classify_candidates(candidates, &DedupTuning::DEFAULT);
     assert!(
         auto_merge.is_empty(),
         "pre-fix closure (embed=0.0) must never produce AutoMerge — this is the bug #4165 was opened for"
@@ -322,8 +340,8 @@ fn pre_fix_regression_make_embedding_lookup_empty_store() {
         ),
     ];
     let lookup = make_embedding_lookup(&entities);
-    let candidates = generate_candidates(&entities, &lookup);
-    let (auto_merge, _) = classify_candidates(candidates);
+    let candidates = generate_candidates(&entities, &lookup, &DedupTuning::DEFAULT);
+    let (auto_merge, _) = classify_candidates(candidates, &DedupTuning::DEFAULT);
     assert!(
         auto_merge.is_empty(),
         "make_embedding_lookup over entities without embeddings must reproduce pre-fix behaviour (no AutoMerges)"
@@ -363,7 +381,7 @@ fn path_a_reachable_with_stored_name_embeddings() {
         ),
     ];
     let lookup = make_embedding_lookup(&entities);
-    let candidates = generate_candidates(&entities, &lookup);
+    let candidates = generate_candidates(&entities, &lookup, &DedupTuning::DEFAULT);
     assert_eq!(candidates.len(), 1, "exactly one candidate pair");
     let c = &candidates[0];
     assert!(
@@ -376,7 +394,7 @@ fn path_a_reachable_with_stored_name_embeddings() {
         "name=1.0 + embed=1.0 + type=true + alias=true must clear AutoMerge threshold; got {}",
         c.merge_score
     );
-    let (auto_merge, _review) = classify_candidates(candidates);
+    let (auto_merge, _review) = classify_candidates(candidates, &DedupTuning::DEFAULT);
     assert_eq!(
         auto_merge.len(),
         1,
@@ -423,7 +441,7 @@ fn path_a_embedding_promotes_synonym_pair_above_skip() {
         ),
     ];
     let lookup = make_embedding_lookup(&entities);
-    let candidates = generate_candidates(&entities, &lookup);
+    let candidates = generate_candidates(&entities, &lookup, &DedupTuning::DEFAULT);
     assert_eq!(
         candidates.len(),
         1,
@@ -440,7 +458,7 @@ fn path_a_embedding_promotes_synonym_pair_above_skip() {
         "embed contribution must push the pair into Review tier at minimum; got {}",
         c.merge_score
     );
-    let (_auto_merge, review) = classify_candidates(candidates);
+    let (_auto_merge, review) = classify_candidates(candidates, &DedupTuning::DEFAULT);
     assert!(
         !review.is_empty(),
         "synonym pair with agreeing embeddings lands in Review (operator-actionable) — \
@@ -477,13 +495,13 @@ fn path_a_borderline_embedding_stays_in_review_tier() {
         ),
     ];
     let lookup = make_embedding_lookup(&entities);
-    let candidates = generate_candidates(&entities, &lookup);
+    let candidates = generate_candidates(&entities, &lookup, &DedupTuning::DEFAULT);
     assert_eq!(
         candidates.len(),
         1,
         "JW above 0.85 puts them in the candidate set"
     );
-    let (auto_merge, review) = classify_candidates(candidates);
+    let (auto_merge, review) = classify_candidates(candidates, &DedupTuning::DEFAULT);
     assert!(
         auto_merge.is_empty(),
         "moderately-similar embeddings with no alias overlap must not auto-merge — operator review required"
@@ -599,8 +617,8 @@ fn classify_auto_merge_and_review() {
             0.0
         }
     };
-    let candidates = generate_candidates(&entities, &high_embed);
-    let (auto_merge, review) = classify_candidates(candidates);
+    let candidates = generate_candidates(&entities, &high_embed, &DedupTuning::DEFAULT);
+    let (auto_merge, review) = classify_candidates(candidates, &DedupTuning::DEFAULT);
     assert!(
         !auto_merge.is_empty(),
         "expected at least one auto-merge candidate"
@@ -634,8 +652,8 @@ fn auto_merge_unreachable_under_production_embedding_closure() {
         entity("e2", "alice test", "person", vec!["AT"], 1, "2026-01-02"),
         entity("e3", "Alicia Test", "person", vec![], 1, "2026-01-03"),
     ];
-    let candidates = generate_candidates(&entities, &no_embed);
-    let (auto_merge, review) = classify_candidates(candidates);
+    let candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
+    let (auto_merge, review) = classify_candidates(candidates, &DedupTuning::DEFAULT);
     assert!(
         auto_merge.is_empty(),
         "production-shape embed closure (always-0.0) must keep auto_merge empty: \
@@ -693,7 +711,7 @@ fn idempotent_no_self_candidates() {
         1,
         "2026-01-01",
     )];
-    let candidates = generate_candidates(&entities, &no_embed);
+    let candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
     assert!(
         candidates.is_empty(),
         "single entity should produce no candidates"
@@ -702,35 +720,210 @@ fn idempotent_no_self_candidates() {
 
 #[test]
 fn empty_graph_no_candidates() {
-    let candidates = generate_candidates(&[], &no_embed);
+    let candidates = generate_candidates(&[], &no_embed, &DedupTuning::DEFAULT);
     assert!(candidates.is_empty());
 }
 
 #[test]
 fn score_boundary_exactly_070() {
-    assert_eq!(MergeDecision::from_score(0.70), MergeDecision::Review);
+    assert_eq!(
+        MergeDecision::from_score(0.70, &DedupTuning::DEFAULT),
+        MergeDecision::Review
+    );
 }
 
 #[test]
 fn score_boundary_just_below_070() {
-    assert_eq!(MergeDecision::from_score(0.6999), MergeDecision::Skip);
+    assert_eq!(
+        MergeDecision::from_score(0.6999, &DedupTuning::DEFAULT),
+        MergeDecision::Skip
+    );
 }
 
 #[test]
 fn score_boundary_exactly_090() {
-    assert_eq!(MergeDecision::from_score(0.90), MergeDecision::AutoMerge);
+    assert_eq!(
+        MergeDecision::from_score(0.90, &DedupTuning::DEFAULT),
+        MergeDecision::AutoMerge
+    );
 }
 
 #[test]
 fn score_boundary_just_below_090() {
-    assert_eq!(MergeDecision::from_score(0.8999), MergeDecision::Review);
+    assert_eq!(
+        MergeDecision::from_score(0.8999, &DedupTuning::DEFAULT),
+        MergeDecision::Review
+    );
+}
+
+// ---------------------------------------------------------------------------
+// #4165 D — DedupTuning config-reachability regression tests
+//
+// These tests pin the contract that operator-tuned
+// `taxis::AgentBehaviorDefaults::knowledge_dedup_*` keys actually flow
+// through `compute_merge_score`, `generate_candidates`, and
+// `MergeDecision::from_score`. Pre-fix, those helpers read the module
+// constants directly and operators could only tune the dedup pipeline
+// by editing source. The tests below assert that adjusting `tuning`
+// changes the observable behaviour at each stage of the pipeline.
+// ---------------------------------------------------------------------------
+
+/// Composite score is recomputed under tuned weights.
+///
+/// Default weights (0.4/0.3/0.2/0.1) score (name=1, embed=0, type=true,
+/// alias=true) at 0.70. A custom tuning that ups the name weight to 0.5
+/// must shift the score upward by exactly the difference, proving the
+/// formula uses `tuning` rather than the module constants.
+#[test]
+fn tuned_weights_change_composite_score() {
+    let custom = DedupTuning {
+        weight_name: 0.5,
+        weight_embed: 0.2, // 0.5 + 0.2 + 0.2 + 0.1 = 1.0, balanced
+        ..DedupTuning::DEFAULT
+    };
+    let default_score = compute_merge_score(1.0, 0.0, true, true, &DedupTuning::DEFAULT);
+    let custom_score = compute_merge_score(1.0, 0.0, true, true, &custom);
+    // (0.5 - 0.4) * 1.0 = +0.1 for the name term; embed_sim is 0.0 so
+    // the embed weight change cancels out.
+    assert!(
+        (custom_score - default_score - 0.10).abs() < 1e-9,
+        "tuning must reach compute_merge_score: default={default_score}, custom={custom_score}",
+    );
+}
+
+/// Lowering `jw_threshold` admits a pair that the default threshold rejects.
+///
+/// "Carbon" vs "Carbide" has JW ≈ 0.79 — below the default 0.85 floor.
+/// With type match but no alias overlap and no embedding, the only
+/// candidacy gate is JW. Default behaviour rejects the pair; lowering
+/// `jw_threshold` to 0.70 must admit it.
+#[test]
+fn tuned_jw_threshold_admits_pair_under_default_floor() {
+    let entities = vec![
+        entity("e1", "Carbon", "element", vec![], 1, "2026-01-01"),
+        entity("e2", "Carbide", "element", vec![], 1, "2026-01-02"),
+    ];
+
+    let default_candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
+    assert!(
+        default_candidates.is_empty(),
+        "default JW floor (0.85) must reject this pair as a baseline"
+    );
+
+    let relaxed = DedupTuning {
+        jw_threshold: 0.70,
+        ..DedupTuning::DEFAULT
+    };
+    let relaxed_candidates = generate_candidates(&entities, &no_embed, &relaxed);
+    assert_eq!(
+        relaxed_candidates.len(),
+        1,
+        "lowering jw_threshold to 0.70 must admit the same pair — proves tuning reaches the candidate filter"
+    );
+}
+
+/// Lowering `auto_merge_threshold` promotes a Review-tier candidate to
+/// `AutoMerge` without touching any other input.
+///
+/// A pair with score in `[0.70, 0.90)` defaults to `Review`. Reducing
+/// the auto-merge threshold below the pair's score must reclassify it
+/// to `AutoMerge`, proving the classification helper reads the supplied
+/// tuning instead of hardcoded 0.90/0.70 constants.
+#[test]
+fn tuned_auto_merge_threshold_promotes_review_to_auto_merge() {
+    // Score = 0.4·1.0 + 0.3·0.0 + 0.2·1.0 + 0.1·1.0 = 0.70 → Review under default tuning.
+    let entities = vec![
+        entity(
+            "e1",
+            "Acme Corporation",
+            "organization",
+            vec!["Acme"],
+            5,
+            "2026-01-01",
+        ),
+        entity(
+            "e2",
+            "acme corporation",
+            "organization",
+            vec!["Acme"],
+            5,
+            "2026-01-02",
+        ),
+    ];
+    let candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
+    assert_eq!(candidates.len(), 1, "exactly one pair");
+    let score = candidates[0].merge_score;
+    assert!(
+        (score - 0.70).abs() < 1e-9,
+        "baseline shape expects score=0.70 (the unreachable-AutoMerge ceiling pre-#4165); got {score}",
+    );
+
+    let (auto_default, review_default) =
+        classify_candidates(candidates.clone(), &DedupTuning::DEFAULT);
+    assert!(
+        auto_default.is_empty() && review_default.len() == 1,
+        "default classification must route this pair to Review"
+    );
+
+    let promoted = DedupTuning {
+        auto_merge_threshold: 0.69,
+        ..DedupTuning::DEFAULT
+    };
+    let (auto_promoted, review_promoted) = classify_candidates(candidates, &promoted);
+    assert_eq!(
+        auto_promoted.len(),
+        1,
+        "lowering auto_merge_threshold below 0.70 must promote the Review-tier pair to AutoMerge — proves tuning reaches MergeDecision::from_score"
+    );
+    assert!(
+        review_promoted.is_empty(),
+        "promoted pair must leave the Review bucket"
+    );
+}
+
+/// Raising `review_threshold` above an existing review-tier pair must
+/// drop it to `Skip` rather than queue it. Closes the tuning contract
+/// from the other direction.
+#[test]
+fn tuned_review_threshold_drops_pair_to_skip() {
+    let entities = vec![
+        entity(
+            "e1",
+            "Acme Corporation",
+            "organization",
+            vec!["Acme"],
+            5,
+            "2026-01-01",
+        ),
+        entity(
+            "e2",
+            "acme corporation",
+            "organization",
+            vec!["Acme"],
+            5,
+            "2026-01-02",
+        ),
+    ];
+    let candidates = generate_candidates(&entities, &no_embed, &DedupTuning::DEFAULT);
+
+    let strict = DedupTuning {
+        // Composite score is 0.70 (the unreachable-AutoMerge ceiling);
+        // bumping the review floor above it must downgrade to Skip.
+        review_threshold: 0.71,
+        ..DedupTuning::DEFAULT
+    };
+    let (auto, review) = classify_candidates(candidates, &strict);
+    assert!(
+        auto.is_empty() && review.is_empty(),
+        "raising review_threshold above the pair's score must drop it from both buckets"
+    );
 }
 
 mod proptests {
     use proptest::prelude::*;
 
     use super::super::{
-        EntityId, EntityInfo, MergeDecision, classify_candidates, compute_merge_score,
+        DedupTuning, EntityId, EntityInfo, MergeDecision, classify_candidates, compute_merge_score,
         generate_candidates, jaro_winkler_ci,
     };
 
@@ -760,7 +953,13 @@ mod proptests {
             type_match in proptest::bool::ANY,
             alias_overlap in proptest::bool::ANY,
         ) {
-            let score = compute_merge_score(name_sim, embed_sim, type_match, alias_overlap);
+            let score = compute_merge_score(
+                name_sim,
+                embed_sim,
+                type_match,
+                alias_overlap,
+                &DedupTuning::DEFAULT,
+            );
             prop_assert!(
                 (0.0..=1.0).contains(&score),
                 "score {score} not in [0.0, 1.0]"
@@ -771,7 +970,7 @@ mod proptests {
         /// Every score must map to exactly one decision.
         #[test]
         fn decision_covers_all_scores(score in 0.0_f64..=1.0) {
-            let decision = MergeDecision::from_score(score);
+            let decision = MergeDecision::from_score(score, &DedupTuning::DEFAULT);
             if score >= 0.90 {
                 prop_assert!(decision == MergeDecision::AutoMerge, "score={}, expected AutoMerge", score);
             } else if score >= 0.70 {
@@ -822,9 +1021,9 @@ mod proptests {
                 .map(|(i, name)| make_entity(&format!("e{i}"), name, "person"))
                 .collect();
 
-            let candidates = generate_candidates(&entities, &|_, _| 0.0);
+            let candidates = generate_candidates(&entities, &|_, _| 0.0, &DedupTuning::DEFAULT);
             let total_candidates = candidates.len();
-            let (auto_merge, review) = classify_candidates(candidates);
+            let (auto_merge, review) = classify_candidates(candidates, &DedupTuning::DEFAULT);
 
             prop_assert!(
                 auto_merge.len() + review.len() <= total_candidates,
@@ -837,7 +1036,7 @@ mod proptests {
         #[test]
         fn single_entity_no_candidates(name in "[a-zA-Z]{3,20}") {
             let entities = vec![make_entity("e0", &name, "person")];
-            let candidates = generate_candidates(&entities, &|_, _| 0.0);
+            let candidates = generate_candidates(&entities, &|_, _| 0.0, &DedupTuning::DEFAULT);
             prop_assert!(candidates.is_empty());
         }
     }

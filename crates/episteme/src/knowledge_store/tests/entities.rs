@@ -7,7 +7,27 @@
 use std::sync::Arc;
 
 use crate::knowledge::Entity;
+use crate::knowledge_store::KnowledgeStore;
 use crate::test_fixtures::{make_entity, make_fact, make_relationship, make_store};
+
+/// Wire an entity into a nous's scope by inserting a stub fact owned by
+/// `nous_id` and a `fact_entities` row linking the fact to the entity.
+///
+/// `load_entity_infos` scopes via the `fact_entities → facts.nous_id` join
+/// (#4165 E), so unit tests that previously relied on `insert_entity`
+/// alone need to add a link or the dedup pipeline cannot see them. Reusing
+/// this helper keeps the dedup integration tests honest about the path
+/// the production code now takes.
+fn link_entity_to_nous(store: &KnowledgeStore, entity_id: &str, nous_id: &str) {
+    let fact_id = format!("fact-{entity_id}-{nous_id}");
+    let fact = make_fact(&fact_id, nous_id, "stub fact linking entity to nous");
+    store.insert_fact(&fact).expect("insert stub fact");
+    let fid = crate::id::FactId::new(&fact_id).expect("valid fact id");
+    let eid = crate::id::EntityId::new(entity_id).expect("valid entity id");
+    store
+        .insert_fact_entity(&fid, &eid)
+        .expect("link fact to entity");
+}
 #[test]
 fn insert_entity_and_query_neighborhood() {
     let store = make_store();
@@ -285,6 +305,8 @@ fn dedup_pipeline_without_embeddings_reproduces_bug_4165() {
     e2.aliases = vec!["Acme".to_owned()];
     store.insert_entity(&e1).expect("insert e1");
     store.insert_entity(&e2).expect("insert e2");
+    link_entity_to_nous(&store, "e1", "test-nous");
+    link_entity_to_nous(&store, "e2", "test-nous");
 
     let records = store
         .run_entity_dedup("test-nous")
@@ -318,6 +340,8 @@ fn dedup_pipeline_with_embeddings_reaches_auto_merge() {
     e2.aliases = vec!["Acme".to_owned()];
     store.insert_entity(&e1).expect("insert e1");
     store.insert_entity(&e2).expect("insert e2");
+    link_entity_to_nous(&store, "e1", "test-nous");
+    link_entity_to_nous(&store, "e2", "test-nous");
 
     // DIM=4 from `test_fixtures::DIM`; identical unit vectors yield
     // cosine = 1.0 — the test-shape equivalent of "the provider thinks
@@ -374,6 +398,8 @@ fn find_duplicate_entities_returns_real_embed_similarity() {
     let e2 = make_entity("e2", "Difference Equation", "concept");
     store.insert_entity(&e1).expect("insert e1");
     store.insert_entity(&e2).expect("insert e2");
+    link_entity_to_nous(&store, "e1", "test-nous");
+    link_entity_to_nous(&store, "e2", "test-nous");
 
     let e1_id = crate::id::EntityId::new("e1").expect("valid test id");
     let e2_id = crate::id::EntityId::new("e2").expect("valid test id");
@@ -466,6 +492,8 @@ fn approve_merge_drains_review_queue() {
     e2.aliases = vec!["Acme".to_owned()];
     store.insert_entity(&e1).expect("insert e1");
     store.insert_entity(&e2).expect("insert e2");
+    link_entity_to_nous(&store, "e1", "test-nous");
+    link_entity_to_nous(&store, "e2", "test-nous");
 
     let records = store
         .run_entity_dedup("test-nous")
@@ -520,6 +548,106 @@ fn approve_merge_drains_review_queue() {
         history.len(),
         1,
         "approved merge must be recorded in merge_audit"
+    );
+}
+
+/// #4165 E regression: `find_duplicate_entities("nous-A")` must not see
+/// entities linked exclusively to `nous-B`. Pre-fix, `load_entity_infos`
+/// loaded every row of the `entities` relation, so dedup could merge
+/// across tenant boundaries the moment Path A's embedding wiring made
+/// `AutoMerge` reachable. With the tenant-scoped query in place, the
+/// nous-B entity must be invisible to a nous-A dedup scan even though
+/// the names + types + aliases are identical.
+#[test]
+fn find_duplicate_entities_does_not_cross_nous_boundary() {
+    let store = make_store();
+    let mut e1 = make_entity("e1", "Acme Corporation", "organization");
+    e1.aliases = vec!["Acme".to_owned()];
+    let mut e2 = make_entity("e2", "Acme Corporation", "organization");
+    e2.aliases = vec!["Acme".to_owned()];
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+
+    // e1 belongs to nous-A; e2 belongs to nous-B. A nous-A dedup scan
+    // must never propose merging them despite the identical surface
+    // form (the very leak issue #4165 (F) called out as latent).
+    link_entity_to_nous(&store, "e1", "nous-A");
+    link_entity_to_nous(&store, "e2", "nous-B");
+
+    let scan_a = store
+        .find_duplicate_entities("nous-A")
+        .expect("nous-A dedup scan");
+    assert!(
+        scan_a.is_empty(),
+        "nous-A scan must not surface a candidate involving an entity owned exclusively by nous-B"
+    );
+
+    let scan_b = store
+        .find_duplicate_entities("nous-B")
+        .expect("nous-B dedup scan");
+    assert!(
+        scan_b.is_empty(),
+        "nous-B scan must not surface a candidate involving an entity owned exclusively by nous-A"
+    );
+
+    let scan_unlinked = store
+        .find_duplicate_entities("nous-C")
+        .expect("nous-C dedup scan");
+    assert!(
+        scan_unlinked.is_empty(),
+        "a nous with no linked entities must return no dedup candidates"
+    );
+}
+
+/// `run_entity_dedup_with_tuning` must observe operator-tuned weights
+/// and thresholds end-to-end through the production store path (#4165 D).
+/// Inserts a Review-tier pair, asserts the default tuning produces no
+/// auto-merge, then re-runs under a tuning that lowers
+/// `auto_merge_threshold` below the pair's composite score and asserts
+/// the same store data now executes a real merge.
+#[test]
+fn run_entity_dedup_with_tuning_honours_lowered_auto_merge_threshold() {
+    let store = make_store();
+    let mut e1 = make_entity("e1", "Acme Corporation", "organization");
+    e1.aliases = vec!["Acme".to_owned()];
+    let mut e2 = make_entity("e2", "acme corporation", "organization");
+    e2.aliases = vec!["Acme".to_owned()];
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+    link_entity_to_nous(&store, "e1", "test-nous");
+    link_entity_to_nous(&store, "e2", "test-nous");
+
+    let default_records = store
+        .run_entity_dedup_with_tuning("test-nous", &crate::dedup::DedupTuning::DEFAULT)
+        .expect("dedup under default tuning");
+    assert!(
+        default_records.is_empty(),
+        "default tuning must keep the embed=null pair in Review (preserves #4165 path-a-reachable_pre_fix_regression contract)"
+    );
+    assert_eq!(
+        store.list_entities().expect("list entities").len(),
+        2,
+        "no merge executed under default tuning"
+    );
+
+    let permissive = crate::dedup::DedupTuning {
+        auto_merge_threshold: 0.65,
+        ..crate::dedup::DedupTuning::DEFAULT
+    };
+    let records = store
+        .run_entity_dedup_with_tuning("test-nous", &permissive)
+        .expect("dedup under permissive tuning");
+    assert_eq!(
+        records.len(),
+        1,
+        "lowering auto_merge_threshold to 0.65 must execute the queued Review-tier merge — proves DedupTuning reaches run_entity_dedup_with_tuning end-to-end"
+    );
+
+    let surviving = store.list_entities().expect("list entities");
+    assert_eq!(
+        surviving.len(),
+        1,
+        "permissive tuning must collapse the pair to a single canonical entity"
     );
 }
 

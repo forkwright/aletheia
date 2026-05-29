@@ -146,10 +146,23 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
         let store = mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
             .whatever_context("failed to open knowledge store")?;
 
+        // WHY (#4165 D): load the resolved aletheia config so the dedup
+        // CLI honours the operator's `knowledge_dedup_*` knobs the same
+        // way the scheduled maintenance task does. A missing/invalid
+        // config falls back to the historical defaults — the same shape
+        // every prior CLI invocation used — so this is strictly additive.
+        #[allow(unused_variables, reason = "consumed only by Dedup branch")]
+        let dedup_tuning = taxis::loader::load_config(&oikos)
+            .map_or(mneme::dedup::DedupTuning::DEFAULT, |cfg| {
+                crate::knowledge_maintenance::tuning_from_behavior(&cfg.agents.defaults.behavior)
+            });
+
         match action {
             Action::Check { json } => run_check(&store, json),
             Action::Sample { count, nous_id } => run_sample(&store, count, nous_id.as_deref()),
-            Action::Dedup { nous_id, dry_run } => run_dedup(&store, &nous_id, dry_run),
+            Action::Dedup { nous_id, dry_run } => {
+                run_dedup(&store, &nous_id, dry_run, &dedup_tuning)
+            }
             Action::Patterns { nous_id, limit } => run_patterns(&store, nous_id.as_deref(), limit),
             Action::ExportGraph {
                 format,
@@ -790,11 +803,12 @@ fn run_dedup(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: &str,
     dry_run: bool,
+    tuning: &mneme::dedup::DedupTuning,
 ) -> Result<()> {
     println!("Scanning for duplicate entities (nous: {nous_id})...");
 
     let candidates = store
-        .find_duplicate_entities(nous_id)
+        .find_duplicate_entities_with_tuning(nous_id, tuning)
         .whatever_context("duplicate scan failed")?;
 
     let pending = store
@@ -843,7 +857,7 @@ fn run_dedup(
         println!("\n--dry-run: no mutations applied.");
     } else {
         let records = store
-            .run_entity_dedup(nous_id)
+            .run_entity_dedup_with_tuning(nous_id, tuning)
             .whatever_context("dedup execution failed")?;
         if records.is_empty() {
             println!("\nNo auto-merges met the threshold. Candidates stored for review.");

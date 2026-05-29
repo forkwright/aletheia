@@ -32,7 +32,14 @@ pub mod consolidation;
 )]
 pub mod decay;
 /// Entity deduplication pipeline for merging semantically identical entities.
-pub(crate) mod dedup;
+///
+/// Public surface is intentionally minimal: only the operator-tunable
+/// [`DedupTuning`](dedup::DedupTuning) struct and its default constants
+/// are exposed so the binary crate can build a tuning from
+/// `taxis::AgentBehaviorDefaults` and pass it into the dedup entry
+/// points on [`KnowledgeStore`](crate::knowledge_store::KnowledgeStore)
+/// (#4165 D). All internal types remain `pub(crate)`.
+pub mod dedup;
 /// Derived Datalog rule definitions: ontological IS-A closure, causal chains,
 /// and defeasible defaults. Rule strings consumed by the knowledge store's
 /// derived-rule materialization engine.

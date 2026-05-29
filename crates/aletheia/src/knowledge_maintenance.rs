@@ -6,11 +6,13 @@
 
 use std::sync::Arc;
 
+use mneme::dedup::DedupTuning;
 use mneme::embedding::{EmbeddingProvider, is_degraded_provider};
 use mneme::knowledge::FactType;
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::recall::RecallEngine;
 use oikonomos::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceReport};
+use taxis::config::AgentBehaviorDefaults;
 
 /// Bridges the daemon's `KnowledgeMaintenanceExecutor` trait to the concrete
 /// `KnowledgeStore`. All methods are blocking (`CozoDB` is sync).
@@ -22,6 +24,33 @@ pub(crate) struct KnowledgeMaintenanceAdapter {
     /// preserves pre-fix behaviour for installs without an embedding
     /// provider configured.
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Operator-configurable dedup weights and thresholds (#4165 D).
+    /// Defaults to [`DedupTuning::DEFAULT`] when the runtime does not
+    /// override it; production startup builds one from
+    /// `AgentBehaviorDefaults::knowledge_dedup_*` via
+    /// [`tuning_from_behavior`] so config knobs actually take effect.
+    tuning: DedupTuning,
+}
+
+/// Build a [`DedupTuning`] from the resolved `AgentBehaviorDefaults` so
+/// the runtime can hand the maintenance task / CLI a single struct that
+/// reflects every operator-configured `knowledge_dedup_*` key.
+///
+/// `auto_merge_threshold` and `review_threshold` currently fall back to
+/// [`DedupTuning::DEFAULT`] — the config struct does not (yet) carry
+/// keys for them. Adding those keys is a strict superset change deferred
+/// out of #4165's mechanical bundle (filed for a future PR).
+pub(crate) fn tuning_from_behavior(defaults: &AgentBehaviorDefaults) -> DedupTuning {
+    DedupTuning {
+        weight_name: defaults.knowledge_dedup_weight_name,
+        weight_embed: defaults.knowledge_dedup_weight_embed,
+        weight_type: defaults.knowledge_dedup_weight_type,
+        weight_alias: defaults.knowledge_dedup_weight_alias,
+        jw_threshold: defaults.knowledge_dedup_jw_threshold,
+        embed_threshold: defaults.knowledge_dedup_embed_threshold,
+        auto_merge_threshold: DedupTuning::DEFAULT.auto_merge_threshold,
+        review_threshold: DedupTuning::DEFAULT.review_threshold,
+    }
 }
 
 impl KnowledgeMaintenanceAdapter {
@@ -29,6 +58,7 @@ impl KnowledgeMaintenanceAdapter {
         Self {
             store,
             embedding_provider: None,
+            tuning: DedupTuning::DEFAULT,
         }
     }
 
@@ -42,6 +72,18 @@ impl KnowledgeMaintenanceAdapter {
     /// backfill time to avoid log spam.
     pub(crate) fn with_embedding_provider(mut self, provider: Arc<dyn EmbeddingProvider>) -> Self {
         self.embedding_provider = Some(provider);
+        self
+    }
+
+    /// Override the default dedup tuning (#4165 D).
+    ///
+    /// Production startup calls [`tuning_from_behavior`] against the
+    /// resolved `AgentBehaviorDefaults` and passes the result here so the
+    /// scheduled maintenance task honours the operator's
+    /// `knowledge_dedup_*` config keys. Tests and degraded installs that
+    /// skip this call get [`DedupTuning::DEFAULT`].
+    pub(crate) fn with_tuning(mut self, tuning: DedupTuning) -> Self {
+        self.tuning = tuning;
         self
     }
 }
@@ -150,7 +192,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
             .filter(|p| !is_degraded_provider(*p));
         let records = self
             .store
-            .run_entity_dedup_with_embeddings(nous_id, provider_ref)
+            .run_entity_dedup_with_embeddings_and_tuning(nous_id, provider_ref, &self.tuning)
             .map_err(|e| {
                 oikonomos::error::TaskFailedSnafu {
                     task_id: "entity-dedup".to_owned(),
