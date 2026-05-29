@@ -46,6 +46,7 @@
         pkgs.pkg-config
         pkgs.cmake
         pkgs.rustPlatform.bindgenHook
+        pkgs.pandoc
       ];
 
       # Shared source filter: include Rust sources, Cargo manifests,
@@ -102,6 +103,7 @@
           # Build tooling
           pkgs.cargo-deny
           pkgs.cargo-watch
+          pkgs.pandoc
 
           # Wayland session support
           pkgs.wayland-protocols

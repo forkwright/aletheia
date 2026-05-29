@@ -21,6 +21,9 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 # XML parsing for inspect
 quick-xml = "0.39"
 
+# Pandoc binary discovery for the availability probe
+which = "8"
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

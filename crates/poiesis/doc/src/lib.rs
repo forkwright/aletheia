@@ -23,8 +23,10 @@
 //! `Heading1`, `Heading2`, `Normal`, etc.
 
 mod error;
+mod pandoc_probe;
 
 pub use error::Error;
+pub use pandoc_probe::{PandocProbe, PandocProbeError};
 
 use serde_json::Value;
 use snafu::ResultExt;
