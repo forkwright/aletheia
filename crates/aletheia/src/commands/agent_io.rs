@@ -253,7 +253,7 @@ pub(crate) struct InitArgs {
 
 use taxis::oikos::Oikos;
 
-use mneme::types::{Role, SessionStatus};
+use mneme::types::{Role, SessionMetrics, SessionOrigin, SessionStatus, SessionType};
 
 #[cfg(feature = "recall")]
 fn knowledge_path_for_nous(oikos: &Oikos, nous_id: &str) -> PathBuf {
@@ -321,6 +321,51 @@ fn export_knowledge(
     _nous_id: &str,
 ) -> Result<Option<mneme::portability::KnowledgeExport>> {
     Ok(None)
+}
+
+/// Hydrate typed knowledge into the live store.
+#[cfg(feature = "recall")]
+fn import_knowledge(
+    oikos: &Oikos,
+    nous_id: &str,
+    knowledge: &mneme::portability::KnowledgeExport,
+) -> Result<()> {
+    use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+
+    let knowledge_path = knowledge_path_for_nous(oikos, nous_id);
+    let parent = knowledge_path
+        .parent()
+        .ok_or_else(|| crate::error::Error::msg("knowledge path has no parent directory"))?;
+    std::fs::create_dir_all(parent)
+        .with_whatever_context(|_| format!("failed to create knowledge dir for {nous_id}"))?;
+    let store = KnowledgeStore::open_fjall(&knowledge_path, KnowledgeConfig::default())
+        .with_whatever_context(|_| format!("failed to open knowledge store for {nous_id}"))?;
+
+    for fact in &knowledge.facts {
+        store
+            .insert_fact(fact)
+            .with_whatever_context(|_| format!("import fact {:?}", fact.id))?;
+    }
+    for entity in &knowledge.entities {
+        store
+            .insert_entity(entity)
+            .with_whatever_context(|_| format!("import entity {:?}", entity.id))?;
+    }
+    for rel in &knowledge.relationships {
+        store
+            .insert_relationship(rel)
+            .with_whatever_context(|_| format!("import rel {:?} -> {:?}", rel.src, rel.dst))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "recall"))]
+fn import_knowledge(
+    _oikos: &Oikos,
+    _nous_id: &str,
+    _knowledge: &mneme::portability::KnowledgeExport,
+) -> Result<()> {
+    Ok(())
 }
 
 #[expect(
@@ -586,6 +631,17 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     let agent_file: mneme::portability::AgentFile =
         serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
 
+    if agent_file.version < mneme::portability::AGENT_FILE_VERSION {
+        whatever!(
+            "agent file is version {} but importer requires v{}.\n\
+             v1 files are silently lossy on session status, timestamps, and \
+             message metadata. Re-export from the source instance — there is no \
+             in-place migration. See #4163.",
+            agent_file.version,
+            mneme::portability::AGENT_FILE_VERSION,
+        );
+    }
+
     // SECURITY (#4241): if --target-id is absent, the imported nous.id is
     // used directly to derive on-disk paths. Validate before any I/O.
     if args.target_id.is_none() {
@@ -777,15 +833,56 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         })?;
 
         for session in &agent_file.sessions {
+            let status = match session.status.as_str() {
+                "active" => SessionStatus::Active,
+                "archived" => SessionStatus::Archived,
+                "distilled" => SessionStatus::Distilled,
+                other => {
+                    eprintln!("  WARN: unknown status '{other}', defaulting to 'active'");
+                    SessionStatus::Active
+                }
+            };
+            let session_type = match session.session_type.as_str() {
+                "primary" => SessionType::Primary,
+                "background" => SessionType::Background,
+                "ephemeral" => SessionType::Ephemeral,
+                other => {
+                    eprintln!("  WARN: unknown session_type '{other}', defaulting to 'primary'");
+                    SessionType::Primary
+                }
+            };
+
             let imported = store
-                .create_session(
-                    &session.id,
-                    &nous_id,
-                    &session.session_key,
-                    None,
-                    agent_file.nous.model.as_deref(),
+                .import_session(
+                    &mneme::types::Session {
+                        id: session.id.clone(),
+                        nous_id: nous_id.clone(),
+                        session_key: session.session_key.clone(),
+                        status,
+                        model: agent_file.nous.model.clone(),
+                        session_type,
+                        created_at: session.created_at.clone(),
+                        updated_at: session.updated_at.clone(),
+                        metrics: SessionMetrics {
+                            token_count_estimate: session.token_count_estimate,
+                            message_count: session.message_count,
+                            last_input_tokens: 0,
+                            bootstrap_hash: None,
+                            distillation_count: session.distillation_count,
+                            last_distilled_at: None,
+                            computed_context_tokens: 0,
+                        },
+                        origin: SessionOrigin {
+                            parent_session_id: None,
+                            thread_id: None,
+                            transport: Some("import".to_owned()),
+                            display_name: None,
+                        },
+                        artefact_meta: None,
+                    },
+                    args.force,
                 )
-                .with_whatever_context(|_| format!("failed to create session {}", session.id))?;
+                .with_whatever_context(|_| format!("failed to import session {}", session.id))?;
 
             for msg in &session.messages {
                 let role = match msg.role.as_str() {
@@ -799,16 +896,35 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                     }
                 };
                 store
-                    .append_message(
-                        &imported.id,
+                    .insert_message_raw(&mneme::types::Message {
+                        id: msg.seq,
+                        session_id: imported.id.clone(),
+                        seq: msg.seq,
                         role,
-                        &msg.content,
-                        None,
-                        None,
-                        msg.token_estimate,
-                    )
+                        content: msg.content.clone(),
+                        tool_call_id: None,
+                        tool_name: None,
+                        token_estimate: msg.token_estimate,
+                        is_distilled: msg.is_distilled,
+                        created_at: msg.created_at.clone(),
+                    })
                     .with_whatever_context(|_| {
-                        format!("failed to append message to session {}", session.id)
+                        format!(
+                            "failed to insert message seq {} into session {}",
+                            msg.seq, session.id
+                        )
+                    })?;
+            }
+
+            if let Some(ws) = &session.working_state {
+                let ws_key = format!("ws:{nous_id}:{}", session.id);
+                let ws_value = serde_json::to_string(ws).with_whatever_context(|_| {
+                    format!("failed to serialize working_state for {}", session.id)
+                })?;
+                store
+                    .blackboard_write(&ws_key, &ws_value, &nous_id, 86_400)
+                    .with_whatever_context(|_| {
+                        format!("failed to hydrate working_state for {}", session.id)
                     })?;
             }
 
@@ -828,6 +944,10 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                     eprintln!("  WARN: failed to add note: {e}");
                 }
             }
+        }
+
+        if let Some(knowledge) = &agent_file.knowledge {
+            import_knowledge(&oikos, &nous_id, knowledge)?;
         }
     }
 
@@ -1515,7 +1635,7 @@ mod tests {
 
     fn sample_agent_file() -> AgentFile {
         AgentFile {
-            version: 1,
+            version: mneme::portability::AGENT_FILE_VERSION,
             exported_at: "2026-03-05T12:00:00Z".to_owned(),
             generator: "aletheia-rust/0.10.0".to_owned(),
             nous: NousInfo {
@@ -1695,21 +1815,10 @@ workspace = "nous/{agent_id}"
         assert_eq!(history[0].content, "round trip");
     }
 
-    /// Phase-0 pinning tests for #4163. The export → import round-trip is
-    /// silently lossy in four ways (A: distilled messages dropped from export;
-    /// B: `working_state`/`memory`/`knowledge` never serialized; C: import resets
-    /// session timestamps/status/metrics; D: import resets per-message
-    /// timestamp and `is_distilled`). The two tests below pin C and A — the
-    /// dimensions that have observable round-trip surfaces today — so a
-    /// silent regression of the existing behavior fails CI.
-    ///
-    /// These tests deliberately assert the *bug* as the current spec. When
-    /// #4163 picks a contract (faithful backup vs intentional fresh-start
-    /// clone vs hybrid `--full`), the assertions flip from "documents the
-    /// bug" to either "proof of fix" (option 1/3) or "documents intent"
-    /// (option 2). Either way the tests catch silent regressions today.
+    /// #4163/C — import preserves session status, timestamps, and metrics
+    /// via [`import_session`].
     #[test]
-    fn export_import_round_trip_pins_session_resurrection_4163_c() {
+    fn import_preserves_session_status_4163_c() {
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -1722,8 +1831,6 @@ workspace = "nous/{agent_id}"
         source_store
             .append_message(&session.id, Role::User, "before archive", None, None, 7)
             .unwrap();
-        // Archive the session at the source so we can verify that the
-        // destination resurrects it as Active (the core #4163/C symptom).
         source_store
             .update_session_status(&session.id, SessionStatus::Archived)
             .unwrap();
@@ -1738,6 +1845,8 @@ workspace = "nous/{agent_id}"
             "source session should be archived before export"
         );
         let source_created_at = source_session_before_export.created_at.clone();
+        let source_updated_at = source_session_before_export.updated_at.clone();
+        let source_metrics = source_session_before_export.metrics.clone();
         drop(source_store);
 
         let export_path = source.path().join("alice.agent.json");
@@ -1746,9 +1855,6 @@ workspace = "nous/{agent_id}"
             &ExportArgs {
                 nous_id: "alice".to_owned(),
                 output: Some(export_path.clone()),
-                // The session is archived, so we must pass --archived for export
-                // to include it; otherwise the active-only filter at agent_io.rs:312
-                // drops it.
                 archived: true,
                 max_messages: 0,
                 compact: true,
@@ -1779,31 +1885,137 @@ workspace = "nous/{agent_id}"
         assert_eq!(dest_sessions.len(), 1);
         let dest_session = &dest_sessions[0];
 
-        // #4163/C — status: archived sessions come back as Active. If this
-        // ever flips to Archived, the import path is honoring exported state
-        // and the docs/--help wording can be updated to match.
         assert_eq!(
             dest_session.status,
-            SessionStatus::Active,
-            "PINNING #4163/C: archived → Active. Flip this assertion if the import \
-             path is changed to honor the exported session status."
+            SessionStatus::Archived,
+            "#4163/C: imported session must preserve archived status"
         );
-
-        // #4163/C — timestamps: import stamps `now`, so the destination
-        // created_at is later than (and not equal to) the source's.
-        assert_ne!(
-            dest_session.created_at, source_created_at,
-            "PINNING #4163/C: import overwrites created_at with `now`. Flip this \
-             assertion if the import path is changed to preserve exported timestamps."
-        );
-
-        // #4163/C — metrics: distillation_count zeroed. (message_count *is*
-        // recalculated from the inserted messages, so it tracks the imported
-        // history length and is not part of the bug.)
         assert_eq!(
-            dest_session.metrics.distillation_count, 0,
-            "PINNING #4163/C: distillation_count reset to 0 on import."
+            dest_session.created_at, source_created_at,
+            "#4163/C: imported session must preserve created_at"
         );
+        assert_eq!(
+            dest_session.updated_at, source_updated_at,
+            "#4163/C: imported session must preserve updated_at"
+        );
+        assert_eq!(
+            dest_session.metrics.distillation_count, source_metrics.distillation_count,
+            "#4163/C: imported session must preserve distillation_count"
+        );
+        assert_eq!(
+            dest_session.metrics.message_count, source_metrics.message_count,
+            "#4163/C: imported session must preserve message_count"
+        );
+        assert_eq!(
+            dest_session.metrics.token_count_estimate, source_metrics.token_count_estimate,
+            "#4163/C: imported session must preserve token_count_estimate"
+        );
+    }
+
+    /// #4163/D — import preserves per-message `seq`, `is_distilled`, and
+    /// `created_at` via [`insert_message_raw`].
+    #[test]
+    fn import_preserves_message_metadata_4163_d() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
+        let session = source_store
+            .create_session("ses-meta", "alice", "main", None, Some("mock-model"))
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::User, "msg one", None, None, 10)
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::Assistant, "msg two", None, None, 20)
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::User, "msg three", None, None, 30)
+            .unwrap();
+        // Distill seqs 1 and 2 so the export includes both distilled and
+        // non-distilled messages.
+        source_store
+            .mark_messages_distilled(&session.id, &[1, 2])
+            .unwrap();
+
+        let source_history = source_store.get_history_raw(&session.id, None).unwrap();
+        assert_eq!(source_history.len(), 3);
+        drop(source_store);
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        let dest_store = mneme::store::SessionStore::open(&dest_oikos.sessions_db()).unwrap();
+        let dest_history = dest_store.get_history_raw(&session.id, None).unwrap();
+        assert_eq!(
+            dest_history.len(),
+            3,
+            "#4163/D: all messages must be imported"
+        );
+
+        for (src, dst) in source_history.iter().zip(dest_history.iter()) {
+            assert_eq!(
+                dst.id, src.id,
+                "#4163/D: message id must match seq {}",
+                src.seq
+            );
+            assert_eq!(dst.seq, src.seq, "#4163/D: seq must be preserved");
+            assert_eq!(
+                dst.is_distilled, src.is_distilled,
+                "#4163/D: is_distilled must be preserved for seq {}",
+                src.seq
+            );
+            assert_eq!(
+                dst.created_at, src.created_at,
+                "#4163/D: created_at must be preserved for seq {}",
+                src.seq
+            );
+            assert_eq!(
+                dst.role, src.role,
+                "#4163/D: role must be preserved for seq {}",
+                src.seq
+            );
+            assert_eq!(
+                dst.content, src.content,
+                "#4163/D: content must be preserved for seq {}",
+                src.seq
+            );
+            assert_eq!(
+                dst.token_estimate, src.token_estimate,
+                "#4163/D: token_estimate must be preserved for seq {}",
+                src.seq
+            );
+        }
     }
 
     /// #4163/A — `export_agent` now reads session history via
