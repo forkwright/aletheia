@@ -55,6 +55,18 @@ Crate architecture and dependency graph: `docs/ARCHITECTURE.md`.
 - **Don't add ad-hoc HTTP clients** - use `hermeneus` or `organon/http_client`.
 - **Don't write `_ = result`** - handle the result or document why we intentionally drop it.
 
+## _llm/ Freshness
+
+If your PR changes Rust source files, `Cargo.toml`, or `scripts/llm-extract-l3.py`,
+regenerate the L3 API index before pushing:
+
+```bash
+uv run scripts/llm-extract-l3.py
+git add _llm/ && git commit -m "chore(_llm): regenerate L3 API index"
+```
+
+The `_llm freshness` CI check fails the PR if the index is stale.
+
 ## Gate Trailer
 
 All PRs need `Gate-Passed: kanon 0.1.0` in a commit body.
