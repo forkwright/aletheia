@@ -28,3 +28,30 @@ pub enum Error {
         message: String,
     },
 }
+
+/// Errors produced by [`crate::render_workbook`].
+#[cfg(feature = "workbook")]
+#[derive(Debug, Snafu)]
+#[snafu(module)]
+#[non_exhaustive]
+pub enum WorkbookError {
+    /// A [`WorkbookCell::Cite`](crate::workbook::WorkbookCell) references a fact id not present in the resolved factbase.
+    #[snafu(display("unknown fact id: {id}"))]
+    UnknownFact {
+        /// The fact id that was not found.
+        id: String,
+    },
+    /// `rust_xlsxwriter` returned an error.
+    #[snafu(display("XLSX write error: {message}"))]
+    XlsxWrite {
+        /// Human-readable error description.
+        message: String,
+    },
+}
+
+#[cfg(feature = "workbook")]
+impl From<rust_xlsxwriter::XlsxError> for WorkbookError {
+    fn from(e: rust_xlsxwriter::XlsxError) -> Self {
+        Self::XlsxWrite { message: e.to_string() }
+    }
+}

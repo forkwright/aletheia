@@ -17,6 +17,21 @@ pub mod xlsx;
 #[cfg(feature = "ods")]
 pub mod ods;
 
+#[cfg(feature = "workbook")]
+mod format;
+
+#[cfg(feature = "workbook")]
+mod totals;
+
+#[cfg(feature = "workbook")]
+pub mod workbook;
+
+#[cfg(feature = "workbook")]
+pub use workbook::render_workbook;
+
+#[cfg(feature = "workbook")]
+pub use error::WorkbookError;
+
 #[cfg(feature = "xlsx")]
 pub use xlsx::XlsxRenderer;
 
