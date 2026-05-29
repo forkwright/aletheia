@@ -43,6 +43,24 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 10
     steps:
+      - name: Substrate preflight — abort on low disk
+        # WHY: Substrate fix for #4319. Self-hosted runner host disk
+        # exhaustion kills Worker mid-step with an opaque ENOSPC. Aborting
+        # at step 1 with a clear marker converts the silent substrate
+        # failure into a named, operator-actionable one. The 95% threshold
+        # matches `runner-housekeeping` so daily prune at 03:00 UTC is
+        # first defense and this is the per-job last line.
+        shell: bash
+        run: |
+          set -u
+          used=$(df --output=pcent / | tail -1 | tr -d ' %')
+          echo "self-hosted root usage: ${used}%"
+          if [ "${used}" -ge 95 ]; then
+            echo "::error::self-hosted runner root at ${used}% (>= 95% threshold)."
+            echo "::error::Aborting before checkout to avoid mid-step ENOSPC kill (#4319)."
+            echo "::error::Operator: dispatch runner-housekeeping or free disk on the runner host, then re-run."
+            exit 1
+          fi
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 2
