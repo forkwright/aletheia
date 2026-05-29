@@ -184,7 +184,9 @@ def workspace_members() -> list[tuple[str, Path]]:
 def hash_crate_sources(crate_dir: Path) -> str:
     """SHA-256 of all .rs file contents in a crate, sorted by relative path."""
     h = hashlib.sha256()
-    rs_files = sorted(crate_dir.rglob("*.rs"))
+    rs_files = sorted(
+        f for f in crate_dir.rglob("*.rs") if "target" not in f.parts
+    )
     for rs_file in rs_files:
         try:
             content = rs_file.read_bytes()
@@ -474,7 +476,9 @@ def extract_crate(crate_name: str, crate_dir: Path) -> CrateIndex:
         path=crate_dir.relative_to(REPO_ROOT).as_posix(),
     )
 
-    rs_files = sorted(crate_dir.rglob("*.rs"))
+    rs_files = sorted(
+        f for f in crate_dir.rglob("*.rs") if "target" not in f.parts
+    )
     for rs_file in rs_files:
         section = extract_from_file(rs_file, crate_dir)
         if section:

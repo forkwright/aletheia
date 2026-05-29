@@ -51,6 +51,27 @@ removed from the whole stack are too broad; the accurate statement is that
 `rusqlite` was removed from the live session/auth storage path, while gnosis and
 the legacy migrator still use it intentionally.
 
+## Fjall Ownership Recommendation
+
+**Recommendation: retain fjall as the long-term storage backend.**
+
+fjall v3.1.4 dependency profile:
+
+- All transitive deps are pure Rust (byteorder-lite, byteview, dashmap, flume,
+  lsm-tree, lz4_flex, xxhash-rust) — no C FFI, no build-script native compilation.
+- This satisfies the phase 05d purity goal: live data paths have no C dependency chain.
+
+**Remaining rusqlite consumers** (not targeted by phase 05d):
+
+| Crate | Use | Migration path |
+|-------|-----|---------------|
+| `crates/gnosis` | Code-graph index | Design decision: evaluate fjall or sqlite3 via `rusqlite` as long-term index store |
+| `crates/aletheia-sessions-migrate` | One-shot SQLite→fjall migrator | Retire when all instances are migrated |
+
+The gnosis rusqlite usage is intentional and not an immediate purity concern — gnosis is a
+dev/analysis tool and C FFI in a developer-only crate is a lower risk than in the live server
+path. A follow-on decision is needed before migrating gnosis storage.
+
 ## Completed Eliminations
 
 | Dependency | Eliminated in | Method |
