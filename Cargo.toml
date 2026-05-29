@@ -42,6 +42,8 @@ members = [
     "crates/poiesis/typst",
     "crates/poiesis/verify",
     "crates/poiesis/intake",
+    "crates/poiesis/deck",
+    "crates/poiesis/deck-layout",
     "crates/poiesis/doc",
     "crates/poiesis/diff",
     "crates/poiesis/inspect",
@@ -178,6 +180,8 @@ indexmap = { version = "2", default-features = false, features = ["serde"] }
 
 # Time
 jiff = "0.2"
+
+minijinja = "2"
 
 # Async utilities
 bytes = { version = "1", default-features = false }
