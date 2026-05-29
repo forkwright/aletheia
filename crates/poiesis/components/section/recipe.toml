@@ -1,0 +1,24 @@
+[slide]
+layout = "blank"
+
+[[shapes]]
+type = "text"
+zone = "header"
+text_field = "section_number"
+style = "eyebrow"
+font_size = 14
+
+[[shapes]]
+type = "text"
+zone = "body"
+text_field = "title"
+style = "section"
+font_size = 36
+bold = true
+
+[[shapes]]
+type = "text"
+zone = "content"
+text_field = "description"
+style = "body"
+font_size = 18

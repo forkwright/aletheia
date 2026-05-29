@@ -1,0 +1,24 @@
+[slide]
+layout = "two-column"
+
+[[shapes]]
+type = "text"
+zone = "header"
+text_field = "title"
+style = "heading"
+font_size = 28
+bold = true
+
+[[shapes]]
+type = "text"
+zone = "left-half"
+text_field = "left"
+style = "body"
+font_size = 16
+
+[[shapes]]
+type = "text"
+zone = "right-half"
+text_field = "right"
+style = "body"
+font_size = 16

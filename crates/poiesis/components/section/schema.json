@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["title"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "section_number": { "type": "string" },
+    "description": { "type": "string" }
+  }
+}

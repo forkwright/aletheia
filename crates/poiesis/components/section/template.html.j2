@@ -1,0 +1,11 @@
+<div class="zone-full" style="background:var(--theme-secondary);display:flex;flex-direction:column;justify-content:center;">
+  {% if fields.section_number %}
+  <div class="zone-header" style="font-family:var(--font-body);font-size:0.875rem;font-weight:600;color:var(--theme-primary);text-transform:uppercase;letter-spacing:0.1em;">{{ fields.section_number }}</div>
+  {% endif %}
+  <div class="zone-body" style="display:flex;flex-direction:column;justify-content:center;">
+    <h2 style="font-family:var(--font-heading);font-size:2.5rem;font-weight:700;color:var(--theme-text);line-height:1.2;">{{ fields.title }}</h2>
+    {% if fields.description %}
+    <p style="font-family:var(--font-body);font-size:1.125rem;color:var(--theme-text);opacity:0.75;margin-top:1rem;">{{ fields.description }}</p>
+    {% endif %}
+  </div>
+</div>
