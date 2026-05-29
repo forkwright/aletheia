@@ -1,0 +1,77 @@
+[Unit]
+Description=GitHub Actions self-hosted runner (aletheia)
+# WHY: After=network-online.target ensures the runner can reach api.github.com
+# on start. Without it, a boot-time startup races registration and the runner
+# comes up offline, requiring a manual restart.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# WHY: Type=simple — the runner binary does not sd_notify and exits on clean
+# shutdown, so simple is the right contract. forking/notify would hang start.
+Type=simple
+
+# WHY: Restart=always restarts on both failure (non-zero exit) and clean exit
+# (exit 0, which the runner emits after a self-update or graceful shutdown
+# requested by GitHub). RestartSec=10 gives the restart a short back-off so
+# a tight crash loop does not spam the systemd journal. This is the fix for
+# #4319 §a: the runner was started in a tmux pane with no supervision; when
+# the process exited (disk OOM, self-update, host signal) it stayed dead until
+# an operator manually re-ran ./run.sh.
+Restart=always
+RestartSec=10
+
+# WHY: SupplementaryGroups=docker gives the runner's process tree access to
+# the Docker socket without making docker the primary group. The original
+# invocation used `sg docker -c './run.sh'`; SupplementaryGroups is the
+# cleaner systemd equivalent — no wrapper subshell, no per-exec sg.
+SupplementaryGroups=docker
+
+# WHY: WorkingDirectory must be the runner root so ./run.sh can find its
+# relative paths (_work, _diag, externals/…). CUSTOMIZE: change to your
+# runner installation path.
+WorkingDirectory=%h/actions-runner-aletheia  # CUSTOMIZE: path to runner
+
+ExecStart=%h/actions-runner-aletheia/run.sh  # CUSTOMIZE: path to run.sh
+
+StandardOutput=journal
+StandardError=journal
+
+# WHY: KillMode=process lets systemd send SIGTERM to the runner process
+# directly. The runner catches SIGTERM, sends a cancellation to GitHub (so
+# in-progress jobs can be re-queued), and exits cleanly. KillMode=control-group
+# (default) would kill the entire cgroup including jobs-in-flight.
+KillMode=process
+
+# WHY: TimeoutStopSec gives the runner time to cancel any in-progress job
+# and deregister before systemd escalates to SIGKILL. 90s matches the default
+# GitHub Actions job cancellation window.
+TimeoutStopSec=90
+
+[Install]
+WantedBy=default.target
+
+# --- Quick install ---
+#
+# 1. Copy this file:
+#    mkdir -p ~/.config/systemd/user
+#    cp instance.example/services/aletheia-runner.service ~/.config/systemd/user/aletheia-runner.service
+#
+# 2. If your runner is not at ~/actions-runner-aletheia, edit WorkingDirectory
+#    and ExecStart:
+#    sed -i 's|actions-runner-aletheia|actions-runner-yourrepo|g' \
+#      ~/.config/systemd/user/aletheia-runner.service
+#
+# 3. Enable and start:
+#    systemctl --user daemon-reload
+#    systemctl --user enable --now aletheia-runner
+#
+# 4. Persist across logout (run once per user):
+#    loginctl enable-linger
+#
+# 5. Check status and logs:
+#    systemctl --user status aletheia-runner
+#    journalctl --user -u aletheia-runner -f
+#
+# 6. Verify the runner appears in the GitHub repo runner list:
+#    gh api repos/forkwright/aletheia/actions/runners --jq '.runners[]'
