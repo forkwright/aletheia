@@ -260,6 +260,52 @@ async fn render_xlsx_report_missing_data_is_error() {
 }
 
 #[tokio::test]
+async fn qa_gate_clean_prose_passes() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "qa_gate",
+        serde_json::json!({
+            "prose": "## Summary\nThe analysis shows 47 cases across three employers.\n## Appendix\nSources are internal.\n"
+        }),
+    );
+    let result = QaGateExecutor.execute(&input, &ctx).await.expect("exec");
+    assert!(!result.is_error, "qa_gate must succeed: {result:?}");
+    let text = result.content.text_summary();
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(
+        parsed["has_issues"], false,
+        "clean prose must report no issues: {parsed:?}"
+    );
+}
+
+#[tokio::test]
+async fn qa_gate_banned_word_fails() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "qa_gate",
+        serde_json::json!({
+            "prose": "## Summary\nThe approach is robust and comprehensive.\n## Appendix\n"
+        }),
+    );
+    let result = QaGateExecutor.execute(&input, &ctx).await.expect("exec");
+    assert!(!result.is_error, "qa_gate must succeed even when findings exist: {result:?}");
+    let text = result.content.text_summary();
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(
+        parsed["has_issues"], true,
+        "banned words must report issues: {parsed:?}"
+    );
+    assert!(
+        parsed["issue_count"].as_u64().unwrap_or(0) > 0,
+        "issue_count must be > 0: {parsed:?}"
+    );
+}
+
+#[tokio::test]
 async fn report_renderers_reject_out_path_escape() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
