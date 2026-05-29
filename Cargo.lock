@@ -6605,8 +6605,12 @@ dependencies = [
 name = "poiesis-core"
 version = "0.29.0"
 dependencies = [
+ "indexmap 2.14.0",
  "jiff",
+ "serde",
+ "serde_json",
  "snafu",
+ "toml 1.1.2+spec-1.1.0",
 ]
 
 [[package]]
