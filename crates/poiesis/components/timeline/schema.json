@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["title", "events"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label"],
+        "properties": {
+          "date": { "type": "string" },
+          "label": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string" }
+        }
+      },
+      "minItems": 1
+    }
+  }
+}

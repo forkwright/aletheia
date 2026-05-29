@@ -1,0 +1,29 @@
+<div class="zone-header">
+  <h2 style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;color:var(--theme-text);">{{ fields.title }}</h2>
+</div>
+<div class="zone-left-half" style="display:flex;flex-direction:column;">
+  <div style="background:var(--theme-primary);color:#fff;padding:0.5rem 1rem;font-family:var(--font-heading);font-size:1rem;font-weight:600;text-align:center;border-radius:4px 4px 0 0;">{{ fields.left_label }}</div>
+  <ul style="flex:1;list-style:none;padding:0.75rem 1rem;margin:0;border:2px solid var(--theme-primary);border-top:none;border-radius:0 0 4px 4px;display:flex;flex-direction:column;gap:0.5rem;">
+    {% if fields.left_items %}
+    {% for item in fields.left_items %}
+    <li style="font-family:var(--font-body);font-size:0.95rem;color:var(--theme-text);display:flex;align-items:flex-start;gap:0.5rem;">
+      <span style="color:var(--theme-primary);font-weight:700;flex-shrink:0;">&#10003;</span>
+      <span>{{ item }}</span>
+    </li>
+    {% endfor %}
+    {% endif %}
+  </ul>
+</div>
+<div class="zone-right-half" style="display:flex;flex-direction:column;">
+  <div style="background:var(--theme-secondary);color:var(--theme-text);padding:0.5rem 1rem;font-family:var(--font-heading);font-size:1rem;font-weight:600;text-align:center;border-radius:4px 4px 0 0;">{{ fields.right_label }}</div>
+  <ul style="flex:1;list-style:none;padding:0.75rem 1rem;margin:0;border:2px solid var(--theme-secondary);border-top:none;border-radius:0 0 4px 4px;display:flex;flex-direction:column;gap:0.5rem;">
+    {% if fields.right_items %}
+    {% for item in fields.right_items %}
+    <li style="font-family:var(--font-body);font-size:0.95rem;color:var(--theme-text);display:flex;align-items:flex-start;gap:0.5rem;">
+      <span style="color:var(--theme-secondary);font-weight:700;flex-shrink:0;">&#10003;</span>
+      <span>{{ item }}</span>
+    </li>
+    {% endfor %}
+    {% endif %}
+  </ul>
+</div>
