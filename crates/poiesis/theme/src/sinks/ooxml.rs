@@ -302,7 +302,9 @@ mod tests {
         let xml = emit_theme_xml(&summus()).expect("emit summus theme1.xml");
         // accent3 slot must contain navy (232E54), not bg (FFFFFF)
         let accent3_pos = xml.find("<a:accent3>").expect("accent3 slot must exist");
-        let accent3_block = &xml[accent3_pos..accent3_pos + 80];
+        let accent3_block = xml
+            .get(accent3_pos..accent3_pos + 80)
+            .expect("accent3 block fits in xml");
         assert!(
             accent3_block.contains("232E54"),
             "accent3 must be navy (232E54) from chart.series[2]=neutral, not bg (FFFFFF): {accent3_block}"

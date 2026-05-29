@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-29T23:37:09Z"
+generated_at = "2026-05-30T00:14:14Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -242,7 +242,7 @@ l3_token_estimate = 547
 [[crates]]
 name = "poiesis-theme"
 path = "crates/poiesis/theme"
-source_hash = "8ede7742f7876087b95591058aec36446f999e355e177ae83fb9bd3472aa24f7"
+source_hash = "3c42659afc1f3508b73a21ddf6dfaeed5628dba2298ecc8f112e0f931e03728d"
 l3_token_estimate = 4379
 
 [[crates]]
