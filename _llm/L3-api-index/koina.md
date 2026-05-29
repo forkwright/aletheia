@@ -158,14 +158,31 @@ pub trait CredentialProvider : Send + Sync {
 pub const DEFAULT_CONFIG_PATH: &str = "config/aletheia.toml";
 ```
 
-> Default LLM model identifier (full form).
+> Default LLM model identifier.
+> 
+> Single source of truth for the model every aletheia subsystem defaults to
+> when no explicit model is configured: `aletheia init` scaffold, `add-nous`
+> CLI default, runtime spawn fallback (`SONNET_MODEL`), pylon request
+> fallback, `agent_io` export fallback, melete distillation default, taxis
+> `ModelSpec` default, and theatron wizard model picker.
+> 
+> Defining the default in two places (formerly `DEFAULT_MODEL` and
+> `DEFAULT_MODEL_SHORT`, #4235) routed `aletheia init` to one model and
+> runtime spawn/distillation to a different one  -  a silent downgrade
+> invisible at config time. Keep this as the only model default constant in
+> the workspace; `crates/koina/tests/model_default_consistency.rs` walks the
+> source tree and fails loudly if a second `DEFAULT_MODEL*` constant
+> reappears.
 ```rust
-pub const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
+pub const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 ```
 
-> Default LLM model identifier (short form used in config files).
+> Default nous-agent identifier created by `aletheia init -y` and assumed by
+> CLI subcommands that take `--nous-id`. Single source of truth so that
+> `init`'s scaffolded agent and `ingest`'s default flag value cannot drift
+> (#4245).
 ```rust
-pub const DEFAULT_MODEL_SHORT: &str = "claude-sonnet-4-6";
+pub const DEFAULT_AGENT_ID: &str = "pronoea";
 ```
 
 > Default maximum output tokens per LLM response.
