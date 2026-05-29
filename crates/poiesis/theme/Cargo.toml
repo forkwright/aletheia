@@ -9,19 +9,18 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-# WHY: workspace default-features=false on indexmap drops `std`, which
-# also drops the `RandomState` default hasher. Re-enable `std` so
-# `IndexMap<K, V>` (without an explicit hasher type) compiles.
-indexmap = { workspace = true, features = ["std"] }
-jiff = { workspace = true }
-regex = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-snafu = { workspace = true }
-toml = { workspace = true }
+# WHY: default-features=false on indexmap drops `std` and `RandomState` hasher.
+# Re-enable `std` so `IndexMap<K, V>` (without explicit hasher type) compiles.
+indexmap = { version = "=2.14.0", default-features = false, features = ["serde", "std"] }
+jiff = { version = "=0.2.23" }
+regex = { version = "=1.12.3", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
+serde = { version = "=1.0.228", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "=1.0.149", default-features = false, features = ["std"] }
+snafu = { version = "=0.8.9" }
+toml = { version = "=1.1.2" }
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile = { version = "=3.27.0", default-features = false }
 
 [lints]
 workspace = true
