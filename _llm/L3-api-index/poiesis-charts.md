@@ -542,6 +542,22 @@ pub fn emit (
 ) -> Result<String>
 ```
 
+## `src/render/kinds/scatter.rs`
+
+> Emit the scatter chart SVG.
+> 
+> Caller invariants (enforced by [`Chart::validate`](crate::model::Chart::validate)):
+> - `chart.kind == ChartKind::Scatter`
+> - `1+ series`
+```rust
+pub fn emit (
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    canvas: &Canvas,
+    mode: ColorMode,
+) -> Result<String>
+```
+
 ## `src/render/vega.rs`
 
 > Emit a Vega-Lite-rendered chart.
