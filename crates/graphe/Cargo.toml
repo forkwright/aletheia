@@ -14,6 +14,11 @@ workspace = true
 default = []
 # WHY: gates error variants that reference tokio::task::JoinError; no runtime dep.
 mneme-engine = ["dep:tokio"]
+# WHY: gates raw entry points that bypass distilled-message filtering and
+# preserve caller-supplied timestamps/metrics. Used only by agent export/import
+# (issue #4163) — recall/serve must NOT enable this, or they will silently
+# leak distilled messages or wedge updated_at indexes with past timestamps.
+portability = []
 test-core = []
 test-full = []
 

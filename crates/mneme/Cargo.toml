@@ -13,8 +13,11 @@ workspace = true
 [features]
 # WHY: graphe's fjall backend is now unconditional. mneme re-exports the
 # session store API; mneme-engine layers the Datalog knowledge store on top.
-default = ["graph-algo", "mneme-engine"]
+default = ["graph-algo", "mneme-engine", "portability"]
 graph-algo = ["episteme/graph-algo"]
+# Agent export/import raw entry points (issue #4163). Default-on so the
+# aletheia CLI gets faithful round-trips without an explicit feature pick.
+portability = ["graphe/portability"]
 # Optional HTTP cross-encoder reranker support from episteme.
 reranker = ["episteme/reranker"]
 # Optional GLiNER bookkeeping provider support from episteme.
