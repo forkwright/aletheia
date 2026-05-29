@@ -2385,4 +2385,309 @@ workspace = "nous/{agent_id}"
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("already exists"), "got: {msg}");
     }
+
+    #[cfg(feature = "recall")]
+    fn seed_typed_knowledge(oikos: &Oikos, nous_id: &str) {
+        use mneme::id::{EntityId, FactId};
+        use mneme::knowledge::{
+            Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
+            FactSensitivity, FactTemporal, Relationship, Visibility, far_future, parse_timestamp,
+        };
+        use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+
+        let knowledge_path = knowledge_path_for_nous(oikos, nous_id);
+        let parent = knowledge_path.parent().unwrap();
+        std::fs::create_dir_all(parent).unwrap();
+        let store =
+            KnowledgeStore::open_fjall(&knowledge_path, KnowledgeConfig::default()).unwrap();
+
+        let fact = Fact {
+            id: FactId::new("fact-rt-001").unwrap(),
+            nous_id: nous_id.to_owned(),
+            content: "Alice likes Rust".to_owned(),
+            fact_type: "preference".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            temporal: FactTemporal {
+                valid_from: parse_timestamp("2026-01-01T00:00:00Z").unwrap(),
+                valid_to: far_future(),
+                recorded_at: parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            },
+            provenance: FactProvenance {
+                confidence: 0.95,
+                tier: EpistemicTier::Verified,
+                source_session_id: None,
+                stability_hours: 720.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
+        };
+
+        let entity1 = Entity {
+            id: EntityId::new("entity-rt-001").unwrap(),
+            name: "Rust".to_owned(),
+            entity_type: "programming_language".to_owned(),
+            aliases: vec!["rust-lang".to_owned()],
+            created_at: parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            updated_at: parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+        };
+
+        let entity2 = Entity {
+            id: EntityId::new("entity-rt-002").unwrap(),
+            name: "Aletheia".to_owned(),
+            entity_type: "project".to_owned(),
+            aliases: vec![],
+            created_at: parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            updated_at: parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+        };
+
+        let relationship = Relationship {
+            src: EntityId::new("entity-rt-001").unwrap(),
+            dst: EntityId::new("entity-rt-002").unwrap(),
+            relation: "powers".to_owned(),
+            weight: 1.0,
+            created_at: parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+        };
+
+        store.insert_fact(&fact).unwrap();
+        store.insert_entity(&entity1).unwrap();
+        store.insert_entity(&entity2).unwrap();
+        store.insert_relationship(&relationship).unwrap();
+    }
+
+    /// #4163/PR4 — typed knowledge (Fact, Entity, Relationship) round-trips
+    /// through export → import.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn roundtrip_preserves_typed_knowledge_4163() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        seed_typed_knowledge(&source_oikos, "alice");
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        let knowledge_path = knowledge_path_for_nous(&dest_oikos, "alice");
+        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
+            &knowledge_path,
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .unwrap();
+
+        let dest_facts: Vec<mneme::knowledge::Fact> = store
+            .list_all_facts(i64::MAX)
+            .unwrap()
+            .into_iter()
+            .filter(|f| f.nous_id == "alice")
+            .collect();
+        assert_eq!(dest_facts.len(), 1, "one fact must be imported");
+        let dest_fact = &dest_facts[0];
+        assert_eq!(dest_fact.id.as_str(), "fact-rt-001");
+        assert_eq!(dest_fact.content, "Alice likes Rust");
+        assert_eq!(dest_fact.fact_type, "preference");
+
+        let dest_entities = store.list_entities().unwrap();
+        assert_eq!(dest_entities.len(), 2, "two entities must be imported");
+        let mut dest_entities_by_id: std::collections::HashMap<&str, &mneme::knowledge::Entity> =
+            dest_entities.iter().map(|e| (e.id.as_str(), e)).collect();
+        assert_eq!(
+            dest_entities_by_id.remove("entity-rt-001").unwrap().name,
+            "Rust"
+        );
+        assert_eq!(
+            dest_entities_by_id.remove("entity-rt-002").unwrap().name,
+            "Aletheia"
+        );
+        assert!(dest_entities_by_id.is_empty());
+
+        let dest_relationships = store.list_all_relationships().unwrap();
+        assert_eq!(
+            dest_relationships.len(),
+            1,
+            "one relationship must be imported"
+        );
+        let dest_rel = &dest_relationships[0];
+        assert_eq!(dest_rel.src.as_str(), "entity-rt-001");
+        assert_eq!(dest_rel.dst.as_str(), "entity-rt-002");
+        assert_eq!(dest_rel.relation, "powers");
+        assert!((dest_rel.weight - 1.0).abs() < f64::EPSILON);
+
+        // HNSW vectors are out of scope for this PR.
+    }
+
+    /// #4163/PR4 — a full export → import → re-export cycle produces identical
+    /// JSON on every field except `exported_at` and `generator`.
+    #[cfg(feature = "recall")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "test needs full source setup, export, import, re-export, and assertion"
+    )]
+    #[test]
+    fn roundtrip_is_byte_stable_4163() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        seed_typed_knowledge(&source_oikos, "alice");
+
+        let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
+
+        // Active session.
+        let active_session = source_store
+            .create_session("ses-active", "alice", "main", None, Some("mock-model"))
+            .unwrap();
+        source_store
+            .append_message(&active_session.id, Role::User, "active msg", None, None, 10)
+            .unwrap();
+
+        // Archived session with distilled + non-distilled messages.
+        let archived_session = source_store
+            .create_session(
+                "ses-archived",
+                "alice",
+                "archived",
+                None,
+                Some("mock-model"),
+            )
+            .unwrap();
+        source_store
+            .append_message(
+                &archived_session.id,
+                Role::User,
+                "old distilled",
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        source_store
+            .append_message(
+                &archived_session.id,
+                Role::Assistant,
+                "keep this",
+                None,
+                None,
+                30,
+            )
+            .unwrap();
+        source_store
+            .mark_messages_distilled(&archived_session.id, &[1])
+            .unwrap();
+        source_store
+            .update_session_status(&archived_session.id, SessionStatus::Archived)
+            .unwrap();
+
+        // Working state for active session.
+        let ws_value = serde_json::json!({
+            "task_stack": [{"description": "ship #4163", "started_at": "2026-05-29T00:00:00Z"}],
+            "focus": {"file": "agent_io.rs"}
+        });
+        let ws_key = format!("ws:alice:{}", active_session.id);
+        source_store
+            .blackboard_write(&ws_key, &ws_value.to_string(), "alice", 86_400)
+            .unwrap();
+
+        drop(source_store);
+
+        let export1 = source.path().join("export1.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export1.clone()),
+                archived: true,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export1.clone(),
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        let export2 = dest.path().join("export2.agent.json");
+        export_agent(
+            Some(&dest.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export2.clone()),
+                archived: true,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let mut v1: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&export1).unwrap()).unwrap();
+        let mut v2: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&export2).unwrap()).unwrap();
+
+        let obj1 = v1.as_object_mut().unwrap();
+        obj1.remove("exportedAt");
+        obj1.remove("generator");
+        let obj2 = v2.as_object_mut().unwrap();
+        obj2.remove("exportedAt");
+        obj2.remove("generator");
+
+        assert_eq!(v1, v2, "second export must be identical to first");
+    }
 }
