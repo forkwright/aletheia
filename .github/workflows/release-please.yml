@@ -18,6 +18,7 @@ concurrency:
 jobs:
   release-please:
     runs-on: self-hosted
+    timeout-minutes: 10
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
