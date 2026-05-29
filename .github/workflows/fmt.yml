@@ -1,0 +1,46 @@
+# WHY: cargo fmt drift on main creates a "first-touch tax" — every new
+# contributor's first commit fails `kanon gate` on lines they did not
+# touch, pushing them toward dishonest Gate-Passed stamps to restore
+# green CI. Catch drift at PR time so it cannot land, and re-check on
+# push to main so a merge race that introduces drift surfaces as a red
+# main rather than as silent contributor pain on the next PR. See
+# standards/CI.md § fmt and #4329 for the substrate rationale.
+name: Fmt
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# PROJECT: explicit top-level default deny; job-level permissions grant only what's needed
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt-check:
+    name: cargo fmt --check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false # PROJECT: security hardening — never expose token to steps
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          components: rustfmt
+      - name: cargo fmt --all -- --check
+        # WHY: matches the local `kanon gate --tier light` fmt step exactly,
+        # so a green PR here means the gate trailer it carries is honestly
+        # stampable. Failure prints the diff hunks rustfmt would apply,
+        # which is enough for a contributor to fix without running cargo
+        # locally.
+        run: cargo fmt --all -- --check
