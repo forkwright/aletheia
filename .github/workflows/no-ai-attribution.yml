@@ -27,6 +27,21 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 3
     steps:
+      # WHY: Preflight disk check — runs first regardless of trusted-bot
+      # waiver because host-level disk OOM affects every job. See #4320.
+      - name: Preflight disk check
+        env:
+          PREFLIGHT_THRESHOLD: "90"
+        run: |
+          set -u
+          used=$(df -P / | awk 'NR==2 {print $5}' | tr -d '%')
+          echo "preflight: / used=${used}% threshold=${PREFLIGHT_THRESHOLD}%"
+          df -h /
+          if [ "$used" -ge "$PREFLIGHT_THRESHOLD" ]; then
+            echo "::error::preflight: disk usage ${used}% on / exceeds threshold ${PREFLIGHT_THRESHOLD}%; aborting before heavyweight step crashes the worker (see #4320)"
+            exit 1
+          fi
+
       # WHY: bypass keys off the PR author login, not github.actor. The actor
       # changes to a maintainer login whenever someone re-runs the workflow
       # (e.g. clicking "Re-run failed jobs" on an automation PR), which silently

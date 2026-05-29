@@ -43,6 +43,22 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 10
     steps:
+      # WHY: Preflight disk check — fail loudly before checkout when
+      # the host is near full. See #4320 (runner OOM-disk masquerades
+      # as opaque cargo-deny / checkout failure).
+      - name: Preflight disk check
+        env:
+          PREFLIGHT_THRESHOLD: "90"
+        run: |
+          set -u
+          used=$(df -P / | awk 'NR==2 {print $5}' | tr -d '%')
+          echo "preflight: / used=${used}% threshold=${PREFLIGHT_THRESHOLD}%"
+          df -h /
+          if [ "$used" -ge "$PREFLIGHT_THRESHOLD" ]; then
+            echo "::error::preflight: disk usage ${used}% on / exceeds threshold ${PREFLIGHT_THRESHOLD}%; aborting before heavyweight step crashes the worker (see #4320)"
+            exit 1
+          fi
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 2
