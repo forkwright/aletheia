@@ -21,6 +21,10 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 # XML parsing for inspect
 quick-xml = "0.39"
 
+# Document → Typst/PDF bridge (interim until B-012 Pandoc matrix)
+poiesis-core = { path = "../core" }
+poiesis-typst = { path = "../typst" }
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

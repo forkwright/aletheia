@@ -33,7 +33,6 @@ members = [
     "crates/theatron/koilon",
     "crates/poiesis/charts",
     "crates/poiesis/core",
-    "crates/poiesis/text",
     "crates/poiesis/sheet",
     "crates/poiesis/slides",
     "crates/poiesis/lint",

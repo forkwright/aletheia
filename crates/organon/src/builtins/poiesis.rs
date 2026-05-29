@@ -101,30 +101,18 @@ impl ToolExecutor for GenerateDocumentExecutor {
                         }
                     }
                 }
-                "pdf" => match poiesis_text::PdfRenderer::new() {
-                    Ok(renderer) => match renderer.render(&doc) {
-                        Ok(b) => b,
-                        Err(e) => {
-                            return Ok(ToolResult::error(format!(
-                                "PDF render failed (falling back): {e}"
-                            )));
-                        }
-                    },
+                "pdf" => match poiesis_doc::render_pdf_from_doc(&doc) {
+                    Ok(b) => b,
                     Err(e) => {
-                        return Ok(ToolResult::error(format!(
-                            "PDF renderer unavailable (no system font?): {e}"
-                        )));
+                        return Ok(ToolResult::error(format!("PDF render failed: {e}")));
                     }
                 },
-                // Default: ODT
+                // Default: ODT (requires Pandoc, B-012)
                 _ => {
-                    let renderer = poiesis_text::OdtRenderer::new();
-                    match renderer.render(&doc) {
-                        Ok(b) => b,
-                        Err(e) => {
-                            return Ok(ToolResult::error(format!("ODT render failed: {e}")));
-                        }
-                    }
+                    return Ok(ToolResult::error(
+                        "ODT output requires Pandoc (coming in B-012); use pdf or xlsx for now"
+                            .to_owned(),
+                    ));
                 }
             };
 

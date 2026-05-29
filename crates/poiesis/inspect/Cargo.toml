@@ -21,6 +21,6 @@ indexmap = { workspace = true }
 
 [dev-dependencies]
 poiesis-sheet = { path = "../sheet" }
-poiesis-text = { path = "../text" }
+poiesis-doc = { path = "../doc" }
 poiesis-core = { path = "../core" }
 serde_json = { workspace = true }
