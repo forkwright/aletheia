@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-30T00:42:02Z"
+generated_at = "2026-05-30T01:00:47Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -86,7 +86,7 @@ l3_token_estimate = 19912
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "8e2743a3f5dbf5033bd2d8bd42b37330ddec4d99f0809bebcad581279cb61173"
+source_hash = "3ac97e8a225ab406fbd95aaef49ee665e2ec27e0db3877ad0f90e1bd24228a39"
 l3_token_estimate = 31579
 
 [[crates]]
@@ -146,7 +146,7 @@ l3_token_estimate = 51
 [[crates]]
 name = "nous"
 path = "crates/nous"
-source_hash = "e82b495db5c5a8550f31821575f22126a776da79aca6a8e7e74cf589078dc907"
+source_hash = "fb1d3ad939cef382cf4887856bcf0f113367c28ca8fcfdd95994320f8398f589"
 l3_token_estimate = 33105
 
 [[crates]]
