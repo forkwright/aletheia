@@ -45,6 +45,7 @@ members = [
     "crates/poiesis/deck",
     "crates/poiesis/deck-layout",
     "crates/poiesis/doc",
+    "crates/poiesis/printer-chromium",
     "crates/poiesis/diff",
     "crates/poiesis/inspect",
     "crates/gnosis",
