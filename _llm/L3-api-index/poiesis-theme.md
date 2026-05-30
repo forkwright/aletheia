@@ -372,6 +372,27 @@ pub fn emit_docvars_json (theme: &ResolvedTheme) -> Result<String, ThemeError>
 pub fn emit_docvars_yaml (theme: &ResolvedTheme) -> Result<String, ThemeError>
 ```
 
+## `src/sinks/latex.rs`
+
+> Emit a LaTeX preamble fragment with `\definecolor` and `\newcommand`
+> declarations for every brand token in the [`ResolvedTheme`].
+> 
+> Downstream `.tex` files `\input` or `\include` this file to access brand
+> colors, typography metrics, spacing, and grid constants.
+> 
+> The output is deterministic: every map is emitted in declaration order
+> (preserved by [`indexmap::IndexMap`]). The same [`ResolvedTheme`] always
+> produces byte-identical output.
+> 
+> # Errors
+> 
+> Returns [`ThemeError::Sink`] only if the underlying [`std::fmt::Write`]
+> implementation fails. For `String` this is structurally unreachable; the
+> variant exists for composition with non-allocating sinks.
+```rust
+pub fn emit_latex_template (theme: &ResolvedTheme) -> Result<String, ThemeError>
+```
+
 ## `src/sinks/ooxml.rs`
 
 > Emit the OOXML `theme1.xml` body  -  the `<a:clrScheme>` + `<a:fontScheme>`
