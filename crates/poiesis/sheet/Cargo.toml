@@ -26,7 +26,11 @@ spreadsheet-ods = { version = "1.0", optional = true }
 # XLSX inspection
 calamine = { version = "0.26", optional = true }
 
+# Workbook renderer (B-007)
+poiesis-theme = { path = "../theme", optional = true }
+
 [features]
-default = ["xlsx", "ods"]
+default = ["xlsx", "ods", "workbook"]
 xlsx = ["dep:rust_xlsxwriter", "dep:calamine"]
 ods = ["dep:spreadsheet-ods"]
+workbook = ["dep:poiesis-theme", "dep:rust_xlsxwriter", "dep:calamine"]
