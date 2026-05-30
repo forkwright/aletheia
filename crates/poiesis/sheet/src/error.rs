@@ -52,6 +52,8 @@ pub enum WorkbookError {
 #[cfg(feature = "workbook")]
 impl From<rust_xlsxwriter::XlsxError> for WorkbookError {
     fn from(e: rust_xlsxwriter::XlsxError) -> Self {
-        Self::XlsxWrite { message: e.to_string() }
+        Self::XlsxWrite {
+            message: e.to_string(),
+        }
     }
 }

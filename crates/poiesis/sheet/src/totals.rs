@@ -24,7 +24,10 @@ pub fn compute_totals(
         if col_idx >= ncols {
             break;
         }
-        if !matches!(kind, ScalarKind::Count | ScalarKind::Money | ScalarKind::Ratio) {
+        if !matches!(
+            kind,
+            ScalarKind::Count | ScalarKind::Money | ScalarKind::Ratio
+        ) {
             continue;
         }
         let mut acc: Option<Scalar> = None;
@@ -40,15 +43,14 @@ pub fn compute_totals(
                 Some(a) => accumulate(a, scalar),
             });
         }
-        totals[col_idx] = acc;
+        if let Some(slot) = totals.get_mut(col_idx) {
+            *slot = acc;
+        }
     }
     totals
 }
 
-fn resolve_scalar(
-    cell: &WorkbookCell,
-    facts: &BTreeMap<FactId, ResolvedFact>,
-) -> Option<Scalar> {
+fn resolve_scalar(cell: &WorkbookCell, facts: &BTreeMap<FactId, ResolvedFact>) -> Option<Scalar> {
     match cell {
         WorkbookCell::Lit { value } => Some(value.clone()),
         WorkbookCell::Cite { fact } => facts.get(fact).map(|r| r.value.clone()),
@@ -57,9 +59,9 @@ fn resolve_scalar(
 
 fn accumulate(a: Scalar, b: Scalar) -> Scalar {
     match (a, b) {
-        (Scalar::Count { value: va }, Scalar::Count { value: vb }) => {
-            Scalar::Count { value: va.saturating_add(vb) }
-        }
+        (Scalar::Count { value: va }, Scalar::Count { value: vb }) => Scalar::Count {
+            value: va.saturating_add(vb),
+        },
         (Scalar::Money { value: va }, Scalar::Money { value: vb }) => Scalar::Money {
             value: Money::from_micros(va.micros().saturating_add(vb.micros())),
         },

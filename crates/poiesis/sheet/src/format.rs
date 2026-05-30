@@ -22,26 +22,24 @@ pub fn cell_format(kind: ScalarKind, unit: Unit, _theme: &ResolvedTheme) -> Form
 pub fn header_format(theme: &ResolvedTheme) -> Format {
     let mut fmt = Format::new().set_bold();
 
-    if let Some(ref_name) = &theme.table.header_fill {
-        if let Some(hex) = theme.lookup_color(ref_name) {
-            if let Ok(rgb) = u32::from_str_radix(hex.as_str().trim_start_matches('#'), 16) {
-                fmt = fmt.set_background_color(Color::RGB(rgb));
-            }
-        }
+    if let Some(ref_name) = &theme.table.header_fill
+        && let Some(hex) = theme.lookup_color(ref_name)
+        && let Ok(rgb) = u32::from_str_radix(hex.as_str().trim_start_matches('#'), 16)
+    {
+        fmt = fmt.set_background_color(Color::RGB(rgb));
     }
 
-    if let Some(ref_name) = &theme.table.header_ink {
-        if let Some(hex) = theme.lookup_color(ref_name) {
-            if let Ok(rgb) = u32::from_str_radix(hex.as_str().trim_start_matches('#'), 16) {
-                fmt = fmt.set_font_color(Color::RGB(rgb));
-            }
-        }
+    if let Some(ref_name) = &theme.table.header_ink
+        && let Some(hex) = theme.lookup_color(ref_name)
+        && let Ok(rgb) = u32::from_str_radix(hex.as_str().trim_start_matches('#'), 16)
+    {
+        fmt = fmt.set_font_color(Color::RGB(rgb));
     }
 
     fmt
 }
 
-/// Returns the totals-row format: same number format as cell_format but bold.
+/// Returns the totals-row format: same number format as [`cell_format`] but bold.
 pub fn totals_format(kind: ScalarKind, unit: Unit, theme: &ResolvedTheme) -> Format {
     cell_format(kind, unit, theme).set_bold()
 }

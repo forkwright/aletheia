@@ -193,12 +193,10 @@ fn unit_for_total(
     kind: ScalarKind,
 ) -> Unit {
     for row in &sheet.rows {
-        if let Some(cell) = row.get(col_idx) {
-            if let WorkbookCell::Cite { fact } = cell {
-                if let Some(resolved) = facts.get(fact) {
-                    return resolved.unit;
-                }
-            }
+        if let Some(WorkbookCell::Cite { fact }) = row.get(col_idx)
+            && let Some(resolved) = facts.get(fact)
+        {
+            return resolved.unit;
         }
     }
     kind_default_unit(kind)
