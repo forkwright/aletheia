@@ -332,6 +332,16 @@ used_by = []
 [crates.poiesis-deck.features]
 default = ""
 
+[crates.poiesis-printer-chromium]
+path = "crates/poiesis/printer-chromium"
+layer = "tool"
+purpose = "Chromium CDP wrapper — converts HTML strings to PDF bytes via headless browser"
+depends_on = ["poiesis-core"]
+used_by = []
+
+[crates.poiesis-printer-chromium.features]
+chromium = "Enable headless Chromium PDF printing via CDP (requires system Chromium)"
+
 [crates.poiesis-theme]
 path = "crates/poiesis/theme"
 layer = "types"

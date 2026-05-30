@@ -216,6 +216,12 @@ source_hash = "de719b792a5a6a7cb254fb0fa998e67a70b54f5b6bec2171d388763fcebaf180"
 l3_token_estimate = 841
 
 [[crates]]
+name = "poiesis-printer-chromium"
+path = "crates/poiesis/printer-chromium"
+source_hash = "070e9b6a13d051f9ab8f8495ad03e9ca4f7e756bb910efac9abac5405aa31662"
+l3_token_estimate = 459
+
+[[crates]]
 name = "poiesis-scaffold"
 path = "crates/poiesis/scaffold"
 source_hash = "c92b30fca6288086833ee78ab733eb27d3395629ec3b5e95325ccf46a0084b9f"
