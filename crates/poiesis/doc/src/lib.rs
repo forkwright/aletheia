@@ -23,6 +23,7 @@
 //! `Heading1`, `Heading2`, `Normal`, etc.
 
 mod error;
+mod typst_bridge;
 
 pub use error::Error;
 
@@ -174,6 +175,38 @@ pub fn inspect_docx(bytes: &[u8]) -> Result<DocxSummary> {
     Ok(DocxSummary::new(paragraphs))
 }
 
+/// Render a [`poiesis_core::Document`] to PDF bytes via the embedded Typst compiler.
+///
+/// Intermediate replacement for the retired text-format PDF backend.
+/// The Pandoc-backed path (B-012) will supersede this for the full format matrix.
+///
+/// # Errors
+///
+/// Returns [`Error::PdfRenderFailed`] if Typst compilation fails.
+#[instrument(skip(doc))]
+pub fn render_pdf_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
+    let source = typst_bridge::doc_to_typst(doc);
+    poiesis_typst::render_typst(&source, &serde_json::json!({})).map_err(|e| {
+        Error::PdfRenderFailed {
+            detail: e.to_string(),
+        }
+    })
+}
+
+/// Render a [`poiesis_core::Document`] to ODT bytes.
+///
+/// ODT output requires the Pandoc backend (B-012) which has not landed yet.
+/// Returns [`Error::PandocRequired`] until B-012 ships.
+///
+/// # Errors
+///
+/// Always returns [`Error::PandocRequired`] in this stub implementation.
+pub fn render_odt_from_doc(_doc: &poiesis_core::Document) -> Result<Vec<u8>> {
+    Err(Error::PandocRequired {
+        format: "odt".to_owned(),
+    })
+}
+
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
@@ -249,5 +282,41 @@ mod tests {
             matches!(err, Error::MalformedInput { .. }),
             "expected MalformedInput, got: {err:?}"
         );
+    }
+
+    #[test]
+    fn render_pdf_from_doc_produces_bytes() {
+        use poiesis_core::{Block, Document, Metadata, RichText};
+        let doc = Document {
+            metadata: Metadata {
+                title: "Test".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![
+                Block::Heading {
+                    level: 1,
+                    text: RichText::from("Section"),
+                },
+                Block::Paragraph(RichText::from("Content.")),
+            ],
+        };
+        let bytes = render_pdf_from_doc(&doc).expect("must render");
+        assert!(bytes.starts_with(b"%PDF"), "must be a PDF");
+    }
+
+    #[test]
+    fn render_odt_from_doc_returns_error() {
+        use poiesis_core::{Document, Metadata};
+        let doc = Document {
+            metadata: Metadata {
+                title: "Test".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![],
+        };
+        let err = render_odt_from_doc(&doc).expect_err("must fail");
+        assert!(matches!(err, Error::PandocRequired { .. }));
     }
 }

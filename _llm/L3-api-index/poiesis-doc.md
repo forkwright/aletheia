@@ -36,6 +36,20 @@ pub enum Error {
         /// Underlying quick-xml error.
         source: quick_xml::Error,
     },
+
+    /// PDF rendering via Typst failed.
+    #[snafu(display("pdf render failed: {detail}"))]
+    PdfRenderFailed {
+        /// Human-readable description.
+        detail: String,
+    },
+
+    /// The requested format requires Pandoc, which is not yet available.
+    #[snafu(display("{format} output requires Pandoc (coming in B-012); use pdf or xlsx for now"))]
+    PandocRequired {
+        /// The requested format name (e.g. "odt").
+        format: String,
+    },
 }
 ```
 
@@ -74,4 +88,20 @@ pub fn render_docx (data: &Value) -> Result<Vec<u8>>
 > or [`Error::ParseXml`] if `document.xml` cannot be parsed.
 ```rust
 pub fn inspect_docx (bytes: &[u8]) -> Result<DocxSummary>
+```
+
+```rust
+pub fn render_pdf_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
+```
+
+> Render a [`poiesis_core::Document`] to ODT bytes.
+> 
+> ODT output requires the Pandoc backend (B-012) which has not landed yet.
+> Returns [`Error::PandocRequired`] until B-012 ships.
+> 
+> # Errors
+> 
+> Always returns [`Error::PandocRequired`] in this stub implementation.
+```rust
+pub fn render_odt_from_doc (_doc: &poiesis_core::Document) -> Result<Vec<u8>>
 ```

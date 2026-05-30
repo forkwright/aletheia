@@ -55,7 +55,6 @@ energeia = { path = "../energeia", optional = true, features = [
 ] }
 hermeneus = { path = "../hermeneus" }
 poiesis-core = { path = "../poiesis/core" }
-poiesis-text = { path = "../poiesis/text" }
 poiesis-sheet = { path = "../poiesis/sheet" }
 poiesis-lint = { path = "../poiesis/lint" }
 poiesis-slides = { path = "../poiesis/slides" }
