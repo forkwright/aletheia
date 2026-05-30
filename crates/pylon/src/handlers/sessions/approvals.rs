@@ -12,6 +12,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use nous::approval::{ApprovalChoice, ApprovalDecision};
 use serde::{Deserialize, Serialize};
+use symbolon::types::Role;
 use tracing::{info, instrument};
 use utoipa::ToSchema;
 
@@ -20,12 +21,11 @@ use crate::error::{
 };
 use crate::extract::{Claims, require_role};
 use crate::state::SessionsState;
-use symbolon::types::Role;
 
 /// Operator decision payload for a pending tool approval.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ApprovalRequest {
-    /// The tool_use_id from the matching `tool_approval_required` event.
+    /// The `tool_use_id` from the matching `tool_approval_required` event.
     pub tool_id: String,
     /// `"approved"` or `"denied"`.
     pub decision: String,

@@ -523,9 +523,10 @@ pub async fn stream_turn(
     // streaming task ends; the gate itself defaults-deny on timeout, so a
     // dropped client connection denies pending Mandatory tool calls rather
     // than letting them block the pipeline indefinitely.
-    let (approval_tx, approval_rx) =
-        mpsc::channel::<nous::approval::ApprovalDecision>(8);
-    let approval_gate = Some(nous::approval::ApprovalGate::with_default_timeout(approval_rx));
+    let (approval_tx, approval_rx) = mpsc::channel::<nous::approval::ApprovalDecision>(8);
+    let approval_gate = Some(nous::approval::ApprovalGate::with_default_timeout(
+        approval_rx,
+    ));
     let approval_guard = state
         .approval_registry
         .register(session_id.clone(), approval_tx)
