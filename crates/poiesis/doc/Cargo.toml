@@ -21,7 +21,7 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 # XML parsing for inspect
 quick-xml = "0.39"
 
-# Document → Typst/PDF bridge (interim until B-012 Pandoc matrix)
+# Document model + Typst fast-lane (B-012/B-013)
 poiesis-core = { path = "../core" }
 poiesis-typst = { path = "../typst" }
 
@@ -32,6 +32,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tracing = { workspace = true }
+
+# Temp file for Pandoc AST subprocess contract
+tempfile = "3"
 
 [dev-dependencies]
 serde_json = { workspace = true }
