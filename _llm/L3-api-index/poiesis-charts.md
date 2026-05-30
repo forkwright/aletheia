@@ -491,6 +491,38 @@ impl Canvas {
 }
 ```
 
+## `src/render/kinds/bar.rs`
+
+> Emit the bar chart SVG.
+> 
+> Caller invariant (enforced by [`Chart::validate`](crate::model::Chart::validate)):
+> - `chart.kind == ChartKind::Bar`
+> - `chart.series` is non-empty
+```rust
+pub fn emit (
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    canvas: &Canvas,
+    mode: ColorMode,
+) -> Result<String>
+```
+
+## `src/render/kinds/column.rs`
+
+> Emit the column chart SVG.
+> 
+> Caller invariant (enforced by [`Chart::validate`](crate::model::Chart::validate)):
+> - `chart.kind == ChartKind::Column`
+> - `chart.series` is non-empty
+```rust
+pub fn emit (
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    canvas: &Canvas,
+    mode: ColorMode,
+) -> Result<String>
+```
+
 ## `src/render/kinds/combo.rs`
 
 > Emit the combo chart SVG.
