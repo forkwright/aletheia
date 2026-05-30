@@ -440,6 +440,21 @@ pub fn emit_theme_xml (theme: &ResolvedTheme) -> Result<String, ThemeError>
 pub fn emit_base_pptx (theme: &ResolvedTheme) -> Result<Vec<u8>, ThemeError>
 ```
 
+## `src/sinks/reference_docx.rs`
+
+> Emit a Pandoc-compatible `reference.docx` as a ZIP byte vector.
+> 
+> The archive contains the minimal OOXML package required by Pandoc's
+> reference-doc reader, with `word/styles.xml` applying the theme's brand
+> fonts and colors to standard paragraph styles.
+> 
+> # Errors
+> 
+> Returns [`ThemeError::ZipWrite`] if any ZIP entry fails to write.
+```rust
+pub fn emit_reference_docx (theme: &ResolvedTheme) -> Result<Vec<u8>, ThemeError>
+```
+
 ## `src/sinks/typst.rs`
 
 > Emit the theme as Typst `#let` variable declarations.
