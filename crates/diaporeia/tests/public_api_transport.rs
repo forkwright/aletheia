@@ -167,6 +167,8 @@ async fn router_rejects_expired_bearer_token() {
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
+        note_store: None,
+        blackboard_store: None,
     });
 
     let token = issue_token(&jwt_manager, "alice", Role::Admin);

@@ -18,7 +18,8 @@ use koina::id::SessionId;
 use symbolon::types::Role;
 
 use crate::error::{
-    FactNotFoundSnafu, InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu,
+    BlackboardStoreSnafu, BlackboardStoreUnavailableSnafu, FactNotFoundSnafu, InvalidInputSnafu,
+    KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu, NoteStoreSnafu, NoteStoreUnavailableSnafu,
     NousNotFoundSnafu, PipelineSnafu, RepomixPackSnafu, RepomixUnavailableSnafu,
     SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
 };
@@ -1386,6 +1387,615 @@ impl DiaporeiaServer {
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
         )]))
+    }
+
+    /// Manage session notes (add, list, delete).
+    #[tool(description = "Manage session notes. Actions: add, list, delete. Requires Agent role.")]
+    async fn memory_note(
+        &self,
+        Parameters(params): Parameters<params::MemoryNoteParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "memory_note").await?;
+
+        let store = self
+            .state
+            .note_store
+            .clone()
+            .ok_or_else(|| NoteStoreUnavailableSnafu {}.build())?;
+
+        match params.action.as_str() {
+            "add" => {
+                let content = params.content.ok_or_else(|| {
+                    rmcp::ErrorData::from(
+                        InvalidInputSnafu {
+                            message: "content is required for 'add' action".to_owned(),
+                        }
+                        .build(),
+                    )
+                })?;
+                let category = params.category.as_deref().unwrap_or("context");
+                let note_id = store
+                    .add_note(&params.session_id, "mcp-client", category, &content)
+                    .map_err(|e| {
+                        rmcp::ErrorData::from(
+                            NoteStoreSnafu {
+                                message: e.to_string(),
+                            }
+                            .build(),
+                        )
+                    })?;
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    format!("Note added with ID {note_id}."),
+                )]))
+            }
+            "list" => {
+                let notes = store.get_notes(&params.session_id).map_err(|e| {
+                    rmcp::ErrorData::from(
+                        NoteStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+                if notes.is_empty() {
+                    return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                        "No notes found for this session.",
+                    )]));
+                }
+                let lines: Vec<String> = notes
+                    .iter()
+                    .map(|n| format!("[{}] {}: {}", n.id, n.category, n.content))
+                    .collect();
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    lines.join("\n"),
+                )]))
+            }
+            "delete" => {
+                let note_id = params.note_id.ok_or_else(|| {
+                    rmcp::ErrorData::from(
+                        InvalidInputSnafu {
+                            message: "note_id is required for 'delete' action".to_owned(),
+                        }
+                        .build(),
+                    )
+                })?;
+                let deleted = store.delete_note(note_id).map_err(|e| {
+                    rmcp::ErrorData::from(
+                        NoteStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+                if deleted {
+                    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                        format!("Note {note_id} deleted."),
+                    )]))
+                } else {
+                    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                        format!("Note {note_id} not found."),
+                    )]))
+                }
+            }
+            other => Err(rmcp::ErrorData::from(
+                InvalidInputSnafu {
+                    message: format!("unknown action: {other}; expected add, list, or delete"),
+                }
+                .build(),
+            )),
+        }
+    }
+
+    /// Manage shared blackboard state (write, read, list, delete).
+    #[tool(
+        description = "Manage shared blackboard state. Actions: write, read, list, delete. Requires Agent role."
+    )]
+    async fn memory_blackboard(
+        &self,
+        Parameters(params): Parameters<params::MemoryBlackboardParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Agent, "memory_blackboard").await?;
+
+        let store = self
+            .state
+            .blackboard_store
+            .clone()
+            .ok_or_else(|| BlackboardStoreUnavailableSnafu {}.build())?;
+
+        match params.action.as_str() {
+            "write" => {
+                let key = params.key.ok_or_else(|| {
+                    rmcp::ErrorData::from(
+                        InvalidInputSnafu {
+                            message: "key is required for 'write' action".to_owned(),
+                        }
+                        .build(),
+                    )
+                })?;
+                let value = params.value.ok_or_else(|| {
+                    rmcp::ErrorData::from(
+                        InvalidInputSnafu {
+                            message: "value is required for 'write' action".to_owned(),
+                        }
+                        .build(),
+                    )
+                })?;
+                let author = params.author.ok_or_else(|| {
+                    rmcp::ErrorData::from(
+                        InvalidInputSnafu {
+                            message: "author is required for 'write' action".to_owned(),
+                        }
+                        .build(),
+                    )
+                })?;
+                let ttl = params.ttl_seconds.ok_or_else(|| {
+                    rmcp::ErrorData::from(
+                        InvalidInputSnafu {
+                            message: "ttl_seconds is required for 'write' action".to_owned(),
+                        }
+                        .build(),
+                    )
+                })?;
+                store.write(&key, &value, &author, ttl).map_err(|e| {
+                    rmcp::ErrorData::from(
+                        BlackboardStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    format!("Blackboard entry '{key}' written."),
+                )]))
+            }
+            "read" => {
+                let key = params.key.ok_or_else(|| {
+                    rmcp::ErrorData::from(
+                        InvalidInputSnafu {
+                            message: "key is required for 'read' action".to_owned(),
+                        }
+                        .build(),
+                    )
+                })?;
+                let entry = store.read(&key).map_err(|e| {
+                    rmcp::ErrorData::from(
+                        BlackboardStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+                match entry {
+                    Some(e) => Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                        format!(
+                            "{} = {} (author: {}, ttl: {}s)",
+                            e.key, e.value, e.author_nous_id, e.ttl_seconds
+                        ),
+                    )])),
+                    None => Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                        "No entry found.".to_owned(),
+                    )])),
+                }
+            }
+            "list" => {
+                let entries = store.list().map_err(|e| {
+                    rmcp::ErrorData::from(
+                        BlackboardStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+                if entries.is_empty() {
+                    return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                        "Blackboard is empty.",
+                    )]));
+                }
+                let lines: Vec<String> = entries
+                    .iter()
+                    .map(|e| {
+                        format!(
+                            "{} = {} (author: {}, ttl: {}s)",
+                            e.key, e.value, e.author_nous_id, e.ttl_seconds
+                        )
+                    })
+                    .collect();
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    lines.join("\n"),
+                )]))
+            }
+            "delete" => {
+                let key = params.key.ok_or_else(|| {
+                    rmcp::ErrorData::from(
+                        InvalidInputSnafu {
+                            message: "key is required for 'delete' action".to_owned(),
+                        }
+                        .build(),
+                    )
+                })?;
+                let author = params.author.ok_or_else(|| {
+                    rmcp::ErrorData::from(
+                        InvalidInputSnafu {
+                            message: "author is required for 'delete' action".to_owned(),
+                        }
+                        .build(),
+                    )
+                })?;
+                let deleted = store.delete(&key, &author).map_err(|e| {
+                    rmcp::ErrorData::from(
+                        BlackboardStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+                if deleted {
+                    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                        format!("Blackboard entry '{key}' deleted."),
+                    )]))
+                } else {
+                    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                        format!("Blackboard entry '{key}' not found."),
+                    )]))
+                }
+            }
+            other => Err(rmcp::ErrorData::from(
+                InvalidInputSnafu {
+                    message: format!(
+                        "unknown action: {other}; expected write, read, list, or delete"
+                    ),
+                }
+                .build(),
+            )),
+        }
+    }
+
+    /// Semantic search across the knowledge graph (memory-scoped).
+    #[tool(description = "Semantic search across the knowledge graph. Requires Operator role.")]
+    async fn memory_search(
+        &self,
+        Parameters(params): Parameters<params::MemorySearchParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
+        require_role(self, &context, Role::Operator, "memory_search").await?;
+        let config = require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+            let limit = params
+                .limit
+                .unwrap_or(10)
+                .min(usize::try_from(config.mcp.knowledge_graph.max_search_results).unwrap_or(20));
+            let limit_i64 = i64::try_from(limit).unwrap_or(10);
+
+            let results = store
+                .search_text_for_recall(&params.query, limit_i64)
+                .map_err(|e| {
+                    rmcp::ErrorData::from(
+                        KnowledgeStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+
+            let results: Vec<_> = if let Some(ref nous_id) = params.nous_id {
+                results
+                    .into_iter()
+                    .filter(|r| r.source_id.contains(nous_id.as_str()))
+                    .collect()
+            } else {
+                results
+            };
+
+            let json = serde_json::to_string_pretty(&results)
+                .context(SerializationSnafu {})
+                .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = (params, config);
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
+    }
+
+    /// Correct a fact in the knowledge graph by creating a corrected copy
+    /// and forgetting the original.
+    #[tool(
+        description = "Correct a fact in the knowledge graph. Requires Operator role. Returns the new fact ID."
+    )]
+    async fn memory_correct(
+        &self,
+        Parameters(params): Parameters<params::MemoryCorrectParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Operator, "memory_correct").await?;
+        require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            use mneme::id::FactId;
+            use mneme::knowledge::{
+                EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+                default_stability_hours, far_future,
+            };
+
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+
+            let fact_id = FactId::new(&params.fact_id).map_err(|e| {
+                rmcp::ErrorData::from(
+                    InvalidInputSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let mut facts = store.read_facts_by_id(&params.fact_id).map_err(|e| {
+                rmcp::ErrorData::from(
+                    KnowledgeStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+            let old_fact = facts.pop().ok_or_else(|| {
+                rmcp::ErrorData::from(
+                    FactNotFoundSnafu {
+                        id: params.fact_id.clone(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let now = jiff::Timestamp::now();
+            let new_fact_id_str = format!("f-mcp-corrected-{}", koina::uuid::uuid_v4());
+            let new_fact_id = FactId::new(&new_fact_id_str).map_err(|e| {
+                rmcp::ErrorData::from(
+                    InvalidInputSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let new_fact = Fact {
+                id: new_fact_id.clone(),
+                nous_id: params.nous_id.unwrap_or_else(|| old_fact.nous_id.clone()),
+                fact_type: old_fact.fact_type.clone(),
+                content: params.new_content,
+                scope: old_fact.scope,
+                project_id: old_fact.project_id.clone(),
+                sensitivity: old_fact.sensitivity,
+                visibility: old_fact.visibility,
+                temporal: FactTemporal {
+                    valid_from: now,
+                    valid_to: far_future(),
+                    recorded_at: now,
+                },
+                provenance: FactProvenance {
+                    confidence: old_fact.provenance.confidence,
+                    tier: EpistemicTier::Inferred,
+                    source_session_id: None,
+                    stability_hours: default_stability_hours("knowledge"),
+                },
+                lifecycle: FactLifecycle {
+                    superseded_by: None,
+                    is_forgotten: false,
+                    forgotten_at: None,
+                    forget_reason: None,
+                },
+                access: FactAccess {
+                    access_count: 0,
+                    last_accessed_at: None,
+                },
+            };
+
+            store.insert_fact_async(new_fact).await.map_err(|e| {
+                rmcp::ErrorData::from(
+                    KnowledgeStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let fact_id_clone = fact_id.clone();
+            tokio::task::spawn_blocking(move || {
+                store.forget_fact(&fact_id_clone, mneme::knowledge::ForgetReason::Superseded)
+            })
+            .await
+            .map_err(|e| {
+                rmcp::ErrorData::from(
+                    KnowledgeStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?
+            .map_err(|e| {
+                rmcp::ErrorData::from(
+                    KnowledgeStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let json = serde_json::to_string_pretty(&serde_json::json!({
+                "new_fact_id": new_fact_id.as_str(),
+                "old_fact_id": fact_id.as_str(),
+                "status": "corrected",
+            }))
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = params;
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
+    }
+
+    /// Retract a fact from the knowledge graph (soft-delete).
+    #[tool(description = "Retract a fact from the knowledge graph. Requires Operator role.")]
+    async fn memory_retract(
+        &self,
+        Parameters(params): Parameters<params::MemoryRetractParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Operator, "memory_retract").await?;
+        require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            use mneme::id::FactId;
+            use mneme::knowledge::ForgetReason;
+
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+
+            let fact_id = FactId::new(&params.fact_id).map_err(|e| {
+                rmcp::ErrorData::from(
+                    InvalidInputSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let reason = params
+                .reason
+                .as_deref()
+                .unwrap_or("user_requested")
+                .parse::<ForgetReason>()
+                .map_err(|e| rmcp::ErrorData::from(InvalidInputSnafu { message: e }.build()))?;
+
+            let fact_id_clone = fact_id.clone();
+            let reason_clone = reason;
+            tokio::task::spawn_blocking(move || store.forget_fact(&fact_id_clone, reason_clone))
+                .await
+                .map_err(|e| {
+                    rmcp::ErrorData::from(
+                        KnowledgeStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?
+                .map_err(|e| {
+                    rmcp::ErrorData::from(
+                        KnowledgeStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+
+            let json = serde_json::to_string_pretty(&serde_json::json!({
+                "fact_id": fact_id.as_str(),
+                "retracted": true,
+                "reason": reason.as_str(),
+            }))
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = params;
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
+    }
+
+    /// Forget a fact from the knowledge graph (soft-delete).
+    #[tool(description = "Forget a fact from the knowledge graph. Requires Operator role.")]
+    async fn memory_forget(
+        &self,
+        Parameters(params): Parameters<params::MemoryForgetParams>,
+        context: RequestContext<rmcp::RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
+        require_role(self, &context, Role::Operator, "memory_forget").await?;
+        require_knowledge_graph(self).await?;
+
+        #[cfg(feature = "knowledge-store")]
+        {
+            use mneme::id::FactId;
+            use mneme::knowledge::ForgetReason;
+
+            let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+
+            let fact_id = FactId::new(&params.fact_id).map_err(|e| {
+                rmcp::ErrorData::from(
+                    InvalidInputSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
+
+            let reason = params
+                .reason
+                .parse::<ForgetReason>()
+                .map_err(|e| rmcp::ErrorData::from(InvalidInputSnafu { message: e }.build()))?;
+
+            let fact_id_clone = fact_id.clone();
+            let reason_clone = reason;
+            tokio::task::spawn_blocking(move || store.forget_fact(&fact_id_clone, reason_clone))
+                .await
+                .map_err(|e| {
+                    rmcp::ErrorData::from(
+                        KnowledgeStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?
+                .map_err(|e| {
+                    rmcp::ErrorData::from(
+                        KnowledgeStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+
+            let json = serde_json::to_string_pretty(&serde_json::json!({
+                "fact_id": fact_id.as_str(),
+                "forgotten": true,
+                "reason": reason.as_str(),
+            }))
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                json,
+            )]));
+        }
+
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            let _ = params;
+            Err(KnowledgeStoreUnavailableSnafu {}.build().into())
+        }
     }
 }
 
