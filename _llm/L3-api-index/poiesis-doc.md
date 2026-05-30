@@ -105,3 +105,40 @@ pub fn render_pdf_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
 ```rust
 pub fn render_odt_from_doc (_doc: &poiesis_core::Document) -> Result<Vec<u8>>
 ```
+
+## `src/pandoc_probe.rs`
+
+```rust
+pub struct PandocProbe {
+    /// Absolute path to the `pandoc` binary.
+    pub path: PathBuf,
+    /// Version string reported by `pandoc --version`, e.g. `"3.1.13"`.
+    pub version: String,
+}
+```
+
+```rust
+impl PandocProbe {
+    pub fn check () -> Result<Self, PandocProbeError>;
+}
+```
+
+```rust
+pub enum PandocProbeError {
+    /// `pandoc` binary not found on `PATH`.
+    #[snafu(display(
+        "pandoc not found on PATH — install via `nix develop` \
+         (pandoc is pinned in flake.nix), or use the `pdf` format which needs no pandoc"
+    ))]
+    NotFound,
+
+    /// `pandoc --version` found the binary but the command failed.
+    #[snafu(display("pandoc found at {} but `pandoc --version` failed: {detail}", path.display()))]
+    VersionCheckFailed {
+        /// Path where pandoc was found.
+        path: PathBuf,
+        /// Human-readable failure reason.
+        detail: String,
+    },
+}
+```
