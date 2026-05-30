@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-30T02:29:54Z"
+generated_at = "2026-05-30T02:46:31Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -158,7 +158,7 @@ l3_token_estimate = 12254
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "28e6e040304a534b30e03e663e63c7a175de1c7dfb3126f4f2d3eae309710ef0"
+source_hash = "5f076ceefcd98f701e87d5095f522f3fd3dad99f46c3d2966304c4445b2759b8"
 l3_token_estimate = 11827
 
 [[crates]]
@@ -194,13 +194,13 @@ l3_token_estimate = 446
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "3a66c9df875c8666c1b92d7e914c75cad245dc178bf098ea7e8d19a66657bee7"
-l3_token_estimate = 476
+source_hash = "de565291bf627ea000ff922b22b821b0bbb006a853b5925f69391e305f6d7cc5"
+l3_token_estimate = 706
 
 [[crates]]
 name = "poiesis-inspect"
 path = "crates/poiesis/inspect"
-source_hash = "b31b0ceaeb118e88865bdf75b52c8f59a81eb202145402cfde42470e3b37a253"
+source_hash = "aa484b1ba5b23ecb08d1518645695eb4a8a60ae5d013058b13a0609efc9ec416"
 l3_token_estimate = 485
 
 [[crates]]
@@ -238,12 +238,6 @@ name = "poiesis-slides"
 path = "crates/poiesis/slides"
 source_hash = "6a58b500e89a7c10191b0f9fc5b4b0b35d6933799dfd2594ecf0b883a875a30c"
 l3_token_estimate = 600
-
-[[crates]]
-name = "poiesis-text"
-path = "crates/poiesis/text"
-source_hash = "608436b1510d232f1e9962ca8cc92c2a91426195230e85ec4c909f674ddef7a6"
-l3_token_estimate = 547
 
 [[crates]]
 name = "poiesis-theme"
