@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use poiesis_core::bodies::{Sheet, Workbook, WorkbookCell};
 use poiesis_core::factbase::ResolvedFact;
 use poiesis_core::ids::FactId;
-use poiesis_core::scalar::{Money, Scalar, ScalarKind, Unit};
+use poiesis_core::scalar::{Scalar, ScalarKind, Unit};
 use poiesis_theme::resolved::ResolvedTheme;
 use rust_xlsxwriter::{Format, Workbook as XlsxWorkbook};
 
@@ -46,7 +46,7 @@ fn render_sheet(
     theme: &ResolvedTheme,
 ) -> Result<()> {
     let ws = xlsx_wb.add_worksheet();
-    ws.set_name(sheet.name.as_ref())?;
+    ws.set_name(sheet.name.as_str())?;
     ws.set_freeze_panes(1, 0)?;
 
     let ncols = sheet.headers.len();
