@@ -158,6 +158,36 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// The session notes MCP surface is disabled or not configured.
+    #[snafu(display("session notes store is not available"))]
+    NoteStoreUnavailable {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The shared blackboard MCP surface is disabled or not configured.
+    #[snafu(display("blackboard store is not available"))]
+    BlackboardStoreUnavailable {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A note store operation failed.
+    #[snafu(display("note store error: {message}"))]
+    NoteStore {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A blackboard store operation failed.
+    #[snafu(display("blackboard store error: {message}"))]
+    BlackboardStore {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// The repomix MCP surface is disabled or not configured.
     #[snafu(display(
         "repomix MCP surface is disabled; set mcp.repomix.enabled = true in aletheia.toml"
@@ -257,6 +287,10 @@ pub struct DiaporeiaState {
     /// `mcp.knowledge_graph.enabled` is `false`.
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Session notes store for the `memory_note` tool.
+    pub note_store: Option<Arc<dyn NoteStore>>,
+    /// Shared blackboard store for the `memory_blackboard` tool.
+    pub blackboard_store: Option<Arc<dyn BlackboardStore>>,
 }
 ```
 
