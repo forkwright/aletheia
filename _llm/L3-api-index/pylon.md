@@ -5,6 +5,34 @@ Crate path: `crates/pylon`
 Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
+## `src/approval_registry.rs`
+
+```rust
+pub struct ApprovalRegistry {
+    inner: Mutex<HashMap<String, mpsc::Sender<ApprovalDecision>>>,
+}
+```
+
+```rust
+impl ApprovalRegistry {
+    pub fn new () -> Self;
+    pub async fn register (
+        self: &Arc<Self>,
+        session_id: String,
+        sender: mpsc::Sender<ApprovalDecision>,
+    ) -> Guard;
+    pub async fn try_send (&self, session_id: &str, decision: ApprovalDecision) -> bool;
+}
+```
+
+> RAII guard that unregisters the session's sender when dropped.
+```rust
+pub struct Guard {
+    registry: Arc<ApprovalRegistry>,
+    session_id: Option<String>,
+}
+```
+
 ## `src/error.rs`
 
 ```rust
@@ -1046,6 +1074,33 @@ pub struct ToolSummary {
 }
 ```
 
+## `src/handlers/sessions/approvals.rs`
+
+```rust
+pub struct ApprovalRequest {
+    /// The `tool_use_id` from the matching `tool_approval_required` event.
+    pub tool_id: String,
+    /// `"approved"` or `"denied"`.
+    pub decision: String,
+}
+```
+
+```rust
+pub struct ApprovalResponse {
+    /// `true` if the decision was routed to an active turn.
+    pub routed: bool,
+}
+```
+
+```rust
+pub async fn resolve (
+    State(state): State<SessionsState>,
+    claims: Claims,
+    Path(session_id): Path<String>,
+    Json(body): Json<ApprovalRequest>,
+) -> Result<impl IntoResponse, ApiError>
+```
+
 ## `src/handlers/sessions/mod.rs`
 
 ```rust
@@ -1836,6 +1891,12 @@ pub struct AppState {
     pub metrics_registry: MetricsRegistry,
     /// In-process broadcast bus for domain events.
     pub event_bus: Arc<EventBus>,
+    /// Per-session approval-decision sender registry (#3958, ADR-005).
+    ///
+    /// Populated by the streaming handler at turn start, drained by the
+    /// `POST /api/v1/sessions/{session_id}/approvals` handler, and removed
+    /// when the turn ends.
+    pub approval_registry: Arc<ApprovalRegistry>,
 }
 ```
 
@@ -1915,6 +1976,8 @@ pub struct SessionsState {
     pub turn_buffer_registry: Arc<TurnBufferRegistry>,
     /// In-process broadcast bus for domain events.
     pub event_bus: Arc<EventBus>,
+    /// Per-session approval-decision sender registry (#3958, ADR-005).
+    pub approval_registry: Arc<ApprovalRegistry>,
 }
 ```
 

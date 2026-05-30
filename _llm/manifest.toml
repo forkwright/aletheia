@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-05-30T03:55:26Z"
+generated_at = "2026-05-30T12:20:49Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -20,7 +20,7 @@ l3_token_estimate = 4901
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "7a738108e9c5183928bc6b0928718c35c9618d32544bbb55b3c68fa52bd427d2"
+source_hash = "44459ef29a6ba3b79f04bb575b25ddcc71dcdd93057e74cc68471a46a03e8ddc"
 l3_token_estimate = 167
 
 [[crates]]
@@ -110,7 +110,7 @@ l3_token_estimate = 13187
 [[crates]]
 name = "integration-tests"
 path = "crates/integration-tests"
-source_hash = "2c74693a10fa5a6029bf384d73a1a4148f47b66dbbcdd497e826a0e347720ace"
+source_hash = "bed726fd38f545be5e2ded2dc4ce3ef5621360b5f05f146cd3c0030c37e63dbb"
 l3_token_estimate = 1135
 
 [[crates]]
@@ -146,8 +146,8 @@ l3_token_estimate = 51
 [[crates]]
 name = "nous"
 path = "crates/nous"
-source_hash = "fb1d3ad939cef382cf4887856bcf0f113367c28ca8fcfdd95994320f8398f589"
-l3_token_estimate = 33105
+source_hash = "6bdeb97edcd691d54b88414e9aa396a31ad3e25281710ef5a4c58127ea4a3df8"
+l3_token_estimate = 33544
 
 [[crates]]
 name = "oikonomos"
@@ -164,8 +164,8 @@ l3_token_estimate = 11827
 [[crates]]
 name = "poiesis-charts"
 path = "crates/poiesis/charts"
-source_hash = "87524c1ed768d4913faa9ff170126dc2ed523a27e50739b18308bef225718b97"
-l3_token_estimate = 4466
+source_hash = "7c3c6b37c8d800f4a57df8f523d08f08e06320e9facdafa19d1a17f750d7d500"
+l3_token_estimate = 4605
 
 [[crates]]
 name = "poiesis-core"
@@ -260,8 +260,8 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "1c4ab0827936b02c5971bc86d78bacc287c7f78192f3ec5d6a47199b2b578f66"
-l3_token_estimate = 15093
+source_hash = "1a47611c81ff6aa5fcd55adc7d1db3e76362c162da409355938c44e5bbfa5c29"
+l3_token_estimate = 15500
 
 [[crates]]
 name = "skene"

@@ -94,6 +94,13 @@ pub enum Error {
         /// The chart kind whose emitter arm is still a stub.
         kind: String,
     },
+
+    /// Vega-Lite shell-out failed (npx not found, non-zero exit, etc.).
+    #[snafu(display("vega-lite shell-out failed: {message}"))]
+    VegaShellout {
+        /// Error detail.
+        message: String,
+    },
 }
 ```
 
@@ -618,20 +625,35 @@ pub fn emit (
 ) -> Result<String>
 ```
 
+## `src/render/kinds/stat.rs`
+
+```rust
+pub fn emit (
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    canvas: &Canvas,
+    mode: ColorMode,
+) -> Result<String>
+```
+
 ## `src/render/vega.rs`
 
 > Emit a Vega-Lite-rendered chart.
 > 
+> Builds a Vega-Lite 5.x JSON spec from the [`Chart`] model, then shells out
+> to `npx --yes vega-lite@5.20.1 --vl2svg` to produce SVG.
+> 
 > # Errors
 > 
-> Returns [`crate::Error::EmitterStub`] until the shell-out path lands.
+> Returns [`crate::Error::VegaShellout`] if the npx subprocess fails or the
+> spec cannot be serialised.
 ```rust
 pub fn emit (
     chart: &Chart,
-    _theme: &ResolvedTheme,
-    _canvas: &Canvas,
+    theme: &ResolvedTheme,
+    canvas: &Canvas,
     _mode: ColorMode,
-) -> Result<String>
+) -> crate::Result<String>
 ```
 
 ## `src/render.rs`
