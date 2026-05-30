@@ -21,6 +21,7 @@ use symbolon::jwt::JwtManager;
 use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
 
+use crate::approval_registry::ApprovalRegistry;
 use crate::event_bus::EventBus;
 use crate::idempotency::IdempotencyCache;
 use crate::turn_buffer::TurnBufferRegistry;
@@ -79,6 +80,12 @@ pub struct AppState {
     pub metrics_registry: MetricsRegistry,
     /// In-process broadcast bus for domain events.
     pub event_bus: Arc<EventBus>,
+    /// Per-session approval-decision sender registry (#3958, ADR-005).
+    ///
+    /// Populated by the streaming handler at turn start, drained by the
+    /// `POST /api/v1/sessions/{session_id}/approvals` handler, and removed
+    /// when the turn ends.
+    pub approval_registry: Arc<ApprovalRegistry>,
 }
 
 impl AppState {
@@ -207,6 +214,8 @@ pub struct SessionsState {
     pub turn_buffer_registry: Arc<TurnBufferRegistry>,
     /// In-process broadcast bus for domain events.
     pub event_bus: Arc<EventBus>,
+    /// Per-session approval-decision sender registry (#3958, ADR-005).
+    pub approval_registry: Arc<ApprovalRegistry>,
 }
 
 impl FromRef<Arc<AppState>> for SessionsState {
@@ -220,6 +229,7 @@ impl FromRef<Arc<AppState>> for SessionsState {
             config: Arc::clone(&state.config),
             turn_buffer_registry: Arc::clone(&state.turn_buffer_registry),
             event_bus: Arc::clone(&state.event_bus),
+            approval_registry: Arc::clone(&state.approval_registry),
         }
     }
 }

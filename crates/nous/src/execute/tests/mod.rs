@@ -157,6 +157,7 @@ fn make_registry_with(name: &str, executor: Box<dyn ToolExecutor>) -> ToolRegist
     registry
 }
 
+mod approval;
 mod core;
 mod deferred_schemas;
 mod edge_cases;

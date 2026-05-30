@@ -5,6 +5,8 @@
 pub(crate) mod actor;
 /// Trait adapters bridging organon tool traits to mneme SessionStore.
 pub mod adapters;
+/// User approval gate for reversibility-class tool calls (#3958).
+pub mod approval;
 /// Prompt audit log: operator-visible record of every outbound LLM request (#3411).
 pub mod audit;
 /// System prompt assembly from workspace files and domain packs.

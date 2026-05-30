@@ -28,6 +28,23 @@ use crate::roles::Role;
 
 const SONNET_MODEL: &str = DEFAULT_MODEL;
 
+/// Conservative read-only allowlist applied to spawned actors with no role
+/// template and no explicit `allowed_tools`. Prevents an unrecognized role
+/// from inheriting unrestricted tool access (#3958, ADR-005).
+fn conservative_spawn_allowlist() -> Vec<String> {
+    [
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "view_file",
+        "memory_search",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
+}
+
 /// Resolve role from string, returning typed role or falling back to model heuristic.
 fn resolve_role(role_str: &str) -> Option<Role> {
     Role::parse(role_str)
@@ -140,10 +157,18 @@ impl SpawnService for SpawnServiceImpl {
                 .map_or_else(|| SONNET_MODEL.to_owned(), |t| t.model.to_owned())
         });
 
+        // WHY(#3958, ADR-005): spawned actors with neither an explicit
+        // `allowed_tools` nor a recognized role template MUST fall back to a
+        // conservative read-only allowlist rather than `None`. `None` means
+        // "no allowlist" — and the execute-time gate (execute/mod.rs:638)
+        // treats that as unrestricted, which lets an unknown-role spawn run
+        // exec/rm/http_request/sessions_dispatch with no operator approval
+        // (the parent's approval gate doesn't follow into the child).
         let tool_allowlist = request
             .allowed_tools
             .clone()
-            .or_else(|| template.as_ref().and_then(|t| t.tool_policy.to_allowlist()));
+            .or_else(|| template.as_ref().and_then(|t| t.tool_policy.to_allowlist()))
+            .or_else(|| Some(conservative_spawn_allowlist()));
 
         let tool_groups = template
             .as_ref()
@@ -465,6 +490,38 @@ mod tests {
         }
 
         panic!("spawned actor did not record empirical routing outcome");
+    }
+
+    #[test]
+    fn conservative_spawn_allowlist_is_read_only() {
+        // WHY(#3958, ADR-005): unknown-role spawns must default to a read-only
+        // tool set. If a future contributor "loosens" this list (adds exec, rm,
+        // http_request, etc.) the approval-guard contract breaks: a spawned
+        // actor with no operator would silently execute irreversible tools.
+        let allow = conservative_spawn_allowlist();
+        for safe in ["read", "grep", "find", "ls", "view_file", "memory_search"] {
+            assert!(
+                allow.iter().any(|s| s == safe),
+                "conservative allowlist must include safe tool '{safe}'"
+            );
+        }
+        for dangerous in [
+            "exec",
+            "rm",
+            "write",
+            "edit",
+            "http_request",
+            "message",
+            "sessions_send",
+            "sessions_dispatch",
+            "computer_use",
+            "web_fetch",
+        ] {
+            assert!(
+                !allow.iter().any(|s| s == dangerous),
+                "conservative allowlist must NOT include dangerous tool '{dangerous}'"
+            );
+        }
     }
 
     #[test]

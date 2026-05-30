@@ -184,6 +184,7 @@ impl NousHandle {
             session_id,
             content: content.into(),
             stream_tx,
+            approval_gate: None,
             span: tracing::Span::current(),
             turn_cancel: CancellationToken::new(),
             reply: tx,
@@ -213,6 +214,47 @@ impl NousHandle {
             session_id,
             content: content.into(),
             stream_tx,
+            approval_gate: None,
+            span: tracing::Span::current(),
+            turn_cancel,
+            reply: tx,
+        };
+        self.send_with_timeout(msg, timeout).await?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reply", self.id),
+            }
+            .build()
+        })?
+    }
+
+    /// Send a streaming turn with an operator approval gate (#3958).
+    ///
+    /// When `approval_gate` is `Some`, every Required/Mandatory tool call
+    /// blocks on a decision from the gate's receiver before executing.
+    /// When `None`, the default policy applies: Mandatory denies, Required allows.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. Same profile as
+    /// [`send_turn_streaming_with_cancel`](Self::send_turn_streaming_with_cancel).
+    pub async fn send_turn_streaming_with_approval(
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        content: impl Into<String>,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        approval_gate: Option<crate::approval::ApprovalGate>,
+        timeout: Duration,
+        turn_cancel: CancellationToken,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        let msg = NousMessage::StreamingTurn {
+            session_key: session_key.into(),
+            session_id,
+            content: content.into(),
+            stream_tx,
+            approval_gate,
             span: tracing::Span::current(),
             turn_cancel,
             reply: tx,
