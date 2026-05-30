@@ -211,6 +211,19 @@ impl CostLedger {
 ## `src/cron.rs`
 
 ```rust
+/// Policy for handling overlap between scheduled fires of the same task.
+pub enum OverlapPolicy {
+    /// Allow a new scheduled fire even while a previous callback is still in
+    /// flight. The default — matches the historical scheduler behavior where a
+    /// slow callback does not block later cron ticks.
+    Allow,
+    /// Skip a scheduled fire when the previous callback for the same task has
+    /// not yet returned.
+    SkipIfInFlight,
+}
+```
+
+```rust
 pub struct CronTask {
     /// Unique task identifier.
     pub name: CompactString,
@@ -258,12 +271,15 @@ impl CronLockStore {
 pub struct CronScheduler {
     tasks: Vec<CronTask>,
     lock_store: Arc<CronLockStore>,
+    overlap_policy: OverlapPolicy,
+    in_flight: Arc<parking_lot::Mutex<HashSet<CompactString>>>,
 }
 ```
 
 ```rust
 impl CronScheduler {
     pub fn new (tasks: Vec<CronTask>, lock_store: Arc<CronLockStore>) -> Self;
+    pub fn with_overlap_policy (self, policy: OverlapPolicy) -> Self;
     pub fn next_fire_after (&self, task: &CronTask, now: Zoned) -> Option<Zoned>;
     pub async fn run <F, Fut> (&self, cancel: CancellationToken, on_fire: F) -> Result<()> where
         F: Fn(CronTask) -> Fut + Clone + Send + Sync + 'static,

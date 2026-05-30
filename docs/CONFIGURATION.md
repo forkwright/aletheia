@@ -41,6 +41,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [daemon_behavior](#daemon_behavior)
 - [tool_limits](#tool_limits)
 - [maintenance](#maintenance)
+- [dispatch](#dispatch)
 - [logging](#logging)
 - [pricing](#pricing)
 - [packs](#packs)
@@ -470,6 +471,59 @@ alert_threshold_mb = 1000
 
 [maintenance.retention]
 enabled = true
+```
+
+---
+
+## dispatch
+
+Recurring energeia dispatches driven by cron expressions. Each task is parsed
+on startup and scheduled by the daemon: at every scheduled tick the executor
+loads the project's prompt queue, filters by `promptNumbers`, and invokes the
+energeia orchestrator. Requires the `energeia` build feature.
+
+### dispatch.cronTasks[]
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | _required_ | Unique task identifier; used as the fjall lock key for cross-restart dedup. |
+| `schedule` | string | _required_ | 6-field cron expression (`sec min hour dom mon dow`) parsed by `jiff-cron`. |
+| `jitterSecs` | u64 | `0` | Maximum random offset (±, in seconds) applied to each computed fire time to spread thundering-herd starts. |
+| `enabled` | bool | `true` | Set `false` to leave the task in the config without scheduling it. |
+| `dispatchSpec` | table | _required_ | Spec passed to the orchestrator (see below). |
+
+### dispatch.cronTasks[].dispatchSpec
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `project` | string | _required_ | Project key — resolves to `theke/projects/<project>/prompts/queue/`. |
+| `promptNumbers` | u32[] | _required_ | Prompt numbers to dispatch; empty selects every prompt in the queue. |
+| `dagRef` | string | `null` | Optional DAG reference handed to the orchestrator. |
+| `maxParallel` | u32 | `null` | Override the orchestrator's max-concurrent-sessions budget. |
+| `maxTurns` | u32 | `null` | Override the orchestrator's per-session turn budget. |
+
+**Missed-tick policy.** The scheduler computes the next future occurrence
+after `now` on each loop iteration and sleeps until then; if the daemon was
+offline for several scheduled windows, only the next future tick fires (no
+catch-up storm). The fjall-backed lock store also prevents the same scheduled
+time from firing twice across restarts.
+
+**Overlap policy.** When a task's previous callback is still running at the
+next scheduled tick, the new fire is **skipped** with `cron.task.skipped`
+emitted at warn. This prevents two concurrent dispatches from competing for
+the same project worktree.
+
+```toml
+[[dispatch.cronTasks]]
+name = "nightly-aletheia-sweep"
+schedule = "0 0 2 * * *"   # every day at 02:00:00 UTC
+jitterSecs = 60            # ± up to one minute
+enabled = true
+
+[dispatch.cronTasks.dispatchSpec]
+project = "aletheia"
+promptNumbers = [1, 2, 3]
+maxParallel = 2
 ```
 
 ---

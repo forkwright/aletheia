@@ -628,6 +628,11 @@ pub struct CronTaskConfig {
     pub schedule: String,
     /// Jitter in seconds (+/-).
     pub jitter_secs: u64,
+    /// Whether this task is registered with the scheduler. Defaults to `true`
+    /// so that defining a task in config implies the operator wants it run;
+    /// set `enabled = false` to leave the task in the config without firing.
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
     /// What to dispatch.
     pub dispatch_spec: DispatchSpecConfig,
 }
