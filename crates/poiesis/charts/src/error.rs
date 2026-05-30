@@ -98,4 +98,11 @@ pub enum Error {
         /// The chart kind whose emitter arm is still a stub.
         kind: String,
     },
+
+    /// Vega-Lite shell-out failed (npx not found, non-zero exit, etc.).
+    #[snafu(display("vega-lite shell-out failed: {message}"))]
+    VegaShellout {
+        /// Error detail.
+        message: String,
+    },
 }
