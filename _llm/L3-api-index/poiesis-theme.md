@@ -106,6 +106,17 @@ pub enum ThemeError {
         /// Underlying formatter error.
         source: std::fmt::Error,
     },
+
+    /// A ZIP-based sink (PPTX, DOCX, ODT) failed while writing an entry.
+    #[snafu(display("zip sink {sink:?} failed while writing entry {entry:?}: {message}"))]
+    ZipWrite {
+        /// The sink that failed (e.g. `"pptx"`, `"reference_docx"`).
+        sink: String,
+        /// The ZIP entry path that failed.
+        entry: String,
+        /// Error message from the zip writer.
+        message: String,
+    },
 }
 ```
 

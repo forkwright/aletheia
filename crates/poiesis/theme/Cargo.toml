@@ -18,6 +18,7 @@ serde = { version = "=1.0.228", default-features = false, features = ["derive", 
 serde_json = { version = "=1.0.149", default-features = false, features = ["std"] }
 snafu = { version = "=0.8.9" }
 toml = { version = "=1.1.2" }
+zip = { version = "=8.5.1", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = { version = "=3.27.0", default-features = false }
