@@ -32,6 +32,40 @@ pub enum Error {
 }
 ```
 
+```rust
+pub enum WorkbookError {
+    /// A [`WorkbookCell::Cite`](crate::workbook::WorkbookCell) references a fact id not present in the resolved factbase.
+    #[snafu(display("unknown fact id: {id}"))]
+    UnknownFact {
+        /// The fact id that was not found.
+        id: String,
+    },
+    /// `rust_xlsxwriter` returned an error.
+    #[snafu(display("XLSX write error: {message}"))]
+    XlsxWrite {
+        /// Human-readable error description.
+        message: String,
+    },
+}
+```
+
+## `src/format.rs`
+
+> Returns the data-cell format for a column given its kind, unit, and theme.
+```rust
+pub fn cell_format (kind: ScalarKind, unit: Unit, _theme: &ResolvedTheme) -> Format
+```
+
+> Returns the header-row format: bold + optional theme colours.
+```rust
+pub fn header_format (theme: &ResolvedTheme) -> Format
+```
+
+> Returns the totals-row format: same number format as [`cell_format`] but bold.
+```rust
+pub fn totals_format (kind: ScalarKind, unit: Unit, theme: &ResolvedTheme) -> Format
+```
+
 ## `src/lib.rs`
 
 ```rust
@@ -87,6 +121,39 @@ pub struct OdsRenderer;
 impl OdsRenderer {
     pub fn new () -> Self;
 }
+```
+
+## `src/totals.rs`
+
+> Compute per-column totals for a sheet.
+> 
+> Returns one `Option<Scalar>` per column header. Numeric columns
+> (`Count`, `Money`, `Ratio`) are summed across all data rows; `Text` and
+> `Date` columns always return `None`. Columns with no resolvable numeric
+> values also return `None`.
+```rust
+pub fn compute_totals (
+    sheet: &Sheet,
+    facts: &BTreeMap<FactId, ResolvedFact>,
+) -> Vec<Option<Scalar>>
+```
+
+## `src/workbook.rs`
+
+> Renders a [`Workbook`] to an XLSX byte vector.
+> 
+> `facts` is the pre-resolved factbase (call `factbase.resolve(&registry)` before
+> passing here). Every [`WorkbookCell::Cite`] must resolve in `facts`; an unknown
+> fact id returns [`WorkbookError::UnknownFact`].
+> 
+> `theme` drives header formatting via [`crate::format::header_format`] and
+> cell number formats via [`crate::format::cell_format`].
+```rust
+pub fn render_workbook (
+    wb: &Workbook,
+    facts: &BTreeMap<FactId, ResolvedFact>,
+    theme: &ResolvedTheme,
+) -> std::result::Result<Vec<u8>, crate::error::WorkbookError>
 ```
 
 ## `src/xlsx.rs`
