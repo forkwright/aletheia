@@ -419,6 +419,40 @@ pub fn emit_theme_xml (theme: &ResolvedTheme) -> Result<String, ThemeError>
 pub fn emit_base_pptx (theme: &ResolvedTheme) -> Result<Vec<u8>, ThemeError>
 ```
 
+## `src/sinks/typst.rs`
+
+> Emit the theme as Typst `#let` variable declarations.
+> 
+> Downstream Typst templates `#import` or `#include` this file to access
+> brand colors, typography, spacing, grid, and chart palette.
+> 
+> Variable naming:
+> 
+> ```text
+> color-<role>    rgb("#RRGGBB")          (one per [color.role])
+> tone-<name>     rgb("#RRGGBB")          (one per [color.tone])
+> surface-<name>  rgb("#RRGGBB")          (one per [color.surface])
+> type-family-<name>  ("Geist", ...)      (one per [type.family])
+> type-scale-<name>   <px>                (one per [type.scale])
+> space-<name>    <px>                    (one per [space])
+> grid-<slot>     <value>                 (one per present [grid] field)
+> chart-series    (rgb("#..."), ...)      (resolved palette tuple)
+> ```
+> 
+> The output is deterministic: every map is emitted in declaration order
+> (preserved by [`indexmap::IndexMap`]); colors use the canonical uppercase
+> `#RRGGBB` form; integer values carry no fractional digits. The same
+> [`ResolvedTheme`] always produces byte-identical output.
+> 
+> # Errors
+> 
+> Returns [`ThemeError::Sink`] only if the underlying [`std::fmt::Write`]
+> implementation fails. For `String` this is structurally unreachable; the
+> variant exists for composition with non-allocating sinks.
+```rust
+pub fn emit_typst_template (theme: &ResolvedTheme) -> Result<String, ThemeError>
+```
+
 ## `src/tokens.rs`
 
 ```rust
