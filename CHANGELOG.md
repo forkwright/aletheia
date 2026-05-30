@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.30.0](https://github.com/forkwright/aletheia/compare/v0.29.0...v0.30.0) (2026-05-30)
+
+
+### Features
+
+* **aletheia:** faithful import consumer for [#4163](https://github.com/forkwright/aletheia/issues/4163) (PR3/4) ([#4357](https://github.com/forkwright/aletheia/issues/4357)) ([4e49dbe](https://github.com/forkwright/aletheia/commit/4e49dbea39951268c73b3a433018fd92b2d0d2ad))
+* **aletheia:** populate working_state + typed knowledge in export ([#4163](https://github.com/forkwright/aletheia/issues/4163) PR2/4) ([#4351](https://github.com/forkwright/aletheia/issues/4351)) ([702129e](https://github.com/forkwright/aletheia/commit/702129e6eb481537f7f7235e2f5982309381f4f3))
+* **diaporeia:** wire memory.* MCP tools to organon executor ([#4117](https://github.com/forkwright/aletheia/issues/4117)) ([#4352](https://github.com/forkwright/aletheia/issues/4352)) ([7f2e243](https://github.com/forkwright/aletheia/commit/7f2e2431b8d526e9cd4b48c8b5f8cf295ed0a2f3))
+* **graphe:** portability raw entry points for [#4163](https://github.com/forkwright/aletheia/issues/4163) (PR1/4) ([#4349](https://github.com/forkwright/aletheia/issues/4349)) ([f267fe5](https://github.com/forkwright/aletheia/commit/f267fe5ecd6514bac5db8087888c900d6e91cc31))
+* **poiesis-charts:** implement column + bar SVG emitters (B-005) ([#4368](https://github.com/forkwright/aletheia/issues/4368)) ([3559002](https://github.com/forkwright/aletheia/commit/3559002d698b5c4024bfa854a4688e10f5341f4a))
+* **poiesis-charts:** implement line + area SVG emitters (B-005) ([#4372](https://github.com/forkwright/aletheia/issues/4372)) ([2ca94ac](https://github.com/forkwright/aletheia/commit/2ca94ac5377c6dcf092a5e8e649dece4047c8833))
+* **poiesis-charts:** implement pie + doughnut SVG emitters (B-005) ([#4371](https://github.com/forkwright/aletheia/issues/4371)) ([996dbf3](https://github.com/forkwright/aletheia/commit/996dbf3daa8ebd39ec0ba838543e82094e6c2a95))
+* **poiesis-charts:** implement scatter SVG emitter (B-005) ([#4369](https://github.com/forkwright/aletheia/issues/4369)) ([6261c8b](https://github.com/forkwright/aletheia/commit/6261c8b005903fecb77bd4dbb67a904b347596cf))
+* **poiesis-charts:** implement stat KPI SVG emitter (B-005) ([#4374](https://github.com/forkwright/aletheia/issues/4374)) ([1416fa0](https://github.com/forkwright/aletheia/commit/1416fa0a967cd30de3b1442a0ea0074257df4e77))
+* **poiesis-charts:** implement Vega-Lite shell-out emitter (B-005) ([#4373](https://github.com/forkwright/aletheia/issues/4373)) ([e6c9b70](https://github.com/forkwright/aletheia/commit/e6c9b7002a256875a5babdbc24f872f0c28c3b60))
+* **poiesis-charts:** scaffold new crate per B-005 ([#4318](https://github.com/forkwright/aletheia/issues/4318)) ([fa2e374](https://github.com/forkwright/aletheia/commit/fa2e374142031f32c802bdd85ff97a0784ae864c))
+* **poiesis-core:** land B-001 envelope + factbase + open component registry ([#4350](https://github.com/forkwright/aletheia/issues/4350)) ([0cb2bd3](https://github.com/forkwright/aletheia/commit/0cb2bd3bf6a08360a455b46bc3c44ec52b23268a))
+* **poiesis-doc:** pandoc availability probe + flake.nix pin (B-014) ([#4361](https://github.com/forkwright/aletheia/issues/4361)) ([d5efe1d](https://github.com/forkwright/aletheia/commit/d5efe1dad75d6bbbc458690d0f1b4b822b0a2116))
+* **poiesis-doc:** scaffold Pandoc backend module, AST serializer, Lua filter stubs (B-012) ([#4365](https://github.com/forkwright/aletheia/issues/4365)) ([23dbe91](https://github.com/forkwright/aletheia/commit/23dbe910ec3e85b89615e33c566296d120c23ad1))
+* **poiesis-sheet:** wire B-007 workbook feature flag, error type, and module declarations ([#4353](https://github.com/forkwright/aletheia/issues/4353)) ([f6e574d](https://github.com/forkwright/aletheia/commit/f6e574d9b4eeb5e10dc63d9f42ef1c1895e0625b))
+* **poiesis-theme:** B-002 foundation — CSS byte-parity, OOXML clrScheme+fontScheme, doc-vars, extended summus tokens ([#4370](https://github.com/forkwright/aletheia/issues/4370)) ([b0c4319](https://github.com/forkwright/aletheia/commit/b0c4319d6b8b5d0a6541de19752a89213dbc65fa))
+* **poiesis-theme:** base PPTX sink (B-002-B) ([#4378](https://github.com/forkwright/aletheia/issues/4378)) ([f072bfe](https://github.com/forkwright/aletheia/commit/f072bfeac947c6f5744e5b37683f88add03b7566))
+* **poiesis-theme:** LaTeX template sink (B-002-C) ([#4380](https://github.com/forkwright/aletheia/issues/4380)) ([8cc683d](https://github.com/forkwright/aletheia/commit/8cc683dfd48f22db2e65cd4b4df6408ad3ba3c51))
+* **poiesis-theme:** reference.docx sink (B-002-D) ([#4381](https://github.com/forkwright/aletheia/issues/4381)) ([520a9b3](https://github.com/forkwright/aletheia/commit/520a9b33cbd7b59cc7a08017d2aeb0a89d150ee3))
+* **poiesis-theme:** Typst template sink (B-002-C) ([#4379](https://github.com/forkwright/aletheia/issues/4379)) ([cf48d61](https://github.com/forkwright/aletheia/commit/cf48d61e1dd2b3b8e2f1ef9b65a5d828abd544fb))
+* **poiesis:** add chromium CDP printer for HTML-to-PDF conversion ([#4377](https://github.com/forkwright/aletheia/issues/4377)) ([bd4e29e](https://github.com/forkwright/aletheia/commit/bd4e29e3b9efb2f157134b62184a135e9631963c))
+* **poiesis:** add deck-layout solver and deck HTML/CSS renderer ([#4360](https://github.com/forkwright/aletheia/issues/4360)) ([5aa1472](https://github.com/forkwright/aletheia/commit/5aa14726b20c4f89aff7471f2e4e6a6f3218c58b))
+* **poiesis:** add image-text, timeline, comparison, blank component packs ([#4367](https://github.com/forkwright/aletheia/issues/4367)) ([457efd7](https://github.com/forkwright/aletheia/commit/457efd76f2cc1116b87fb59f194fe4cf4cd7aded))
+* **poiesis:** add stat, quote, chart, table, image-full component packs ([#4366](https://github.com/forkwright/aletheia/issues/4366)) ([4a3df26](https://github.com/forkwright/aletheia/commit/4a3df26d6d190df900c93c5325e85970e99fb381))
+* **poiesis:** add title, section, bullet, two-col component packs ([#4356](https://github.com/forkwright/aletheia/issues/4356)) ([dde8451](https://github.com/forkwright/aletheia/commit/dde8451a9aec583e132e1b6f1ea5ed5025809c3d))
+* **poiesis:** retire poiesis-text; migrate callers to poiesis-doc/typst (B-013) ([#4354](https://github.com/forkwright/aletheia/issues/4354)) ([f13df45](https://github.com/forkwright/aletheia/commit/f13df454594b9b3ed62e6c12aae94e87324f9dec))
+
+
+### Documentation
+
+* **instance:** refresh stale v0.13.x version references to v0.29.0+ line ([#4347](https://github.com/forkwright/aletheia/issues/4347)) ([01bc922](https://github.com/forkwright/aletheia/commit/01bc9226c46778335526702e8d138fd63e7f60dc))
+
 ## [0.29.0](https://github.com/forkwright/aletheia/compare/v0.28.1...v0.29.0) (2026-05-29)
 
 
