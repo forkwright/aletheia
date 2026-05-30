@@ -106,6 +106,57 @@ pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>);
 pub struct SessionBlackboardAdapter(pub Arc<Mutex<SessionStore>>);
 ```
 
+## `src/approval.rs`
+
+> Default timeout for awaiting a user decision on a Required/Mandatory tool call.
+> 
+> 120s matches the desktop daily-driver UX: long enough to read the
+> overlay, short enough that a dropped client connection denies the
+> irreversible action rather than letting it hang the pipeline.
+```rust
+pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
+```
+
+```rust
+pub struct ApprovalDecision {
+    /// The `tool_id` this decision applies to. Must match the `tool_use_id`
+    /// surfaced in the matching `TurnStreamEvent::ToolApprovalRequired`.
+    pub tool_id: String,
+    /// Approve or deny.
+    pub choice: ApprovalChoice,
+}
+```
+
+```rust
+pub enum ApprovalChoice {
+    /// Proceed with execution.
+    Approved,
+    /// Skip execution; synthesize a denial `ToolResult` for the model.
+    Denied,
+}
+```
+
+```rust
+impl ApprovalChoice {
+    pub const fn as_wire_str (self) -> &'static str;
+}
+```
+
+```rust
+pub struct ApprovalGate {
+    rx: Arc<Mutex<mpsc::Receiver<ApprovalDecision>>>,
+    timeout: Duration,
+}
+```
+
+```rust
+impl ApprovalGate {
+    pub fn new (rx: mpsc::Receiver<ApprovalDecision>, timeout: Duration) -> Self;
+    pub fn with_default_timeout (rx: mpsc::Receiver<ApprovalDecision>) -> Self;
+    pub async fn await_decision (&self, tool_id: &str) -> ApprovalChoice;
+}
+```
+
 ## `src/audit.rs`
 
 ```rust
@@ -1878,6 +1929,7 @@ pub async fn execute_streaming (
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult>
 ```
@@ -1965,6 +2017,16 @@ impl NousHandle {
         session_id: Option<String>,
         content: impl Into<String>,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
+        timeout: Duration,
+        turn_cancel: CancellationToken,
+    ) -> error::Result<TurnResult>;
+    pub async fn send_turn_streaming_with_approval (
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        content: impl Into<String>,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        approval_gate: Option<crate::approval::ApprovalGate>,
         timeout: Duration,
         turn_cancel: CancellationToken,
     ) -> error::Result<TurnResult>;
