@@ -12,7 +12,9 @@ use std::pin::Pin;
 
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
-use poiesis_core::{Block, Document, Factbase, Metadata, Renderer, RichText, Span};
+use poiesis_core::{
+    Block, Document, Factbase, Metadata, QaIssue, QaIssueKind, QaReport, Renderer, RichText, Span,
+};
 use poiesis_lint::{LintConfig, Linter};
 use poiesis_verify::Verifier;
 
@@ -625,7 +627,7 @@ impl ToolExecutor for QaGateExecutor {
                 Err(e) => return Ok(e),
             };
 
-            let mut issues: Vec<serde_json::Value> = Vec::new();
+            let mut issues: Vec<QaIssue> = Vec::new();
 
             // 1. Optional factbase validation
             if let Some(fb_json) = extract_opt_str(args, "factbase_json") {
@@ -638,11 +640,11 @@ impl ToolExecutor for QaGateExecutor {
                     }
                 };
                 if let Err(e) = fb.validate() {
-                    issues.push(serde_json::json!({
-                        "kind": "CitationUnresolvable",
-                        "location": null,
-                        "message": e.to_string(),
-                    }));
+                    issues.push(QaIssue {
+                        kind: QaIssueKind::CitationUnresolvable,
+                        location: None,
+                        message: e.to_string(),
+                    });
                 }
             }
 
@@ -650,25 +652,16 @@ impl ToolExecutor for QaGateExecutor {
             let linter = Linter::default();
             let findings = linter.check(prose);
             for finding in &findings {
-                issues.push(serde_json::json!({
-                    "kind": "ProseViolation",
-                    "location": {
-                        "line_start": finding.line_start,
-                        "line_end": finding.line_end,
-                    },
-                    "message": finding.message,
-                }));
+                issues.push(QaIssue {
+                    kind: QaIssueKind::ProseViolation,
+                    location: Some(format!("line {}–{}", finding.line_start, finding.line_end)),
+                    message: finding.message.clone(),
+                });
             }
 
-            // TODO: replace manual JSON with QaReport / QaIssue / QaIssueKind once
-            // poiesis-core exports them (B-008-qa-types parallel unit).
-            let report = serde_json::json!({
-                "has_issues": !issues.is_empty(),
-                "issue_count": issues.len(),
-                "issues": issues,
-            });
+            let report = QaReport::new(issues);
 
-            match serde_json::to_string_pretty(&report) {
+            match QaReport::to_json(&report) {
                 Ok(json) => Ok(ToolResult::text(json)),
                 Err(e) => Ok(ToolResult::error(format!("serialize failed: {e}"))),
             }
@@ -679,8 +672,9 @@ impl ToolExecutor for QaGateExecutor {
 fn qa_gate_def() -> ToolDef {
     ToolDef {
         name: koina::id::ToolName::from_static("qa_gate"), // kanon:ignore RUST/expect
-        description: "Run prose lint and optional factbase validation, returning a structured QA report."
-            .to_owned(),
+        description:
+            "Run prose lint and optional factbase validation, returning a structured QA report."
+                .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
             properties: IndexMap::from([
@@ -697,8 +691,7 @@ fn qa_gate_def() -> ToolDef {
                     "factbase_json".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description:
-                            "Optional JSON-serialized Factbase to validate".to_owned(),
+                        description: "Optional JSON-serialized Factbase to validate".to_owned(),
                         enum_values: None,
                         default: None,
                     },

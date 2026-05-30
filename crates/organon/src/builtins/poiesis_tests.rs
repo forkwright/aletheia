@@ -292,7 +292,10 @@ async fn qa_gate_banned_word_fails() {
         }),
     );
     let result = QaGateExecutor.execute(&input, &ctx).await.expect("exec");
-    assert!(!result.is_error, "qa_gate must succeed even when findings exist: {result:?}");
+    assert!(
+        !result.is_error,
+        "qa_gate must succeed even when findings exist: {result:?}"
+    );
     let text = result.content.text_summary();
     let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid json");
     assert_eq!(
@@ -302,6 +305,10 @@ async fn qa_gate_banned_word_fails() {
     assert!(
         parsed["issue_count"].as_u64().unwrap_or(0) > 0,
         "issue_count must be > 0: {parsed:?}"
+    );
+    assert!(
+        parsed["issues"].is_array(),
+        "issues must be an array: {parsed:?}"
     );
 }
 
