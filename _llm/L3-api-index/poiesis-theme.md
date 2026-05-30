@@ -406,6 +406,19 @@ pub fn emit_docvars_yaml (theme: &ResolvedTheme) -> Result<String, ThemeError>
 pub fn emit_theme_xml (theme: &ResolvedTheme) -> Result<String, ThemeError>
 ```
 
+## `src/sinks/pptx.rs`
+
+> Emit a minimal, valid PPTX ZIP byte vector  -  a "base template" file  - 
+> with the [`ResolvedTheme`]'s color and font scheme baked into
+> `ppt/theme/theme1.xml`.
+> 
+> # Errors
+> 
+> Returns [`ThemeError::ZipWrite`] if any ZIP entry fails to write.
+```rust
+pub fn emit_base_pptx (theme: &ResolvedTheme) -> Result<Vec<u8>, ThemeError>
+```
+
 ## `src/tokens.rs`
 
 ```rust
