@@ -603,6 +603,15 @@ Rules:
                 || crate::knowledge::FactType::classify(&content),
                 crate::knowledge::FactType::from_str_lossy,
             );
+            // WHY: Identity-type facts ("I am X", "My name is Y") are self-descriptions
+            // about the agent, not episodic knowledge. Persisting them causes persona drift
+            // when they are later recalled as facts about external entities. The upstream
+            // is_self_reference filter catches subject="I/me" triples; this guard catches
+            // any Identity-typed fact that slipped through (e.g. third-person extraction).
+            if classified_type == crate::knowledge::FactType::Identity {
+                tracing::debug!(content = %content, "fact skipped at persist: identity-type self-description");
+                continue;
+            }
             let is_correction =
                 fact.is_correction || crate::conflict::is_correction_heuristic(&content);
             let confidence = if is_correction {
