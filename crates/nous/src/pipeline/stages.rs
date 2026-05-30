@@ -654,6 +654,7 @@ pub(super) async fn run_execute_stage(
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    approval_gate: Option<&crate::approval::ApprovalGate>,
     pipeline_start: Instant,
     total_timeout: Option<Duration>,
     emitter: &EventEmitter,
@@ -693,6 +694,7 @@ pub(super) async fn run_execute_stage(
                 tools,
                 tool_ctx,
                 tx,
+                approval_gate,
                 hooks,
             )
             .await

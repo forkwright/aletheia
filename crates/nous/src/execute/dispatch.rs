@@ -14,6 +14,7 @@ use koina::id::ToolName;
 use organon::registry::ToolRegistry;
 use organon::types::{ApprovalRequirement, ToolContext, ToolInput};
 
+use crate::approval::{ApprovalChoice, ApprovalGate};
 use crate::error;
 use crate::pipeline::{InteractionSignal, LoopDetector, LoopVerdict, ToolCall};
 use crate::stream::TurnStreamEvent;
@@ -36,6 +37,105 @@ fn approval_risk(approval: ApprovalRequirement) -> &'static str {
 
 fn approval_reason(tool_name: &str, approval: ApprovalRequirement) -> String {
     format!("Tool '{tool_name}' requires {approval} approval because of its reversibility metadata")
+}
+
+fn record_stream_send_error<T>(
+    tool_ctx: &ToolContext,
+    tool_name: &str,
+    kind: &'static str,
+    err: tokio::sync::mpsc::error::TrySendError<T>,
+) {
+    match err {
+        tokio::sync::mpsc::error::TrySendError::Full(_) => {
+            warn!(
+                tool = tool_name,
+                kind,
+                "streaming approval event dropped: channel buffer full"
+            );
+            crate::metrics::record_stream_event_dropped(tool_ctx.nous_id.as_ref(), "buffer_full");
+        }
+        tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+            debug!(
+                tool = tool_name,
+                kind,
+                "streaming approval event dropped: receiver disconnected"
+            );
+            crate::metrics::record_stream_event_dropped(tool_ctx.nous_id.as_ref(), "disconnected");
+        }
+    }
+}
+
+fn emit_approval_required(
+    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    tool_ctx: &ToolContext,
+    tool_id: &str,
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+    approval: ApprovalRequirement,
+) {
+    if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalRequired {
+        turn_id: tool_ctx.turn_number.to_string(),
+        tool_id: tool_id.to_owned(),
+        tool_name: tool_name.to_owned(),
+        input: tool_input.clone(),
+        risk: approval_risk(approval).to_owned(),
+        reason: approval_reason(tool_name, approval),
+    }) {
+        record_stream_send_error(tool_ctx, tool_name, "approval_required", e);
+    }
+}
+
+fn emit_approval_resolved(
+    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    tool_ctx: &ToolContext,
+    tool_id: &str,
+    tool_name: &str,
+    decision: &str,
+) {
+    if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalResolved {
+        tool_id: tool_id.to_owned(),
+        decision: decision.to_owned(),
+    }) {
+        record_stream_send_error(tool_ctx, tool_name, "approval_resolved", e);
+    }
+}
+
+/// Record a user-denied tool call: append a synthetic `ToolResult` block for the
+/// model, push it on `all_tool_calls` for observability, and emit a `ToolResult`
+/// stream event so the frontend records the denial outcome.
+fn record_denied_call(
+    all_tool_calls: &mut Vec<ToolCall>,
+    tool_results: &mut Vec<ContentBlock>,
+    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    tool_ctx: &ToolContext,
+    tool_id: &str,
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+) {
+    let denial = format!("Tool '{tool_name}' execution denied by user.");
+    all_tool_calls.push(ToolCall {
+        id: tool_id.to_owned(),
+        name: tool_name.to_owned(),
+        input: tool_input.clone(),
+        result: Some(denial.clone()),
+        is_error: true,
+        duration_ms: 0,
+        receipt: None,
+    });
+    tool_results.push(ContentBlock::ToolResult {
+        tool_use_id: tool_id.to_owned(),
+        content: ToolResultContent::Text(denial.clone()),
+        is_error: Some(true),
+    });
+    if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
+        tool_id: tool_id.to_owned(),
+        tool_name: tool_name.to_owned(),
+        result: denial,
+        is_error: true,
+        duration_ms: 0,
+    }) {
+        record_stream_send_error(tool_ctx, tool_name, "denied_tool_result", e);
+    }
 }
 
 /// Inject a bounded diagnostic preamble into tool result content.
@@ -504,6 +604,7 @@ pub(super) async fn dispatch_tools_streaming(
     all_tool_calls: &mut Vec<ToolCall>,
     iterations: u32,
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    approval_gate: Option<&ApprovalGate>,
     max_tool_result_bytes: u32,
     receipt_signer: Option<&organon::receipts::ReceiptSigner>,
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
@@ -548,65 +649,66 @@ pub(super) async fn dispatch_tools_streaming(
         let approval = tools
             .approval_requirement(&tool_name_id)
             .unwrap_or(ApprovalRequirement::Mandatory);
-        if matches!(
-            approval,
-            ApprovalRequirement::Required | ApprovalRequirement::Mandatory
-        ) {
-            if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalRequired {
-                turn_id: tool_ctx.turn_number.to_string(),
-                tool_id: tool_id.clone(),
-                tool_name: tool_name.clone(),
-                input: tool_input.clone(),
-                risk: approval_risk(approval).to_owned(),
-                reason: approval_reason(tool_name, approval),
-            }) {
-                match e {
-                    tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                        warn!(
-                            tool = tool_name.as_str(),
-                            "streaming approval event dropped: channel buffer full"
-                        );
-                        crate::metrics::record_stream_event_dropped(
-                            tool_ctx.nous_id.as_ref(),
-                            "buffer_full",
-                        );
-                    }
-                    tokio::sync::mpsc::error::TrySendError::Closed(_) => {
-                        debug!(
-                            tool = tool_name.as_str(),
-                            "streaming approval event dropped: receiver disconnected"
-                        );
-                        crate::metrics::record_stream_event_dropped(
-                            tool_ctx.nous_id.as_ref(),
-                            "disconnected",
-                        );
-                    }
-                }
+
+        // WHY(#3958, ADR-005): gate execution on operator approval. None/Advisory
+        // auto-resolve; Required/Mandatory block on the approval gate.
+        match approval {
+            ApprovalRequirement::None => {
+                emit_approval_resolved(stream_tx, tool_ctx, tool_id, tool_name, "auto_approved");
             }
-        } else if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalResolved {
-            tool_id: tool_id.clone(),
-            decision: "auto_approved".to_owned(),
-        }) {
-            match e {
-                tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                    warn!(
-                        tool = tool_name.as_str(),
-                        "streaming auto-approval event dropped: channel buffer full"
+            ApprovalRequirement::Advisory => {
+                emit_approval_resolved(stream_tx, tool_ctx, tool_id, tool_name, "advisory_auto");
+            }
+            // WHY: ApprovalRequirement is #[non_exhaustive]; the Mandatory arm here
+            // also catches any future variant defined upstream, treating unknown
+            // requirements as "block" rather than silently auto-approving — the
+            // safer default given the design intent of this enum.
+            ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
+                emit_approval_required(
+                    stream_tx,
+                    tool_ctx,
+                    tool_id,
+                    tool_name,
+                    tool_input,
+                    approval,
+                );
+                // ADR-005 step 4: await operator decision.
+                // No gate wired:
+                //   - Mandatory → deny (silent execution is the bug we are fixing).
+                //   - Required  → approve (lenient for batch/test contexts where the
+                //     call is partially-reversible by reversibility metadata).
+                let choice = match approval_gate {
+                    Some(gate) => gate.await_decision(tool_id).await,
+                    None => match approval {
+                        ApprovalRequirement::Mandatory => {
+                            warn!(
+                                tool = tool_name.as_str(),
+                                tool_id = tool_id.as_str(),
+                                "mandatory tool call with no approval gate wired — default-deny"
+                            );
+                            ApprovalChoice::Denied
+                        }
+                        _ => ApprovalChoice::Approved,
+                    },
+                };
+                emit_approval_resolved(
+                    stream_tx,
+                    tool_ctx,
+                    tool_id,
+                    tool_name,
+                    choice.as_wire_str(),
+                );
+                if matches!(choice, ApprovalChoice::Denied) {
+                    record_denied_call(
+                        all_tool_calls,
+                        &mut tool_results,
+                        stream_tx,
+                        tool_ctx,
+                        tool_id,
+                        tool_name,
+                        tool_input,
                     );
-                    crate::metrics::record_stream_event_dropped(
-                        tool_ctx.nous_id.as_ref(),
-                        "buffer_full",
-                    );
-                }
-                tokio::sync::mpsc::error::TrySendError::Closed(_) => {
-                    debug!(
-                        tool = tool_name.as_str(),
-                        "streaming auto-approval event dropped: receiver disconnected"
-                    );
-                    crate::metrics::record_stream_event_dropped(
-                        tool_ctx.nous_id.as_ref(),
-                        "disconnected",
-                    );
+                    continue;
                 }
             }
         }

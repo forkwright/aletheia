@@ -35,6 +35,9 @@ pub(crate) enum NousMessage {
         session_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
+        /// Operator approval gate for reversibility-class tool calls (#3958, ADR-005).
+        /// `None` falls back to the default policy: deny Mandatory, allow Required.
+        approval_gate: Option<crate::approval::ApprovalGate>,
         /// Caller's tracing span: propagated into the pipeline task for request correlation.
         span: tracing::Span,
         /// Request-scoped turn cancellation token.

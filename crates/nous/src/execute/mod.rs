@@ -32,6 +32,7 @@ use self::resolve::{
     process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
     resolve_turn_model,
 };
+use crate::approval::ApprovalGate;
 use crate::config::NousConfig;
 use crate::error;
 use crate::hooks::registry::HookRegistry;
@@ -475,6 +476,7 @@ pub async fn execute_streaming(
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     // WHY: resolve the streaming turn model once — same reasoning as execute().
@@ -739,6 +741,7 @@ pub async fn execute_streaming(
             &mut all_tool_calls,
             iterations,
             stream_tx,
+            approval_gate,
             config.limits.max_tool_result_bytes,
             Some(&session.receipt_signer),
             Some(&*session.receipt_ledger),

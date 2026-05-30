@@ -361,6 +361,7 @@ impl NousActor {
                             session_id,
                             content,
                             stream_tx,
+                            approval_gate,
                             span,
                             turn_cancel,
                             reply,
@@ -371,12 +372,14 @@ impl NousActor {
                                     panic_count: self.runtime.pipeline_panic_count,
                                 }.build()));
                                 drop(stream_tx);
+                                drop(approval_gate);
                             } else {
                                 self.handle_streaming_turn(turn::StreamingTurnRequest {
                                     session_key,
                                     session_id,
                                     content,
                                     stream_tx,
+                                    approval_gate,
                                     caller_span: span,
                                     turn_cancel,
                                     reply,
