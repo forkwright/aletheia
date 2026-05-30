@@ -7,21 +7,13 @@ use poiesis_core::factbase::ResolvedFact;
 use poiesis_core::ids::FactId;
 use poiesis_core::scalar::{Money, Scalar, ScalarKind, Unit};
 use poiesis_theme::resolved::ResolvedTheme;
-use rust_xlsxwriter::{Format, Workbook as XlsxWorkbook, XlsxError};
+use rust_xlsxwriter::{Format, Workbook as XlsxWorkbook};
 
 use crate::format::{cell_format, header_format, totals_format};
 use crate::totals::compute_totals;
 
 /// Shorthand for workbook-level results.
 type Result<T> = std::result::Result<T, crate::error::WorkbookError>;
-
-impl From<XlsxError> for crate::error::WorkbookError {
-    fn from(e: XlsxError) -> Self {
-        Self::XlsxWrite {
-            message: e.to_string(),
-        }
-    }
-}
 
 /// Renders a [`Workbook`] to an XLSX byte vector.
 ///
