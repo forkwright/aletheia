@@ -238,6 +238,10 @@ impl NousHandle {
     ///
     /// Not cancel-safe. Same profile as
     /// [`send_turn_streaming_with_cancel`](Self::send_turn_streaming_with_cancel).
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "actor entrypoint plumbs session, content, stream, gate, timeout, and cancel; splitting hides the call shape"
+    )]
     pub async fn send_turn_streaming_with_approval(
         &self,
         session_key: impl Into<String>,

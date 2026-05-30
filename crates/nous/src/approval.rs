@@ -22,7 +22,7 @@ pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
 /// A user's decision on a single tool approval request.
 #[derive(Debug, Clone)]
 pub struct ApprovalDecision {
-    /// The tool_id this decision applies to. Must match the tool_use_id
+    /// The `tool_id` this decision applies to. Must match the `tool_use_id`
     /// surfaced in the matching `TurnStreamEvent::ToolApprovalRequired`.
     pub tool_id: String,
     /// Approve or deny.
@@ -122,6 +122,7 @@ impl ApprovalGate {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -135,7 +136,10 @@ mod tests {
         })
         .await
         .expect("send");
-        assert_eq!(gate.await_decision("tool-1").await, ApprovalChoice::Approved);
+        assert_eq!(
+            gate.await_decision("tool-1").await,
+            ApprovalChoice::Approved
+        );
     }
 
     #[tokio::test]

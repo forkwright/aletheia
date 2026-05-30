@@ -43,22 +43,20 @@ fn record_stream_send_error<T>(
     tool_ctx: &ToolContext,
     tool_name: &str,
     kind: &'static str,
-    err: tokio::sync::mpsc::error::TrySendError<T>,
+    err: &tokio::sync::mpsc::error::TrySendError<T>,
 ) {
     match err {
         tokio::sync::mpsc::error::TrySendError::Full(_) => {
             warn!(
                 tool = tool_name,
-                kind,
-                "streaming approval event dropped: channel buffer full"
+                kind, "streaming approval event dropped: channel buffer full"
             );
             crate::metrics::record_stream_event_dropped(tool_ctx.nous_id.as_ref(), "buffer_full");
         }
         tokio::sync::mpsc::error::TrySendError::Closed(_) => {
             debug!(
                 tool = tool_name,
-                kind,
-                "streaming approval event dropped: receiver disconnected"
+                kind, "streaming approval event dropped: receiver disconnected"
             );
             crate::metrics::record_stream_event_dropped(tool_ctx.nous_id.as_ref(), "disconnected");
         }
@@ -81,7 +79,7 @@ fn emit_approval_required(
         risk: approval_risk(approval).to_owned(),
         reason: approval_reason(tool_name, approval),
     }) {
-        record_stream_send_error(tool_ctx, tool_name, "approval_required", e);
+        record_stream_send_error(tool_ctx, tool_name, "approval_required", &e);
     }
 }
 
@@ -96,7 +94,7 @@ fn emit_approval_resolved(
         tool_id: tool_id.to_owned(),
         decision: decision.to_owned(),
     }) {
-        record_stream_send_error(tool_ctx, tool_name, "approval_resolved", e);
+        record_stream_send_error(tool_ctx, tool_name, "approval_resolved", &e);
     }
 }
 
@@ -134,7 +132,7 @@ fn record_denied_call(
         is_error: true,
         duration_ms: 0,
     }) {
-        record_stream_send_error(tool_ctx, tool_name, "denied_tool_result", e);
+        record_stream_send_error(tool_ctx, tool_name, "denied_tool_result", &e);
     }
 }
 
@@ -665,12 +663,7 @@ pub(super) async fn dispatch_tools_streaming(
             // safer default given the design intent of this enum.
             ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
                 emit_approval_required(
-                    stream_tx,
-                    tool_ctx,
-                    tool_id,
-                    tool_name,
-                    tool_input,
-                    approval,
+                    stream_tx, tool_ctx, tool_id, tool_name, tool_input, approval,
                 );
                 // ADR-005 step 4: await operator decision.
                 // No gate wired:

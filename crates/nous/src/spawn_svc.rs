@@ -32,17 +32,10 @@ const SONNET_MODEL: &str = DEFAULT_MODEL;
 /// template and no explicit `allowed_tools`. Prevents an unrecognized role
 /// from inheriting unrestricted tool access (#3958, ADR-005).
 fn conservative_spawn_allowlist() -> Vec<String> {
-    [
-        "read",
-        "grep",
-        "find",
-        "ls",
-        "view_file",
-        "memory_search",
-    ]
-    .into_iter()
-    .map(str::to_owned)
-    .collect()
+    ["read", "grep", "find", "ls", "view_file", "memory_search"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Resolve role from string, returning typed role or falling back to model heuristic.

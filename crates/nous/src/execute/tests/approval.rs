@@ -2,8 +2,12 @@
 //!
 //! These exercise the gate at the dispatch layer directly because the streaming
 //! `execute_streaming` entry point requires a streaming-capable provider, which
-//! the workspace's MockProvider doesn't supply. The gate logic itself lives in
+//! the workspace's `MockProvider` doesn't supply. The gate logic itself lives in
 //! `dispatch_tools_streaming` and is the unit under test.
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test: indices valid after asserting `len`"
+)]
 
 use std::time::Duration;
 
@@ -169,7 +173,11 @@ async fn reversibility_class_call_denied_skips_execution() {
     .await
     .expect("dispatch ok");
 
-    assert_eq!(result.blocks.len(), 1, "denied call produces a denial block");
+    assert_eq!(
+        result.blocks.len(),
+        1,
+        "denied call produces a denial block"
+    );
     assert_eq!(all_calls.len(), 1);
     assert!(all_calls[0].is_error, "denied call must be marked error");
     assert!(
@@ -185,11 +193,7 @@ async fn reversibility_class_call_denied_skips_execution() {
     let events = drain_events(&mut event_rx);
     assert_event_kinds(
         &events,
-        &[
-            "approval_required",
-            "approval_resolved",
-            "tool_result",
-        ],
+        &["approval_required", "approval_resolved", "tool_result"],
     );
     if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[1] {
         assert_eq!(decision, "denied");
@@ -280,10 +284,7 @@ async fn safe_call_proceeds_without_gate() {
     drop(event_tx);
     let events = drain_events(&mut event_rx);
     // No ToolApprovalRequired; just an auto-resolution then execution.
-    assert_event_kinds(
-        &events,
-        &["approval_resolved", "tool_start", "tool_result"],
-    );
+    assert_event_kinds(&events, &["approval_resolved", "tool_start", "tool_result"]);
     if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[0] {
         assert_eq!(decision, "auto_approved");
     } else {
@@ -323,10 +324,7 @@ async fn advisory_call_executes_without_approval_required_event() {
 
     drop(event_tx);
     let events = drain_events(&mut event_rx);
-    assert_event_kinds(
-        &events,
-        &["approval_resolved", "tool_start", "tool_result"],
-    );
+    assert_event_kinds(&events, &["approval_resolved", "tool_start", "tool_result"]);
     if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[0] {
         assert_eq!(decision, "advisory_auto");
     } else {

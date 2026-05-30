@@ -444,6 +444,10 @@ impl NousActor {
     }
 
     /// Execute a streaming turn with a panic boundary.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "streaming turn entrypoint plumbs session, content, stream, gate, span, and cancel; splitting hides the call shape"
+    )]
     async fn execute_streaming_turn_with_panic_boundary(
         &mut self,
         session_key: &str,
@@ -483,6 +487,10 @@ impl NousActor {
     #[expect(
         clippy::too_many_lines,
         reason = "pipeline setup is sequential and cohesive; splitting adds indirection"
+    )]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "pipeline spawn plumbs session, content, stream, gate, span, and cancel; splitting hides the call shape"
     )]
     async fn spawn_pipeline_task(
         &mut self,

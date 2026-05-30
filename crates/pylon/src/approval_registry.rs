@@ -75,9 +75,11 @@ impl Drop for Guard {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use nous::approval::ApprovalChoice;
+
+    use super::*;
 
     #[tokio::test]
     async fn register_send_remove_roundtrip() {
