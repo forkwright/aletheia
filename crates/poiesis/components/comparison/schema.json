@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["title", "left_label", "right_label"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "left_label": { "type": "string", "minLength": 1 },
+    "right_label": { "type": "string", "minLength": 1 },
+    "left_items": { "type": "array", "items": { "type": "string" } },
+    "right_items": { "type": "array", "items": { "type": "string" } }
+  }
+}

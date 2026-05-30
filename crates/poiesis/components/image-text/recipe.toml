@@ -1,0 +1,15 @@
+[slide]
+layout = "two-col"
+
+[[shapes]]
+type = "image"
+zone = "right-half"
+image_field = "src"
+
+[[shapes]]
+type = "text"
+zone = "left-half"
+text_field = "heading"
+style = "heading"
+font_size = 24
+bold = true

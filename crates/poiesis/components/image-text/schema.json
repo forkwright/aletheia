@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["src", "alt", "heading", "body"],
+  "properties": {
+    "src": { "type": "string", "minLength": 1, "description": "Image URL or relative path" },
+    "alt": { "type": "string", "minLength": 1 },
+    "heading": { "type": "string", "minLength": 1 },
+    "body": { "type": "string", "minLength": 1 },
+    "image_side": {
+      "type": "string",
+      "enum": ["left", "right"],
+      "default": "right",
+      "description": "Which side the image appears on"
+    }
+  }
+}
