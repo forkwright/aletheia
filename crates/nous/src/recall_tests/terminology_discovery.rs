@@ -215,6 +215,7 @@ fn make_knowledge_result_sensitive(
         distance,
         source_type: "fact".to_owned(),
         source_id: source_id.to_owned(),
+        nous_id: "syn".to_owned(),
         sensitivity,
         graph_importance: 0.0,
         scope: None,

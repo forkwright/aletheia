@@ -571,3 +571,162 @@ fn recall_scope_quotas_noop_when_empty_quotas() {
         "empty scope quotas should not alter results"
     );
 }
+
+// ── Cohort-visibility isolation tests (#208) ─────────────────────────────────
+
+/// Builds a `KnowledgeRecallResult` with a specific owning nous and visibility.
+fn make_knowledge_result_with_nous(
+    content: &str,
+    nous_id: &str,
+    visibility: mneme::knowledge::Visibility,
+) -> KnowledgeRecallResult {
+    KnowledgeRecallResult {
+        content: content.to_owned(),
+        distance: 0.1,
+        source_type: "fact".to_owned(),
+        source_id: format!("fact-{nous_id}-{}", content.len()),
+        nous_id: nous_id.to_owned(),
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
+        graph_importance: 0.0,
+        scope: None,
+        project_id: None,
+        visibility,
+    }
+}
+
+#[test]
+fn cohort_isolation_private_fact_not_leaked_to_other_nous() {
+    // WHY (#208): private fact owned by "alice" must NOT appear in "bob"'s recall.
+    let results = vec![
+        make_knowledge_result_with_nous(
+            "alice-private secret",
+            "alice",
+            mneme::knowledge::Visibility::Private,
+        ),
+        make_knowledge_result_with_nous(
+            "shared team note",
+            "alice",
+            mneme::knowledge::Visibility::Shared,
+        ),
+    ];
+
+    let config = RecallConfig {
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+
+    // Bob's recall: private alice fact must be absent, shared fact must be present.
+    let bob_result = stage
+        .run(
+            "query",
+            "bob",
+            &mock_embed(),
+            &MockVectorSearch::new(results.clone()),
+            10000,
+        )
+        .expect("recall for bob should succeed");
+
+    assert!(
+        bob_result
+            .recall_section
+            .as_deref()
+            .unwrap_or("")
+            .contains("shared team note"),
+        "bob should see shared facts from alice"
+    );
+    assert!(
+        !bob_result
+            .recall_section
+            .as_deref()
+            .unwrap_or("")
+            .contains("alice-private secret"),
+        "bob must NOT see alice's private facts (cohort isolation)"
+    );
+
+    // Alice's own recall: private fact must be present.
+    let alice_result = stage
+        .run(
+            "query",
+            "alice",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            10000,
+        )
+        .expect("recall for alice should succeed");
+
+    assert!(
+        alice_result
+            .recall_section
+            .as_deref()
+            .unwrap_or("")
+            .contains("alice-private secret"),
+        "alice must see her own private facts"
+    );
+}
+
+#[test]
+fn cohort_isolation_own_private_fact_returned() {
+    // WHY (#208): private fact owned by "alice" IS returned when alice recalls.
+    let results = vec![make_knowledge_result_with_nous(
+        "alice-own fact",
+        "alice",
+        mneme::knowledge::Visibility::Private,
+    )];
+
+    let config = RecallConfig {
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+
+    let result = stage
+        .run(
+            "query",
+            "alice",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            10000,
+        )
+        .expect("recall should succeed");
+
+    assert!(
+        result.results_injected > 0,
+        "alice's own private fact should be injected"
+    );
+}
+
+#[test]
+fn cohort_isolation_shared_fact_visible_to_any_nous() {
+    // WHY (#208): Shared facts are not cohort-private and must pass through
+    // for any querying nous, including one with no facts of its own.
+    let results = vec![make_knowledge_result_with_nous(
+        "shared public note",
+        "alice",
+        mneme::knowledge::Visibility::Shared,
+    )];
+
+    let config = RecallConfig {
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config);
+
+    let result = stage
+        .run(
+            "query",
+            "charlie",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            10000,
+        )
+        .expect("recall should succeed");
+
+    assert!(
+        result.results_injected > 0,
+        "shared fact should be visible to any querying nous"
+    );
+}
