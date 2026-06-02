@@ -1,8 +1,9 @@
 //! Idempotency-key cache for deduplicating `POST /sessions/{id}/messages`.
 //!
-//! Stores a bounded, TTL-evicting map of `(idempotency_key, state)` pairs so that
-//! retried requests with the same key return the cached response instead of
-//! creating duplicate turns.
+//! Stores a bounded, TTL-evicting map of `(principal, idempotency_key, state)` tuples so that
+//! retried requests with the same key and same authenticated principal return the cached response
+//! instead of creating duplicate turns. Keys are namespaced per principal so one principal cannot
+//! observe or replay another principal's cached response.
 
 use std::collections::{HashMap, VecDeque};
 // WHY: lock not held across await points
@@ -67,6 +68,15 @@ pub(crate) enum LookupResult {
     Conflict,
 }
 
+/// Build a composite cache key that namespaces `key` under `principal`.
+///
+/// Uses a NUL byte separator: NUL cannot appear in valid ASCII HTTP header values,
+/// so `"alice\x00k"` can never collide with a principal of `"alice\x00k"` and a
+/// separate key component.
+fn composite_key(principal: &str, key: &str) -> String {
+    format!("{principal}\x00{key}")
+}
+
 impl Default for IdempotencyCache {
     fn default() -> Self {
         Self::new()
@@ -102,21 +112,23 @@ impl IdempotencyCache {
         })
     }
 
-    /// Look up a key. On miss, atomically inserts it as `InFlight`.
+    /// Look up a (principal, key) pair. On miss, atomically inserts it as `InFlight`.
+    ///
+    /// The cache entry is keyed by `"{principal}\x00{key}"` so that two different
+    /// principals presenting identical `Idempotency-Key` header values never collide.
+    /// The NUL separator cannot appear in valid ASCII header values, ensuring no
+    /// ambiguity between a principal that ends with a substring of another key.
     ///
     /// # Complexity
     ///
     /// O(1) for the `HashMap` lookup. O(k) for eviction of expired entries
     /// where k is the number of expired entries at the front of the LRU queue.
-    pub(crate) fn check_or_insert(&self, key: &str) -> LookupResult {
+    pub(crate) fn check_or_insert(&self, principal: &str, key: &str) -> LookupResult {
+        let composite = composite_key(principal, key);
         let mut inner = self.lock_inner();
         inner.evict_expired();
 
-        // TODO(#2200): Cache keys are not scoped per user. The `sub` claim from
-        // Claims is not available at this layer because the cache operates below
-        // the auth extractor. Callers should prefix the key with the user's `sub`
-        // before calling check_or_insert to prevent cross-user key collisions.
-        if let Some(entry) = inner.entries.get(key) {
+        if let Some(entry) = inner.entries.get(&composite) {
             return match &entry.state {
                 EntryState::InFlight => LookupResult::Conflict,
                 EntryState::Completed { status, body } => LookupResult::Hit {
@@ -135,30 +147,32 @@ impl IdempotencyCache {
         }
 
         inner.entries.insert(
-            key.to_owned(),
+            composite.clone(),
             CacheEntry {
                 state: EntryState::InFlight,
                 created_at: Instant::now(),
             },
         );
-        inner.order.push_back(key.to_owned());
+        inner.order.push_back(composite);
 
         LookupResult::Miss
     }
 
-    /// Mark a key as completed with the given response.
-    pub(crate) fn complete(&self, key: &str, status: StatusCode, body: String) {
+    /// Mark a (principal, key) pair as completed with the given response.
+    pub(crate) fn complete(&self, principal: &str, key: &str, status: StatusCode, body: String) {
+        let composite = composite_key(principal, key);
         let mut inner = self.lock_inner();
-        if let Some(entry) = inner.entries.get_mut(key) {
+        if let Some(entry) = inner.entries.get_mut(&composite) {
             entry.state = EntryState::Completed { status, body };
         }
     }
 
-    /// Remove a key from the cache (e.g. on error, to allow retry).
-    pub(crate) fn remove(&self, key: &str) {
+    /// Remove a (principal, key) pair from the cache (e.g. on error, to allow retry).
+    pub(crate) fn remove(&self, principal: &str, key: &str) {
+        let composite = composite_key(principal, key);
         let mut inner = self.lock_inner();
-        inner.entries.remove(key);
-        inner.order.retain(|k| k != key);
+        inner.entries.remove(&composite);
+        inner.order.retain(|k| k != &composite);
     }
 
     /// Number of entries currently in the cache (for testing).
@@ -202,15 +216,22 @@ mod tests {
     #[test]
     fn miss_then_hit_after_complete() {
         let cache = IdempotencyCache::new();
+        let principal = "alice";
         let key = "test-key-001";
 
-        assert!(matches!(cache.check_or_insert(key), LookupResult::Miss));
+        assert!(matches!(
+            cache.check_or_insert(principal, key),
+            LookupResult::Miss
+        ));
 
-        assert!(matches!(cache.check_or_insert(key), LookupResult::Conflict));
+        assert!(matches!(
+            cache.check_or_insert(principal, key),
+            LookupResult::Conflict
+        ));
 
-        cache.complete(key, StatusCode::OK, r#"{"ok":true}"#.to_owned());
+        cache.complete(principal, key, StatusCode::OK, r#"{"ok":true}"#.to_owned());
 
-        match cache.check_or_insert(key) {
+        match cache.check_or_insert(principal, key) {
             LookupResult::Hit { status, body } => {
                 assert_eq!(status, StatusCode::OK);
                 assert_eq!(body, r#"{"ok":true}"#);
@@ -222,11 +243,18 @@ mod tests {
     #[test]
     fn remove_allows_retry() {
         let cache = IdempotencyCache::new();
+        let principal = "alice";
         let key = "retry-key";
 
-        assert!(matches!(cache.check_or_insert(key), LookupResult::Miss));
-        cache.remove(key);
-        assert!(matches!(cache.check_or_insert(key), LookupResult::Miss));
+        assert!(matches!(
+            cache.check_or_insert(principal, key),
+            LookupResult::Miss
+        ));
+        cache.remove(principal, key);
+        assert!(matches!(
+            cache.check_or_insert(principal, key),
+            LookupResult::Miss
+        ));
     }
 
     #[test]
@@ -241,14 +269,15 @@ mod tests {
             max_key_length: DEFAULT_MAX_KEY_LENGTH,
         };
 
+        let principal = "alice";
         for i in 0..4 {
-            cache.check_or_insert(&format!("key-{i}"));
+            cache.check_or_insert(principal, &format!("key-{i}"));
         }
 
         assert_eq!(cache.len(), 3);
         let inner = cache.inner.lock().unwrap();
-        assert!(!inner.entries.contains_key("key-0"));
-        assert!(inner.entries.contains_key("key-3"));
+        assert!(!inner.entries.contains_key(&composite_key(principal, "key-0")));
+        assert!(inner.entries.contains_key(&composite_key(principal, "key-3")));
     }
 
     #[test]
@@ -263,11 +292,84 @@ mod tests {
             max_key_length: DEFAULT_MAX_KEY_LENGTH,
         };
 
-        cache.check_or_insert("expired-key");
+        cache.check_or_insert("alice", "expired-key");
         assert!(matches!(
-            cache.check_or_insert("expired-key"),
+            cache.check_or_insert("alice", "expired-key"),
             LookupResult::Miss
         ));
+    }
+
+    /// Two principals using the same `Idempotency-Key` value must not share a
+    /// cache entry. Alice's completed response must not be served to Bob, and
+    /// Bob's first use of that key must be a Miss (not a Hit or Conflict).
+    #[test]
+    fn different_principals_same_key_are_isolated() {
+        let cache = IdempotencyCache::new();
+        let key = "shared-key-value";
+
+        // Alice sends a request and it completes.
+        assert!(matches!(
+            cache.check_or_insert("alice", key),
+            LookupResult::Miss
+        ));
+        cache.complete("alice", key, StatusCode::OK, r#"{"user":"alice"}"#.to_owned());
+
+        // Alice's replay returns her own cached response.
+        match cache.check_or_insert("alice", key) {
+            LookupResult::Hit { body, .. } => {
+                assert_eq!(body, r#"{"user":"alice"}"#);
+            }
+            other => panic!("expected Hit for alice, got {other:?}"),
+        }
+
+        // Bob uses the same Idempotency-Key but must see a Miss — not Alice's response.
+        assert!(
+            matches!(cache.check_or_insert("bob", key), LookupResult::Miss),
+            "bob must not see alice's cache entry"
+        );
+
+        // Bob's entry is in-flight until he completes; a second call from Bob is a Conflict.
+        assert!(matches!(
+            cache.check_or_insert("bob", key),
+            LookupResult::Conflict
+        ));
+
+        // Bob completing his entry does not disturb Alice's cached entry.
+        cache.complete("bob", key, StatusCode::OK, r#"{"user":"bob"}"#.to_owned());
+        match cache.check_or_insert("alice", key) {
+            LookupResult::Hit { body, .. } => {
+                assert_eq!(body, r#"{"user":"alice"}"#, "alice's entry must be unchanged");
+            }
+            other => panic!("expected Hit for alice after bob's complete, got {other:?}"),
+        }
+        match cache.check_or_insert("bob", key) {
+            LookupResult::Hit { body, .. } => {
+                assert_eq!(body, r#"{"user":"bob"}"#);
+            }
+            other => panic!("expected Hit for bob, got {other:?}"),
+        }
+    }
+
+    /// Removing a key for one principal must not affect the same key for another.
+    #[test]
+    fn remove_is_principal_scoped() {
+        let cache = IdempotencyCache::new();
+        let key = "shared-removable-key";
+
+        cache.check_or_insert("alice", key);
+        cache.check_or_insert("bob", key);
+
+        // Remove only alice's entry.
+        cache.remove("alice", key);
+
+        assert!(
+            matches!(cache.check_or_insert("alice", key), LookupResult::Miss),
+            "alice's entry should be gone after remove"
+        );
+        assert!(
+            matches!(cache.check_or_insert("bob", key), LookupResult::Conflict),
+            "bob's in-flight entry must be unaffected"
+        );
     }
 
     impl std::fmt::Debug for LookupResult {
