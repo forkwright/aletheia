@@ -220,15 +220,18 @@ impl Debug for RelAlgebra {
                 if r.bindings.is_empty() && r.data.len() == 1 {
                     f.write_str("Unit")
                 } else if r.data.len() == 1 {
-                    f.debug_tuple("Singlet")
-                        .field(&bindings)
-                        // SAFETY: data.len()==1 checked above
-                        .field(
-                            r.data
-                                .first()
-                                .unwrap_or_else(|| panic!("data.len()==1 checked above")),
-                        )
-                        .finish()
+                    match r.data.first() {
+                        Some(first) => f
+                            .debug_tuple("Singlet")
+                            .field(&bindings)
+                            .field(first)
+                            .finish(),
+                        None => f
+                            .debug_tuple("Singlet")
+                            .field(&bindings)
+                            .field(&"<unexpected: expected single element>")
+                            .finish(),
+                    }
                 } else {
                     f.debug_tuple("Fixed")
                         .field(&bindings)
