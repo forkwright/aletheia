@@ -40,25 +40,9 @@ jobs:
     # The daily scheduled run on main catches any issues post-merge. #4102
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]' }}
     name: cargo deny
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # WHY: Preflight disk check — runs first so a disk-OOM crash
-      # surfaces as "preflight failed" instead of as the opaque
-      # "cargo deny failed" that triggered #4320.
-      - name: Preflight disk check
-        env:
-          PREFLIGHT_THRESHOLD: "90"
-        run: |
-          set -u
-          used=$(df -P / | awk 'NR==2 {print $5}' | tr -d '%')
-          echo "preflight: / used=${used}% threshold=${PREFLIGHT_THRESHOLD}%"
-          df -h /
-          if [ "$used" -ge "$PREFLIGHT_THRESHOLD" ]; then
-            echo "::error::preflight: disk usage ${used}% on / exceeds threshold ${PREFLIGHT_THRESHOLD}%; aborting before heavyweight step crashes the worker (see #4320)"
-            exit 1
-          fi
-
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false # PROJECT: security hardening — never expose token to steps
@@ -89,23 +73,9 @@ jobs:
     # path; running cargo-audit independently protects against bugs or
     # config drift disabling one of the two. See standards/CI.md.
     name: cargo audit
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # WHY: Preflight disk check — same rationale as cargo-deny above.
-      - name: Preflight disk check
-        env:
-          PREFLIGHT_THRESHOLD: "90"
-        run: |
-          set -u
-          used=$(df -P / | awk 'NR==2 {print $5}' | tr -d '%')
-          echo "preflight: / used=${used}% threshold=${PREFLIGHT_THRESHOLD}%"
-          df -h /
-          if [ "$used" -ge "$PREFLIGHT_THRESHOLD" ]; then
-            echo "::error::preflight: disk usage ${used}% on / exceeds threshold ${PREFLIGHT_THRESHOLD}%; aborting before heavyweight step crashes the worker (see #4320)"
-            exit 1
-          fi
-
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
@@ -121,11 +91,15 @@ jobs:
           printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
           chmod 0600 ~/.git-credentials
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: "1.94.0"
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           key: cargo-audit
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked --version ^0.22
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
       - name: cargo audit
         # WHY: -D unmaintained,unsound,yanked escalates those categories
         # to errors (default is warning only). Suppressions go through

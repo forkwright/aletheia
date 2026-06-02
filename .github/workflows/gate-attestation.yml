@@ -1,3 +1,11 @@
+# WHY: Core gate — enforces fmt, clippy, and test coverage on every PR.
+# Replaces the self-hosted `kanon gate` invocation (kanon is a private binary
+# unavailable on GitHub-hosted runners) with equivalent explicit cargo steps.
+# theatron/skene/koilon excluded from clippy and nextest: koilon's Config::load
+# hangs ~120s on ephemeral ubuntu runners (network/dbus/keyring probe at init),
+# matching the established local gate scope. See #4387 and metis CLAUDE.md §
+# metis-local-work era. Gate-Passed attestation trailer check is preserved —
+# it verifies the operator ran the local gate before pushing.
 name: Gate Attestation
 
 on:
@@ -11,33 +19,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   gate-attestation:
     name: gate-attestation
-    runs-on: self-hosted
-    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      # WHY: Preflight disk check runs first, before any checkout or
-      # heavyweight step writes data. When the host is near full the
-      # worker would otherwise crash with `IOException: No space left
-      # on device` mid-step, the log buffer never flushes, and the
-      # failure surfaces to operators as an opaque domain error (see
-      # #4320). Inline (not composite) so it can run before the
-      # conditional checkout below. Runs unconditionally — bot PRs
-      # still need the runner to have headroom.
-      - name: Preflight disk check
-        env:
-          PREFLIGHT_THRESHOLD: "90"
-        run: |
-          set -u
-          used=$(df -P / | awk 'NR==2 {print $5}' | tr -d '%')
-          echo "preflight: / used=${used}% threshold=${PREFLIGHT_THRESHOLD}%"
-          df -h /
-          if [ "$used" -ge "$PREFLIGHT_THRESHOLD" ]; then
-            echo "::error::preflight: disk usage ${used}% on / exceeds threshold ${PREFLIGHT_THRESHOLD}%; aborting before heavyweight step crashes the worker (see #4320)"
-            exit 1
-          fi
-
       # WHY: bypass keys off the PR author login, not github.actor. The actor
       # changes to a maintainer login whenever someone re-runs the workflow
       # (e.g. clicking "Re-run failed jobs" on a dependabot PR), which silently
@@ -81,3 +71,53 @@ jobs:
             echo "Run the local gate and commit with the trailer."
             exit 1
           fi
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        with:
+          toolchain: "1.94.0"
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        with:
+          key: gate-attestation
+
+      - name: Configure git credentials for private fleet deps
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
+            exit 1
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
+
+      - name: Install cargo-nextest
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      - name: cargo fmt --check
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        # WHY: theatron/skene/koilon excluded — koilon Config::load hangs on
+        # ephemeral ubuntu runners (network/dbus/keyring probe timeout ~120s).
+        # Matches the established local gate scope on metis.
+        run: cargo clippy --workspace --all-targets --exclude theatron --exclude skene --exclude koilon -- -D warnings
+
+      - name: cargo nextest run
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        # WHY: same theatron/skene/koilon exclusion as clippy above.
+        run: cargo nextest run --workspace --exclude theatron --exclude skene --exclude koilon
+
+      - name: Gate summary
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: echo "gate passed — fmt clean, clippy clean, tests passed"
