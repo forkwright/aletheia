@@ -117,9 +117,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **poiesis-sheet** | `ods` | no | ODS backend | `dep:spreadsheet-ods` |
 | **poiesis-slides** | `default` | **yes** | `pptx` | - |
 | **poiesis-slides** | `pptx` | no | PPTX backend | `dep:ppt-rs` |
-| **poiesis-text** | `default` | **yes** | `pdf`, `odt` | - |
-| **poiesis-text** | `pdf` | no | PDF backend | `dep:krilla` |
-| **poiesis-text** | `odt` | no | ODT backend | `dep:zip` |
+
 
 ## Cross-crate feature interactions
 

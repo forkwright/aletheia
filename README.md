@@ -33,17 +33,17 @@ The tarball contains `instance.example/` with the reference config layout. See [
 - **Persistent memory.** Conversations carry forward. The agent builds a knowledge graph of facts, entities, and relationships that persists across sessions and grows over time.
 - **Working-memory continuity.** Each turn can inject agent-curated `<key_info>` from the prior working checkpoint before recall and history are assembled.
 - **Multiple agents.** Each agent has its own character (SOUL.md), goals, memory, and workspace. They can coordinate, delegate, and specialize.
-- **Tools.** 49 built-in tools: file I/O, shell execution, web search, memory search, planning, agent coordination, plus external MCP tools bridged through the organon tool plane.
+- **Tools.** 67 built-in tools (default build): file I/O, shell execution, web search, memory search, planning, agent coordination, plus external MCP tools bridged through the organon tool plane. Feature-gated additions bring the total to 76 (energeia) or 80 (all features: energeia + bookkeeper + computer-use + z3).
 - **Runtime guardrails.** Tool calls carry HMAC-SHA256 receipts, loop detection combines ping-pong, no-progress, and doom-loop signals, and per-stage timeouts bound long-running turns.
 - **Terminal dashboard.** Rich TUI with markdown rendering, session management, and real-time streaming.
-- **Signal messaging.** Talk to your agents over Signal with 15 built-in commands.
+- **Signal messaging.** Talk to your agents over Signal. Messages arrive as plain conversational turns routed to the configured agent.
 - **Privacy.** No telemetry, no analytics, no phone-home. Only outbound connections are to services you configure.
 
 ---
 
 ## Architecture
 
-44 Rust workspace crates plus the excluded desktop shell. Single binary deployment. The substrate includes persistent sessions, Datalog-backed memory, working-memory injection, HTTP/SSE, MCP, Signal, dispatch, and a 15-scenario substrate canary suite. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
+47 Rust workspace crates plus the excluded desktop shell. Single binary deployment. The substrate includes persistent sessions, Datalog-backed memory, working-memory injection, HTTP/SSE, MCP, Signal, dispatch, and a 15-scenario substrate canary suite. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
 
 ---
 
@@ -60,7 +60,7 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 ## Interfaces
 
 - **TUI** - Terminal dashboard. Rich markdown rendering, session management.
-- **Signal** - 15 `!` commands. `!help` for the list.
+- **Signal** - Inbound messages are delivered as plain conversational turns to the configured agent.
 - **CLI** - `aletheia help` for the full command reference.
 - **API** - REST on port 18789. See [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

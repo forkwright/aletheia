@@ -1,6 +1,6 @@
 # External MCP Servers
 
-Operator-side MCP servers that extend an agent's capabilities without modifying the aletheia binary. Aletheia is a 44-crate Rust workspace plus the excluded desktop shell. Coding agents (Claude Code, Cursor, etc.) that only have grep and file reads burn tokens re-discovering structure that a Language Server could answer in one request. The servers below close that gap.
+Operator-side MCP servers that extend an agent's capabilities without modifying the aletheia binary. Aletheia is a 47-crate Rust workspace plus the excluded desktop shell. Coding agents (Claude Code, Cursor, etc.) that only have grep and file reads burn tokens re-discovering structure that a Language Server could answer in one request. The servers below close that gap.
 
 These servers run as **operator-side tooling**, not as part of the aletheia binary. They are registered in the agent's client config (e.g. `~/.claude.json`, `.mcp.json`, or Cursor's `mcp.json`). No aletheia crate depends on them, and they are not wired into the `diaporeia` tool bus. See [Why external, not vendored](#why-external-not-vendored) below.
 

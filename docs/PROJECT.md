@@ -31,7 +31,7 @@ Planning and milestones are tracked in the internal project roadmap.
 | Interface | Status | Notes |
 |-----------|--------|-------|
 | TUI | Active | Terminal dashboard, rich markdown, session management |
-| Signal | Active | 15 `!` commands, always-on ambient messaging |
+| Signal | Active | Always-on ambient messaging; inbound messages delivered as plain conversational turns |
 | HTTP API | Active | REST on port 18789, SSE streaming |
 | Desktop app | In progress | Dioxus 0.7 desktop; scaffold with streaming architecture, not feature-complete |
 
