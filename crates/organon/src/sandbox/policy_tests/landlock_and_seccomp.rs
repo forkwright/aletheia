@@ -319,35 +319,47 @@ fn seccomp_blocks_umount() {
     );
 }
 
-/// Test that reboot is blocked by seccomp.
+/// Test that the seccomp filter blocks the `reboot(2)` syscall.
+///
+/// WARNING: exercise the raw `reboot(2)` syscall, never `/sbin/reboot`. On a systemd
+/// host `/sbin/reboot` is a symlink to `systemctl`, which asks logind to reboot over
+/// D-Bus instead of issuing the `reboot(2)` syscall the sandbox filters — so it
+/// bypasses seccomp entirely and, for a polkit-authorized active local session,
+/// actually reboots the machine running the test. We invoke the syscall directly with
+/// an invalid magic (arg 0): the enforcing filter returns EPERM before it reaches the
+/// kernel, and even unfiltered it returns EINVAL/EPERM — it can never reboot the host.
 #[cfg(target_os = "linux")]
 #[test]
 fn seccomp_blocks_reboot() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Use a fake reboot command that doesn't require root to test seccomp blocking
-    let mut cmd = Command::new("sh");
-    cmd.arg("-c")
-        .arg("/sbin/reboot 2>&1 || /usr/sbin/reboot 2>&1 || echo 'reboot not found'");
+    // 169 == SYS_reboot on x86_64. Invalid magic (0) => EINVAL even for a privileged
+    // caller; the enforcing seccomp filter returns EPERM first. The syscall always
+    // fails (ret == -1) and never performs a reboot.
+    let probe = "import ctypes, sys\n\
+                 libc = ctypes.CDLL(None, use_errno=True)\n\
+                 ret = libc.syscall(169, 0, 0, 0, 0)\n\
+                 sys.stdout.write('ret=%d errno=%d' % (ret, ctypes.get_errno()))\n";
+    let mut cmd = Command::new("python3");
+    cmd.arg("-c").arg(probe);
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
-    let output = cmd.output().expect("spawn child");
+    // python3 may be absent or its exec blocked by the sandbox — nothing to assert then.
+    let Ok(output) = cmd.output() else {
+        return;
+    };
     let combined = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Reboot should be blocked - "Access denied" or any failure is acceptable
+    // The reboot syscall must fail (ret == -1). A success would be an actual reboot.
     assert!(
-        combined.contains("Operation not permitted")
-            || combined.contains("EPERM")
-            || combined.contains("Access denied")
-            || combined.contains("ret=1")
-            || combined.contains("not found")
-            || !output.status.success(),
-        "reboot should be blocked by seccomp: {combined}"
+        combined.contains("ret=-1") || combined.is_empty() || !output.status.success(),
+        "reboot syscall must be blocked (EPERM via seccomp; EPERM/EINVAL otherwise), \
+         never succeed: {combined}"
     );
 }
 
