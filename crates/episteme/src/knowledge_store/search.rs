@@ -327,10 +327,10 @@ impl KnowledgeStore {
 
         for cluster_id in context_clusters {
             let script = r"
-                ?[fact_id, content] :=
+                ?[fact_id, content, nous_id] :=
                     *graph_scores{entity_id, score_type: 'cluster', cluster_id: $cid},
                     *fact_entities{fact_id: fid, entity_id},
-                    *facts{id: fid, content, is_forgotten, superseded_by},
+                    *facts{id: fid, content, nous_id, is_forgotten, superseded_by},
                     is_forgotten == false,
                     is_null(superseded_by),
                     fact_id = fid
@@ -357,11 +357,17 @@ impl KnowledgeStore {
                     .and_then(|v| v.get_str())
                     .unwrap_or("")
                     .to_owned();
+                let nous_id = row
+                    .get(2)
+                    .and_then(|v| v.get_str())
+                    .unwrap_or("")
+                    .to_owned();
                 results.push(crate::knowledge::RecallResult {
                     content,
                     distance: 1.0,
                     source_type: "fact".to_owned(),
                     source_id: fact_id.to_owned(),
+                    nous_id,
                     sensitivity: crate::knowledge::FactSensitivity::Public,
                     graph_importance: 0.0,
                     scope: None,
@@ -592,6 +598,7 @@ impl KnowledgeStore {
                     distance: (1.0 - result.rrf_score).max(0.0),
                     source_type: "fact".to_owned(),
                     source_id: fact.id.as_str().to_owned(),
+                    nous_id: fact.nous_id,
                     sensitivity: fact.sensitivity,
                     graph_importance: 0.0,
                     scope: fact.scope,

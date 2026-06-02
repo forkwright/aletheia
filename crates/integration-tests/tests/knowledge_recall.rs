@@ -140,6 +140,7 @@ fn knowledge_types_all_serialize() {
         distance: 0.1,
         source_type: "fact".to_owned(),
         source_id: "f-1".to_owned(),
+        nous_id: "syn".to_owned(),
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         graph_importance: 0.0,
         scope: None,

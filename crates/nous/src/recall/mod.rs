@@ -546,7 +546,7 @@ impl RecallStage {
         &self,
         ranked: Vec<ScoredResult>,
         remaining_budget: u64,
-        _nous_id: &str,
+        nous_id: &str,
     ) -> RecallStageResult {
         let candidates_found = ranked.len();
 
@@ -559,16 +559,13 @@ impl RecallStage {
         let ranked = sensitivity_filter.kept;
         let filtered_facts = sensitivity_filter.filtered;
 
-        // WHY (#208): visibility filter. Default to Private so callers who
-        // do not explicitly configure visibility continue to see only their
-        // own facts. Existing data backfilled to Private passes through
-        // unchanged.
-        let ranked =
-            mneme::recall::filter_by_visibility(ranked, mneme::knowledge::Visibility::Private);
+        // WHY (#208): cohort-visibility filter. Each ScoredResult now carries
+        // the owning nous's id from the storage layer (propagated through
+        // `build_candidates`). Facts whose visibility is Private or Restricted
+        // are retained only when their `nous_id` matches the recalling agent.
+        // Shared and Published facts pass through unconditionally.
+        let ranked = mneme::recall::filter_by_cohort_visibility(ranked, nous_id);
         let ranked = mneme::recall::filter_by_project_scope(ranked, &self.project_scope);
-        // TODO(#208) [deliberate-prudent]: wire `filter_by_cohort_visibility` once
-        // `build_candidates` populates `nous_id` from the search layer instead of
-        // `String::new()`.
 
         // Extract pinned facts first (they bypass max_results but are still
         // subject to the token budget).
@@ -749,7 +746,10 @@ impl RecallStage {
                 content: r.content,
                 source_type: r.source_type,
                 source_id: r.source_id,
-                nous_id: String::new(),
+                // WHY (#208): propagate the stored fact's owning nous so
+                // `filter_by_cohort_visibility` can compare it against the
+                // recalling nous in `finalize_results`.
+                nous_id: r.nous_id,
                 factors: FactorScores {
                     vector_similarity: self.engine.score_vector_similarity(r.distance),
                     decay: w.decay,

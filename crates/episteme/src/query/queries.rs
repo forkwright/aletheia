@@ -314,15 +314,15 @@ pub(crate) const ENTITY_NEIGHBORHOOD: &str = r"
 ";
 
 /// BM25 full-text recall (no vector embeddings required).
-/// Returns rows in the same format as `SEMANTIC_SEARCH` (id, content, `source_type`, `source_id`, dist)
-/// with synthetic distance derived from BM25 score.
+/// Returns rows: id, content, `source_type`, `source_id`, dist, scope, `project_id`,
+/// visibility, `nous_id`.
 /// Params: `$query_text`, `$k`.
 pub(crate) const BM25_RECALL: &str = r"
     bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
 
-    ?[id, content, source_type, source_id, dist, scope, project_id, visibility] :=
+    ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id] :=
         bm25[id, bm25_score],
-        *facts{id, content, is_forgotten, superseded_by, scope, project_id, visibility},
+        *facts{id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id},
         is_forgotten == false,
         is_null(superseded_by),
         source_type = 'fact',
@@ -333,10 +333,17 @@ pub(crate) const BM25_RECALL: &str = r"
 ";
 
 /// KNN vector search. Params: `$query_vec`, `$k`, `$ef`.
+/// Returns rows: id, content, `source_type`, `source_id`, dist, scope(null), `project_id`(null),
+/// visibility(empty), `nous_id`. The `scope`, `project_id`, and `visibility` columns are null
+/// here and hydrated by `search_vectors` from the facts table; `nous_id` comes directly from
+/// the embeddings relation.
 pub(crate) const SEMANTIC_SEARCH: &str = r"
-    ?[id, content, source_type, source_id, dist] :=
-        ~embeddings:semantic_idx {id, content, source_type, source_id |
-            query: $query_vec, k: $k, ef: $ef, bind_distance: dist}
+    ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id] :=
+        ~embeddings:semantic_idx {id, content, source_type, source_id, nous_id |
+            query: $query_vec, k: $k, ef: $ef, bind_distance: dist},
+        scope = null,
+        project_id = null,
+        visibility = ''
 ";
 
 #[expect(

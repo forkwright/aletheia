@@ -721,11 +721,16 @@ pub(super) fn rows_to_recall_results(
             .unwrap_or_default()
             .parse::<crate::knowledge::Visibility>()
             .unwrap_or_default();
+        let nous_id = row
+            .get(8)
+            .and_then(|v| extract_str(v).ok())
+            .unwrap_or_default();
         out.push(RecallResult {
             content,
             distance,
             source_type,
             source_id,
+            nous_id,
             // WHY (#3404, #3413): embeddings relation does not carry
             // sensitivity; `search_vectors` hydrates it from the facts
             // table before results reach the recall scorer.

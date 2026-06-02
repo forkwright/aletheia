@@ -261,6 +261,7 @@ fn recall_result_serde_roundtrip() {
         distance: 0.12,
         source_type: "fact".to_owned(),
         source_id: "fact-1".to_owned(),
+        nous_id: "syn".to_owned(),
         sensitivity: FactSensitivity::Public,
         graph_importance: 0.0,
         scope: None,
