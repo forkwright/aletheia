@@ -276,8 +276,16 @@ mod tests {
 
         assert_eq!(cache.len(), 3);
         let inner = cache.inner.lock().unwrap();
-        assert!(!inner.entries.contains_key(&composite_key(principal, "key-0")));
-        assert!(inner.entries.contains_key(&composite_key(principal, "key-3")));
+        assert!(
+            !inner
+                .entries
+                .contains_key(&composite_key(principal, "key-0"))
+        );
+        assert!(
+            inner
+                .entries
+                .contains_key(&composite_key(principal, "key-3"))
+        );
     }
 
     #[test]
@@ -312,7 +320,12 @@ mod tests {
             cache.check_or_insert("alice", key),
             LookupResult::Miss
         ));
-        cache.complete("alice", key, StatusCode::OK, r#"{"user":"alice"}"#.to_owned());
+        cache.complete(
+            "alice",
+            key,
+            StatusCode::OK,
+            r#"{"user":"alice"}"#.to_owned(),
+        );
 
         // Alice's replay returns her own cached response.
         match cache.check_or_insert("alice", key) {
@@ -338,7 +351,10 @@ mod tests {
         cache.complete("bob", key, StatusCode::OK, r#"{"user":"bob"}"#.to_owned());
         match cache.check_or_insert("alice", key) {
             LookupResult::Hit { body, .. } => {
-                assert_eq!(body, r#"{"user":"alice"}"#, "alice's entry must be unchanged");
+                assert_eq!(
+                    body, r#"{"user":"alice"}"#,
+                    "alice's entry must be unchanged"
+                );
             }
             other => panic!("expected Hit for alice after bob's complete, got {other:?}"),
         }
