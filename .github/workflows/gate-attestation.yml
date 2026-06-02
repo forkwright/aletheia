@@ -4,8 +4,8 @@
 # theatron/skene/koilon excluded from clippy and nextest: koilon's Config::load
 # hangs ~120s on ephemeral ubuntu runners (network/dbus/keyring probe at init),
 # matching the established local gate scope. See #4387 and metis CLAUDE.md §
-# metis-local-work era. Gate-Passed attestation trailer check is preserved —
-# it verifies the operator ran the local gate before pushing.
+# metis-local-work era. CI runs the gate directly (fmt/clippy/nextest); the
+# legacy Gate-Passed local-attestation trailer is no longer required.
 name: Gate Attestation
 
 on:
@@ -45,32 +45,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Verify Gate-Passed trailer
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
-        run: |
-          commits=$(git log --format="%H" "origin/${{ github.base_ref }}..HEAD")
-          if [ -z "$commits" ]; then
-            echo "ERROR: No commits found in PR"
-            exit 1
-          fi
-
-          found=false
-          for sha in $commits; do
-            body=$(git log -1 --format="%b" "$sha")
-            if echo "$body" | grep -q "^Gate-Passed:"; then
-              version=$(echo "$body" | grep "^Gate-Passed:" | head -1)
-              echo "Found gate attestation: $version"
-              found=true
-              break
-            fi
-          done
-
-          if [ "$found" = false ]; then
-            echo "ERROR: No Gate-Passed trailer found in any PR commit."
-            echo "Run the local gate and commit with the trailer."
-            exit 1
-          fi
 
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
