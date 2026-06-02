@@ -1,5 +1,3 @@
-
-
 name: Release Please
 
 on:
@@ -17,26 +15,12 @@ concurrency:
 
 jobs:
   release-please:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      # WHY: Preflight disk check — see #4320.
-      - name: Preflight disk check
-        env:
-          PREFLIGHT_THRESHOLD: "90"
-        run: |
-          set -u
-          used=$(df -P / | awk 'NR==2 {print $5}' | tr -d '%')
-          echo "preflight: / used=${used}% threshold=${PREFLIGHT_THRESHOLD}%"
-          df -h /
-          if [ "$used" -ge "$PREFLIGHT_THRESHOLD" ]; then
-            echo "::error::preflight: disk usage ${used}% on / exceeds threshold ${PREFLIGHT_THRESHOLD}%; aborting before heavyweight step crashes the worker (see #4320)"
-            exit 1
-          fi
-
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
