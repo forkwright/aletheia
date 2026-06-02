@@ -21,7 +21,7 @@ Long-term memory is the central problem in agent architecture. Without it, every
 
 The research community has produced several memory systems. Zep [1] pairs property graphs with vector search. MemGPT [2] uses hierarchical memory with explicit management operations. Hindsight [3] provides an upper bound by showing the full conversation at query time. Mem0 [4] layers a memory store over existing LLM APIs. These systems advance the state of the art, but each leaves a gap: none uses Datalog for the knowledge substrate, none integrates kernel-level sandboxing into the agent loop, and none combines more than three signals for recall scoring.
 
-Aletheia closes these gaps. It is a production agent runtime built in Rust with 24 crates and a single-binary deployment model. Its memory subsystem (mneme) embeds a Datalog engine (krites) with HNSW vector indexes, full-text search, and graph algorithms. Tool execution (organon) runs built-in and external tools inside a Landlock + seccomp + netns sandbox. Recall (episteme) fuses six scoring signals through operator-tunable weights.
+Aletheia closes these gaps. It is a production agent runtime built in Rust with 47 workspace crates and a single-binary deployment model. Its memory subsystem (mneme) embeds a Datalog engine (krites) with HNSW vector indexes, full-text search, and graph algorithms. Tool execution (organon) runs built-in and external tools inside a Landlock + seccomp + netns sandbox. Recall (episteme) fuses six scoring signals through operator-tunable weights.
 
 This paper makes four contributions:
 
@@ -66,13 +66,13 @@ Datalog has been used in program analysis, network configuration, and security p
 
 ### 3.1 System overview
 
-Aletheia is a Rust workspace with 24 crates. A single binary (`aletheia`) embeds all subsystems. HTTP traffic arrives at `pylon`, an Axum API with SSE streaming. Agent turns flow through `nous`, a Tokio actor that processes bootstrap, recall, execution, and finalize stages. The memory subsystem (`mneme`) is a thin facade over four sub-crates: `eidos` (types), `graphe` (fjall session store), `episteme` (knowledge pipeline), and `krites` (Datalog engine).
+Aletheia is a Rust workspace with 47 crates. A single binary (`aletheia`) embeds all subsystems. HTTP traffic arrives at `pylon`, an Axum API with SSE streaming. Agent turns flow through `nous`, a Tokio actor that processes bootstrap, recall, execution, and finalize stages. The memory subsystem (`mneme`) is a thin facade over four sub-crates: `eidos` (types), `graphe` (fjall session store), `episteme` (knowledge pipeline), and `krites` (Datalog engine).
 
 ```text
 aletheia binary
 ├── pylon        HTTP gateway, SSE, auth middleware
 ├── nous         Agent pipeline (bootstrap → recall → execute → finalize)
-├── organon      Tool registry (49 built-ins) + sandbox
+├── organon      Tool registry (67 built-ins, default) + sandbox
 ├── mneme        Memory facade
 │   ├── eidos    Shared knowledge types
 │   ├── graphe   fjall session store

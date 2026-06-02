@@ -21,7 +21,7 @@ The actor run loop (`crates/nous/src/actor/mod.rs:270`) processes messages seque
 
 ### Cross-nous message handling
 
-**Gap:** `handle_cross_message` (`mod.rs:410-427`) calls `execute_turn` **inline** - it does **not** use `execute_turn_with_panic_boundary`. A pipeline panic on this path crashes the actor task. The `NousManager` health poller will eventually detect the dead actor and restart it (`manager.rs:432-434`), but all in-memory session state for that actor is lost.
+**Resolved:** `handle_cross_message` (`mod.rs:459`) now calls `execute_turn_with_panic_boundary` (`mod.rs:470`). Cross-nous pipeline panics are caught as `JoinError` on the same boundary as normal turns; the actor continues processing subsequent messages.
 
 ### Background tasks
 
@@ -81,7 +81,7 @@ The `ProviderRegistry` (`hermeneus/src/provider.rs:280`) holds a `Vec<ProviderEn
 - **Per-provider health:** `record_success` / `record_error` update state machine (`Up → Degraded → Down`). A single provider failure does not affect other providers.
 - **Mutex poisoning handled gracefully:** `health.rs:103-107` uses `unwrap_or_else(PoisonError::into_inner)` to recover stale state.
 
-**Gap:** The `ConcurrencyLimiter` (`hermeneus/src/concurrency.rs`) uses `.expect()` on `std::sync::Mutex` locking (`concurrency.rs:165`, `179`, `193`, `225`, `254`). If any thread panics while holding this lock, **all subsequent LLM requests across all actors will panic** because the limiter is shared globally via `Arc`. This is a single-failure-to-global-crash vector.
+**Resolved:** The `ConcurrencyLimiter` (`hermeneus/src/concurrency.rs`) now uses `parking_lot::Mutex` (`concurrency.rs:24`), which does not poison on panic. The `.expect()` calls on mutex locking are eliminated; a panic while holding the lock no longer crashes subsequent LLM requests.
 
 ## Tool Executors
 
@@ -96,24 +96,22 @@ See [Daemon Workers](#daemon-workers). Maintenance tasks inherit the same isolat
 The following components can turn a local failure into a process-wide crash:
 
 1. **Krites Datalog engine** - `panic!` on internal invariant violations during query planning and JSON serialization.
-2. **Hermeneus concurrency limiter** - `.expect()` on mutex poisoning; one poisoned lock kills all LLM traffic.
-3. **Pylon signal handler setup** - `.expect()` on signal installation; startup crash in restricted environments.
-4. **Nous actor cross-nous messages** - bypasses the panic boundary; a single bad cross-message kills the actor (process survives, but actor state is lost).
-5. **Nous manager health poller** - fire-and-forget task; if `health_cycle()` panics, health checks stop forever for all actors.
+2. **Pylon signal handler setup** - `.expect()` on signal installation; startup crash in restricted environments.
+3. **Nous manager health poller** - fire-and-forget task; if `health_cycle()` panics, health checks stop forever for all actors.
 
 ## Summary Table
 
 | Component | Failure Mode | Blast Radius | Ideal Behavior | Current Gap |
 |---|---|---|---|---|
 | Nous actor - normal turn | Pipeline panic caught as `JoinError` | Request | Actor continues, enter degraded mode if repeated | ✅ None |
-| Nous actor - cross-nous message | `execute_turn` inline, no panic boundary | Actor | Same panic boundary as normal turns | `actor/mod.rs:420` calls `execute_turn` directly |
+| Nous actor - cross-nous message | Pipeline panic caught as `JoinError` via `execute_turn_with_panic_boundary` | Request | Actor continues, enter degraded mode if repeated | ✅ None (resolved: `actor/mod.rs:470`) |
 | Nous manager health poller | `health_cycle()` panic kills spawned task silently | All actors managed | Supervisor restarts poller on failure | `manager.rs:547` fire-and-forget, no monitoring |
 | Daemon task runner | `JoinError` caught per-task in `check_in_flight` | Task | Task disabled after 3 failures | ✅ None |
 | Daemon maintenance tasks | `spawn_blocking` panics caught as `JoinError` | Task | Same isolation as async tasks | ✅ None |
 | Session store | `tokio::sync::Mutex` - no poisoning | Request | Errors returned to caller | ✅ None |
 | Knowledge store | `fjall` internal concurrency, errors returned | Request | Errors returned to caller | ✅ None |
 | Provider registry | Per-provider health tracker | Provider | Failed provider marked Down, others unaffected | ✅ None |
-| Hermeneus concurrency limiter | `.expect()` on `Mutex` poisoning | Process (all LLM calls) | Use `parking_lot::Mutex` or recover gracefully | `concurrency.rs:165`, `179`, `193`, `225`, `254` |
+| Hermeneus concurrency limiter | `parking_lot::Mutex` - no poisoning | Process | No-poison mutex; limiter survives panics | ✅ None (resolved: `concurrency.rs:24`) |
 | Hermeneus health tracker | `unwrap_or_else(PoisonError::into_inner)` | Component | Recovers stale state, continues | ✅ None |
 | Tool executors | Errors returned; sandbox no-op on non-Linux | Request | Isolate and return errors | ✅ None |
 | Pylon signal handlers | `.expect()` on signal installation failure | Process | Log warning, continue without signals | `server.rs:365`, `413`, `419` |
@@ -132,14 +130,10 @@ The following components can turn a local failure into a process-wide crash:
 - `crates/krites/src/storage/fjall_backend.rs:194` - `unreachable!("INVARIANT: tx is always Some while FjallWriteTx is live")`.
 
 ### Hermeneus
-- `crates/hermeneus/src/concurrency.rs:165` - `.expect("mutex poisoning: thread panicked, no Result to propagate")`.
-- `crates/hermeneus/src/concurrency.rs:179` - Same `.expect()` pattern.
-- `crates/hermeneus/src/concurrency.rs:193` - Same `.expect()` pattern.
-- `crates/hermeneus/src/concurrency.rs:225` - Same `.expect()` pattern inside `acquire()`.
-- `crates/hermeneus/src/concurrency.rs:254` - Same `.expect()` pattern inside `release()`.
+- `crates/hermeneus/src/concurrency.rs:24` - `parking_lot::Mutex` (resolved: replaces `std::sync::Mutex`; no poisoning on panic).
 
 ### Nous
-- `crates/nous/src/actor/mod.rs:420` - `handle_cross_message` calls `execute_turn` inline without panic boundary.
+- `crates/nous/src/actor/mod.rs:470` - `handle_cross_message` calls `execute_turn_with_panic_boundary` (resolved: previously called `execute_turn` inline).
 - `crates/nous/src/manager.rs:547` - `start_health_poller` spawns health task with no restart supervision.
 
 ### Pylon

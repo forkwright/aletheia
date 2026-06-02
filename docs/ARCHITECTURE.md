@@ -16,7 +16,7 @@ Module and crate names use Greek terms reflecting their essential nature (nous =
 
 ## Current substrate shape
 
-The current runtime is a 44-crate workspace plus the excluded `proskenion`
+The current runtime is a 47-crate workspace plus the excluded `proskenion`
 desktop shell. The compact generated inventory lives in
 [`_llm/L1-workspace.md`](../_llm/L1-workspace.md); this document describes the
 human architecture and invariants.
@@ -55,7 +55,7 @@ aletheia
 │   ├── episteme   -  knowledge pipeline: extraction, recall, consolidation, embeddings
 │   └── krites     -  embedded Datalog engine + HNSW vectors (mneme-engine feature gate)
 ├── hermeneus      -  LLM provider registry, fallback chains, loop guard, credentials
-├── organon        -  tool registry + 49 built-in tools + receipt ledger
+├── organon        -  tool registry + 67 built-in tools (default) + receipt ledger
 ├── nous           -  agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia        -  planning / project orchestration
 ├── pylon          -  Axum HTTP gateway, SSE streaming, auth enforcement
@@ -134,7 +134,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-44 crates in the workspace, with `proskenion` excluded and built via its own
+47 crates in the workspace, with `proskenion` excluded and built via its own
 manifest. The table below calls out the primary architecture crates; the full
 generated inventory is `_llm/L1-workspace.md`.
 
@@ -150,7 +150,7 @@ generated inventory is `_llm/L1-workspace.md`.
 | `krites` | `crates/krites` | Embedded Datalog and graph query engine with HNSW support | eidos |
 | `mneme` | `crates/mneme` | Thin facade re-exporting eidos, graphe, episteme, krites | eidos, graphe, episteme, krites |
 | `hermeneus` | `crates/hermeneus` | LLM provider registry, fallback chains, token redaction, provider trait, loop guard | koina, taxis |
-| `organon` | `crates/organon` | Tool registry, tool definitions, tags, HMAC receipts, 49 built-in tools, sandbox | koina, hermeneus |
+| `organon` | `crates/organon` | Tool registry, tool definitions, tags, HMAC receipts, 67 built-in tools (default), sandbox | koina, hermeneus |
 | `symbolon` | `crates/symbolon` | JWT tokens, password hashing, admin auth facade, RBAC policies | koina |
 | `melete` | `crates/melete` | Context distillation, compression strategies, token budget management | hermeneus |
 | `agora` | `crates/agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |

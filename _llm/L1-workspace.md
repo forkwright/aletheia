@@ -1,6 +1,6 @@
 # L1 - Workspace Overview
 
-Aletheia is a single-binary Rust agent runtime with 44 workspace crates plus the excluded `proskenion` desktop shell. Imports flow from leaf/foundation crates upward into memory, tools, runtime, gateways, and finally the `aletheia` binary. Lower layers must not depend on higher layers; facade crates (`mneme`, `theatron`) exist to stabilize downstream imports, not to hide arbitrary logic.
+Aletheia is a single-binary Rust agent runtime with 47 workspace crates plus the excluded `proskenion` desktop shell. Imports flow from leaf/foundation crates upward into memory, tools, runtime, gateways, and finally the `aletheia` binary. Lower layers must not depend on higher layers; facade crates (`mneme`, `theatron`) exist to stabilize downstream imports, not to hide arbitrary logic.
 
 ## Crate list
 
@@ -35,16 +35,20 @@ Aletheia is a single-binary Rust agent runtime with 44 workspace crates plus the
 | `theatron` | `crates/theatron` | Thin facade re-exporting skene types for external consumers. |
 | `skene` | `crates/theatron/skene` | Shared API client, types, SSE, and streaming infrastructure for Aletheia UIs. |
 | `koilon` | `crates/theatron/koilon` | Terminal dashboard for the Aletheia distributed cognition system. |
+| `poiesis-charts` | `crates/poiesis/charts` | Chart rendering support for poiesis. |
 | `poiesis-core` | `crates/poiesis/core` | Format-agnostic document model and Renderer trait for poiesis. |
-| `poiesis-text` | `crates/poiesis/text` | PDF and ODT document rendering backends for poiesis. |
 | `poiesis-sheet` | `crates/poiesis/sheet` | XLSX and ODS spreadsheet rendering backends for poiesis. |
 | `poiesis-slides` | `crates/poiesis/slides` | PPTX presentation rendering backend for poiesis. |
 | `poiesis-lint` | `crates/poiesis/lint` | Report prose linting: banned words, citation checks, structure checks. |
+| `poiesis-theme` | `crates/poiesis/theme` | Shared theming and styling for poiesis renderers. |
 | `poiesis-scaffold` | `crates/poiesis/scaffold` | Project-template scaffolder for poiesis report projects. |
 | `poiesis-typst` | `crates/poiesis/typst` | Typst-based PDF rendering backend for poiesis: embeddable compiler, JSON data injection, template assets. |
 | `poiesis-verify` | `crates/poiesis/verify` | Report claim verification: arithmetic evaluation and source resolution. |
 | `poiesis-intake` | `crates/poiesis/intake` | Parse Slack-style request text into a structured report scaffold. |
+| `poiesis-deck` | `crates/poiesis/deck` | Slide deck authoring model for poiesis. |
+| `poiesis-deck-layout` | `crates/poiesis/deck-layout` | Layout engine for poiesis slide decks. |
 | `poiesis-doc` | `crates/poiesis/doc` | DOCX write and inspect backend for poiesis. |
+| `poiesis-printer-chromium` | `crates/poiesis/printer-chromium` | Chromium-based headless print backend for poiesis. |
 | `poiesis-diff` | `crates/poiesis/diff` | Cell-level diff for XLSX and PPTX documents. |
 | `poiesis-inspect` | `crates/poiesis/inspect` | Text extraction from PDF, XLSX, and PPTX documents. |
 | `gnosis` | `crates/gnosis` | Machine-derived code-graph index for symbol-level cross-crate queries. |
@@ -65,7 +69,7 @@ Aletheia is a single-binary Rust agent runtime with 44 workspace crates plus the
 
 **CLI and operators.** Binary wiring, migrations, evals, and integration canaries: `aletheia`, `aletheia-sessions-migrate`, `dokimion`, `integration-tests`.
 
-**Poiesis document stack.** Report model, renderers, diff/inspect/intake/scaffold helpers: `poiesis-core`, `poiesis-text`, `poiesis-sheet`, `poiesis-slides`, `poiesis-lint`, `poiesis-verify`, `poiesis-typst`, `poiesis-intake`, `poiesis-doc`, `poiesis-diff`, `poiesis-inspect`, `poiesis-scaffold`.
+**Poiesis document stack.** Report model, renderers, diff/inspect/intake/scaffold helpers: `poiesis-core`, `poiesis-charts`, `poiesis-theme`, `poiesis-sheet`, `poiesis-slides`, `poiesis-deck`, `poiesis-deck-layout`, `poiesis-lint`, `poiesis-verify`, `poiesis-typst`, `poiesis-intake`, `poiesis-doc`, `poiesis-printer-chromium`, `poiesis-diff`, `poiesis-inspect`, `poiesis-scaffold`.
 
 **Presentation.** Shared UI client, TUI, facade, and excluded desktop shell: `skene`, `koilon`, `theatron`, `proskenion`.
 
