@@ -125,11 +125,10 @@ pub async fn send_message(
     require_role(&claims, Role::Operator)?;
 
     let idempotency_key =
-        extract_idempotency_key(&headers, state.idempotency_cache.max_key_length)?
-            .map(|k| format!("{}:{k}", claims.sub));
+        extract_idempotency_key(&headers, state.idempotency_cache.max_key_length)?;
 
     if let Some(ref key) = idempotency_key {
-        match state.idempotency_cache.check_or_insert(key) {
+        match state.idempotency_cache.check_or_insert(&claims.sub, key) {
             LookupResult::Miss => {}
             LookupResult::Hit { body, .. } => {
                 tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
@@ -265,6 +264,7 @@ pub async fn send_message(
     let sid = session_id.clone();
 
     let idem_key = idempotency_key.clone();
+    let idem_principal = claims.sub.clone();
     let idem_cache = Arc::clone(&state.idempotency_cache);
 
     // WHY(#3276): Create a turn buffer for this turn so events survive disconnection.
@@ -349,7 +349,7 @@ pub async fn send_message(
                             "output_tokens": result.usage.output_tokens,
                         })
                         .to_string();
-                        idem_cache.complete(key, axum::http::StatusCode::OK, body);
+                        idem_cache.complete(&idem_principal, key, axum::http::StatusCode::OK, body);
                     }
                 }
                 Err(err) => {
@@ -359,7 +359,7 @@ pub async fn send_message(
 
                     // WHY: Remove idempotency entry on error so the client can retry.
                     if let Some(ref key) = idem_key {
-                        idem_cache.remove(key);
+                        idem_cache.remove(&idem_principal, key);
                     }
 
                     let (err_code, err_message) = turn_error_info(&err);
