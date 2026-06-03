@@ -4,11 +4,12 @@
 //! dispatch-engine boundary for future native SDK integration. It is not a
 //! native HTTP/SSE Agent SDK client yet.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::pin::Pin;
 use std::process::Stdio;
 
+use serde::Serialize;
 use tokio::process::Command;
 
 use crate::engine::{AgentOptions, DispatchEngine, SessionHandle, SessionSpec};
@@ -66,6 +67,21 @@ pub struct McpServerConfig {
     pub args: Vec<String>,
     /// Environment variables.
     pub env: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize)]
+struct McpConfigFile {
+    #[serde(rename = "mcpServers")]
+    mcp_servers: BTreeMap<String, McpServerEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct McpServerEntry {
+    command: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    args: Vec<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    env: BTreeMap<String, String>,
 }
 
 /// Experimental Claude CLI dispatch engine.
@@ -158,7 +174,45 @@ impl AgentSdkEngine {
             args.extend(["--add-dir".to_owned(), dir.to_string_lossy().into_owned()]);
         }
 
+        if !self.config.mcp_servers.is_empty() {
+            if let Some(mcp_config) = self.mcp_config_json() {
+                // WHY: Claude CLI loads MCP servers from a session-local JSON config string.
+                args.extend(["--mcp-config".to_owned(), mcp_config]);
+            } else {
+                tracing::warn!(
+                    mcp_server_count = self.config.mcp_servers.len(),
+                    "failed to serialize MCP server configuration; skipping --mcp-config"
+                );
+            }
+        }
+
         args
+    }
+
+    fn mcp_config_json(&self) -> Option<String> {
+        let mcp_servers = self
+            .config
+            .mcp_servers
+            .iter()
+            .map(|server| {
+                let env = server
+                    .env
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect();
+
+                (
+                    server.name.clone(),
+                    McpServerEntry {
+                        command: server.command.clone(),
+                        args: server.args.clone(),
+                        env,
+                    },
+                )
+            })
+            .collect();
+
+        serde_json::to_string(&McpConfigFile { mcp_servers }).ok()
     }
 
     /// Spawn a subprocess and return a session handle.
@@ -271,5 +325,93 @@ impl DispatchEngine for AgentSdkEngine {
             let boxed: Box<dyn SessionHandle> = Box::new(handle);
             Ok(boxed)
         })
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "test assertions and helpers"
+)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::engine::AgentOptions;
+
+    fn test_engine(mcp_servers: Vec<McpServerConfig>) -> AgentSdkEngine {
+        AgentSdkEngine::new(AgentSdkConfig {
+            default_model: "claude-sonnet-4-20250514".to_owned(),
+            skip_permissions: false,
+            disable_plugins: false,
+            oauth_token: None,
+            mcp_servers,
+        })
+        .expect("engine should initialize")
+    }
+
+    #[test]
+    fn build_args_includes_mcp_config() {
+        let mut env = HashMap::new();
+        env.insert("CACHE_DIR".to_owned(), "/tmp/cache".to_owned());
+
+        let engine = test_engine(vec![
+            McpServerConfig {
+                name: "filesystem".to_owned(),
+                command: "npx".to_owned(),
+                args: vec![
+                    "-y".to_owned(),
+                    "@modelcontextprotocol/server-filesystem".to_owned(),
+                    "/Users/me/projects".to_owned(),
+                ],
+                env,
+            },
+            McpServerConfig {
+                name: "docs".to_owned(),
+                command: "python".to_owned(),
+                args: vec!["server.py".to_owned()],
+                env: HashMap::new(),
+            },
+        ]);
+
+        let args = engine.build_args(&AgentOptions::new().model("claude-opus-4-20250514"));
+        let mcp_idx = args
+            .iter()
+            .position(|arg| arg == "--mcp-config")
+            .expect("mcp config flag");
+        let config: serde_json::Value =
+            serde_json::from_str(&args[mcp_idx + 1]).expect("parse mcp config");
+
+        assert_eq!(
+            config,
+            serde_json::json!({
+                "mcpServers": {
+                    "docs": {
+                        "command": "python",
+                        "args": ["server.py"]
+                    },
+                    "filesystem": {
+                        "command": "npx",
+                        "args": [
+                            "-y",
+                            "@modelcontextprotocol/server-filesystem",
+                            "/Users/me/projects"
+                        ],
+                        "env": {
+                            "CACHE_DIR": "/tmp/cache"
+                        }
+                    }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn build_args_omits_mcp_config_when_empty() {
+        let engine = test_engine(Vec::new());
+        let args = engine.build_args(&AgentOptions::new());
+
+        assert!(!args.iter().any(|arg| arg == "--mcp-config"));
     }
 }
