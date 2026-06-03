@@ -18,7 +18,7 @@ use tracing::{debug, info};
 
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
-use crate::provider::{DeploymentTarget, LlmProvider};
+use crate::provider::{DeploymentTarget, LlmProvider, MatchKind};
 use crate::seat_bridged::SeatBridgedProvider;
 use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
 
@@ -264,13 +264,31 @@ impl LlmProvider for CcProvider {
     }
 
     fn supports_model(&self, model: &str) -> bool {
-        // WHY: CC delegates model routing to the `claude` CLI, which handles
-        // all claude-* models internally. Accepting any claude-* prefix
-        // ensures new model IDs (e.g. claude-opus-4-7) work without updating
-        // the SUPPORTED_MODELS list. The `cc/` prefix is for explicit routing.
-        model.starts_with(CC_MODEL_PREFIX)
-            || model.starts_with("claude-")
-            || SUPPORTED_MODELS.contains(&model)
+        self.match_specificity(model).is_some()
+    }
+
+    fn match_specificity(&self, model: &str) -> Option<MatchKind> {
+        if model.starts_with(CC_MODEL_PREFIX) {
+            // WHY: `cc/<model>` is an operator-explicit routing directive —
+            // this provider is the intended destination regardless of what
+            // other providers are registered.
+            Some(MatchKind::Prefix)
+        } else if SUPPORTED_MODELS.contains(&model) {
+            // WHY: an exact-model-ID match on the statically-known list is
+            // high specificity. If a second provider (e.g. AnthropicProvider)
+            // also exact-matches the same ID the tie breaks by registration
+            // order (first registered wins), which is a stable contract.
+            Some(MatchKind::Exact)
+        } else if model.starts_with("claude-") {
+            // WHY: CC delegates model routing to the `claude` CLI, which
+            // handles all claude-* models internally, including future IDs
+            // not yet in SUPPORTED_MODELS. This catch-all ensures forward
+            // compatibility at the cost of lower precedence: any provider
+            // with an exact-model match wins over this branch.
+            Some(MatchKind::CatchAll)
+        } else {
+            None
+        }
     }
 
     fn name(&self) -> &'static str {
