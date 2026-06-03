@@ -37,6 +37,8 @@ pub struct QaIssue {
 pub struct QaReport {
     /// Whether any issues were found.
     pub has_issues: bool,
+    /// Number of issues in this report.
+    pub issue_count: usize,
     /// The individual issues comprising this report.
     pub issues: Vec<QaIssue>,
 }
@@ -47,6 +49,7 @@ impl QaReport {
     pub fn pass() -> Self {
         Self {
             has_issues: false,
+            issue_count: 0,
             issues: Vec::new(),
         }
     }
@@ -57,7 +60,12 @@ impl QaReport {
     #[must_use]
     pub fn new(issues: Vec<QaIssue>) -> Self {
         let has_issues = !issues.is_empty();
-        Self { has_issues, issues }
+        let issue_count = issues.len();
+        Self {
+            has_issues,
+            issue_count,
+            issues,
+        }
     }
 
     /// Merges multiple reports into a single report.
