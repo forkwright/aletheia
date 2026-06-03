@@ -97,7 +97,7 @@ async fn dispatch_one(
         );
         let reply_text = execute_command(
             &cmd,
-            &decision.nous_id,
+            decision.nous_id,
             &decision.session_key,
             &nous_manager,
             &channel_registry,
