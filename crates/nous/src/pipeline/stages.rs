@@ -647,19 +647,19 @@ pub(super) fn run_guard_stage(
 )]
 pub(super) async fn run_execute_stage(
     config: &NousConfig,
-    pipeline_config: &PipelineConfig,
+    _pipeline_config: &PipelineConfig,
     ctx: &PipelineContext,
     input: &PipelineInput,
     providers: &ProviderRegistry,
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
-    pipeline_start: Instant,
-    total_timeout: Option<Duration>,
+    time_budget: &mut crate::budget::TimeBudget,
     emitter: &EventEmitter,
     hooks: Option<&HookRegistry>,
     session_store: Option<&Mutex<SessionStore>>,
 ) -> error::Result<TurnResult> {
+    time_budget.begin_stage("execute");
     let span = info_span!(
         "pipeline_stage",
         stage = "execute",
@@ -670,18 +670,7 @@ pub(super) async fn run_execute_stage(
     );
     let start = Instant::now();
 
-    // NOTE: prefer per-stage budget, fall back to remaining time from total pipeline budget, whichever is tighter.
-    let execute_secs = pipeline_config.stage_budget.execute_secs;
-    let effective_execute_timeout = match (execute_secs > 0, total_timeout) {
-        (true, Some(total)) => {
-            let stage = Duration::from_secs(u64::from(execute_secs));
-            let remaining = total.saturating_sub(pipeline_start.elapsed());
-            Some(stage.min(remaining))
-        }
-        (true, None) => Some(Duration::from_secs(u64::from(execute_secs))),
-        (false, Some(total)) => Some(total.saturating_sub(pipeline_start.elapsed())),
-        (false, None) => None,
-    };
+    let effective_execute_timeout = time_budget.stage_limit("execute");
 
     let execute_fut = async {
         if let Some(tx) = stream_tx {
@@ -715,16 +704,17 @@ pub(super) async fn run_execute_stage(
         match tokio::time::timeout(timeout_dur, execute_fut).await {
             Ok(res) => res,
             Err(_elapsed) => {
-                let secs = execute_secs.max(pipeline_config.stage_budget.total_secs);
+                let timeout_secs = u32::try_from(timeout_dur.as_secs()).unwrap_or(u32::MAX);
                 span.record("status", "timeout");
                 emitter.emit(&StageTimeout {
                     nous_id: config.id.to_string(),
                     stage: "execute",
-                    timeout_secs: secs,
+                    timeout_secs,
                 });
+                time_budget.end_stage(crate::budget::StageTimingStatus::TimedOut);
                 return Err(error::PipelineTimeoutSnafu {
                     stage: "execute",
-                    timeout_secs: secs,
+                    timeout_secs,
                 }
                 .build());
             }
@@ -772,6 +762,7 @@ pub(super) async fn run_execute_stage(
                 stage: "execute",
                 error_type: "pipeline_error".to_owned(),
             });
+            time_budget.end_stage(crate::budget::StageTimingStatus::Completed);
             return Err(err);
         }
     };
@@ -788,6 +779,7 @@ pub(super) async fn run_execute_stage(
         stage: "execute",
         duration_secs,
     });
+    time_budget.end_stage(crate::budget::StageTimingStatus::Completed);
     Ok(result)
 }
 
