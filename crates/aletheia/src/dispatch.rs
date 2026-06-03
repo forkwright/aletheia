@@ -95,7 +95,14 @@ async fn dispatch_one(
             command = cmd.name(),
             "dispatching !-command"
         );
-        let reply_text = execute_command(&cmd, &decision.nous_id, &decision.session_key, &nous_manager, &channel_registry).await;
+        let reply_text = execute_command(
+            &cmd,
+            &decision.nous_id,
+            &decision.session_key,
+            &nous_manager,
+            &channel_registry,
+        )
+        .await;
         send_reply(&msg, &reply_text, &channel_registry).await;
         return;
     }
@@ -184,18 +191,16 @@ async fn execute_command(
 
     // Gather channel health snapshots only for commands that need them.
     let channels = match cmd {
-        command::Command::Channels => {
-            channel_registry
-                .probe_all()
-                .await
-                .into_iter()
-                .map(|(id, probe)| ChannelSnapshot {
-                    id,
-                    healthy: probe.ok,
-                    latency_ms: probe.latency_ms,
-                })
-                .collect()
-        }
+        command::Command::Channels => channel_registry
+            .probe_all()
+            .await
+            .into_iter()
+            .map(|(id, probe)| ChannelSnapshot {
+                id,
+                healthy: probe.ok,
+                latency_ms: probe.latency_ms,
+            })
+            .collect(),
         _ => vec![],
     };
 

@@ -75,14 +75,20 @@ const KNOWN_COMMANDS: &[(&str, &str)] = &[
     ("!status", "lifecycle and session info for this agent"),
     ("!agents", "list all running agents"),
     ("!whoami", "show which agent handles this conversation"),
-    ("!new [label]", "start a fresh session (optional label ignored by agent)"),
+    (
+        "!new [label]",
+        "start a fresh session (optional label ignored by agent)",
+    ),
     ("!end", "close the current session"),
     ("!sessions", "count sessions tracked by this agent"),
     ("!ping", "round-trip liveness check"),
     ("!channels", "list channel providers and health"),
     ("!uptime", "agent uptime and panic-boundary count"),
     ("!model", "show the LLM model configured for this agent"),
-    ("!info [agent_id]", "detail view for an agent (default: current)"),
+    (
+        "!info [agent_id]",
+        "detail view for an agent (default: current)",
+    ),
 ];
 
 /// Parse an inbound message text into a `Command`.
@@ -248,7 +254,11 @@ fn cmd_agents(ctx: &CommandContext) -> String {
     }
     let mut out = format!("{} agent(s) running:\n", ctx.all_agents.len());
     for a in &ctx.all_agents {
-        let marker = if a.id == ctx.current_nous_id { " *" } else { "" };
+        let marker = if a.id == ctx.current_nous_id {
+            " *"
+        } else {
+            ""
+        };
         let _ = writeln!(out, "  {}{} ({})", a.id, marker, a.lifecycle);
     }
     out.push_str("(* = current)");
@@ -283,10 +293,7 @@ fn cmd_end(ctx: &CommandContext) -> String {
 
 fn cmd_sessions(ctx: &CommandContext) -> String {
     match &ctx.current_agent {
-        None => format!(
-            "Agent '{}' status unavailable.",
-            ctx.current_nous_id
-        ),
+        None => format!("Agent '{}' status unavailable.", ctx.current_nous_id),
         Some(a) => {
             let active = a
                 .active_session
@@ -366,9 +373,7 @@ fn cmd_info(ctx: &CommandContext, agent_id: Option<&str>) -> String {
 }
 
 fn cmd_unknown(name: &str) -> String {
-    format!(
-        "Unknown command '!{name}'. Type !help for a list of available commands."
-    )
+    format!("Unknown command '!{name}'. Type !help for a list of available commands.")
 }
 
 fn format_uptime(secs: u64) -> String {
@@ -550,10 +555,7 @@ mod tests {
         let reply = execute(&Command::Help, &ctx);
         // Every known command name should appear in the help output.
         for (cmd, _) in KNOWN_COMMANDS {
-            assert!(
-                reply.contains(cmd),
-                "help output missing '{cmd}': {reply}"
-            );
+            assert!(reply.contains(cmd), "help output missing '{cmd}': {reply}");
         }
     }
 
@@ -574,7 +576,10 @@ mod tests {
         let mut ctx = make_context();
         ctx.current_agent = None;
         let reply = execute(&Command::Status, &ctx);
-        assert!(reply.contains("unavailable"), "expected unavailable: {reply}");
+        assert!(
+            reply.contains("unavailable"),
+            "expected unavailable: {reply}"
+        );
     }
 
     #[test]
@@ -637,7 +642,12 @@ mod tests {
     #[test]
     fn unknown_command_suggests_help() {
         let ctx = make_context();
-        let reply = execute(&Command::Unknown { name: "frobnik".to_owned() }, &ctx);
+        let reply = execute(
+            &Command::Unknown {
+                name: "frobnik".to_owned(),
+            },
+            &ctx,
+        );
         assert!(reply.contains("frobnik"), "{reply}");
         assert!(reply.contains("!help"), "{reply}");
     }
@@ -653,7 +663,12 @@ mod tests {
     #[test]
     fn info_unknown_agent_reports_not_found() {
         let ctx = make_context();
-        let reply = execute(&Command::Info { agent_id: Some("nonexistent".to_owned()) }, &ctx);
+        let reply = execute(
+            &Command::Info {
+                agent_id: Some("nonexistent".to_owned()),
+            },
+            &ctx,
+        );
         assert!(reply.contains("not found"), "{reply}");
     }
 
@@ -686,6 +701,12 @@ mod tests {
         assert_eq!(Command::Uptime.name(), "uptime");
         assert_eq!(Command::Model.name(), "model");
         assert_eq!(Command::Info { agent_id: None }.name(), "info");
-        assert_eq!(Command::Unknown { name: "xyz".to_owned() }.name(), "xyz");
+        assert_eq!(
+            Command::Unknown {
+                name: "xyz".to_owned()
+            }
+            .name(),
+            "xyz"
+        );
     }
 }
