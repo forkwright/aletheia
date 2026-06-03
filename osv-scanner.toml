@@ -16,3 +16,11 @@ id = "RUSTSEC-2025-0134"
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0320"
 # WHY: yaml-rust 0.4.5 unmaintained advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0052"
+# WHY: async-std unmaintained; transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7. Mirrors deny.toml + .cargo/audit.toml.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0097"
+# WHY: rand 0.8 unsound; transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. Mirrors .cargo/audit.toml + deny.toml.
