@@ -170,6 +170,16 @@ impl NousHandle {
     /// Not cancel-safe. If cancelled after `mpsc::send` completes but before
     /// `oneshot::recv` returns, the streaming turn runs but the result is lost.
     /// Do not use in `select!` branches.
+    ///
+    /// # Approval gate
+    ///
+    /// This method passes `approval_gate: None` — intentional for batch/headless
+    /// callers (e.g. `diaporeia`'s memory-MCP tool turns) where no interactive
+    /// operator is present to approve reversibility-class tools. The gate's
+    /// `None` contract (see `dispatch_tools_streaming`) is: Mandatory →
+    /// default-deny, Required → approve. Callers that DO have an interactive
+    /// operator session must use [`send_turn_streaming_with_approval`](Self::send_turn_streaming_with_approval)
+    /// so the approval event is surfaced to the operator and the gate is wired.
     pub async fn send_turn_streaming_with_session_id(
         &self,
         session_key: impl Into<String>,

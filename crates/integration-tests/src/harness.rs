@@ -111,7 +111,7 @@ impl TestHarness {
 
     /// Build a minimal `AppState` with a caller-supplied LLM provider.
     pub async fn build_with_provider(provider: Box<dyn LlmProvider>) -> Self {
-        Self::build_internal(provider, false, false).await
+        Self::build_internal(provider, false, false, None).await
     }
 
     /// Build a minimal `AppState` with optional built-in tool registration.
@@ -119,13 +119,25 @@ impl TestHarness {
         provider: Box<dyn LlmProvider>,
         register_tools: bool,
     ) -> Self {
-        Self::build_internal(provider, register_tools, false).await
+        Self::build_internal(provider, register_tools, false, None).await
     }
 
     /// Build an `AppState` with a real knowledge store and caller-supplied provider.
     #[cfg(feature = "knowledge-store")]
     pub async fn build_with_provider_and_knowledge_store(provider: Box<dyn LlmProvider>) -> Self {
-        Self::build_internal(provider, false, true).await
+        Self::build_internal(provider, false, true, None).await
+    }
+
+    /// Build an `AppState` with a caller-supplied provider and a pre-built tool registry.
+    ///
+    /// Use this when the test needs to register custom or synthetic tools (e.g. an
+    /// Irreversible tool for the approval-gate e2e path) without pulling in the full
+    /// organon builtin suite.
+    pub async fn build_with_provider_and_registry(
+        provider: Box<dyn LlmProvider>,
+        registry: ToolRegistry,
+    ) -> Self {
+        Self::build_internal(provider, false, false, Some(registry)).await
     }
 
     #[expect(
@@ -136,6 +148,7 @@ impl TestHarness {
         provider: Box<dyn LlmProvider>,
         register_tools: bool,
         with_knowledge_store: bool,
+        prebuilt_registry: Option<ToolRegistry>,
     ) -> Self {
         // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         let dir = tempfile::TempDir::new().expect("tmpdir");
@@ -174,7 +187,7 @@ impl TestHarness {
         provider_registry.register(provider);
         let provider_registry = Arc::new(provider_registry);
 
-        let mut tool_registry = ToolRegistry::new();
+        let mut tool_registry = prebuilt_registry.unwrap_or_default();
         if register_tools {
             // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
             organon::builtins::register_all(&mut tool_registry).expect("register builtins");
