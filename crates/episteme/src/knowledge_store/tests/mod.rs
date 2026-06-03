@@ -9,6 +9,8 @@ mod engine_assertions {
 }
 
 #[cfg(feature = "mneme-engine")]
+mod admission;
+#[cfg(feature = "mneme-engine")]
 mod causal;
 mod ddl;
 #[cfg(feature = "mneme-engine")]

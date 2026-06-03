@@ -534,6 +534,7 @@ impl LazyEmbeddingProvider {
 pub(super) fn open_knowledge_stores(
     oikos: &Oikos,
     cohorts: impl IntoIterator<Item = String>,
+    admission_policy: taxis::config::AdmissionPolicyKind,
 ) -> Result<std::collections::HashMap<String, Arc<mneme::knowledge_store::KnowledgeStore>>> {
     let mut stores = std::collections::HashMap::new();
     for cohort in cohorts {
@@ -542,9 +543,10 @@ pub(super) fn open_knowledge_stores(
             std::fs::create_dir_all(parent)
                 .whatever_context("failed to CREATE knowledge store directory")?;
         }
+        let knowledge_config = build_knowledge_config(admission_policy);
         let store = match mneme::knowledge_store::KnowledgeStore::open_fjall(
             &kb_path,
-            mneme::knowledge_store::KnowledgeConfig::default(),
+            knowledge_config,
         ) {
             Ok(s) => s,
             Err(e) => {
@@ -565,6 +567,29 @@ pub(super) fn open_knowledge_stores(
         stores.insert(cohort, store);
     }
     Ok(stores)
+}
+
+/// Build a `mneme::KnowledgeConfig` from the taxis admission policy kind.
+///
+/// WHY: separates the taxis config enum (serializable, TOML-friendly) from the
+/// episteme runtime trait object so neither crate depends on the other directly.
+#[cfg(feature = "recall")]
+pub(super) fn build_knowledge_config(
+    kind: taxis::config::AdmissionPolicyKind,
+) -> mneme::knowledge_store::KnowledgeConfig {
+    let policy: Box<dyn mneme::admission::AdmissionPolicy> = match kind {
+        taxis::config::AdmissionPolicyKind::Structured => Box::new(
+            mneme::admission::StructuredAdmissionPolicy::new(
+                mneme::admission::StructuredAdmissionConfig::default(),
+            ),
+        ),
+        // NOTE: Default and any future variants fall through to admit-all.
+        _ => Box::new(mneme::admission::DefaultAdmissionPolicy),
+    };
+    mneme::knowledge_store::KnowledgeConfig {
+        admission_policy: policy,
+        ..mneme::knowledge_store::KnowledgeConfig::default()
+    }
 }
 
 pub(super) fn build_signal_provider(

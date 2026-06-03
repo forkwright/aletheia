@@ -510,6 +510,60 @@ fn defeasible_default_entity_scoped_override_does_not_suppress_other_entity() {
     );
 }
 
+// ── Trigger test: materialize_derived_facts produces IS-A closure ─────────────
+
+#[test]
+fn materialize_derived_facts_trigger_populates_is_a_closure() {
+    // WHY: validates the full trigger path — `materialize_derived_facts` (the
+    // method wired to the daemon builtin) populates `derived_facts` so that
+    // ontological IS-A closure is queryable by callers.
+    let store = KnowledgeStore::open_mem().expect("open_mem");
+
+    make_entity(&store, "eve", "Eve", "software_engineer");
+    store
+        .insert_type_hierarchy("software_engineer", "engineer")
+        .expect("insert hierarchy");
+    store
+        .insert_type_hierarchy("engineer", "professional")
+        .expect("insert hierarchy");
+
+    // Before trigger: no derived facts.
+    let pre_trigger = store
+        .query_derived_facts("eve")
+        .expect("pre-trigger query");
+    assert!(
+        pre_trigger.is_empty(),
+        "derived_facts should be empty before trigger fires"
+    );
+
+    // Fire the trigger: materialize_derived_facts is the method the daemon task calls.
+    let count = store
+        .materialize_derived_facts()
+        .expect("materialize_derived_facts");
+    assert!(count > 0, "trigger should produce at least one derived fact");
+
+    // After trigger: IS-A closure is populated.
+    let post_trigger = store
+        .query_derived_facts("eve")
+        .expect("post-trigger query");
+
+    let has_engineer = post_trigger
+        .iter()
+        .any(|d| d.rule_id == "ontological:is_a" && d.derived_content == "type:engineer");
+    let has_professional = post_trigger
+        .iter()
+        .any(|d| d.rule_id == "ontological:is_a" && d.derived_content == "type:professional");
+
+    assert!(
+        has_engineer,
+        "IS-A closure: eve should derive type:engineer via software_engineer IS-A engineer"
+    );
+    assert!(
+        has_professional,
+        "IS-A closure: eve should derive type:professional via transitive chain"
+    );
+}
+
 // ── Schema version test ────────────────────────────────────────────────────────
 
 #[test]

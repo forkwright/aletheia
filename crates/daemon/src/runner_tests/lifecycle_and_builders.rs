@@ -452,6 +452,12 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledgeExecutor 
     ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
         Ok(crate::maintenance::MaintenanceReport::default())
     }
+
+    fn materialize_derived_facts(
+        &self,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
+    }
 }
 
 #[test]
