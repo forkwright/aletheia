@@ -12,7 +12,6 @@ fn test_render(md: &str) -> Vec<Line<'static>> {
     lines
 }
 
-#[expect(dead_code, reason = "test helper available for future code/list tests")]
 fn mk_render(md: &str) -> (Vec<Line<'static>>, Vec<MdLink>) {
     let theme = Theme::detect();
     let hl = Highlighter::new(theme.mode);
@@ -310,22 +309,38 @@ fn link_text_renders_with_underline_modifier() {
 
 #[test]
 fn link_appends_url_after_display_text() {
-    let lines = test_render("[text](https://example.com)");
+    // WHY: Test via MdLink (always populated) rather than the paren-fallback text
+    // that only appears when supports_hyperlinks() is false. Workstation terminals
+    // (Kitty, Ghostty, WezTerm) set OSC-8 env vars so the paren fallback is skipped
+    // there, making the raw-text assertion environment-sensitive. The canonical
+    // invariant is: the URL is captured in the returned MdLink list and the
+    // display text is visible in the rendered lines.
+    let (lines, links) = mk_render("[text](https://example.com)");
     let all = all_lines_text(&lines);
-    assert!(all.contains("text"), "link display text must appear");
     assert!(
-        all.contains("https://example.com"),
-        "link URL must be appended in output"
+        all.contains("text"),
+        "link display text must appear in rendered lines"
     );
-    // URL is wrapped in parens
     assert!(
-        all.contains("(https://example.com)"),
-        "link URL must appear in parentheses"
+        links.iter().any(|l| l.url == "https://example.com"),
+        "link URL must be captured in MdLink list; got: {links:?}"
+    );
+    assert!(
+        links.iter().any(|l| l.text == "text"),
+        "link display text must be captured in MdLink list; got: {links:?}"
     );
 }
 
 #[test]
 fn link_url_uses_dim_foreground_color() {
+    // WHY: The dim-styled URL span only appears in the paren fallback path
+    // (when supports_hyperlinks() is false). On OSC-8-capable terminals the
+    // URL is delivered via escape sequences and not present as a styled span.
+    // Skip this assertion when the terminal supports hyperlinks so the test
+    // passes on workstations (Kitty, Ghostty, WezTerm) and CI alike.
+    if crate::hyperlink::supports_hyperlinks() {
+        return;
+    }
     let (lines, theme) = test_render_with_theme("[click](https://example.com)");
     assert!(
         any_line_has_fg(&lines, "https://example.com", theme.text.fg_dim),

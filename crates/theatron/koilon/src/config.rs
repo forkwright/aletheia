@@ -175,8 +175,19 @@ impl Config {
         // WHY: When neither CLI flag nor config file provides a URL, attempt
         // auto-discovery before falling back to the compiled default.
         // Discovery runs a blocking runtime because Config::load is sync.
+        // WHY cfg(test) skip: LAN probes block ~120 s per candidate on
+        // workstation test harnesses (TCP timeout, not connection-refused).
+        // `#[cfg(test)]` gates only the koilon crate's own tests — the
+        // binary and integration consumers always run live discovery.
+        // Runtime override via KOILON_NO_DISCOVERY is kept as a belt-and-
+        // suspenders escape for cases where cfg(test) is not sufficient.
+        let skip_discovery = cfg!(test) || RealSystem.var("KOILON_NO_DISCOVERY").is_some();
         let url = cli_url.or(file_config.url).unwrap_or_else(|| {
-            Self::try_discover(&discovery_config).unwrap_or_else(|| DEFAULT_URL.to_string())
+            if skip_discovery {
+                DEFAULT_URL.to_string()
+            } else {
+                Self::try_discover(&discovery_config).unwrap_or_else(|| DEFAULT_URL.to_string())
+            }
         });
 
         Ok(Config {
