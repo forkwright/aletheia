@@ -791,7 +791,10 @@ mod tests {
                     MatchKind::CatchAll
                 };
                 registry.register(Box::new(
-                    MockProvider::new("r").named(name).models(models).with_match_kind(kind),
+                    MockProvider::new("r")
+                        .named(name)
+                        .models(models)
+                        .with_match_kind(kind),
                 ));
             }
 
