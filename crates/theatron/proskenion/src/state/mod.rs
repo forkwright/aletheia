@@ -44,14 +44,14 @@ pub mod tools;
 /// Goal-backward verification state for the planning project detail view.
 pub(crate) mod verification;
 
-/// Ops dashboard state: agent status cards, service health, toggle controls.
-pub(crate) mod ops;
-/// Settings state: server configs, appearance, keybindings, wizard flow.
-pub(crate) mod settings;
 /// Token usage, cost tracking, budget, and metrics display helpers.
 pub(crate) mod metrics;
+/// Ops dashboard state: agent status cards, service health, toggle controls.
+pub(crate) mod ops;
 /// Pipeline stage tracking for transparent agent routing indicator.
 pub(crate) mod pipeline;
+/// Settings state: server configs, appearance, keybindings, wizard flow.
+pub(crate) mod settings;
 /// Tool usage metrics: aggregated stats, date range filtering, stores.
 pub(crate) mod tool_metrics;
 /// View state preservation across navigation (scroll position, input drafts).

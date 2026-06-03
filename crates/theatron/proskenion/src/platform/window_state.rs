@@ -75,7 +75,6 @@ fn state_path() -> Result<PathBuf, WindowStateError> {
 }
 
 /// Load window state from disk, returning defaults if the file does not exist.
-#[must_use]
 pub(crate) fn load() -> Result<WindowState, WindowStateError> {
     let path = state_path()?;
 
@@ -238,15 +237,17 @@ mod tests {
 
     #[test]
     fn round_trip_toml() {
-        let mut state = WindowState::default();
-        state.x = 50;
-        state.y = 75;
-        state.width = 1920;
-        state.height = 1080;
-        state.maximized = true;
-        state.active_view = "/metrics".to_string();
-        state.sidebar_collapsed = true;
-        state.sidebar_width = Some(280);
+        let mut state = WindowState {
+            x: 50,
+            y: 75,
+            width: 1920,
+            height: 1080,
+            maximized: true,
+            active_view: "/metrics".to_string(),
+            sidebar_collapsed: true,
+            sidebar_width: Some(280),
+            ..WindowState::default()
+        };
         state
             .active_sessions
             .insert("syn".into(), "sess-abc".into());

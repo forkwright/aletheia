@@ -135,10 +135,10 @@ impl AgentStore {
             self.agents.insert(id, record);
         }
         // Auto-select first agent if none is active
-        if self.active_id.is_none() {
-            if let Some(first) = self.order.first() {
-                self.active_id = Some(first.clone());
-            }
+        if self.active_id.is_none()
+            && let Some(first) = self.order.first()
+        {
+            self.active_id = Some(first.clone());
         }
     }
 }

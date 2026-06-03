@@ -155,7 +155,8 @@ const PLACEHOLDER_STYLE: &str = "\
     color: var(--text-muted);\
 ";
 
-const ERROR_STYLE: &str = "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);";
+const ERROR_STYLE: &str =
+    "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);";
 
 /// Discussion panel listing all discussions for a project.
 #[component]
@@ -296,7 +297,7 @@ fn DiscussionCard(
     let (card_bg, card_border) = discussion_card_colors(discussion.priority, discussion.status);
     let card_style = format!("{CARD_BASE} background: {card_bg}; border-color: {card_border};");
 
-    let can_submit = *selected_option_id.read() != None || !free_text.read().is_empty();
+    let can_submit = selected_option_id.read().is_some() || !free_text.read().is_empty();
 
     // Clone ids for closures.
     let disc_id_submit = discussion.id.clone();
@@ -536,7 +537,10 @@ mod tests {
     fn discussion_card_colors_blocking_has_red_border() {
         let (_, border) =
             discussion_card_colors(DiscussionPriority::Blocking, DiscussionStatus::Open);
-        assert_eq!(border, "var(--status-error)", "blocking should have red border");
+        assert_eq!(
+            border, "var(--status-error)",
+            "blocking should have red border"
+        );
     }
 
     #[test]

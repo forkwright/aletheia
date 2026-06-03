@@ -208,7 +208,6 @@ pub(crate) fn CommandPaletteView(is_open: bool, on_execute: EventHandler<String>
                         let cmd_name = format!("/{name}");
                         let row_style = if is_active { ROW_ACTIVE_STYLE } else { ROW_STYLE };
                         let on_execute = on_execute;
-                        let nav = nav.clone();
                         rsx! {
                             div {
                                 key: "{idx}",

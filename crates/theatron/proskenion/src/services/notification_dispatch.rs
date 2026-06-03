@@ -180,6 +180,10 @@ impl NotificationDispatch {
         );
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "all args required for notification routing; struct refactor is a future task"
+    )]
     fn on_tool_failed(
         &mut self,
         nous_id: &NousId,
@@ -285,6 +289,10 @@ impl NotificationDispatch {
 
     /// Dispatch with coalescing: the first notification in a 3s window fires
     /// immediately; subsequent arrivals increment the pending group count.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "all args required for notification routing; struct refactor is a future task"
+    )]
     fn dispatch_with_grouping(
         &mut self,
         category: NotificationCategory,
@@ -433,7 +441,6 @@ fn truncate_chars(s: &str, max_chars: usize) -> &str {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use skene::id::{NousId, SessionId};
 

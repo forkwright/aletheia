@@ -81,11 +81,11 @@ fn parse_blocks<'a>(
     let mut blocks = Vec::new();
 
     while *pos < events.len() {
-        if let Some(ref stop) = stop_at {
-            if matches!(&events[*pos], Event::End(tag) if tag == stop) {
-                *pos += 1;
-                return blocks;
-            }
+        if let Some(ref stop) = stop_at
+            && matches!(&events[*pos], Event::End(tag) if tag == stop)
+        {
+            *pos += 1;
+            return blocks;
         }
 
         match &events[*pos] {
@@ -430,7 +430,7 @@ fn render_block(block: MdBlock, key: usize) -> Element {
                     alignments,
                 }
             }
-        },
+        }
         MdBlock::HorizontalRule => rsx! {
             hr {
                 key: "{key}",

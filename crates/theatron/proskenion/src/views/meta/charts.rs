@@ -35,10 +35,13 @@ pub(crate) fn LineChart(
         .map(|(i, p)| {
             let x = if data.len() > 1 {
                 {
-                #[expect(clippy::as_conversions, reason = "point index to f64 for SVG coordinate")]
-                let x = padding + (i as f64 / (data.len() - 1) as f64) * chart_w;
-                x
-            }
+                    #[expect(
+                        clippy::as_conversions,
+                        reason = "point index to f64 for SVG coordinate"
+                    )]
+                    let x = padding + (i as f64 / (data.len() - 1) as f64) * chart_w;
+                    x
+                }
             } else {
                 padding + chart_w / 2.0
             };
@@ -122,8 +125,16 @@ fn label_elements(
 ) -> Element {
     let first_label = data.first().map(|p| p.label.clone());
     let first_x = points.first().map(|&(x, _)| x);
-    let last_label = if data.len() > 1 { data.last().map(|p| p.label.clone()) } else { None };
-    let last_x = if data.len() > 1 { points.last().map(|&(x, _)| x) } else { None };
+    let last_label = if data.len() > 1 {
+        data.last().map(|p| p.label.clone())
+    } else {
+        None
+    };
+    let last_x = if data.len() > 1 {
+        points.last().map(|&(x, _)| x)
+    } else {
+        None
+    };
 
     let y_pos = format!("{:.1}", height - 4.0);
 

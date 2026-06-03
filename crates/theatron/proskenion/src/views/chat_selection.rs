@@ -116,9 +116,11 @@ mod tests {
 
     #[test]
     fn activate_chat_selection_preserves_messages_when_selection_is_unchanged() {
-        let mut chat_state = ChatState::default();
-        chat_state.agent_id = Some(NousId::from("syn"));
-        chat_state.session_key = Some("incident-review".to_string());
+        let mut chat_state = ChatState {
+            agent_id: Some(NousId::from("syn")),
+            session_key: Some("incident-review".to_string()),
+            ..ChatState::default()
+        };
         chat_state.messages.push(LegacyChatMessage {
             role: MessageRole::User,
             content: "keep me".to_string(),

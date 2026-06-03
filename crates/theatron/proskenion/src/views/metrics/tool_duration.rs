@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use crate::components::chart::{
     LineChart, LinePoint, LineSeries, PercentileBarChart, PercentileEntry, SERIES_COLORS,
 };
-use crate::state::tool_metrics::{tools_by_duration, TimeSeriesBucket, ToolStat};
+use crate::state::tool_metrics::{TimeSeriesBucket, ToolStat, tools_by_duration};
 
 // -- Component ----------------------------------------------------------------
 

@@ -92,7 +92,11 @@ fn render_card(card: &AgentCardData) -> Element {
     } else {
         "var(--text-muted)"
     };
-    let conn_color = if card.connected { "var(--status-success)" } else { "var(--status-error)" };
+    let conn_color = if card.connected {
+        "var(--status-success)"
+    } else {
+        "var(--status-error)"
+    };
     let conn_label = if card.connected {
         "connected"
     } else {
