@@ -287,13 +287,22 @@ impl RuntimeBuilder {
 
         // Tool registry
         let after_action_log_dir = self.oikos.logs().join("after-actions");
+        #[cfg(feature = "energeia")]
+        let mut energeia_services: Option<
+            Arc<organon::builtins::energeia::EnergeiaServices>,
+        > = None;
         let mut tool_registry = if self.credentials {
-            build_tool_registry(
+            let built = build_tool_registry(
                 &self.config,
                 &self.oikos,
                 &shutdown_token,
                 Some(after_action_log_dir.clone()),
-            )?
+            )?;
+            #[cfg(feature = "energeia")]
+            {
+                energeia_services = built.energeia_services;
+            }
+            built.registry
         } else {
             ToolRegistry::new()
         };
@@ -637,10 +646,28 @@ impl RuntimeBuilder {
                 daemon_runner = daemon_runner.with_knowledge_maintenance(km_executor);
             }
 
+            #[cfg(feature = "energeia")]
+            if !self.config.dispatch.cron_tasks.is_empty() {
+                if let Some(services) = energeia_services.as_ref() {
+                    cron_executor::start(
+                        &self.config.dispatch.cron_tasks,
+                        Arc::clone(&services.orchestrator),
+                        &self.oikos,
+                        &task_tracker,
+                        &shutdown_token,
+                    )?;
+                } else {
+                    warn!(
+                        cron_tasks = self.config.dispatch.cron_tasks.len(),
+                        "dispatch cron tasks configured but energeia services unavailable; recurring dispatch not started"
+                    );
+                }
+            }
+            #[cfg(not(feature = "energeia"))]
             if !self.config.dispatch.cron_tasks.is_empty() {
                 warn!(
                     cron_tasks = self.config.dispatch.cron_tasks.len(),
-                    "dispatch cron tasks configured but not started; recurring energeia dispatch is disabled until the daemon can execute real dispatch actions"
+                    "dispatch cron tasks configured but the energeia feature is not built; recurring dispatch not started"
                 );
             }
 
@@ -834,6 +861,9 @@ use nous_config::build_nous_runtime_config;
 
 mod setup;
 mod tool_adapters;
+
+#[cfg(feature = "energeia")]
+mod cron_executor;
 
 #[cfg(feature = "recall")]
 use setup::open_knowledge_stores;

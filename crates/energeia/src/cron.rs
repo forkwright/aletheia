@@ -14,6 +14,7 @@
 //! | `cron.sleep` | info | `task_name`, `next`, `sleep_ms` | Scheduler computed next wake time |
 //! | `cron.shutdown` | info | | Cancellation token triggered |
 
+use std::collections::HashSet;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,6 +29,21 @@ use tracing::Instrument;
 
 use crate::error::{self, Result};
 use crate::types::DispatchSpec;
+
+/// Policy for handling overlap between scheduled fires of the same task.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OverlapPolicy {
+    /// Allow a new scheduled fire even while a previous callback is still in
+    /// flight. The default — matches the historical scheduler behavior where a
+    /// slow callback does not block later cron ticks.
+    #[default]
+    Allow,
+    /// Skip a scheduled fire when the previous callback for the same task has
+    /// not yet returned. Used by callers that want serialized recurring work
+    /// (e.g. recurring dispatch where overlapping runs would compete for the
+    /// same project worktree).
+    SkipIfInFlight,
+}
 
 // ---------------------------------------------------------------------------
 // CronTask
@@ -180,13 +196,29 @@ impl CronLockStore {
 pub struct CronScheduler {
     tasks: Vec<CronTask>,
     lock_store: Arc<CronLockStore>,
+    overlap_policy: OverlapPolicy,
+    in_flight: Arc<parking_lot::Mutex<HashSet<CompactString>>>,
 }
 
 impl CronScheduler {
-    /// Create a new scheduler.
+    /// Create a new scheduler with the default ([`OverlapPolicy::Allow`])
+    /// overlap policy.
     #[must_use]
     pub fn new(tasks: Vec<CronTask>, lock_store: Arc<CronLockStore>) -> Self {
-        Self { tasks, lock_store }
+        Self {
+            tasks,
+            lock_store,
+            overlap_policy: OverlapPolicy::default(),
+            in_flight: Arc::new(parking_lot::Mutex::new(HashSet::new())),
+        }
+    }
+
+    /// Set the overlap policy applied when a previous callback for the same
+    /// task is still running.
+    #[must_use]
+    pub fn with_overlap_policy(mut self, policy: OverlapPolicy) -> Self {
+        self.overlap_policy = policy;
+        self
     }
 
     /// Compute the next fire time for a task after `now`.
@@ -262,39 +294,78 @@ impl CronScheduler {
                 continue;
             }
 
-            match self
+            self.try_fire(task, base_scheduled, &on_fire);
+        }
+    }
+
+    fn try_fire<F, Fut>(&self, task: &CronTask, base_scheduled: Timestamp, on_fire: &F)
+    where
+        F: Fn(CronTask) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        if self.overlap_policy == OverlapPolicy::SkipIfInFlight
+            && self.in_flight.lock().contains(task.name.as_str())
+        {
+            tracing::warn!(
+                task = %task.name,
+                scheduled = %base_scheduled,
+                "cron task skipped — previous run still in flight"
+            );
+            // WHY: claim the lock so the next loop iteration computes a fresh
+            // future tick and we don't spin retrying the same scheduled time.
+            if let Err(e) = self
                 .lock_store
                 .try_acquire(task.name.as_str(), base_scheduled)
             {
-                Ok(true) => {
-                    tracing::info!(
-                        task = %task.name,
-                        scheduled = %base_scheduled,
-                        "cron task fired"
-                    );
-                    let span = tracing::info_span!("cron_fire", task = %task.name);
-                    let callback = on_fire.clone();
-                    let task = task.clone();
-                    tokio::spawn(async move {
-                        callback(task).instrument(span).await;
-                    });
-                }
-                Ok(false) => {
-                    tracing::debug!(
-                        task = %task.name,
-                        scheduled = %base_scheduled,
-                        "cron task skipped — lock held"
-                    );
-                }
-                Err(e) => {
-                    tracing::error!(
-                        task = %task.name,
-                        error = %e,
-                        "cron lock acquisition failed"
-                    );
-                }
+                tracing::error!(
+                    task = %task.name,
+                    error = %e,
+                    "cron lock acquisition failed during overlap skip"
+                );
             }
+            return;
         }
+        match self
+            .lock_store
+            .try_acquire(task.name.as_str(), base_scheduled)
+        {
+            Ok(true) => self.spawn_fire(task.clone(), base_scheduled, on_fire.clone()),
+            Ok(false) => tracing::debug!(
+                task = %task.name,
+                scheduled = %base_scheduled,
+                "cron task skipped — lock held"
+            ),
+            Err(e) => tracing::error!(
+                task = %task.name,
+                error = %e,
+                "cron lock acquisition failed"
+            ),
+        }
+    }
+
+    fn spawn_fire<F, Fut>(&self, task: CronTask, base_scheduled: Timestamp, on_fire: F)
+    where
+        F: Fn(CronTask) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        tracing::info!(
+            task = %task.name,
+            scheduled = %base_scheduled,
+            "cron task fired"
+        );
+        let span = tracing::info_span!("cron_fire", task = %task.name);
+        let in_flight = Arc::clone(&self.in_flight);
+        let track_overlap = self.overlap_policy == OverlapPolicy::SkipIfInFlight;
+        if track_overlap {
+            in_flight.lock().insert(task.name.clone());
+        }
+        let task_for_callback = task.clone();
+        tokio::spawn(async move {
+            on_fire(task_for_callback).instrument(span).await;
+            if track_overlap {
+                in_flight.lock().remove(task.name.as_str());
+            }
+        });
     }
 }
 
@@ -504,6 +575,87 @@ mod tests {
         assert!(
             fired.load(Ordering::SeqCst) >= 2,
             "slow callback should not block later cron ticks"
+        );
+    }
+
+    #[tokio::test]
+    async fn configured_task_fires_on_scheduled_tick() {
+        let db = koina::fjall::FjallDb::open_temp(&[LOCK_PARTITION]).unwrap();
+        let lock_store = Arc::new(CronLockStore::open(Arc::new(db.db)).unwrap());
+        let task = CronTask {
+            name: CompactString::new("tick-fire"),
+            cron: parse_schedule("* * * * * *"),
+            jitter: Duration::ZERO,
+            dispatch_spec: DispatchSpec::new("test".to_owned(), vec![1, 2]),
+        };
+        let fired = Arc::new(AtomicUsize::new(0));
+        let scheduler = CronScheduler::new(vec![task], lock_store);
+        let cancel = CancellationToken::new();
+        let cancel_for_task = cancel.clone();
+        let fired_for_task = Arc::clone(&fired);
+
+        let handle = tokio::spawn(async move {
+            scheduler
+                .run(cancel_for_task, move |task| {
+                    let fired = Arc::clone(&fired_for_task);
+                    async move {
+                        assert_eq!(task.dispatch_spec.project, "test");
+                        fired.fetch_add(1, Ordering::SeqCst);
+                    }
+                })
+                .await
+        });
+
+        tokio::time::sleep(Duration::from_millis(1_500)).await;
+        cancel.cancel();
+        handle.await.unwrap().unwrap();
+
+        assert!(
+            fired.load(Ordering::SeqCst) >= 1,
+            "a configured cron_task should fire at least once on its scheduled tick"
+        );
+    }
+
+    #[tokio::test]
+    async fn skip_if_in_flight_policy_serializes_overlapping_fires() {
+        let db = koina::fjall::FjallDb::open_temp(&[LOCK_PARTITION]).unwrap();
+        let lock_store = Arc::new(CronLockStore::open(Arc::new(db.db)).unwrap());
+        let task = CronTask {
+            name: CompactString::new("overlap-test"),
+            cron: parse_schedule("* * * * * *"),
+            jitter: Duration::ZERO,
+            dispatch_spec: DispatchSpec::new("test".to_owned(), vec![]),
+        };
+        let fired = Arc::new(AtomicUsize::new(0));
+        let scheduler = CronScheduler::new(vec![task], lock_store)
+            .with_overlap_policy(OverlapPolicy::SkipIfInFlight);
+        let cancel = CancellationToken::new();
+        let cancel_for_task = cancel.clone();
+        let fired_for_task = Arc::clone(&fired);
+
+        // The callback takes 5 seconds; a fresh tick arrives every second. With
+        // OverlapPolicy::SkipIfInFlight, later ticks must be skipped while the
+        // first run is still executing.
+        let handle = tokio::spawn(async move {
+            scheduler
+                .run(cancel_for_task, move |_task| {
+                    let fired = Arc::clone(&fired_for_task);
+                    async move {
+                        fired.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                })
+                .await
+        });
+
+        tokio::time::sleep(Duration::from_millis(2_500)).await;
+        cancel.cancel();
+        handle.await.unwrap().unwrap();
+
+        let total = fired.load(Ordering::SeqCst);
+        assert!(
+            total <= 1,
+            "SkipIfInFlight should prevent overlapping fires, got {total}"
         );
     }
 

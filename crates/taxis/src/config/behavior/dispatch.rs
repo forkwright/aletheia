@@ -23,8 +23,60 @@ pub struct CronTaskConfig {
     pub schedule: String,
     /// Jitter in seconds (+/-).
     pub jitter_secs: u64,
+    /// Whether this task is registered with the scheduler. Defaults to `true`
+    /// so that defining a task in config implies the operator wants it run;
+    /// set `enabled = false` to leave the task in the config without firing.
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
     /// What to dispatch.
     pub dispatch_spec: DispatchSpecConfig,
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cron_task_enabled_defaults_to_true_when_omitted() {
+        let toml = r#"
+name = "nightly"
+schedule = "0 2 * * *"
+jitterSecs = 0
+
+[dispatchSpec]
+promptNumbers = [1, 2]
+project = "aletheia"
+"#;
+        let parsed: CronTaskConfig = toml::from_str(toml).expect("valid cron task config");
+        assert!(
+            parsed.enabled,
+            "omitted `enabled` should default to true so configured tasks actually run"
+        );
+    }
+
+    #[test]
+    fn cron_task_disabled_when_enabled_false() {
+        let toml = r#"
+name = "off"
+schedule = "0 2 * * *"
+jitterSecs = 0
+enabled = false
+
+[dispatchSpec]
+promptNumbers = []
+project = "aletheia"
+"#;
+        let parsed: CronTaskConfig = toml::from_str(toml).expect("valid cron task config");
+        assert!(
+            !parsed.enabled,
+            "`enabled = false` should round-trip from config"
+        );
+    }
 }
 
 /// Raw dispatch spec for config deserialization.

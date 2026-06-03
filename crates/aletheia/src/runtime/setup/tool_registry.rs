@@ -41,12 +41,20 @@ impl energeia::qa::QaGate for MechanicalQaGate {
     }
 }
 
+/// Built tool registry plus optional energeia services that the rest of the
+/// runtime needs to reach (e.g. the cron-driven dispatch executor).
+pub(in crate::runtime) struct BuiltToolRegistry {
+    pub registry: ToolRegistry,
+    #[cfg(feature = "energeia")]
+    pub energeia_services: Option<Arc<organon::builtins::energeia::EnergeiaServices>>,
+}
+
 pub(in crate::runtime) fn build_tool_registry(
     config: &AletheiaConfig,
     oikos: &Oikos,
     shutdown_token: &CancellationToken,
     after_action_log_dir: Option<std::path::PathBuf>,
-) -> Result<ToolRegistry> {
+) -> Result<BuiltToolRegistry> {
     let mut registry = ToolRegistry::new();
     let sandbox_settings = &config.sandbox;
     let sandbox = organon::sandbox::SandboxConfig {
@@ -69,6 +77,16 @@ pub(in crate::runtime) fn build_tool_registry(
         egress_allowlist: sandbox_settings.egress_allowlist.clone(),
         nproc_limit: sandbox_settings.nproc_limit,
     };
+    #[cfg(feature = "energeia")]
+    let energeia_services = register_builtin_tools(
+        &mut registry,
+        sandbox,
+        config,
+        oikos,
+        shutdown_token.child_token(),
+        after_action_log_dir,
+    )?;
+    #[cfg(not(feature = "energeia"))]
     register_builtin_tools(
         &mut registry,
         sandbox,
@@ -78,9 +96,29 @@ pub(in crate::runtime) fn build_tool_registry(
         after_action_log_dir,
     )?;
     info!(count = registry.definitions().len(), "tools registered");
-    Ok(registry)
+    Ok(BuiltToolRegistry {
+        registry,
+        #[cfg(feature = "energeia")]
+        energeia_services,
+    })
 }
 
+#[cfg(feature = "energeia")]
+fn register_builtin_tools(
+    registry: &mut ToolRegistry,
+    sandbox: organon::sandbox::SandboxConfig,
+    config: &AletheiaConfig,
+    oikos: &Oikos,
+    cancel_token: CancellationToken,
+    after_action_log_dir: Option<std::path::PathBuf>,
+) -> Result<Option<Arc<organon::builtins::energeia::EnergeiaServices>>> {
+    let services = build_energeia_services(config, oikos, cancel_token, after_action_log_dir)?;
+    builtins::register_all_with_sandbox_and_energeia_services(registry, sandbox, services.as_ref())
+        .whatever_context("failed to register builtin tools")?;
+    Ok(Some(services))
+}
+
+#[cfg(not(feature = "energeia"))]
 fn register_builtin_tools(
     registry: &mut ToolRegistry,
     sandbox: organon::sandbox::SandboxConfig,
@@ -89,23 +127,9 @@ fn register_builtin_tools(
     cancel_token: CancellationToken,
     after_action_log_dir: Option<std::path::PathBuf>,
 ) -> Result<()> {
-    #[cfg(feature = "energeia")]
-    {
-        let services = build_energeia_services(config, oikos, cancel_token, after_action_log_dir)?;
-        builtins::register_all_with_sandbox_and_energeia_services(
-            registry,
-            sandbox,
-            services.as_ref(),
-        )
+    let _ = (config, oikos, cancel_token, after_action_log_dir);
+    builtins::register_all_with_sandbox(registry, sandbox)
         .whatever_context("failed to register builtin tools")
-    }
-
-    #[cfg(not(feature = "energeia"))]
-    {
-        let _ = (config, oikos, cancel_token, after_action_log_dir);
-        builtins::register_all_with_sandbox(registry, sandbox)
-            .whatever_context("failed to register builtin tools")
-    }
 }
 
 #[cfg(feature = "energeia")]
