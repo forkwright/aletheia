@@ -203,7 +203,7 @@ impl TaskRunner {
 
     /// Register implemented knowledge maintenance tasks with their schedules.
     fn register_knowledge_maintenance_tasks(&mut self) {
-        let tasks: [(_, _, Schedule, BuiltinTask); 4] = [
+        let tasks: [(_, _, Schedule, BuiltinTask); 5] = [
             (
                 "decay-refresh",
                 "Decay score refresh",
@@ -227,6 +227,15 @@ impl TaskRunner {
                 "Skill decay and retirement",
                 Schedule::Cron("0 0 6 * * *".to_owned()),
                 BuiltinTask::SkillDecay,
+            ),
+            (
+                "derived-facts-materialize",
+                "Derived Datalog rule materialization",
+                // WHY: every 6 hours balances freshness of IS-A closure / causal chains
+                // against the cost of a full Datalog fixpoint pass. Aligned between
+                // graph-recompute (8h) and entity-dedup (6h) to share warm cache state.
+                Schedule::Interval(Duration::from_hours(6)),
+                BuiltinTask::DerivedFactsMaterialize,
             ),
         ];
 

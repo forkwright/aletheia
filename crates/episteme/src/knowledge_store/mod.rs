@@ -517,6 +517,16 @@ pub struct KnowledgeStore {
     dim: usize,
     /// Serializes read-modify-write access counter increments to prevent races.
     access_lock: std::sync::Mutex<()>,
+    /// Serializes admission-check + insert so concurrent writers for the same
+    /// fact cannot both pass the admission gate and write independently.
+    ///
+    /// WHY: `should_admit` reads store state (or inspects the fact) and then
+    /// `run_mut` writes. Without this lock a second concurrent insert of the
+    /// same fact could pass `should_admit` before the first write lands.
+    /// The `:put` upsert means the end-state is still correct (one row), but
+    /// the admission gate would have fired twice — potentially consuming policy
+    /// budget (e.g. rate counters) or triggering side effects on both paths.
+    insert_lock: std::sync::Mutex<()>,
     /// Admission policy gate: checked before every fact insertion.
     admission_policy: Box<dyn crate::admission::AdmissionPolicy>,
 }
@@ -554,6 +564,7 @@ impl KnowledgeStore {
             db: std::sync::Arc::new(db),
             dim: config.dim,
             access_lock: std::sync::Mutex::new(()),
+            insert_lock: std::sync::Mutex::new(()),
             admission_policy: config.admission_policy,
         };
         store.init_schema()?;
@@ -587,6 +598,7 @@ impl KnowledgeStore {
             db: std::sync::Arc::new(db),
             dim: config.dim,
             access_lock: std::sync::Mutex::new(()),
+            insert_lock: std::sync::Mutex::new(()),
             admission_policy: config.admission_policy,
         };
         store.init_schema()?;

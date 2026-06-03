@@ -288,6 +288,35 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         .build())
     }
 
+    fn materialize_derived_facts(&self) -> oikonomos::error::Result<MaintenanceReport> {
+        let start = std::time::Instant::now();
+        let count = self.store.materialize_derived_facts().map_err(|e| {
+            oikonomos::error::TaskFailedSnafu {
+                task_id: "derived-facts-materialize".to_owned(),
+                reason: e.to_string(),
+            }
+            .build()
+        })?;
+
+        let duration_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+
+        #[expect(
+            clippy::as_conversions,
+            reason = "usize→u64: derived fact count fits in u64"
+        )]
+        let count_u64 = count as u64;
+        let detail = format!("Derived facts materialized: {count_u64}");
+        tracing::info!(%detail, duration_ms, "maintenance: derived facts materialization complete");
+
+        Ok(MaintenanceReport {
+            items_processed: count_u64,
+            items_modified: count_u64,
+            duration_ms,
+            detail: Some(detail),
+            ..Default::default()
+        })
+    }
+
     fn run_skill_decay(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
         let (active, needs_review, retired) = self.store.run_skill_decay(nous_id).map_err(|e| {
             oikonomos::error::TaskFailedSnafu {

@@ -84,6 +84,13 @@ pub struct KnowledgeConfig {
     /// EMA alpha for surprise baseline adaptation. Default: 0.3.
     /// Mirrors `episteme::surprise::DEFAULT_EMA_ALPHA`.
     pub surprise_ema_alpha: f64,
+    /// Admission policy applied to every `insert_fact` call. Default: `default` (admit-all).
+    ///
+    /// Set to `structured` to activate the five-factor A-MAC gate
+    /// (`StructuredAdmissionPolicy`). Operators can tune the threshold and
+    /// min-confidence via `episteme::admission::StructuredAdmissionConfig`
+    /// defaults; those knobs are not yet surfaced in the TOML cascade.
+    pub admission_policy: AdmissionPolicyKind,
 }
 
 impl Default for KnowledgeConfig {
@@ -115,6 +122,7 @@ impl Default for KnowledgeConfig {
             skill_decay_high_usage_factor: 3.0,
             surprise_threshold: 2.0,
             surprise_ema_alpha: 0.3,
+            admission_policy: AdmissionPolicyKind::Default,
         }
     }
 }
@@ -147,4 +155,26 @@ pub enum BookkeepingProviderKind {
     Llm,
     /// `GLiNER` ONNX entity adapter with LLM fallback.
     Gliner,
+}
+
+/// Which admission policy the knowledge store uses for fact insertion.
+///
+/// Default is `Default` (admit-all), preserving existing behavior unless
+/// the operator explicitly sets `admission_policy = "structured"` in the
+/// knowledge section of the config.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
+pub enum AdmissionPolicyKind {
+    /// Admit-all policy: every fact that passes basic validation is stored.
+    ///
+    /// This is the pre-admission-control behavior. Use this when the
+    /// extraction pipeline is already well-filtered or when behavioral
+    /// compatibility with existing deployments is required.
+    #[default]
+    Default,
+    /// Five-factor A-MAC policy (arxiv 2603.04549): utility, confidence,
+    /// novelty, recency, and content-type prior. Facts whose combined
+    /// weighted score falls below the configured threshold are rejected.
+    Structured,
 }

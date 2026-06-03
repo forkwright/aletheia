@@ -268,6 +268,26 @@ pub mod knowledge_store {
     };
 }
 
+/// Admission control policy types for knowledge store fact insertion.
+///
+/// Downstream consumers (e.g. the binary crate's runtime setup) need access
+/// to the concrete policy types to wire the config-selected policy into
+/// `KnowledgeConfig` without depending on `episteme` directly.
+///
+/// # Facade surface
+///
+/// [`AdmissionPolicy`](admission::AdmissionPolicy),
+/// [`DefaultAdmissionPolicy`](admission::DefaultAdmissionPolicy),
+/// [`StructuredAdmissionPolicy`](admission::StructuredAdmissionPolicy),
+/// [`StructuredAdmissionConfig`](admission::StructuredAdmissionConfig)
+#[cfg(feature = "mneme-engine")]
+pub mod admission {
+    pub use episteme::admission::{
+        AdmissionPolicy, DefaultAdmissionPolicy, StructuredAdmissionConfig,
+        StructuredAdmissionPolicy,
+    };
+}
+
 /// Entity dedup tuning (#4165 D): operator-configurable weights/thresholds
 /// the CLI and scheduled maintenance task feed into the dedup pipeline.
 ///
