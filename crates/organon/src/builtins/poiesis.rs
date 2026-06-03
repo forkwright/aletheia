@@ -1,17 +1,18 @@
 //! Poiesis report tools: `generate_document`, `lint_report`, `verify_report`,
-//! `render_typst_report`.
+//! `render_typst_report`, `qa_gate`.
 //!
 //! - `generate_document`    — render a JSON document descriptor to ODT/XLSX/PDF bytes
 //! - `lint_report`          — check report prose quality (banned words, citations, structure)
 //! - `verify_report`        — validate numeric claims in a verify manifest
 //! - `render_typst_report`  — render a Typst source (or built-in template slug) to PDF
+//! - `qa_gate`              — run prose lint and optional factbase validation, returning a structured QA report
 
 use std::future::Future;
 use std::pin::Pin;
 
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
-use poiesis_core::{Block, Document, Metadata, Renderer, RichText, Span};
+use poiesis_core::{Block, Document, Factbase, Metadata, Renderer, RichText, Span};
 use poiesis_lint::{LintConfig, Linter};
 use poiesis_verify::Verifier;
 
@@ -594,10 +595,117 @@ fn render_typst_report_def() -> ToolDef {
     }
 }
 
+// ── qa_gate ───────────────────────────────────────────────────────────────────
+
+struct QaGateExecutor;
+
+impl ToolExecutor for QaGateExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            let args = &input.arguments;
+
+            let prose = match extract_str(args, "prose") {
+                Ok(s) => s,
+                Err(e) => return Ok(e),
+            };
+
+            let mut issues: Vec<serde_json::Value> = Vec::new();
+
+            // 1. Optional factbase validation
+            if let Some(fb_json) = extract_opt_str(args, "factbase_json") {
+                let fb: Factbase = match serde_json::from_str(fb_json) {
+                    Ok(fb) => fb,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!(
+                            "failed to parse factbase_json: {e}"
+                        )));
+                    }
+                };
+                if let Err(e) = fb.validate() {
+                    issues.push(serde_json::json!({
+                        "kind": "CitationUnresolvable",
+                        "location": null,
+                        "message": e.to_string(),
+                    }));
+                }
+            }
+
+            // 2. Prose lint
+            let linter = Linter::default();
+            let findings = linter.check(prose);
+            for finding in &findings {
+                issues.push(serde_json::json!({
+                    "kind": "ProseViolation",
+                    "location": {
+                        "line_start": finding.line_start,
+                        "line_end": finding.line_end,
+                    },
+                    "message": finding.message,
+                }));
+            }
+
+            // TODO: replace manual JSON with QaReport / QaIssue / QaIssueKind once
+            // poiesis-core exports them (B-008-qa-types parallel unit).
+            let report = serde_json::json!({
+                "has_issues": !issues.is_empty(),
+                "issue_count": issues.len(),
+                "issues": issues,
+            });
+
+            match serde_json::to_string_pretty(&report) {
+                Ok(json) => Ok(ToolResult::text(json)),
+                Err(e) => Ok(ToolResult::error(format!("serialize failed: {e}"))),
+            }
+        })
+    }
+}
+
+fn qa_gate_def() -> ToolDef {
+    ToolDef {
+        name: koina::id::ToolName::from_static("qa_gate"), // kanon:ignore RUST/expect
+        description: "Run prose lint and optional factbase validation, returning a structured QA report."
+            .to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "prose".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Document text to lint".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "factbase_json".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description:
+                            "Optional JSON-serialized Factbase to validate".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+            ]),
+            required: vec!["prose".to_owned()],
+        },
+        category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
+        auto_activate: false,
+        groups: vec![ToolGroupId::Verify],
+        tags: vec![ToolTag::Verify, ToolTag::Format],
+    }
+}
+
 // ── Registration ──────────────────────────────────────────────────────────────
 
 /// Register the poiesis report tools: `generate_document`, `lint_report`, `verify_report`,
-/// `render_typst_report`.
+/// `render_typst_report`, `qa_gate`.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(generate_document_def(), Box::new(GenerateDocumentExecutor))?;
     registry.register(lint_report_def(), Box::new(LintReportExecutor))?;
@@ -606,6 +714,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         render_typst_report_def(),
         Box::new(RenderTypstReportExecutor),
     )?;
+    registry.register(qa_gate_def(), Box::new(QaGateExecutor))?;
     Ok(())
 }
 
