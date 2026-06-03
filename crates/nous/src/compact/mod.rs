@@ -119,10 +119,7 @@ use crate::memory::step::Step;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "#193 will wire CompactionStrategy into the pipeline"
-    )
+    expect(dead_code, reason = "#193 will wire CompactionStrategy into the pipeline")
 )]
 #[non_exhaustive]
 pub enum CompactionStrategy {
@@ -134,33 +131,18 @@ pub enum CompactionStrategy {
 
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "#193 will wire CompactionStrategy into the pipeline"
-    )
+    expect(dead_code, reason = "#193 will wire CompactionStrategy into the pipeline")
 )]
 impl CompactionStrategy {
     /// Apply the strategy to a step sequence under a token budget.
     ///
     /// Returns a new sequence where steps may be compacted or dropped
     /// depending on the strategy and budget.
-    ///
-    /// # Note
-    ///
-    /// [`CompactionStrategy::StepPositional`] is currently a stub: it
-    /// delegates to [`CompactionStrategy::UniformTail`] until #193
-    /// implements the actual `i < n-2 → notes-only` rule.
     #[must_use]
     pub fn apply(self, steps: &[Step], budget: usize) -> Vec<Step> {
         match self {
             Self::UniformTail => Self::apply_uniform_tail(steps, budget),
-            Self::StepPositional => {
-                // TODO(#193)[deliberate-prudent]: implement step-positional degradation:
-                //   i < n-2 → notes only (Step::compact)
-                //   last 2 steps → full content
-                // For now, delegate to UniformTail to avoid behavioural change.
-                Self::apply_uniform_tail(steps, budget)
-            }
+            Self::StepPositional => Self::apply_step_positional(steps, budget),
         }
     }
 
@@ -175,6 +157,45 @@ impl CompactionStrategy {
                 break;
             }
             result.push(step.clone());
+            used = new_used;
+        }
+
+        result.reverse();
+        result
+    }
+
+    /// Step-positional degradation: last 2 steps are kept full;
+    /// all earlier steps are compacted to notes-only (`Step::compact`).
+    ///
+    /// WHY: tool results are the first thing to drop under budget pressure,
+    /// but the assistant's reasoning (`self_note`) and any summary are retained
+    /// so that decision history survives compaction. The last 2 steps keep
+    /// full detail because they are the immediate context the model needs.
+    fn apply_step_positional(steps: &[Step], budget: usize) -> Vec<Step> {
+        let n = steps.len();
+        let threshold = n.saturating_sub(2);
+        let mut result = Vec::new();
+        let mut used: usize = 0;
+
+        for (idx, step) in steps.iter().enumerate().rev() {
+            let compacted = if idx >= threshold {
+                step.clone()
+            } else {
+                Step {
+                    self_note: step.compact(),
+                    observations: Vec::new(),
+                    summary: None,
+                    index: step.index,
+                    started_at: step.started_at,
+                }
+            };
+
+            let cost = compacted.token_estimate();
+            let new_used = used.saturating_add(cost);
+            if new_used > budget && !result.is_empty() {
+                break;
+            }
+            result.push(compacted);
             used = new_used;
         }
 
@@ -309,34 +330,112 @@ mod tests {
     }
 
     #[test]
-    fn step_positional_stub_delegates_to_uniform_tail() {
+    fn step_positional_compacts_older_steps_keeps_last_two_full() {
         let steps: Vec<Step> = (0..5)
             .map(|i| Step {
-                self_note: format!("step {i}"),
-                observations: Vec::new(),
+                self_note: format!("note {i}"),
+                observations: vec![crate::memory::step::Observation::new(
+                    "tool",
+                    "x".repeat(100),
+                )],
+                summary: Some(format!("summary {i}")),
+                index: i,
+                started_at: jiff::Timestamp::now(),
+            })
+            .collect();
+
+        // Budget large enough to keep all compacted steps.
+        let result = CompactionStrategy::StepPositional.apply(&steps, 200);
+        assert_eq!(result.len(), 5, "should keep all steps under generous budget");
+
+        // Last 2 steps retain observations.
+        assert!(
+            !result[3].observations.is_empty(),
+            "step 3 (second-to-last) should keep observations"
+        );
+        assert!(
+            !result[4].observations.is_empty(),
+            "step 4 (last) should keep observations"
+        );
+
+        // Earlier steps are compacted (observations dropped).
+        assert!(
+            result[0].observations.is_empty(),
+            "step 0 should be compacted (no observations)"
+        );
+        assert!(
+            result[1].observations.is_empty(),
+            "step 1 should be compacted (no observations)"
+        );
+        assert!(
+            result[2].observations.is_empty(),
+            "step 2 should be compacted (no observations)"
+        );
+    }
+
+    #[test]
+    fn step_positional_differs_from_uniform_tail() {
+        let steps: Vec<Step> = (0..5)
+            .map(|i| Step {
+                self_note: format!("note {i}"),
+                observations: vec![crate::memory::step::Observation::new(
+                    "tool",
+                    "x".repeat(100),
+                )],
+                summary: Some(format!("summary {i}")),
+                index: i,
+                started_at: jiff::Timestamp::now(),
+            })
+            .collect();
+
+        // Budget = 80: UniformTail keeps 2 full steps (~60 tokens);
+        // StepPositional keeps 2 full + 3 compacted (~75 tokens).
+        let budget = 80;
+        let uniform = CompactionStrategy::UniformTail.apply(&steps, budget);
+        let positional = CompactionStrategy::StepPositional.apply(&steps, budget);
+
+        assert_ne!(
+            uniform.len(),
+            positional.len(),
+            "StepPositional should keep more steps than UniformTail for this budget"
+        );
+        assert_eq!(uniform.len(), 2, "UniformTail should keep last 2 full steps");
+        assert_eq!(
+            positional.len(),
+            5,
+            "StepPositional should keep all 5 steps (2 full + 3 compacted)"
+        );
+    }
+
+    #[test]
+    fn step_positional_respects_token_budget() {
+        let steps: Vec<Step> = (0..5)
+            .map(|i| Step {
+                self_note: format!("note {i}"),
+                observations: vec![crate::memory::step::Observation::new(
+                    "tool",
+                    "x".repeat(100),
+                )],
                 summary: None,
                 index: i,
                 started_at: jiff::Timestamp::now(),
             })
             .collect();
 
-        let uniform_result = CompactionStrategy::UniformTail.apply(&steps, 6);
-        let positional_result = CompactionStrategy::StepPositional.apply(&steps, 6);
-        assert_eq!(
-            uniform_result.len(),
-            positional_result.len(),
-            "StepPositional stub should produce same length as UniformTail"
+        let budget = 40;
+        let result = CompactionStrategy::StepPositional.apply(&steps, budget);
+
+        let total_tokens: usize = result.iter().map(Step::token_estimate).sum();
+        assert!(
+            total_tokens <= budget,
+            "total tokens {total_tokens} should not exceed budget {budget}"
         );
+
+        // Most recent step should always be present.
         assert_eq!(
-            uniform_result
-                .last()
-                .expect("uniform_result not empty")
-                .index,
-            positional_result
-                .last()
-                .expect("positional_result not empty")
-                .index,
-            "StepPositional stub should preserve same tail as UniformTail"
+            result.last().expect("result not empty").index,
+            4,
+            "most recent step should be preserved"
         );
     }
 }
