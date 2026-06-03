@@ -1,82 +1,202 @@
 //! Pandoc binary availability probe.
 //!
-//! Call [`PandocProbe::check`] before invoking any Pandoc render path.
-//! If the binary is missing the error message tells the operator exactly
-//! how to fix it (run `nix develop` — pandoc is pinned in `flake.nix`).
+//! `PandocProbe::check()` is a startup guard for the Pandoc-backed render
+//! paths. It classifies the binary as present, missing, or too old so callers
+//! can decide whether to render, degrade, or surface an actionable error.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use snafu::Snafu;
 
-/// Confirmed pandoc installation: binary path and reported version.
-#[derive(Debug, Clone)]
-pub struct PandocProbe {
-    /// Absolute path to the `pandoc` binary.
-    pub path: PathBuf,
-    /// Version string reported by `pandoc --version`, e.g. `"3.1.13"`.
-    pub version: String,
+/// Minimum Pandoc version required by `poiesis-doc`.
+pub const REQUIRED_PANDOC_VERSION: PandocVersion = (3, 0, 0);
+
+/// Semantic version triple used by the probe.
+pub type PandocVersion = (u32, u32, u32);
+
+/// Probe result for the Pandoc binary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PandocProbe {
+    /// `pandoc` was found and meets the minimum version requirement.
+    Present {
+        /// Absolute path to the binary that was selected.
+        path: PathBuf,
+        /// Version reported by `pandoc --version`.
+        version: PandocVersion,
+    },
+    /// `pandoc` could not be found on PATH.
+    Missing {
+        /// Candidate paths that were searched.
+        searched: Vec<PathBuf>,
+    },
+    /// `pandoc` was found but is too old for this crate.
+    TooOld {
+        /// Absolute path to the binary that was selected.
+        path: PathBuf,
+        /// Version reported by `pandoc --version`.
+        found: PandocVersion,
+        /// Minimum version required by the crate.
+        required: PandocVersion,
+    },
 }
 
 impl PandocProbe {
     /// Probe for `pandoc` on `PATH`.
     ///
-    /// Returns the binary path and version on success. Returns an error with
-    /// an actionable message pointing at `nix develop` if pandoc is absent
-    /// or unresponsive.
-    ///
-    /// # Errors
-    ///
-    /// - [`PandocProbeError::NotFound`] when the binary is not on `PATH`.
-    /// - [`PandocProbeError::VersionCheckFailed`] when `pandoc --version` fails.
-    pub fn check() -> Result<Self, PandocProbeError> {
-        let path = which::which("pandoc").map_err(|_e| PandocProbeError::NotFound)?;
+    /// The default implementation searches PATH for `pandoc`, runs
+    /// `pandoc --version`, parses the first line, and compares the reported
+    /// version against [`REQUIRED_PANDOC_VERSION`].
+    #[must_use]
+    pub fn check() -> Self {
+        Self::check_with(find_pandoc_binary, real_version_source)
+    }
 
-        let output = Command::new(&path).arg("--version").output().map_err(|e| {
-            PandocProbeError::VersionCheckFailed {
-                path: path.clone(),
-                detail: e.to_string(),
-            }
-        })?;
-
-        if !output.status.success() {
-            return Err(PandocProbeError::VersionCheckFailed {
+    /// Convert a probe result into an actionable error.
+    pub fn require(self) -> Result<(), PandocProbeError> {
+        match self {
+            Self::Present { .. } => Ok(()),
+            Self::Missing { searched } => Err(PandocProbeError::NotInstalled { searched }),
+            Self::TooOld {
                 path,
-                detail: format!("exit status {}", output.status),
-            });
+                found,
+                required,
+            } => Err(PandocProbeError::VersionTooOld {
+                path,
+                found,
+                required,
+            }),
         }
+    }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let version = stdout
-            .lines()
-            .next()
-            .and_then(|line| line.split_whitespace().nth(1))
-            .unwrap_or("unknown")
-            .to_owned();
+    /// Probe with injected search and version sources.
+    ///
+    /// This is primarily for tests: callers can provide a synthetic PATH
+    /// search result and a fake `pandoc --version` payload without spawning a
+    /// real Pandoc binary.
+    #[must_use]
+    pub(crate) fn check_with<Search, Version>(search: Search, version_source: Version) -> Self
+    where
+        Search: FnOnce() -> Result<PathBuf, Vec<PathBuf>>,
+        Version: Fn(&Path) -> Result<String, String>,
+    {
+        let path = match search() {
+            Ok(path) => path,
+            Err(searched) => return Self::Missing { searched },
+        };
 
-        Ok(Self { path, version })
+        let output = match version_source(&path) {
+            Ok(output) => output,
+            Err(_detail) => {
+                return Self::Missing {
+                    searched: vec![path],
+                };
+            }
+        };
+
+        let Some(found) = parse_pandoc_version(&output) else {
+            return Self::Missing {
+                searched: vec![path],
+            };
+        };
+
+        if found < REQUIRED_PANDOC_VERSION {
+            Self::TooOld {
+                path,
+                found,
+                required: REQUIRED_PANDOC_VERSION,
+            }
+        } else {
+            Self::Present {
+                path,
+                version: found,
+            }
+        }
     }
 }
 
-/// Error from the pandoc availability check.
+/// Error from the Pandoc availability check.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum PandocProbeError {
-    /// `pandoc` binary not found on `PATH`.
+    /// `pandoc` binary not found on PATH.
     #[snafu(display(
-        "pandoc not found on PATH — install via `nix develop` \
-         (pandoc is pinned in flake.nix), or use the `pdf` format which needs no pandoc"
+        "pandoc not found (searched: {}). Install pandoc >= 3.0.0; on NixOS run `nix develop`, on Ubuntu/Debian run `apt install pandoc`, on macOS run `brew install pandoc`, or download from https://pandoc.org/installing.html",
+        searched
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
     ))]
-    NotFound,
-
-    /// `pandoc --version` found the binary but the command failed.
-    #[snafu(display("pandoc found at {} but `pandoc --version` failed: {detail}", path.display()))]
-    VersionCheckFailed {
-        /// Path where pandoc was found.
-        path: PathBuf,
-        /// Human-readable failure reason.
-        detail: String,
+    NotInstalled {
+        /// Candidate paths that were searched.
+        searched: Vec<PathBuf>,
     },
+
+    /// `pandoc` was found but the version is below the minimum requirement.
+    #[snafu(display(
+        "pandoc at {} is version {}, but >= {} is required. Upgrade via https://pandoc.org/installing.html or `nix develop`",
+        path.display(),
+        format_version(found),
+        format_version(required)
+    ))]
+    VersionTooOld {
+        /// Path to the too-old binary.
+        path: PathBuf,
+        /// Found version.
+        found: PandocVersion,
+        /// Minimum version required.
+        required: PandocVersion,
+    },
+}
+
+fn find_pandoc_binary() -> Result<PathBuf, Vec<PathBuf>> {
+    let searched = searched_pandoc_candidates();
+
+    match which::which("pandoc") {
+        Ok(path) => Ok(path),
+        Err(_e) => Err(searched),
+    }
+}
+
+fn searched_pandoc_candidates() -> Vec<PathBuf> {
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return Vec::new();
+    };
+
+    std::env::split_paths(&path_var)
+        .map(|dir| dir.join("pandoc"))
+        .collect()
+}
+
+fn real_version_source(path: &Path) -> Result<String, String> {
+    let output = Command::new(path)
+        .arg("--version")
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(format!("exit status {}", output.status));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn parse_pandoc_version(output: &str) -> Option<PandocVersion> {
+    let first = output.lines().next()?;
+    let version = first.strip_prefix("pandoc ")?.trim();
+    let mut parts = version.split('.');
+
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+    let patch = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+
+    Some((major, minor, patch))
+}
+
+fn format_version(version: &PandocVersion) -> String {
+    let (major, minor, patch) = *version;
+    format!("{major}.{minor}.{patch}")
 }
 
 #[cfg(test)]
@@ -84,18 +204,78 @@ mod tests {
     use super::*;
 
     #[test]
-    fn probe_check_returns_result() {
-        // Passes whether pandoc is present or absent — must not panic.
-        let _ = PandocProbe::check();
+    fn probe_check_returns_present_for_new_version() {
+        let probe = PandocProbe::check_with(
+            || Ok(PathBuf::from("/tmp/fake-pandoc")),
+            |_| Ok("pandoc 3.1.13\n".to_owned()),
+        );
+
+        assert_eq!(
+            probe,
+            PandocProbe::Present {
+                path: PathBuf::from("/tmp/fake-pandoc"),
+                version: (3, 1, 13),
+            }
+        );
     }
 
     #[test]
-    fn probe_error_message_is_actionable() {
-        let msg = PandocProbeError::NotFound.to_string();
-        assert!(
-            msg.contains("nix develop"),
-            "error must mention `nix develop`"
+    fn probe_check_returns_missing_when_binary_is_absent() {
+        let probe = PandocProbe::check_with(
+            || Err(vec![PathBuf::from("/tmp/bin/pandoc")]),
+            |_| unreachable!("version source must not be called when binary is missing"),
         );
-        assert!(msg.contains("flake.nix"), "error must mention flake.nix");
+
+        assert_eq!(
+            probe,
+            PandocProbe::Missing {
+                searched: vec![PathBuf::from("/tmp/bin/pandoc")],
+            }
+        );
+    }
+
+    #[test]
+    fn probe_check_returns_too_old_for_old_version() {
+        let probe = PandocProbe::check_with(
+            || Ok(PathBuf::from("/tmp/fake-pandoc")),
+            |_| Ok("pandoc 2.19.2\n".to_owned()),
+        );
+
+        assert_eq!(
+            probe,
+            PandocProbe::TooOld {
+                path: PathBuf::from("/tmp/fake-pandoc"),
+                found: (2, 19, 2),
+                required: REQUIRED_PANDOC_VERSION,
+            }
+        );
+    }
+
+    #[test]
+    fn require_maps_probe_states_to_actionable_errors() {
+        let missing = match (PandocProbe::Missing {
+            searched: vec![PathBuf::from("/tmp/bin/pandoc")],
+        })
+        .require()
+        {
+            Ok(()) => panic!("missing probe must become an error"),
+            Err(err) => err,
+        };
+
+        assert!(missing.to_string().contains("pandoc not found"));
+
+        let old = match (PandocProbe::TooOld {
+            path: PathBuf::from("/tmp/fake-pandoc"),
+            found: (2, 19, 2),
+            required: REQUIRED_PANDOC_VERSION,
+        })
+        .require()
+        {
+            Ok(()) => panic!("too-old probe must become an error"),
+            Err(err) => err,
+        };
+
+        assert!(old.to_string().contains("2.19.2"));
+        assert!(old.to_string().contains("3.0.0"));
     }
 }
