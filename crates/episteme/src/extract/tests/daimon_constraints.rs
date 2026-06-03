@@ -3,9 +3,12 @@
 //! Identity-type facts must be skipped at the persist boundary so that
 //! self-description statements ("I am X", "My name is Y") extracted from
 //! agent output are never persisted as episodic memory facts.
+#![cfg_attr(
+    feature = "mneme-engine",
+    expect(clippy::expect_used, reason = "test assertions")
+)]
 
-#![expect(clippy::expect_used, reason = "test assertions")]
-
+#[cfg(feature = "mneme-engine")]
 use super::super::*;
 
 #[cfg(feature = "mneme-engine")]

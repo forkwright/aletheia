@@ -3,5 +3,6 @@ mod proptests;
 mod ranking;
 mod scoring;
 mod side_query;
+mod speculative;
 mod stamped;
 mod visibility;

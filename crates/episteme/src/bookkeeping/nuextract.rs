@@ -1,8 +1,8 @@
-//! NuExtract-2.0 ONNX bookkeeping provider.
+//! `NuExtract`-2.0 ONNX bookkeeping provider.
 //!
 //! Structured JSON extraction from text given a template schema. Complements
-//! the GLiNER NER provider: GLiNER excels at span-based entity tagging while
-//! NuExtract excels at schema-constrained fact and relationship extraction.
+//! the `GLiNER` NER provider: `GLiNER` excels at span-based entity tagging while
+//! `NuExtract` excels at schema-constrained fact and relationship extraction.
 //! Both run in-process via `ort`; VRAM contention between the two is possible
 //! on single-GPU hosts — consider llama-server sidecar offload if OOM occurs.
 
@@ -54,7 +54,7 @@ impl Default for NuExtractProviderConfig {
 /// front. Schema-constrained JSON is generated at inference time with a
 /// greedy decode (temperature=0 equivalent). Entity and relationship fields
 /// from the returned JSON are lifted into `Extraction`; the LLM fallback is
-/// not used because NuExtract is designed for full-coverage extraction rather
+/// not used because `NuExtract` is designed for full-coverage extraction rather
 /// than NER-only span tagging.
 pub struct NuExtractProvider {
     config: NuExtractProviderConfig,
@@ -63,7 +63,7 @@ pub struct NuExtractProvider {
 }
 
 impl NuExtractProvider {
-    /// Load the default staged NuExtract model and tokenizer.
+    /// Load the default staged `NuExtract` model and tokenizer.
     ///
     /// # Errors
     ///
@@ -73,7 +73,7 @@ impl NuExtractProvider {
         Self::with_config(NuExtractProviderConfig::default())
     }
 
-    /// Load NuExtract from an explicit model directory.
+    /// Load `NuExtract` from an explicit model directory.
     ///
     /// # Errors
     ///
@@ -86,7 +86,7 @@ impl NuExtractProvider {
         })
     }
 
-    /// Load NuExtract with explicit runtime configuration.
+    /// Load `NuExtract` with explicit runtime configuration.
     ///
     /// # Errors
     ///
@@ -120,7 +120,7 @@ impl NuExtractProvider {
         })
     }
 
-    /// Run NuExtract over text with the given JSON schema template.
+    /// Run `NuExtract` over text with the given JSON schema template.
     ///
     /// The template is a JSON object describing the fields to extract, e.g.
     /// `{"entities": [], "facts": [{"subject": "", "predicate": "", "object": ""}]}`.
@@ -186,7 +186,7 @@ impl NuExtractProvider {
         let text = join_messages(messages);
         let template = build_schema_template(schema);
         match self.extract_json(&text, &template).await {
-            Ok(json) => parse_extraction_json(json),
+            Ok(json) => Ok(parse_extraction_json(&json)),
             Err(err) => {
                 warn!(error = %err, "NuExtract extraction failed; returning empty extraction");
                 Ok(Extraction::empty())
@@ -225,9 +225,9 @@ impl BookkeepingProvider for NuExtractProvider {
     }
 }
 
-/// Build the NuExtract-2.0 prompt format.
+/// Build the `NuExtract`-2.0 prompt format.
 ///
-/// NuExtract expects: `<|input|>\n{text}\n<|template|>\n{template}\n<|output|>\n`
+/// `NuExtract` expects: `<|input|>\n{text}\n<|template|>\n{template}\n<|output|>\n`
 fn build_nuextract_prompt(text: &str, template: &str) -> String {
     format!("<|input|>\n{text}\n<|template|>\n{template}\n<|output|>\n")
 }
@@ -282,11 +282,20 @@ fn greedy_decode(
 /// Falls back to direct JSON parse if the markers are absent.
 fn parse_nuextract_json(decoded: &str) -> BookkeepingResult<serde_json::Value> {
     let json_str = if let Some(start) = decoded.find("<|output|>") {
-        // kanon:ignore RUST/indexing-slicing — `start` is a valid byte offset returned by str::find on this exact &str; `+ "<|output|>".len()` lands on the byte after the literal marker, which is by construction a valid char boundary.
+        // WHY: `start` is a byte offset from str::find on this exact &str; adding the
+        // ASCII marker length lands on a char boundary by construction.
+        #[expect(
+            clippy::string_slice,
+            reason = "`start` comes from str::find on `decoded`; ASCII marker length preserves char boundary"
+        )]
         let after = &decoded[start + "<|output|>".len()..];
         if let Some(end) = after.find("<|end|>") {
-            // kanon:ignore RUST/indexing-slicing — `end` is a valid byte offset from str::find on `after`.
-            // kanon:ignore RUST/string-slice — same: str::find returns a char-boundary byte index, so slicing is safe.
+            // WHY: `end` is a byte offset from str::find on `after`; slicing at a
+            // find-returned index is always on a char boundary.
+            #[expect(
+                clippy::string_slice,
+                reason = "`end` comes from str::find on `after`; index is guaranteed a char boundary"
+            )]
             after[..end].trim()
         } else {
             after.trim()
@@ -298,9 +307,9 @@ fn parse_nuextract_json(decoded: &str) -> BookkeepingResult<serde_json::Value> {
     serde_json::from_str(json_str).map_err(|err| provider_failed("parse_json", err))
 }
 
-/// Build the extraction schema template for NuExtract.
+/// Build the extraction schema template for `NuExtract`.
 ///
-/// NuExtract uses JSON with empty arrays/strings as field stubs:
+/// `NuExtract` uses JSON with empty arrays/strings as field stubs:
 /// filled values indicate the desired output shape.
 fn build_schema_template(schema: &ExtractionSchema) -> String {
     // WHY: NuExtract interprets an empty array as "extract a list of these";
@@ -316,8 +325,8 @@ fn build_schema_template(schema: &ExtractionSchema) -> String {
     .to_string()
 }
 
-/// Map parsed NuExtract JSON into the canonical `Extraction` type.
-fn parse_extraction_json(value: serde_json::Value) -> BookkeepingResult<Extraction> {
+/// Map parsed `NuExtract` JSON into the canonical `Extraction` type.
+fn parse_extraction_json(value: &serde_json::Value) -> Extraction {
     let entities = value
         .get("entities")
         .and_then(|v| v.as_array())
@@ -332,12 +341,12 @@ fn parse_extraction_json(value: serde_json::Value) -> BookkeepingResult<Extracti
                         name,
                         entity_type: item
                             .get("entity_type")
-                            .and_then(|v| v.as_str())
+                            .and_then(serde_json::Value::as_str)
                             .unwrap_or("other")
                             .to_owned(),
                         description: item
                             .get("description")
-                            .and_then(|v| v.as_str())
+                            .and_then(serde_json::Value::as_str)
                             .unwrap_or("")
                             .to_owned(),
                     })
@@ -365,7 +374,7 @@ fn parse_extraction_json(value: serde_json::Value) -> BookkeepingResult<Extracti
                         target,
                         confidence: item
                             .get("confidence")
-                            .and_then(|v| v.as_f64())
+                            .and_then(serde_json::Value::as_f64)
                             .unwrap_or(1.0),
                     })
                 })
@@ -392,7 +401,7 @@ fn parse_extraction_json(value: serde_json::Value) -> BookkeepingResult<Extracti
                         object,
                         confidence: item
                             .get("confidence")
-                            .and_then(|v| v.as_f64())
+                            .and_then(serde_json::Value::as_f64)
                             .unwrap_or(1.0),
                         is_correction: false,
                         fact_type: None,
@@ -403,11 +412,11 @@ fn parse_extraction_json(value: serde_json::Value) -> BookkeepingResult<Extracti
         // kanon:ignore RUST/no-result-unwrap-or-default — chain returns Option<Vec<_>> (Value::as_array → Option, .map → Option); fallback is the documented empty-list default when the JSON key is absent or not an array.
         .unwrap_or_default();
 
-    Ok(Extraction {
+    Extraction {
         entities,
         relationships,
         facts,
-    })
+    }
 }
 
 fn usize_to_i64(value: usize) -> BookkeepingResult<i64> {
@@ -474,7 +483,7 @@ mod tests {
             "relationships": [],
             "facts": []
         });
-        let extraction = parse_extraction_json(json).expect("should parse extraction");
+        let extraction = parse_extraction_json(&json);
         assert_eq!(extraction.entities.len(), 1);
         assert_eq!(extraction.entities[0].name, "Alice");
         assert_eq!(extraction.entities[0].entity_type, "person");
@@ -490,7 +499,7 @@ mod tests {
             "relationships": [],
             "facts": []
         });
-        let extraction = parse_extraction_json(json).expect("should parse extraction");
+        let extraction = parse_extraction_json(&json);
         assert_eq!(extraction.entities.len(), 1);
         assert_eq!(extraction.entities[0].name, "Bob");
     }
@@ -504,7 +513,7 @@ mod tests {
             ],
             "facts": []
         });
-        let extraction = parse_extraction_json(json).expect("should parse extraction");
+        let extraction = parse_extraction_json(&json);
         assert_eq!(extraction.relationships.len(), 1);
         assert_eq!(extraction.relationships[0].source, "Alice");
         assert!((extraction.relationships[0].confidence - 0.9).abs() < 1e-9);
@@ -519,7 +528,7 @@ mod tests {
                 {"subject": "Aletheia", "predicate": "written in", "object": "Rust", "confidence": 1.0}
             ]
         });
-        let extraction = parse_extraction_json(json).expect("should parse extraction");
+        let extraction = parse_extraction_json(&json);
         assert_eq!(extraction.facts.len(), 1);
         assert_eq!(extraction.facts[0].predicate, "written in");
     }
@@ -527,7 +536,7 @@ mod tests {
     #[test]
     fn parse_extraction_json_handles_empty_object() {
         let json = serde_json::json!({});
-        let extraction = parse_extraction_json(json).expect("should handle empty object");
+        let extraction = parse_extraction_json(&json);
         assert!(extraction.entities.is_empty());
         assert!(extraction.relationships.is_empty());
         assert!(extraction.facts.is_empty());

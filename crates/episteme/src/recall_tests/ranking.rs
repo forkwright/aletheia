@@ -102,6 +102,7 @@ fn custom_weights_change_ranking() {
         relationship_proximity: 0.0,
         access_frequency: 0.0,
         graph_importance: 0.0,
+        ..RecallWeights::default()
     };
     let e = RecallEngine::with_weights(weights);
 
@@ -134,6 +135,7 @@ fn all_weights_zero_returns_zero() {
         relationship_proximity: 0.0,
         access_frequency: 0.0,
         graph_importance: 0.0,
+        ..RecallWeights::default()
     };
     let e = RecallEngine::with_weights(weights);
     let factors = FactorScores {
@@ -144,6 +146,7 @@ fn all_weights_zero_returns_zero() {
         relationship_proximity: 1.0,
         access_frequency: 1.0,
         graph_importance: 0.0,
+        ..FactorScores::default()
     };
     assert!(
         (e.compute_score(&factors)).abs() < f64::EPSILON,
@@ -279,6 +282,7 @@ fn single_weight_isolation() {
         relationship_proximity: 0.0,
         access_frequency: 0.0,
         graph_importance: 0.0,
+        ..FactorScores::default()
     };
     let e = engine();
     let score = e.compute_score(&factors);
@@ -302,6 +306,7 @@ fn scores_are_bounded_zero_to_one() {
             relationship_proximity: 1.0,
             access_frequency: 1.0,
             graph_importance: 0.0,
+            ..FactorScores::default()
         },
         FactorScores {
             vector_similarity: 1.0,
@@ -311,6 +316,7 @@ fn scores_are_bounded_zero_to_one() {
             relationship_proximity: 1.0,
             access_frequency: 0.0,
             graph_importance: 0.0,
+            ..FactorScores::default()
         },
         FactorScores {
             vector_similarity: 0.0,
@@ -320,6 +326,7 @@ fn scores_are_bounded_zero_to_one() {
             relationship_proximity: 0.0,
             access_frequency: 1.0,
             graph_importance: 0.0,
+            ..FactorScores::default()
         },
     ];
 
@@ -398,6 +405,7 @@ fn verified_tier_scores_higher_than_inferred_in_ranking() {
                 relationship_proximity: 0.5,
                 access_frequency: 0.3,
                 graph_importance: 0.0,
+                ..FactorScores::default()
             },
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,
@@ -418,6 +426,7 @@ fn verified_tier_scores_higher_than_inferred_in_ranking() {
                 relationship_proximity: 0.5,
                 access_frequency: 0.3,
                 graph_importance: 0.0,
+                ..FactorScores::default()
             },
             score: 0.0,
             sensitivity: crate::knowledge::FactSensitivity::Public,
@@ -477,6 +486,7 @@ fn score_deterministic() {
         relationship_proximity: 0.4,
         access_frequency: 0.2,
         graph_importance: 0.0,
+        ..FactorScores::default()
     };
 
     let score1 = e.compute_score(&factors);

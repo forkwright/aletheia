@@ -18,6 +18,7 @@ fn sample_scored_result() -> ScoredResult {
             relationship_proximity: 0.5,
             access_frequency: 0.6,
             graph_importance: 0.4,
+            ..FactorScores::default()
         },
         score: 0.75,
         sensitivity: FactSensitivity::Public,

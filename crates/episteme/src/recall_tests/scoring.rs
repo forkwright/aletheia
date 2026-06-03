@@ -414,6 +414,8 @@ fn perfect_score() {
         relationship_proximity: 1.0,
         access_frequency: 1.0,
         graph_importance: 1.0,
+        surprise: 1.0,
+        evidence_coverage: 1.0,
     };
     assert!(
         (e.compute_score(&factors) - 1.0).abs() < 0.01,

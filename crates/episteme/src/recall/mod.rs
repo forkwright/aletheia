@@ -46,6 +46,18 @@ pub struct RecallWeights {
     /// Weight for graph `PageRank` importance (hub entities boosted).
     /// Default: 0.10
     pub graph_importance: f64,
+    /// Weight for Bayesian surprise (topic-shift signal from EM-LLM).
+    ///
+    /// Non-zero values blend in a per-candidate surprise score produced by
+    /// `SurpriseCalculator`. Default: 0.0 (inert — existing behaviour
+    /// preserved). Enable by setting a positive weight in config.
+    pub surprise: f64,
+    /// Weight for evidence-gap coverage (`MemR3` iterative retrieval).
+    ///
+    /// Non-zero values blend in how well a candidate's fact ID appears in the
+    /// evidence-gap tracker's answered set. Default: 0.0 (inert). Enable by
+    /// setting a positive weight in config.
+    pub evidence_coverage: f64,
 }
 
 impl Default for RecallWeights {
@@ -58,6 +70,8 @@ impl Default for RecallWeights {
             relationship_proximity: 0.10,
             access_frequency: 0.05,
             graph_importance: 0.10,
+            surprise: 0.0,
+            evidence_coverage: 0.0,
         }
     }
 }
@@ -78,6 +92,8 @@ impl RecallWeights {
             + self.relationship_proximity
             + self.access_frequency
             + self.graph_importance
+            + self.surprise
+            + self.evidence_coverage
     }
 
     /// Whether the graph intelligence recall pipeline should run.
@@ -113,6 +129,18 @@ pub struct FactorScores {
     pub access_frequency: f64,
     /// `PageRank` graph importance score [0.0, 1.0] (1.0 = highest hub).
     pub graph_importance: f64,
+    /// Bayesian surprise contribution [0.0, 1.0].
+    ///
+    /// Normalised inverse of the KL-divergence score from `SurpriseCalculator`.
+    /// Default: 0.0 — inert unless `RecallWeights::surprise > 0`.
+    pub surprise: f64,
+    /// Evidence-coverage score [0.0, 1.0].
+    ///
+    /// 1.0 when the candidate's `source_id` appears in the `EvidenceGapTracker`
+    /// answered set with high confidence; 0.0 when absent. Supplied by callers
+    /// running iterative retrieval. Default: 0.0 — inert unless
+    /// `RecallWeights::evidence_coverage > 0`.
+    pub evidence_coverage: f64,
 }
 
 /// A scored recall candidate.
@@ -476,7 +504,9 @@ impl RecallEngine {
             + factors.epistemic_tier * w.epistemic_tier
             + factors.relationship_proximity * w.relationship_proximity
             + factors.access_frequency * w.access_frequency
-            + factors.graph_importance * w.graph_importance;
+            + factors.graph_importance * w.graph_importance
+            + factors.surprise * w.surprise
+            + factors.evidence_coverage * w.evidence_coverage;
 
         raw / total_weight
     }
@@ -615,6 +645,69 @@ impl RecallEngine {
     #[instrument(skip(self))]
     pub fn score_graph_importance(&self, importance: f64) -> f64 {
         importance.clamp(0.0, 1.0)
+    }
+
+    /// Compute the surprise score contribution for recall ranking.
+    ///
+    /// Converts a raw KL-divergence surprise value (nats, from
+    /// `SurpriseCalculator::compute_surprise`) into a normalised [0.0, 1.0]
+    /// score using a sigmoid mapping so that high-surprise candidates rank
+    /// higher when `RecallWeights::surprise > 0`.
+    ///
+    /// `surprise_nats = 0.0` → score 0.5 (neutral, mid-range boost).
+    /// High values approach 1.0; the neutral midpoint is configurable via
+    /// `midpoint_nats` (pass `DEFAULT_THRESHOLD` from `crate::surprise` for
+    /// the standard 2.0-nat boundary).
+    ///
+    /// Returns 0.0 when `RecallWeights::surprise` is effectively zero so
+    /// callers can skip the `SurpriseCalculator` entirely in the common case.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) — one floating-point sigmoid.
+    #[must_use]
+    #[instrument(skip(self))]
+    pub fn score_surprise(&self, surprise_nats: f64, midpoint_nats: f64) -> f64 {
+        if self.weights.surprise < f64::EPSILON {
+            return 0.0;
+        }
+        // Sigmoid: 1 / (1 + exp(-(x - midpoint))). x = surprise_nats.
+        let x = surprise_nats - midpoint_nats;
+        1.0 / (1.0 + (-x).exp())
+    }
+
+    /// Compute the evidence-coverage score for a candidate.
+    ///
+    /// Returns the confidence from the `EvidenceGapTracker`'s answered set
+    /// when the candidate's `source_id` appears in `answered_ids`, or 0.0
+    /// when the ID is absent (meaning the candidate does not directly answer
+    /// a known gap).
+    ///
+    /// Callers running iterative retrieval (`MemR3` style) should supply the
+    /// per-round answered map; callers not using evidence-gap tracking should
+    /// omit this call (weights default to 0.0 so omitting it is equivalent).
+    ///
+    /// Returns 0.0 immediately when `RecallWeights::evidence_coverage` is
+    /// effectively zero.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) — `HashMap` lookup.
+    #[must_use]
+    #[instrument(skip(self, answered_ids))]
+    pub fn score_evidence_coverage(
+        &self,
+        source_id: &str,
+        answered_ids: &std::collections::HashMap<String, f64>,
+    ) -> f64 {
+        if self.weights.evidence_coverage < f64::EPSILON {
+            return 0.0;
+        }
+        answered_ids
+            .get(source_id)
+            .copied()
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0)
     }
 }
 

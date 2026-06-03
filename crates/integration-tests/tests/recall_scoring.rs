@@ -37,6 +37,8 @@ fn verified_fact_scores_higher_than_assumed() {
             relationship_proximity: 0.5,
             access_frequency: 0.3,
             graph_importance: 0.0,
+            surprise: 0.0,
+            evidence_coverage: 0.0,
         },
     );
     let assumed = make_result(
@@ -50,6 +52,8 @@ fn verified_fact_scores_higher_than_assumed() {
             relationship_proximity: 0.5,
             access_frequency: 0.3,
             graph_importance: 0.0,
+            surprise: 0.0,
+            evidence_coverage: 0.0,
         },
     );
 
@@ -72,6 +76,8 @@ fn own_fact_outranks_other_agent() {
             relationship_proximity: 0.5,
             access_frequency: 0.3,
             graph_importance: 0.0,
+            surprise: 0.0,
+            evidence_coverage: 0.0,
         },
     );
     let other = make_result(
@@ -85,6 +91,8 @@ fn own_fact_outranks_other_agent() {
             relationship_proximity: 0.5,
             access_frequency: 0.3,
             graph_importance: 0.0,
+            surprise: 0.0,
+            evidence_coverage: 0.0,
         },
     );
 
@@ -107,6 +115,8 @@ fn recent_fact_outranks_old() {
             relationship_proximity: 0.5,
             access_frequency: 0.3,
             graph_importance: 0.0,
+            surprise: 0.0,
+            evidence_coverage: 0.0,
         },
     );
     let old = make_result(
@@ -120,6 +130,8 @@ fn recent_fact_outranks_old() {
             relationship_proximity: 0.5,
             access_frequency: 0.3,
             graph_importance: 0.0,
+            surprise: 0.0,
+            evidence_coverage: 0.0,
         },
     );
 
@@ -138,6 +150,8 @@ fn custom_weights_shift_ranking() {
         relationship_proximity: 0.0,
         access_frequency: 0.0,
         graph_importance: 0.0,
+        surprise: 0.0,
+        evidence_coverage: 0.0,
     };
     let engine = RecallEngine::with_weights(weights);
 
@@ -153,6 +167,8 @@ fn custom_weights_shift_ranking() {
             relationship_proximity: 0.0,
             access_frequency: 0.0,
             graph_importance: 0.0,
+            surprise: 0.0,
+            evidence_coverage: 0.0,
         },
     );
     let assumed_self = make_result(
@@ -166,6 +182,8 @@ fn custom_weights_shift_ranking() {
             relationship_proximity: 1.0,
             access_frequency: 1.0,
             graph_importance: 0.0,
+            surprise: 0.0,
+            evidence_coverage: 0.0,
         },
     );
 

@@ -84,6 +84,18 @@ pub struct KnowledgeConfig {
     /// EMA alpha for surprise baseline adaptation. Default: 0.3.
     /// Mirrors `episteme::surprise::DEFAULT_EMA_ALPHA`.
     pub surprise_ema_alpha: f64,
+    /// Recall weight for Bayesian surprise contribution. Default: 0.0 (inert).
+    ///
+    /// Non-zero values cause `RecallEngine::score_surprise` to blend the
+    /// KL-divergence signal from `SurpriseCalculator` into the final recall
+    /// score. Wired through `RecallWeights::surprise` at engine construction.
+    pub recall_surprise_weight: f64,
+    /// Recall weight for evidence-gap coverage. Default: 0.0 (inert).
+    ///
+    /// Non-zero values cause `RecallEngine::score_evidence_coverage` to boost
+    /// candidates whose `source_id` appears in the `EvidenceGapTracker`
+    /// answered set. Wired through `RecallWeights::evidence_coverage`.
+    pub recall_evidence_coverage_weight: f64,
     /// Admission policy applied to every `insert_fact` call. Default: `default` (admit-all).
     ///
     /// Set to `structured` to activate the five-factor A-MAC gate
@@ -122,6 +134,8 @@ impl Default for KnowledgeConfig {
             skill_decay_high_usage_factor: 3.0,
             surprise_threshold: 2.0,
             surprise_ema_alpha: 0.3,
+            recall_surprise_weight: 0.0,
+            recall_evidence_coverage_weight: 0.0,
             admission_policy: AdmissionPolicyKind::Default,
         }
     }
