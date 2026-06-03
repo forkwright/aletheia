@@ -134,7 +134,7 @@ snafu = "0.8"
 
 # Serialization
 serde_json = { version = "1", default-features = false, features = ["std"] }
-serde_yaml = { version = "0.9", default-features = false }
+serde_yaml = { package = "serde_yaml_ng", version = "0.10", default-features = false }
 toml = "1.1"
 toml_edit = "0.25"
 
