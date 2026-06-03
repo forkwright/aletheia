@@ -4,8 +4,9 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
 use tokio::task::{JoinHandle, JoinSet};
-use tracing::{Instrument, info, warn};
+use tracing::{Instrument, debug, info, warn};
 
+use agora::command::{self, AgentSnapshot, ChannelSnapshot, CommandContext};
 use agora::registry::ChannelRegistry;
 use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
@@ -86,6 +87,19 @@ async fn dispatch_one(
         return;
     };
 
+    // NOTE: `!`-commands are intercepted before reaching the nous agent.
+    // Plain turns fall through to send_turn as before.
+    if let Some(cmd) = command::parse(&msg.text) {
+        debug!(
+            nous_id = %decision.nous_id,
+            command = cmd.name(),
+            "dispatching !-command"
+        );
+        let reply_text = execute_command(&cmd, &decision.nous_id, &decision.session_key, &nous_manager, &channel_registry).await;
+        send_reply(&msg, &reply_text, &channel_registry).await;
+        return;
+    }
+
     let Some(handle) = nous_manager.get(decision.nous_id).cloned() else {
         warn!(
             nous_id = %decision.nous_id,
@@ -109,10 +123,99 @@ async fn dispatch_one(
         }
     };
 
-    let to = reply_target(&msg);
+    send_reply(&msg, &turn_result.content, &channel_registry).await;
+}
+
+/// Build a `CommandContext` and execute a parsed command, returning the reply text.
+async fn execute_command(
+    cmd: &command::Command,
+    nous_id: &str,
+    session_key: &str,
+    nous_manager: &NousManager,
+    channel_registry: &ChannelRegistry,
+) -> String {
+    // Gather current-agent snapshot.
+    let current_agent = if let Some(handle) = nous_manager.get(nous_id) {
+        match handle.status().await {
+            Ok(st) => {
+                let model = nous_manager
+                    .get_config(nous_id)
+                    .map_or_else(String::new, |c| c.generation.model.clone());
+                Some(AgentSnapshot {
+                    id: st.id,
+                    lifecycle: st.lifecycle.to_string(),
+                    session_count: st.session_count,
+                    active_session: st.active_session,
+                    panic_count: st.panic_count,
+                    uptime_secs: st.uptime.as_secs(),
+                    model,
+                })
+            }
+            Err(e) => {
+                warn!(error = %e, nous_id, "failed to query agent status for command");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Gather all-agents snapshot.
+    let all_agents = {
+        let statuses = nous_manager.list().await;
+        statuses
+            .into_iter()
+            .map(|st| {
+                let model = nous_manager
+                    .get_config(&st.id)
+                    .map_or_else(String::new, |c| c.generation.model.clone());
+                AgentSnapshot {
+                    id: st.id,
+                    lifecycle: st.lifecycle.to_string(),
+                    session_count: st.session_count,
+                    active_session: st.active_session,
+                    panic_count: st.panic_count,
+                    uptime_secs: st.uptime.as_secs(),
+                    model,
+                }
+            })
+            .collect()
+    };
+
+    // Gather channel health snapshots only for commands that need them.
+    let channels = match cmd {
+        command::Command::Channels => {
+            channel_registry
+                .probe_all()
+                .await
+                .into_iter()
+                .map(|(id, probe)| ChannelSnapshot {
+                    id,
+                    healthy: probe.ok,
+                    latency_ms: probe.latency_ms,
+                })
+                .collect()
+        }
+        _ => vec![],
+    };
+
+    let ctx = CommandContext {
+        current_nous_id: nous_id.to_owned(),
+        session_key: session_key.to_owned(),
+        current_agent,
+        all_agents,
+        channels,
+    };
+
+    command::execute(cmd, &ctx)
+}
+
+/// Send a reply back through the originating channel.
+async fn send_reply(msg: &InboundMessage, text: &str, channel_registry: &ChannelRegistry) {
+    let to = reply_target(msg);
     let params = SendParams {
         to,
-        text: turn_result.content,
+        text: text.to_owned(),
         account_id: None,
         thread_id: None,
         attachments: None,
