@@ -82,7 +82,10 @@ jobs:
         with:
           key: feature-${{ matrix.feature }}
       - name: Check feature ${{ matrix.feature }}
-        run: cargo check -p ${{ matrix.crate }} --features ${{ matrix.feature }}
+        env:
+          CRATE: ${{ matrix.crate }}
+          FEATURE: ${{ matrix.feature }}
+        run: cargo check -p "$CRATE" --features "$FEATURE"
 
   build:
     needs: [test]
