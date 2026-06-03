@@ -4,8 +4,7 @@
 //! self-description statements ("I am X", "My name is Y") extracted from
 //! agent output are never persisted as episodic memory facts.
 
-#![expect(clippy::expect_used, reason = "test assertions")]
-
+#[cfg(feature = "mneme-engine")]
 use super::super::*;
 
 #[cfg(feature = "mneme-engine")]

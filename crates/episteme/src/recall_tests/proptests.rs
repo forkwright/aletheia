@@ -21,6 +21,7 @@ proptest! {
             relationship_proximity: proximity,
             access_frequency: freq,
             graph_importance: 0.0,
+            ..FactorScores::default()
         };
         let score = e.compute_score(&factors);
         prop_assert!(
@@ -98,7 +99,10 @@ proptest! {
             relationship_proximity: prox,
             access_frequency: freq,
             graph_importance: g_imp,
+            ..RecallWeights::default()
         };
+        // NOTE: surprise and evidence_coverage default to 0.0 so the total
+        // matches the explicit seven fields.
         let expected = vs + dec + rel + epi + prox + freq + g_imp;
         prop_assert!(
             (w.total() - expected).abs() < 1e-10,
