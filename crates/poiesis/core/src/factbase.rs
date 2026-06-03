@@ -379,12 +379,7 @@ impl Factbase {
         result
     }
 
-    fn dfs_walk(
-        &self,
-        node: &FactId,
-        visited: &mut HashSet<FactId>,
-        result: &mut Vec<FactId>,
-    ) {
+    fn dfs_walk(&self, node: &FactId, visited: &mut HashSet<FactId>, result: &mut Vec<FactId>) {
         if visited.contains(node) {
             return;
         }
