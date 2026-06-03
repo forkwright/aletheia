@@ -1085,19 +1085,101 @@ fn doom_loop_detector_fires_on_identical_calls_ignores_polling() {
 }
 
 #[test]
-#[ignore = "pending #203 — ping-pong detector and no-progress guard not yet landed"]
 fn doom_loop_detector_ping_pong_and_no_progress() {
-    use hermeneus::loop_detector::{DoomLoopDetector, ToolCallSignature};
+    use hermeneus::loop_detector::{
+        LoopGuard, NoProgressDetector, PingPongDetector, ToolCallSignature,
+    };
 
-    // Verify the primitive detector is available and functional in the substrate.
-    // When #203 lands, replace this with full ping-pong and no-progress
-    // integration tests (see test body comments in original issue).
-    let mut detector = DoomLoopDetector::new(10, 3);
-    let sig = ToolCallSignature::from_parts("cat", "{}", "ok");
-    assert!(
-        detector.record(sig).is_ok(),
-        "detector should accept a single signature without firing"
-    );
+    // ── PingPongDetector: A-B-A-B-A fires, A-B-C does not ──────────────────
+    {
+        let mut det = PingPongDetector::new(10, 5);
+        let a = ToolCallSignature::from_parts("read_file", "{\"path\":\"a\"}", "content-a");
+        let b = ToolCallSignature::from_parts("write_file", "{\"path\":\"b\"}", "ok");
+
+        det.record(a).expect("1st A ok");
+        det.record(b).expect("1st B ok");
+        det.record(a).expect("2nd A ok");
+        det.record(b).expect("2nd B ok");
+        let err = det.record(a).expect_err("A-B-A-B-A must fire at k=5");
+        assert!(
+            err.to_string().contains("ping-pong detected"),
+            "expected ping-pong error, got: {err}"
+        );
+    }
+
+    {
+        let mut det = PingPongDetector::new(10, 5);
+        let a = ToolCallSignature::from_parts("read_file", "{\"path\":\"a\"}", "content-a");
+        let b = ToolCallSignature::from_parts("write_file", "{\"path\":\"b\"}", "ok");
+        let c = ToolCallSignature::from_parts("search", "{\"q\":\"foo\"}", "results");
+
+        for _ in 0..4 {
+            det.record(a).expect("A ok");
+            det.record(b).expect("B ok");
+            det.record(c).expect("C ok");
+        }
+        // No strict two-signature alternation → should never fire.
+    }
+
+    // ── NoProgressDetector: same hash × limit fires; different hash resets ──
+    {
+        let mut det = NoProgressDetector::new(3);
+        det.record_turn(0xdead_beef, true).expect("turn 1 ok");
+        det.record_turn(0xdead_beef, true).expect("turn 2 ok");
+        let err = det
+            .record_turn(0xdead_beef, true)
+            .expect_err("no-progress must fire at limit=3");
+        assert!(
+            err.to_string().contains("no progress detected"),
+            "expected no-progress error, got: {err}"
+        );
+    }
+
+    {
+        let mut det = NoProgressDetector::new(3);
+        det.record_turn(0xaaaa, true).expect("turn 1 ok");
+        det.record_turn(0xaaaa, true).expect("turn 2 ok");
+        det.record_turn(0xbbbb, true)
+            .expect("different hash resets counter");
+        det.record_turn(0xbbbb, true).expect("turn 4 ok");
+        // Counter is now at 2 (not 3) — should not fire.
+    }
+
+    // ── LoopGuard composite: ping-pong surfaces through the guard ───────────
+    {
+        let mut guard = LoopGuard::with_limits(10, 5, 10);
+        let a = [("read_file", "{\"path\":\"a\"}", "content-a")];
+        let b = [("write_file", "{\"path\":\"b\"}", "ok")];
+
+        // Vary content per turn so no-progress does not fire before ping-pong.
+        guard.record("turn 1", "", &a).expect("guard 1 ok");
+        guard.record("turn 2", "", &b).expect("guard 2 ok");
+        guard.record("turn 3", "", &a).expect("guard 3 ok");
+        guard.record("turn 4", "", &b).expect("guard 4 ok");
+        let err = guard
+            .record("turn 5", "", &a)
+            .expect_err("guard must fire ping-pong at k=5");
+        assert!(
+            err.to_string().contains("ping-pong detected"),
+            "expected ping-pong from LoopGuard, got: {err}"
+        );
+    }
+
+    // ── LoopGuard reset: guard clears on operator intervention ──────────────
+    {
+        let mut guard = LoopGuard::with_limits(3, 5, 3);
+        let tc = [("cat", "{\"file\":\"/etc/hosts\"}", "127.0.0.1 localhost")];
+
+        guard.record("ok 1", "", &tc).expect("guard pre-reset 1");
+        guard.record("ok 2", "", &tc).expect("guard pre-reset 2");
+        guard.reset_on_user_message();
+        guard.record("ok 3", "", &tc).expect("guard post-reset 1");
+        guard.record("ok 4", "", &tc).expect("guard post-reset 2");
+        // Third identical call after reset must re-fire.
+        guard
+            .record("ok 5", "", &tc)
+            .expect_err("doom loop must re-fire after reset");
+    }
 }
 
 // ── Scenario 12: Tool-receipt hallucination defense (#83) ───────────────────
