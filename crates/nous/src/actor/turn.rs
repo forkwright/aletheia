@@ -37,6 +37,8 @@ pub(super) struct StreamingTurnRequest {
     pub session_id: Option<String>,
     pub content: String,
     pub stream_tx: mpsc::Sender<TurnStreamEvent>,
+    /// Operator approval gate for reversibility-class tool calls (#3958).
+    pub approval_gate: Option<crate::approval::ApprovalGate>,
     pub caller_span: tracing::Span,
     pub turn_cancel: CancellationToken,
     pub reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
@@ -376,6 +378,7 @@ impl NousActor {
             session_id,
             content,
             stream_tx,
+            approval_gate,
             caller_span,
             turn_cancel,
             reply,
@@ -393,6 +396,7 @@ impl NousActor {
                 session_id.as_deref(),
                 &content,
                 &stream_tx,
+                approval_gate,
                 caller_span,
                 turn_cancel,
             )
@@ -431,6 +435,7 @@ impl NousActor {
                 session_id,
                 content,
                 None,
+                None,
                 caller_span,
                 turn_cancel,
             )
@@ -439,12 +444,17 @@ impl NousActor {
     }
 
     /// Execute a streaming turn with a panic boundary.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "streaming turn entrypoint plumbs session, content, stream, gate, span, and cancel; splitting hides the call shape"
+    )]
     async fn execute_streaming_turn_with_panic_boundary(
         &mut self,
         session_key: &str,
         session_id: Option<&str>,
         content: &str,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
+        approval_gate: Option<crate::approval::ApprovalGate>,
         caller_span: tracing::Span,
         turn_cancel: CancellationToken,
     ) -> crate::error::Result<TurnResult> {
@@ -454,6 +464,7 @@ impl NousActor {
                 session_id,
                 content,
                 Some(stream_tx.clone()),
+                approval_gate,
                 caller_span,
                 turn_cancel,
             )
@@ -477,12 +488,17 @@ impl NousActor {
         clippy::too_many_lines,
         reason = "pipeline setup is sequential and cohesive; splitting adds indirection"
     )]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "pipeline spawn plumbs session, content, stream, gate, span, and cancel; splitting hides the call shape"
+    )]
     async fn spawn_pipeline_task(
         &mut self,
         session_key: &str,
         db_session_id: Option<&str>,
         content: &str,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
+        approval_gate: Option<crate::approval::ApprovalGate>,
         caller_span: tracing::Span,
         turn_cancel: CancellationToken,
     ) -> Result<crate::error::Result<TurnResult>, tokio::task::JoinError> {
@@ -642,6 +658,7 @@ impl NousActor {
                             session_store.as_deref(),
                             extra_bootstrap,
                             Some(stx),
+                            approval_gate.as_ref(),
                             None,
                             Some(&hook_registry),
                             Some(bootstrap_cache.as_ref()),
@@ -663,6 +680,7 @@ impl NousActor {
                             text_search_ref,
                             session_store.as_deref(),
                             extra_bootstrap,
+                            None,
                             None,
                             None,
                             Some(&hook_registry),

@@ -182,6 +182,7 @@ impl TestEnvBuilder {
             turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
             metrics_registry,
             event_bus: Arc::new(pylon::event_bus::EventBus::new(256)),
+            approval_registry: Arc::new(pylon::approval_registry::ApprovalRegistry::new()),
         });
 
         TestEnv { state, _tmp: tmp }

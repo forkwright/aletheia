@@ -654,6 +654,7 @@ pub(super) async fn run_execute_stage(
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    approval_gate: Option<&crate::approval::ApprovalGate>,
     time_budget: &mut crate::budget::TimeBudget,
     emitter: &EventEmitter,
     hooks: Option<&HookRegistry>,
@@ -682,6 +683,7 @@ pub(super) async fn run_execute_stage(
                 tools,
                 tool_ctx,
                 tx,
+                approval_gate,
                 hooks,
             )
             .await

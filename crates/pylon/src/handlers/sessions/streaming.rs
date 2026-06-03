@@ -517,6 +517,21 @@ pub async fn stream_turn(
     let (turn_tx, turn_rx) = mpsc::channel::<(u64, PylonTurnStreamEvent)>(32);
     let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
 
+    // WHY(#3958, ADR-005): create the approval channel and register the sender
+    // so `POST /api/v1/sessions/{session_id}/approvals` can route the operator's
+    // decision into the nous-side gate. The guard removes the entry when the
+    // streaming task ends; the gate itself defaults-deny on timeout, so a
+    // dropped client connection denies pending Mandatory tool calls rather
+    // than letting them block the pipeline indefinitely.
+    let (approval_tx, approval_rx) = mpsc::channel::<nous::approval::ApprovalDecision>(8);
+    let approval_gate = Some(nous::approval::ApprovalGate::with_default_timeout(
+        approval_rx,
+    ));
+    let approval_guard = state
+        .approval_registry
+        .register(session_id.clone(), approval_tx)
+        .await;
+
     // WHY(#3276): Create a turn buffer so events survive client disconnection.
     let turn_buf = state
         .turn_buffer_registry
@@ -618,13 +633,18 @@ pub async fn stream_turn(
     let event_bus = Arc::clone(&state.event_bus);
     let stream_turn_handle = tokio::spawn(
         async move {
+            // WHY(#3958): hold the approval registry guard for the lifetime of
+            // the streaming task so the session's sender stays registered
+            // until the turn ends — then drops, unregistering it.
+            let _approval_guard = approval_guard;
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
-            let turn_fut = handle.send_turn_streaming_with_cancel(
+            let turn_fut = handle.send_turn_streaming_with_approval(
                 &session_key,
                 Some(sid.clone()),
                 &message,
                 nous_tx,
+                approval_gate,
                 nous::handle::DEFAULT_SEND_TIMEOUT,
                 turn_cancel_task.clone(),
             );

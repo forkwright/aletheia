@@ -1,9 +1,11 @@
 //! Session management and message streaming handlers.
 
 // WHY: pub(crate) so utoipa-generated `__path_*` types are visible to the OpenAPI derive.
+pub(crate) mod approvals;
 pub(crate) mod streaming;
 pub(crate) mod types;
 
+pub use approvals::resolve as resolve_approval;
 pub use streaming::{events, reconnect_turn, send_message, stream_turn};
 
 use types::{
