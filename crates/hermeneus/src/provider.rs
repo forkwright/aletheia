@@ -14,6 +14,30 @@ use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealth, ProviderHealthTracker};
 use crate::types::{CompletionRequest, CompletionResponse};
 
+/// How precisely a provider matches a model ID.
+///
+/// Used by [`ProviderRegistry::find_provider`] to select the most-specific
+/// provider when multiple providers claim support for the same model ID.
+/// Higher-specificity matches always win over lower-specificity ones,
+/// regardless of registration order.
+///
+/// | Variant  | Example                                      |
+/// |----------|----------------------------------------------|
+/// | `Exact`  | Provider's `supported_models()` contains the exact model ID |
+/// | `Prefix` | Provider matches by a namespaced prefix (e.g. `cc/`, `codex/`) |
+/// | `CatchAll` | Provider matches by a broad family pattern (e.g. any `claude-*`) |
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MatchKind {
+    // WHY: lower numeric value = lower specificity; `find_provider` keeps
+    // the maximum. Ord derives compare numerically so CatchAll < Prefix < Exact.
+    /// Broad family-pattern match; lowest specificity.
+    CatchAll = 0,
+    /// Namespaced-prefix match (e.g. `cc/`, `codex/`); medium specificity.
+    Prefix = 1,
+    /// Exact model-ID match; highest specificity.
+    Exact = 2,
+}
+
 /// Trait for LLM providers.
 ///
 /// Implementations handle authentication, request formatting, response parsing,
@@ -40,6 +64,22 @@ pub trait LlmProvider: Send + Sync {
     /// Check if a specific model is supported.
     fn supports_model(&self, model: &str) -> bool {
         self.supported_models().contains(&model)
+    }
+
+    /// Return this provider's match specificity for `model`, or `None` if not supported.
+    ///
+    /// The default implementation returns `Some(MatchKind::Exact)` when `model`
+    /// appears in `supported_models()`, and `None` otherwise. Providers with
+    /// broader matching logic (prefix patterns, family catch-alls) should
+    /// override this to return the appropriate [`MatchKind`] so that
+    /// [`ProviderRegistry::find_provider`] can prefer an explicitly-configured
+    /// exact-model provider over a generic catch-all for the same model ID.
+    fn match_specificity(&self, model: &str) -> Option<MatchKind> {
+        if self.supported_models().contains(&model) {
+            Some(MatchKind::Exact)
+        } else {
+            None
+        }
     }
 
     /// Provider name for logging and diagnostics.
@@ -329,7 +369,22 @@ impl ProviderRegistry {
         });
     }
 
-    /// Find a provider that supports the given model.
+    /// Find the best provider for `model` using specificity-based selection.
+    ///
+    /// # Selection contract
+    ///
+    /// WHY: a first-match linear scan over registration order is
+    /// non-deterministic when multiple providers claim overlapping model IDs
+    /// (e.g. `CcProvider` accepts all `claude-*` via a broad family pattern,
+    /// while `AnthropicProvider` lists exact model IDs). Registration order is
+    /// an incidental artifact of startup sequencing, not an intentful
+    /// contract. Specificity-based selection makes routing deterministic and
+    /// intent-driven: a provider that names the model explicitly
+    /// (`MatchKind::Exact`) always wins over one that matches by a broad
+    /// family pattern (`MatchKind::CatchAll`), regardless of which was
+    /// registered first. When multiple providers share the same specificity
+    /// level the tie is broken by registration order (first registered wins),
+    /// which is a stable, auditable contract.
     ///
     /// # Complexity
     ///
@@ -337,19 +392,33 @@ impl ProviderRegistry {
     #[must_use]
     pub fn find_provider(&self, model: &str) -> Option<&dyn LlmProvider> {
         // kanon:ignore RUST/pub-visibility
+        let mut best: Option<(MatchKind, &dyn LlmProvider)> = None;
+
         for entry in &self.providers {
-            let matches = entry.provider.supports_model(model);
-            tracing::debug!(
-                provider = entry.provider.name(),
-                model,
-                matches,
-                "provider selection check"
-            );
-            if matches {
-                return Some(entry.provider.as_ref());
+            if let Some(kind) = entry.provider.match_specificity(model) {
+                tracing::debug!(
+                    provider = entry.provider.name(),
+                    model,
+                    specificity = ?kind,
+                    "provider selection candidate"
+                );
+                let is_better = best.as_ref().is_none_or(|(prev, _)| kind > *prev);
+                if is_better {
+                    best = Some((kind, entry.provider.as_ref()));
+                }
             }
         }
-        None
+
+        if let Some((kind, provider)) = &best {
+            tracing::debug!(
+                provider = provider.name(),
+                model,
+                specificity = ?kind,
+                "provider selected"
+            );
+        }
+
+        best.map(|(_, p)| p)
     }
 
     /// List all registered providers.
@@ -617,5 +686,126 @@ mod tests {
             None,
             "unknown provider must remain absent from health lookup"
         );
+    }
+
+    // --- Specificity-based routing tests ---
+
+    #[test]
+    fn match_kind_ordering() {
+        assert!(MatchKind::CatchAll < MatchKind::Prefix);
+        assert!(MatchKind::Prefix < MatchKind::Exact);
+        assert!(MatchKind::CatchAll < MatchKind::Exact);
+    }
+
+    #[test]
+    fn single_provider_routes_normally() {
+        // (a) When only one provider is registered, the normal match still works.
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(
+            MockProvider::new("r")
+                .named("cc-mock")
+                .models(&["claude-sonnet-4-20250514"])
+                .with_match_kind(MatchKind::CatchAll),
+        ));
+
+        let found = registry.find_provider("claude-sonnet-4-20250514");
+        assert!(found.is_some(), "single catch-all provider should match");
+        assert_eq!(found.unwrap().name(), "cc-mock");
+        assert!(
+            registry.find_provider("claude-opus-99-unknown").is_none(),
+            "model not in the mock's list should not match"
+        );
+    }
+
+    #[test]
+    fn explicit_exact_wins_over_catch_all() {
+        // (b) When an explicit exact-model provider AND a catch-all provider both
+        // match the same model ID, the exact-model provider wins regardless of
+        // registration order.
+
+        // Register catch-all first (the order that would silently win under
+        // the old first-match scheme).
+        let mut registry_catch_first = ProviderRegistry::new();
+        registry_catch_first.register(Box::new(
+            MockProvider::new("r")
+                .named("cc-catch-all")
+                .models(&["claude-sonnet-4-20250514"])
+                .with_match_kind(MatchKind::CatchAll),
+        ));
+        registry_catch_first.register(Box::new(
+            MockProvider::new("r")
+                .named("anthropic-exact")
+                .models(&["claude-sonnet-4-20250514"])
+                .with_match_kind(MatchKind::Exact),
+        ));
+
+        let found = registry_catch_first
+            .find_provider("claude-sonnet-4-20250514")
+            .unwrap();
+        assert_eq!(
+            found.name(),
+            "anthropic-exact",
+            "exact-model provider must win over catch-all even when registered second"
+        );
+
+        // Register exact first — same result expected.
+        let mut registry_exact_first = ProviderRegistry::new();
+        registry_exact_first.register(Box::new(
+            MockProvider::new("r")
+                .named("anthropic-exact")
+                .models(&["claude-sonnet-4-20250514"])
+                .with_match_kind(MatchKind::Exact),
+        ));
+        registry_exact_first.register(Box::new(
+            MockProvider::new("r")
+                .named("cc-catch-all")
+                .models(&["claude-sonnet-4-20250514"])
+                .with_match_kind(MatchKind::CatchAll),
+        ));
+
+        let found2 = registry_exact_first
+            .find_provider("claude-sonnet-4-20250514")
+            .unwrap();
+        assert_eq!(
+            found2.name(),
+            "anthropic-exact",
+            "exact-model provider must win over catch-all when registered first too"
+        );
+    }
+
+    #[test]
+    fn find_provider_is_deterministic_regardless_of_registration_order() {
+        // (c) Same inputs → same provider, regardless of which was registered first.
+        // We run both orderings and assert the winner is always the exact-match provider.
+        let models: &'static [&'static str] = &["claude-haiku-4-5-20251001"];
+
+        for (first, second) in [
+            ("exact-provider", "catch-all-provider"),
+            ("catch-all-provider", "exact-provider"),
+        ] {
+            let mut registry = ProviderRegistry::new();
+            for name in [first, second] {
+                let kind = if name == "exact-provider" {
+                    MatchKind::Exact
+                } else {
+                    MatchKind::CatchAll
+                };
+                registry.register(Box::new(
+                    MockProvider::new("r")
+                        .named(name)
+                        .models(models)
+                        .with_match_kind(kind),
+                ));
+            }
+
+            let Some(winner) = registry.find_provider("claude-haiku-4-5-20251001") else {
+                panic!("should find a provider for claude-haiku-4-5-20251001");
+            };
+            assert_eq!(
+                winner.name(),
+                "exact-provider",
+                "registration order ({first} before {second}) must not change the winner"
+            );
+        }
     }
 }
