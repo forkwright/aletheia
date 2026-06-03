@@ -122,6 +122,10 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledge {
     fn run_skill_decay(&self, _nous_id: &str) -> Result<MaintenanceReport> {
         Ok(MaintenanceReport::default())
     }
+
+    fn materialize_derived_facts(&self) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
 }
 
 struct RealKnowledge {
@@ -187,6 +191,10 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for RealKnowledge {
     }
 
     fn run_skill_decay(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn materialize_derived_facts(&self) -> Result<MaintenanceReport> {
         Ok(MaintenanceReport::default())
     }
 }

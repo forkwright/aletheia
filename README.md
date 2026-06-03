@@ -60,9 +60,30 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 ## Interfaces
 
 - **TUI** - Terminal dashboard. Rich markdown rendering, session management.
-- **Signal** - Inbound messages are delivered as plain conversational turns to the configured agent.
+- **Signal** - Inbound messages are delivered as conversational turns to the configured agent. Messages prefixed with `!` are intercepted as operator commands (see below).
 - **CLI** - `aletheia help` for the full command reference.
 - **API** - REST on port 18789. See [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### Signal `!`-commands
+
+Send any of these from Signal to control the agent without starting a conversation turn. Type `!help` to see the list at any time.
+
+| Command | What it does |
+|---------|-------------|
+| `!help` | List all available commands |
+| `!status` | Lifecycle and session info for this agent |
+| `!agents` | List all running agents |
+| `!whoami` | Show which agent handles this conversation |
+| `!new [label]` | Signal intent to start a fresh session |
+| `!end` | Close the current session |
+| `!sessions` | Count sessions tracked by this agent |
+| `!ping` | Round-trip liveness check |
+| `!channels` | List channel providers and health |
+| `!uptime` | Agent uptime and panic-boundary count |
+| `!model` | Show the LLM model configured for this agent |
+| `!info [agent_id]` | Detail view for an agent (default: current) |
+
+Commands are intercepted before reaching the agent — they consume no LLM tokens. Unknown `!` commands return a helpful error listing the available set.
 
 ## Services
 

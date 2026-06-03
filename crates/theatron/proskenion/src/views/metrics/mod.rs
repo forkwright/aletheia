@@ -4,11 +4,11 @@ mod agent_breakdown;
 mod agent_costs;
 mod costs;
 mod model_breakdown;
+mod tokens;
 pub(crate) mod tool_detail;
 mod tool_duration;
 mod tool_frequency;
 mod tool_results;
-mod tokens;
 mod tools;
 
 use dioxus::prelude::*;

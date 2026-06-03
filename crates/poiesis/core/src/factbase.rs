@@ -13,7 +13,7 @@
 //! invoked. Adapters are optional: a factbase with no `Sql` facts is
 //! resolvable without configuring any [`DataSource`].
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
 use jiff::Timestamp;
@@ -364,6 +364,39 @@ impl Factbase {
             );
         }
         Ok(resolved)
+    }
+
+    /// Returns all transitive source inputs of `root` in post-order (leaves first),
+    /// deduplicated. Returns an empty vec if `root` is not in the factbase or has no inputs.
+    pub fn walk_citation_chain(&self, root: &FactId) -> Vec<FactId> {
+        let mut result = Vec::new();
+        let mut visited = HashSet::new();
+        if let Some(fact) = self.facts.get(root) {
+            for input in source_inputs(&fact.source) {
+                self.dfs_walk(input, &mut visited, &mut result);
+            }
+        }
+        result
+    }
+
+    fn dfs_walk(&self, node: &FactId, visited: &mut HashSet<FactId>, result: &mut Vec<FactId>) {
+        if visited.contains(node) {
+            return;
+        }
+        if let Some(fact) = self.facts.get(node) {
+            for input in source_inputs(&fact.source) {
+                self.dfs_walk(input, visited, result);
+            }
+            visited.insert(node.clone());
+            result.push(node.clone());
+        }
+    }
+
+    /// Returns the citation chain for the fact asserted by `claim_id`,
+    /// or `None` if the claim is not in the factbase.
+    pub fn claim_citation_chain(&self, claim_id: &ClaimId) -> Option<Vec<FactId>> {
+        let claim = self.claims.get(claim_id)?;
+        Some(self.walk_citation_chain(&claim.asserts))
     }
 
     /// Detect cycles in the `Derived`/`Reference` dependency graph.
@@ -800,5 +833,133 @@ mod tests {
             .resolve(&DataSourceRegistry::new())
             .expect_err("type mismatch");
         assert!(matches!(err, FactbaseError::DerivedTypeMismatch { .. }));
+    }
+
+    #[test]
+    fn walk_chain_leaf_fact() {
+        let mut fb = Factbase::new();
+        fb.add_fact(manual_fact("a", Scalar::Count { value: 1 }, Unit::Count));
+        let chain = fb.walk_citation_chain(&FactId::new("a").unwrap());
+        assert!(chain.is_empty());
+    }
+
+    #[test]
+    fn walk_chain_derived_returns_leaves_first() {
+        let mut fb = Factbase::new();
+        let id_a = FactId::new("a").unwrap();
+        let id_b = FactId::new("b").unwrap();
+        fb.add_fact(manual_fact("a", Scalar::Count { value: 1 }, Unit::Count));
+        fb.add_fact(Fact {
+            id: id_b.clone(),
+            value: Scalar::Count { value: 0 },
+            unit: Unit::Count,
+            source: Source::Derived {
+                formula: Expr::Add {
+                    a: id_a.clone(),
+                    b: id_a.clone(),
+                },
+                inputs: vec![id_a.clone()],
+            },
+            captured: ts(),
+        });
+        let chain = fb.walk_citation_chain(&id_b);
+        assert_eq!(chain, vec![id_a]);
+    }
+
+    #[test]
+    fn walk_chain_diamond() {
+        let mut fb = Factbase::new();
+        let id_a = FactId::new("a").unwrap();
+        let id_b = FactId::new("b").unwrap();
+        let id_c = FactId::new("c").unwrap();
+        let id_d = FactId::new("d").unwrap();
+        fb.add_fact(manual_fact("a", Scalar::Count { value: 1 }, Unit::Count));
+        fb.add_fact(Fact {
+            id: id_b.clone(),
+            value: Scalar::Count { value: 0 },
+            unit: Unit::Count,
+            source: Source::Derived {
+                formula: Expr::Add {
+                    a: id_a.clone(),
+                    b: id_a.clone(),
+                },
+                inputs: vec![id_a.clone()],
+            },
+            captured: ts(),
+        });
+        fb.add_fact(Fact {
+            id: id_c.clone(),
+            value: Scalar::Count { value: 0 },
+            unit: Unit::Count,
+            source: Source::Derived {
+                formula: Expr::Add {
+                    a: id_a.clone(),
+                    b: id_a.clone(),
+                },
+                inputs: vec![id_a.clone()],
+            },
+            captured: ts(),
+        });
+        fb.add_fact(Fact {
+            id: id_d.clone(),
+            value: Scalar::Count { value: 0 },
+            unit: Unit::Count,
+            source: Source::Derived {
+                formula: Expr::Add {
+                    a: id_b.clone(),
+                    b: id_c.clone(),
+                },
+                inputs: vec![id_b.clone(), id_c.clone()],
+            },
+            captured: ts(),
+        });
+        let chain = fb.walk_citation_chain(&id_d);
+        assert_eq!(chain, vec![id_a, id_b, id_c]);
+    }
+
+    #[test]
+    fn walk_chain_unknown_root() {
+        let fb = Factbase::new();
+        let chain = fb.walk_citation_chain(&FactId::new("ghost").unwrap());
+        assert!(chain.is_empty());
+    }
+
+    #[test]
+    fn claim_citation_chain_returns_fact_chain() {
+        let mut fb = Factbase::new();
+        let id_a = FactId::new("a").unwrap();
+        let id_b = FactId::new("b").unwrap();
+        fb.add_fact(manual_fact("a", Scalar::Count { value: 1 }, Unit::Count));
+        fb.add_fact(Fact {
+            id: id_b.clone(),
+            value: Scalar::Count { value: 0 },
+            unit: Unit::Count,
+            source: Source::Derived {
+                formula: Expr::Add {
+                    a: id_a.clone(),
+                    b: id_a.clone(),
+                },
+                inputs: vec![id_a.clone()],
+            },
+            captured: ts(),
+        });
+        fb.add_claim(Claim {
+            id: ClaimId::new("c1").unwrap(),
+            text: "b is 1".to_owned(),
+            asserts: id_b.clone(),
+            location: Location {
+                at: "deck/slide/1".to_owned(),
+            },
+            tolerance: Tolerance::STRICT,
+        });
+        let chain = fb.claim_citation_chain(&ClaimId::new("c1").unwrap());
+        assert_eq!(chain, Some(vec![id_a]));
+    }
+
+    #[test]
+    fn claim_citation_chain_missing_claim() {
+        let fb = Factbase::new();
+        let chain = fb.claim_citation_chain(&ClaimId::new("ghost").unwrap());
+        assert_eq!(chain, None);
     }
 }

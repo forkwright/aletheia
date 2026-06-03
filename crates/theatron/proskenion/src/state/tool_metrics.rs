@@ -115,6 +115,10 @@ pub(crate) struct ToolInvocation {
 
 /// Time period selector shared across all metrics tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[expect(
+    clippy::enum_variant_names,
+    reason = "Days suffix is semantically necessary for these time-period variants"
+)]
 pub(crate) enum DateRange {
     #[default]
     Last7Days,
@@ -206,7 +210,10 @@ pub(crate) fn page_count(total_items: usize, per_page: usize) -> usize {
 ///
 /// Used in tests and available for client-side percentile computation from
 /// raw invocation logs when the server doesn't return pre-aggregated stats.
-#[expect(dead_code, reason = "used in tests; reserved for raw-log path")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "used in tests; reserved for raw-log path")
+)]
 pub(crate) fn percentile_nearest_rank(sorted_values: &[u64], p: f64) -> u64 {
     if sorted_values.is_empty() {
         return 0;

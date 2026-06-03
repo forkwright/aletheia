@@ -118,7 +118,6 @@ impl VerificationStore {
             pct
         })
     }
-
 }
 
 #[cfg(test)]

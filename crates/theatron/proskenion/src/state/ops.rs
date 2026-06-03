@@ -93,7 +93,10 @@ impl AgentStatusStore {
     }
 
     /// Update last activity timestamp.
-    #[expect(dead_code, reason = "wired when SSE activity events are plumbed")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "wired when SSE activity events are plumbed")
+    )]
     pub(crate) fn set_last_activity(&mut self, id: &NousId, activity: String) {
         if let Some(card) = self.cards.get_mut(id) {
             card.last_activity = Some(activity);

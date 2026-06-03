@@ -1,0 +1,1 @@
+{"rustc":5391851738765093524,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[3042064814021974333,"build_script_build",false,8667851414208916454]],"local":[{"RerunIfChanged":{"output":"debug/build/codex-8b7400fd01fb1b0d/output","paths":["build.rs","src/modules/sym.txt","src/modules/emoji.txt"]}}],"rustflags":[],"config":0,"compile_kind":0}

@@ -327,11 +327,21 @@ fn StateRow(label: &'static str, children: Element) -> Element {
 #[component]
 fn ButtonDemo(label: &'static str, style_kind: &'static str, disabled: bool) -> Element {
     let style = match style_kind {
-        "hover" => "background: var(--accent-hover); color: var(--text-inverse); border: 1px solid var(--accent-hover); transform: translateY(-1px);",
-        "active" => "background: var(--accent-dim); color: var(--text-inverse); border: 1px solid var(--accent-dim);",
-        "disabled" => "background: var(--bg-surface-dim); color: var(--text-muted); border: 1px solid var(--border); cursor: not-allowed;",
-        "focus" => "background: var(--accent); color: var(--text-inverse); border: 1px solid var(--border-focused); box-shadow: var(--shadow-glow);",
-        _ => "background: var(--accent); color: var(--text-inverse); border: 1px solid var(--accent);",
+        "hover" => {
+            "background: var(--accent-hover); color: var(--text-inverse); border: 1px solid var(--accent-hover); transform: translateY(-1px);"
+        }
+        "active" => {
+            "background: var(--accent-dim); color: var(--text-inverse); border: 1px solid var(--accent-dim);"
+        }
+        "disabled" => {
+            "background: var(--bg-surface-dim); color: var(--text-muted); border: 1px solid var(--border); cursor: not-allowed;"
+        }
+        "focus" => {
+            "background: var(--accent); color: var(--text-inverse); border: 1px solid var(--border-focused); box-shadow: var(--shadow-glow);"
+        }
+        _ => {
+            "background: var(--accent); color: var(--text-inverse); border: 1px solid var(--accent);"
+        }
     };
 
     rsx! {

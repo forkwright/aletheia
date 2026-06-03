@@ -71,7 +71,7 @@ impl StatusFilter {
 }
 
 /// Paginated session list with sort and filter state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct SessionListStore {
     /// Currently loaded sessions.
     pub sessions: Vec<Session>,
@@ -89,21 +89,6 @@ pub(crate) struct SessionListStore {
     pub has_more: bool,
     /// Total count if known from server.
     pub total_count: Option<usize>,
-}
-
-impl Default for SessionListStore {
-    fn default() -> Self {
-        Self {
-            sessions: Vec::new(),
-            sort: SessionSort::default(),
-            status_filter: StatusFilter::default(),
-            agent_filter: Vec::new(),
-            search_query: String::new(),
-            page: 0,
-            has_more: false,
-            total_count: None,
-        }
-    }
 }
 
 impl SessionListStore {
@@ -400,7 +385,7 @@ pub(crate) fn parse_iso_to_unix(s: &str) -> Option<u64> {
 }
 
 fn is_leap(y: u64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
 }
 
 /// Infer session status for display from the Session struct.
@@ -511,9 +496,11 @@ mod tests {
 
     #[test]
     fn session_detail_store_total_tokens() {
-        let mut detail = SessionDetailStore::default();
-        detail.input_tokens = 1000;
-        detail.output_tokens = 500;
+        let detail = SessionDetailStore {
+            input_tokens: 1000,
+            output_tokens: 500,
+            ..SessionDetailStore::default()
+        };
         assert_eq!(detail.total_tokens(), 1500);
         assert!(detail.has_token_breakdown());
     }

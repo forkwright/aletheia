@@ -10,6 +10,4 @@
 //! - [`ApiCache::evict_expired`] prunes stale entries; call periodically or before insertion.
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-}
+mod tests {}

@@ -924,7 +924,7 @@ pub(crate) async fn run_pipeline(
     let emitter = emitter.unwrap_or(&default_emitter);
 
     let pipeline_start = Instant::now();
-    let total_timeout = if pipeline_config.stage_budget.total_secs > 0 {
+    let _total_timeout = if pipeline_config.stage_budget.total_secs > 0 {
         Some(Duration::from_secs(u64::from(
             pipeline_config.stage_budget.total_secs,
         )))
@@ -945,7 +945,7 @@ pub(crate) async fn run_pipeline(
     // for each poll without holding a guard across suspension points.
     async move {
         let mut stages_completed: u32 = 0;
-        let time_budget = TimeBudget::new(pipeline_config.stage_budget.clone());
+        let mut time_budget = TimeBudget::new(pipeline_config.stage_budget.clone());
         enforce_turn_time_budget(&time_budget, config, "turn_start", emitter)?;
 
         // WHY: fire session_start hooks at the beginning of the pipeline.
@@ -971,7 +971,7 @@ pub(crate) async fn run_pipeline(
         run_stage_with_timeout(
             config,
             "context",
-            pipeline_config.stage_budget.context_secs,
+            &mut time_budget,
             emitter,
             run_context_stage(
                 oikos,
@@ -989,6 +989,7 @@ pub(crate) async fn run_pipeline(
         stages_completed += 1;
 
         // Run pre-LLM triage: classify intent, sensitivity, and complexity tier.
+        time_budget.begin_stage("triage");
         let triage_result = triage::TriageStage::classify(&input.content);
         tracing::info!(
             intent = %triage_result.intent,
@@ -998,12 +999,13 @@ pub(crate) async fn run_pipeline(
             "pre_llm_triage"
         );
         ctx.triage_result = Some(triage_result);
+        time_budget.end_stage(crate::budget::StageTimingStatus::Completed);
         stages_completed += 1;
 
         run_stage_with_timeout(
             config,
             "recall",
-            pipeline_config.stage_budget.recall_secs,
+            &mut time_budget,
             emitter,
             run_recall_stage(
                 config,
@@ -1023,7 +1025,7 @@ pub(crate) async fn run_pipeline(
         run_stage_with_timeout(
             config,
             "history",
-            pipeline_config.stage_budget.history_secs,
+            &mut time_budget,
             emitter,
             run_history_stage(config, &mut ctx, &input, session_store, emitter),
         )
@@ -1050,13 +1052,27 @@ pub(crate) async fn run_pipeline(
             let _ = hook_registry.run_before_compact(&compact_ctx).await;
         }
 
+        time_budget.begin_stage("microcompact");
         run_microcompact_stage(config, &mut ctx, emitter);
+        let micro_status = if time_budget.stage_exceeded("microcompact") {
+            emitter.emit(&events::StageTimeout {
+                nous_id: config.id.to_string(),
+                stage: "microcompact",
+                timeout_secs: time_budget
+                    .stage_limit("microcompact")
+                    .map_or(0, |d| u32::try_from(d.as_secs()).unwrap_or(u32::MAX)),
+            });
+            crate::budget::StageTimingStatus::TimedOut
+        } else {
+            crate::budget::StageTimingStatus::Completed
+        };
+        time_budget.end_stage(micro_status);
         stages_completed += 1;
 
         run_stage_with_timeout(
             config,
             "full_compact",
-            pipeline_config.stage_budget.history_secs,
+            &mut time_budget,
             emitter,
             run_full_compact_stage(config, &mut ctx, providers, emitter),
         )
@@ -1080,13 +1096,9 @@ pub(crate) async fn run_pipeline(
             hook_registry.run_after_compact(&compact_ctx).await;
         }
 
-        run_stage_with_timeout(
-            config,
-            "guard",
-            pipeline_config.stage_budget.guard_secs,
-            emitter,
-            async { run_guard_stage(&input.session, config, emitter) },
-        )
+        run_stage_with_timeout(config, "guard", &mut time_budget, emitter, async {
+            run_guard_stage(&input.session, config, emitter)
+        })
         .await?;
         stages_completed += 1;
 
@@ -1140,8 +1152,7 @@ pub(crate) async fn run_pipeline(
             tool_ctx,
             stream_tx,
             approval_gate,
-            pipeline_start,
-            total_timeout,
+            &mut time_budget,
             emitter,
             hooks,
             session_store,
@@ -1149,16 +1160,10 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
-        run_stage_with_timeout(
-            config,
-            "finalize",
-            pipeline_config.stage_budget.finalize_secs,
-            emitter,
-            async {
-                run_finalize_stage(config, &input, &result, session_store, emitter).await;
-                Ok(())
-            },
-        )
+        run_stage_with_timeout(config, "finalize", &mut time_budget, emitter, async {
+            run_finalize_stage(config, &input, &result, session_store, emitter).await;
+            Ok(())
+        })
         .await?;
         stages_completed += 1;
 
@@ -1166,7 +1171,7 @@ pub(crate) async fn run_pipeline(
         run_stage_with_timeout(
             config,
             "reflection",
-            pipeline_config.stage_budget.reflection_secs,
+            &mut time_budget,
             emitter,
             run_reflection_stage(config, pipeline_config, &mut ctx, emitter),
         )
@@ -1511,33 +1516,44 @@ fn config_stage_total_secs(budget: &TimeBudget) -> u32 {
 async fn run_stage_with_timeout<T, F>(
     config: &NousConfig,
     stage: &'static str,
-    timeout_secs: u32,
+    time_budget: &mut TimeBudget,
     emitter: &EventEmitter,
     fut: F,
 ) -> error::Result<T>
 where
     F: Future<Output = error::Result<T>>,
 {
-    if timeout_secs == 0 {
-        return fut.await;
-    }
+    time_budget.begin_stage(stage);
+    let timeout = time_budget.stage_limit(stage);
 
-    match tokio::time::timeout(Duration::from_secs(u64::from(timeout_secs)), fut).await {
-        Ok(result) => result,
-        Err(_elapsed) => {
-            crate::metrics::record_error(&config.id, stage, "timeout");
-            emitter.emit(&events::StageTimeout {
-                nous_id: config.id.to_string(),
-                stage,
-                timeout_secs,
-            });
-            Err(error::PipelineTimeoutSnafu {
-                stage,
-                timeout_secs,
+    let result = if let Some(limit) = timeout {
+        match tokio::time::timeout(limit, fut).await {
+            Ok(result) => result,
+            Err(_elapsed) => {
+                crate::metrics::record_error(&config.id, stage, "timeout");
+                emitter.emit(&events::StageTimeout {
+                    nous_id: config.id.to_string(),
+                    stage,
+                    timeout_secs: u32::try_from(limit.as_secs()).unwrap_or(u32::MAX),
+                });
+                Err(error::PipelineTimeoutSnafu {
+                    stage,
+                    timeout_secs: u32::try_from(limit.as_secs()).unwrap_or(u32::MAX),
+                }
+                .build())
             }
-            .build())
         }
-    }
+    } else {
+        fut.await
+    };
+
+    let status = if matches!(result, Err(error::Error::PipelineTimeout { .. })) {
+        crate::budget::StageTimingStatus::TimedOut
+    } else {
+        crate::budget::StageTimingStatus::Completed
+    };
+    time_budget.end_stage(status);
+    result
 }
 
 /// Typed pipeline events for the internal event system.

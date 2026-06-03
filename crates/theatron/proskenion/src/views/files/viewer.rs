@@ -256,10 +256,7 @@ fn highlight_content(content: &str, path: &str) -> Vec<HighlightedLine> {
     // WHY: Use the same base16-ocean.dark theme as the TUI highlighter for
     // visual consistency across frontends.
     let fallback_theme = theme_set.themes.values().next();
-    let theme = theme_set
-        .themes
-        .get("base16-ocean.dark")
-        .or(fallback_theme);
+    let theme = theme_set.themes.get("base16-ocean.dark").or(fallback_theme);
 
     let Some(theme) = theme else {
         // NOTE: syntect ships with default themes, so this should not happen.
@@ -320,7 +317,11 @@ fn render_highlighted_line(line: &HighlightedLine) -> Element {
 }
 
 fn bold_style(bold: bool) -> &'static str {
-    if bold { " font-weight: var(--weight-bold);" } else { "" }
+    if bold {
+        " font-weight: var(--weight-bold);"
+    } else {
+        ""
+    }
 }
 
 fn italic_style(italic: bool) -> &'static str {

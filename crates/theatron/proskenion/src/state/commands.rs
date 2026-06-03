@@ -187,17 +187,6 @@ impl Default for CommandStore {
 mod tests {
     use super::*;
 
-    fn server_cmd(name: &str) -> Command {
-        Command {
-            name: name.to_string(),
-            description: format!("Server command: {name}"),
-            usage: format!("/{name}"),
-            source: CommandSource::Server,
-            agent_specific: true,
-            category: CommandCategory::Action,
-        }
-    }
-
     #[test]
     fn selected_returns_highlighted_command() {
         let store = CommandStore::new();

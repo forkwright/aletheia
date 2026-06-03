@@ -30,10 +30,10 @@ pub(crate) fn render_approval(
                         &cfg.server_url,
                         cfg.auth_token.clone(),
                     );
-                    if let Ok(client) = client {
-                        if let Err(err) = client.approve_tool(&turn_id, &tool_id).await {
-                            tracing::warn!(%turn_id, %tool_id, error = %err, "tool approval request failed");
-                        }
+                    if let Ok(client) = client
+                        && let Err(err) = client.approve_tool(&turn_id, &tool_id).await
+                    {
+                        tracing::warn!(%turn_id, %tool_id, error = %err, "tool approval request failed");
                     }
                 });
             },
@@ -46,10 +46,10 @@ pub(crate) fn render_approval(
                         &cfg.server_url,
                         cfg.auth_token.clone(),
                     );
-                    if let Ok(client) = client {
-                        if let Err(err) = client.deny_tool(&turn_id, &tool_id).await {
-                            tracing::warn!(%turn_id, %tool_id, error = %err, "tool denial request failed");
-                        }
+                    if let Ok(client) = client
+                        && let Err(err) = client.deny_tool(&turn_id, &tool_id).await
+                    {
+                        tracing::warn!(%turn_id, %tool_id, error = %err, "tool denial request failed");
                     }
                 });
             },

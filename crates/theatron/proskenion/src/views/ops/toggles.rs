@@ -204,7 +204,7 @@ fn AgentToggleRow(
         .read()
         .expanded_agent
         .as_ref()
-        .map_or(false, |e| *e == id);
+        .is_some_and(|e| *e == id);
 
     let expand_label = if is_expanded {
         "tools \u{25bc}"

@@ -27,6 +27,13 @@ impl KnowledgeStore {
             }
         );
 
+        // Admission + insert must be atomic: hold the lock so a concurrent insert
+        // of the same fact cannot pass the gate and write independently.
+        let _guard = self.insert_lock.lock().unwrap_or_else(|e| {
+            tracing::warn!("insert_lock was poisoned, recovering");
+            e.into_inner()
+        });
+
         // Admission control gate: check policy before persisting.
         let decision = self.admission_policy.should_admit(fact);
         if let crate::admission::AdmissionDecision::Reject(rejection) = decision {

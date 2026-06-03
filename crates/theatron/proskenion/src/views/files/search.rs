@@ -76,14 +76,12 @@ pub(crate) fn FileSearch(
             let encoded: String = form_urlencoded::byte_serialize(q.as_bytes()).collect();
             let url = format!("{base}/api/v1/workspace/search?q={encoded}&limit=50");
 
-            if let Ok(resp) = client.get(&url).send().await {
-                if resp.status().is_success() {
-                    if let Ok(items) = resp.json::<Vec<SearchResult>>().await {
-                        if *debounce_generation.read() == current_gen {
-                            results.set(items);
-                        }
-                    }
-                }
+            if let Ok(resp) = client.get(&url).send().await
+                && resp.status().is_success()
+                && let Ok(items) = resp.json::<Vec<SearchResult>>().await
+                && *debounce_generation.read() == current_gen
+            {
+                results.set(items);
             }
         });
     };
@@ -129,7 +127,7 @@ pub(crate) fn FileSearch(
                     for result in result_snapshot {
                         SearchResultItem {
                             result,
-                            on_select_file: on_select_file.clone(),
+                            on_select_file,
                             query,
                             results,
                             is_searching,

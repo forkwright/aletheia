@@ -58,21 +58,12 @@ impl DndDuration {
 ///
 /// Activation time and expiry are [`Instant`]-based so they cannot be
 /// serialized. Store this in a separate signal from [`NotificationPreferences`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct DndState {
     /// Whether DND mode is currently active.
     pub active: bool,
     /// When DND mode expires. `None` means DND is indefinite until deactivated.
     pub expires_at: Option<Instant>,
-}
-
-impl Default for DndState {
-    fn default() -> Self {
-        Self {
-            active: false,
-            expires_at: None,
-        }
-    }
 }
 
 impl DndState {
@@ -163,7 +154,10 @@ impl NotificationPreferences {
 #[derive(Debug, Clone)]
 pub(crate) struct NotificationEntry {
     /// Category of the notification.
-    #[expect(dead_code, reason = "public API")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "part of public notification API")
+    )]
     pub category: NotificationCategory,
     /// Title displayed in the notification.
     #[expect(dead_code, reason = "public API")]

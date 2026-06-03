@@ -106,10 +106,8 @@ pub(crate) fn App() -> Element {
     // unrecognized. Uses themelion::ThemeMode::from_slug (theatron v1.2.0)
     // to parse the lowercase config slug; pre-v1.2 this was a hand-rolled
     // match across 4 proskenion sites, now centralized in themelion.
-    let initial_theme = themelion::theme::ThemeMode::from_slug(
-        appearance.read().theme.as_str(),
-    )
-    .unwrap_or(themelion::theme::ThemeMode::Dark);
+    let initial_theme = themelion::theme::ThemeMode::from_slug(appearance.read().theme.as_str())
+        .unwrap_or(themelion::theme::ThemeMode::Dark);
 
     // NOTE: Provide signals as context so all views can access them.
     use_context_provider(|| connection_state);

@@ -196,13 +196,15 @@ pub(crate) struct TimeBudget {
 #[derive(Debug, Clone)]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "time budget not yet wired into pipeline stages")
+    expect(
+        dead_code,
+        reason = "consumed via summary() in tests and future telemetry"
+    )
 )]
 pub(crate) struct StageTimingRecord {
     /// Stage name (e.g. "context", "execute").
     pub name: String,
     /// Wall-clock time the stage consumed.
-    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     pub elapsed: Duration,
     /// Whether the stage completed normally, timed out, or was skipped.
     pub status: StageTimingStatus,
@@ -211,24 +213,15 @@ pub(crate) struct StageTimingRecord {
 /// How a pipeline stage completed.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "time budget not yet wired into pipeline stages")
-)]
 pub(crate) enum StageTimingStatus {
     Completed,
     /// Stage exceeded its time limit and was cut short.
-    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     TimedOut,
     /// Stage was not executed (e.g. total budget exhausted).
-    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
+    #[expect(dead_code, reason = "reserved for future skip-stage telemetry")]
     Skipped,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "time budget not yet wired into pipeline stages")
-)]
 impl TimeBudget {
     /// Create a new time budget from per-stage limits.
     #[must_use]
@@ -269,10 +262,11 @@ impl TimeBudget {
         let stage_secs = match stage_name {
             "context" => self.stage_budgets.context_secs,
             "recall" => self.stage_budgets.recall_secs,
-            "history" => self.stage_budgets.history_secs,
+            "history" | "full_compact" => self.stage_budgets.history_secs,
             "guard" => self.stage_budgets.guard_secs,
             "execute" => self.stage_budgets.execute_secs,
             "finalize" => self.stage_budgets.finalize_secs,
+            "reflection" => self.stage_budgets.reflection_secs,
             _ => 0,
         };
         if stage_secs == 0 && self.stage_budgets.total_secs == 0 {
@@ -284,6 +278,35 @@ impl TimeBudget {
             Duration::from_secs(u64::MAX)
         };
         Some(stage_limit.min(self.total_remaining()))
+    }
+
+    /// Elapsed time of the currently-active stage, if any.
+    #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "exposed for test assertions and future observability"
+        )
+    )]
+    pub(crate) fn current_stage_elapsed(&self) -> Option<Duration> {
+        self.current_stage
+            .as_ref()
+            .map(|(_, start)| start.elapsed())
+    }
+
+    /// Returns `true` if the currently-active stage has exceeded its limit.
+    #[must_use]
+    pub(crate) fn stage_exceeded(&self, stage_name: &str) -> bool {
+        if let Some((ref name, start)) = self.current_stage
+            && name == stage_name
+        {
+            let elapsed = start.elapsed();
+            if let Some(limit) = self.stage_limit(stage_name) {
+                return elapsed >= limit;
+            }
+        }
+        false
     }
 
     /// Mark the start of a pipeline stage for timing.
@@ -304,6 +327,13 @@ impl TimeBudget {
 
     /// Completed stage timing records, in execution order.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "exposed for test assertions and future observability"
+        )
+    )]
     pub(crate) fn summary(&self) -> &[StageTimingRecord] {
         &self.stage_elapsed
     }
@@ -468,5 +498,29 @@ mod tests {
     fn time_budget_is_send() {
         fn assert_send<T: Send>() {}
         assert_send::<TimeBudget>();
+    }
+
+    #[test]
+    fn stage_timing_record_fields_are_readable() {
+        let mut tb = TimeBudget::new(StageBudget::default());
+        tb.begin_stage("context");
+        std::thread::sleep(Duration::from_millis(1));
+        tb.end_stage(StageTimingStatus::Completed);
+        let summary = tb.summary();
+        assert!(!summary.is_empty());
+        assert_eq!(summary[0].name, "context");
+        assert!(summary[0].elapsed > Duration::ZERO);
+        assert_eq!(summary[0].status, StageTimingStatus::Completed);
+    }
+
+    #[test]
+    fn current_stage_elapsed_returns_some_when_active() {
+        let mut tb = TimeBudget::new(StageBudget::default());
+        tb.begin_stage("execute");
+        std::thread::sleep(Duration::from_millis(1));
+        let elapsed = tb.current_stage_elapsed();
+        assert!(elapsed.is_some_and(|d| d > Duration::ZERO));
+        tb.end_stage(StageTimingStatus::TimedOut);
+        assert!(tb.current_stage_elapsed().is_none());
     }
 }

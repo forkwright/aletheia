@@ -89,7 +89,8 @@ pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
 
     let trend_color = data.failure_trend.color();
     let trend_indicator = data.failure_trend.indicator();
-    let trend_style = format!("color: {trend_color}; font-size: var(--text-md); margin-left: auto;");
+    let trend_style =
+        format!("color: {trend_color}; font-size: var(--text-md); margin-left: auto;");
 
     rsx! {
         div {
@@ -150,7 +151,10 @@ fn render_cron_row(i: usize, job: &CronJobInfo) -> Element {
 
 fn render_daemon_row(i: usize, task: &DaemonTaskInfo) -> Element {
     let dot_style = format!("{DOT_BASE} background: {};", task.status.dot_color());
-    let status_style = format!("color: {}; font-size: var(--text-xs);", task.status.dot_color());
+    let status_style = format!(
+        "color: {}; font-size: var(--text-xs);",
+        task.status.dot_color()
+    );
     let status_label = task.status.label();
 
     rsx! {

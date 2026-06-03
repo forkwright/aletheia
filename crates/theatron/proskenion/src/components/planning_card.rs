@@ -95,7 +95,10 @@ pub(crate) fn PlanningCard(plan: PlanCardState) -> Element {
             clippy::cast_precision_loss,
             reason = "step counts are small enough that f64 is exact"
         )]
-        #[expect(clippy::as_conversions, reason = "small step counts for progress display")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "small step counts for progress display"
+        )]
         let pct = (completed as f64 / total as f64) * 100.0;
         pct
     } else {
@@ -159,7 +162,9 @@ fn step_label_style(status: StepStatus) -> String {
     match status {
         StepStatus::Pending => "color: var(--text-muted);".to_string(),
         StepStatus::InProgress => "color: #c0c0e0; font-weight: var(--weight-medium);".to_string(),
-        StepStatus::Complete => "color: var(--text-secondary); text-decoration: line-through;".to_string(),
+        StepStatus::Complete => {
+            "color: var(--text-secondary); text-decoration: line-through;".to_string()
+        }
         StepStatus::Failed => "color: #f87171;".to_string(),
     }
 }

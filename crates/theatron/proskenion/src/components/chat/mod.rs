@@ -488,10 +488,9 @@ impl ChatStateManager {
                     .plans
                     .iter_mut()
                     .find(|p| p.plan_id == plan_id)
+                    && let Some(step) = plan.steps.iter_mut().find(|s| s.id == step_id)
                 {
-                    if let Some(step) = plan.steps.iter_mut().find(|s| s.id == step_id) {
-                        step.status = parse_step_status(&status);
-                    }
+                    step.status = parse_step_status(&status);
                 }
                 true
             }

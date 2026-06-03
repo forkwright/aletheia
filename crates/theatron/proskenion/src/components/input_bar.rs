@@ -167,10 +167,8 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
                     }
 
                     // Down arrow: navigate to next history entry
-                    if key == Key::ArrowDown && !is_streaming {
-                        if input.write().history_next() {
-                            evt.prevent_default();
-                        }
+                    if key == Key::ArrowDown && !is_streaming && input.write().history_next() {
+                        evt.prevent_default();
                     }
                 },
             }
@@ -195,8 +193,7 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
 /// Compute the number of visible rows for the textarea, clamped to [1, 10].
 #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
 fn compute_rows(text: &str) -> usize {
-    let count = text.split('\n').count();
-    count.max(1).min(10)
+    text.split('\n').count().clamp(1, 10)
 }
 
 #[cfg(test)]

@@ -17,7 +17,13 @@ const RADAR_AXIS_LABELS: [&str; 5] = [
     "Reliability",
 ];
 
-const RADAR_COLORS: &[&str] = &["#4a9aff", "var(--status-success)", "var(--status-warning)", "var(--status-error)", "#8b5cf6"];
+const RADAR_COLORS: &[&str] = &[
+    "#4a9aff",
+    "var(--status-success)",
+    "var(--status-warning)",
+    "var(--status-error)",
+    "#8b5cf6",
+];
 
 const SCORECARD_STYLE: &str = "\
     background: var(--bg-surface); \

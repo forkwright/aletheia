@@ -105,9 +105,15 @@ fn build_heatmap_dimensions() {
 fn build_heatmap_counts() {
     let timestamps = vec![(0, 9), (0, 9), (0, 10), (6, 23)];
     let cells = build_heatmap(&timestamps);
-    let mon_9 = cells.iter().find(|c| c.day == 0 && c.hour == 9).expect("cell exists");
+    let mon_9 = cells
+        .iter()
+        .find(|c| c.day == 0 && c.hour == 9)
+        .expect("cell exists");
     assert_eq!(mon_9.count, 2);
-    let sun_23 = cells.iter().find(|c| c.day == 6 && c.hour == 23).expect("cell exists");
+    let sun_23 = cells
+        .iter()
+        .find(|c| c.day == 6 && c.hour == 23)
+        .expect("cell exists");
     assert_eq!(sun_23.count, 1);
 }
 
@@ -176,7 +182,10 @@ fn compute_ratio_normal() {
 #[test]
 fn generate_recommendations_healthy() {
     let recs = generate_recommendations(0.05, 0.1, 0.8, 5.0);
-    assert!(recs.is_empty(), "healthy metrics should produce no recommendations");
+    assert!(
+        recs.is_empty(),
+        "healthy metrics should produce no recommendations"
+    );
 }
 
 #[test]
@@ -229,9 +238,6 @@ fn radar_axes_bounded() {
     };
     let axes = card.radar_axes();
     for (i, &v) in axes.iter().enumerate() {
-        assert!(
-            (0.0..=1.0).contains(&v),
-            "axis {i} = {v} out of bounds"
-        );
+        assert!((0.0..=1.0).contains(&v), "axis {i} = {v} out of bounds");
     }
 }

@@ -13,10 +13,10 @@ use crate::state::connection::ConnectionConfig;
 pub(crate) fn authenticated_client(config: &ConnectionConfig) -> Client {
     let mut headers = HeaderMap::new();
 
-    if let Some(ref token) = config.auth_token {
-        if let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}")) {
-            headers.insert(AUTHORIZATION, val);
-        }
+    if let Some(ref token) = config.auth_token
+        && let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}"))
+    {
+        headers.insert(AUTHORIZATION, val);
     }
 
     // WHY: fall back to default client if builder fails (e.g. no TLS provider

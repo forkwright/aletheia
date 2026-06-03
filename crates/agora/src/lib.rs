@@ -5,6 +5,8 @@
 //! between Aletheia and the outside world. Provides the channel abstraction
 //! and registry, with Signal (semeion) and Matrix providers.
 
+/// Signal `!`-command parser and dispatcher for operator control messages.
+pub mod command;
 /// Error types for channel operations and provider failures.
 pub(crate) mod error;
 /// Unified channel listener that merges inbound messages from all providers into a single stream.

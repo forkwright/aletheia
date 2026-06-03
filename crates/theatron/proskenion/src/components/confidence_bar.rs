@@ -73,8 +73,6 @@ pub(crate) fn ConfidenceBar(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use crate::state::memory::confidence_color;
 
     #[test]

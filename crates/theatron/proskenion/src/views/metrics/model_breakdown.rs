@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::components::chart::{ChartEntry, DonutChart};
-use crate::state::metrics::{cost_per_1k_output, format_tokens, model_color, ModelTokenRow};
+use crate::state::metrics::{ModelTokenRow, cost_per_1k_output, format_tokens, model_color};
 
 /// Per-model token breakdown with donut chart.
 #[component]
@@ -12,7 +12,10 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
         .iter()
         .map(|m| ChartEntry {
             label: short_model_name(&m.model),
-            #[expect(clippy::as_conversions, reason = "u64 token count to f64 for chart value")]
+            #[expect(
+                clippy::as_conversions,
+                reason = "u64 token count to f64 for chart value"
+            )]
             value: m.total() as f64,
             color: model_color(&m.model).to_string(),
             sub_label: None,
@@ -81,9 +84,5 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
 
 /// Strip provider prefix from a model ID for compact display.
 fn short_model_name(model: &str) -> String {
-    model
-        .split('/')
-        .last()
-        .unwrap_or(model)
-        .to_string()
+    model.rsplit('/').next().unwrap_or(model).to_string()
 }

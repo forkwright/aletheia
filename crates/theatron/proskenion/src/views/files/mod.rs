@@ -8,7 +8,7 @@ mod viewer;
 
 use dioxus::prelude::*;
 
-use crate::components::resize_handle::{use_resize_state, ResizeDir, ResizeHandle};
+use crate::components::resize_handle::{ResizeDir, ResizeHandle, use_resize_state};
 use crate::state::navigation::NavAction;
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::files::diff::DiffViewer;
@@ -84,20 +84,16 @@ pub(crate) fn Files() -> Element {
     // WHY: Restore preserved state on mount (#2411 context preservation).
     let mut preservation = use_context::<Signal<ViewPreservationStore>>();
     use_hook(|| {
-        if let Some(saved) = preservation.write().restore(&ViewKey::Files) {
-            if !saved.input_text.is_empty() {
-                selected_path.set(Some(saved.input_text));
-            }
+        if let Some(saved) = preservation.write().restore(&ViewKey::Files)
+            && !saved.input_text.is_empty()
+        {
+            selected_path.set(Some(saved.input_text));
         }
     });
 
     // Save state on unmount.
     use_drop(move || {
-        let path_text = selected_path
-            .read()
-            .as_deref()
-            .unwrap_or("")
-            .to_string();
+        let path_text = selected_path.read().as_deref().unwrap_or("").to_string();
         preservation.write().save(
             ViewKey::Files,
             PreservedViewState {

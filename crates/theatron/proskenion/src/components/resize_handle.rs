@@ -62,11 +62,7 @@ impl ResizeState {
 
 /// Create resize interaction state for a panel.
 #[must_use]
-pub(crate) fn use_resize_state(
-    default_size: f64,
-    min_size: f64,
-    max_size: f64,
-) -> ResizeState {
+pub(crate) fn use_resize_state(default_size: f64, min_size: f64, max_size: f64) -> ResizeState {
     ResizeState {
         size: use_signal(|| default_size),
         is_dragging: use_signal(|| false),
@@ -144,8 +140,6 @@ pub(crate) fn ResizeHandle(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     /// Pure clamping logic tested without Dioxus runtime (no Signal).
     fn clamp_resize(start_size: f64, delta: f64, min: f64, max: f64) -> f64 {
         (start_size + delta).clamp(min, max)
@@ -170,5 +164,4 @@ mod tests {
         let result = clamp_resize(280.0, 40.0, 160.0, 600.0);
         assert!((result - 320.0).abs() < f64::EPSILON);
     }
-
 }

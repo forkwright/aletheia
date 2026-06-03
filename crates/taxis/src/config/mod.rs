@@ -11,11 +11,11 @@ pub use agents::{
     ModelSpec, NousDefinition, RecallProfile, RecallSettings, RecallWeights,
 };
 pub use behavior::{
-    AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig, CronTaskConfig,
-    DaemonBehaviorConfig, DeploymentTarget, DispatchConfig, DispatchSpecConfig, ExtractionConfig,
-    JwtSettings, KnowledgeConfig, LlmProviderConfig, MessagingConfig, NousBehaviorConfig,
-    OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings,
-    TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig,
+    CronTaskConfig, DaemonBehaviorConfig, DeploymentTarget, DispatchConfig, DispatchSpecConfig,
+    ExtractionConfig, JwtSettings, KnowledgeConfig, LlmProviderConfig, MessagingConfig,
+    NousBehaviorConfig, OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig, ProviderKind,
+    RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,

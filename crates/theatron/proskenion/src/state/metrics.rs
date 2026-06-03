@@ -529,7 +529,7 @@ fn days_in_month(year: u32, month: u32) -> u32 {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
         2 => {
-            if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
+            if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) {
                 29
             } else {
                 28
@@ -553,9 +553,10 @@ pub(crate) fn cost_per_1k_output(model: &str) -> f64 {
         0.00125
     } else if model.contains("opus-3") {
         0.060
-    } else if model.contains("sonnet-3-5") || model.contains("sonnet-3.5") {
-        0.015
-    } else if model.contains("sonnet-3") {
+    } else if model.contains("sonnet-3-5")
+        || model.contains("sonnet-3.5")
+        || model.contains("sonnet-3")
+    {
         0.015
     } else if model.contains("haiku-3") {
         0.00125
@@ -591,7 +592,7 @@ pub(crate) fn model_color(model: &str) -> &'static str {
 
 /// Sort agent token rows in-place.
 pub(crate) fn sort_agent_token_rows(
-    rows: &mut Vec<AgentTokenRow>,
+    rows: &mut [AgentTokenRow],
     col: AgentTokenSort,
     dir: SortDir,
     grand_total: u64,
@@ -617,7 +618,7 @@ pub(crate) fn sort_agent_token_rows(
 }
 
 /// Sort agent cost rows in-place.
-pub(crate) fn sort_agent_cost_rows(rows: &mut Vec<AgentCostRow>, col: AgentCostSort, dir: SortDir) {
+pub(crate) fn sort_agent_cost_rows(rows: &mut [AgentCostRow], col: AgentCostSort, dir: SortDir) {
     rows.sort_by(|a, b| {
         let cmp = match col {
             AgentCostSort::Name => a.name.cmp(&b.name),

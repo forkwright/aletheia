@@ -143,6 +143,9 @@ pub enum BuiltinTask {
     PromptAuditRotation,
     /// Refresh empirical after-action routing statistics from JSONL logs.
     RoutingStoreRefresh,
+    /// Materialize derived Datalog rules (IS-A closure, causal chains, defeasible defaults)
+    /// into the `derived_facts` relation.
+    DerivedFactsMaterialize,
 }
 
 impl Schedule {

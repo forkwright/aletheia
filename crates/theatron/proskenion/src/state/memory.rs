@@ -125,9 +125,12 @@ impl FlagSeverity {
 
     /// Badge color for severity.
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "part of public API for future flag severity display"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of public API for future flag severity display"
+        )
     )]
     pub(crate) fn color(self) -> &'static str {
         match self {
@@ -140,7 +143,7 @@ impl FlagSeverity {
 
 /// An entity from the knowledge graph.
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(try_from = "EntityRaw")]
+#[serde(from = "EntityRaw")]
 pub(crate) struct Entity {
     /// Unique identifier.
     // kanon:ignore RUST/primitive-for-domain-id — Entity/Relationship memory state mirrors server-side string IDs from the knowledge API
@@ -196,11 +199,9 @@ struct EntityRaw {
     flagged: bool,
 }
 
-impl TryFrom<EntityRaw> for Entity {
-    type Error = std::convert::Infallible;
-
-    fn try_from(raw: EntityRaw) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<EntityRaw> for Entity {
+    fn from(raw: EntityRaw) -> Self {
+        Self {
             id: raw.id,
             name: raw.name,
             entity_type: raw.entity_type,
@@ -213,7 +214,7 @@ impl TryFrom<EntityRaw> for Entity {
             created_by: raw.created_by,
             created_at: raw.created_at,
             flagged: raw.flagged,
-        })
+        }
     }
 }
 
@@ -368,7 +369,10 @@ impl EntityListStore {
 
     /// Number of active filter chips to display.
     #[must_use]
-    #[expect(dead_code, reason = "available for filter chip count display")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "available for filter chip count display")
+    )]
     pub(crate) fn active_filter_count(&self) -> usize {
         let mut count = 0;
         if !self.search_query.is_empty() {
@@ -493,7 +497,10 @@ impl EntityNavigationHistory {
 
     /// Current entity ID, if any.
     #[must_use]
-    #[expect(dead_code, reason = "used by tests and future navigation display")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "used in tests; available for navigation display")
+    )]
     pub(crate) fn current(&self) -> Option<&str> {
         self.stack.get(self.cursor).map(String::as_str)
     }
@@ -511,14 +518,20 @@ impl EntityNavigationHistory {
 
     /// Number of entries in the history.
     #[must_use]
-    #[expect(dead_code, reason = "used by tests and future navigation display")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "used in tests; available for navigation display")
+    )]
     pub(crate) fn len(&self) -> usize {
         self.stack.len()
     }
 
     /// Whether the history is empty.
     #[must_use]
-    #[expect(dead_code, reason = "used by tests and future navigation display")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "used in tests; available for navigation display")
+    )]
     pub(crate) fn is_empty(&self) -> bool {
         self.stack.is_empty()
     }

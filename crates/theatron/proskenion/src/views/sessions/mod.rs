@@ -100,10 +100,10 @@ pub(crate) fn Sessions() -> Element {
     // WHY: Restore preserved search state on mount (#2411 context preservation).
     let mut preservation = use_context::<Signal<ViewPreservationStore>>();
     use_hook(|| {
-        if let Some(saved) = preservation.write().restore(&ViewKey::Sessions) {
-            if !saved.input_text.is_empty() {
-                list_store.write().search_query = saved.input_text;
-            }
+        if let Some(saved) = preservation.write().restore(&ViewKey::Sessions)
+            && !saved.input_text.is_empty()
+        {
+            list_store.write().search_query = saved.input_text;
         }
     });
 
@@ -121,7 +121,6 @@ pub(crate) fn Sessions() -> Element {
 
     // Fetch sessions on mount.
     let fetch_sessions = {
-        let config = config;
         let mut list_store = list_store;
         move || {
             let cfg = config.read().clone();
@@ -212,7 +211,6 @@ pub(crate) fn Sessions() -> Element {
 
     // Fetch detail for a selected session.
     let fetch_detail = {
-        let config = config;
         let mut detail_state = detail_state;
         move |session_id: SessionId, session: Session| {
             let cfg = config.read().clone();
@@ -245,12 +243,9 @@ pub(crate) fn Sessions() -> Element {
                             serde_json::from_str::<HistoryResponse>(&text)
                         {
                             wrapper.messages
-                        } else if let Ok(list) =
-                            serde_json::from_str::<Vec<skene::api::types::HistoryMessage>>(&text)
-                        {
-                            list
                         } else {
-                            Vec::new()
+                            serde_json::from_str::<Vec<skene::api::types::HistoryMessage>>(&text)
+                                .unwrap_or_default()
                         };
 
                         let mut user_count = 0u32;
@@ -326,7 +321,6 @@ pub(crate) fn Sessions() -> Element {
 
     // Archive a session.
     let archive_session = {
-        let config = config;
         move |session_id: SessionId| {
             let cfg = config.read().clone();
             let id = session_id.clone();
@@ -355,7 +349,6 @@ pub(crate) fn Sessions() -> Element {
 
     // Restore (unarchive) a session.
     let restore_session = {
-        let config = config;
         move |session_id: SessionId| {
             let cfg = config.read().clone();
             let id = session_id.clone();
@@ -459,7 +452,7 @@ pub(crate) fn Sessions() -> Element {
                         list_store,
                         selection_store,
                         on_select_session: {
-                            let mut fetch_detail = fetch_detail.clone();
+                            let mut fetch_detail = fetch_detail;
                             move |id: SessionId| {
                                 selected_session_id.set(Some(id.clone()));
                                 let session = list_store.read().sessions
@@ -484,25 +477,19 @@ pub(crate) fn Sessions() -> Element {
                     // Bulk action bar
                     BulkActionBar {
                         selection_store,
-                        on_bulk_archive: {
-                            let archive_session = archive_session.clone();
-                            move |ids: Vec<SessionId>| {
-                                for id in ids {
-                                    archive_session(id);
-                                }
-                                list_store.write().page = 0;
-                                fetch_sessions();
+                        on_bulk_archive: move |ids: Vec<SessionId>| {
+                            for id in ids {
+                                archive_session(id);
                             }
+                            list_store.write().page = 0;
+                            fetch_sessions();
                         },
-                        on_bulk_restore: {
-                            let restore_session = restore_session.clone();
-                            move |ids: Vec<SessionId>| {
-                                for id in ids {
-                                    restore_session(id);
-                                }
-                                list_store.write().page = 0;
-                                fetch_sessions();
+                        on_bulk_restore: move |ids: Vec<SessionId>| {
+                            for id in ids {
+                                restore_session(id);
                             }
+                            list_store.write().page = 0;
+                            fetch_sessions();
                         },
                     }
                 }
@@ -542,21 +529,15 @@ pub(crate) fn Sessions() -> Element {
                                 let nav = navigator();
                                 nav.push(crate::app::Route::Chat {});
                             },
-                            on_archive: {
-                                let archive_session = archive_session.clone();
-                                move |id: SessionId| {
-                                    archive_session(id);
-                                    list_store.write().page = 0;
-                                    fetch_sessions();
-                                }
+                            on_archive: move |id: SessionId| {
+                                archive_session(id);
+                                list_store.write().page = 0;
+                                fetch_sessions();
                             },
-                            on_restore: {
-                                let restore_session = restore_session.clone();
-                                move |id: SessionId| {
-                                    restore_session(id);
-                                    list_store.write().page = 0;
-                                    fetch_sessions();
-                                }
+                            on_restore: move |id: SessionId| {
+                                restore_session(id);
+                                list_store.write().page = 0;
+                                fetch_sessions();
                             },
                         }
                     } else {

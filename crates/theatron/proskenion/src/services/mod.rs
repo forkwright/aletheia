@@ -12,10 +12,10 @@ pub(crate) mod export;
 pub(crate) mod file_watcher;
 /// Global keyboard navigation handler.
 pub(crate) mod keybindings;
-pub mod sse;
 pub(crate) mod notification_dispatch;
+/// Settings config persistence: server list, appearance, keybindings.
+pub(crate) mod settings_config;
+pub mod sse;
 pub(crate) mod sse_coroutine;
 pub(crate) mod streaming;
 pub(crate) mod toast;
-/// Settings config persistence: server list, appearance, keybindings.
-pub(crate) mod settings_config;

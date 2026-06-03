@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
 
 use crate::error::{self, Result};
-use crate::provider::LlmProvider;
+use crate::provider::{LlmProvider, MatchKind};
 use crate::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 
 /// Build a [`CompletionResponse`] with a single text block.
@@ -60,6 +60,8 @@ pub struct MockProvider {
     models: &'static [&'static str],
     provider_name: &'static str,
     requests: Mutex<Vec<CompletionRequest>>,
+    /// Override for `match_specificity`. `None` = use the default exact-match logic.
+    match_kind_override: Option<MatchKind>,
 }
 
 impl MockProvider {
@@ -73,6 +75,7 @@ impl MockProvider {
             models: &["mock-model"],
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
+            match_kind_override: None,
         }
     }
 
@@ -88,6 +91,7 @@ impl MockProvider {
             models: &["mock-model"],
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
+            match_kind_override: None,
         }
     }
 
@@ -106,6 +110,7 @@ impl MockProvider {
             models: &["mock-model"],
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
+            match_kind_override: None,
         }
     }
 
@@ -122,6 +127,17 @@ impl MockProvider {
     pub fn named(mut self, name: &'static str) -> Self {
         // kanon:ignore RUST/pub-visibility
         self.provider_name = name;
+        self
+    }
+
+    /// Override the `match_specificity` kind returned for any model in `models`.
+    ///
+    /// Used in tests to simulate catch-all or prefix providers without
+    /// needing a real provider implementation.
+    #[must_use]
+    pub fn with_match_kind(mut self, kind: MatchKind) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        self.match_kind_override = Some(kind);
         self
     }
 
@@ -184,6 +200,14 @@ impl LlmProvider for MockProvider {
 
     fn supported_models(&self) -> &[&str] {
         self.models
+    }
+
+    fn match_specificity(&self, model: &str) -> Option<crate::provider::MatchKind> {
+        if self.models.contains(&model) {
+            Some(self.match_kind_override.unwrap_or(MatchKind::Exact))
+        } else {
+            None
+        }
     }
 
     fn name(&self) -> &str {

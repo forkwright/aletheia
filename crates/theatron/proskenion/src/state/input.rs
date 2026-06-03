@@ -219,13 +219,14 @@ mod tests {
 
     #[test]
     fn clear_resets_state() {
-        let mut input = InputState::default();
-        input.text = "hello".into();
+        let mut input = InputState {
+            text: "hello".into(),
+            ..InputState::default()
+        };
         input.push_history("old".into());
         let _ = input.history_prev();
         input.clear();
         assert!(input.text.is_empty());
         assert!(!input.is_browsing_history());
     }
-
 }
