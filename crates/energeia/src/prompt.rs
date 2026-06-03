@@ -160,7 +160,7 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
     // kanon:ignore RUST/indexing-slicing — body_start is computed from ASCII delimiter length added to a valid boundary, always aligned
     let body = after_open[body_start..].trim_start_matches('\n').to_owned();
 
-    let fm: Frontmatter = serde_yml::from_str(yaml_str).map_err(|e| {
+    let fm: Frontmatter = serde_yaml::from_str(yaml_str).map_err(|e| {
         FrontmatterParseSnafu {
             path: path.to_owned(),
             detail: format!("YAML parse error: {e}"),

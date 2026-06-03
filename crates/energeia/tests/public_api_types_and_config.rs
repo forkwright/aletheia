@@ -57,7 +57,7 @@ dag_ref: prompts/dag.yaml
 max_parallel: 4
 max_turns: 9
 ";
-    let spec: DispatchSpec = serde_yml::from_str(yaml).expect("deserialize from yaml");
+    let spec: DispatchSpec = serde_yaml::from_str(yaml).expect("deserialize from yaml");
 
     assert_eq!(spec.prompt_numbers, vec![1, 2]);
     assert_eq!(spec.project, "yaml-test");
