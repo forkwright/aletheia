@@ -52,6 +52,8 @@ pub mod factbase;
 /// Typed identifier newtypes (component, theme, fact, claim, sheet, data
 /// source).
 pub mod ids;
+/// QA report types for document validation.
+pub mod qa;
 /// Typed scalars, units, aspect ratio, tolerance.
 pub mod scalar;
 
@@ -85,6 +87,7 @@ pub use factbase::{
     Claim, DataSource, DataSourceRegistry, Expr, Fact, Factbase, Location, ResolvedFact, Source,
 };
 pub use ids::{ClaimId, ComponentId, DataSourceId, FactId, SheetName, ThemeId};
+pub use qa::{QaIssue, QaIssueKind, QaReport};
 pub use scalar::{AspectRatio, Money, Scalar, ScalarKind, Tolerance, Unit};
 
 /// The typed output of a renderer in the envelope-aware world.
