@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::state::meta::QualityStore;
-use crate::views::meta::{LineChart, CARD_LABEL, CARD_STYLE, GRID_STYLE, MUTED_TEXT};
+use crate::views::meta::{CARD_LABEL, CARD_STYLE, GRID_STYLE, LineChart, MUTED_TEXT};
 
 const HISTOGRAM_BAR_STYLE: &str = "\
     display: flex; \
@@ -12,7 +12,8 @@ const HISTOGRAM_BAR_STYLE: &str = "\
     margin-bottom: var(--space-2);\
 ";
 
-const BAR_LABEL_STYLE: &str = "font-size: var(--text-xs); color: var(--text-secondary); width: 80px; text-align: right;";
+const BAR_LABEL_STYLE: &str =
+    "font-size: var(--text-xs); color: var(--text-secondary); width: 80px; text-align: right;";
 
 const BAR_BG_STYLE: &str = "\
     flex: 1; \
@@ -22,7 +23,8 @@ const BAR_BG_STYLE: &str = "\
     overflow: hidden;\
 ";
 
-const BAR_COUNT_STYLE: &str = "font-size: var(--text-xs); color: var(--text-secondary); width: 40px;";
+const BAR_COUNT_STYLE: &str =
+    "font-size: var(--text-xs); color: var(--text-secondary); width: 40px;";
 
 const TOPIC_ROW_STYLE: &str = "\
     display: flex; \

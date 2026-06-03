@@ -13,9 +13,9 @@ pub mod connection_indicator;
 pub(crate) mod coverage_bar;
 // diff_hunk and diff_line modules extracted to
 // skeue::{DiffHunkView, DiffLineView} (chalkeion desktop UI integration).
+pub mod distillation;
 /// Help overlay listing all keyboard shortcuts (F1).
 pub(crate) mod help_overlay;
-pub mod distillation;
 pub(crate) mod input_bar;
 pub(crate) mod markdown;
 pub(crate) mod message;

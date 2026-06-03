@@ -94,7 +94,6 @@ impl PylonClient {
     ///
     /// Returns `InvalidToken` if the auth token contains non-ASCII characters.
     /// Returns `ClientBuild` if the reqwest client cannot be constructed.
-    #[must_use]
     pub(crate) fn new(config: &ConnectionConfig) -> Result<Self, ConnectionError> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -105,8 +104,8 @@ impl PylonClient {
         if let Some(ref token) = config.auth_token {
             let value = format!("Bearer {token}");
             // SAFETY: log only the error kind, not the token value.
-            let header_value = HeaderValue::from_str(&value).map_err(|_| {
-                tracing::debug!("auth token contains invalid header characters"); // kanon:ignore SECURITY/credential-logging -- logs "invalid header characters" debug, not the token
+            let header_value = HeaderValue::from_str(&value).map_err(|e| {
+                tracing::debug!(kind = %e, "auth token contains invalid header characters"); // kanon:ignore SECURITY/credential-logging -- logs only the error kind, not the token
                 ConnectionError::InvalidToken
             })?;
             headers.insert(AUTHORIZATION, header_value);
@@ -128,7 +127,6 @@ impl PylonClient {
     /// Check server reachability via `GET /api/health`.
     ///
     /// Returns `Ok(())` if the server responds with a 2xx status.
-    #[must_use]
     pub async fn health(&self) -> Result<(), ConnectionError> {
         let url = format!("{}/api/health", self.base_url);
         let resp = self

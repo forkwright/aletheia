@@ -124,10 +124,12 @@ mod tests {
         assert!(PipelineStage::Bootstrap.is_active());
         assert!(PipelineStage::Recalling.is_active());
         assert!(PipelineStage::Thinking.is_active());
-        assert!(PipelineStage::Executing {
-            tool_name: "x".to_string()
-        }
-        .is_active());
+        assert!(
+            PipelineStage::Executing {
+                tool_name: "x".to_string()
+            }
+            .is_active()
+        );
         assert!(!PipelineStage::Complete.is_active());
     }
 

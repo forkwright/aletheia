@@ -141,8 +141,7 @@ pub(crate) fn Chat() -> Element {
     let total_message_count = legacy_state.read().messages.len();
     let loaded_limit = loaded_page_count() * PAGE_SIZE;
     let has_more_history = total_message_count > loaded_limit;
-    let messages: Vec<ChatMessage> =
-        legacy_state.read().project_messages(Some(loaded_limit));
+    let messages: Vec<ChatMessage> = legacy_state.read().project_messages(Some(loaded_limit));
 
     // Virtual scroll: compute visible range using shared utility.
     let total_messages = messages.len();
@@ -153,12 +152,8 @@ pub(crate) fn Chat() -> Element {
         ESTIMATED_MSG_HEIGHT,
         skeue::DEFAULT_OVERSCAN,
     );
-    let (pad_top, pad_bottom) = skeue::spacer_heights(
-        range_start,
-        range_end,
-        total_messages,
-        ESTIMATED_MSG_HEIGHT,
-    );
+    let (pad_top, pad_bottom) =
+        skeue::spacer_heights(range_start, range_end, total_messages, ESTIMATED_MSG_HEIGHT);
 
     let visible_messages: Vec<(usize, ChatMessage, bool)> = messages
         .iter()
@@ -183,9 +178,10 @@ pub(crate) fn Chat() -> Element {
         // WHY: Guard against no agent selected -- don't silently send to "default".
         if agent_store.read().active_id.is_none() {
             if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
-                toast_store
-                    .write()
-                    .push(ToastSeverity::Warning, "Select an agent first \u{2014} click a pill in the top bar");
+                toast_store.write().push(
+                    ToastSeverity::Warning,
+                    "Select an agent first \u{2014} click a pill in the top bar",
+                );
             }
             return;
         }
@@ -199,18 +195,12 @@ pub(crate) fn Chat() -> Element {
         // so the operator knows the input was not silently eaten.
         if let Some(command_text) = text.strip_prefix('/') {
             let cmd_name = command_text.split_whitespace().next().unwrap_or("");
-            let known = cmd_store
-                .read()
-                .filtered
-                .iter()
-                .any(|c| c.name == cmd_name);
-            if !known {
-                if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
-                    toast_store.write().push(
-                        ToastSeverity::Warning,
-                        format!("Unknown command: /{cmd_name}"),
-                    );
-                }
+            let known = cmd_store.read().filtered.iter().any(|c| c.name == cmd_name);
+            if !known && let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
+                toast_store.write().push(
+                    ToastSeverity::Warning,
+                    format!("Unknown command: /{cmd_name}"),
+                );
             }
             palette_open.set(false);
             legacy_state.write().streaming.is_streaming = false;
@@ -334,21 +324,21 @@ pub(crate) fn Chat() -> Element {
                 let Some(event) = event else { break };
 
                 // NOTE: Check for file change events and emit toast notifications.
-                if let Some(change) = file_tracker.process(&event) {
-                    if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
-                        let title = file_watcher::toast_title(&change.kind);
-                        let body = file_watcher::truncate_path(&change.path, 60);
-                        let action_id = format!("open_diff:{}", change.path);
-                        store.write().push_full(
-                            ToastSeverity::Info,
-                            title.to_string(),
-                            Some(body),
-                            Some(crate::state::toasts::ToastAction {
-                                label: "Open".to_string(),
-                                action_id,
-                            }),
-                        );
-                    }
+                if let Some(change) = file_tracker.process(&event)
+                    && let Some(mut store) = try_consume_context::<Signal<ToastStore>>()
+                {
+                    let title = file_watcher::toast_title(&change.kind);
+                    let body = file_watcher::truncate_path(&change.path, 60);
+                    let action_id = format!("open_diff:{}", change.path);
+                    store.write().push_full(
+                        ToastSeverity::Info,
+                        title.to_string(),
+                        Some(body),
+                        Some(crate::state::toasts::ToastAction {
+                            label: "Open".to_string(),
+                            action_id,
+                        }),
+                    );
                 }
 
                 // WHY: Update routing indicator stage from stream events.
@@ -359,11 +349,9 @@ pub(crate) fn Chat() -> Element {
                     StreamEvent::TurnStart { .. } => Some(PipelineStage::Recalling),
                     StreamEvent::TextDelta(_) => Some(PipelineStage::Thinking),
                     StreamEvent::ThinkingDelta(_) => Some(PipelineStage::Thinking),
-                    StreamEvent::ToolStart { tool_name, .. } => {
-                        Some(PipelineStage::Executing {
-                            tool_name: tool_name.clone(),
-                        })
-                    }
+                    StreamEvent::ToolStart { tool_name, .. } => Some(PipelineStage::Executing {
+                        tool_name: tool_name.clone(),
+                    }),
                     StreamEvent::ToolResult { .. } => Some(PipelineStage::Thinking),
                     StreamEvent::TurnComplete { .. } => Some(PipelineStage::Complete),
                     StreamEvent::TurnAbort { .. } => Some(PipelineStage::Idle),
@@ -488,10 +476,10 @@ pub(crate) fn Chat() -> Element {
                                             loaded_page_count.set(loaded_page_count() + 1);
                                         }
                                     }
-                                    if let Some(h) = parsed.get("height").and_then(|v| v.as_f64()) {
-                                        if h > 0.0 {
-                                            container_height.set(h);
-                                        }
+                                    if let Some(h) = parsed.get("height").and_then(|v| v.as_f64())
+                                        && h > 0.0
+                                    {
+                                        container_height.set(h);
                                     }
                                 }
                             }
@@ -591,14 +579,13 @@ pub(crate) fn Chat() -> Element {
                                                 // re-renders, then compute actual elapsed
                                                 // from the Instant for accuracy.
                                                 std::hint::black_box(elapsed_tick());
-                                                let label = match stream_start_time.read().as_ref() {
+                                                match stream_start_time.read().as_ref() {
                                                     Some(start) => {
                                                         let secs = start.elapsed().as_secs();
                                                         format!("Thinking... ({secs}s)")
                                                     }
                                                     None => "Thinking...".to_string(),
-                                                };
-                                                label
+                                                }
                                             }
                                         }
                                     }

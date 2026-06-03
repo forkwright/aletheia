@@ -144,7 +144,9 @@ pub(crate) fn ConnectView(
     let status_color = match &*connection_state.read() {
         ConnectionState::Connected => "var(--status-success)",
         ConnectionState::Failed { .. } | ConnectionState::TimedOut => "var(--status-error)",
-        ConnectionState::Reconnecting { .. } | ConnectionState::Connecting => "var(--status-warning)",
+        ConnectionState::Reconnecting { .. } | ConnectionState::Connecting => {
+            "var(--status-warning)"
+        }
         ConnectionState::Disconnected => "var(--text-muted)",
     };
 

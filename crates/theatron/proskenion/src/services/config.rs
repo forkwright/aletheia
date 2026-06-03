@@ -90,7 +90,6 @@ fn config_path() -> Result<PathBuf, ConfigError> {
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be read or parsed.
-#[must_use]
 pub(crate) fn load() -> Result<ConnectionConfig, ConfigError> {
     let path = config_path()?;
 
@@ -111,7 +110,6 @@ pub(crate) fn load() -> Result<ConnectionConfig, ConfigError> {
 ///
 /// Returns an error if the directory cannot be created or the file cannot
 /// be written.
-#[must_use]
 pub(crate) fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
     let path = config_path()?;
 

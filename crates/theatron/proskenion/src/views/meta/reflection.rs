@@ -2,9 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::state::meta::{
-    heatmap_color, JournalEvent, JournalEventType, SystemReflectionStore,
-};
+use crate::state::meta::{JournalEvent, JournalEventType, SystemReflectionStore, heatmap_color};
 use crate::views::meta::{CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, GRID_STYLE, MUTED_TEXT};
 
 const DAY_LABELS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -365,7 +363,10 @@ fn format_cost(value: f64) -> String {
     clippy::cast_precision_loss,
     reason = "display-only: sub-token precision irrelevant"
 )]
-#[expect(clippy::as_conversions, reason = "u64 to f64 for human-readable formatting")]
+#[expect(
+    clippy::as_conversions,
+    reason = "u64 to f64 for human-readable formatting"
+)]
 fn format_tokens(count: u64) -> String {
     const K: u64 = 1_000;
     const M: u64 = 1_000_000;

@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 
 use crate::state::meta::KnowledgeGrowthStore;
 use crate::views::meta::{
-    BarChart, LineChart, CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, GRID_STYLE,
+    BarChart, CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, GRID_STYLE, LineChart,
 };
 
 #[component]

@@ -146,11 +146,7 @@ impl SseEventRouter {
         true
     }
 
-    fn on_turn_after(
-        &mut self,
-        nous_id: &NousId,
-        session_id: &skene::id::SessionId,
-    ) -> bool {
+    fn on_turn_after(&mut self, nous_id: &NousId, session_id: &skene::id::SessionId) -> bool {
         let before = self.state.active_turns.len();
         self.state.active_turns.retain(|t| {
             !(t.nous_id.as_str() == nous_id.as_str()
@@ -524,10 +520,7 @@ mod tests {
         });
 
         assert!(changed);
-        assert_eq!(
-            router.state().checkpoint_revisions.get("proj-1"),
-            Some(&1),
-        );
+        assert_eq!(router.state().checkpoint_revisions.get("proj-1"), Some(&1),);
     }
 
     #[test]
@@ -546,10 +539,7 @@ mod tests {
         });
 
         assert!(changed);
-        assert_eq!(
-            router.state().checkpoint_revisions.get("proj-1"),
-            Some(&2),
-        );
+        assert_eq!(router.state().checkpoint_revisions.get("proj-1"), Some(&2),);
     }
 
     #[test]
@@ -570,14 +560,8 @@ mod tests {
             status: "skipped".to_string(),
         });
 
-        assert_eq!(
-            router.state().checkpoint_revisions.get("proj-1"),
-            Some(&2),
-        );
-        assert_eq!(
-            router.state().checkpoint_revisions.get("proj-2"),
-            Some(&1),
-        );
+        assert_eq!(router.state().checkpoint_revisions.get("proj-1"), Some(&2),);
+        assert_eq!(router.state().checkpoint_revisions.get("proj-2"), Some(&1),);
     }
 
     // -- Session events (no state change) ------------------------------------

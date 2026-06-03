@@ -144,7 +144,7 @@ pub fn run(verbose: bool) {
         .with_window(window_builder)
         .with_menu(None::<dioxus::desktop::muda::Menu>)
         .with_close_behaviour(WindowCloseBehaviour::WindowCloses)
-        .with_custom_head(custom_head.to_string());
+        .with_custom_head(custom_head);
 
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)

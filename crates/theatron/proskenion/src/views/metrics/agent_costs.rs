@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 
 use crate::components::chart::{GroupedBarChart, GroupedBarEntry};
 use crate::state::metrics::{
-    agent_color, format_cost, sort_agent_cost_rows, AgentCostRow, AgentCostSort, SortDir,
+    AgentCostRow, AgentCostSort, SortDir, agent_color, format_cost, sort_agent_cost_rows,
 };
 
 /// Per-agent cost comparison with grouped bar chart and efficiency metrics.
@@ -118,7 +118,11 @@ fn cost_th(
 ) -> Element {
     let is_active = *sort_col.read() == col;
     let indicator = if is_active {
-        if *sort_dir.read() == SortDir::Desc { " ↓" } else { " ↑" }
+        if *sort_dir.read() == SortDir::Desc {
+            " ↓"
+        } else {
+            " ↑"
+        }
     } else {
         ""
     };

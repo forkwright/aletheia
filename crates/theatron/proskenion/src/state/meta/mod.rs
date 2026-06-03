@@ -116,9 +116,12 @@ impl Anomaly {
 /// Returns entries where the latest value exceeds 2 standard deviations from
 /// the mean of `values`. Returns `None` if insufficient data.
 #[must_use]
-#[expect(
-    dead_code,
-    reason = "used in tests; wired when SSE anomaly detection is plumbed"
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "used in tests; wired when SSE anomaly detection is plumbed"
+    )
 )]
 pub(crate) fn detect_anomaly(
     agent_name: &str,
@@ -242,7 +245,10 @@ impl DepthDistribution {
 
     /// Percentage for a given bucket.
     #[must_use]
-    #[expect(dead_code, reason = "used in tests; available for view consumption")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "used in tests; available for metrics display")
+    )]
     pub(crate) fn pct(&self, bucket: u32) -> f64 {
         let total = self.total();
         if total == 0 {
@@ -261,9 +267,12 @@ pub(crate) struct TopicEntry {
 
 /// Compute average turn length from a slice of message lengths.
 #[must_use]
-#[expect(
-    dead_code,
-    reason = "used in tests; wired when per-message metrics are available"
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "used in tests; wired when per-message metrics are available"
+    )
 )]
 pub(crate) fn compute_average(values: &[f64]) -> f64 {
     if values.is_empty() {
@@ -276,9 +285,12 @@ pub(crate) fn compute_average(values: &[f64]) -> f64 {
 
 /// Compute ratio of agent turns to user turns.
 #[must_use]
-#[expect(
-    dead_code,
-    reason = "used in tests; wired when per-turn metrics are available"
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "used in tests; wired when per-turn metrics are available"
+    )
 )]
 pub(crate) fn compute_ratio(numerator: u64, denominator: u64) -> f64 {
     if denominator == 0 {

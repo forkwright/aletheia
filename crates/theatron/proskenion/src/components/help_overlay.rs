@@ -86,27 +86,72 @@ struct ShortcutEntry {
 }
 
 const NAV_SHORTCUTS: &[ShortcutEntry] = &[
-    ShortcutEntry { keys: "Ctrl+1 / Ctrl+Shift+C", description: "Chat" },
-    ShortcutEntry { keys: "Ctrl+2 / Ctrl+Shift+F", description: "Files" },
-    ShortcutEntry { keys: "Ctrl+3", description: "Planning" },
-    ShortcutEntry { keys: "Ctrl+4", description: "Memory" },
-    ShortcutEntry { keys: "Ctrl+5", description: "Metrics" },
-    ShortcutEntry { keys: "Ctrl+6", description: "Ops" },
-    ShortcutEntry { keys: "Ctrl+7", description: "Sessions" },
+    ShortcutEntry {
+        keys: "Ctrl+1 / Ctrl+Shift+C",
+        description: "Chat",
+    },
+    ShortcutEntry {
+        keys: "Ctrl+2 / Ctrl+Shift+F",
+        description: "Files",
+    },
+    ShortcutEntry {
+        keys: "Ctrl+3",
+        description: "Planning",
+    },
+    ShortcutEntry {
+        keys: "Ctrl+4",
+        description: "Memory",
+    },
+    ShortcutEntry {
+        keys: "Ctrl+5",
+        description: "Metrics",
+    },
+    ShortcutEntry {
+        keys: "Ctrl+6",
+        description: "Ops",
+    },
+    ShortcutEntry {
+        keys: "Ctrl+7",
+        description: "Sessions",
+    },
 ];
 
 const ACTION_SHORTCUTS: &[ShortcutEntry] = &[
-    ShortcutEntry { keys: "Ctrl+K", description: "Command palette" },
-    ShortcutEntry { keys: "Ctrl+B", description: "Toggle sidebar" },
-    ShortcutEntry { keys: "Ctrl+F  /  /", description: "Focus search" },
-    ShortcutEntry { keys: "F1", description: "Help (this overlay)" },
-    ShortcutEntry { keys: "Escape", description: "Close / dismiss" },
+    ShortcutEntry {
+        keys: "Ctrl+K",
+        description: "Command palette",
+    },
+    ShortcutEntry {
+        keys: "Ctrl+B",
+        description: "Toggle sidebar",
+    },
+    ShortcutEntry {
+        keys: "Ctrl+F  /  /",
+        description: "Focus search",
+    },
+    ShortcutEntry {
+        keys: "F1",
+        description: "Help (this overlay)",
+    },
+    ShortcutEntry {
+        keys: "Escape",
+        description: "Close / dismiss",
+    },
 ];
 
 const CHAT_SHORTCUTS: &[ShortcutEntry] = &[
-    ShortcutEntry { keys: "Ctrl+Enter", description: "Send message" },
-    ShortcutEntry { keys: "Shift+Enter", description: "New line" },
-    ShortcutEntry { keys: "Up / Down", description: "Input history" },
+    ShortcutEntry {
+        keys: "Ctrl+Enter",
+        description: "Send message",
+    },
+    ShortcutEntry {
+        keys: "Shift+Enter",
+        description: "New line",
+    },
+    ShortcutEntry {
+        keys: "Up / Down",
+        description: "Input history",
+    },
 ];
 
 #[component]

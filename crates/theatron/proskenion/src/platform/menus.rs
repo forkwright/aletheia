@@ -6,26 +6,4 @@
 //! and maps menu item IDs to application actions.
 
 #[cfg(test)]
-mod tests {
-    use skene::api::types::Agent;
-    use skene::id::NousId;
-
-    use crate::state::agents::AgentStore;
-
-    use super::*;
-
-    fn make_store(names: &[&str]) -> AgentStore {
-        let mut store = AgentStore::new();
-        let agents: Vec<Agent> = names
-            .iter()
-            .map(|n| Agent {
-                id: NousId::from(*n),
-                name: Some(n.to_string()),
-                model: None,
-                emoji: None,
-            })
-            .collect();
-        store.load_agents(agents);
-        store
-    }
-}
+mod tests {}

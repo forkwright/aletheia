@@ -7,9 +7,9 @@ use crate::components::chart::{TimeSeriesChart, TimeSeriesColumn};
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::metrics::{
-    budget_bar_color, budget_progress_pct, compute_delta_f64, day_of_month_today,
-    days_in_current_month, format_cost, project_month_end, BudgetConfig, CostMetricsResponse,
-    DateRange, Granularity,
+    BudgetConfig, CostMetricsResponse, DateRange, Granularity, budget_bar_color,
+    budget_progress_pct, compute_delta_f64, day_of_month_today, days_in_current_month, format_cost,
+    project_month_end,
 };
 
 use super::agent_costs::AgentCosts;
@@ -84,8 +84,8 @@ pub(crate) fn Costs() -> Element {
     let mut fetch_state = use_signal(|| FetchState::<CostMetricsResponse>::Loading);
     let mut granularity = use_signal(|| Granularity::Daily);
     let mut date_range = use_signal(|| DateRange::Last30Days);
-    let budget = use_signal(|| BudgetConfig::default());
-    let budget_input = use_signal(|| String::new());
+    let budget = use_signal(BudgetConfig::default);
+    let budget_input = use_signal(String::new);
 
     use_effect(move || {
         let cfg = config.read().clone();
@@ -111,7 +111,10 @@ pub(crate) fn Costs() -> Element {
                     }
                 }
                 Ok(resp) => {
-                    fetch_state.set(FetchState::Error(format!("server returned {}", resp.status())));
+                    fetch_state.set(FetchState::Error(format!(
+                        "server returned {}",
+                        resp.status()
+                    )));
                 }
                 Err(e) => {
                     fetch_state.set(FetchState::Error(format!("connection error: {e}")));
@@ -355,7 +358,11 @@ fn budget_panel(
 
 fn cost_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element {
     let arrow = if is_up { "↑" } else { "↓" };
-    let delta_color = if is_up { "var(--status-error)" } else { "var(--status-success)" };
+    let delta_color = if is_up {
+        "var(--status-error)"
+    } else {
+        "var(--status-success)"
+    };
     let delta_str = format!("{arrow} {delta_pct:.1}%");
     let value = value.to_string();
     let label = label.to_string();

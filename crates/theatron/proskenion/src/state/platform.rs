@@ -282,15 +282,17 @@ mod tests {
 
     #[test]
     fn window_state_round_trip_toml() {
-        let mut state = WindowState::default();
-        state.x = 200;
-        state.y = 150;
-        state.width = 1600;
-        state.height = 900;
-        state.maximized = true;
-        state.active_view = "/planning".to_string();
-        state.sidebar_collapsed = true;
-        state.sidebar_width = Some(300);
+        let mut state = WindowState {
+            x: 200,
+            y: 150,
+            width: 1600,
+            height: 900,
+            maximized: true,
+            active_view: "/planning".to_string(),
+            sidebar_collapsed: true,
+            sidebar_width: Some(300),
+            ..WindowState::default()
+        };
         state
             .active_sessions
             .insert("syn".to_string(), "sess-001".to_string());

@@ -57,8 +57,7 @@ mod tests {
 
     #[test]
     fn reconnecting_maps_to_degraded_with_attempt() {
-        let (tone, label, tooltip) =
-            props_for(&SseConnectionState::Reconnecting { attempt: 3 });
+        let (tone, label, tooltip) = props_for(&SseConnectionState::Reconnecting { attempt: 3 });
         assert_eq!(tone, IndicatorTone::Degraded);
         assert_eq!(label, "Reconnecting (3)");
         assert!(tooltip.contains('3'));

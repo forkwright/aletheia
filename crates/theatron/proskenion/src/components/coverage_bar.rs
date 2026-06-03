@@ -19,7 +19,8 @@ const LABEL_ROW_STYLE: &str = "\
     color: var(--text-secondary);\
 ";
 
-const NO_REQS_STYLE: &str = "font-size: var(--text-xs); color: var(--text-muted); font-style: italic;";
+const NO_REQS_STYLE: &str =
+    "font-size: var(--text-xs); color: var(--text-muted); font-style: italic;";
 
 /// Progress bar showing requirement coverage for a category.
 ///

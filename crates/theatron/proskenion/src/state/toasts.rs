@@ -103,7 +103,6 @@ impl ToastStore {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 
@@ -168,8 +167,12 @@ mod tests {
         let mut store = ToastStore::new();
         store.push(ToastSeverity::Info, "info");
         store.push(ToastSeverity::Error, "error");
-        let info_dur = store.toasts()[0].auto_dismiss.expect("info has auto-dismiss");
-        let error_dur = store.toasts()[1].auto_dismiss.expect("error has auto-dismiss");
+        let info_dur = store.toasts()[0]
+            .auto_dismiss
+            .expect("info has auto-dismiss");
+        let error_dur = store.toasts()[1]
+            .auto_dismiss
+            .expect("error has auto-dismiss");
         assert!(error_dur > info_dur);
     }
 

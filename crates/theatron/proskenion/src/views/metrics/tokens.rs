@@ -7,7 +7,7 @@ use crate::components::chart::{TimeSeriesChart, TimeSeriesColumn};
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::metrics::{
-    compute_delta_u64, format_tokens, DateRange, Granularity, TokenMetricsResponse,
+    DateRange, Granularity, TokenMetricsResponse, compute_delta_u64, format_tokens,
 };
 
 use super::agent_breakdown::AgentBreakdown;
@@ -90,8 +90,8 @@ pub(crate) fn Tokens() -> Element {
     let mut fetch_state = use_signal(|| FetchState::<TokenMetricsResponse>::Loading);
     let mut granularity = use_signal(|| Granularity::Daily);
     let mut date_range = use_signal(|| DateRange::Last30Days);
-    let mut custom_from = use_signal(|| String::new());
-    let mut custom_to = use_signal(|| String::new());
+    let mut custom_from = use_signal(String::new);
+    let mut custom_to = use_signal(String::new);
     let agent_filter = use_signal(|| Option::<String>::None);
 
     use_effect(move || {
@@ -118,7 +118,10 @@ pub(crate) fn Tokens() -> Element {
                     }
                 }
                 Ok(resp) => {
-                    fetch_state.set(FetchState::Error(format!("server returned {}", resp.status())));
+                    fetch_state.set(FetchState::Error(format!(
+                        "server returned {}",
+                        resp.status()
+                    )));
                 }
                 Err(e) => {
                     fetch_state.set(FetchState::Error(format!("connection error: {e}")));
@@ -255,9 +258,15 @@ fn loaded_tokens_view(
         .step_by(step.max(1))
         .map(|pt| TimeSeriesColumn {
             label: pt.date.clone(),
-            #[expect(clippy::as_conversions, reason = "u64 token counts to f64 for chart series")]
+            #[expect(
+                clippy::as_conversions,
+                reason = "u64 token counts to f64 for chart series"
+            )]
             primary: pt.input_tokens as f64,
-            #[expect(clippy::as_conversions, reason = "u64 token counts to f64 for chart series")]
+            #[expect(
+                clippy::as_conversions,
+                reason = "u64 token counts to f64 for chart series"
+            )]
             secondary: pt.output_tokens as f64,
             primary_color: "#5b6af0".to_string(),
             secondary_color: "#10b981".to_string(),
@@ -337,14 +346,13 @@ fn loaded_tokens_view(
     }
 }
 
-#[expect(
-    clippy::cast_sign_loss,
-    clippy::cast_possible_truncation,
-    reason = "display-only: value already validated as non-negative f64 from u64 source"
-)]
 fn delta_card(label: &str, value: &str, delta_pct: f64, is_up: bool) -> Element {
     let arrow = if is_up { "↑" } else { "↓" };
-    let delta_color = if is_up { "var(--status-success)" } else { "var(--status-error)" };
+    let delta_color = if is_up {
+        "var(--status-success)"
+    } else {
+        "var(--status-error)"
+    };
     let delta_str = format!("{arrow} {delta_pct:.1}%");
     let value = value.to_string();
     let label = label.to_string();

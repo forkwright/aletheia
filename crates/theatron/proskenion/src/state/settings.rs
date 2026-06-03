@@ -569,7 +569,7 @@ mod tests {
         let conflict = store.conflict(&combo, "no-such-id", &actions);
         assert!(conflict.is_some());
         let no_conflict = store.conflict(&combo, actions[0].id, &actions);
-        assert!(no_conflict.map_or(true, |c| c.id != actions[0].id));
+        assert!(no_conflict.is_none_or(|c| c.id != actions[0].id));
     }
 
     #[test]

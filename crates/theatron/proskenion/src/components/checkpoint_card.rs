@@ -187,7 +187,8 @@ const NOTES_TEXTAREA: &str = "\
     box-sizing: border-box;\
 ";
 
-const ERROR_STYLE: &str = "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);";
+const ERROR_STYLE: &str =
+    "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);";
 
 /// Checkpoint approval card with gate context, requirements, artifacts, and actions.
 ///

@@ -83,7 +83,6 @@ const NAV_LINK_ICON_ONLY_STYLE: &str = "\
                 color var(--transition-quick);\
 ";
 
-
 /// Layout shell rendered around all routes.
 ///
 /// Provides `Signal<NavAction>` as context so child views can access it.

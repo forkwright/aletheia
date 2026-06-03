@@ -2,9 +2,9 @@
 
 use dioxus::prelude::*;
 
-use crate::state::meta::{health_score_color, MemoryHealthStore};
+use crate::state::meta::{MemoryHealthStore, health_score_color};
 use crate::views::meta::{
-    LineChart, CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, GRID_STYLE, MUTED_TEXT,
+    CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, GRID_STYLE, LineChart, MUTED_TEXT,
 };
 
 const TABLE_HEADER_STYLE: &str = "\
@@ -154,9 +154,7 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
 }
 
 #[component]
-fn ConfidenceHistogram(
-    buckets: Vec<crate::state::meta::ConfidenceBucket>,
-) -> Element {
+fn ConfidenceHistogram(buckets: Vec<crate::state::meta::ConfidenceBucket>) -> Element {
     if buckets.is_empty() {
         return rsx! {
             div { style: "{MUTED_TEXT}", "No confidence data" }

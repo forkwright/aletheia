@@ -143,7 +143,7 @@ fn render_overview_content(
             }
         },
         FetchState::Loaded(data) => {
-            let mut on_select = move |tool_name: String| on_select_tool(tool_name);
+            let on_select = move |tool_name: String| on_select_tool(tool_name);
             rsx! {
                 // Summary cards
                 div {
@@ -211,7 +211,7 @@ fn render_overview_content(
                     div { style: "font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--text-secondary); margin-bottom: var(--space-3);", "Usage Frequency" }
                     ToolFrequencyView {
                         tools: data.tools.clone(),
-                        on_click: EventHandler::new(move |name| on_select(name)),
+                        on_click: on_select,
                     }
                 }
 

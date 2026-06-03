@@ -100,16 +100,15 @@ pub(crate) fn FileTree(
             let base = cfg.server_url.trim_end_matches('/');
             let url = format!("{base}/api/v1/workspace/git-status");
 
-            if let Ok(resp) = client.get(&url).send().await {
-                if resp.status().is_success() {
-                    if let Ok(entries) = resp.json::<Vec<GitStatusEntry>>().await {
-                        let mut map = GitStatusMap::new();
-                        for entry in entries {
-                            map.insert(entry.path, parse_git_status(&entry.status));
-                        }
-                        git_status.set(map);
-                    }
+            if let Ok(resp) = client.get(&url).send().await
+                && resp.status().is_success()
+                && let Ok(entries) = resp.json::<Vec<GitStatusEntry>>().await
+            {
+                let mut map = GitStatusMap::new();
+                for entry in entries {
+                    map.insert(entry.path, parse_git_status(&entry.status));
                 }
+                git_status.set(map);
             }
         });
     };
@@ -144,7 +143,7 @@ pub(crate) fn FileTree(
                             children_cache,
                             git_status,
                             selected_path,
-                            on_select_file: on_select_file.clone(),
+                            on_select_file,
                             config,
                         }
                     }
@@ -259,7 +258,7 @@ fn TreeNode(
                         children_cache,
                         git_status,
                         selected_path,
-                        on_select_file: on_select_file.clone(),
+                        on_select_file,
                         config,
                     }
                 }
@@ -298,13 +297,12 @@ fn toggle_directory(
         let encoded: String = form_urlencoded::byte_serialize(path_owned.as_bytes()).collect();
         let url = format!("{base}/api/v1/workspace/files?path={encoded}");
 
-        if let Ok(resp) = client.get(&url).send().await {
-            if resp.status().is_success() {
-                if let Ok(entries) = resp.json::<Vec<FileEntry>>().await {
-                    let nodes = entries_to_nodes(entries);
-                    children_cache.write().insert(path_owned, nodes);
-                }
-            }
+        if let Ok(resp) = client.get(&url).send().await
+            && resp.status().is_success()
+            && let Ok(entries) = resp.json::<Vec<FileEntry>>().await
+        {
+            let nodes = entries_to_nodes(entries);
+            children_cache.write().insert(path_owned, nodes);
         }
     });
 }

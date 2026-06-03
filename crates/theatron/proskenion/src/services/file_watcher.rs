@@ -87,10 +87,10 @@ impl FileChangeTracker {
                 let path = path?;
 
                 let now = Instant::now();
-                if let Some(last) = self.last_notified.get(&path) {
-                    if now.duration_since(*last) < DEDUP_WINDOW {
-                        return None;
-                    }
+                if let Some(last) = self.last_notified.get(&path)
+                    && now.duration_since(*last) < DEDUP_WINDOW
+                {
+                    return None;
                 }
 
                 self.last_notified.insert(path.clone(), now);
@@ -126,12 +126,11 @@ fn is_file_edit_tool(name: &str) -> bool {
 fn extract_file_path(input: &serde_json::Value) -> Option<String> {
     let obj = input.as_object()?;
     for key in &["path", "file_path", "filename", "file"] {
-        if let Some(v) = obj.get(*key) {
-            if let Some(s) = v.as_str() {
-                if !s.is_empty() {
-                    return Some(s.to_string());
-                }
-            }
+        if let Some(v) = obj.get(*key)
+            && let Some(s) = v.as_str()
+            && !s.is_empty()
+        {
+            return Some(s.to_string());
         }
     }
     None
