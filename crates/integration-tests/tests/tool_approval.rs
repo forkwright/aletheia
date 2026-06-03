@@ -227,14 +227,13 @@ async fn read_sse_and_extract_session_id(
                 // Look for session_id in message_start event data.
                 for line in body.lines() {
                     if let Some(data) = line.strip_prefix("data: ") {
-                        let parsed =
-                            serde_json::from_str::<serde_json::Value>(data).ok().and_then(
-                                |val| {
-                                    val.get("session_id")
-                                        .and_then(serde_json::Value::as_str)
-                                        .map(ToOwned::to_owned)
-                                },
-                            );
+                        let parsed = serde_json::from_str::<serde_json::Value>(data)
+                            .ok()
+                            .and_then(|val| {
+                                val.get("session_id")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(ToOwned::to_owned)
+                            });
                         if let Some(sid) = parsed {
                             if let Some(tx) = session_id_tx.take() {
                                 let _ = tx.send(sid);
@@ -292,9 +291,7 @@ fn event_types(events: &[(String, String)]) -> Vec<&str> {
 
 /// Build a test harness wired with the synthetic irreversible tool and return
 /// the executed flag so the test can assert whether the tool ran.
-async fn build_approval_harness(
-    tool_id: &str,
-) -> (TestHarness, Arc<Mutex<bool>>) {
+async fn build_approval_harness(tool_id: &str) -> (TestHarness, Arc<Mutex<bool>>) {
     // WHY: reqwest uses rustls-no-provider; the crypto provider must be
     // installed before the first TLS client is constructed.
     install_crypto_provider();
@@ -307,7 +304,9 @@ async fn build_approval_harness(
     registry
         .register(
             irreversible_tool_def(),
-            Box::new(ConfirmingExecutor { executed: exec_clone }),
+            Box::new(ConfirmingExecutor {
+                executed: exec_clone,
+            }),
         )
         .expect("register irreversible tool");
 
@@ -326,7 +325,10 @@ async fn build_approval_harness(
 /// - After `POST .../approvals` with `approved`, the stream proceeds to `tool_result`
 /// - The executor flag is set (tool actually ran)
 /// - `message_complete` terminates the stream
-#[expect(clippy::too_many_lines, reason = "SSE e2e: setup + stream + poll-approve + SSE assertions")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "SSE e2e: setup + stream + poll-approve + SSE assertions"
+)]
 #[tokio::test]
 async fn approval_required_approved_tool_executes() {
     let tool_id = "tu-approve-001";
@@ -599,7 +601,9 @@ async fn approvals_with_no_active_turn_returns_404() {
 
     // Use a session id that was never registered with the approval registry.
     let resp = client
-        .post(format!("{addr}/api/v1/sessions/no-such-session-id/approvals"))
+        .post(format!(
+            "{addr}/api/v1/sessions/no-such-session-id/approvals"
+        ))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "tool_id": "tu-ghost",
