@@ -757,6 +757,10 @@ impl RecallStage {
                     epistemic_tier: w.epistemic_tier,
                     relationship_proximity: w.relationship_proximity,
                     access_frequency: w.access_frequency,
+                    // WHY: nous recall does not compute the episteme-recall
+                    // speculative signals; they stay inert (0.0) here.
+                    surprise: 0.0,
+                    evidence_coverage: 0.0,
                     graph_importance: self.engine.score_graph_importance(r.graph_importance),
                 },
                 score: 0.0,
