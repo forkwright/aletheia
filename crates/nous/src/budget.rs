@@ -196,7 +196,10 @@ pub(crate) struct TimeBudget {
 #[derive(Debug, Clone)]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "consumed via summary() in tests and future telemetry")
+    expect(
+        dead_code,
+        reason = "consumed via summary() in tests and future telemetry"
+    )
 )]
 pub(crate) struct StageTimingRecord {
     /// Stage name (e.g. "context", "execute").
@@ -281,10 +284,15 @@ impl TimeBudget {
     #[must_use]
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "exposed for test assertions and future observability")
+        expect(
+            dead_code,
+            reason = "exposed for test assertions and future observability"
+        )
     )]
     pub(crate) fn current_stage_elapsed(&self) -> Option<Duration> {
-        self.current_stage.as_ref().map(|(_, start)| start.elapsed())
+        self.current_stage
+            .as_ref()
+            .map(|(_, start)| start.elapsed())
     }
 
     /// Returns `true` if the currently-active stage has exceeded its limit.
@@ -321,7 +329,10 @@ impl TimeBudget {
     #[must_use]
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "exposed for test assertions and future observability")
+        expect(
+            dead_code,
+            reason = "exposed for test assertions and future observability"
+        )
     )]
     pub(crate) fn summary(&self) -> &[StageTimingRecord] {
         &self.stage_elapsed

@@ -119,7 +119,10 @@ use crate::memory::step::Step;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "#193 will wire CompactionStrategy into the pipeline")
+    expect(
+        dead_code,
+        reason = "#193 will wire CompactionStrategy into the pipeline"
+    )
 )]
 #[non_exhaustive]
 pub enum CompactionStrategy {
@@ -131,7 +134,10 @@ pub enum CompactionStrategy {
 
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "#193 will wire CompactionStrategy into the pipeline")
+    expect(
+        dead_code,
+        reason = "#193 will wire CompactionStrategy into the pipeline"
+    )
 )]
 impl CompactionStrategy {
     /// Apply the strategy to a step sequence under a token budget.
@@ -346,7 +352,11 @@ mod tests {
 
         // Budget large enough to keep all compacted steps.
         let result = CompactionStrategy::StepPositional.apply(&steps, 200);
-        assert_eq!(result.len(), 5, "should keep all steps under generous budget");
+        assert_eq!(
+            result.len(),
+            5,
+            "should keep all steps under generous budget"
+        );
 
         // Last 2 steps retain observations.
         assert!(
@@ -399,7 +409,11 @@ mod tests {
             positional.len(),
             "StepPositional should keep more steps than UniformTail for this budget"
         );
-        assert_eq!(uniform.len(), 2, "UniformTail should keep last 2 full steps");
+        assert_eq!(
+            uniform.len(),
+            2,
+            "UniformTail should keep last 2 full steps"
+        );
         assert_eq!(
             positional.len(),
             5,

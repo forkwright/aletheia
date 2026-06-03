@@ -1095,13 +1095,9 @@ pub(crate) async fn run_pipeline(
             hook_registry.run_after_compact(&compact_ctx).await;
         }
 
-        run_stage_with_timeout(
-            config,
-            "guard",
-            &mut time_budget,
-            emitter,
-            async { run_guard_stage(&input.session, config, emitter) },
-        )
+        run_stage_with_timeout(config, "guard", &mut time_budget, emitter, async {
+            run_guard_stage(&input.session, config, emitter)
+        })
         .await?;
         stages_completed += 1;
 
@@ -1162,16 +1158,10 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
-        run_stage_with_timeout(
-            config,
-            "finalize",
-            &mut time_budget,
-            emitter,
-            async {
-                run_finalize_stage(config, &input, &result, session_store, emitter).await;
-                Ok(())
-            },
-        )
+        run_stage_with_timeout(config, "finalize", &mut time_budget, emitter, async {
+            run_finalize_stage(config, &input, &result, session_store, emitter).await;
+            Ok(())
+        })
         .await?;
         stages_completed += 1;
 
