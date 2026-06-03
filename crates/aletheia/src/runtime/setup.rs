@@ -544,24 +544,22 @@ pub(super) fn open_knowledge_stores(
                 .whatever_context("failed to CREATE knowledge store directory")?;
         }
         let knowledge_config = build_knowledge_config(admission_policy);
-        let store = match mneme::knowledge_store::KnowledgeStore::open_fjall(
-            &kb_path,
-            knowledge_config,
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("InvalidTag") || msg.contains("CompressionType") {
-                    tracing::error!(
-                        path = %kb_path.display(),
-                        "Knowledge store format incompatible (written by older fjall version). \
-                         Back up data/knowledge.fjall and delete it to start fresh. \
-                         Session data in sessions.db is NOT affected."
-                    );
+        let store =
+            match mneme::knowledge_store::KnowledgeStore::open_fjall(&kb_path, knowledge_config) {
+                Ok(s) => s,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("InvalidTag") || msg.contains("CompressionType") {
+                        tracing::error!(
+                            path = %kb_path.display(),
+                            "Knowledge store format incompatible (written by older fjall version). \
+                             Back up data/knowledge.fjall and delete it to start fresh. \
+                             Session data in sessions.db is NOT affected."
+                        );
+                    }
+                    return Err(e).whatever_context("failed to open knowledge store");
                 }
-                return Err(e).whatever_context("failed to open knowledge store");
-            }
-        };
+            };
         mneme::trace_ingest::ensure_ops_schema(&store);
         info!(cohort = %cohort, path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
         stores.insert(cohort, store);
@@ -578,11 +576,11 @@ pub(super) fn build_knowledge_config(
     kind: taxis::config::AdmissionPolicyKind,
 ) -> mneme::knowledge_store::KnowledgeConfig {
     let policy: Box<dyn mneme::admission::AdmissionPolicy> = match kind {
-        taxis::config::AdmissionPolicyKind::Structured => Box::new(
-            mneme::admission::StructuredAdmissionPolicy::new(
+        taxis::config::AdmissionPolicyKind::Structured => {
+            Box::new(mneme::admission::StructuredAdmissionPolicy::new(
                 mneme::admission::StructuredAdmissionConfig::default(),
-            ),
-        ),
+            ))
+        }
         // NOTE: Default and any future variants fall through to admit-all.
         _ => Box::new(mneme::admission::DefaultAdmissionPolicy),
     };

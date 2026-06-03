@@ -528,9 +528,7 @@ fn materialize_derived_facts_trigger_populates_is_a_closure() {
         .expect("insert hierarchy");
 
     // Before trigger: no derived facts.
-    let pre_trigger = store
-        .query_derived_facts("eve")
-        .expect("pre-trigger query");
+    let pre_trigger = store.query_derived_facts("eve").expect("pre-trigger query");
     assert!(
         pre_trigger.is_empty(),
         "derived_facts should be empty before trigger fires"
@@ -540,7 +538,10 @@ fn materialize_derived_facts_trigger_populates_is_a_closure() {
     let count = store
         .materialize_derived_facts()
         .expect("materialize_derived_facts");
-    assert!(count > 0, "trigger should produce at least one derived fact");
+    assert!(
+        count > 0,
+        "trigger should produce at least one derived fact"
+    );
 
     // After trigger: IS-A closure is populated.
     let post_trigger = store

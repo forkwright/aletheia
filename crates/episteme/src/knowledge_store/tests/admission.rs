@@ -181,7 +181,11 @@ fn concurrent_insert_same_fact_store_contains_one_row() {
         .expect("open store"),
     );
 
-    let mut fact = make_fact("adm-conc-row", "alice", "Alice prefers dark mode in all editors");
+    let mut fact = make_fact(
+        "adm-conc-row",
+        "alice",
+        "Alice prefers dark mode in all editors",
+    );
     fact.provenance.confidence = 0.8;
 
     let fact2 = fact.clone();
@@ -200,8 +204,7 @@ fn concurrent_insert_same_fact_store_contains_one_row() {
 
     let count = stored.len();
     assert_eq!(
-        count,
-        1,
+        count, 1,
         "concurrent upsert of same fact must result in exactly one row; got {count}"
     );
 }
