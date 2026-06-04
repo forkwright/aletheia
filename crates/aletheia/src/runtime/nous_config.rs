@@ -89,7 +89,7 @@ pub(super) fn build_nous_runtime_config(
 
     let workspace = resolve_config_path(oikos, &resolved.workspace);
     let project_id = detect_project_id(&workspace);
-    let nous_config = NousConfig {
+    let mut nous_config = NousConfig {
         id: resolved.id,
         name: resolved.name,
         generation: nous::config::NousGenerationConfig {
@@ -136,6 +136,15 @@ pub(super) fn build_nous_runtime_config(
         hooks: nous::config::HookConfig::default(),
         behavior: resolved.behavior,
     };
+    // WHY: thread the knowledge-config surprise/evidence recall knobs into the
+    // recall engine. The From<RecallSettings> conversion cannot carry these —
+    // they live on KnowledgeConfig, not RecallSettings — so they are applied
+    // here where the global config is in scope. Defaults keep recall inert.
+    nous_config.recall.surprise_weight = config.knowledge.recall_surprise_weight;
+    nous_config.recall.evidence_coverage_weight = config.knowledge.recall_evidence_coverage_weight;
+    nous_config.recall.surprise_threshold = config.knowledge.surprise_threshold;
+    nous_config.recall.surprise_ema_alpha = config.knowledge.surprise_ema_alpha;
+
     let mut extraction_cfg = mneme::extract::ExtractionConfig::default();
     if let Some(model) = nous_config.generation.extraction_model.as_deref() {
         model.clone_into(&mut extraction_cfg.model);

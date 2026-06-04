@@ -139,6 +139,30 @@ impl SurpriseCalculator {
         surprise
     }
 
+    /// Compute the Bayesian surprise of `text` against the current prior
+    /// WITHOUT advancing the running distribution.
+    ///
+    /// Unlike [`compute_surprise`](Self::compute_surprise), this is a read-only
+    /// probe: the EMA prior is left untouched. It is the variant recall scoring
+    /// needs — every candidate in a turn is scored against the same fixed
+    /// session prior, so per-candidate calls must not mutate (and thereby
+    /// corrupt) the running distribution.
+    ///
+    /// Returns the KL divergence `D_KL(observed || prior)` in nats, or 0.0 for
+    /// empty text or an empty prior (no distribution to diverge from yet).
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n = `text.len()`.
+    #[must_use]
+    pub fn surprise_of(&self, text: &str) -> f64 {
+        let observed = bigram_frequencies(text);
+        if observed.is_empty() || self.prior.is_empty() {
+            return 0.0;
+        }
+        kl_divergence(&observed, &self.prior)
+    }
+
     /// Update the running prior via exponential moving average.
     fn update_prior(&mut self, observed: &HashMap<[u8; NGRAM_SIZE], f64>) {
         let retain = 1.0 - self.ema_alpha;
@@ -409,6 +433,53 @@ mod tests {
         assert!(
             previous < first * 0.5,
             "adapted surprise {previous} should be < 50% of initial {first}"
+        );
+    }
+
+    /// `surprise_of` must return 0.0 on an empty prior and must NOT advance it.
+    #[test]
+    fn surprise_of_is_non_mutating() {
+        let mut calc = SurpriseCalculator::new();
+
+        // Empty prior -> 0.0, and probing must not bootstrap the prior.
+        assert_eq!(calc.surprise_of("the weather is sunny"), 0.0);
+
+        // Establish a prior around cooking.
+        for _ in 0..5 {
+            calc.compute_surprise("chop the onions and garlic then saute in olive oil");
+        }
+
+        // Probing the same divergent text repeatedly must yield the same score
+        // every time, because the prior never moves. (Tolerance absorbs the
+        // tiny float-summation noise from HashMap iteration order.)
+        let probe = "the schwarzschild radius is proportional to mass";
+        let first = calc.surprise_of(probe);
+        let second = calc.surprise_of(probe);
+        assert!(first > 0.0, "divergent text should be surprising: {first}");
+        assert!(
+            (first - second).abs() < 1e-9,
+            "surprise_of must be stable across calls (no EMA update): {first} vs {second}"
+        );
+
+        // Contrast: compute_surprise DOES advance the prior, so repeated calls
+        // on the same divergent probe drift downward as the prior adapts.
+        let mut mutating_calc = calc.clone();
+        let m1 = mutating_calc.compute_surprise(probe);
+        let m2 = mutating_calc.compute_surprise(probe);
+        // The first mutating call equals surprise_of (same prior, KL component).
+        assert!(
+            (m1 - first).abs() < 1e-9,
+            "compute_surprise's KL must match surprise_of on the same prior: {m1} vs {first}"
+        );
+        // The second mutating call is strictly lower — proof the prior moved.
+        assert!(
+            m2 < m1,
+            "compute_surprise must adapt the prior (m2 {m2} < m1 {m1})"
+        );
+        // surprise_of on the original is unchanged — proof it never mutated.
+        assert!(
+            (calc.surprise_of(probe) - first).abs() < 1e-9,
+            "surprise_of must leave the original prior untouched"
         );
     }
 

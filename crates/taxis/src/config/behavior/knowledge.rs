@@ -86,15 +86,22 @@ pub struct KnowledgeConfig {
     pub surprise_ema_alpha: f64,
     /// Recall weight for Bayesian surprise contribution. Default: 0.0 (inert).
     ///
-    /// Non-zero values cause `RecallEngine::score_surprise` to blend the
-    /// KL-divergence signal from `SurpriseCalculator` into the final recall
-    /// score. Wired through `RecallWeights::surprise` at engine construction.
+    /// Non-zero values blend the session `SurpriseCalculator`'s KL-divergence
+    /// signal (via `RecallEngine::score_surprise`) into recall scoring, so
+    /// candidates whose content diverges from the running session topic rank
+    /// higher. Threaded into `RecallWeights::surprise` at engine construction
+    /// (`aletheia::runtime::nous_config` → `RecallConfig::surprise_weight`).
+    ///
+    /// WARNING: this is a novelty/serendipity signal, not a relevance booster —
+    /// it surfaces cross-topic memories (high topic-shift surprise), trading
+    /// relevance for diversity. Keep it small relative to `vector_similarity`.
     pub recall_surprise_weight: f64,
     /// Recall weight for evidence-gap coverage. Default: 0.0 (inert).
     ///
-    /// Non-zero values cause `RecallEngine::score_evidence_coverage` to boost
-    /// candidates whose `source_id` appears in the `EvidenceGapTracker`
-    /// answered set. Wired through `RecallWeights::evidence_coverage`.
+    /// Non-zero values boost candidates whose `source_id` answers a decomposed
+    /// query gap (via `RecallEngine::score_evidence_coverage`) during the
+    /// iterative-retrieval path. Threaded into `RecallWeights::evidence_coverage`
+    /// at engine construction.
     pub recall_evidence_coverage_weight: f64,
     /// Admission policy applied to every `insert_fact` call. Default: `default` (admit-all).
     ///

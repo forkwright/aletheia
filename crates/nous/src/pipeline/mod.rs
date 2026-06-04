@@ -1017,6 +1017,12 @@ pub(crate) async fn run_pipeline(
                 text_search,
                 providers,
                 emitter,
+                // WHY: pass the session surprise prior (already advanced by this
+                // turn, actor-side) for read-only per-candidate scoring. None
+                // when surprise scoring is inert, so no clone cost in the common
+                // case.
+                (config.recall.surprise_weight > f64::EPSILON)
+                    .then(|| input.session.surprise_calculator.clone()),
             ),
         )
         .await?;

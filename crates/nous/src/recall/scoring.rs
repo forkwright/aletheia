@@ -67,6 +67,35 @@ pub struct RecallConfig {
     /// Per-factor scoring weights applied when building candidates.
     #[serde(default)]
     pub weights: RecallWeights,
+    /// Recall-engine weight for the Bayesian-surprise factor. Default 0.0 (inert).
+    ///
+    /// Sourced from `knowledge.recall_surprise_weight`; threaded into
+    /// [`mneme::recall::RecallWeights::surprise`] at engine construction so a
+    /// non-zero value blends the session `SurpriseCalculator` signal into recall
+    /// scoring.
+    #[serde(default)]
+    pub surprise_weight: f64,
+    /// Recall-engine weight for the evidence-coverage factor. Default 0.0 (inert).
+    ///
+    /// Sourced from `knowledge.recall_evidence_coverage_weight`; threaded into
+    /// [`mneme::recall::RecallWeights::evidence_coverage`] at engine construction
+    /// so a non-zero value boosts candidates that answer an evidence gap in the
+    /// iterative-retrieval path.
+    #[serde(default)]
+    pub evidence_coverage_weight: f64,
+    /// Sigmoid midpoint (in nats) for surprise scoring. Default 2.0.
+    ///
+    /// Sourced from `knowledge.surprise_threshold`; passed to
+    /// [`mneme::recall::RecallEngine::score_surprise`] as the neutral boundary
+    /// above which a candidate counts as a topic shift.
+    #[serde(default = "default_surprise_threshold")]
+    pub surprise_threshold: f64,
+    /// EMA decay factor for the session `SurpriseCalculator`. Default 0.3.
+    ///
+    /// Sourced from `knowledge.surprise_ema_alpha`; controls how fast the
+    /// running topic distribution forgets older turns.
+    #[serde(default = "default_surprise_ema_alpha")]
+    pub surprise_ema_alpha: f64,
     /// Inject factor metadata into recalled knowledge prompts.
     ///
     /// When enabled, each recalled fact includes its factor scores so the
@@ -101,6 +130,16 @@ pub(super) fn default_chars_per_token() -> u64 {
     4
 }
 
+fn default_surprise_threshold() -> f64 {
+    // WHY: single source of truth — the episteme surprise default, so the
+    // assembly override and this From-path default cannot drift.
+    mneme::surprise::DEFAULT_THRESHOLD
+}
+
+fn default_surprise_ema_alpha() -> f64 {
+    mneme::surprise::DEFAULT_EMA_ALPHA
+}
+
 impl Default for RecallConfig {
     fn default() -> Self {
         Self {
@@ -111,6 +150,10 @@ impl Default for RecallConfig {
             iterative: false,
             max_cycles: 2,
             weights: RecallWeights::default(),
+            surprise_weight: 0.0,
+            evidence_coverage_weight: 0.0,
+            surprise_threshold: default_surprise_threshold(),
+            surprise_ema_alpha: default_surprise_ema_alpha(),
             inject_metadata: false,
             pinned_facts: Vec::new(),
             late_inject_anchor: false,
@@ -139,6 +182,15 @@ impl From<taxis::config::RecallSettings> for RecallConfig {
                 access_frequency: s.weights.access_frequency,
                 graph_importance: s.weights.graph_importance,
             },
+            // NOTE: the surprise/evidence engine weights + tunables are not
+            //       carried by RecallSettings; they are sourced from the
+            //       knowledge behavior config at NousConfig assembly (see
+            //       aletheia::runtime::nous_config). Default here keeps them
+            //       inert when that override is absent (tests, direct From use).
+            surprise_weight: 0.0,
+            evidence_coverage_weight: 0.0,
+            surprise_threshold: default_surprise_threshold(),
+            surprise_ema_alpha: default_surprise_ema_alpha(),
             inject_metadata: s.inject_metadata,
             pinned_facts: s.pinned_facts,
             late_inject_anchor: s.late_inject_anchor,

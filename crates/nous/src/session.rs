@@ -53,6 +53,14 @@ pub struct SessionState {
     /// WHY: persisted per-session so patterns are tracked across turns.
     /// Reset on operator intervention via `reset_on_user_message`.
     pub loop_guard: hermeneus::loop_detector::LoopGuard,
+    /// Running Bayesian-surprise distribution for this session.
+    ///
+    /// WHY: surprise is episodic — the prior must accumulate across turns to
+    /// detect topic shifts. Advanced once per turn (actor-side, before the
+    /// pipeline spawns) with the user content, then read in recall scoring to
+    /// rank candidates by how much they diverge from the session topic. Inert
+    /// unless `recall.surprise_weight > 0`.
+    pub surprise_calculator: mneme::surprise::SurpriseCalculator,
 }
 
 impl SessionState {
@@ -79,6 +87,9 @@ impl SessionState {
             receipt_signer: ReceiptSigner::new_session(),
             receipt_ledger: Arc::new(Mutex::new(ReceiptLedger::default())),
             loop_guard: hermeneus::loop_detector::LoopGuard::new(),
+            surprise_calculator: mneme::surprise::SurpriseCalculator::with_alpha(
+                config.recall.surprise_ema_alpha,
+            ),
         }
     }
 

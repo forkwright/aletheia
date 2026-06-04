@@ -137,4 +137,5 @@ fn make_scored(content: &str, score: f64) -> ScoredResult {
 #[cfg(feature = "knowledge-store")]
 mod knowledge_bridge;
 mod recall_core;
+mod speculative_recall;
 mod terminology_discovery;

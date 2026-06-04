@@ -178,6 +178,7 @@ pub(super) async fn run_recall_stage(
     text_search: Option<&dyn crate::recall::TextSearch>,
     providers: &ProviderRegistry,
     emitter: &EventEmitter,
+    surprise_calc: Option<mneme::surprise::SurpriseCalculator>,
 ) -> error::Result<()> {
     // WHY (#3404, #3413): resolve the active provider's deployment target
     // so the sovereignty filter in `finalize_results` can drop facts whose
@@ -223,7 +224,8 @@ pub(super) async fn run_recall_stage(
             );
             let recall_stage = crate::recall::RecallStage::new(config.recall.clone())
                 .with_deployment_target(deployment_target)
-                .with_project_scope(project_recall_scope(pipeline_config));
+                .with_project_scope(project_recall_scope(pipeline_config))
+                .with_surprise_calculator(surprise_calc.clone());
             let result = recall_stage.run_bm25(content, &config.id, ts, budget);
             apply_recall_result(result, ctx, &span, config.recall.late_inject_anchor);
         } else {
@@ -237,7 +239,8 @@ pub(super) async fn run_recall_stage(
     } else if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
         let recall_stage = crate::recall::RecallStage::new(config.recall.clone())
             .with_deployment_target(deployment_target)
-            .with_project_scope(project_recall_scope(pipeline_config));
+            .with_project_scope(project_recall_scope(pipeline_config))
+            .with_surprise_calculator(surprise_calc);
         let recall_bridge = ProviderRecallBridge {
             providers,
             model: &config.generation.model,

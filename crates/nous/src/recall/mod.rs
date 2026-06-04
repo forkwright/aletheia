@@ -15,6 +15,7 @@ use hermeneus::provider::DeploymentTarget;
 use mneme::embedding::EmbeddingProvider;
 use mneme::knowledge::{FactSensitivity, RecallResult as KnowledgeRecallResult};
 use mneme::recall::{FactorScores, RecallEngine, ScoredResult};
+use mneme::surprise::SurpriseCalculator;
 
 use crate::error;
 
@@ -29,7 +30,7 @@ pub use search::VectorSearch;
 
 #[cfg(test)]
 use reranking::is_stopword;
-use reranking::{detect_gaps, discover_terminology};
+use reranking::{build_evidence_map, detect_gaps, discover_terminology};
 #[cfg(feature = "knowledge-store")]
 use search::vector_search_tiered;
 use search::{embed, vector_search};
@@ -119,6 +120,14 @@ pub struct RecallStage {
     project_scope: mneme::recall::ProjectRecallScope,
     /// Optional URL for an HTTP cross-encoder reranker.
     reranker_url: Option<String>,
+    /// Session-scoped surprise scorer snapshot for the current turn.
+    ///
+    /// Present only when `surprise_weight > 0`: a clone of the session's
+    /// running `SurpriseCalculator` whose prior was advanced (actor-side) by
+    /// the current turn before the pipeline spawned. Used read-only in
+    /// `build_candidates` to score each candidate's topic-shift surprise
+    /// against the frozen session prior. `None` leaves `surprise` inert.
+    surprise_calculator: Option<SurpriseCalculator>,
 }
 
 impl RecallStage {
@@ -130,7 +139,8 @@ impl RecallStage {
     /// source of truth rather than mirroring the struct in taxis.
     #[must_use]
     pub fn new(config: RecallConfig) -> Self {
-        let engine = Self::engine_with_reranker_url(config.reranker_url.as_deref());
+        let engine =
+            Self::engine_with_reranker_url(config.reranker_url.as_deref(), Self::engine_weights(&config));
 
         let pinned_facts: HashSet<String> = config
             .pinned_facts
@@ -154,7 +164,34 @@ impl RecallStage {
             scope_quotas,
             project_scope: mneme::recall::ProjectRecallScope::Global,
             reranker_url,
+            surprise_calculator: None,
         }
+    }
+
+    /// Build the episteme recall-engine weights for `config`.
+    ///
+    /// WHY: the seven base factors keep their episteme defaults (the single
+    /// source of truth) so existing scoring math is unchanged; only the two
+    /// speculative weights — surprise and evidence-coverage — are threaded from
+    /// the knowledge config. Both default 0.0, so recall is inert until an
+    /// operator enables them.
+    fn engine_weights(config: &RecallConfig) -> mneme::recall::RecallWeights {
+        mneme::recall::RecallWeights {
+            surprise: config.surprise_weight,
+            evidence_coverage: config.evidence_coverage_weight,
+            ..mneme::recall::RecallWeights::default()
+        }
+    }
+
+    /// Attach the session-scoped surprise calculator for the current turn.
+    ///
+    /// Pass `Some(calc)` only when `surprise_weight > 0`; the calculator's prior
+    /// must already reflect the current turn (advanced actor-side before the
+    /// pipeline spawned). `None` leaves surprise scoring inert.
+    #[must_use]
+    pub fn with_surprise_calculator(mut self, calc: Option<SurpriseCalculator>) -> Self {
+        self.surprise_calculator = calc;
+        self
     }
 
     /// Set side-query selected IDs for pre-filtering before 6-factor scoring.
@@ -214,14 +251,14 @@ impl RecallStage {
     /// Set the URL for an HTTP cross-encoder reranker.
     #[must_use]
     pub fn with_reranker_url(mut self, url: Option<String>) -> Self {
-        self.engine = Self::engine_with_reranker_url(url.as_deref());
+        self.engine = Self::engine_with_reranker_url(url.as_deref(), Self::engine_weights(&self.config));
         self.reranker_url = url;
         self
     }
 
     #[cfg(feature = "reranker")]
-    fn engine_with_reranker_url(url: Option<&str>) -> RecallEngine {
-        let engine = RecallEngine::with_weights(mneme::recall::RecallWeights::default());
+    fn engine_with_reranker_url(url: Option<&str>, weights: mneme::recall::RecallWeights) -> RecallEngine {
+        let engine = RecallEngine::with_weights(weights);
         // WHY: Wire reranker only when the episteme reranker feature is present.
         // A configured URL uses the HTTP cross-encoder; otherwise NaiveReranker
         // preserves an in-process fallback for feature-enabled deployments.
@@ -237,8 +274,8 @@ impl RecallStage {
     }
 
     #[cfg(not(feature = "reranker"))]
-    fn engine_with_reranker_url(_url: Option<&str>) -> RecallEngine {
-        RecallEngine::with_weights(mneme::recall::RecallWeights::default())
+    fn engine_with_reranker_url(_url: Option<&str>, weights: mneme::recall::RecallWeights) -> RecallEngine {
+        RecallEngine::with_weights(weights)
     }
 
     /// Rank candidates, applying side-query pre-filter when configured.
@@ -291,7 +328,7 @@ impl RecallStage {
             return Ok(RecallStageResult::empty());
         }
 
-        let candidates = self.build_candidates(raw, nous_id);
+        let candidates = self.build_candidates(raw, nous_id, None);
         let ranked = self.rank_candidates(candidates);
         Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
@@ -413,7 +450,7 @@ impl RecallStage {
         }
 
         let side_ids = side_ranker.and_then(|ranker| self.side_query_ids(query, &raw, ranker));
-        let candidates = self.build_candidates(raw, nous_id);
+        let candidates = self.build_candidates(raw, nous_id, None);
         let ranked = self.rank_candidates_with_side_ids(
             candidates,
             self.side_query_ids.as_ref().or(side_ids.as_ref()),
@@ -454,7 +491,7 @@ impl RecallStage {
             return Ok(RecallStageResult::empty());
         }
 
-        let candidates_c1 = self.build_candidates(raw_cycle1.clone(), nous_id);
+        let candidates_c1 = self.build_candidates(raw_cycle1.clone(), nous_id, None);
         let side_ids_c1 =
             side_ranker.and_then(|ranker| self.side_query_ids(query, &raw_cycle1, ranker));
         let ranked_c1 = self.rank_candidates_with_side_ids(candidates_c1, side_ids_c1.as_ref());
@@ -505,7 +542,22 @@ impl RecallStage {
             "merged results from 2 cycles"
         );
 
-        let candidates = self.build_candidates(merged, nous_id);
+        // WHY: when evidence-coverage scoring is enabled, decompose the query
+        // into gaps and credit every merged fact (from either cycle) that
+        // answers one; the map boosts gap-answering facts in the final ranking.
+        // Skipped entirely (inert) when the weight is zero.
+        let answered_ids: Option<HashMap<String, f64>> = (self.config.evidence_coverage_weight
+            > f64::EPSILON)
+            .then(|| {
+                build_evidence_map(
+                    query,
+                    merged
+                        .iter()
+                        .map(|r| (r.content.as_str(), r.source_id.as_str())),
+                )
+            });
+
+        let candidates = self.build_candidates(merged, nous_id, answered_ids.as_ref());
         let ranked = self.rank_candidates(candidates);
         Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
@@ -739,17 +791,16 @@ impl RecallStage {
         &self,
         raw: Vec<KnowledgeRecallResult>,
         _nous_id: &str,
+        answered_ids: Option<&HashMap<String, f64>>,
     ) -> Vec<ScoredResult> {
         let w = &self.config.weights;
         raw.into_iter()
             .map(|r| ScoredResult {
-                content: r.content,
-                source_type: r.source_type,
-                source_id: r.source_id,
-                // WHY (#208): propagate the stored fact's owning nous so
-                // `filter_by_cohort_visibility` can compare it against the
-                // recalling nous in `finalize_results`.
-                nous_id: r.nous_id,
+                // WHY: surprise scores the candidate's content against the
+                // frozen session topic prior; evidence-coverage looks up the
+                // candidate's `source_id` in the answered-gap map. Both stay
+                // 0.0 unless their engine weight is enabled (the scorers
+                // short-circuit), so default recall is unchanged.
                 factors: FactorScores {
                     vector_similarity: self.engine.score_vector_similarity(r.distance),
                     decay: w.decay,
@@ -757,12 +808,17 @@ impl RecallStage {
                     epistemic_tier: w.epistemic_tier,
                     relationship_proximity: w.relationship_proximity,
                     access_frequency: w.access_frequency,
-                    // WHY: nous recall does not compute the episteme-recall
-                    // speculative signals; they stay inert (0.0) here.
-                    surprise: 0.0,
-                    evidence_coverage: 0.0,
+                    surprise: self.score_candidate_surprise(&r.content),
+                    evidence_coverage: self.score_candidate_evidence(&r.source_id, answered_ids),
                     graph_importance: self.engine.score_graph_importance(r.graph_importance),
                 },
+                content: r.content,
+                source_type: r.source_type,
+                source_id: r.source_id,
+                // WHY (#208): propagate the stored fact's owning nous so
+                // `filter_by_cohort_visibility` can compare it against the
+                // recalling nous in `finalize_results`.
+                nous_id: r.nous_id,
                 score: 0.0,
                 // WHY (#3404, #3413): propagate sensitivity from the search
                 // layer so the sovereignty filter in `finalize_results` sees
@@ -773,6 +829,35 @@ impl RecallStage {
                 visibility: r.visibility,
             })
             .collect()
+    }
+
+    /// Score a candidate's topic-shift surprise against the session prior.
+    ///
+    /// Returns 0.0 when no calculator is attached (surprise weight unset) — the
+    /// engine `score_surprise` also short-circuits on a zero weight, so this is
+    /// inert by default.
+    fn score_candidate_surprise(&self, content: &str) -> f64 {
+        match &self.surprise_calculator {
+            Some(calc) => self
+                .engine
+                .score_surprise(calc.surprise_of(content), self.config.surprise_threshold),
+            None => 0.0,
+        }
+    }
+
+    /// Score a candidate's evidence coverage from the answered-gap map.
+    ///
+    /// Returns 0.0 when no answered map is supplied (non-iterative paths) — the
+    /// engine `score_evidence_coverage` also short-circuits on a zero weight.
+    fn score_candidate_evidence(
+        &self,
+        source_id: &str,
+        answered_ids: Option<&HashMap<String, f64>>,
+    ) -> f64 {
+        match answered_ids {
+            Some(ids) => self.engine.score_evidence_coverage(source_id, ids),
+            None => 0.0,
+        }
     }
 
     /// Filter candidates by minimum score and take top results.

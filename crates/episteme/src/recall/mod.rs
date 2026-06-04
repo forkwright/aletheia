@@ -1,4 +1,4 @@
-//! Recall engine: 6-factor scoring for knowledge retrieval.
+//! Recall engine: 9-factor scoring for knowledge retrieval.
 //!
 //! Combines multiple signals to rank recall results:
 //!
@@ -8,9 +8,13 @@
 //! 4. **Epistemic tier**: verified > inferred > assumed
 //! 5. **Relationship proximity**: graph distance from query context entities
 //! 6. **Access frequency**: memories accessed more often are more salient
+//! 7. **Graph importance**: `PageRank` hub entities rank higher
+//! 8. **Surprise**: Bayesian topic-shift signal (`EM-LLM`); default weight 0.0
+//! 9. **Evidence coverage**: `MemR3` gap-answering boost; default weight 0.0
 //!
 //! Each factor produces a score in [0.0, 1.0]. The final score is a weighted
-//! combination, configurable per-nous via oikos cascade.
+//! combination, configurable per-nous via oikos cascade. Factors 8 and 9 are
+//! inert unless their weight is set positive in knowledge config.
 
 use std::collections::HashSet;
 use std::hash::BuildHasher;
@@ -81,7 +85,7 @@ impl RecallWeights {
     ///
     /// # Complexity
     ///
-    /// O(1) - constant time sum of 7 fields.
+    /// O(1) - constant time sum of 9 fields.
     #[must_use]
     #[instrument(skip(self))]
     pub(crate) fn total(&self) -> f64 {
@@ -488,7 +492,7 @@ impl RecallEngine {
     ///
     /// # Complexity
     ///
-    /// O(1) - constant time weighted sum of 7 factors.
+    /// O(1) - constant time weighted sum of 9 factors.
     #[instrument(skip(self, factors))]
     #[must_use]
     pub(crate) fn compute_score(&self, factors: &FactorScores) -> f64 {
@@ -513,7 +517,7 @@ impl RecallEngine {
 
     /// Pre-filter candidates via side-query selection, then score and rank.
     ///
-    /// WHY: runs `pre_filter_by_side_query` before 6-factor scoring so the
+    /// WHY: runs `pre_filter_by_side_query` before factor scoring so the
     /// expensive `compute_score` loop operates on a narrower candidate set.
     /// When `selected_ids` is empty, all candidates pass through unfiltered.
     ///
@@ -654,10 +658,10 @@ impl RecallEngine {
     /// score using a sigmoid mapping so that high-surprise candidates rank
     /// higher when `RecallWeights::surprise > 0`.
     ///
-    /// `surprise_nats = 0.0` → score 0.5 (neutral, mid-range boost).
-    /// High values approach 1.0; the neutral midpoint is configurable via
-    /// `midpoint_nats` (pass `DEFAULT_THRESHOLD` from `crate::surprise` for
-    /// the standard 2.0-nat boundary).
+    /// `surprise_nats = midpoint_nats` → score 0.5 (neutral); values below the
+    /// midpoint score toward 0.0 and above toward 1.0. At the default 2.0-nat
+    /// midpoint, zero-divergence content scores ≈0.12 (`sigmoid(-2)`). Pass
+    /// `DEFAULT_THRESHOLD` from `crate::surprise` for the standard boundary.
     ///
     /// Returns 0.0 when `RecallWeights::surprise` is effectively zero so
     /// callers can skip the `SurpriseCalculator` entirely in the common case.
@@ -770,7 +774,7 @@ pub(crate) fn refresh_stability_hours(fact_type: &str, tier: &str, access_count:
 /// Pre-filter recall candidates using side-query selections.
 ///
 /// Retains only candidates whose `source_id` appears in `selected_ids`.
-/// Designed to run between vector search retrieval and 6-factor scoring
+/// Designed to run between vector search retrieval and factor scoring
 /// to reduce the candidate set before the more expensive scoring runs.
 ///
 /// # Arguments
