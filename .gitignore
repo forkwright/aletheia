@@ -141,3 +141,10 @@ target/
 .dispatch-prompt.md
 .dispatch.err
 .dispatch*
+
+# Dispatch-agent runtime artifacts — accidentally committed via #4401/#4408.
+# Out-of-tree dispatch build dir + per-vendor agent stdout logs; never source.
+target-local/
+.kimi.log
+.codex.log
+.claude.log
