@@ -1,0 +1,26 @@
+# WHY: OSV-Scanner does not read cargo-audit's .cargo/audit.toml or
+# cargo-deny's deny.toml. Keep this ignore list in sync with both files.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0141"
+# WHY: bincode 1.x informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+# WHY: paste proc-macro informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0134"
+# WHY: rustls-pemfile 2.2.0 informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0320"
+# WHY: yaml-rust 0.4.5 unmaintained advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0052"
+# WHY: async-std unmaintained; transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7. Mirrors deny.toml + .cargo/audit.toml.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0097"
+# WHY: rand 0.8 unsound; transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. Mirrors .cargo/audit.toml + deny.toml.

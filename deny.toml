@@ -25,6 +25,10 @@ reason = "async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgr
 id = "RUSTSEC-2025-0134"
 reason = "rustls-pemfile unmaintained — transitive via qdrant-client→tonic; no safe upgrade. Tracked for removal when qdrant-client/tonic migrate to the rustls-pki-types PemObject API"
 
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0097"
+reason = "rand 0.8 unsound — transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. Re-syncs deny.toml with .cargo/audit.toml + osv-scanner.toml"
+
 [licenses]
 # WHY: `version = 2` enables modern SPDX 3.x parsing so "AGPL-3.0-or-later" /
 # "LGPL-3.0-or-later" are accepted as bare license identifiers. Without this,

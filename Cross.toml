@@ -1,0 +1,7 @@
+# WHY: a default [build] pre-build (not a per-target block) installs
+# cargo-auditable for EVERY cross target, so `cross auditable build` keeps
+# working when new cross targets are added to the release matrix.
+[build]
+pre-build = [
+    "cargo install cargo-auditable --locked --version 0.7.4",
+]

@@ -1,8 +1,8 @@
 # WHY: Block merges on known vulnerabilities and license/source/ban
-# violations. Runs `cargo audit` (RustSec DB) and `cargo deny check`
-# (licenses, sources, bans, advisories) on every PR and daily against main
-# so newly-published CVEs against existing deps are caught even when no PR
-# is open. See standards/CI.md § Vulnerability scanning.
+# violations. Runs `cargo audit` (RustSec DB), `cargo deny check`
+# (licenses, sources, bans, advisories), and OSV-Scanner on every PR and
+# daily against main so newly-published CVEs against existing deps are caught
+# even when no PR is open. See standards/CI.md § Vulnerability scanning.
 name: Security
 
 on:
@@ -106,3 +106,13 @@ jobs:
         # .cargo/audit.toml, which mirrors deny.toml's [[advisories.ignore]]
         # entries — no silent --ignore flags here.
         run: cargo audit --deny unmaintained --deny unsound --deny yanked
+
+  osv-scanner:
+    name: osv scanner
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    with:
+      scan-args: '--config=osv-scanner.toml --lockfile=Cargo.lock'
