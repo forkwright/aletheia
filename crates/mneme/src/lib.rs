@@ -352,6 +352,27 @@ pub mod recall {
     }
 }
 
+/// Bayesian-surprise calculator (`EM-LLM`) for topic-shift detection.
+///
+/// # Facade surface
+///
+/// [`SurpriseCalculator`](surprise::SurpriseCalculator) — the session-scoped
+/// running-distribution scorer threaded into recall surprise scoring.
+pub mod surprise {
+    pub use episteme::surprise::{DEFAULT_EMA_ALPHA, DEFAULT_THRESHOLD, SurpriseCalculator};
+}
+
+/// Evidence-gap tracking (`MemR3`) for iterative retrieval.
+///
+/// # Facade surface
+///
+/// [`EvidenceGapTracker`](evidence_gap::EvidenceGapTracker),
+/// [`EvidenceQuery`](evidence_gap::EvidenceQuery),
+/// [`AnsweredQuestion`](evidence_gap::AnsweredQuestion)
+pub mod evidence_gap {
+    pub use episteme::evidence_gap::{AnsweredQuestion, EvidenceGapTracker, EvidenceQuery};
+}
+
 /// Side-query memory relevance selector.
 pub mod side_query {
     pub use episteme::side_query::{

@@ -515,6 +515,15 @@ impl NousActor {
 
         session.next_turn();
 
+        // WHY: surprise is episodic — advance the running session prior with
+        // this turn's content here, on the authoritative SessionState, so the
+        // EMA persists across turns. The pipeline below scores candidates
+        // read-only against the clone (mutations inside the spawned task are
+        // discarded). Skipped entirely when surprise scoring is inert.
+        if self.config.recall.surprise_weight > f64::EPSILON {
+            session.surprise_calculator.compute_surprise(content);
+        }
+
         // Persist session to store BEFORE spawning the pipeline task.
         if let Some(ref store) = self.stores.session_store {
             let guard = store.lock().await;
