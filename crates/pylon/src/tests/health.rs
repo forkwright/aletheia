@@ -114,9 +114,23 @@ async fn metrics_no_auth_required() {
 }
 
 #[tokio::test]
-#[ignore = "metrics registration broken by FromRef migration — fix in followup"]
 async fn metrics_contains_aletheia_prefixed_families() {
     let (app, _dir) = app().await;
+
+    // WHY: `aletheia_http_requests` is a labeled counter Family — it emits no
+    // `_total` series until at least one request is recorded, so asserting the
+    // data line against a fresh registry always fails (this is what made the
+    // test flaky-looking and got it ignored; registration itself is fine — see
+    // `metrics_counters_increment_after_request`). Record one request through
+    // the metrics middleware first so the exposition exercises the full
+    // record -> shared registry -> handler path.
+    let recorded = app
+        .clone()
+        .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(recorded.status(), StatusCode::OK);
+
     let resp = app
         .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
         .await
@@ -125,19 +139,19 @@ async fn metrics_contains_aletheia_prefixed_families() {
     let body = body_string(resp).await;
     assert!(
         body.contains("aletheia_http_requests_total"),
-        "should contain HTTP request counter"
+        "should expose the HTTP request counter family; got: {body}"
     );
     assert!(
         body.contains("aletheia_uptime_seconds"),
-        "should contain uptime gauge"
+        "should expose the uptime gauge; got: {body}"
     );
     assert!(
-        body.contains("# HELP"),
-        "should contain Prometheus HELP comments"
+        body.contains("/api/health"),
+        "recorded request path should appear as a counter label; got: {body}"
     );
     assert!(
-        body.contains("# TYPE"),
-        "should contain Prometheus TYPE comments"
+        body.contains("# HELP") && body.contains("# TYPE"),
+        "should contain Prometheus HELP/TYPE metadata; got: {body}"
     );
 }
 
