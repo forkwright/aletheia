@@ -112,4 +112,12 @@ pub struct RecallResult {
     /// [`Visibility::Private`]: super::fact::Visibility::Private
     #[serde(default)]
     pub visibility: super::fact::Visibility,
+    /// Consolidated-fact source count from the `fact_multiplicity` side-index,
+    /// carried so the recall pipeline can score the convergence factor (#4415).
+    ///
+    /// `0` for legacy / non-consolidated facts (no multiplicity record) and for
+    /// non-fact sources; populated by the knowledge store only when the
+    /// convergence recall weight is active.
+    #[serde(default)]
+    pub source_count: u32,
 }

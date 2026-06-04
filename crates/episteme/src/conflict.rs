@@ -462,16 +462,24 @@ pub(crate) fn classify_against_candidates(
 /// Determine the action based on classification, confidence, and tier.
 ///
 /// Rules:
-/// - CONTRADICTS → supersede (lower confidence loses; newer info wins ties)
+/// - CONTRADICTS → supersede (lower confidence loses; on equal confidence the
+///   fact with more independent converging sources wins, then newer info)
 /// - REFINES → supersede (refinement always wins)
 /// - SUPPLEMENTS → insert (both live)
 /// - UNRELATED → insert
 /// - Exception: `Verified` tier never superseded by `Assumed` tier
+///
+/// `existing_source_count` / `new_source_count` are the consolidated-fact
+/// multiplicities (`fact_multiplicity` side-index; 1 for non-consolidated /
+/// single-observation facts) used only to break equal-confidence contradictions
+/// (#4415).
 #[cfg(any(feature = "mneme-engine", test))]
 pub(crate) fn resolve_action(
     classification: &ConflictClassification,
     candidate: &ConflictCandidate,
     new_fact: &FactForConflictCheck,
+    existing_source_count: u32,
+    new_source_count: u32,
 ) -> ConflictAction {
     match classification {
         ConflictClassification::Contradicts => {
@@ -486,12 +494,22 @@ pub(crate) fn resolve_action(
                     old_id: candidate.existing_fact_id.clone(),
                 };
             }
-            if new_fact.confidence >= candidate.existing_confidence {
+            if new_fact.confidence > candidate.existing_confidence {
                 ConflictAction::Supersede {
                     old_id: candidate.existing_fact_id.clone(),
                 }
-            } else {
+            } else if new_fact.confidence < candidate.existing_confidence {
                 ConflictAction::Drop
+            } else if existing_source_count > new_source_count {
+                // WHY (#4415): equal confidence — the existing fact has more
+                // independent converging observations, so it wins the tie. The
+                // `>=` recency default applies when counts are equal or the new
+                // fact has at least as many sources.
+                ConflictAction::Drop
+            } else {
+                ConflictAction::Supersede {
+                    old_id: candidate.existing_fact_id.clone(),
+                }
             }
         }
         ConflictClassification::Refines => {
@@ -535,7 +553,23 @@ pub(crate) fn detect_conflicts(
         } else {
             match classify_against_candidates(classifier, &fact, &candidates)? {
                 Some((classification, candidate_idx)) => {
-                    resolve_action(&classification, &candidates[candidate_idx], &fact)
+                    // WHY (#4415): consult the fact_multiplicity side-index so an
+                    // equal-confidence contradiction is broken toward the fact
+                    // with more independent converging sources. Non-consolidated
+                    // facts (None) count as a single observation; the new fact is
+                    // always a single fresh observation.
+                    let existing_source_count = store
+                        .get_fact_multiplicity(&candidates[candidate_idx].existing_fact_id)
+                        .ok()
+                        .flatten()
+                        .map_or(1, |m| m.source_count.max(1));
+                    resolve_action(
+                        &classification,
+                        &candidates[candidate_idx],
+                        &fact,
+                        existing_source_count,
+                        1,
+                    )
                 }
                 None => ConflictAction::Insert,
             }

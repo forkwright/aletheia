@@ -100,6 +100,7 @@ impl KnowledgeStore {
         results.truncate(k as usize);
 
         self.enrich_recall_results(&mut results)?;
+        self.enrich_source_counts(&mut results);
         self.expand_recall_by_cluster(&mut results, k)?;
 
         let source_ids: Vec<crate::id::FactId> = results
@@ -168,6 +169,7 @@ impl KnowledgeStore {
         let rows = self.run_read(queries::BM25_RECALL, params)?;
         let mut results = rows_to_recall_results(rows)?;
         self.enrich_recall_results(&mut results)?;
+        self.enrich_source_counts(&mut results);
         self.expand_recall_by_cluster(&mut results, k)?;
         Ok(results)
     }
@@ -212,6 +214,25 @@ impl KnowledgeStore {
         }
 
         Ok(())
+    }
+
+    /// Populate `source_count` on fact results from the `fact_multiplicity`
+    /// side-index so the recall pipeline can score the convergence factor (#4415).
+    ///
+    /// Non-consolidated / legacy facts have no multiplicity record and keep
+    /// `source_count` 0 (convergence scores 0 for them). NOTE: this issues one
+    /// indexed point-query per fact result; the convergence recall weight
+    /// defaults to 0 so the score — and thus ranking — is unchanged when the
+    /// feature is off. A batched side-index load is a future optimisation.
+    fn enrich_source_counts(&self, results: &mut [crate::knowledge::RecallResult]) {
+        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
+            let Ok(fact_id) = crate::id::FactId::new(&result.source_id) else {
+                continue;
+            };
+            if let Ok(Some(multiplicity)) = self.get_fact_multiplicity(&fact_id) {
+                result.source_count = multiplicity.source_count;
+            }
+        }
     }
 
     /// Hydrate recall results with `scope`, `project_id`, and `visibility` from the `facts` relation.
@@ -373,6 +394,7 @@ impl KnowledgeStore {
                     scope: None,
                     project_id: None,
                     visibility: crate::knowledge::Visibility::Private,
+                    source_count: 0,
                 });
                 added += 1;
                 if added >= limit {
@@ -604,6 +626,11 @@ impl KnowledgeStore {
                     scope: fact.scope,
                     project_id: fact.project_id,
                     visibility: fact.visibility,
+                    source_count: self
+                        .get_fact_multiplicity(&fact.id)
+                        .ok()
+                        .flatten()
+                        .map_or(0, |m| m.source_count),
                 });
                 break;
             }

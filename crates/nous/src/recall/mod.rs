@@ -181,6 +181,7 @@ impl RecallStage {
         mneme::recall::RecallWeights {
             surprise: config.surprise_weight,
             evidence_coverage: config.evidence_coverage_weight,
+            convergence: config.convergence_weight,
             ..mneme::recall::RecallWeights::default()
         }
     }
@@ -818,6 +819,10 @@ impl RecallStage {
                     access_frequency: w.access_frequency,
                     surprise: self.score_candidate_surprise(&r.content),
                     evidence_coverage: self.score_candidate_evidence(&r.source_id, answered_ids),
+                    // WHY: convergence scores consolidated-fact multiplicity; the
+                    // engine short-circuits to 0.0 when its weight is unset, so
+                    // legacy/non-consolidated facts (source_count 0) stay inert.
+                    convergence: self.engine.score_convergence(r.source_count),
                     graph_importance: self.engine.score_graph_importance(r.graph_importance),
                 },
                 content: r.content,

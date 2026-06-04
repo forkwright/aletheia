@@ -118,6 +118,7 @@ mod fixtures {
                 graph_importance: 0.0,
                 surprise: 0.0,
                 evidence_coverage: 0.0,
+                convergence: 0.0,
             },
             score: result_score,
             sensitivity: FactSensitivity::Public,

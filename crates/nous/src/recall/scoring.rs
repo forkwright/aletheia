@@ -96,6 +96,14 @@ pub struct RecallConfig {
     /// running topic distribution forgets older turns.
     #[serde(default = "default_surprise_ema_alpha")]
     pub surprise_ema_alpha: f64,
+    /// Recall-engine weight for the convergence (fact-multiplicity) factor.
+    /// Default 0.0 (inert).
+    ///
+    /// Sourced from `knowledge.recall_convergence_weight`; threaded into
+    /// [`mneme::recall::RecallWeights::convergence`] at engine construction so a
+    /// non-zero value boosts facts consolidated from more converging sources.
+    #[serde(default)]
+    pub convergence_weight: f64,
     /// Inject factor metadata into recalled knowledge prompts.
     ///
     /// When enabled, each recalled fact includes its factor scores so the
@@ -154,6 +162,7 @@ impl Default for RecallConfig {
             evidence_coverage_weight: 0.0,
             surprise_threshold: default_surprise_threshold(),
             surprise_ema_alpha: default_surprise_ema_alpha(),
+            convergence_weight: 0.0,
             inject_metadata: false,
             pinned_facts: Vec::new(),
             late_inject_anchor: false,
@@ -191,6 +200,7 @@ impl From<taxis::config::RecallSettings> for RecallConfig {
             evidence_coverage_weight: 0.0,
             surprise_threshold: default_surprise_threshold(),
             surprise_ema_alpha: default_surprise_ema_alpha(),
+            convergence_weight: 0.0,
             inject_metadata: s.inject_metadata,
             pinned_facts: s.pinned_facts,
             late_inject_anchor: s.late_inject_anchor,

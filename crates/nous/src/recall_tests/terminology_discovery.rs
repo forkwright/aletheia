@@ -221,6 +221,7 @@ fn make_knowledge_result_sensitive(
         scope: None,
         project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
+        source_count: 0,
     }
 }
 

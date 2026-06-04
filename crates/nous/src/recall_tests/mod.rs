@@ -78,6 +78,7 @@ fn make_knowledge_result(content: &str, distance: f64) -> KnowledgeRecallResult 
         scope: None,
         project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
+        source_count: 0,
     }
 }
 
@@ -97,6 +98,7 @@ fn make_knowledge_result_with_id(
         scope: None,
         project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
+        source_count: 0,
     }
 }
 
@@ -116,6 +118,7 @@ fn make_knowledge_result_with_scope(
         scope,
         project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
+        source_count: 0,
     }
 }
 

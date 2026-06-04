@@ -103,6 +103,13 @@ pub struct KnowledgeConfig {
     /// iterative-retrieval path. Threaded into `RecallWeights::evidence_coverage`
     /// at engine construction.
     pub recall_evidence_coverage_weight: f64,
+    /// Recall weight for consolidated-fact convergence. Default: 0.0 (inert).
+    ///
+    /// Non-zero values boost facts assembled from more independent converging
+    /// observations, scored as `log(1 + source_count)` from the
+    /// `fact_multiplicity` side-index (via `RecallEngine::score_convergence`).
+    /// Threaded into `RecallWeights::convergence` at engine construction.
+    pub recall_convergence_weight: f64,
     /// Admission policy applied to every `insert_fact` call. Default: `default` (admit-all).
     ///
     /// Set to `structured` to activate the five-factor A-MAC gate
@@ -143,6 +150,7 @@ impl Default for KnowledgeConfig {
             surprise_ema_alpha: 0.3,
             recall_surprise_weight: 0.0,
             recall_evidence_coverage_weight: 0.0,
+            recall_convergence_weight: 0.0,
             admission_policy: AdmissionPolicyKind::Default,
         }
     }

@@ -267,6 +267,7 @@ fn recall_result_serde_roundtrip() {
         scope: None,
         project_id: None,
         visibility: Visibility::Private,
+        source_count: 0,
     };
     let json = serde_json::to_string(&result).expect("RecallResult serialization is infallible");
     let back: RecallResult =

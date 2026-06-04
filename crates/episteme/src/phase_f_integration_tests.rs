@@ -198,7 +198,13 @@ fn conflict_detection_identifies_contradicting_behavioral_preferences() {
         embedding: vec![],
     };
 
-    let action = resolve_action(&ConflictClassification::Contradicts, &existing, &new_fact);
+    let action = resolve_action(
+        &ConflictClassification::Contradicts,
+        &existing,
+        &new_fact,
+        1,
+        1,
+    );
     assert!(
         matches!(action, ConflictAction::Supersede { .. }),
         "higher-confidence behavioral preference should supersede lower-confidence one"
@@ -217,6 +223,8 @@ fn conflict_detection_identifies_contradicting_behavioral_preferences() {
         &ConflictClassification::Contradicts,
         &existing,
         &weaker_fact,
+        1,
+        1,
     );
     assert_eq!(
         drop_action,
