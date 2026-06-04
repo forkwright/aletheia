@@ -209,8 +209,7 @@ mod tests {
     #[test]
     fn evidence_map_credits_gap_answering_facts() {
         // A compound query decomposes into two sub-questions on " and ".
-        let query =
-            "what is the capital of France and what is the population of France";
+        let query = "what is the capital of France and what is the population of France";
         let ranked = [
             scored(
                 "The capital of France is Paris, a major European city.",
@@ -220,12 +219,17 @@ mod tests {
                 "The population of France is roughly 68 million people.",
                 "fact-population",
             ),
-            scored("Bananas are an excellent source of potassium.", "fact-banana"),
+            scored(
+                "Bananas are an excellent source of potassium.",
+                "fact-banana",
+            ),
         ];
 
         let map = build_evidence_map(
             query,
-            ranked.iter().map(|s| (s.content.as_str(), s.source_id.as_str())),
+            ranked
+                .iter()
+                .map(|s| (s.content.as_str(), s.source_id.as_str())),
         );
 
         assert!(
@@ -250,10 +254,15 @@ mod tests {
 
     #[test]
     fn evidence_map_empty_without_lexical_overlap() {
-        let ranked = [scored("The weather today is sunny and mild.", "fact-weather")];
+        let ranked = [scored(
+            "The weather today is sunny and mild.",
+            "fact-weather",
+        )];
         let map = build_evidence_map(
             "quantum chromodynamics lattice gauge theory",
-            ranked.iter().map(|s| (s.content.as_str(), s.source_id.as_str())),
+            ranked
+                .iter()
+                .map(|s| (s.content.as_str(), s.source_id.as_str())),
         );
         assert!(
             map.is_empty(),
@@ -272,7 +281,9 @@ mod tests {
         )];
         let map = build_evidence_map(
             "population",
-            ranked.iter().map(|s| (s.content.as_str(), s.source_id.as_str())),
+            ranked
+                .iter()
+                .map(|s| (s.content.as_str(), s.source_id.as_str())),
         );
         assert!(
             map.is_empty(),

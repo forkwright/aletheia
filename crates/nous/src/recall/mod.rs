@@ -97,10 +97,10 @@ struct SensitivityFilterResult {
 pub struct RecallStage {
     engine: RecallEngine,
     config: RecallConfig,
-    /// Optional side-query selected IDs for pre-filtering before 6-factor scoring.
+    /// Optional side-query selected IDs for pre-filtering before factor scoring.
     side_query_ids: Option<HashSet<String>>,
     /// Production side-query selector used to turn the raw recall manifest into
-    /// a prefilter for 6-factor scoring.
+    /// a prefilter for factor scoring.
     side_query_selector: mneme::side_query::SideQuerySelector,
     /// Data-sovereignty target: gates which facts may leave the instance
     /// through this recall pass (#3404, #3413). Defaults to
@@ -139,8 +139,10 @@ impl RecallStage {
     /// source of truth rather than mirroring the struct in taxis.
     #[must_use]
     pub fn new(config: RecallConfig) -> Self {
-        let engine =
-            Self::engine_with_reranker_url(config.reranker_url.as_deref(), Self::engine_weights(&config));
+        let engine = Self::engine_with_reranker_url(
+            config.reranker_url.as_deref(),
+            Self::engine_weights(&config),
+        );
 
         let pinned_facts: HashSet<String> = config
             .pinned_facts
@@ -194,11 +196,11 @@ impl RecallStage {
         self
     }
 
-    /// Set side-query selected IDs for pre-filtering before 6-factor scoring.
+    /// Set side-query selected IDs for pre-filtering before factor scoring.
     ///
     /// // WHY: Side-queries (e.g., from tool results or explicit references) can
     /// // identify relevant knowledge IDs directly, bypassing vector search.
-    /// // Pre-filtering avoids expensive 6-factor scoring on irrelevant candidates.
+    /// // Pre-filtering avoids expensive factor scoring on irrelevant candidates.
     #[must_use]
     pub fn with_side_query_ids(mut self, ids: HashSet<String>) -> Self {
         self.side_query_ids = Some(ids);
@@ -251,13 +253,17 @@ impl RecallStage {
     /// Set the URL for an HTTP cross-encoder reranker.
     #[must_use]
     pub fn with_reranker_url(mut self, url: Option<String>) -> Self {
-        self.engine = Self::engine_with_reranker_url(url.as_deref(), Self::engine_weights(&self.config));
+        self.engine =
+            Self::engine_with_reranker_url(url.as_deref(), Self::engine_weights(&self.config));
         self.reranker_url = url;
         self
     }
 
     #[cfg(feature = "reranker")]
-    fn engine_with_reranker_url(url: Option<&str>, weights: mneme::recall::RecallWeights) -> RecallEngine {
+    fn engine_with_reranker_url(
+        url: Option<&str>,
+        weights: mneme::recall::RecallWeights,
+    ) -> RecallEngine {
         let engine = RecallEngine::with_weights(weights);
         // WHY: Wire reranker only when the episteme reranker feature is present.
         // A configured URL uses the HTTP cross-encoder; otherwise NaiveReranker
@@ -274,7 +280,10 @@ impl RecallStage {
     }
 
     #[cfg(not(feature = "reranker"))]
-    fn engine_with_reranker_url(_url: Option<&str>, weights: mneme::recall::RecallWeights) -> RecallEngine {
+    fn engine_with_reranker_url(
+        _url: Option<&str>,
+        weights: mneme::recall::RecallWeights,
+    ) -> RecallEngine {
         RecallEngine::with_weights(weights)
     }
 
@@ -546,9 +555,8 @@ impl RecallStage {
         // into gaps and credit every merged fact (from either cycle) that
         // answers one; the map boosts gap-answering facts in the final ranking.
         // Skipped entirely (inert) when the weight is zero.
-        let answered_ids: Option<HashMap<String, f64>> = (self.config.evidence_coverage_weight
-            > f64::EPSILON)
-            .then(|| {
+        let answered_ids: Option<HashMap<String, f64>> =
+            (self.config.evidence_coverage_weight > f64::EPSILON).then(|| {
                 build_evidence_map(
                     query,
                     merged
