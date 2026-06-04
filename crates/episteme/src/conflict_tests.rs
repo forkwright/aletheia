@@ -258,7 +258,13 @@ fn intra_batch_dedup_single() {
 fn resolve_contradicts_new_higher_confidence() {
     let candidate = make_candidate("f-old", "old claim", 0.7, EpistemicTier::Inferred, 0.9);
     let fact = make_fact("new claim", 0.9, vec![]);
-    let action = resolve_action(&ConflictClassification::Contradicts, &candidate, &fact);
+    let action = resolve_action(
+        &ConflictClassification::Contradicts,
+        &candidate,
+        &fact,
+        1,
+        1,
+    );
     assert_eq!(
         action,
         ConflictAction::Supersede {
@@ -268,11 +274,62 @@ fn resolve_contradicts_new_higher_confidence() {
     );
 }
 
+/// #4415: on an equal-confidence contradiction, the fact with more independent
+/// converging sources wins the tie; equal multiplicity falls back to recency.
+#[test]
+fn resolve_contradicts_equal_confidence_breaks_on_multiplicity() {
+    let candidate = make_candidate(
+        "f-consolidated",
+        "established",
+        0.8,
+        EpistemicTier::Inferred,
+        0.9,
+    );
+    let fact = make_fact("new singleton claim", 0.8, vec![]);
+
+    // Existing fact consolidated from 5 sources vs a single new observation:
+    // the existing converging evidence wins, so the new fact is dropped.
+    let action = resolve_action(
+        &ConflictClassification::Contradicts,
+        &candidate,
+        &fact,
+        5,
+        1,
+    );
+    assert_eq!(
+        action,
+        ConflictAction::Drop,
+        "higher-multiplicity existing fact should win the equal-confidence tie"
+    );
+
+    // Equal multiplicity falls back to the recency default (new supersedes).
+    let tie = resolve_action(
+        &ConflictClassification::Contradicts,
+        &candidate,
+        &fact,
+        1,
+        1,
+    );
+    assert_eq!(
+        tie,
+        ConflictAction::Supersede {
+            old_id: FactId::new("f-consolidated").expect("valid test id")
+        },
+        "equal multiplicity should fall back to recency (new wins)"
+    );
+}
+
 #[test]
 fn resolve_contradicts_new_lower_confidence() {
     let candidate = make_candidate("f-old", "old claim", 0.95, EpistemicTier::Inferred, 0.9);
     let fact = make_fact("new claim", 0.5, vec![]);
-    let action = resolve_action(&ConflictClassification::Contradicts, &candidate, &fact);
+    let action = resolve_action(
+        &ConflictClassification::Contradicts,
+        &candidate,
+        &fact,
+        1,
+        1,
+    );
     assert_eq!(
         action,
         ConflictAction::Drop,
@@ -284,7 +341,13 @@ fn resolve_contradicts_new_lower_confidence() {
 fn resolve_contradicts_equal_confidence_new_wins() {
     let candidate = make_candidate("f-old", "old claim", 0.8, EpistemicTier::Inferred, 0.9);
     let fact = make_fact("new claim", 0.8, vec![]);
-    let action = resolve_action(&ConflictClassification::Contradicts, &candidate, &fact);
+    let action = resolve_action(
+        &ConflictClassification::Contradicts,
+        &candidate,
+        &fact,
+        1,
+        1,
+    );
     assert_eq!(
         action,
         ConflictAction::Supersede {
@@ -298,7 +361,7 @@ fn resolve_contradicts_equal_confidence_new_wins() {
 fn resolve_refines_supersedes() {
     let candidate = make_candidate("f-old", "general claim", 0.8, EpistemicTier::Inferred, 0.85);
     let fact = make_fact("specific claim", 0.9, vec![]);
-    let action = resolve_action(&ConflictClassification::Refines, &candidate, &fact);
+    let action = resolve_action(&ConflictClassification::Refines, &candidate, &fact, 1, 1);
     assert_eq!(
         action,
         ConflictAction::Supersede {
@@ -312,7 +375,13 @@ fn resolve_refines_supersedes() {
 fn resolve_supplements_inserts() {
     let candidate = make_candidate("f-old", "existing claim", 0.8, EpistemicTier::Inferred, 0.8);
     let fact = make_fact("additional info", 0.7, vec![]);
-    let action = resolve_action(&ConflictClassification::Supplements, &candidate, &fact);
+    let action = resolve_action(
+        &ConflictClassification::Supplements,
+        &candidate,
+        &fact,
+        1,
+        1,
+    );
     assert_eq!(
         action,
         ConflictAction::Insert,
@@ -330,7 +399,7 @@ fn resolve_unrelated_inserts() {
         0.75,
     );
     let fact = make_fact("different topic", 0.9, vec![]);
-    let action = resolve_action(&ConflictClassification::Unrelated, &candidate, &fact);
+    let action = resolve_action(&ConflictClassification::Unrelated, &candidate, &fact, 1, 1);
     assert_eq!(
         action,
         ConflictAction::Insert,
@@ -353,7 +422,13 @@ fn verified_not_superseded_by_assumed_contradicts() {
         EpistemicTier::Assumed,
         vec![],
     );
-    let action = resolve_action(&ConflictClassification::Contradicts, &candidate, &fact);
+    let action = resolve_action(
+        &ConflictClassification::Contradicts,
+        &candidate,
+        &fact,
+        1,
+        1,
+    );
     assert_eq!(
         action,
         ConflictAction::Drop,
@@ -371,7 +446,7 @@ fn verified_not_superseded_by_assumed_refines() {
         0.9,
     );
     let fact = make_fact_with_tier("assumed refinement", 0.95, EpistemicTier::Assumed, vec![]);
-    let action = resolve_action(&ConflictClassification::Refines, &candidate, &fact);
+    let action = resolve_action(&ConflictClassification::Refines, &candidate, &fact, 1, 1);
     assert_eq!(
         action,
         ConflictAction::Drop,
@@ -383,7 +458,13 @@ fn verified_not_superseded_by_assumed_refines() {
 fn verified_can_be_superseded_by_verified() {
     let candidate = make_candidate("f-old", "old verified", 0.7, EpistemicTier::Verified, 0.9);
     let fact = make_fact_with_tier("new verified", 0.95, EpistemicTier::Verified, vec![]);
-    let action = resolve_action(&ConflictClassification::Contradicts, &candidate, &fact);
+    let action = resolve_action(
+        &ConflictClassification::Contradicts,
+        &candidate,
+        &fact,
+        1,
+        1,
+    );
     assert_eq!(
         action,
         ConflictAction::Supersede {
@@ -397,7 +478,13 @@ fn verified_can_be_superseded_by_verified() {
 fn verified_can_be_superseded_by_inferred() {
     let candidate = make_candidate("f-old", "old verified", 0.7, EpistemicTier::Verified, 0.9);
     let fact = make_fact_with_tier("new inferred", 0.95, EpistemicTier::Inferred, vec![]);
-    let action = resolve_action(&ConflictClassification::Contradicts, &candidate, &fact);
+    let action = resolve_action(
+        &ConflictClassification::Contradicts,
+        &candidate,
+        &fact,
+        1,
+        1,
+    );
     assert_eq!(
         action,
         ConflictAction::Supersede {
@@ -476,7 +563,13 @@ fn correction_fact_wins_contradiction_regardless_of_confidence() {
     let candidate = make_candidate("f-old", "old claim", 0.95, EpistemicTier::Inferred, 0.9);
     let mut fact = make_fact("corrected claim", 0.5, vec![]);
     fact.is_correction = true;
-    let action = resolve_action(&ConflictClassification::Contradicts, &candidate, &fact);
+    let action = resolve_action(
+        &ConflictClassification::Contradicts,
+        &candidate,
+        &fact,
+        1,
+        1,
+    );
     assert_eq!(
         action,
         ConflictAction::Supersede {
@@ -581,7 +674,7 @@ fn classify_each_type_produces_correct_action() {
         let (classification, idx) = classify_against_candidates(&classifier, &fact, &candidates)
             .expect("classify must succeed")
             .expect("must be Some when candidates exist");
-        let action = resolve_action(&classification, &candidates[idx], &fact);
+        let action = resolve_action(&classification, &candidates[idx], &fact, 1, 1);
         assert_eq!(action, expected_action, "failed for {response}");
     }
 }

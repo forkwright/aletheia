@@ -100,6 +100,7 @@ fn recall_formats_section_with_metadata() {
             graph_importance: 0.5,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
         score: 0.87,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
@@ -122,6 +123,7 @@ fn recall_formats_section_with_metadata() {
             graph_importance: 0.3,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
         score: 0.72,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
@@ -595,6 +597,7 @@ fn make_knowledge_result_with_nous(
         scope: None,
         project_id: None,
         visibility,
+        source_count: 0,
     }
 }
 

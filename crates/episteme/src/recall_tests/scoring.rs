@@ -416,6 +416,7 @@ fn perfect_score() {
         graph_importance: 1.0,
         surprise: 1.0,
         evidence_coverage: 1.0,
+        convergence: 1.0,
     };
     assert!(
         (e.compute_score(&factors) - 1.0).abs() < 0.01,
@@ -449,5 +450,70 @@ fn vector_similarity_dominates() {
         "vector_similarity weight (0.35) should dominate decay weight (0.20): high_vec={}, high_decay={}",
         e.compute_score(&high_vec),
         e.compute_score(&high_decay)
+    );
+}
+
+/// #4415: the convergence factor boosts consolidated facts with more sources,
+/// is logarithmic, and is inert (0.0) for legacy / non-consolidated facts.
+#[test]
+fn convergence_factor_scores_multiplicity() {
+    let weights = RecallWeights {
+        convergence: 1.0,
+        ..RecallWeights::default()
+    };
+    let engine = RecallEngine::with_weights(weights);
+
+    // More converging sources -> higher score; legacy (0) scores nothing.
+    let none = engine.score_convergence(0);
+    let singleton = engine.score_convergence(1);
+    let consolidated = engine.score_convergence(10);
+    assert!(
+        (none - 0.0).abs() < f64::EPSILON,
+        "legacy facts must score 0"
+    );
+    assert!(
+        singleton > 0.0,
+        "a recorded single source scores > 0: {singleton}"
+    );
+    assert!(
+        consolidated > singleton,
+        "10-source fact should outscore a singleton: {consolidated} vs {singleton}"
+    );
+    // Logarithmic: each additional source adds less than the previous one.
+    let s2 = engine.score_convergence(2);
+    let s3 = engine.score_convergence(3);
+    assert!(
+        (s2 - singleton) > (s3 - s2),
+        "convergence growth must be logarithmic (diminishing marginal returns)"
+    );
+
+    // With convergence weighted, an equal-everything-else high-multiplicity
+    // candidate ranks above a singleton.
+    let base = FactorScores {
+        vector_similarity: 0.5,
+        ..FactorScores::default()
+    };
+    let singleton_cand = FactorScores {
+        convergence: engine.score_convergence(1),
+        ..base.clone()
+    };
+    let consolidated_cand = FactorScores {
+        convergence: engine.score_convergence(20),
+        ..base
+    };
+    assert!(
+        engine.compute_score(&consolidated_cand) > engine.compute_score(&singleton_cand),
+        "the higher-multiplicity candidate must rank above an equal-confidence singleton"
+    );
+}
+
+/// #4415: convergence stays inert when its weight is zero (default), so the
+/// factor cannot regress existing recall behaviour.
+#[test]
+fn convergence_inert_when_weight_zero() {
+    let engine = RecallEngine::with_weights(RecallWeights::default());
+    assert!(
+        (engine.score_convergence(50) - 0.0).abs() < f64::EPSILON,
+        "convergence must score 0 when its weight is unset"
     );
 }

@@ -1,4 +1,4 @@
-//! Recall engine: 9-factor scoring for knowledge retrieval.
+//! Recall engine: 10-factor scoring for knowledge retrieval.
 //!
 //! Combines multiple signals to rank recall results:
 //!
@@ -11,9 +11,10 @@
 //! 7. **Graph importance**: `PageRank` hub entities rank higher
 //! 8. **Surprise**: Bayesian topic-shift signal (`EM-LLM`); default weight 0.0
 //! 9. **Evidence coverage**: `MemR3` gap-answering boost; default weight 0.0
+//! 10. **Convergence**: consolidated-fact multiplicity (`log(1+sources)`); default weight 0.0
 //!
 //! Each factor produces a score in [0.0, 1.0]. The final score is a weighted
-//! combination, configurable per-nous via oikos cascade. Factors 8 and 9 are
+//! combination, configurable per-nous via oikos cascade. Factors 8–10 are
 //! inert unless their weight is set positive in knowledge config.
 
 use std::collections::HashSet;
@@ -62,6 +63,14 @@ pub struct RecallWeights {
     /// evidence-gap tracker's answered set. Default: 0.0 (inert). Enable by
     /// setting a positive weight in config.
     pub evidence_coverage: f64,
+    /// Weight for consolidated-fact convergence (multiplicity / source count).
+    ///
+    /// Non-zero values blend in `log(1 + source_count)` (from the
+    /// `fact_multiplicity` side-index) so facts assembled from more independent
+    /// converging observations rank higher. Default: 0.0 (inert). Legacy /
+    /// non-consolidated facts have `source_count` 0 and score 0 here, so enabling
+    /// the weight never regresses them.
+    pub convergence: f64,
 }
 
 impl Default for RecallWeights {
@@ -76,6 +85,7 @@ impl Default for RecallWeights {
             graph_importance: 0.10,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         }
     }
 }
@@ -85,7 +95,7 @@ impl RecallWeights {
     ///
     /// # Complexity
     ///
-    /// O(1) - constant time sum of 9 fields.
+    /// O(1) - constant time sum of 10 fields.
     #[must_use]
     #[instrument(skip(self))]
     pub(crate) fn total(&self) -> f64 {
@@ -98,6 +108,7 @@ impl RecallWeights {
             + self.graph_importance
             + self.surprise
             + self.evidence_coverage
+            + self.convergence
     }
 
     /// Whether the graph intelligence recall pipeline should run.
@@ -145,6 +156,13 @@ pub struct FactorScores {
     /// running iterative retrieval. Default: 0.0 — inert unless
     /// `RecallWeights::evidence_coverage > 0`.
     pub evidence_coverage: f64,
+    /// Convergence score [0.0, 1.0] from consolidated-fact multiplicity.
+    ///
+    /// `log(1 + source_count)` normalised against a saturation point, so facts
+    /// built from more independent observations score higher. 0.0 for legacy /
+    /// non-consolidated facts (`source_count` 0). Default: 0.0 — inert unless
+    /// `RecallWeights::convergence > 0`.
+    pub convergence: f64,
 }
 
 /// A scored recall candidate.
@@ -510,7 +528,8 @@ impl RecallEngine {
             + factors.access_frequency * w.access_frequency
             + factors.graph_importance * w.graph_importance
             + factors.surprise * w.surprise
-            + factors.evidence_coverage * w.evidence_coverage;
+            + factors.evidence_coverage * w.evidence_coverage
+            + factors.convergence * w.convergence;
 
         raw / total_weight
     }
@@ -713,7 +732,37 @@ impl RecallEngine {
             .unwrap_or(0.0)
             .clamp(0.0, 1.0)
     }
+
+    /// Compute the convergence score for a candidate from its consolidated-fact
+    /// source count (`fact_multiplicity` side-index).
+    ///
+    /// `log(1 + source_count)` normalised against [`CONVERGENCE_SATURATION`] so
+    /// the signal is logarithmic — a 50-source fact does not dominate a
+    /// 10-source one. `source_count = 0` (legacy / non-consolidated facts, where
+    /// `get_fact_multiplicity` returns `None`) scores 0.0, so enabling the
+    /// weight never regresses those facts.
+    ///
+    /// Returns 0.0 immediately when `RecallWeights::convergence` is effectively
+    /// zero so callers can skip the side-index lookup in the common case.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) — one logarithm and division.
+    #[must_use]
+    #[instrument(skip(self))]
+    pub fn score_convergence(&self, source_count: u32) -> f64 {
+        if self.weights.convergence < f64::EPSILON {
+            return 0.0;
+        }
+        let n = f64::from(source_count);
+        ((1.0 + n).ln() / (1.0 + CONVERGENCE_SATURATION).ln()).clamp(0.0, 1.0)
+    }
 }
+
+/// Source count at which the convergence score saturates to ~1.0. Facts built
+/// from this many or more independent observations receive the maximal
+/// convergence boost; the logarithmic curve keeps lower counts well-separated.
+const CONVERGENCE_SATURATION: f64 = 32.0;
 
 impl Default for RecallEngine {
     fn default() -> Self {

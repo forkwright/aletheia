@@ -28,6 +28,7 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
             graph_importance: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
         score: 0.0,
         sensitivity: mneme::knowledge::FactSensitivity::Public,
@@ -148,6 +149,7 @@ fn knowledge_types_all_serialize() {
         scope: None,
         project_id: None,
         visibility: mneme::knowledge::Visibility::Private,
+        source_count: 0,
     };
 
     assert!(serde_json::to_string(&fact).is_ok());

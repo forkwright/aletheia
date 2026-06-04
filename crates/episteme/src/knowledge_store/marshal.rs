@@ -739,6 +739,9 @@ pub(super) fn rows_to_recall_results(
             scope,
             project_id,
             visibility,
+            // WHY (#4415): populated by `enrich_source_counts` on the recall
+            // path; the generic row marshaller has no side-index access.
+            source_count: 0,
         });
     }
     Ok(out)

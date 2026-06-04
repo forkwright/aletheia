@@ -39,6 +39,7 @@ fn verified_fact_scores_higher_than_assumed() {
             graph_importance: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
     );
     let assumed = make_result(
@@ -54,6 +55,7 @@ fn verified_fact_scores_higher_than_assumed() {
             graph_importance: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
     );
 
@@ -78,6 +80,7 @@ fn own_fact_outranks_other_agent() {
             graph_importance: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
     );
     let other = make_result(
@@ -93,6 +96,7 @@ fn own_fact_outranks_other_agent() {
             graph_importance: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
     );
 
@@ -117,6 +121,7 @@ fn recent_fact_outranks_old() {
             graph_importance: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
     );
     let old = make_result(
@@ -132,6 +137,7 @@ fn recent_fact_outranks_old() {
             graph_importance: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
     );
 
@@ -152,6 +158,7 @@ fn custom_weights_shift_ranking() {
         graph_importance: 0.0,
         surprise: 0.0,
         evidence_coverage: 0.0,
+        convergence: 0.0,
     };
     let engine = RecallEngine::with_weights(weights);
 
@@ -169,6 +176,7 @@ fn custom_weights_shift_ranking() {
             graph_importance: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
     );
     let assumed_self = make_result(
@@ -184,6 +192,7 @@ fn custom_weights_shift_ranking() {
             graph_importance: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
+            convergence: 0.0,
         },
     );
 
