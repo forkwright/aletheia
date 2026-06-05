@@ -330,7 +330,49 @@ fn import_knowledge(
     nous_id: &str,
     knowledge: &mneme::portability::KnowledgeExport,
 ) -> Result<()> {
+    use mneme::embedding::{EmbeddingConfig, create_provider};
     use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+
+    let loaded_config = match taxis::loader::load_config(oikos) {
+        Ok(config) => Some(config),
+        Err(err) => {
+            tracing::warn!(
+                nous_id,
+                error = %err,
+                "failed to load instance config; imported fact vectors will be skipped"
+            );
+            None
+        }
+    };
+
+    let knowledge_config = loaded_config
+        .as_ref()
+        .map_or_else(KnowledgeConfig::default, |config| KnowledgeConfig {
+            dim: config.embedding.dimension,
+            ..Default::default()
+        });
+
+    let embedding_provider = loaded_config.as_ref().and_then(|config| {
+        let embedding_config = EmbeddingConfig {
+            provider: config.embedding.provider.clone(),
+            model: config.embedding.model.clone(),
+            dimension: Some(config.embedding.dimension),
+            api_key: None,
+            base_url: None,
+        };
+        match create_provider(&embedding_config) {
+            Ok(provider) => Some(provider),
+            Err(err) => {
+                tracing::warn!(
+                    nous_id,
+                    provider = %config.embedding.provider,
+                    error = %err,
+                    "embedding provider unavailable; imported fact vectors will be skipped"
+                );
+                None
+            }
+        }
+    });
 
     let knowledge_path = knowledge_path_for_nous(oikos, nous_id);
     let parent = knowledge_path
@@ -338,7 +380,7 @@ fn import_knowledge(
         .ok_or_else(|| crate::error::Error::msg("knowledge path has no parent directory"))?;
     std::fs::create_dir_all(parent)
         .with_whatever_context(|_| format!("failed to create knowledge dir for {nous_id}"))?;
-    let store = KnowledgeStore::open_fjall(&knowledge_path, KnowledgeConfig::default())
+    let store = KnowledgeStore::open_fjall(&knowledge_path, knowledge_config)
         .with_whatever_context(|_| format!("failed to open knowledge store for {nous_id}"))?;
 
     for fact in &knowledge.facts {
@@ -355,6 +397,22 @@ fn import_knowledge(
         store
             .insert_relationship(rel)
             .with_whatever_context(|_| format!("import rel {:?} -> {:?}", rel.src, rel.dst))?;
+    }
+
+    if let Some(provider) = embedding_provider.as_ref() {
+        let inserted = store.backfill_fact_embeddings(&knowledge.facts, provider.as_ref());
+        tracing::info!(
+            nous_id,
+            fact_count = knowledge.facts.len(),
+            inserted,
+            "imported fact vector backfill complete"
+        );
+    } else if !knowledge.facts.is_empty() {
+        tracing::info!(
+            nous_id,
+            fact_count = knowledge.facts.len(),
+            "imported facts restored without vector embeddings"
+        );
     }
     Ok(())
 }
@@ -1435,6 +1493,7 @@ pub(crate) async fn guard_knowledge_lock(url: &str) -> Result<()> {
 )]
 mod tests {
     use std::collections::HashMap;
+    use std::fmt::Write as _;
 
     use mneme::portability::{
         AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo, WorkspaceData,
@@ -1712,6 +1771,18 @@ workspace = "nous/{agent_id}"
             ),
         )
         .unwrap();
+    }
+
+    fn write_mock_embedding_config(root: &Path, dimension: usize) {
+        let oikos = Oikos::from_root(root);
+        let config_path = oikos.config().join("aletheia.toml");
+        let mut config = std::fs::read_to_string(&config_path).unwrap();
+        write!(
+            config,
+            "\n[embedding]\nprovider = \"mock\"\ndimension = {dimension}\n"
+        )
+        .unwrap();
+        std::fs::write(config_path, config).unwrap();
     }
 
     #[test]
@@ -2553,7 +2624,81 @@ workspace = "nous/{agent_id}"
         assert_eq!(dest_rel.relation, "powers");
         assert!((dest_rel.weight - 1.0).abs() < f64::EPSILON);
 
-        // HNSW vectors are out of scope for this PR.
+        // NOTE: HNSW vectors are covered by the #4399 regression below.
+    }
+
+    /// #4399 / ADR-006 v2 — import must rebuild the HNSW index from restored facts.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn import_rebuilds_fact_embeddings_4399() {
+        use mneme::embedding::{EmbeddingConfig, create_provider};
+
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        seed_typed_knowledge(&source_oikos, "alice");
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        write_agent_config(dest.path(), "alice", "Alice");
+        write_mock_embedding_config(dest.path(), 4);
+
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+
+        let knowledge_path = knowledge_path_for_nous(&dest_oikos, "alice");
+        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
+            &knowledge_path,
+            mneme::knowledge_store::KnowledgeConfig {
+                dim: 4,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let provider = create_provider(&EmbeddingConfig {
+            provider: "mock".to_owned(),
+            model: None,
+            dimension: Some(4),
+            api_key: None,
+            base_url: None,
+        })
+        .unwrap();
+        let query_vec = provider.embed("Alice likes Rust").unwrap();
+        let results = store.search_vectors(query_vec, 5, 20).unwrap();
+
+        assert!(
+            results.iter().any(|r| r.source_id == "fact-rt-001"),
+            "imported fact must be indexed for vector recall: {results:?}"
+        );
     }
 
     /// #4163/PR4 — a full export → import → re-export cycle produces identical
