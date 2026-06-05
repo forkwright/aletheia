@@ -148,6 +148,12 @@ async fn execute_command(
                 let model = nous_manager
                     .get_config(nous_id)
                     .map_or_else(String::new, |c| c.generation.model.clone());
+                let thinking_enabled = nous_manager
+                    .get_config(nous_id)
+                    .is_some_and(|c| c.generation.thinking_enabled);
+                let thinking_budget = nous_manager
+                    .get_config(nous_id)
+                    .map_or(0, |c| c.generation.thinking_budget);
                 Some(AgentSnapshot {
                     id: st.id,
                     lifecycle: st.lifecycle.to_string(),
@@ -156,6 +162,8 @@ async fn execute_command(
                     panic_count: st.panic_count,
                     uptime_secs: st.uptime.as_secs(),
                     model,
+                    thinking_enabled,
+                    thinking_budget,
                 })
             }
             Err(e) => {
@@ -176,6 +184,12 @@ async fn execute_command(
                 let model = nous_manager
                     .get_config(&st.id)
                     .map_or_else(String::new, |c| c.generation.model.clone());
+                let thinking_enabled = nous_manager
+                    .get_config(&st.id)
+                    .is_some_and(|c| c.generation.thinking_enabled);
+                let thinking_budget = nous_manager
+                    .get_config(&st.id)
+                    .map_or(0, |c| c.generation.thinking_budget);
                 AgentSnapshot {
                     id: st.id,
                     lifecycle: st.lifecycle.to_string(),
@@ -184,6 +198,8 @@ async fn execute_command(
                     panic_count: st.panic_count,
                     uptime_secs: st.uptime.as_secs(),
                     model,
+                    thinking_enabled,
+                    thinking_budget,
                 }
             })
             .collect()
@@ -204,11 +220,17 @@ async fn execute_command(
         _ => vec![],
     };
 
+    // TODO(#4405): populate skills from SkillLoader / blackboard from BlackboardStore once threaded
+    let skills = Vec::new();
+    let blackboard_entries = Vec::new();
+
     let ctx = CommandContext {
         current_nous_id: nous_id.to_owned(),
         session_key: session_key.to_owned(),
         current_agent,
         all_agents,
+        skills,
+        blackboard_entries,
         channels,
     };
 
