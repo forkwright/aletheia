@@ -2681,10 +2681,10 @@ pub struct RecallFilteredFact {
 pub struct RecallStage {
     engine: RecallEngine,
     config: RecallConfig,
-    /// Optional side-query selected IDs for pre-filtering before 6-factor scoring.
+    /// Optional side-query selected IDs for pre-filtering before factor scoring.
     side_query_ids: Option<HashSet<String>>,
     /// Production side-query selector used to turn the raw recall manifest into
-    /// a prefilter for 6-factor scoring.
+    /// a prefilter for factor scoring.
     side_query_selector: mneme::side_query::SideQuerySelector,
     /// Data-sovereignty target: gates which facts may leave the instance
     /// through this recall pass (#3404, #3413). Defaults to
@@ -2704,12 +2704,21 @@ pub struct RecallStage {
     project_scope: mneme::recall::ProjectRecallScope,
     /// Optional URL for an HTTP cross-encoder reranker.
     reranker_url: Option<String>,
+    /// Session-scoped surprise scorer snapshot for the current turn.
+    ///
+    /// Present only when `surprise_weight > 0`: a clone of the session's
+    /// running `SurpriseCalculator` whose prior was advanced (actor-side) by
+    /// the current turn before the pipeline spawned. Used read-only in
+    /// `build_candidates` to score each candidate's topic-shift surprise
+    /// against the frozen session prior. `None` leaves `surprise` inert.
+    surprise_calculator: Option<SurpriseCalculator>,
 }
 ```
 
 ```rust
 impl RecallStage {
     pub fn new (config: RecallConfig) -> Self;
+    pub fn with_surprise_calculator (mut self, calc: Option<SurpriseCalculator>) -> Self;
     pub fn with_side_query_ids (mut self, ids: HashSet<String>) -> Self;
     pub fn with_deployment_target (mut self, target: DeploymentTarget) -> Self;
     pub fn with_pinned_facts (mut self, facts: &[FactId]) -> Self;
@@ -2774,6 +2783,43 @@ pub struct RecallConfig {
     /// Per-factor scoring weights applied when building candidates.
     #[serde(default)]
     pub weights: RecallWeights,
+    /// Recall-engine weight for the Bayesian-surprise factor. Default 0.0 (inert).
+    ///
+    /// Sourced from `knowledge.recall_surprise_weight`; threaded into
+    /// [`mneme::recall::RecallWeights::surprise`] at engine construction so a
+    /// non-zero value blends the session `SurpriseCalculator` signal into recall
+    /// scoring.
+    #[serde(default)]
+    pub surprise_weight: f64,
+    /// Recall-engine weight for the evidence-coverage factor. Default 0.0 (inert).
+    ///
+    /// Sourced from `knowledge.recall_evidence_coverage_weight`; threaded into
+    /// [`mneme::recall::RecallWeights::evidence_coverage`] at engine construction
+    /// so a non-zero value boosts candidates that answer an evidence gap in the
+    /// iterative-retrieval path.
+    #[serde(default)]
+    pub evidence_coverage_weight: f64,
+    /// Sigmoid midpoint (in nats) for surprise scoring. Default 2.0.
+    ///
+    /// Sourced from `knowledge.surprise_threshold`; passed to
+    /// [`mneme::recall::RecallEngine::score_surprise`] as the neutral boundary
+    /// above which a candidate counts as a topic shift.
+    #[serde(default = "default_surprise_threshold")]
+    pub surprise_threshold: f64,
+    /// EMA decay factor for the session `SurpriseCalculator`. Default 0.3.
+    ///
+    /// Sourced from `knowledge.surprise_ema_alpha`; controls how fast the
+    /// running topic distribution forgets older turns.
+    #[serde(default = "default_surprise_ema_alpha")]
+    pub surprise_ema_alpha: f64,
+    /// Recall-engine weight for the convergence (fact-multiplicity) factor.
+    /// Default 0.0 (inert).
+    ///
+    /// Sourced from `knowledge.recall_convergence_weight`; threaded into
+    /// [`mneme::recall::RecallWeights::convergence`] at engine construction so a
+    /// non-zero value boosts facts consolidated from more converging sources.
+    #[serde(default)]
+    pub convergence_weight: f64,
     /// Inject factor metadata into recalled knowledge prompts.
     ///
     /// When enabled, each recalled fact includes its factor scores so the
@@ -3287,6 +3333,14 @@ pub struct SessionState {
     /// WHY: persisted per-session so patterns are tracked across turns.
     /// Reset on operator intervention via `reset_on_user_message`.
     pub loop_guard: hermeneus::loop_detector::LoopGuard,
+    /// Running Bayesian-surprise distribution for this session.
+    ///
+    /// WHY: surprise is episodic — the prior must accumulate across turns to
+    /// detect topic shifts. Advanced once per turn (actor-side, before the
+    /// pipeline spawns) with the user content, then read in recall scoring to
+    /// rank candidates by how much they diverge from the session topic. Inert
+    /// unless `recall.surprise_weight > 0`.
+    pub surprise_calculator: mneme::surprise::SurpriseCalculator,
 }
 ```
 

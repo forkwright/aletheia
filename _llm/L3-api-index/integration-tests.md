@@ -47,6 +47,10 @@ impl TestHarness {
         register_tools: bool,
     ) -> Self;
     pub async fn build_with_provider_and_knowledge_store (provider: Box<dyn LlmProvider>) -> Self;
+    pub async fn build_with_provider_and_registry (
+        provider: Box<dyn LlmProvider>,
+        registry: ToolRegistry,
+    ) -> Self;
     pub fn knowledge_store (&self) -> Arc<KnowledgeStore>;
     pub fn embedding_provider (&self) -> Arc<dyn EmbeddingProvider>;
     pub fn auth_token (&self) -> String;

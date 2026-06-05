@@ -253,37 +253,79 @@ pub fn render_doc (doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocErro
 
 ## `src/pandoc_probe.rs`
 
+> Minimum Pandoc version required by `poiesis-doc`.
 ```rust
-pub struct PandocProbe {
-    /// Absolute path to the `pandoc` binary.
-    pub path: PathBuf,
-    /// Version string reported by `pandoc --version`, e.g. `"3.1.13"`.
-    pub version: String,
+pub const REQUIRED_PANDOC_VERSION: PandocVersion = (3, 0, 0);
+```
+
+> Semantic version triple used by the probe.
+```rust
+pub type PandocVersion = (u32, u32, u32);
+```
+
+```rust
+pub enum PandocProbe {
+    /// `pandoc` was found and meets the minimum version requirement.
+    Present {
+        /// Absolute path to the binary that was selected.
+        path: PathBuf,
+        /// Version reported by `pandoc --version`.
+        version: PandocVersion,
+    },
+    /// `pandoc` could not be found on PATH.
+    Missing {
+        /// Candidate paths that were searched.
+        searched: Vec<PathBuf>,
+    },
+    /// `pandoc` was found but is too old for this crate.
+    TooOld {
+        /// Absolute path to the binary that was selected.
+        path: PathBuf,
+        /// Version reported by `pandoc --version`.
+        found: PandocVersion,
+        /// Minimum version required by the crate.
+        required: PandocVersion,
+    },
 }
 ```
 
 ```rust
 impl PandocProbe {
-    pub fn check () -> Result<Self, PandocProbeError>;
+    pub fn check () -> Self;
+    pub fn require (self) -> Result<(), PandocProbeError>;
 }
 ```
 
 ```rust
 pub enum PandocProbeError {
-    /// `pandoc` binary not found on `PATH`.
+    /// `pandoc` binary not found on PATH.
     #[snafu(display(
-        "pandoc not found on PATH — install via `nix develop` \
-         (pandoc is pinned in flake.nix), or use the `pdf` format which needs no pandoc"
+        "pandoc not found (searched: {}). Install pandoc >= 3.0.0; on NixOS run `nix develop`, on Ubuntu/Debian run `apt install pandoc`, on macOS run `brew install pandoc`, or download from https://pandoc.org/installing.html",
+        searched
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
     ))]
-    NotFound,
+    NotInstalled {
+        /// Candidate paths that were searched.
+        searched: Vec<PathBuf>,
+    },
 
-    /// `pandoc --version` found the binary but the command failed.
-    #[snafu(display("pandoc found at {} but `pandoc --version` failed: {detail}", path.display()))]
-    VersionCheckFailed {
-        /// Path where pandoc was found.
+    /// `pandoc` was found but the version is below the minimum requirement.
+    #[snafu(display(
+        "pandoc at {} is version {}, but >= {} is required. Upgrade via https://pandoc.org/installing.html or `nix develop`",
+        path.display(),
+        format_version(found),
+        format_version(required)
+    ))]
+    VersionTooOld {
+        /// Path to the too-old binary.
         path: PathBuf,
-        /// Human-readable failure reason.
-        detail: String,
+        /// Found version.
+        found: PandocVersion,
+        /// Minimum version required.
+        required: PandocVersion,
     },
 }
 ```

@@ -5,6 +5,107 @@ Crate path: `crates/agora`
 Public API signatures extracted from source. Each signature is preceded by its doc comment.
 For implementation context, read the source directly (`L4`).
 
+## `src/command/mod.rs`
+
+```rust
+pub enum Command {
+    /// `!help` — list all available commands.
+    Help,
+    /// `!status` — lifecycle + session info for the routed nous agent.
+    Status,
+    /// `!agents` — list all running agents.
+    Agents,
+    /// `!whoami` — report which agent will receive this conversation.
+    WhoAmI,
+    /// `!new [session_name]` — start a fresh session (optional label).
+    New {
+        /// Optional human-readable label for the new session.
+        label: Option<String>,
+    },
+    /// `!end` — close the current session for this conversation thread.
+    End,
+    /// `!sessions` — list sessions tracked by the routed nous agent.
+    Sessions,
+    /// `!ping` — liveness check (no agent turn, just a round-trip ack).
+    Ping,
+    /// `!channels` — report registered channel providers and their health.
+    Channels,
+    /// `!uptime` — agent uptime and panic-boundary count.
+    Uptime,
+    /// `!model` — show the model currently configured for the routed agent.
+    Model,
+    /// `!info [agent_id]` — detail view of a specific or current agent.
+    Info {
+        /// Agent identifier to inspect; `None` means the current routed agent.
+        agent_id: Option<String>,
+    },
+    /// Unknown command: carries the unrecognised name for the error reply.
+    Unknown {
+        /// The unrecognised command name (without `!`).
+        name: String,
+    },
+}
+```
+
+```rust
+impl Command {
+    pub fn name (&self) -> &str;
+}
+```
+
+```rust
+pub fn parse (text: &str) -> Option<Command>
+```
+
+```rust
+pub struct AgentSnapshot {
+    /// Agent identifier.
+    pub id: String,
+    /// Lifecycle state as a display string (e.g., "idle", "active").
+    pub lifecycle: String,
+    /// Number of in-memory sessions tracked.
+    pub session_count: usize,
+    /// Currently active session key, if any.
+    pub active_session: Option<String>,
+    /// Panic-boundary hit count since last restart.
+    pub panic_count: u32,
+    /// Uptime in seconds.
+    pub uptime_secs: u64,
+    /// Configured LLM model name.
+    pub model: String,
+}
+```
+
+```rust
+pub struct ChannelSnapshot {
+    /// Channel identifier (e.g., "signal").
+    pub id: String,
+    /// Whether the last probe succeeded.
+    pub healthy: bool,
+    /// Round-trip latency in milliseconds from the last probe, if measured.
+    pub latency_ms: Option<u64>,
+}
+```
+
+```rust
+pub struct CommandContext {
+    /// The nous agent that would normally handle this conversation.
+    pub current_nous_id: String,
+    /// Session key identifying this conversation thread.
+    pub session_key: String,
+    /// Status snapshot for the current agent (if available).
+    pub current_agent: Option<AgentSnapshot>,
+    /// All running agent snapshots.
+    pub all_agents: Vec<AgentSnapshot>,
+    /// Channel health snapshots (empty when probe was not run).
+    pub channels: Vec<ChannelSnapshot>,
+}
+```
+
+```rust
+pub fn execute (cmd: &Command, ctx: &CommandContext) -> String
+```
+
 ## `src/error.rs`
 
 ```rust
