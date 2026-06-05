@@ -1167,6 +1167,19 @@ impl OpenAiProvider {
 
 ## `src/provider.rs`
 
+```rust
+pub enum MatchKind {
+    // WHY: lower numeric value = lower specificity; `find_provider` keeps
+    // the maximum. Ord derives compare numerically so CatchAll < Prefix < Exact.
+    /// Broad family-pattern match; lowest specificity.
+    CatchAll = 0,
+    /// Namespaced-prefix match (e.g. `cc/`, `codex/`); medium specificity.
+    Prefix = 1,
+    /// Exact model-ID match; highest specificity.
+    Exact = 2,
+}
+```
+
 > Trait for LLM providers.
 > 
 > Implementations handle authentication, request formatting, response parsing,
@@ -1183,6 +1196,7 @@ pub trait LlmProvider : Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>>;
     fn supported_models (&self) -> &[&str];
     fn supports_model (&self, model: &str) -> bool; // default impl
+    fn match_specificity (&self, model: &str) -> Option<MatchKind>; // default impl
     fn name (&self) -> &str;
     fn deployment_target (&self) -> DeploymentTarget; // default impl
     fn supports_streaming (&self) -> bool; // default impl
@@ -1412,6 +1426,8 @@ pub struct MockProvider {
     models: &'static [&'static str],
     provider_name: &'static str,
     requests: Mutex<Vec<CompletionRequest>>,
+    /// Override for `match_specificity`. `None` = use the default exact-match logic.
+    match_kind_override: Option<MatchKind>,
 }
 ```
 
@@ -1422,6 +1438,7 @@ impl MockProvider {
     pub fn error (message: &str) -> Self;
     pub fn models (mut self, models: &'static [&'static str]) -> Self;
     pub fn named (mut self, name: &'static str) -> Self;
+    pub fn with_match_kind (mut self, kind: MatchKind) -> Self;
     pub fn captured_requests (&self) -> Vec<CompletionRequest>;
 }
 ```

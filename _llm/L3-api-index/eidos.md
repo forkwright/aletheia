@@ -475,6 +475,12 @@ pub struct RecallResult {
     pub source_type: String,
     /// Source ID.
     pub source_id: String, // kanon:ignore RUST/primitive-for-domain-id — polymorphic source reference string, not a single domain ID type
+    /// Owning nous identifier carried from the storage layer so the recall
+    /// pipeline can apply cohort-visibility filtering (#208).  Empty string
+    /// for non-fact sources or results from pre-208 storage that has not yet
+    /// been hydrated.
+    #[serde(default)]
+    pub nous_id: String,
     /// Data-sovereignty classification for the underlying fact, carried
     /// from [`Fact::sensitivity`] so the recall pipeline can filter results
     /// by the active provider's deployment target (#3404, #3413). Defaults
@@ -515,6 +521,14 @@ pub struct RecallResult {
     /// [`Visibility::Private`]: super::fact::Visibility::Private
     #[serde(default)]
     pub visibility: super::fact::Visibility,
+    /// Consolidated-fact source count from the `fact_multiplicity` side-index,
+    /// carried so the recall pipeline can score the convergence factor (#4415).
+    ///
+    /// `0` for legacy / non-consolidated facts (no multiplicity record) and for
+    /// non-fact sources; populated by the knowledge store only when the
+    /// convergence recall weight is active.
+    #[serde(default)]
+    pub source_count: u32,
 }
 ```
 

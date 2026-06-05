@@ -189,7 +189,7 @@ pub struct NuExtractProviderConfig {
 > front. Schema-constrained JSON is generated at inference time with a
 > greedy decode (temperature=0 equivalent). Entity and relationship fields
 > from the returned JSON are lifted into `Extraction`; the LLM fallback is
-> not used because NuExtract is designed for full-coverage extraction rather
+> not used because `NuExtract` is designed for full-coverage extraction rather
 > than NER-only span tagging.
 ```rust
 pub struct NuExtractProvider {
@@ -2526,6 +2526,16 @@ pub struct KnowledgeStore {
     dim: usize,
     /// Serializes read-modify-write access counter increments to prevent races.
     access_lock: std::sync::Mutex<()>,
+    /// Serializes admission-check + insert so concurrent writers for the same
+    /// fact cannot both pass the admission gate and write independently.
+    ///
+    /// WHY: `should_admit` reads store state (or inspects the fact) and then
+    /// `run_mut` writes. Without this lock a second concurrent insert of the
+    /// same fact could pass `should_admit` before the first write lands.
+    /// The `:put` upsert means the end-state is still correct (one row), but
+    /// the admission gate would have fired twice — potentially consuming policy
+    /// budget (e.g. rate counters) or triggering side effects on both paths.
+    insert_lock: std::sync::Mutex<()>,
     /// Admission policy gate: checked before every fact insertion.
     admission_policy: Box<dyn crate::admission::AdmissionPolicy>,
 }
@@ -3087,6 +3097,26 @@ pub struct RecallWeights {
     /// Weight for graph `PageRank` importance (hub entities boosted).
     /// Default: 0.10
     pub graph_importance: f64,
+    /// Weight for Bayesian surprise (topic-shift signal from EM-LLM).
+    ///
+    /// Non-zero values blend in a per-candidate surprise score produced by
+    /// `SurpriseCalculator`. Default: 0.0 (inert — existing behaviour
+    /// preserved). Enable by setting a positive weight in config.
+    pub surprise: f64,
+    /// Weight for evidence-gap coverage (`MemR3` iterative retrieval).
+    ///
+    /// Non-zero values blend in how well a candidate's fact ID appears in the
+    /// evidence-gap tracker's answered set. Default: 0.0 (inert). Enable by
+    /// setting a positive weight in config.
+    pub evidence_coverage: f64,
+    /// Weight for consolidated-fact convergence (multiplicity / source count).
+    ///
+    /// Non-zero values blend in `log(1 + source_count)` (from the
+    /// `fact_multiplicity` side-index) so facts assembled from more independent
+    /// converging observations rank higher. Default: 0.0 (inert). Legacy /
+    /// non-consolidated facts have `source_count` 0 and score 0 here, so enabling
+    /// the weight never regresses them.
+    pub convergence: f64,
 }
 ```
 
@@ -3106,6 +3136,25 @@ pub struct FactorScores {
     pub access_frequency: f64,
     /// `PageRank` graph importance score [0.0, 1.0] (1.0 = highest hub).
     pub graph_importance: f64,
+    /// Bayesian surprise contribution [0.0, 1.0].
+    ///
+    /// Normalised inverse of the KL-divergence score from `SurpriseCalculator`.
+    /// Default: 0.0 — inert unless `RecallWeights::surprise > 0`.
+    pub surprise: f64,
+    /// Evidence-coverage score [0.0, 1.0].
+    ///
+    /// 1.0 when the candidate's `source_id` appears in the `EvidenceGapTracker`
+    /// answered set with high confidence; 0.0 when absent. Supplied by callers
+    /// running iterative retrieval. Default: 0.0 — inert unless
+    /// `RecallWeights::evidence_coverage > 0`.
+    pub evidence_coverage: f64,
+    /// Convergence score [0.0, 1.0] from consolidated-fact multiplicity.
+    ///
+    /// `log(1 + source_count)` normalised against a saturation point, so facts
+    /// built from more independent observations score higher. 0.0 for legacy /
+    /// non-consolidated facts (`source_count` 0). Default: 0.0 — inert unless
+    /// `RecallWeights::convergence > 0`.
+    pub convergence: f64,
 }
 ```
 
@@ -3192,6 +3241,13 @@ impl RecallEngine {
     ) -> Vec<ScoredResult>;
     pub fn rank (&self, mut candidates: Vec<ScoredResult>) -> Vec<ScoredResult>;
     pub fn score_graph_importance (&self, importance: f64) -> f64;
+    pub fn score_surprise (&self, surprise_nats: f64, midpoint_nats: f64) -> f64;
+    pub fn score_evidence_coverage (
+        &self,
+        source_id: &str,
+        answered_ids: &std::collections::HashMap<String, f64>,
+    ) -> f64;
+    pub fn score_convergence (&self, source_count: u32) -> f64;
 }
 ```
 
@@ -4137,6 +4193,7 @@ impl SurpriseCalculator {
     pub fn new () -> Self;
     pub fn with_alpha (ema_alpha: f64) -> Self;
     pub fn compute_surprise (&mut self, text: &str) -> f64;
+    pub fn surprise_of (&self, text: &str) -> f64;
 }
 ```
 

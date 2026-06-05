@@ -5,6 +5,8 @@ Cross-tool guide for AI coding agents (Claude Code, Cursor, Windsurf, Copilot, e
 ## Build / Test / Lint
 
 ```bash
+scripts/install-hooks.sh               # one-time: install fmt/clippy/_llm pre-push hook (auto via .envrc)
+cargo +1.94.0 fmt --all -- --check     # REQUIRED CI check, runs first in gate-attestation
 cargo check -p <crate>                 # fast compile check
 cargo test -p <crate>                  # single crate tests
 cargo clippy --workspace               # lint (zero warnings)

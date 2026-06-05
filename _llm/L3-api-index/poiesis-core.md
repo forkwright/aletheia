@@ -692,6 +692,8 @@ impl Factbase {
         &self,
         adapters: &DataSourceRegistry,
     ) -> Result<BTreeMap<FactId, ResolvedFact>, FactbaseError>;
+    pub fn walk_citation_chain (&self, root: &FactId) -> Vec<FactId>;
+    pub fn claim_citation_chain (&self, claim_id: &ClaimId) -> Option<Vec<FactId>>;
 }
 ```
 
@@ -742,6 +744,53 @@ pub struct Metadata {
 ```rust
 impl Metadata {
     pub fn titled (title: impl Into<String>) -> Self;
+}
+```
+
+## `src/qa.rs`
+
+```rust
+pub enum QaIssueKind {
+    /// A citation could not be resolved to a fact.
+    CitationUnresolvable,
+    /// A claim does not match the fact it cites.
+    ClaimMismatch,
+    /// Prose violated a style or structural rule.
+    ProseViolation,
+    /// A required section is absent from the document.
+    MissingSection,
+}
+```
+
+```rust
+pub struct QaIssue {
+    /// The classification of the issue.
+    pub kind: QaIssueKind,
+    /// Optional source location (e.g. a JSON pointer or line reference).
+    pub location: Option<String>,
+    /// Human-readable description of the issue.
+    pub message: String,
+}
+```
+
+```rust
+pub struct QaReport {
+    /// Whether any issues were found.
+    pub has_issues: bool,
+    /// Number of issues in this report.
+    pub issue_count: usize,
+    /// The individual issues comprising this report.
+    pub issues: Vec<QaIssue>,
+}
+```
+
+```rust
+impl QaReport {
+    pub fn pass () -> Self;
+    pub fn new (issues: Vec<QaIssue>) -> Self;
+    pub fn merge (reports: impl IntoIterator<Item = QaReport>) -> Self;
+    pub fn is_clean (&self) -> bool;
+    pub fn to_json (&self) -> Result<String, serde_json::Error>;
 }
 ```
 

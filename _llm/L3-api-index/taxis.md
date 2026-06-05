@@ -745,6 +745,39 @@ pub struct KnowledgeConfig {
     /// EMA alpha for surprise baseline adaptation. Default: 0.3.
     /// Mirrors `episteme::surprise::DEFAULT_EMA_ALPHA`.
     pub surprise_ema_alpha: f64,
+    /// Recall weight for Bayesian surprise contribution. Default: 0.0 (inert).
+    ///
+    /// Non-zero values blend the session `SurpriseCalculator`'s KL-divergence
+    /// signal (via `RecallEngine::score_surprise`) into recall scoring, so
+    /// candidates whose content diverges from the running session topic rank
+    /// higher. Threaded into `RecallWeights::surprise` at engine construction
+    /// (`aletheia::runtime::nous_config` → `RecallConfig::surprise_weight`).
+    ///
+    /// WARNING: this is a novelty/serendipity signal, not a relevance booster —
+    /// it surfaces cross-topic memories (high topic-shift surprise), trading
+    /// relevance for diversity. Keep it small relative to `vector_similarity`.
+    pub recall_surprise_weight: f64,
+    /// Recall weight for evidence-gap coverage. Default: 0.0 (inert).
+    ///
+    /// Non-zero values boost candidates whose `source_id` answers a decomposed
+    /// query gap (via `RecallEngine::score_evidence_coverage`) during the
+    /// iterative-retrieval path. Threaded into `RecallWeights::evidence_coverage`
+    /// at engine construction.
+    pub recall_evidence_coverage_weight: f64,
+    /// Recall weight for consolidated-fact convergence. Default: 0.0 (inert).
+    ///
+    /// Non-zero values boost facts assembled from more independent converging
+    /// observations, scored as `log(1 + source_count)` from the
+    /// `fact_multiplicity` side-index (via `RecallEngine::score_convergence`).
+    /// Threaded into `RecallWeights::convergence` at engine construction.
+    pub recall_convergence_weight: f64,
+    /// Admission policy applied to every `insert_fact` call. Default: `default` (admit-all).
+    ///
+    /// Set to `structured` to activate the five-factor A-MAC gate
+    /// (`StructuredAdmissionPolicy`). Operators can tune the threshold and
+    /// min-confidence via `episteme::admission::StructuredAdmissionConfig`
+    /// defaults; those knobs are not yet surfaced in the TOML cascade.
+    pub admission_policy: AdmissionPolicyKind,
 }
 ```
 
@@ -762,6 +795,22 @@ pub enum BookkeepingProviderKind {
     Llm,
     /// `GLiNER` ONNX entity adapter with LLM fallback.
     Gliner,
+}
+```
+
+```rust
+pub enum AdmissionPolicyKind {
+    /// Admit-all policy: every fact that passes basic validation is stored.
+    ///
+    /// This is the pre-admission-control behavior. Use this when the
+    /// extraction pipeline is already well-filtered or when behavioral
+    /// compatibility with existing deployments is required.
+    #[default]
+    Default,
+    /// Five-factor A-MAC policy (arxiv 2603.04549): utility, confidence,
+    /// novelty, recency, and content-type prior. Facts whose combined
+    /// weighted score falls below the configured threshold are rejected.
+    Structured,
 }
 ```
 

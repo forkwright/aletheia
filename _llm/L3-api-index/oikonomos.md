@@ -403,6 +403,7 @@ pub trait KnowledgeMaintenanceExecutor : Send + Sync {
     fn maintain_indexes (&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
     fn health_check (&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
     fn run_skill_decay (&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
+    fn materialize_derived_facts (&self) -> crate::error::Result<MaintenanceReport>;
 }
 ```
 
@@ -1288,6 +1289,9 @@ pub enum BuiltinTask {
     PromptAuditRotation,
     /// Refresh empirical after-action routing statistics from JSONL logs.
     RoutingStoreRefresh,
+    /// Materialize derived Datalog rules (IS-A closure, causal chains, defeasible defaults)
+    /// into the `derived_facts` relation.
+    DerivedFactsMaterialize,
 }
 ```
 

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Pre-push hook: catch the CI-required checks that reliably slip to CI — cargo
+# fmt, _llm index freshness, and clippy — at the push->PR boundary instead.
+#
+# Install: `git config core.hooksPath scripts/githooks` (auto-set by .envrc, or
+# run `scripts/install-hooks.sh`). Deliberate bypass: `git push --no-verify`.
+#
+# Speed: fmt (~4s) + _llm (~3s) always run (cheap, and fmt is the check that
+# first-failed CI on formatting alone). Clippy runs on AFFECTED crates by
+# default; set PREPUSH_FULL=1 for the bit-exact workspace clippy CI runs, or
+# PREPUSH_NO_CLIPPY=1 to skip it (CI gate-attestation is the backstop).
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+fail() { echo "" >&2; echo "❌ pre-push: $1" >&2; echo "   (bypass with: git push --no-verify)" >&2; exit 1; }
+
+echo "pre-push: cargo fmt --check ..."
+cargo +1.94.0 fmt --all -- --check \
+  || fail "formatting — run 'cargo +1.94.0 fmt --all' then re-push"
+
+# WHY: range vs the upstream the push targets; fall back to origin/main.
+range="origin/main...HEAD"
+git rev-parse --verify --quiet "@{push}" >/dev/null 2>&1 && range="@{push}..HEAD"
+changed="$(git diff --name-only "$range" 2>/dev/null || true)"
+
+# _llm L3 index freshness — paths-gated to what the CI workflow watches.
+if printf '%s\n' "$changed" | grep -qE '^crates/.*\.rs$|(^|/)Cargo\.toml$|^scripts/llm-extract-l3\.py$'; then
+  echo "pre-push: regenerating _llm L3 index ..."
+  uv run scripts/llm-extract-l3.py >/dev/null 2>&1 || fail "_llm extractor failed to run"
+  if ! git diff --quiet _llm/; then
+    git diff --stat _llm/ >&2
+    fail "_llm index stale — run 'uv run scripts/llm-extract-l3.py && git add _llm/' and commit"
+  fi
+fi
+
+if [ "${PREPUSH_NO_CLIPPY:-0}" = "1" ]; then
+  echo "pre-push: clippy skipped (PREPUSH_NO_CLIPPY=1); CI gate-attestation is the backstop"
+elif [ "${PREPUSH_FULL:-0}" = "1" ]; then
+  echo "pre-push: cargo clippy (CI-exact workspace) ..."
+  cargo +1.94.0 clippy --workspace --all-targets \
+    --exclude theatron --exclude skene --exclude koilon -- -D warnings \
+    || fail "clippy (workspace) — fix the warnings above"
+else
+  pkgs="$(printf '%s\n' "$changed" | python3 scripts/affected-crates.py 2>/dev/null || true)"
+  if [ -n "$pkgs" ]; then
+    echo "pre-push: cargo clippy on affected crates ($(echo "$pkgs" | tr '\n' ' '))..."
+    args=()
+    while IFS= read -r p; do [ -n "$p" ] && args+=("-p" "$p"); done <<< "$pkgs"
+    # WHY: affected-crate clippy is a fast 95% pre-filter; CI runs the bit-exact
+    # --workspace pass. Use PREPUSH_FULL=1 for parity.
+    cargo +1.94.0 clippy "${args[@]}" --all-targets -- -D warnings \
+      || fail "clippy (affected crates) — fix the warnings above"
+  fi
+fi
+
+echo "✅ pre-push checks passed"
