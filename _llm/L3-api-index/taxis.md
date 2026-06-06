@@ -469,6 +469,9 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
     pub knowledge_dedup_embed_threshold: f64,
     /// Bookkeeping provider selected for extraction. Default: `llm`.
     pub knowledge_extraction_provider: BookkeepingProviderKind,
+    // --- Compaction ---
+    /// Preserved-tail compaction strategy used during full context compaction.
+    pub compaction_strategy: CompactionStrategyKind,
 
     // --- Fact lifecycle ---
     /// Confidence above which a fact is considered Active. Default: 0.7.
@@ -795,6 +798,16 @@ pub enum BookkeepingProviderKind {
     Llm,
     /// `GLiNER` ONNX entity adapter with LLM fallback.
     Gliner,
+}
+```
+
+```rust
+pub enum CompactionStrategyKind {
+    /// Keep the preserved tail as whole messages.
+    #[default]
+    UniformTail,
+    /// Keep the last two steps full and compact earlier preserved steps.
+    StepPositional,
 }
 ```
 
@@ -2297,6 +2310,8 @@ pub enum ParameterValue {
     Float(f64),
     /// Boolean toggle.
     Bool(bool),
+    /// String-valued parameter.
+    Str(&'static str),
     /// Duration in the unit described by the parameter key (seconds, milliseconds, etc.).
     Duration(u64),
 }

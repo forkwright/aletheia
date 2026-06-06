@@ -37,6 +37,15 @@ fn spec_by_key_finds_known_parameter() {
 }
 
 #[test]
+fn spec_by_key_finds_compaction_strategy() {
+    let spec = spec_by_key("agents.defaults.behavior.compactionStrategy");
+    assert!(spec.is_some(), "expected to find compaction strategy spec");
+    let spec = spec.unwrap();
+    assert_eq!(spec.tier, ParameterTier::PerAgent);
+    assert_eq!(spec.default.to_string(), "uniform_tail");
+}
+
+#[test]
 fn spec_by_key_returns_none_for_unknown() {
     assert!(spec_by_key("nonexistent.key").is_none());
 }
@@ -175,6 +184,7 @@ fn registry_exposes_validated_behavior_fields() {
         "daemonBehavior.prosocheAnomalySampleSize",
         "daemonBehavior.runnerOutputBriefHeadLines",
         "daemonBehavior.runnerOutputBriefTailLines",
+        "agents.defaults.behavior.compactionStrategy",
     ];
 
     for key in VALIDATED_FIELDS {

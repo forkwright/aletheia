@@ -186,6 +186,18 @@ pub enum BookkeepingProviderKind {
     Gliner,
 }
 
+/// Preserved-tail compaction strategy for full context compaction.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CompactionStrategyKind {
+    /// Keep the preserved tail as whole messages.
+    #[default]
+    UniformTail,
+    /// Keep the last two steps full and compact earlier preserved steps.
+    StepPositional,
+}
+
 /// Which admission policy the knowledge store uses for fact insertion.
 ///
 /// Default is `Default` (admit-all), preserving existing behavior unless

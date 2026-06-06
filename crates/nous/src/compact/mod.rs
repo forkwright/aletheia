@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use jiff::SignedDuration;
 
 use hermeneus::types::ToolResultType;
+use taxis::config::CompactionStrategyKind;
 
 pub(crate) mod full;
 pub(crate) mod micro;
@@ -37,6 +38,8 @@ pub struct CompactConfig {
     pub full_compact_threshold: f64,
     /// Number of most-recent turns to preserve after full compaction.
     pub preserve_turns: usize,
+    /// Preserved-tail strategy applied during full compaction.
+    pub strategy: CompactionStrategy,
     /// Maximum number of critical files to re-inject after full compaction.
     pub max_critical_files: usize,
     /// Number of recent turns to scan for critical file identification.
@@ -60,6 +63,7 @@ impl Default for CompactConfig {
             keep_last_n: 2,
             full_compact_threshold: 0.80,
             preserve_turns: 3,
+            strategy: CompactionStrategy::UniformTail,
             max_critical_files: 5,
             critical_file_lookback: 3,
         }
@@ -116,29 +120,16 @@ pub fn select_prompt(reason: CompactReason) -> &'static str {
 use crate::memory::step::Step;
 
 /// Strategy for applying context compaction to a sequence of steps.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "#193 will wire CompactionStrategy into the pipeline"
-    )
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum CompactionStrategy {
     /// Uniform tail truncation (current default).
+    #[default]
     UniformTail,
     /// Step-positional: last 2 steps full, earlier i < n-2 notes-only.
     StepPositional,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "#193 will wire CompactionStrategy into the pipeline"
-    )
-)]
 impl CompactionStrategy {
     /// Apply the strategy to a step sequence under a token budget.
     ///
@@ -208,6 +199,20 @@ impl CompactionStrategy {
         result.reverse();
         result
     }
+}
+
+/// Map the configured taxis strategy kind to the internal compaction strategy.
+#[must_use]
+pub(crate) fn map_strategy(strategy: CompactionStrategyKind) -> CompactionStrategy {
+    match strategy {
+        CompactionStrategyKind::UniformTail => CompactionStrategy::UniformTail,
+        CompactionStrategyKind::StepPositional => CompactionStrategy::StepPositional,
+        _ => default_compaction_strategy(),
+    }
+}
+
+fn default_compaction_strategy() -> CompactionStrategy {
+    CompactionStrategy::UniformTail
 }
 
 #[cfg(test)]
@@ -284,6 +289,23 @@ mod tests {
         assert_eq!(
             config.max_critical_files, 5,
             "max_critical_files should default to 5"
+        );
+        assert_eq!(
+            config.strategy,
+            CompactionStrategy::UniformTail,
+            "strategy should default to UniformTail"
+        );
+    }
+
+    #[test]
+    fn strategy_kind_maps_to_internal_strategy() {
+        assert_eq!(
+            map_strategy(CompactionStrategyKind::UniformTail),
+            CompactionStrategy::UniformTail
+        );
+        assert_eq!(
+            map_strategy(CompactionStrategyKind::StepPositional),
+            CompactionStrategy::StepPositional
         );
     }
 
