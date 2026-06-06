@@ -35,6 +35,17 @@ pub(crate) fn doc_to_typst(doc: &Document) -> String {
             Block::Paragraph(text) => {
                 let _ = write!(out, "{}\n\n", render_rich(text));
             }
+            Block::Note(note) => {
+                let _ = writeln!(out, "*{}:* {}", note.kind.label(), render_rich(&note.body));
+                out.push('\n');
+            }
+            Block::DisplayMath(expr) => {
+                let _ = write!(out, "${expr}$\n\n");
+            }
+            Block::RawBlock { format, content } => {
+                let _ = writeln!(out, "[raw:{format}] {content}");
+                out.push('\n');
+            }
             Block::PageBreak => {
                 out.push_str("#pagebreak()\n\n");
             }
@@ -78,6 +89,7 @@ fn render_span(span: &Span) -> String {
         Span::Bold(s) => format!("*{s}*"),
         Span::Italic(s) => format!("_{s}_"),
         Span::Code(s) => format!("`{s}`"),
+        Span::Cite(id) => id.clone(),
         Span::Link { text, url } => format!("#link(\"{url}\")[{text}]"),
     }
 }

@@ -13,7 +13,8 @@ use crate::metadata::Metadata;
 pub struct Document {
     /// Document-level properties (title, author, creation time).
     pub metadata: Metadata,
-    /// Ordered block-level content: headings, paragraphs, tables, lists, images, page breaks.
+    /// Ordered block-level content: headings, paragraphs, notes, tables,
+    /// lists, images, display math, raw blocks, and page breaks.
     pub content: Vec<Block>,
 }
 

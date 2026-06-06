@@ -86,6 +86,25 @@ impl Renderer for XlsxRenderer {
                         .map_err(XlsxRendererError::from)?;
                     current_row += 1;
                 }
+                Block::Note(note) => {
+                    let text = format!("{}: {}", note.kind.label(), note.body.plain_text());
+                    worksheet
+                        .write(current_row, 0, text.as_str())
+                        .map_err(XlsxRendererError::from)?;
+                    current_row += 1;
+                }
+                Block::DisplayMath(expr) => {
+                    worksheet
+                        .write(current_row, 0, expr.as_str())
+                        .map_err(XlsxRendererError::from)?;
+                    current_row += 1;
+                }
+                Block::RawBlock { content, .. } => {
+                    worksheet
+                        .write(current_row, 0, content.as_str())
+                        .map_err(XlsxRendererError::from)?;
+                    current_row += 1;
+                }
                 Block::Table(table) => {
                     // Header row
                     for (col, header) in table.headers.iter().enumerate() {

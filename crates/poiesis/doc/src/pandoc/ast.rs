@@ -1,16 +1,10 @@
 //! Document → Pandoc JSON AST serialization.
 //!
 //! Converts `poiesis_core::Document` to the Pandoc native JSON format
-//! (`pandoc -f json`). The mapping is near-identity per B-006 § 1.
-//!
-//! # B-001 upgrade note
-//!
-//! This module currently serializes `poiesis_core::Document` (current types).
-//! When B-001 lands (`DeliverableSpec`, `Body::Document`, `Cite(FactId)`),
-//! the entry point will be upgraded to accept `DeliverableSpec` and the
-//! `Cite` → `Span("apx-cite")` mapping will be wired. See ESCALATION.md Q1.
+//! (`pandoc -f json`). The mapping is near-identity per B-006 § 1, with the
+//! typed note/cite/math/raw-block forms carried directly into the AST.
 
-use poiesis_core::{Block, Document, RichText, Span};
+use poiesis_core::{Block, Document, NoteKind, RichText, Span};
 use serde_json::{Value, json};
 
 /// Serialize a `Document` to Pandoc JSON AST bytes.
@@ -66,6 +60,33 @@ fn block_to_pandoc(block: &Block) -> Value {
             json!({
                 "t": "Para",
                 "c": inlines_to_pandoc(text)
+            })
+        }
+        Block::Note(note) => {
+            json!({
+                "t": "Div",
+                "c": [
+                    ["", ["apx-note"], [["data-kind", note_kind_to_attr(note.kind)]]],
+                    [{
+                        "t": "Para",
+                        "c": inlines_to_pandoc(&note.body)
+                    }]
+                ]
+            })
+        }
+        Block::DisplayMath(expr) => {
+            json!({
+                "t": "Para",
+                "c": [{
+                    "t": "Math",
+                    "c": [{"t": "DisplayMath"}, expr]
+                }]
+            })
+        }
+        Block::RawBlock { format, content } => {
+            json!({
+                "t": "RawBlock",
+                "c": [format, content]
             })
         }
         Block::PageBreak => {
@@ -159,6 +180,13 @@ fn span_to_pandoc(span: &Span) -> Value {
             "t": "Code",
             "c": [["", [], []], s]
         }),
+        Span::Cite(fact_id) => json!({
+            "t": "Span",
+            "c": [
+                ["", ["apx-cite"], [["data-factid", fact_id]]],
+                []
+            ]
+        }),
         Span::Link { text, url } => json!({
             "t": "Link",
             "c": [
@@ -168,6 +196,10 @@ fn span_to_pandoc(span: &Span) -> Value {
             ]
         }),
     }
+}
+
+fn note_kind_to_attr(kind: NoteKind) -> &'static str {
+    kind.as_str()
 }
 
 #[cfg(test)]
@@ -213,5 +245,102 @@ mod tests {
         let bytes = document_to_pandoc_json(&doc);
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
         assert_eq!(v["meta"]["title"]["t"], "MetaInlines");
+    }
+
+    #[test]
+    fn note_maps_to_div_with_kind_attr() {
+        use poiesis_core::{Block, Document, Metadata, Note, NoteKind, RichText, Span};
+
+        let doc = Document {
+            metadata: Metadata {
+                title: "Test".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::Note(Note {
+                kind: NoteKind::Warning,
+                body: RichText {
+                    spans: vec![Span::Plain("Mind the gap.".to_owned())],
+                },
+            })],
+        };
+
+        let bytes = document_to_pandoc_json(&doc);
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
+        assert_eq!(v["blocks"][0]["t"], "Div");
+        assert_eq!(
+            v["blocks"][0]["c"][0],
+            json!(["", ["apx-note"], [["data-kind", "warning"]]])
+        );
+        assert_eq!(v["blocks"][0]["c"][1][0]["t"], "Para");
+    }
+
+    #[test]
+    fn cite_maps_to_span_with_factid_attr() {
+        use poiesis_core::{Block, Document, Metadata, RichText, Span};
+
+        let doc = Document {
+            metadata: Metadata {
+                title: "Test".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::Paragraph(RichText {
+                spans: vec![Span::Cite("fact-42".to_owned())],
+            })],
+        };
+
+        let bytes = document_to_pandoc_json(&doc);
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
+        assert_eq!(v["blocks"][0]["t"], "Para");
+        assert_eq!(v["blocks"][0]["c"][0]["t"], "Span");
+        assert_eq!(
+            v["blocks"][0]["c"][0]["c"][0],
+            json!(["", ["apx-cite"], [["data-factid", "fact-42"]]])
+        );
+        assert_eq!(v["blocks"][0]["c"][0]["c"][1], json!([]));
+    }
+
+    #[test]
+    fn display_math_maps_to_math_inline() {
+        use poiesis_core::{Block, Document, Metadata};
+
+        let doc = Document {
+            metadata: Metadata {
+                title: "Test".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::DisplayMath("x^2 + y^2 = z^2".to_owned())],
+        };
+
+        let bytes = document_to_pandoc_json(&doc);
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
+        assert_eq!(v["blocks"][0]["t"], "Para");
+        assert_eq!(v["blocks"][0]["c"][0]["t"], "Math");
+        assert_eq!(v["blocks"][0]["c"][0]["c"][0]["t"], "DisplayMath");
+        assert_eq!(v["blocks"][0]["c"][0]["c"][1], "x^2 + y^2 = z^2");
+    }
+
+    #[test]
+    fn raw_block_maps_to_rawblock() {
+        use poiesis_core::{Block, Document, Metadata};
+
+        let doc = Document {
+            metadata: Metadata {
+                title: "Test".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::RawBlock {
+                format: "latex".to_owned(),
+                content: "\\alpha".to_owned(),
+            }],
+        };
+
+        let bytes = document_to_pandoc_json(&doc);
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
+        assert_eq!(v["blocks"][0]["t"], "RawBlock");
+        assert_eq!(v["blocks"][0]["c"], json!(["latex", "\\alpha"]));
     }
 }

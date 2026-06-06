@@ -58,8 +58,8 @@ pub mod qa;
 pub mod scalar;
 
 // Pre-existing surface retained verbatim for organon back-compat.
-/// Block-level document elements: headings, paragraphs, tables, lists,
-/// images.
+/// Block-level document elements: headings, paragraphs, notes, tables,
+/// lists, images, math, and raw blocks.
 pub mod block;
 /// Top-level [`Document`] type assembling metadata and content blocks.
 pub mod document;
@@ -68,11 +68,11 @@ pub mod metadata;
 /// [`Renderer`] trait for format backends (legacy signature; render-side
 /// B-NNN evolve this).
 pub mod renderer;
-/// Inline rich text spans: plain, bold, italic, code, links.
+/// Inline rich text spans: plain, bold, italic, code, cite, links.
 pub mod rich_text;
 
 // Re-exports — pre-existing.
-pub use block::{Block, Image, ListItem, Table};
+pub use block::{Block, Image, ListItem, Note, NoteKind, Table};
 pub use document::Document;
 pub use metadata::Metadata;
 pub use renderer::Renderer;
@@ -203,8 +203,10 @@ mod tests {
             spans: vec![
                 Span::Plain("hello ".to_owned()),
                 Span::Bold("world".to_owned()),
+                Span::Plain(" ".to_owned()),
+                Span::Cite("fact-123".to_owned()),
             ],
         };
-        assert_eq!(rt.plain_text(), "hello world");
+        assert_eq!(rt.plain_text(), "hello world fact-123");
     }
 }

@@ -270,8 +270,8 @@ fn parse_pandoc_version(output: &str) -> Option<(u32, u32, u32)> {
 /// 1. `opts.format == Pdf` and no `pdf_engine` override → Typst in-process.
 /// 2. `opts.pdf_engine == Some(Typst)` → Typst in-process.
 /// 3. `opts.pdf_engine == Some(XeLaTeX | LuaLaTeX)` → Pandoc + `LaTeX` engine.
-/// 4. Content-trigger routing (`DisplayMath`/`RawBlock(latex)`) → **not yet
-///    wired** (requires B-001 block types). See ESCALATION.md Q2.
+/// 4. Content-trigger routing (`DisplayMath`/`RawBlock(latex)`) remains a
+///    later routing chunk. See ESCALATION.md Q2.
 /// 5. All other formats → Pandoc via `PandocRunner`.
 ///
 /// # Errors
@@ -309,6 +309,7 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
                 Span::Bold(t) => format!("*{t}*"),
                 Span::Italic(t) => format!("_{t}_"),
                 Span::Code(t) => format!("`{t}`"),
+                Span::Cite(id) => id.clone(),
                 Span::Link { text, url } => format!("#link(\"{url}\")[{text}]"),
             })
             .collect()
@@ -337,6 +338,17 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
             Block::Paragraph(text) => {
                 src.push_str(&render_rich(text));
                 src.push_str("\n\n");
+            }
+            Block::Note(note) => {
+                let _ = writeln!(src, "*{}:* {}", note.kind.label(), render_rich(&note.body));
+                src.push('\n');
+            }
+            Block::DisplayMath(expr) => {
+                let _ = write!(src, "${expr}$\n\n");
+            }
+            Block::RawBlock { format, content } => {
+                let _ = writeln!(src, "[raw:{format}] {content}");
+                src.push('\n');
             }
             Block::PageBreak => src.push_str("#pagebreak()\n\n"),
             Block::Table(t) => {

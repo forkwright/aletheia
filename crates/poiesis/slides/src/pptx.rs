@@ -119,6 +119,19 @@ impl Renderer for PptxRenderer {
                 Block::Paragraph(rt) => {
                     current_slide = current_slide.add_bullet(&rt.plain_text());
                 }
+                Block::Note(note) => {
+                    current_slide = current_slide.add_bullet(&format!(
+                        "{}: {}",
+                        note.kind.label(),
+                        note.body.plain_text()
+                    ));
+                }
+                Block::DisplayMath(expr) => {
+                    current_slide = current_slide.add_bullet(expr);
+                }
+                Block::RawBlock { content, .. } => {
+                    current_slide = current_slide.add_bullet(content);
+                }
                 Block::List { ordered, items } => {
                     for (i, item) in items.iter().enumerate() {
                         let text = if *ordered {

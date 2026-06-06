@@ -460,6 +460,16 @@ impl Renderer for PlaintextRenderer {
                     buf.push_str(&text.plain_text());
                     buf.push('\n');
                 }
+                Block::Note(note) => {
+                    buf.push_str(note.kind.label());
+                    buf.push_str(": ");
+                    buf.push_str(&note.body.plain_text());
+                    buf.push('\n');
+                }
+                Block::DisplayMath(expr) | Block::RawBlock { content: expr, .. } => {
+                    buf.push_str(expr);
+                    buf.push('\n');
+                }
                 Block::Table(_) | Block::List { .. } | Block::Image(_) | Block::PageBreak => {}
             }
         }
