@@ -2233,6 +2233,11 @@ impl KnowledgeStore {
 ```rust
 impl KnowledgeStore {
     pub fn insert_fact (&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()>;
+    pub fn backfill_fact_embeddings (
+        &self,
+        facts: &[crate::knowledge::Fact],
+        provider: &dyn crate::embedding::EmbeddingProvider,
+    ) -> u64;
     pub fn query_facts (
         &self,
         nous_id: &str,
