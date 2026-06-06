@@ -35,6 +35,12 @@ pub enum Command {
     Uptime,
     /// `!model` — show the model currently configured for the routed agent.
     Model,
+    /// `!skills` — list skills available to the routed agent.
+    Skills,
+    /// `!blackboard` — show recent cross-nous blackboard entries.
+    Blackboard,
+    /// `!think` — show extended-thinking mode and budget.
+    Think,
     /// `!info [agent_id]` — detail view of a specific or current agent.
     Info {
         /// Agent identifier to inspect; `None` means the current routed agent.
@@ -63,6 +69,9 @@ impl Command {
             Self::Channels => "channels",
             Self::Uptime => "uptime",
             Self::Model => "model",
+            Self::Skills => "skills",
+            Self::Blackboard => "blackboard",
+            Self::Think => "think",
             Self::Info { .. } => "info",
             Self::Unknown { name } => name.as_str(),
         }
@@ -85,6 +94,9 @@ const KNOWN_COMMANDS: &[(&str, &str)] = &[
     ("!channels", "list channel providers and health"),
     ("!uptime", "agent uptime and panic-boundary count"),
     ("!model", "show the LLM model configured for this agent"),
+    ("!skills", "list skills available to this agent"),
+    ("!blackboard", "show recent cross-nous blackboard entries"),
+    ("!think", "show extended-thinking mode + budget"),
     (
         "!info [agent_id]",
         "detail view for an agent (default: current)",
@@ -130,6 +142,9 @@ pub fn parse(text: &str) -> Option<Command> {
         "channels" | "ch" => Command::Channels,
         "uptime" => Command::Uptime,
         "model" => Command::Model,
+        "skills" => Command::Skills,
+        "blackboard" | "bb" => Command::Blackboard,
+        "think" => Command::Think,
         "info" => Command::Info {
             agent_id: if rest.is_empty() {
                 None
@@ -161,6 +176,10 @@ pub struct AgentSnapshot {
     pub uptime_secs: u64,
     /// Configured LLM model name.
     pub model: String,
+    /// Whether extended thinking is enabled.
+    pub thinking_enabled: bool,
+    /// Token budget allocated to extended thinking.
+    pub thinking_budget: u32,
 }
 
 /// Channel health summary passed by the binary into the command context.
@@ -188,6 +207,10 @@ pub struct CommandContext {
     pub current_agent: Option<AgentSnapshot>,
     /// All running agent snapshots.
     pub all_agents: Vec<AgentSnapshot>,
+    /// Skills advertised by the current dispatch snapshot.
+    pub skills: Vec<String>,
+    /// Recent cross-nous blackboard entries.
+    pub blackboard_entries: Vec<String>,
     /// Channel health snapshots (empty when probe was not run).
     pub channels: Vec<ChannelSnapshot>,
 }
@@ -210,6 +233,9 @@ pub fn execute(cmd: &Command, ctx: &CommandContext) -> String {
         Command::Channels => cmd_channels(ctx),
         Command::Uptime => cmd_uptime(ctx),
         Command::Model => cmd_model(ctx),
+        Command::Skills => cmd_skills(ctx),
+        Command::Blackboard => cmd_blackboard(ctx),
+        Command::Think => cmd_think(ctx),
         Command::Info { agent_id } => cmd_info(ctx, agent_id.as_deref()),
         Command::Unknown { name } => cmd_unknown(name),
     }
@@ -345,6 +371,43 @@ fn cmd_model(ctx: &CommandContext) -> String {
     match &ctx.current_agent {
         None => format!("Agent '{}' status unavailable.", ctx.current_nous_id),
         Some(a) => format!("Agent '{}' model: {}.", a.id, a.model),
+    }
+}
+
+fn cmd_skills(ctx: &CommandContext) -> String {
+    if ctx.skills.is_empty() {
+        return "No skills available.".to_owned();
+    }
+    let mut out = format!("{} skill(s):\n", ctx.skills.len());
+    for skill in &ctx.skills {
+        let _ = writeln!(out, "  {skill}");
+    }
+    out.trim_end().to_owned()
+}
+
+fn cmd_blackboard(ctx: &CommandContext) -> String {
+    if ctx.blackboard_entries.is_empty() {
+        return "Blackboard empty.".to_owned();
+    }
+    let mut out = format!("{} blackboard entries:\n", ctx.blackboard_entries.len());
+    for entry in &ctx.blackboard_entries {
+        let _ = writeln!(out, "  {entry}");
+    }
+    out.trim_end().to_owned()
+}
+
+fn cmd_think(ctx: &CommandContext) -> String {
+    match &ctx.current_agent {
+        None => "No agent.".to_owned(),
+        Some(a) => format!(
+            "Extended thinking: {} (budget {} tokens).",
+            if a.thinking_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            a.thinking_budget,
+        ),
     }
 }
 
@@ -485,6 +548,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_skills() {
+        assert_eq!(parse("!skills"), Some(Command::Skills));
+    }
+
+    #[test]
+    fn parse_blackboard_variants() {
+        assert_eq!(parse("!blackboard"), Some(Command::Blackboard));
+        assert_eq!(parse("!bb"), Some(Command::Blackboard));
+    }
+
+    #[test]
+    fn parse_think() {
+        assert_eq!(parse("!think"), Some(Command::Think));
+    }
+
+    #[test]
     fn parse_info_no_arg() {
         assert_eq!(parse("!info"), Some(Command::Info { agent_id: None }));
     }
@@ -531,6 +610,8 @@ mod tests {
                 panic_count: 0,
                 uptime_secs: 3661,
                 model: "claude-sonnet-4-6".to_owned(),
+                thinking_enabled: false,
+                thinking_budget: 0,
             }),
             all_agents: vec![AgentSnapshot {
                 id: "syn".to_owned(),
@@ -540,7 +621,11 @@ mod tests {
                 panic_count: 0,
                 uptime_secs: 3661,
                 model: "claude-sonnet-4-6".to_owned(),
+                thinking_enabled: false,
+                thinking_budget: 0,
             }],
+            skills: vec![],
+            blackboard_entries: vec![],
             channels: vec![ChannelSnapshot {
                 id: "signal".to_owned(),
                 healthy: true,
@@ -640,6 +725,57 @@ mod tests {
     }
 
     #[test]
+    fn skills_lists_available_skills() {
+        let mut ctx = make_context();
+        ctx.skills = vec!["signal send".to_owned(), "session reset".to_owned()];
+        let reply = execute(&Command::Skills, &ctx);
+        assert!(reply.contains("signal send"), "{reply}");
+        assert!(reply.contains("session reset"), "{reply}");
+    }
+
+    #[test]
+    fn skills_reports_empty_state() {
+        let ctx = make_context();
+        let reply = execute(&Command::Skills, &ctx);
+        assert!(reply.contains("No skills available"), "{reply}");
+    }
+
+    #[test]
+    fn blackboard_lists_recent_entries() {
+        let mut ctx = make_context();
+        ctx.blackboard_entries = vec!["alice: session reset".to_owned()];
+        let reply = execute(&Command::Blackboard, &ctx);
+        assert!(reply.contains("alice: session reset"), "{reply}");
+    }
+
+    #[test]
+    fn blackboard_reports_empty_state() {
+        let ctx = make_context();
+        let reply = execute(&Command::Blackboard, &ctx);
+        assert!(reply.contains("Blackboard empty"), "{reply}");
+    }
+
+    #[test]
+    fn think_reports_current_agent_budget() {
+        let mut ctx = make_context();
+        if let Some(agent) = ctx.current_agent.as_mut() {
+            agent.thinking_enabled = true;
+            agent.thinking_budget = 42_000;
+        }
+        let reply = execute(&Command::Think, &ctx);
+        assert!(reply.contains("enabled"), "{reply}");
+        assert!(reply.contains("42000"), "{reply}");
+    }
+
+    #[test]
+    fn think_reports_no_agent() {
+        let mut ctx = make_context();
+        ctx.current_agent = None;
+        let reply = execute(&Command::Think, &ctx);
+        assert!(reply.contains("No agent"), "{reply}");
+    }
+
+    #[test]
     fn unknown_command_suggests_help() {
         let ctx = make_context();
         let reply = execute(
@@ -700,6 +836,9 @@ mod tests {
         assert_eq!(Command::Channels.name(), "channels");
         assert_eq!(Command::Uptime.name(), "uptime");
         assert_eq!(Command::Model.name(), "model");
+        assert_eq!(Command::Skills.name(), "skills");
+        assert_eq!(Command::Blackboard.name(), "blackboard");
+        assert_eq!(Command::Think.name(), "think");
         assert_eq!(Command::Info { agent_id: None }.name(), "info");
         assert_eq!(
             Command::Unknown {
