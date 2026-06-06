@@ -17,7 +17,8 @@ pub use daemon::DaemonBehaviorConfig;
 pub use dispatch::{CronTaskConfig, DispatchConfig, DispatchSpecConfig};
 pub use jwt::JwtSettings;
 pub use knowledge::{
-    AdmissionPolicyKind, BookkeepingProviderKind, ExtractionConfig, KnowledgeConfig,
+    AdmissionPolicyKind, BookkeepingProviderKind, CompactionStrategyKind, ExtractionConfig,
+    KnowledgeConfig,
 };
 pub use messaging::MessagingConfig;
 pub use nous::NousBehaviorConfig;

@@ -323,7 +323,7 @@ fn derive_proposed_value(spec: &ParameterSpec, delta: f64) -> ParameterValue {
             ParameterValue::Int(v)
         }
         ParameterValue::Float(_) => ParameterValue::Float(proposed_f64),
-        ParameterValue::Bool(_) => spec.default.clone(), // bools are not nudged
+        ParameterValue::Bool(_) | ParameterValue::Str(_) => spec.default.clone(),
         ParameterValue::Duration(_) => {
             // WHY: proposed_f64 is derived from u64 * 1.1 or u64 * 0.9, which is
             // non-negative and safely within u64 range for any config duration.
@@ -356,6 +356,7 @@ fn parameter_value_to_f64(value: &ParameterValue) -> f64 {
                 0.0
             }
         }
+        ParameterValue::Str(_) => 0.0,
         ParameterValue::Duration(v) => *v as f64, // kanon:ignore RUST/as-cast
     }
 }
@@ -370,10 +371,13 @@ pub fn build_override_fact_content(
     set_by: &str,
     evidence_summary: &str,
 ) -> String {
-    // WHY: serde_json is not used here to avoid adding a dependency for a
-    // simple 4-field JSON object. The values are pre-validated.
+    let value_json = match value {
+        ParameterValue::Str(v) => serde_json::to_string(v).unwrap_or_else(|_| format!("\"{v}\"")),
+        _ => value.to_string(),
+    };
+
     format!(
-        r#"{{"key":"{key}","value":{value},"set_by":"{set_by}","evidence":"{}"}}"#,
+        r#"{{"key":"{key}","value":{value_json},"set_by":"{set_by}","evidence":"{}"}}"#,
         evidence_summary.replace('"', "'"),
     )
 }
@@ -534,6 +538,17 @@ mod tests {
         assert!(content.contains(r#""value":95000"#));
         assert!(content.contains(r#""set_by":"syn""#));
         assert!(content.contains(r#""evidence":"32 turns, quality +12%""#));
+    }
+
+    #[test]
+    fn override_fact_content_quotes_string_values() {
+        let content = build_override_fact_content(
+            "behavior.compactionStrategy",
+            &ParameterValue::Str("uniform_tail"),
+            "ops",
+            "default path",
+        );
+        assert!(content.contains(r#""value":"uniform_tail""#));
     }
 
     #[test]

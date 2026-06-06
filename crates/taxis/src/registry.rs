@@ -62,6 +62,8 @@ pub enum ParameterValue {
     Float(f64),
     /// Boolean toggle.
     Bool(bool),
+    /// String-valued parameter.
+    Str(&'static str),
     /// Duration in the unit described by the parameter key (seconds, milliseconds, etc.).
     Duration(u64),
 }
@@ -72,6 +74,7 @@ impl std::fmt::Display for ParameterValue {
             Self::Int(v) => write!(f, "{v}"),
             Self::Float(v) => write!(f, "{v}"),
             Self::Bool(v) => write!(f, "{v}"),
+            Self::Str(v) => write!(f, "{v}"),
             Self::Duration(v) => write!(f, "{v}"),
         }
     }
@@ -847,6 +850,22 @@ fn build_registry() -> Vec<ParameterSpec> {
             affects: "safety_cost_control",
             outcome_signal: "session_cost_distribution",
             evidence_required: "Session token usage distribution",
+            direction_hint: TuningDirection::Contextual,
+        },
+        // ===================================================================
+        // Compaction
+        // ===================================================================
+        ParameterSpec {
+            key: "agents.defaults.behavior.compactionStrategy",
+            section: "agents.defaults.behavior",
+            tier: ParameterTier::PerAgent,
+            default: ParameterValue::Str("uniform_tail"),
+            bounds: None,
+            hot_reloadable: true,
+            description: "Context compaction preserved-tail strategy: uniform_tail | step_positional",
+            affects: "compaction_quality",
+            outcome_signal: "post_compaction_turn_quality",
+            evidence_required: "A/B comparison of decision retention across strategies",
             direction_hint: TuningDirection::Contextual,
         },
         // ===================================================================
