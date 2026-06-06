@@ -2668,7 +2668,9 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: false,
                 skip_workspace: false,
-                force: false,
+                // WHY: write_agent_config above pre-creates the dest nous dir, so
+                // import must overwrite it; the [embedding] config still applies.
+                force: true,
                 dry_run: false,
             },
         )
