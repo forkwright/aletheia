@@ -18,7 +18,7 @@ use organon::types::ToolContext;
 use taxis::oikos::Oikos;
 
 use crate::bootstrap::{BootstrapFileCache, BootstrapSection, LlmRecipe, TaskHint};
-use crate::compact::{CompactConfig, CompactReason, select_prompt};
+use crate::compact::{CompactConfig, CompactReason, map_strategy, select_prompt};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::{self, HistoryConfig};
@@ -420,7 +420,10 @@ pub(super) async fn run_full_compact_stage(
     let _guard = span.enter();
     let start = Instant::now();
 
-    let compact_config = CompactConfig::default();
+    let compact_config = CompactConfig {
+        strategy: map_strategy(config.behavior.compaction_strategy),
+        ..CompactConfig::default()
+    };
     let context_window = u64::from(config.generation.context_window);
 
     // NOTE: estimate consumed tokens from messages in context

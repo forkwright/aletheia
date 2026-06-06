@@ -34,6 +34,12 @@ pub enum Command {
     Uptime,
     /// `!model` — show the model currently configured for the routed agent.
     Model,
+    /// `!skills` — list skills available to the routed agent.
+    Skills,
+    /// `!blackboard` — show recent cross-nous blackboard entries.
+    Blackboard,
+    /// `!think` — show extended-thinking mode and budget.
+    Think,
     /// `!info [agent_id]` — detail view of a specific or current agent.
     Info {
         /// Agent identifier to inspect; `None` means the current routed agent.
@@ -73,6 +79,10 @@ pub struct AgentSnapshot {
     pub uptime_secs: u64,
     /// Configured LLM model name.
     pub model: String,
+    /// Whether extended thinking is enabled.
+    pub thinking_enabled: bool,
+    /// Token budget allocated to extended thinking.
+    pub thinking_budget: u32,
 }
 ```
 
@@ -97,6 +107,10 @@ pub struct CommandContext {
     pub current_agent: Option<AgentSnapshot>,
     /// All running agent snapshots.
     pub all_agents: Vec<AgentSnapshot>,
+    /// Skills advertised by the current dispatch snapshot.
+    pub skills: Vec<String>,
+    /// Recent cross-nous blackboard entries.
+    pub blackboard_entries: Vec<String>,
     /// Channel health snapshots (empty when probe was not run).
     pub channels: Vec<ChannelSnapshot>,
 }

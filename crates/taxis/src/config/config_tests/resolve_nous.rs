@@ -39,6 +39,11 @@ fn resolve_nous_uses_defaults_when_no_override() {
         resolved.behavior.distillation_context_token_trigger, 120_000,
         "default behavior should be used when no per-agent override is set"
     );
+    assert_eq!(
+        resolved.behavior.compaction_strategy,
+        CompactionStrategyKind::UniformTail,
+        "default behavior should preserve the uniform-tail compaction strategy"
+    );
     assert!(
         (resolved.behavior.competence_correction_penalty - 0.05).abs() < f64::EPSILON,
         "default competence_correction_penalty must come from AgentBehaviorDefaults"
@@ -63,6 +68,7 @@ fn resolve_nous_per_agent_override_wins() {
         recall: None,
         recall_profile: None,
         behavior: Some(AgentBehaviorDefaults {
+            compaction_strategy: CompactionStrategyKind::StepPositional,
             competence_correction_penalty: 0.10,
             ..Default::default()
         }),
@@ -71,6 +77,11 @@ fn resolve_nous_per_agent_override_wins() {
     assert!(
         (resolved.behavior.competence_correction_penalty - 0.10).abs() < f64::EPSILON,
         "per-agent behavior override must win over defaults"
+    );
+    assert_eq!(
+        resolved.behavior.compaction_strategy,
+        CompactionStrategyKind::StepPositional,
+        "per-agent compaction strategy override must win over defaults"
     );
     // All other fields should remain at default
     assert_eq!(
@@ -102,6 +113,11 @@ fn resolve_nous_non_overriding_agent_uses_defaults() {
     assert_eq!(
         resolved.behavior.corrections_max_corrections, 50,
         "agent without behavior override should use shared defaults"
+    );
+    assert_eq!(
+        resolved.behavior.compaction_strategy,
+        CompactionStrategyKind::UniformTail,
+        "agent without behavior override should use the default compaction strategy"
     );
 }
 
@@ -222,6 +238,7 @@ fn agent_behavior_defaults_survive_serde_roundtrip() {
         .defaults
         .behavior
         .competence_correction_penalty = 0.08;
+    config.agents.defaults.behavior.compaction_strategy = CompactionStrategyKind::StepPositional;
 
     let json = serde_json::to_string(&config).expect("serialize");
     let back: AletheiaConfig = serde_json::from_str(&json).expect("deserialize");
@@ -237,6 +254,11 @@ fn agent_behavior_defaults_survive_serde_roundtrip() {
     assert!(
         (back.agents.defaults.behavior.competence_correction_penalty - 0.08).abs() < f64::EPSILON,
         "competence_correction_penalty survives serde roundtrip"
+    );
+    assert_eq!(
+        back.agents.defaults.behavior.compaction_strategy,
+        CompactionStrategyKind::StepPositional,
+        "compaction_strategy survives serde roundtrip"
     );
 }
 
@@ -258,6 +280,11 @@ fn new_deployment_sections_are_absent_in_default_toml() {
     assert_eq!(
         config.messaging.poll_interval_ms, 2_000,
         "omitted messaging section should use defaults"
+    );
+    assert_eq!(
+        config.agents.defaults.behavior.compaction_strategy,
+        CompactionStrategyKind::UniformTail,
+        "omitted compaction strategy should use the uniform-tail default"
     );
 }
 

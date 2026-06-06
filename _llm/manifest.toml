@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-06-06T01:26:49Z"
+generated_at = "2026-06-06T03:08:05Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -14,13 +14,13 @@ generator = "scripts/llm-extract-l3.py"
 [[crates]]
 name = "agora"
 path = "crates/agora"
-source_hash = "f39ae1a6ebbf8ebfae1998bd41944fac607024abe11220193eb0bca306da2c4e"
-l3_token_estimate = 5636
+source_hash = "2c074fdf0b1b55fcfb6a33b972bbbb26922358af5a3316feb6d4f9b91cee2e3e"
+l3_token_estimate = 5778
 
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "88b534fd6b6c44eb88fde4f591171a3075b906b2efc74b011a14428cd578dee9"
+source_hash = "b1149450315d8a2a9170b7b8261205aba804773c1120f66fd62d104332dd6622"
 l3_token_estimate = 167
 
 [[crates]]
@@ -146,8 +146,8 @@ l3_token_estimate = 51
 [[crates]]
 name = "nous"
 path = "crates/nous"
-source_hash = "1653716a8bc42279e63ee80a1c39cb5e5a53c4c3454d240f09a8b300cfb8371b"
-l3_token_estimate = 34289
+source_hash = "d97734a4b64c7dd00b53f731dcf11be0823f313080caab6a59400c06e767ee81"
+l3_token_estimate = 34318
 
 [[crates]]
 name = "oikonomos"
@@ -278,8 +278,8 @@ l3_token_estimate = 6587
 [[crates]]
 name = "taxis"
 path = "crates/taxis"
-source_hash = "32e4a92bf745a3bf87cdfe16cff83f4349895221a80c569c2f52820688877899"
-l3_token_estimate = 24088
+source_hash = "1c8abe44a615565fd95bff6c38d9348665211ea18ba050c03ce2d315223cdb6c"
+l3_token_estimate = 24198
 
 [[crates]]
 name = "theatron"
