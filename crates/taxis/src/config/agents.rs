@@ -6,7 +6,7 @@ use eidos::id::FactId;
 use eidos::knowledge::MemoryScope;
 use serde::{Deserialize, Serialize};
 
-use super::{AgencyLevel, BookkeepingProviderKind};
+use super::{AgencyLevel, BookkeepingProviderKind, CompactionStrategyKind};
 
 /// Agent configuration: shared defaults and per-agent definitions.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -519,6 +519,9 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
     pub knowledge_dedup_embed_threshold: f64,
     /// Bookkeeping provider selected for extraction. Default: `llm`.
     pub knowledge_extraction_provider: BookkeepingProviderKind,
+    // --- Compaction ---
+    /// Preserved-tail compaction strategy used during full context compaction.
+    pub compaction_strategy: CompactionStrategyKind,
 
     // --- Fact lifecycle ---
     /// Confidence above which a fact is considered Active. Default: 0.7.
@@ -663,6 +666,7 @@ impl Default for AgentBehaviorDefaults {
             knowledge_dedup_jw_threshold: 0.85,
             knowledge_dedup_embed_threshold: 0.80,
             knowledge_extraction_provider: BookkeepingProviderKind::Llm,
+            compaction_strategy: CompactionStrategyKind::UniformTail,
             // Fact lifecycle
             fact_active_threshold: 0.7,
             fact_fading_threshold: 0.3,

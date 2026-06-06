@@ -8,9 +8,10 @@
 use tracing::debug;
 
 use crate::budget::CompactionMetrics;
+use crate::memory::step::Step;
 use crate::pipeline::PipelineMessage;
 
-use super::{CompactConfig, CriticalFile};
+use super::{CompactConfig, CompactionStrategy, CriticalFile};
 
 /// Result of a full compaction pass.
 #[derive(Debug, Clone)]
@@ -65,6 +66,18 @@ pub(crate) fn build_summary_request(
 
     let to_summarize = messages.get(..split_point).unwrap_or(&[]);
     let to_preserve = messages.get(split_point..).unwrap_or(&[]).to_vec();
+    let preserved = match config.strategy {
+        CompactionStrategy::UniformTail => to_preserve,
+        CompactionStrategy::StepPositional => {
+            let steps = crate::pipeline::assemble_steps(&to_preserve);
+            let budget = steps
+                .iter()
+                .map(Step::token_estimate)
+                .fold(0usize, usize::saturating_add);
+            let compacted = config.strategy.apply(&steps, budget);
+            render_steps(&compacted)
+        }
+    };
 
     let mut history_text = String::new();
     for msg in to_summarize {
@@ -75,7 +88,30 @@ pub(crate) fn build_summary_request(
     }
 
     let request = format!("{prompt}\n\n---\n\n{history_text}");
-    (request, to_preserve)
+    (request, preserved)
+}
+
+#[must_use]
+pub(crate) fn render_steps(steps: &[Step]) -> Vec<PipelineMessage> {
+    steps
+        .iter()
+        .flat_map(|step| {
+            let mut messages = Vec::with_capacity(1 + step.observations.len());
+            messages.push(PipelineMessage {
+                role: "assistant".to_owned(),
+                content: step.self_note.clone(),
+                token_estimate: i64::try_from(step.self_note.len().div_ceil(4)).unwrap_or(i64::MAX),
+                cache_breakpoint: false,
+            });
+            messages.extend(step.observations.iter().map(|observation| PipelineMessage {
+                role: "user".to_owned(),
+                content: observation.body.clone(),
+                token_estimate: i64::try_from(observation.token_estimate).unwrap_or(i64::MAX),
+                cache_breakpoint: false,
+            }));
+            messages
+        })
+        .collect()
 }
 
 /// Apply full compaction: replace history with summary + preserved tail.
@@ -254,6 +290,7 @@ fn extract_file_content(content: &str) -> String {
 mod tests {
     use super::*;
     use crate::compact::micro::format_tool_result;
+    use crate::memory::step::{Observation, Step};
 
     fn make_text_msg(role: &str, content: &str, tokens: i64) -> PipelineMessage {
         PipelineMessage {
@@ -262,6 +299,30 @@ mod tests {
             token_estimate: tokens,
             cache_breakpoint: false,
         }
+    }
+
+    fn make_step(index: usize, self_note: &str, observation_body: &str) -> Step {
+        Step {
+            self_note: self_note.to_owned(),
+            observations: vec![Observation::new("shell", observation_body)],
+            summary: None,
+            index,
+            started_at: jiff::Timestamp::UNIX_EPOCH,
+        }
+    }
+
+    fn message_signature(messages: &[PipelineMessage]) -> Vec<(String, String, i64, bool)> {
+        messages
+            .iter()
+            .map(|message| {
+                (
+                    message.role.clone(),
+                    message.content.clone(),
+                    message.token_estimate,
+                    message.cache_breakpoint,
+                )
+            })
+            .collect()
     }
 
     fn make_tool_msg(tool_name: &str, content: &str, tokens: i64) -> PipelineMessage {
@@ -343,6 +404,122 @@ mod tests {
         assert!(
             !request.contains("recent message"),
             "summarization request should not contain preserved messages"
+        );
+    }
+
+    #[test]
+    fn render_steps_round_trips_self_notes_and_tool_prefixes() {
+        let steps = vec![
+            make_step(
+                0,
+                "note 0",
+                &format_tool_result("shell", jiff::Timestamp::UNIX_EPOCH, "obs 0"),
+            ),
+            make_step(
+                1,
+                "note 1",
+                &format_tool_result("shell", jiff::Timestamp::UNIX_EPOCH, "obs 1"),
+            ),
+        ];
+
+        let rendered = render_steps(&steps);
+        assert!(
+            rendered
+                .iter()
+                .any(|message| message.role == "user" && message.content.starts_with("[tool:")),
+            "rendered observations should keep the [tool:] prefix"
+        );
+
+        let round_tripped = crate::pipeline::assemble_steps(&rendered);
+        assert_eq!(
+            round_tripped.len(),
+            steps.len(),
+            "rendered steps should round-trip through assemble_steps"
+        );
+        for (expected, actual) in steps.iter().zip(round_tripped.iter()) {
+            assert_eq!(
+                actual.self_note, expected.self_note,
+                "self_note should survive the render/assemble round-trip"
+            );
+        }
+        assert_eq!(
+            round_tripped[0].observations[0].body, steps[0].observations[0].body,
+            "observation body should round-trip"
+        );
+    }
+
+    #[test]
+    fn build_summary_request_step_positional_changes_preserved_tail() {
+        let messages: Vec<PipelineMessage> = (0..6)
+            .flat_map(|step_index| {
+                let note = format!("note {step_index}");
+                let observation_body = format!("observation {step_index} {}", "x".repeat(256));
+                let observation =
+                    format_tool_result("shell", jiff::Timestamp::UNIX_EPOCH, &observation_body);
+                vec![
+                    make_text_msg("assistant", &note, 10),
+                    make_text_msg("user", &observation, 90),
+                ]
+            })
+            .collect();
+
+        let uniform_config = CompactConfig {
+            preserve_turns: 6,
+            strategy: CompactionStrategy::UniformTail,
+            ..CompactConfig::default()
+        };
+        let positional_config = CompactConfig {
+            preserve_turns: 6,
+            strategy: CompactionStrategy::StepPositional,
+            ..CompactConfig::default()
+        };
+
+        let (_uniform_request, uniform_tail) =
+            build_summary_request(&messages, &uniform_config, "test prompt");
+        let (_positional_request, positional_tail) =
+            build_summary_request(&messages, &positional_config, "test prompt");
+
+        assert_eq!(
+            message_signature(&uniform_tail),
+            message_signature(&messages[6..]),
+            "UniformTail should keep the exact current whole-message tail"
+        );
+        assert_ne!(
+            message_signature(&positional_tail),
+            message_signature(&uniform_tail),
+            "StepPositional should change the preserved tail"
+        );
+
+        let positional_steps = crate::pipeline::assemble_steps(&positional_tail);
+        assert_eq!(
+            positional_steps.len(),
+            3,
+            "three preserved steps should remain visible after StepPositional compaction"
+        );
+        assert_eq!(positional_steps[0].self_note, "note 3");
+        assert!(
+            positional_steps[0].observations.is_empty(),
+            "older preserved step should lose observations under StepPositional"
+        );
+        assert!(
+            !positional_steps[1].observations.is_empty(),
+            "the last two preserved steps should keep their observations"
+        );
+        assert!(
+            !positional_steps[2].observations.is_empty(),
+            "the last two preserved steps should keep their observations"
+        );
+        assert!(
+            uniform_tail
+                .iter()
+                .any(|message| message.content.contains("observation 3")),
+            "UniformTail should keep the older observation body byte-for-byte"
+        );
+        assert!(
+            !positional_tail
+                .iter()
+                .any(|message| message.content.contains("observation 3")),
+            "StepPositional should strip the older observation body from the preserved tail"
         );
     }
 
