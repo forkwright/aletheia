@@ -647,6 +647,8 @@ pub struct CompactConfig {
     pub full_compact_threshold: f64,
     /// Number of most-recent turns to preserve after full compaction.
     pub preserve_turns: usize,
+    /// Preserved-tail strategy applied during full compaction.
+    pub strategy: CompactionStrategy,
     /// Maximum number of critical files to re-inject after full compaction.
     pub max_critical_files: usize,
     /// Number of recent turns to scan for critical file identification.
@@ -674,6 +676,7 @@ pub fn select_prompt (reason: CompactReason) -> &'static str
 ```rust
 pub enum CompactionStrategy {
     /// Uniform tail truncation (current default).
+    #[default]
     UniformTail,
     /// Step-positional: last 2 steps full, earlier i < n-2 notes-only.
     StepPositional,
