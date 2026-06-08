@@ -57,6 +57,93 @@ impl KnowledgeStore {
         result
     }
 
+    /// Rebuild fact embeddings after a restore/import.
+    ///
+    /// The importer only serializes typed knowledge, so the HNSW vector index
+    /// must be repopulated from the restored fact content. This helper is
+    /// best-effort: batch embedding is preferred, but failures fall back to
+    /// per-fact embedding and individual insert failures are logged and
+    /// skipped.
+    #[instrument(skip(self, facts, provider), fields(fact_count = facts.len()))]
+    pub fn backfill_fact_embeddings(
+        &self,
+        facts: &[crate::knowledge::Fact],
+        provider: &dyn crate::embedding::EmbeddingProvider,
+    ) -> u64 {
+        if facts.is_empty() {
+            return 0;
+        }
+        if crate::embedding::is_degraded_provider(provider) {
+            tracing::warn!(
+                fact_count = facts.len(),
+                "backfill_fact_embeddings: provider is degraded; skipping"
+            );
+            return 0;
+        }
+
+        let texts: Vec<&str> = facts.iter().map(|fact| fact.content.as_str()).collect();
+        let batch_embeddings = match provider.embed_batch(&texts) {
+            Ok(embeddings) if embeddings.len() == facts.len() => Some(embeddings),
+            Ok(embeddings) => {
+                tracing::warn!(
+                    fact_count = facts.len(),
+                    returned = embeddings.len(),
+                    "backfill_fact_embeddings: batch embed returned unexpected length; falling back to per-fact embedding"
+                );
+                None
+            }
+            Err(err) => {
+                tracing::warn!(
+                    fact_count = facts.len(),
+                    error = %err,
+                    "backfill_fact_embeddings: batch embed failed; falling back to per-fact embedding"
+                );
+                None
+            }
+        };
+
+        let mut inserted = 0u64;
+        let mut failures = 0u32;
+        if let Some(embeddings) = batch_embeddings {
+            for (fact, embedding) in facts.iter().zip(embeddings.into_iter()) {
+                insert_fact_embedding(self, fact, embedding, &mut inserted, &mut failures);
+            }
+        } else {
+            for fact in facts {
+                match provider.embed(&fact.content) {
+                    Ok(embedding) => {
+                        insert_fact_embedding(self, fact, embedding, &mut inserted, &mut failures);
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            fact_id = %fact.id,
+                            error = %err,
+                            "backfill_fact_embeddings: failed to embed fact"
+                        );
+                        failures = failures.saturating_add(1);
+                    }
+                }
+            }
+        }
+
+        if failures > 0 {
+            tracing::info!(
+                fact_count = facts.len(),
+                inserted,
+                failures,
+                "backfill_fact_embeddings complete (with failures)"
+            );
+        } else {
+            tracing::info!(
+                fact_count = facts.len(),
+                inserted,
+                "backfill_fact_embeddings complete"
+            );
+        }
+
+        inserted
+    }
+
     /// Supersede an existing fact with a new one.
     ///
     /// Sets `valid_to` on the old fact to `now` and `superseded_by` to the new
@@ -904,6 +991,47 @@ impl KnowledgeStore {
         tokio::task::spawn_blocking(move || this.query_facts(&nous_id, &now, limit))
             .await
             .context(crate::error::JoinSnafu)?
+    }
+}
+
+fn insert_fact_embedding(
+    store: &KnowledgeStore,
+    fact: &crate::knowledge::Fact,
+    embedding: Vec<f32>,
+    inserted: &mut u64,
+    failures: &mut u32,
+) {
+    use crate::id::EmbeddingId;
+    use crate::knowledge::EmbeddedChunk;
+
+    let Ok(id) = EmbeddingId::new(format!("emb-{}", fact.id.as_str())) else {
+        tracing::warn!(
+            fact_id = %fact.id,
+            "backfill_fact_embeddings: invalid embedding id; skipping"
+        );
+        *failures = failures.saturating_add(1);
+        return;
+    };
+
+    let chunk = EmbeddedChunk {
+        id,
+        content: fact.content.clone(),
+        source_type: "fact".to_owned(),
+        source_id: fact.id.as_str().to_owned(),
+        nous_id: fact.nous_id.clone(),
+        embedding,
+        created_at: fact.temporal.recorded_at,
+    };
+
+    if let Err(err) = store.insert_embedding(&chunk) {
+        tracing::warn!(
+            fact_id = %fact.id,
+            error = %err,
+            "backfill_fact_embeddings: failed to insert embedding"
+        );
+        *failures = failures.saturating_add(1);
+    } else {
+        *inserted = inserted.saturating_add(1);
     }
 }
 

@@ -111,6 +111,7 @@ toml_edit = "0.25"
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+mneme = { path = "../mneme", features = ["test-support"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 toml = { workspace = true }
