@@ -5,17 +5,28 @@
 //! - **Surprise scoring**: identify facts the agent hasn't accessed recently
 //! - **Path exploration**: find paths between seemingly unrelated entities
 //! - **Serendipity injection**: select "did you know?" facts for context injection
+#![cfg_attr(
+    all(not(test), not(feature = "mneme-engine")),
+    expect(
+        dead_code,
+        reason = "serendipity engine helpers are used by gated callers"
+    )
+)]
 
-use std::collections::BTreeMap;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 
 use crate::graph_intelligence::GraphContext;
 use crate::id::EntityId;
+#[cfg(feature = "mneme-engine")]
 use crate::knowledge_store::{KnowledgeStore, SerendipityDiscoveryReport};
+#[cfg(feature = "mneme-engine")]
+use std::collections::BTreeMap;
+#[cfg(feature = "mneme-engine")]
+use std::collections::hash_map::DefaultHasher;
+#[cfg(feature = "mneme-engine")]
+use std::hash::{Hash, Hasher};
 
 /// Configuration for the serendipity engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -601,6 +612,7 @@ fn reconstruct_path(
     }
 }
 
+#[cfg(feature = "mneme-engine")]
 #[derive(Debug, Clone, Copy)]
 struct EntityActivity {
     last_access_hours: f64,
@@ -608,6 +620,7 @@ struct EntityActivity {
     recorded_at: jiff::Timestamp,
 }
 
+#[cfg(feature = "mneme-engine")]
 impl EntityActivity {
     fn new(last_access_hours: f64, access_count: u32, recorded_at: jiff::Timestamp) -> Self {
         Self {
@@ -626,6 +639,7 @@ impl EntityActivity {
     }
 }
 
+#[cfg(feature = "mneme-engine")]
 #[expect(
     clippy::too_many_lines,
     reason = "orchestrates the full serendipity maintenance flow"
@@ -833,6 +847,7 @@ pub(crate) fn discover_serendipitous_facts(
     })
 }
 
+#[cfg(feature = "mneme-engine")]
 fn fact_entity_ids(store: &KnowledgeStore, fact_id: &str) -> crate::error::Result<Vec<String>> {
     let mut params = BTreeMap::new();
     params.insert(
