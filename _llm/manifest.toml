@@ -194,8 +194,8 @@ l3_token_estimate = 446
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "324d1bad99d06bfd4b8f25b6ef0990e8557d4a3767d62c89363a7ae02b1ea913"
-l3_token_estimate = 2385
+source_hash = "984834d60af142062e7c373b5ca4faac7532ee1563fb52f16bd6166ab5e35bcb"
+l3_token_estimate = 2403
 
 [[crates]]
 name = "poiesis-inspect"

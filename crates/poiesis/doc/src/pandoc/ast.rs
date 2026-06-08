@@ -10,12 +10,12 @@ use serde_json::{Value, json};
 /// Serialize a `Document` to Pandoc JSON AST bytes.
 ///
 /// The emitted JSON matches Pandoc's `--from json` input format.
-/// `pandoc-api-version` is pinned to `[1, 24, 1]` (Pandoc 3.x series).
+/// `pandoc-api-version` is pinned to `[1, 23, 1, 1]` for Pandoc 3.7.x.
 pub fn document_to_pandoc_json(doc: &Document) -> Vec<u8> {
     let blocks: Vec<Value> = doc.content.iter().map(block_to_pandoc).collect();
 
     let ast = json!({
-        "pandoc-api-version": [1, 24, 1],
+        "pandoc-api-version": [1, 23, 1, 1],
         "meta": build_meta(doc),
         "blocks": blocks
     });
@@ -234,7 +234,7 @@ mod tests {
         let doc = minimal_doc();
         let bytes = document_to_pandoc_json(&doc);
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("must be valid JSON");
-        assert_eq!(v["pandoc-api-version"], json!([1, 24, 1]));
+        assert_eq!(v["pandoc-api-version"], json!([1, 23, 1, 1]));
         assert_eq!(v["blocks"][0]["t"], "Header");
         assert_eq!(v["blocks"][1]["t"], "Para");
     }

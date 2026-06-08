@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use poiesis_core::Document;
+use serde::Serialize;
 use tracing::instrument;
 
 pub use error::PandocError;
@@ -226,7 +227,12 @@ impl PandocRunner {
     /// Returns [`PandocError::WriterFailed`] on non-zero exit or
     /// [`PandocError::TempFile`] / [`PandocError::Spawn`] on I/O failures.
     #[instrument(skip(self, ast_json), fields(fmt = ?opts.format))]
-    pub fn render(&self, ast_json: &[u8], opts: &DocOpts) -> Result<Vec<u8>, PandocError> {
+    pub fn render(
+        &self,
+        ast_json: &[u8],
+        opts: &DocOpts,
+        extra_env: &[(String, String)],
+    ) -> Result<Vec<u8>, PandocError> {
         use std::io::Write;
 
         // Write AST to a temp file (more reliable than large stdin pipes).
@@ -246,6 +252,10 @@ impl PandocRunner {
             .arg("-t")
             .arg(fmt)
             .arg(tmp_path);
+
+        for (key, value) in extra_env {
+            cmd.env(key, value);
+        }
 
         // Lua filters
         for filter in &opts.lua_filters {
@@ -319,7 +329,106 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
     // Pandoc path — probe for binary.
     let runner = PandocRunner::probe(None)?;
     let ast_json = ast::document_to_pandoc_json(doc);
-    runner.render(&ast_json, opts)
+    let mut render_opts = opts.clone();
+    render_opts.lua_filters.extend(default_lua_filters());
+    let facts_sidecar = write_apx_facts_sidecar(doc)?;
+    let extra_env = vec![(
+        "APX_FACTS".to_owned(),
+        facts_sidecar.path().display().to_string(),
+    )];
+    runner.render(&ast_json, &render_opts, &extra_env)
+}
+
+#[derive(Debug, Serialize)]
+struct ApxFactSidecarEntry {
+    display: String,
+    source_footnote: Option<String>,
+}
+
+fn default_lua_filters() -> Vec<PathBuf> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../filters");
+    vec![root.join("apx-cite.lua"), root.join("apx-theme.lua")]
+}
+
+fn write_apx_facts_sidecar(doc: &Document) -> Result<tempfile::NamedTempFile, PandocError> {
+    use std::collections::{BTreeMap, HashSet};
+    use std::io::Write;
+
+    let mut seen = HashSet::new();
+    let mut ordered_fact_ids = Vec::new();
+
+    for block in &doc.content {
+        collect_fact_ids_from_block(block, &mut seen, &mut ordered_fact_ids);
+    }
+
+    let mut sidecar = BTreeMap::new();
+    for (index, fact_id) in ordered_fact_ids.into_iter().enumerate() {
+        sidecar.insert(
+            fact_id,
+            ApxFactSidecarEntry {
+                display: format!("[{}]", index + 1),
+                source_footnote: None,
+            },
+        );
+    }
+
+    let serialized = serde_json::to_vec(&sidecar).map_err(|source| PandocError::TempFile {
+        source: std::io::Error::other(source),
+    })?;
+
+    let mut tmp = tempfile::Builder::new()
+        .suffix(".json")
+        .tempfile()
+        .map_err(|source| PandocError::TempFile { source })?;
+    tmp.write_all(&serialized)
+        .map_err(|source| PandocError::TempFile { source })?;
+    Ok(tmp)
+}
+
+fn collect_fact_ids_from_block(
+    block: &poiesis_core::Block,
+    seen: &mut std::collections::HashSet<String>,
+    ordered_fact_ids: &mut Vec<String>,
+) {
+    use poiesis_core::Block;
+
+    match block {
+        Block::Heading { text, .. } | Block::Paragraph(text) => {
+            collect_fact_ids_from_rich_text(text, seen, ordered_fact_ids);
+        }
+        Block::Note(note) => {
+            collect_fact_ids_from_rich_text(&note.body, seen, ordered_fact_ids);
+        }
+        Block::Table(table) => {
+            for row in &table.rows {
+                for cell in row {
+                    collect_fact_ids_from_rich_text(cell, seen, ordered_fact_ids);
+                }
+            }
+        }
+        Block::List { items, .. } => {
+            for item in items {
+                collect_fact_ids_from_rich_text(&item.content, seen, ordered_fact_ids);
+            }
+        }
+        Block::DisplayMath(_) | Block::RawBlock { .. } | Block::Image(_) | Block::PageBreak => {}
+    }
+}
+
+fn collect_fact_ids_from_rich_text(
+    text: &poiesis_core::RichText,
+    seen: &mut std::collections::HashSet<String>,
+    ordered_fact_ids: &mut Vec<String>,
+) {
+    use poiesis_core::Span;
+
+    for span in &text.spans {
+        if let Span::Cite(fact_id) = span
+            && seen.insert(fact_id.clone())
+        {
+            ordered_fact_ids.push(fact_id.clone());
+        }
+    }
 }
 
 fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
@@ -409,8 +518,13 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use crate::{
+        inspect_docx, render_docx_from_doc, render_html_from_doc, render_latex_from_doc,
+        render_md_from_doc,
+    };
     use poiesis_core::{Block, Document, Metadata, RichText};
 
     fn simple_doc() -> Document {
@@ -422,6 +536,47 @@ mod tests {
             },
             content: vec![Block::Paragraph(RichText::from("Hello."))],
         }
+    }
+
+    fn cite_doc() -> Document {
+        use poiesis_core::Span;
+
+        Document {
+            metadata: Metadata {
+                title: "Citations".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::Paragraph(RichText {
+                spans: vec![
+                    Span::Plain("See ".to_owned()),
+                    Span::Cite("fact-42".to_owned()),
+                    Span::Plain(" for details.".to_owned()),
+                ],
+            })],
+        }
+    }
+
+    fn warning_doc() -> Document {
+        use poiesis_core::{Note, NoteKind, Span};
+
+        Document {
+            metadata: Metadata {
+                title: "Warnings".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::Note(Note {
+                kind: NoteKind::Warning,
+                body: RichText {
+                    spans: vec![Span::Plain("Mind the gap.".to_owned())],
+                },
+            })],
+        }
+    }
+
+    fn pandoc_available() -> bool {
+        which::which("pandoc").is_ok()
     }
 
     #[test]
@@ -456,5 +611,68 @@ mod tests {
         assert_eq!(OutputFormat::Latex.pandoc_flag(), "latex");
         assert_eq!(OutputFormat::Html.pandoc_flag(), "html5");
         assert_eq!(OutputFormat::Epub.pandoc_flag(), "epub3");
+    }
+
+    #[test]
+    fn citation_display_is_stable_across_docx_html_and_md() {
+        if !pandoc_available() {
+            return;
+        }
+
+        let doc = cite_doc();
+
+        let docx = render_docx_from_doc(&doc).expect("docx must render");
+        let docx_summary = inspect_docx(&docx).expect("docx must inspect");
+        let docx_text = docx_summary.paragraphs.join("\n");
+        assert!(
+            docx_text.contains("[1]"),
+            "docx output must preserve the citation number"
+        );
+
+        let html = String::from_utf8(render_html_from_doc(&doc).expect("html must render"))
+            .expect("html must be utf-8");
+        assert!(
+            html.contains("[1]"),
+            "html output must preserve the citation number"
+        );
+
+        let md = String::from_utf8(render_md_from_doc(&doc).expect("md must render"))
+            .expect("markdown must be utf-8");
+        let md_visible = md.replace("\\[", "[").replace("\\]", "]");
+        assert!(
+            md_visible.contains("[1]"),
+            "markdown output must preserve the citation number"
+        );
+    }
+
+    #[test]
+    fn warning_note_renders_as_admonition_in_html_and_latex() {
+        if !pandoc_available() {
+            return;
+        }
+
+        let doc = warning_doc();
+
+        let html = String::from_utf8(render_html_from_doc(&doc).expect("html must render"))
+            .expect("html must be utf-8");
+        assert!(
+            html.contains("admonition-warning"),
+            "html output must include warning admonition classes"
+        );
+        assert!(
+            html.contains("Mind the gap."),
+            "html output must include the note body"
+        );
+
+        let latex = String::from_utf8(render_latex_from_doc(&doc).expect("latex must render"))
+            .expect("latex must be utf-8");
+        assert!(
+            latex.contains("\\begin{tcolorbox}[title={Warning}]"),
+            "latex output must wrap the note in a tcolorbox"
+        );
+        assert!(
+            latex.contains("Mind the gap."),
+            "latex output must include the note body"
+        );
     }
 }

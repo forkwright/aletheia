@@ -132,7 +132,7 @@ pub fn render_odt_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
 > Serialize a `Document` to Pandoc JSON AST bytes.
 > 
 > The emitted JSON matches Pandoc's `--from json` input format.
-> `pandoc-api-version` is pinned to `[1, 24, 1]` (Pandoc 3.x series).
+> `pandoc-api-version` is pinned to `[1, 23, 1, 1]` for Pandoc 3.7.x.
 ```rust
 pub fn document_to_pandoc_json (doc: &Document) -> Vec<u8>
 ```
@@ -267,7 +267,12 @@ pub struct PandocRunner {
 ```rust
 impl PandocRunner {
     pub fn probe (bin_override: Option<&Path>) -> Result<Self, PandocError>;
-    pub fn render (&self, ast_json: &[u8], opts: &DocOpts) -> Result<Vec<u8>, PandocError>;
+    pub fn render (
+        &self,
+        ast_json: &[u8],
+        opts: &DocOpts,
+        extra_env: &[(String, String)],
+    ) -> Result<Vec<u8>, PandocError>;
 }
 ```
 
