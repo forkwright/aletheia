@@ -63,6 +63,8 @@ poiesis-scaffold = { path = "../poiesis/scaffold" }
 poiesis-verify = { path = "../poiesis/verify" }
 poiesis-intake = { path = "../poiesis/intake" }
 poiesis-doc = { path = "../poiesis/doc" }
+poiesis-charts = { path = "../poiesis/charts", features = ["theme-bridge"] }
+poiesis-theme = { path = "../poiesis/theme" }
 poiesis-diff = { path = "../poiesis/diff" }
 poiesis-inspect = { path = "../poiesis/inspect" }
 koina = { path = "../koina" }
@@ -82,6 +84,7 @@ sha2 = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+zip = { version = "=8.5.1", default-features = false, features = ["deflate"] }
 z3 = { version = "0.20", optional = true, features = ["bundled"] }
 
 [dependencies.rustls]

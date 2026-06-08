@@ -6496,6 +6496,7 @@ dependencies = [
  "jiff",
  "koina",
  "landlock",
+ "poiesis-charts",
  "poiesis-core",
  "poiesis-diff",
  "poiesis-doc",
@@ -6505,6 +6506,7 @@ dependencies = [
  "poiesis-scaffold",
  "poiesis-sheet",
  "poiesis-slides",
+ "poiesis-theme",
  "poiesis-typst",
  "poiesis-verify",
  "prometheus-client",
@@ -6524,6 +6526,7 @@ dependencies = [
  "tokio",
  "tracing",
  "z3",
+ "zip 8.5.1",
 ]
 
 [[package]]
@@ -6988,6 +6991,7 @@ version = "0.30.0"
 dependencies = [
  "insta",
  "poiesis-core",
+ "poiesis-theme",
  "serde",
  "serde_json",
  "snafu",

@@ -65,11 +65,7 @@ pub fn emit_base_pptx(theme: &ResolvedTheme) -> Result<Vec<u8>, ThemeError> {
 
     pack_entry(&mut zip, "[Content_Types].xml", CONTENT_TYPES.as_bytes())?;
     pack_entry(&mut zip, "_rels/.rels", RELS_RELS.as_bytes())?;
-    pack_entry(
-        &mut zip,
-        "ppt/presentation.xml",
-        PRESENTATION.as_bytes(),
-    )?;
+    pack_entry(&mut zip, "ppt/presentation.xml", PRESENTATION.as_bytes())?;
     pack_entry(
         &mut zip,
         "ppt/_rels/presentation.xml.rels",
@@ -338,7 +334,7 @@ mod tests {
         let bytes = emit_base_pptx(&summus()).expect("emit base pptx");
         let cursor = std::io::Cursor::new(bytes);
         let archive = zip::ZipArchive::new(cursor).expect("valid zip archive");
-        assert!(archive.len() > 0, "archive must contain entries");
+        assert!(!archive.is_empty(), "archive must contain entries");
     }
 
     #[test]

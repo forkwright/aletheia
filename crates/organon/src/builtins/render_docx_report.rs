@@ -5,7 +5,9 @@ use std::pin::Pin;
 
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
+use poiesis_theme::{sinks::emit_reference_docx, summus};
 
+use crate::builtins::poiesis::{extract_zip_entry, rewrite_zip};
 use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -52,6 +54,31 @@ impl ToolExecutor for RenderDocxReportExecutor {
                 Err(e) => {
                     return Ok(ToolResult::error(format!("docx render failed: {e}")));
                 }
+            };
+
+            let reference_docx = match emit_reference_docx(&summus()) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    return Ok(ToolResult::error(format!("theme docx sink failed: {e}")));
+                }
+            };
+            let styles_xml = match extract_zip_entry(&reference_docx, "word/styles.xml") {
+                Ok(bytes) => bytes,
+                Err(e) => return Ok(ToolResult::error(e)),
+            };
+            let theme_xml = match extract_zip_entry(&reference_docx, "word/theme/theme1.xml") {
+                Ok(bytes) => bytes,
+                Err(e) => return Ok(ToolResult::error(e)),
+            };
+            let docx_bytes = match rewrite_zip(
+                &docx_bytes,
+                &[
+                    ("word/styles.xml", styles_xml.as_slice()),
+                    ("word/theme/theme1.xml", theme_xml.as_slice()),
+                ],
+            ) {
+                Ok(bytes) => bytes,
+                Err(e) => return Ok(ToolResult::error(e)),
             };
 
             // Optional: write to a caller-provided path in addition to returning bytes.

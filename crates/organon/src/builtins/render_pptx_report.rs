@@ -8,7 +8,9 @@ use std::pin::Pin;
 
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
+use poiesis_theme::{sinks::emit_base_pptx, summus};
 
+use crate::builtins::poiesis::{extract_zip_entry, rewrite_zip};
 use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -55,6 +57,24 @@ impl ToolExecutor for RenderPptxReportExecutor {
                 Err(e) => {
                     return Ok(ToolResult::error(format!("pptx render failed: {e}")));
                 }
+            };
+
+            let base_pptx = match emit_base_pptx(&summus()) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    return Ok(ToolResult::error(format!("theme pptx sink failed: {e}")));
+                }
+            };
+            let theme_xml = match extract_zip_entry(&base_pptx, "ppt/theme/theme1.xml") {
+                Ok(bytes) => bytes,
+                Err(e) => return Ok(ToolResult::error(e)),
+            };
+            let pptx_bytes = match rewrite_zip(
+                &pptx_bytes,
+                &[("ppt/theme/theme1.xml", theme_xml.as_slice())],
+            ) {
+                Ok(bytes) => bytes,
+                Err(e) => return Ok(ToolResult::error(e)),
             };
 
             // Optional: write to a caller-provided path in addition to returning bytes.

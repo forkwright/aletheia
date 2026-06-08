@@ -67,6 +67,32 @@ pub struct NamedTone {
 }
 
 impl ResolvedTheme {
+    /// Convert a `poiesis-theme` resolved theme into the chart-local palette.
+    #[cfg(feature = "theme-bridge")]
+    #[must_use]
+    pub fn from_poiesis_theme(t: &poiesis_theme::ResolvedTheme) -> Self {
+        Self {
+            series: t
+                .chart
+                .series
+                .iter()
+                .enumerate()
+                .map(|(i, reference)| Tone {
+                    css_var: format!("series-{i}"),
+                    hex: t
+                        .lookup_color(reference)
+                        .map_or_else(|| "#000000".to_owned(), |color| color.as_str().to_owned()),
+                })
+                .collect(),
+            named: Vec::new(),
+            theme_name: t.id.as_str().to_owned(),
+            font_sans: family_stack(t.lookup_family("sans"))
+                .unwrap_or_else(|| "Inter, system-ui, sans-serif".to_owned()),
+            font_mono: family_stack(t.lookup_family("mono"))
+                .unwrap_or_else(|| "JetBrains Mono, monospace".to_owned()),
+        }
+    }
+
     /// Minimal `summus` theme stand-in.
     ///
     /// This mirrors the offsite-deck palette so the slide-3 golden can be
@@ -145,6 +171,11 @@ impl ResolvedTheme {
             }
         }
     }
+}
+
+#[cfg(feature = "theme-bridge")]
+fn family_stack(family: Option<&[String]>) -> Option<String> {
+    family.map(|stack| stack.join(", "))
 }
 
 #[cfg(test)]

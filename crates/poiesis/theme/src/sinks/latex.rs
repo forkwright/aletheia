@@ -5,7 +5,7 @@ use snafu::ResultExt;
 use crate::error::{SinkSnafu, ThemeError};
 use crate::resolved::ResolvedTheme;
 
-/// Emit a LaTeX preamble fragment with `\definecolor` and `\newcommand`
+/// Emit a `LaTeX` preamble fragment with `\definecolor` and `\newcommand`
 /// declarations for every brand token in the [`ResolvedTheme`].
 ///
 /// Downstream `.tex` files `\input` or `\include` this file to access brand
@@ -28,6 +28,7 @@ pub fn emit_latex_template(theme: &ResolvedTheme) -> Result<String, ThemeError> 
     Ok(out)
 }
 
+#[expect(clippy::too_many_lines, reason = "single-pass sink emitter")]
 fn write_latex(out: &mut String, theme: &ResolvedTheme) -> std::fmt::Result {
     writeln!(out, "%% poiesis-theme: {}", theme.id)?;
     writeln!(out, "%% Generated — do not edit.")?;
@@ -190,11 +191,11 @@ fn write_latex(out: &mut String, theme: &ResolvedTheme) -> std::fmt::Result {
 fn px_to_pt(px: u32) -> String {
     let raw = f64::from(px) * 0.75;
     let rounded = (raw * 2.0).round() / 2.0;
-    // Emit without trailing `.0` when the value is a whole number.
+    // NOTE: Emit without trailing `.0` when the value is a whole number.
     if (rounded * 2.0).round().rem_euclid(2.0) == 0.0 {
-        format!("{:.0}pt", rounded)
+        format!("{rounded:.0}pt")
     } else {
-        format!("{:.1}pt", rounded)
+        format!("{rounded:.1}pt")
     }
 }
 
