@@ -238,6 +238,7 @@ mod knowledge_store_tests {
             fact_type: "observation".to_owned(),
             content: content.to_owned(),
             scope: None,
+            project_id: None,
             temporal: episteme::knowledge::FactTemporal {
                 valid_from: jiff::Timestamp::now(),
                 valid_to: jiff::Timestamp::from_second(253_402_207_200).expect("far future"),
@@ -260,6 +261,7 @@ mod knowledge_store_tests {
                 last_accessed_at: None,
             },
             sensitivity: episteme::knowledge::FactSensitivity::Public,
+            visibility: episteme::knowledge::Visibility::Private,
         }
     }
 

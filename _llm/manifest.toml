@@ -86,7 +86,7 @@ l3_token_estimate = 20097
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "297fa5e9138a147dc51be0072c78c48537f4357e5c82e59c42730bf6ebcdc0ad"
+source_hash = "68d1c9813ec230fdbe386e184d4ceab2fd4ffbe52a3fb8f4accb360d3a93b131"
 l3_token_estimate = 32790
 
 [[crates]]
@@ -152,7 +152,7 @@ l3_token_estimate = 34413
 [[crates]]
 name = "oikonomos"
 path = "crates/daemon"
-source_hash = "3d996e1125c7468e879c93b525ba8c3d91cfd48084263053980d80cdbb446b66"
+source_hash = "92854cf1497308ab4932ccf570fdb82a2fc0da93b5b8768cb2a9af8dc5de967b"
 l3_token_estimate = 12453
 
 [[crates]]
