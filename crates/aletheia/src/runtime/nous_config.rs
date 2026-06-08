@@ -145,6 +145,7 @@ pub(super) fn build_nous_runtime_config(
     nous_config.recall.surprise_threshold = config.knowledge.surprise_threshold;
     nous_config.recall.surprise_ema_alpha = config.knowledge.surprise_ema_alpha;
     nous_config.recall.convergence_weight = config.knowledge.recall_convergence_weight;
+    nous_config.recall.serendipity_weight = config.knowledge.recall_serendipity_weight;
 
     let mut extraction_cfg = mneme::extract::ExtractionConfig::default();
     if let Some(model) = nous_config.generation.extraction_model.as_deref() {

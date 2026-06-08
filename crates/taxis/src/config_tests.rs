@@ -195,6 +195,31 @@ fn serde_roundtrip() {
 }
 
 #[test]
+fn knowledge_roundtrip_with_serendipity_weight() {
+    let config = KnowledgeConfig {
+        recall_serendipity_weight: 0.25,
+        ..KnowledgeConfig::default()
+    };
+    let json = serde_json::to_string(&config).expect("serialize knowledge config");
+    let back: KnowledgeConfig = serde_json::from_str(&json).expect("deserialize knowledge config");
+    assert!(
+        (back.recall_serendipity_weight - 0.25).abs() < f64::EPSILON,
+        "serendipity weight should survive serde roundtrip"
+    );
+}
+
+#[test]
+fn knowledge_rejects_unknown_fields() {
+    let json = r#"{"recallSerendipityWeight":0.25,"unexpectedField":1}"#;
+    let err = serde_json::from_str::<KnowledgeConfig>(json)
+        .expect_err("unknown fields should be rejected");
+    assert!(
+        err.to_string().contains("unknown field"),
+        "deny_unknown_fields should reject unexpected fields: {err}"
+    );
+}
+
+#[test]
 fn minimal_yaml_parses() {
     let yaml = r#"{"agents": {"list": []}}"#;
     let config: AletheiaConfig = serde_json::from_str(yaml).expect("parse minimal");

@@ -1,4 +1,4 @@
-//! Recall engine: 10-factor scoring for knowledge retrieval.
+//! Recall engine: 11-factor scoring for knowledge retrieval.
 //!
 //! Combines multiple signals to rank recall results:
 //!
@@ -12,6 +12,7 @@
 //! 8. **Surprise**: Bayesian topic-shift signal (`EM-LLM`); default weight 0.0
 //! 9. **Evidence coverage**: `MemR3` gap-answering boost; default weight 0.0
 //! 10. **Convergence**: consolidated-fact multiplicity (`log(1+sources)`); default weight 0.0
+//! 11. **Serendipity**: obscure + distant candidate novelty; default weight 0.0
 //!
 //! Each factor produces a score in [0.0, 1.0]. The final score is a weighted
 //! combination, configurable per-nous via oikos cascade. Factors 8–10 are
@@ -51,6 +52,13 @@ pub struct RecallWeights {
     /// Weight for graph `PageRank` importance (hub entities boosted).
     /// Default: 0.10
     pub graph_importance: f64,
+    /// Weight for serendipity (graph obscurity + semantic distance novelty).
+    ///
+    /// Non-zero values blend in an unexpectedness score derived from existing
+    /// recall fields: `graph_importance` as obscurity (`1 - PageRank`) and
+    /// vector distance as novelty. Default: 0.0 (inert — existing behaviour
+    /// preserved). Enable by setting a positive weight in config.
+    pub serendipity: f64,
     /// Weight for Bayesian surprise (topic-shift signal from EM-LLM).
     ///
     /// Non-zero values blend in a per-candidate surprise score produced by
@@ -83,6 +91,7 @@ impl Default for RecallWeights {
             relationship_proximity: 0.10,
             access_frequency: 0.05,
             graph_importance: 0.10,
+            serendipity: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
             convergence: 0.0,
@@ -95,7 +104,7 @@ impl RecallWeights {
     ///
     /// # Complexity
     ///
-    /// O(1) - constant time sum of 10 fields.
+    /// O(1) - constant time sum of 11 fields.
     #[must_use]
     #[instrument(skip(self))]
     pub(crate) fn total(&self) -> f64 {
@@ -106,6 +115,7 @@ impl RecallWeights {
             + self.relationship_proximity
             + self.access_frequency
             + self.graph_importance
+            + self.serendipity
             + self.surprise
             + self.evidence_coverage
             + self.convergence
@@ -144,6 +154,11 @@ pub struct FactorScores {
     pub access_frequency: f64,
     /// `PageRank` graph importance score [0.0, 1.0] (1.0 = highest hub).
     pub graph_importance: f64,
+    /// Serendipity score [0.0, 1.0] (1.0 = obscure and distant).
+    ///
+    /// Computed from existing recall fields, not a separate discovery pass.
+    /// Default: 0.0 — inert unless `RecallWeights::serendipity > 0`.
+    pub serendipity: f64,
     /// Bayesian surprise contribution [0.0, 1.0].
     ///
     /// Normalised inverse of the KL-divergence score from `SurpriseCalculator`.
@@ -510,7 +525,7 @@ impl RecallEngine {
     ///
     /// # Complexity
     ///
-    /// O(1) - constant time weighted sum of 9 factors.
+    /// O(1) - constant time weighted sum of 11 factors.
     #[instrument(skip(self, factors))]
     #[must_use]
     pub(crate) fn compute_score(&self, factors: &FactorScores) -> f64 {
@@ -527,6 +542,7 @@ impl RecallEngine {
             + factors.relationship_proximity * w.relationship_proximity
             + factors.access_frequency * w.access_frequency
             + factors.graph_importance * w.graph_importance
+            + factors.serendipity * w.serendipity
             + factors.surprise * w.surprise
             + factors.evidence_coverage * w.evidence_coverage
             + factors.convergence * w.convergence;
@@ -668,6 +684,34 @@ impl RecallEngine {
     #[instrument(skip(self))]
     pub fn score_graph_importance(&self, importance: f64) -> f64 {
         importance.clamp(0.0, 1.0)
+    }
+
+    /// Compute the serendipity score contribution for recall ranking.
+    ///
+    /// WHY: serendipity should reward obscure, farther-apart candidates using
+    /// only fields already present in recall results, without running the
+    /// heavier discovery engine on the hot recall path.
+    ///
+    /// `obscurity = 1 - graph_importance` and `distance_novelty = distance / (1 + distance)`.
+    /// The blend is clamped to [0.0, 1.0] so it remains a normalised factor.
+    ///
+    /// Returns 0.0 when `RecallWeights::serendipity` is effectively zero so
+    /// callers can skip the calculation entirely in the common case.
+    ///
+    /// # Complexity
+    ///
+    /// O(1) — one subtraction, division, and blend.
+    #[must_use]
+    #[instrument(skip(self))]
+    pub fn score_serendipity(&self, graph_importance: f64, distance: f64) -> f64 {
+        if self.weights.serendipity < f64::EPSILON {
+            return 0.0;
+        }
+
+        let obscurity = (1.0 - graph_importance.clamp(0.0, 1.0)).clamp(0.0, 1.0);
+        let distance = distance.max(0.0);
+        let distance_novelty = (distance / (1.0 + distance)).clamp(0.0, 1.0);
+        (0.6 * obscurity + 0.4 * distance_novelty).clamp(0.0, 1.0)
     }
 
     /// Compute the surprise score contribution for recall ranking.
