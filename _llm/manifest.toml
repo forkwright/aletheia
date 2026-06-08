@@ -164,8 +164,8 @@ l3_token_estimate = 11827
 [[crates]]
 name = "poiesis-charts"
 path = "crates/poiesis/charts"
-source_hash = "7c3c6b37c8d800f4a57df8f523d08f08e06320e9facdafa19d1a17f750d7d500"
-l3_token_estimate = 4605
+source_hash = "0a0c6849477e74604443beeb8e63df4475a152f27017ed2bb3f753d40e0b99b3"
+l3_token_estimate = 4577
 
 [[crates]]
 name = "poiesis-core"
