@@ -175,13 +175,11 @@ impl Config {
         // WHY: When neither CLI flag nor config file provides a URL, attempt
         // auto-discovery before falling back to the compiled default.
         // Discovery runs a blocking runtime because Config::load is sync.
-        // WHY cfg(test) skip: LAN probes block ~120 s per candidate on
-        // workstation test harnesses (TCP timeout, not connection-refused).
-        // `#[cfg(test)]` gates only the koilon crate's own tests — the
-        // binary and integration consumers always run live discovery.
-        // Runtime override via KOILON_NO_DISCOVERY is kept as a belt-and-
-        // suspenders escape for cases where cfg(test) is not sufficient.
-        let skip_discovery = cfg!(test) || RealSystem.var("KOILON_NO_DISCOVERY").is_some();
+        // WHY test skip: test binaries must not pay the live LAN/dbus/keyring
+        // probe cost. `cfg(test)` covers unit tests; nextest sets NEXTEST for
+        // package tests that compile the library as a non-test dependency.
+        // KOILON_SKIP_PROBE remains as an explicit escape hatch for harnesses.
+        let skip_discovery = Self::skip_discovery();
         let url = cli_url.or(file_config.url).unwrap_or_else(|| {
             if skip_discovery {
                 DEFAULT_URL.to_string()
@@ -231,6 +229,14 @@ impl Config {
                 .ok()?;
             rt.block_on(skene::discovery::discover_server_with_config(config))
         }
+    }
+
+    fn skip_discovery() -> bool {
+        cfg!(test)
+            || RealSystem.var("KOILON_NO_DISCOVERY").is_some()
+            || RealSystem.var("KOILON_SKIP_PROBE").is_some()
+            || RealSystem.var("NEXTEST").is_some()
+            || RealSystem.var("NEXTEST_RUN_ID").is_some()
     }
 
     #[expect(

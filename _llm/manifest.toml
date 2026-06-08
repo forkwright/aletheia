@@ -116,7 +116,7 @@ l3_token_estimate = 1170
 [[crates]]
 name = "koilon"
 path = "crates/theatron/koilon"
-source_hash = "e4df5f3664a681dbde3cf88c7c82729182cc198b08fe155a184a8cde262c19fb"
+source_hash = "42b63e1cb5084410f1fa58e852f4a5289f9b184921ffb552ad8ecac0d36f3829"
 l3_token_estimate = 11570
 
 [[crates]]
@@ -284,7 +284,7 @@ l3_token_estimate = 24198
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "9b1e020b438d58ed06b60b21f5aada64196ad610c755da5bca435d67fc194fdc"
+source_hash = "d4dc4328dd3141b8808f6dc7a0fc9673d9ae4c33e1c5d47ba6e80ffcdba2180f"
 l3_token_estimate = 22042
 
 [[crates]]
