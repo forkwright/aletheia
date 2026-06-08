@@ -2486,6 +2486,25 @@ impl QueryResult {
 ```
 
 ```rust
+pub struct SerendipityDiscoveryReport {
+    /// Total facts examined during the pass.
+    pub items_processed: u64,
+    /// Number of discoveries surfaced in the report.
+    pub items_modified: u64,
+    /// Number of candidate discoveries evaluated.
+    pub discovery_count: u64,
+    /// Fact ID selected for follow-up injection, if any.
+    pub selected_fact_id: Option<String>,
+    /// Human-readable reason why the selected discovery was interesting.
+    pub selected_connection_reason: Option<String>,
+    /// Serendipity score of the selected discovery, if any.
+    pub selected_surprise_score: Option<f64>,
+    /// Optional human-readable detail string.
+    pub detail: Option<String>,
+}
+```
+
+```rust
 pub struct KnowledgeConfig {
     /// Embedding dimension for the HNSW index.
     pub dim: usize,
@@ -2573,6 +2592,10 @@ impl KnowledgeStore {
         script: &str,
         params: std::collections::BTreeMap<String, crate::engine::DataValue>,
     ) -> crate::error::Result<QueryResult>;
+    pub fn discover_serendipitous_facts (
+        &self,
+        nous_id: &str,
+    ) -> crate::error::Result<SerendipityDiscoveryReport>;
     pub fn backup_db (&self, out_file: impl AsRef<std::path::Path>) -> crate::error::Result<()>;
     pub fn restore_backup (&self, in_file: impl AsRef<std::path::Path>) -> crate::error::Result<()>;
     pub fn import_from_backup (

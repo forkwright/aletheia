@@ -317,6 +317,40 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         })
     }
 
+    fn discover_serendipitous_facts(
+        &self,
+        nous_id: &str,
+    ) -> oikonomos::error::Result<MaintenanceReport> {
+        let start = std::time::Instant::now();
+        let report = self
+            .store
+            .discover_serendipitous_facts(nous_id)
+            .map_err(|e| {
+                oikonomos::error::TaskFailedSnafu {
+                    task_id: "serendipity-discovery".to_owned(),
+                    reason: e.to_string(),
+                }
+                .build()
+            })?;
+
+        let duration_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+        let items_processed = report.items_processed;
+        let items_modified = report.items_modified;
+        let discovery_count = report.discovery_count;
+        let detail = report.detail.unwrap_or_else(|| {
+            format!("Serendipity discovery: {discovery_count} surfaced discoveries")
+        });
+        tracing::info!(%detail, duration_ms, "maintenance: serendipity discovery complete");
+
+        Ok(MaintenanceReport {
+            items_processed,
+            items_modified,
+            duration_ms,
+            detail: Some(detail),
+            ..Default::default()
+        })
+    }
+
     fn run_skill_decay(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
         let (active, needs_review, retired) = self.store.run_skill_decay(nous_id).map_err(|e| {
             oikonomos::error::TaskFailedSnafu {
@@ -337,5 +371,201 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
             detail: Some(detail),
             ..Default::default()
         })
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    use std::collections::BTreeMap;
+
+    use mneme::engine::DataValue;
+    use mneme::id::{EntityId, FactId};
+    use mneme::knowledge::{
+        EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+        FactTemporal, Visibility, far_future,
+    };
+
+    fn make_fact(
+        id: &str,
+        nous_id: &str,
+        content: &str,
+        access_count: u32,
+        last_accessed_at: Option<jiff::Timestamp>,
+    ) -> Fact {
+        let recorded_at = jiff::Timestamp::now();
+        Fact {
+            id: FactId::new(id).expect("valid test id"),
+            nous_id: nous_id.to_owned(),
+            fact_type: "observation".to_owned(),
+            content: content.to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            temporal: FactTemporal {
+                valid_from: recorded_at,
+                valid_to: far_future(),
+                recorded_at,
+            },
+            provenance: FactProvenance {
+                confidence: 0.9,
+                tier: EpistemicTier::Verified,
+                source_session_id: Some("seed-session".to_owned()),
+                stability_hours: 720.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count,
+                last_accessed_at,
+            },
+        }
+    }
+
+    fn link_fact_entity(store: &Arc<KnowledgeStore>, fact_id: &FactId, entity_id: &EntityId) {
+        let mut params = BTreeMap::new();
+        params.insert(
+            "fact_id".to_owned(),
+            DataValue::Str(fact_id.as_str().to_owned().into()),
+        );
+        params.insert(
+            "entity_id".to_owned(),
+            DataValue::Str(entity_id.as_str().to_owned().into()),
+        );
+        params.insert(
+            "created_at".to_owned(),
+            DataValue::Str(mneme::knowledge::format_timestamp(&jiff::Timestamp::now()).into()),
+        );
+        store
+            .run_mut_query(
+                "?[fact_id, entity_id, created_at] <- [[$fact_id, $entity_id, $created_at]]\n:put fact_entities {fact_id, entity_id => created_at}",
+                params,
+            )
+            .expect("link fact to entity");
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "seeded maintenance integration covers the full flow"
+    )]
+    #[test]
+    fn discover_serendipitous_facts_runs_on_seeded_store() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = KnowledgeStore::open_fjall(
+            dir.path().join("knowledge"),
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .expect("open store");
+
+        let alice = EntityId::new("alice").expect("valid entity id");
+        let bob = EntityId::new("bob").expect("valid entity id");
+        let acme = EntityId::new("acme.corp").expect("valid entity id");
+
+        for (entity_id, name, entity_type) in [
+            (&alice, "Alice", "person"),
+            (&bob, "Bob", "person"),
+            (&acme, "Acme Corp", "company"),
+        ] {
+            store
+                .insert_entity(&mneme::knowledge::Entity {
+                    id: entity_id.clone(),
+                    name: name.to_owned(),
+                    entity_type: entity_type.to_owned(),
+                    aliases: Vec::new(),
+                    created_at: jiff::Timestamp::now(),
+                    updated_at: jiff::Timestamp::now(),
+                })
+                .expect("insert entity");
+        }
+
+        for (src, dst, relation) in [
+            (&alice, &bob, "collaborates_with"),
+            (&bob, &acme, "documents_for"),
+            (&acme, &alice, "contracts_with"),
+        ] {
+            store
+                .insert_relationship(&mneme::knowledge::Relationship {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                    relation: relation.to_owned(),
+                    weight: 0.8,
+                    created_at: jiff::Timestamp::now(),
+                })
+                .expect("insert relationship");
+        }
+
+        let now = jiff::Timestamp::now();
+        let one_hour_ago = now
+            .checked_sub(jiff::SignedDuration::from_hours(1))
+            .expect("timestamp arithmetic");
+        let twelve_hours_ago = now
+            .checked_sub(jiff::SignedDuration::from_hours(12))
+            .expect("timestamp arithmetic");
+        let forty_eight_hours_ago = now
+            .checked_sub(jiff::SignedDuration::from_hours(48))
+            .expect("timestamp arithmetic");
+
+        let facts = [
+            (
+                make_fact(
+                    "fact-alice",
+                    "alice",
+                    "Alice keeps the ops feed tidy.",
+                    3,
+                    Some(one_hour_ago),
+                ),
+                &alice,
+            ),
+            (
+                make_fact(
+                    "fact-bob",
+                    "alice",
+                    "Bob is the bridge between ops and archives.",
+                    2,
+                    Some(twelve_hours_ago),
+                ),
+                &bob,
+            ),
+            (
+                make_fact(
+                    "fact-acme",
+                    "alice",
+                    "Acme Corp owns the incident response handbook.",
+                    1,
+                    Some(forty_eight_hours_ago),
+                ),
+                &acme,
+            ),
+        ];
+
+        for (fact, entity) in facts {
+            store.insert_fact(&fact).expect("insert fact");
+            link_fact_entity(&store, &fact.id, entity);
+        }
+
+        store
+            .recompute_graph_scores()
+            .expect("recompute graph scores");
+
+        let adapter = KnowledgeMaintenanceAdapter::new(Arc::clone(&store));
+        let report = adapter
+            .discover_serendipitous_facts("alice")
+            .expect("discover serendipity");
+
+        assert!(report.items_processed >= 3);
+        assert!(
+            report
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("Serendipity discovery")),
+            "detail should summarize the discovery pass"
+        );
     }
 }

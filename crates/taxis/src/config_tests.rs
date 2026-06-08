@@ -146,6 +146,15 @@ fn defaults_are_sensible() {
         "retention should be disabled by default"
     );
     assert!(
+        !config.maintenance.knowledge_maintenance_serendipity.enabled,
+        "serendipity discovery should be disabled by default"
+    );
+    assert_eq!(
+        config.maintenance.knowledge_maintenance_serendipity.cadence,
+        "0 0 7 * * *",
+        "default serendipity cadence should run daily at 07:00 UTC"
+    );
+    assert!(
         config.pricing.is_empty(),
         "pricing map should be empty by default"
     );
@@ -205,6 +214,25 @@ fn knowledge_roundtrip_with_serendipity_weight() {
     assert!(
         (back.recall_serendipity_weight - 0.25).abs() < f64::EPSILON,
         "serendipity weight should survive serde roundtrip"
+    );
+}
+
+#[test]
+fn maintenance_roundtrip_with_serendipity_settings() {
+    let config = MaintenanceSettings {
+        knowledge_maintenance_serendipity: SerendipityMaintenanceSettings {
+            enabled: true,
+            cadence: "0 0 7 * * *".to_owned(),
+        },
+        ..MaintenanceSettings::default()
+    };
+    let json = serde_json::to_string(&config).expect("serialize maintenance config");
+    let back: MaintenanceSettings =
+        serde_json::from_str(&json).expect("deserialize maintenance config");
+    assert!(back.knowledge_maintenance_serendipity.enabled);
+    assert_eq!(
+        back.knowledge_maintenance_serendipity.cadence,
+        "0 0 7 * * *"
     );
 }
 

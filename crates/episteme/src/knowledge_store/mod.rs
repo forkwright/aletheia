@@ -431,6 +431,25 @@ impl From<crate::engine::NamedRows> for QueryResult {
     }
 }
 
+/// Outcome of a serendipity discovery pass.
+#[derive(Debug, Clone, Default)]
+pub struct SerendipityDiscoveryReport {
+    /// Total facts examined during the pass.
+    pub items_processed: u64,
+    /// Number of discoveries surfaced in the report.
+    pub items_modified: u64,
+    /// Number of candidate discoveries evaluated.
+    pub discovery_count: u64,
+    /// Fact ID selected for follow-up injection, if any.
+    pub selected_fact_id: Option<String>,
+    /// Human-readable reason why the selected discovery was interesting.
+    pub selected_connection_reason: Option<String>,
+    /// Serendipity score of the selected discovery, if any.
+    pub selected_surprise_score: Option<f64>,
+    /// Optional human-readable detail string.
+    pub detail: Option<String>,
+}
+
 /// Configuration for `KnowledgeStore` initialization.
 #[cfg(feature = "mneme-engine")]
 pub struct KnowledgeConfig {
@@ -1025,6 +1044,15 @@ impl KnowledgeStore {
                 }
                 .build()
             })
+    }
+
+    /// Discover serendipitous facts from recently active entities.
+    #[instrument(skip(self))]
+    pub fn discover_serendipitous_facts(
+        &self,
+        nous_id: &str,
+    ) -> crate::error::Result<SerendipityDiscoveryReport> {
+        crate::serendipity::discover_serendipitous_facts(self, nous_id)
     }
 
     /// Create a backup of the knowledge database.

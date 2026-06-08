@@ -183,6 +183,7 @@ pub(crate) async fn execute_builtin_with_behavior(
         | BuiltinTask::IndexMaintenance
         | BuiltinTask::GraphHealthCheck
         | BuiltinTask::SkillDecay
+        | BuiltinTask::SerendipityDiscovery
         | BuiltinTask::DerivedFactsMaterialize => {
             execute_knowledge_task(builtin, nous_id, knowledge_executor).await
         }
@@ -651,6 +652,9 @@ async fn execute_knowledge_task(
             BuiltinTask::IndexMaintenance => executor.maintain_indexes(&nous_id_owned),
             BuiltinTask::GraphHealthCheck => executor.health_check(&nous_id_owned),
             BuiltinTask::SkillDecay => executor.run_skill_decay(&nous_id_owned),
+            BuiltinTask::SerendipityDiscovery => {
+                executor.discover_serendipitous_facts(&nous_id_owned)
+            }
             BuiltinTask::DerivedFactsMaterialize => executor.materialize_derived_facts(),
             BuiltinTask::Prosoche
             | BuiltinTask::TraceRotation

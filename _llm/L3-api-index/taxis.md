@@ -1333,12 +1333,23 @@ pub struct MaintenanceSettings {
     /// Whether background knowledge graph maintenance tasks are enabled.
     #[serde(default)]
     pub knowledge_maintenance_enabled: bool,
+    /// Serendipity discovery maintenance settings.
+    pub knowledge_maintenance_serendipity: SerendipityMaintenanceSettings,
     /// Watchdog process monitor settings.
     pub watchdog: WatchdogSettings,
     /// Periodic cron task settings (evolution, reflection, graph cleanup).
     pub cron_tasks: CronTaskSettings,
     /// Fjall knowledge store backup settings.
     pub backup: BackupSettings,
+}
+```
+
+```rust
+pub struct SerendipityMaintenanceSettings {
+    /// Whether the serendipity discovery task is enabled.
+    pub enabled: bool,
+    /// Cron cadence used when the task is scheduled.
+    pub cadence: String,
 }
 ```
 

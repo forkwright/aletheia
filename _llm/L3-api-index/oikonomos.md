@@ -404,6 +404,10 @@ pub trait KnowledgeMaintenanceExecutor : Send + Sync {
     fn health_check (&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
     fn run_skill_decay (&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
     fn materialize_derived_facts (&self) -> crate::error::Result<MaintenanceReport>;
+    fn discover_serendipitous_facts (
+        &self,
+        nous_id: &str,
+    ) -> crate::error::Result<MaintenanceReport>;
 }
 ```
 
@@ -413,6 +417,8 @@ pub struct KnowledgeMaintenanceConfig {
     pub enabled: bool,
     /// Auto-dream consolidation settings.
     pub auto_dream: AutoDreamConfig,
+    /// Serendipity discovery idle-maintenance settings.
+    pub serendipity: SerendipityMaintenanceConfig,
 }
 ```
 
@@ -428,6 +434,15 @@ pub struct AutoDreamConfig {
     pub scan_interval_secs: i64,
     /// Stale lock threshold in seconds.
     pub stale_threshold_secs: i64,
+}
+```
+
+```rust
+pub struct SerendipityMaintenanceConfig {
+    /// Whether serendipity discovery is enabled.
+    pub enabled: bool,
+    /// Cron cadence for the scheduled discovery task.
+    pub cadence: String,
 }
 ```
 
@@ -1292,6 +1307,8 @@ pub enum BuiltinTask {
     /// Materialize derived Datalog rules (IS-A closure, causal chains, defeasible defaults)
     /// into the `derived_facts` relation.
     DerivedFactsMaterialize,
+    /// Run the serendipity-discovery engine over recently active entities.
+    SerendipityDiscovery,
 }
 ```
 

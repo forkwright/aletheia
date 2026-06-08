@@ -146,6 +146,8 @@ pub enum BuiltinTask {
     /// Materialize derived Datalog rules (IS-A closure, causal chains, defeasible defaults)
     /// into the `derived_facts` relation.
     DerivedFactsMaterialize,
+    /// Run the serendipity-discovery engine over recently active entities.
+    SerendipityDiscovery,
 }
 
 impl Schedule {

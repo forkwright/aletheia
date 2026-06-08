@@ -203,6 +203,15 @@ impl TaskRunner {
 
     /// Register implemented knowledge maintenance tasks with their schedules.
     fn register_knowledge_maintenance_tasks(&mut self) {
+        let (serendipity_enabled, serendipity_cadence) = {
+            let Some(config) = self.maintenance.as_ref() else {
+                return;
+            };
+            (
+                config.knowledge_maintenance.serendipity.enabled,
+                config.knowledge_maintenance.serendipity.cadence.clone(),
+            )
+        };
         let tasks: [(_, _, Schedule, BuiltinTask); 5] = [
             (
                 "decay-refresh",
@@ -241,6 +250,16 @@ impl TaskRunner {
 
         for (id, name, schedule, task) in tasks {
             self.register_builtin(id, name, schedule, task, true);
+        }
+
+        if serendipity_enabled {
+            self.register_builtin(
+                "serendipity-discovery",
+                "Serendipity discovery",
+                Schedule::Cron(serendipity_cadence),
+                BuiltinTask::SerendipityDiscovery,
+                true,
+            );
         }
     }
 

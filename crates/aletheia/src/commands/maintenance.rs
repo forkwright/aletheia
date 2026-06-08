@@ -272,6 +272,10 @@ pub(crate) fn build_config(
         knowledge_maintenance: oikonomos::maintenance::KnowledgeMaintenanceConfig {
             enabled: settings.knowledge_maintenance_enabled,
             auto_dream: AutoDreamConfig::default(),
+            serendipity: oikonomos::maintenance::SerendipityMaintenanceConfig {
+                enabled: settings.knowledge_maintenance_serendipity.enabled,
+                cadence: settings.knowledge_maintenance_serendipity.cadence.clone(),
+            },
         },
         fjall_backup: FjallBackupConfig {
             enabled: settings.backup.enabled,
