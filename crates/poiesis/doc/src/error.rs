@@ -49,10 +49,12 @@ pub enum Error {
         detail: String,
     },
 
-    /// The requested format requires Pandoc, which is not yet available.
-    #[snafu(display("{format} output requires Pandoc (coming in B-012); use pdf or xlsx for now"))]
+    /// A Pandoc-backed format could not be rendered.
+    #[snafu(display(
+        "{format} output requires Pandoc; install pandoc >= 3.0 or use pdf/xlsx for now"
+    ))]
     PandocRequired {
-        /// The requested format name (e.g. "odt").
+        /// The requested format name (e.g. "docx").
         format: String,
     },
 }
