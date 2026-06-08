@@ -51,10 +51,12 @@ pub enum Error {
         detail: String,
     },
 
-    /// The requested format requires Pandoc, which is not yet available.
-    #[snafu(display("{format} output requires Pandoc (coming in B-012); use pdf or xlsx for now"))]
+    /// A Pandoc-backed format could not be rendered.
+    #[snafu(display(
+        "{format} output requires Pandoc; install pandoc >= 3.0 or use pdf/xlsx for now"
+    ))]
     PandocRequired {
-        /// The requested format name (e.g. "odt").
+        /// The requested format name (e.g. "docx").
         format: String,
     },
 }
@@ -99,6 +101,26 @@ pub fn inspect_docx (bytes: &[u8]) -> Result<DocxSummary>
 
 ```rust
 pub fn render_pdf_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
+```
+
+```rust
+pub fn render_docx_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
+```
+
+```rust
+pub fn render_html_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
+```
+
+```rust
+pub fn render_md_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
+```
+
+```rust
+pub fn render_latex_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
+```
+
+```rust
+pub fn render_epub_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
 ```
 
 ```rust
@@ -225,6 +247,9 @@ pub struct DocOpts {
 impl DocOpts {
     pub fn default_pdf () -> Self;
     pub fn docx () -> Self;
+    pub fn html () -> Self;
+    pub fn latex () -> Self;
+    pub fn epub () -> Self;
     pub fn odt () -> Self;
     pub fn markdown () -> Self;
 }
