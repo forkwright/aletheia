@@ -5271,6 +5271,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "krilla"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ddd739cf930f99a70ee89ec51b21fab894b5f142dc9672e0e9a27947b2bc093"
+dependencies = [
+ "base64 0.22.1",
+ "bumpalo",
+ "flate2",
+ "float-cmp 0.10.0",
+ "gif 0.13.3",
+ "image-webp",
+ "imagesize 0.14.0",
+ "indexmap 2.14.0",
+ "once_cell",
+ "pdf-writer",
+ "png 0.17.16",
+ "rustc-hash 2.1.2",
+ "rustybuzz",
+ "siphasher",
+ "skrifa",
+ "smallvec",
+ "subsetter",
+ "tiny-skia-path",
+ "xmp-writer",
+ "yoke 0.8.2",
+ "zune-jpeg 0.5.15",
+]
+
+[[package]]
 name = "krilla-svg"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5278,7 +5307,7 @@ checksum = "f485e1a850201a01dcd8d73e7cf09f2cd4c4cc85c2cd296359094d49336d8ef7"
 dependencies = [
  "flate2",
  "fontdb",
- "krilla",
+ "krilla 0.6.0",
  "png 0.17.16",
  "resvg",
  "tiny-skia",
@@ -7015,6 +7044,7 @@ version = "0.30.0"
 dependencies = [
  "docx-rs",
  "poiesis-core",
+ "poiesis-text",
  "poiesis-typst",
  "quick-xml 0.39.2",
  "serde",
@@ -7112,6 +7142,16 @@ dependencies = [
  "serde_json",
  "snafu",
  "tracing",
+ "zip 8.5.1",
+]
+
+[[package]]
+name = "poiesis-text"
+version = "0.30.0"
+dependencies = [
+ "krilla 0.7.0",
+ "poiesis-core",
+ "snafu",
  "zip 8.5.1",
 ]
 
@@ -10541,7 +10581,7 @@ dependencies = [
  "image",
  "indexmap 2.14.0",
  "infer",
- "krilla",
+ "krilla 0.6.0",
  "krilla-svg",
  "rustc-hash 2.1.2",
  "serde",

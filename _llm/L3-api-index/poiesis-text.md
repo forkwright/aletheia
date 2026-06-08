@@ -19,9 +19,6 @@ pub enum OdtError {
 ```
 
 > Renders a [`Document`] to an ODT byte vector.
-> 
-> The output is a self-contained `OpenDocument` Text file (ODF 1.2) that can be
-> opened in `LibreOffice`, Apache `OpenOffice`, or any conformant editor.
 ```rust
 pub struct OdtRenderer;
 ```
