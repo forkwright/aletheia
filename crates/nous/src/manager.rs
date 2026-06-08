@@ -21,7 +21,7 @@ use mneme::embedding::EmbeddingProvider;
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
-use organon::types::ToolServices;
+use organon::types::{BlackboardStore, ToolServices};
 use taxis::oikos::Oikos;
 use thesauros::loader::LoadedPack;
 
@@ -350,6 +350,14 @@ impl NousManager {
     #[must_use]
     pub fn secret_vault(&self) -> Option<&hermeneus::secret::SecretVault> {
         self.tool_services.as_ref().map(|s| &s.secret_vault)
+    }
+
+    /// Access the shared blackboard store used by all managed actors.
+    #[must_use]
+    pub fn blackboard_store(&self) -> Option<&Arc<dyn BlackboardStore>> {
+        self.tool_services
+            .as_ref()
+            .and_then(|tool_services| tool_services.blackboard_store.as_ref())
     }
 
     /// Look up a config by nous id.

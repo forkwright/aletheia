@@ -134,6 +134,10 @@ async fn dispatch_one(
 }
 
 /// Build a `CommandContext` and execute a parsed command, returning the reply text.
+#[expect(
+    clippy::too_many_lines,
+    reason = "command snapshot assembly stays local to dispatch"
+)]
 async fn execute_command(
     cmd: &command::Command,
     nous_id: &str,
@@ -220,9 +224,39 @@ async fn execute_command(
         _ => vec![],
     };
 
-    // TODO(#4405): populate skills from SkillLoader / blackboard from BlackboardStore once threaded
-    let skills = Vec::new();
-    let blackboard_entries = Vec::new();
+    #[cfg(feature = "recall")]
+    let skills: Vec<String> = nous_manager
+        .get_config(nous_id)
+        .and_then(|cfg| nous_manager.knowledge_store_for_cohort(cfg.episteme_cohort.as_ref()))
+        .and_then(|knowledge_store| knowledge_store.find_skills_for_nous(nous_id, 50).ok())
+        .map(|facts| {
+            facts
+                .iter()
+                .map(|fact| {
+                    serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
+                        .map_or_else(|_| fact.id.to_string(), |skill| skill.name)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    #[cfg(not(feature = "recall"))]
+    let skills: Vec<String> = Vec::new();
+
+    let blackboard_entries: Vec<String> = nous_manager
+        .blackboard_store()
+        .and_then(|blackboard_store| blackboard_store.list().ok())
+        .map(|entries| {
+            entries
+                .iter()
+                .map(|entry| {
+                    format!(
+                        "[{}] = {} (by {})",
+                        entry.key, entry.value, entry.author_nous_id
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     let ctx = CommandContext {
         current_nous_id: nous_id.to_owned(),
@@ -260,5 +294,294 @@ async fn send_reply(msg: &InboundMessage, text: &str, channel_registry: &Channel
         Err(e) => {
             warn!(error = %e, "channel send error");
         }
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    #[cfg(feature = "recall")]
+    use std::collections::HashMap;
+
+    use hermeneus::provider::ProviderRegistry;
+    use hermeneus::test_utils::MockProvider;
+    use mneme::store::SessionStore;
+    use nous::adapters::SessionBlackboardAdapter;
+    use nous::manager::NousManager;
+    use organon::registry::ToolRegistry;
+    use organon::types::{BlackboardStore, ToolServices};
+    use taxis::oikos::Oikos;
+    use tokio::sync::Mutex;
+
+    use super::*;
+    use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test setup writes temp files synchronously"
+    )]
+    fn make_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
+        let dir = tempfile::TempDir::new().expect("tmpdir");
+        let root = dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join("nous/alice")).expect("create alice workspace");
+        std::fs::create_dir_all(root.join("shared")).expect("create shared");
+        std::fs::create_dir_all(root.join("theke")).expect("create theke");
+        std::fs::write(root.join("nous/alice/SOUL.md"), "I am Alice.").expect("write soul");
+        (dir, Arc::new(Oikos::from_root(&root)))
+    }
+
+    fn make_providers() -> Arc<ProviderRegistry> {
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(
+            MockProvider::new("Hello!").models(&["test-model"]),
+        ));
+        Arc::new(providers)
+    }
+
+    fn make_tool_services(session_store: &Arc<Mutex<SessionStore>>) -> Arc<ToolServices> {
+        let blackboard_store: Arc<dyn BlackboardStore> =
+            Arc::new(SessionBlackboardAdapter(Arc::clone(session_store)));
+        Arc::new(ToolServices {
+            cross_nous: None,
+            messenger: None,
+            note_store: None,
+            blackboard_store: Some(blackboard_store),
+            spawn: None,
+            planning: None,
+            knowledge: None,
+            working_checkpoint_store: None,
+            http_client: reqwest::Client::new(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
+            lazy_tool_catalog: Vec::new(),
+            server_tool_config: organon::types::ServerToolConfig::default(),
+        })
+    }
+
+    fn make_config() -> NousConfig {
+        NousConfig {
+            id: Arc::from("alice"),
+            generation: NousGenerationConfig {
+                model: "test-model".to_owned(),
+                ..NousGenerationConfig::default()
+            },
+            workspace: PathBuf::from("nous/alice"),
+            ..NousConfig::default()
+        }
+    }
+
+    #[cfg(feature = "recall")]
+    fn make_dispatch_manager(
+        oikos: Arc<Oikos>,
+        tool_services: Option<Arc<ToolServices>>,
+    ) -> NousManager {
+        use mneme::knowledge_store::KnowledgeStore;
+
+        let mut knowledge_stores = HashMap::new();
+        knowledge_stores.insert(
+            "shared".to_owned(),
+            KnowledgeStore::open_mem().expect("open in-memory knowledge store"),
+        );
+
+        NousManager::new(
+            make_providers(),
+            Arc::new(ToolRegistry::new()),
+            oikos,
+            None,
+            None,
+            None,
+            Some(knowledge_stores),
+            Arc::new(Vec::new()),
+            None,
+            tool_services,
+            taxis::config::NousBehaviorConfig::default(),
+        )
+    }
+
+    #[cfg(not(feature = "recall"))]
+    fn make_dispatch_manager(
+        oikos: Arc<Oikos>,
+        tool_services: Option<Arc<ToolServices>>,
+    ) -> NousManager {
+        NousManager::new(
+            make_providers(),
+            Arc::new(ToolRegistry::new()),
+            oikos,
+            None,
+            None,
+            None,
+            Arc::new(Vec::new()),
+            None,
+            tool_services,
+            taxis::config::NousBehaviorConfig::default(),
+        )
+    }
+
+    #[cfg(feature = "recall")]
+    fn make_skill_manager(
+        oikos: Arc<Oikos>,
+        knowledge_stores: HashMap<String, Arc<mneme::knowledge_store::KnowledgeStore>>,
+    ) -> NousManager {
+        NousManager::new(
+            make_providers(),
+            Arc::new(ToolRegistry::new()),
+            oikos,
+            None,
+            None,
+            None,
+            Some(knowledge_stores),
+            Arc::new(Vec::new()),
+            None,
+            None,
+            taxis::config::NousBehaviorConfig::default(),
+        )
+    }
+
+    #[cfg(feature = "recall")]
+    fn make_skill_fact(skill_name: &str) -> mneme::knowledge::Fact {
+        use mneme::knowledge::{
+            EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+            FactTemporal, Visibility, far_future,
+        };
+
+        let content = serde_json::to_string(&mneme::skill::SkillContent {
+            name: skill_name.to_owned(),
+            description: "Send a signal reply".to_owned(),
+            steps: vec!["do the thing".to_owned()],
+            tools_used: vec!["signal".to_owned()],
+            domain_tags: vec!["communication".to_owned()],
+            origin: "seeded".to_owned(),
+            triggers: vec![],
+            always: false,
+        })
+        .expect("skill content serializes");
+
+        Fact {
+            id: mneme::id::FactId::new("skill-alice-signal").expect("valid fact id"),
+            nous_id: "alice".to_owned(),
+            fact_type: "skill".to_owned(),
+            content,
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            temporal: FactTemporal {
+                valid_from: jiff::Timestamp::from_second(1_700_000_000).expect("valid timestamp"),
+                valid_to: far_future(),
+                recorded_at: jiff::Timestamp::from_second(1_700_000_100).expect("valid timestamp"),
+            },
+            provenance: FactProvenance {
+                confidence: 0.9,
+                tier: EpistemicTier::Verified,
+                source_session_id: None,
+                stability_hours: 24.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[cfg(feature = "recall")]
+    async fn skills_command_uses_seeded_knowledge_store() {
+        let (_dir, oikos) = make_oikos();
+        let mut knowledge_stores = HashMap::new();
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem()
+            .expect("open in-memory knowledge store");
+        let skill_fact = make_skill_fact("signal-send");
+        store.insert_fact(&skill_fact).expect("insert skill fact");
+        knowledge_stores.insert("shared".to_owned(), store);
+
+        let mut mgr = make_skill_manager(oikos, knowledge_stores);
+        let _handle = mgr
+            .spawn(make_config(), PipelineConfig::default())
+            .await
+            .expect("spawn alice");
+
+        let reply = execute_command(
+            &command::Command::Skills,
+            "alice",
+            "main",
+            &mgr,
+            &ChannelRegistry::new(),
+        )
+        .await;
+
+        assert!(reply.contains("signal-send"), "{reply}");
+        assert!(!reply.contains("No skills available"), "{reply}");
+
+        mgr.shutdown_all().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn blackboard_command_uses_session_adapter() {
+        let (_dir, oikos) = make_oikos();
+        let session_store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory().expect("in-memory session store"),
+        ));
+        let tool_services = make_tool_services(&session_store);
+        let mgr = make_dispatch_manager(oikos, Some(tool_services));
+
+        let blackboard_store = mgr.blackboard_store().expect("blackboard store");
+        blackboard_store
+            .write("goal", "finish the demo", "alice", 3600)
+            .expect("write blackboard entry");
+
+        let reply = execute_command(
+            &command::Command::Blackboard,
+            "alice",
+            "main",
+            &mgr,
+            &ChannelRegistry::new(),
+        )
+        .await;
+
+        assert!(
+            reply.contains("[goal] = finish the demo (by alice)"),
+            "{reply}"
+        );
+        assert!(!reply.contains("Blackboard empty"), "{reply}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn empty_state_falls_back_without_stores() {
+        let (_dir, oikos) = make_oikos();
+        let mgr = make_dispatch_manager(oikos, None);
+
+        let skills_reply = execute_command(
+            &command::Command::Skills,
+            "alice",
+            "main",
+            &mgr,
+            &ChannelRegistry::new(),
+        )
+        .await;
+        assert!(
+            skills_reply.contains("No skills available"),
+            "{skills_reply}"
+        );
+
+        let blackboard_reply = execute_command(
+            &command::Command::Blackboard,
+            "alice",
+            "main",
+            &mgr,
+            &ChannelRegistry::new(),
+        )
+        .await;
+        assert!(
+            blackboard_reply.contains("Blackboard empty"),
+            "{blackboard_reply}"
+        );
     }
 }
