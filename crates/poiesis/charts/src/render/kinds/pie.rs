@@ -39,7 +39,10 @@ pub fn emit(
     canvas: &Canvas,
     mode: ColorMode,
 ) -> Result<String> {
-    #[expect(clippy::indexing_slicing, reason = "caller invariant: exactly 1 series")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "caller invariant: exactly 1 series"
+    )]
     let series = &chart.series[0];
     let plot = canvas.plot_box();
 
@@ -94,7 +97,11 @@ pub fn emit(
         } else {
             let (x0, y0) = polar_to_xy(cx, cy, r, start_angle);
             let (x1, y1) = polar_to_xy(cx, cy, r, end_angle);
-            let large_arc = if sweep >= std::f64::consts::PI { "1" } else { "0" };
+            let large_arc = if sweep >= std::f64::consts::PI {
+                "1"
+            } else {
+                "0"
+            };
             let mut d = String::new();
             let _ = write!(
                 d,
@@ -182,11 +189,7 @@ fn escape_xml(s: &str) -> String {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test assertions"
-)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::model::{

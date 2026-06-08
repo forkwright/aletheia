@@ -81,7 +81,11 @@ pub fn emit(
     let aria = if series_name.is_empty() {
         escape_xml(&number_text)
     } else {
-        format!("{} — {}", escape_xml(&number_text), escape_xml(&series_name))
+        format!(
+            "{} — {}",
+            escape_xml(&number_text),
+            escape_xml(&series_name)
+        )
     };
 
     let mut out = String::new();
@@ -153,11 +157,7 @@ fn escape_xml(s: &str) -> String {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test assertions"
-)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::model::{
