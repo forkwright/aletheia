@@ -1,7 +1,7 @@
 //! Poiesis report tools: `generate_document`, `lint_report`, `verify_report`,
 //! `render_typst_report`, `qa_gate`.
 //!
-//! - `generate_document`    — render a JSON document descriptor to ODT/XLSX/PDF bytes
+//! - `generate_document`    — render a JSON document descriptor to ODT/XLSX/PDF/DOCX/HTML/MD/LaTeX/EPUB bytes
 //! - `lint_report`          — check report prose quality (banned words, citations, structure)
 //! - `verify_report`        — validate numeric claims in a verify manifest
 //! - `render_typst_report`  — render a Typst source (or built-in template slug) to PDF
@@ -192,7 +192,8 @@ impl ToolExecutor for GenerateDocumentExecutor {
                 content: blocks,
             };
 
-            let bytes = match format.to_lowercase().as_str() {
+            let format = format.to_lowercase();
+            let bytes = match format.as_str() {
                 "xlsx" => {
                     let renderer = poiesis_sheet::XlsxRenderer::new();
                     match renderer.render(&doc) {
@@ -208,12 +209,44 @@ impl ToolExecutor for GenerateDocumentExecutor {
                         return Ok(ToolResult::error(format!("PDF render failed: {e}")));
                     }
                 },
-                // Default: ODT (requires Pandoc, B-012)
-                _ => {
-                    return Ok(ToolResult::error(
-                        "ODT output requires Pandoc (coming in B-012); use pdf or xlsx for now"
-                            .to_owned(),
-                    ));
+                "odt" => match poiesis_doc::render_odt_from_doc(&doc) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("ODT render failed: {e}")));
+                    }
+                },
+                "docx" => match poiesis_doc::render_docx_from_doc(&doc) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("DOCX render failed: {e}")));
+                    }
+                },
+                "html" => match poiesis_doc::render_html_from_doc(&doc) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("HTML render failed: {e}")));
+                    }
+                },
+                "md" => match poiesis_doc::render_md_from_doc(&doc) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("MD render failed: {e}")));
+                    }
+                },
+                "latex" => match poiesis_doc::render_latex_from_doc(&doc) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("LATEX render failed: {e}")));
+                    }
+                },
+                "epub" => match poiesis_doc::render_epub_from_doc(&doc) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!("EPUB render failed: {e}")));
+                    }
+                },
+                other => {
+                    return Ok(ToolResult::error(format!("unsupported format: {other}")));
                 }
             };
 
@@ -268,7 +301,7 @@ fn plain(s: &str) -> RichText {
 fn generate_document_def() -> ToolDef {
     ToolDef {
         name: koina::id::ToolName::from_static("generate_document"), // kanon:ignore RUST/expect
-        description: "Render a document descriptor to ODT, XLSX, or PDF bytes.".to_owned(),
+        description: "Render a document descriptor to ODT, XLSX, PDF, DOCX, HTML, MD, LaTeX, or EPUB bytes.".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
             properties: IndexMap::from([
@@ -287,11 +320,18 @@ fn generate_document_def() -> ToolDef {
                     "format".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Output format: odt (default), xlsx, or pdf".to_owned(),
+                        description:
+                            "Output format: odt (default), docx, html, md, latex, epub, pdf, or xlsx"
+                                .to_owned(),
                         enum_values: Some(vec![
                             "odt".to_owned(),
-                            "xlsx".to_owned(),
+                            "docx".to_owned(),
+                            "html".to_owned(),
+                            "md".to_owned(),
+                            "latex".to_owned(),
+                            "epub".to_owned(),
                             "pdf".to_owned(),
+                            "xlsx".to_owned(),
                         ]),
                         default: Some(serde_json::json!("odt")),
                     },

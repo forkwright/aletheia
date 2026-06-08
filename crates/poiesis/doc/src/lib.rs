@@ -4,11 +4,23 @@
 //! This crate provides:
 //!
 //! - [`render_docx`] — build a `.docx` file from a JSON descriptor.
+//! - [`render_docx_from_doc`] — build `.docx` bytes from a document model via
+//!   Pandoc.
+//! - [`render_html_from_doc`] — build `.html` bytes from a document model via
+//!   Pandoc.
+//! - [`render_md_from_doc`] — build GitHub-Flavoured Markdown bytes from a
+//!   document model via Pandoc.
+//! - [`render_latex_from_doc`] — build `.tex` bytes from a document model via
+//!   Pandoc.
+//! - [`render_epub_from_doc`] — build `.epub` bytes from a document model via
+//!   Pandoc.
+//! - [`render_pdf_from_doc`] — build `.pdf` bytes from the document model via
+//!   the embedded Typst compiler.
 //! - [`inspect_docx`] — extract paragraph text from an existing `.docx` file.
 //! - [`render_odt_from_doc`] — build `.odt` bytes from the document model via
 //!   the clean-room ZIP/XML backend.
-//! - [`pandoc`] — Pandoc subprocess wrapper, AST serialization, and unified
-//!   dispatch (`render_doc`) for the remaining format matrix (B-012).
+//! - [`render_doc`] — Pandoc subprocess wrapper, AST serialization, and
+//!   unified dispatch for the remaining format matrix.
 //!
 //! ## Pandoc dispatch (B-012)
 //!
@@ -16,7 +28,6 @@
 //! - PDF → `poiesis-typst` in-process fast-lane (default).
 //! - PDF with explicit `LaTeX` engine → Pandoc + `LaTeX`.
 //! - docx / md / latex / html / epub → Pandoc subprocess.
-//! - odt → clean-room ZIP/XML backend in `poiesis-text`.
 //!
 //! # GPL-clean boundary
 //!
@@ -31,6 +42,8 @@ mod typst_bridge;
 pub mod pandoc;
 
 pub use error::Error;
+/// Re-export of the Pandoc dispatcher for callers that want it directly.
+pub use pandoc::render_doc;
 pub use pandoc_probe::{PandocProbe, PandocProbeError};
 
 use poiesis_core::Renderer;
@@ -200,6 +213,36 @@ pub fn render_pdf_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     })
 }
 
+/// Render a [`poiesis_core::Document`] to DOCX bytes via Pandoc.
+#[instrument(skip(doc))]
+pub fn render_docx_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
+    render_pandoc_from_doc(doc, "docx", &pandoc::DocOpts::docx())
+}
+
+/// Render a [`poiesis_core::Document`] to HTML bytes via Pandoc.
+#[instrument(skip(doc))]
+pub fn render_html_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
+    render_pandoc_from_doc(doc, "html", &pandoc::DocOpts::html())
+}
+
+/// Render a [`poiesis_core::Document`] to Markdown bytes via Pandoc.
+#[instrument(skip(doc))]
+pub fn render_md_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
+    render_pandoc_from_doc(doc, "md", &pandoc::DocOpts::markdown())
+}
+
+/// Render a [`poiesis_core::Document`] to `LaTeX` bytes via Pandoc.
+#[instrument(skip(doc))]
+pub fn render_latex_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
+    render_pandoc_from_doc(doc, "latex", &pandoc::DocOpts::latex())
+}
+
+/// Render a [`poiesis_core::Document`] to EPUB bytes via Pandoc.
+#[instrument(skip(doc))]
+pub fn render_epub_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
+    render_pandoc_from_doc(doc, "epub", &pandoc::DocOpts::epub())
+}
+
 /// Render a [`poiesis_core::Document`] to ODT bytes.
 ///
 /// This uses the clean-room `poiesis-text` ODT backend and does not require
@@ -213,6 +256,16 @@ pub fn render_odt_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     let renderer = poiesis_text::OdtRenderer::new();
     renderer.render(doc).map_err(|e| Error::OdtRenderFailed {
         detail: e.to_string(),
+    })
+}
+
+fn render_pandoc_from_doc(
+    doc: &poiesis_core::Document,
+    format: &str,
+    opts: &pandoc::DocOpts,
+) -> Result<Vec<u8>> {
+    pandoc::render_doc(doc, opts).map_err(|_e| Error::PandocRequired {
+        format: format.to_owned(),
     })
 }
 
@@ -314,10 +367,14 @@ mod tests {
         assert!(bytes.starts_with(b"%PDF"), "must be a PDF");
     }
 
-    #[test]
-    fn render_odt_from_doc_produces_pk_magic() {
+    fn pandoc_present() -> bool {
+        PandocProbe::check().require().is_ok() && render_md_from_doc(&simple_doc()).is_ok()
+    }
+
+    fn simple_doc() -> poiesis_core::Document {
         use poiesis_core::{Block, Document, Metadata, RichText};
-        let doc = Document {
+
+        Document {
             metadata: Metadata {
                 title: "Test".to_owned(),
                 author: None,
@@ -330,8 +387,62 @@ mod tests {
                 },
                 Block::Paragraph(RichText::from("Content.")),
             ],
-        };
-        let bytes = render_odt_from_doc(&doc).expect("must render");
+        }
+    }
+
+    #[test]
+    fn render_docx_from_doc_produces_bytes_when_pandoc_present() {
+        if !pandoc_present() {
+            return;
+        }
+
+        let bytes = render_docx_from_doc(&simple_doc()).expect("must render");
+        assert!(bytes.starts_with(b"PK"), "must be a DOCX ZIP archive");
+    }
+
+    #[test]
+    fn render_html_from_doc_produces_bytes_when_pandoc_present() {
+        if !pandoc_present() {
+            return;
+        }
+
+        let bytes = render_html_from_doc(&simple_doc()).expect("must render");
+        assert!(!bytes.is_empty(), "must produce HTML bytes");
+    }
+
+    #[test]
+    fn render_md_from_doc_produces_bytes_when_pandoc_present() {
+        if !pandoc_present() {
+            return;
+        }
+
+        let bytes = render_md_from_doc(&simple_doc()).expect("must render");
+        assert!(!bytes.is_empty(), "must produce Markdown bytes");
+    }
+
+    #[test]
+    fn render_latex_from_doc_produces_bytes_when_pandoc_present() {
+        if !pandoc_present() {
+            return;
+        }
+
+        let bytes = render_latex_from_doc(&simple_doc()).expect("must render");
+        assert!(!bytes.is_empty(), "must produce LaTeX bytes");
+    }
+
+    #[test]
+    fn render_epub_from_doc_produces_bytes_when_pandoc_present() {
+        if !pandoc_present() {
+            return;
+        }
+
+        let bytes = render_epub_from_doc(&simple_doc()).expect("must render");
+        assert!(bytes.starts_with(b"PK"), "must be an EPUB ZIP archive");
+    }
+
+    #[test]
+    fn render_odt_from_doc_produces_pk_magic() {
+        let bytes = render_odt_from_doc(&simple_doc()).expect("must render");
         assert!(bytes.starts_with(b"PK"), "must be an ODT ZIP archive");
     }
 }

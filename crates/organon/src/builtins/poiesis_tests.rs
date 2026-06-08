@@ -2,8 +2,9 @@
 #![expect(clippy::indexing_slicing, reason = "test object mutation")]
 //! Tests for poiesis tool executors.
 //!
-//! Current coverage: `render_typst_report`. The other poiesis executors (lint,
-//! verify, `generate_document`) are exercised by the underlying crates' tests.
+//! Current coverage: `render_typst_report` and `generate_document` routing.
+//! The other poiesis executors (lint, verify) are exercised by the underlying
+//! crates' tests.
 
 use std::collections::HashSet;
 use std::io::{Cursor, Read};
@@ -11,6 +12,7 @@ use std::sync::{Arc, RwLock};
 
 use base64::Engine as _;
 use koina::id::{NousId, SessionId, ToolName};
+use poiesis_core::{Block, Document, Metadata, RichText};
 use poiesis_theme::summus;
 use zip::ZipArchive;
 
@@ -58,6 +60,51 @@ fn document_bytes(result: &ToolResult, media_type: &str) -> Vec<u8> {
         }
         other => panic!("expected Blocks content, got {other:?}"),
     }
+}
+
+fn pandoc_present() -> bool {
+    poiesis_doc::render_md_from_doc(&simple_document()).is_ok()
+}
+
+fn simple_document() -> Document {
+    Document {
+        metadata: Metadata {
+            title: "Test".to_owned(),
+            author: None,
+            created: None,
+        },
+        content: vec![
+            Block::Heading {
+                level: 1,
+                text: RichText::from("Section"),
+            },
+            Block::Paragraph(RichText::from("Content.")),
+        ],
+    }
+}
+
+fn generate_document_args(format: &str) -> serde_json::Value {
+    serde_json::json!({
+        "format": format,
+        "content": serde_json::json!([
+            {"type": "heading", "level": 1, "text": "Title"},
+            {"type": "paragraph", "text": "Body text."}
+        ]).to_string()
+    })
+}
+
+async fn assert_generate_document_ok(ctx: &ToolContext, format: &str) {
+    let input = tool_input("generate_document", generate_document_args(format));
+    let result = GenerateDocumentExecutor
+        .execute(&input, ctx)
+        .await
+        .expect("exec");
+    assert!(!result.is_error, "{format} render must succeed: {result:?}");
+    let text = result.content.text_summary();
+    assert!(
+        text.contains(&format!("Generated {} document", format.to_uppercase())),
+        "unexpected summary for {format}: {text}"
+    );
 }
 
 #[tokio::test]
@@ -312,6 +359,96 @@ async fn generate_document_unsupported_block_is_error() {
         text.contains("unsupported"),
         "error must mention unsupported type: {text}"
     );
+}
+
+#[tokio::test]
+async fn generate_document_odt_uses_clean_room_renderer() {
+    let bytes = poiesis_doc::render_odt_from_doc(&simple_document()).expect("must render");
+    assert!(bytes.starts_with(b"PK"), "must be an ODT ZIP archive");
+}
+
+#[tokio::test]
+async fn generate_document_odt_routes_without_pandoc() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    assert_generate_document_ok(&ctx, "odt").await;
+}
+
+#[tokio::test]
+async fn generate_document_pdf_arm_is_unchanged() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    assert_generate_document_ok(&ctx, "pdf").await;
+}
+
+#[tokio::test]
+async fn generate_document_xlsx_arm_is_unchanged() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    assert_generate_document_ok(&ctx, "xlsx").await;
+}
+
+#[tokio::test]
+async fn generate_document_docx_routes_via_pandoc() {
+    if !pandoc_present() {
+        return;
+    }
+
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    assert_generate_document_ok(&ctx, "docx").await;
+}
+
+#[tokio::test]
+async fn generate_document_html_routes_via_pandoc() {
+    if !pandoc_present() {
+        return;
+    }
+
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    assert_generate_document_ok(&ctx, "html").await;
+}
+
+#[tokio::test]
+async fn generate_document_md_routes_via_pandoc() {
+    if !pandoc_present() {
+        return;
+    }
+
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    assert_generate_document_ok(&ctx, "md").await;
+}
+
+#[tokio::test]
+async fn generate_document_latex_routes_via_pandoc() {
+    if !pandoc_present() {
+        return;
+    }
+
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    assert_generate_document_ok(&ctx, "latex").await;
+}
+
+#[tokio::test]
+async fn generate_document_epub_routes_via_pandoc() {
+    if !pandoc_present() {
+        return;
+    }
+
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    assert_generate_document_ok(&ctx, "epub").await;
 }
 
 #[tokio::test]

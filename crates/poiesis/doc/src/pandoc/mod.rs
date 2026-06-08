@@ -109,6 +109,30 @@ impl DocOpts {
         }
     }
 
+    /// Default HTML options.
+    pub fn html() -> Self {
+        Self {
+            format: OutputFormat::Html,
+            ..Self::default_pdf()
+        }
+    }
+
+    /// Default `LaTeX` options.
+    pub fn latex() -> Self {
+        Self {
+            format: OutputFormat::Latex,
+            ..Self::default_pdf()
+        }
+    }
+
+    /// Default EPUB options.
+    pub fn epub() -> Self {
+        Self {
+            format: OutputFormat::Epub,
+            ..Self::default_pdf()
+        }
+    }
+
     /// Default ODT options.
     pub fn odt() -> Self {
         Self {

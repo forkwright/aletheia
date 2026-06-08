@@ -158,7 +158,7 @@ l3_token_estimate = 12453
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "5cf7e46774253b74a5eba1a24fdbe5d9056005b94bb5138ce9a32db5514c10b9"
+source_hash = "b9a4e690a995d67f1d9874e01a84cd8653ce405f9e8ef4fcb81bdea7421cce00"
 l3_token_estimate = 11827
 
 [[crates]]
@@ -194,8 +194,8 @@ l3_token_estimate = 446
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "f3a0cb314b15883c3644b8f250fec00c098d96d34d02dbefbe8d6ad34bbdd4d2"
-l3_token_estimate = 2251
+source_hash = "324d1bad99d06bfd4b8f25b6ef0990e8557d4a3767d62c89363a7ae02b1ea913"
+l3_token_estimate = 2385
 
 [[crates]]
 name = "poiesis-inspect"
