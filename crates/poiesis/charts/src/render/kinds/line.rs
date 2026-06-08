@@ -275,11 +275,7 @@ const fn idx_to_f64(i: usize) -> f64 {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test assertions"
-)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::model::{

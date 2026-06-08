@@ -33,14 +33,20 @@ const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 /// - `chart.kind == ChartKind::Doughnut`
 /// - `series.len() == 1`
 /// - `points.len() >= 1`
-#[expect(clippy::too_many_lines, reason = "single emit function per kind pattern")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single emit function per kind pattern"
+)]
 pub fn emit(
     chart: &Chart,
     theme: &ResolvedTheme,
     canvas: &Canvas,
     mode: ColorMode,
 ) -> Result<String> {
-    #[expect(clippy::indexing_slicing, reason = "caller invariant: exactly 1 series")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "caller invariant: exactly 1 series"
+    )]
     let series = &chart.series[0];
     let plot = canvas.plot_box();
 
@@ -107,7 +113,11 @@ pub fn emit(
             let (x1o, y1o) = polar_to_xy(cx, cy, r, end_angle);
             let (x0i, y0i) = polar_to_xy(cx, cy, r_inner, start_angle);
             let (x1i, y1i) = polar_to_xy(cx, cy, r_inner, end_angle);
-            let large_arc = if sweep >= std::f64::consts::PI { "1" } else { "0" };
+            let large_arc = if sweep >= std::f64::consts::PI {
+                "1"
+            } else {
+                "0"
+            };
             let mut d = String::new();
             let _ = write!(
                 d,
@@ -200,11 +210,7 @@ fn escape_xml(s: &str) -> String {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test assertions"
-)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::model::{

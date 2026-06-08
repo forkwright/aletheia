@@ -35,7 +35,12 @@ pub fn emit(
     mode: ColorMode,
 ) -> Result<String> {
     let plot = canvas.plot_box();
-    let n_cats = chart.series.iter().map(|s| s.points.len()).max().unwrap_or(0);
+    let n_cats = chart
+        .series
+        .iter()
+        .map(|s| s.points.len())
+        .max()
+        .unwrap_or(0);
     if n_cats == 0 {
         return Err(crate::Error::BadSeriesShape {
             kind: "column".to_owned(),
@@ -70,9 +75,13 @@ pub fn emit(
     emit_svg_open(&mut out, chart, canvas);
     emit_gridlines(&mut out, lo, hi, &y_scale, &plot);
     emit_axes(&mut out, chart, lo, hi, &y_scale, &plot, band_w, theme);
-    emit_bars(&mut out, chart, &y_scale, &plot, band_w, sub_w, bar_w, &fills);
+    emit_bars(
+        &mut out, chart, &y_scale, &plot, band_w, sub_w, bar_w, &fills,
+    );
     if chart.data_labels {
-        emit_labels(&mut out, chart, &y_scale, &plot, band_w, sub_w, theme, &fills);
+        emit_labels(
+            &mut out, chart, &y_scale, &plot, band_w, sub_w, theme, &fills,
+        );
     }
     out.push_str("</svg>");
     Ok(out)
@@ -137,22 +146,23 @@ fn emit_axes(
     }
 
     // x-category labels
-    let first_series = &chart.series[0];
-    for (j, point) in first_series.points.iter().enumerate() {
-        let cx = plot.x0 + band_w * idx_to_f64(j) + band_w * 0.5;
-        let label = match &point.label {
-            Some(CiteOrText::Text(t)) => t.clone(),
-            Some(CiteOrText::Cite(id)) => id.0.clone(),
-            None => String::new(),
-        };
-        let _ = write!(
-            out,
-            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-family=\"{font}\">{label}</text>",
-            x = coord(cx),
-            y = coord(plot.y1 + 24.0),
-            font = theme.font_sans,
-            label = escape_xml(&label),
-        );
+    if let Some(first_series) = chart.series.first() {
+        for (j, point) in first_series.points.iter().enumerate() {
+            let cx = plot.x0 + band_w * idx_to_f64(j) + band_w * 0.5;
+            let label = match &point.label {
+                Some(CiteOrText::Text(t)) => t.clone(),
+                Some(CiteOrText::Cite(id)) => id.0.clone(),
+                None => String::new(),
+            };
+            let _ = write!(
+                out,
+                "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-family=\"{font}\">{label}</text>",
+                x = coord(cx),
+                y = coord(plot.y1 + 24.0),
+                font = theme.font_sans,
+                label = escape_xml(&label),
+            );
+        }
     }
 
     out.push_str("</g>");
@@ -169,8 +179,7 @@ fn emit_bars(
     fills: &[String],
 ) {
     out.push_str("<g class=\"bars\">");
-    for (i, series) in chart.series.iter().enumerate() {
-        let fill = &fills[i];
+    for (i, (series, fill)) in chart.series.iter().zip(fills.iter()).enumerate() {
         for (j, point) in series.points.iter().enumerate() {
             let x = plot.x0 + band_w * idx_to_f64(j) + sub_w * idx_to_f64(i) + sub_w * 0.1;
             let y = y_scale.map(point.y.value);
@@ -200,8 +209,7 @@ fn emit_labels(
     fills: &[String],
 ) {
     out.push_str("<g class=\"labels\">");
-    for (i, series) in chart.series.iter().enumerate() {
-        let fill = &fills[i];
+    for (i, (series, fill)) in chart.series.iter().zip(fills.iter()).enumerate() {
         for (j, point) in series.points.iter().enumerate() {
             let cx = plot.x0 + band_w * idx_to_f64(j) + sub_w * idx_to_f64(i) + sub_w * 0.5;
             let label_y = y_scale.map(point.y.value) - 6.0;
@@ -264,11 +272,7 @@ fn escape_xml(s: &str) -> String {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test assertions"
-)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::model::{
@@ -406,6 +410,9 @@ mod tests {
         )
         .expect("emit");
         let rect_count = svg.matches("<rect").count();
-        assert!(rect_count >= 6, "expected at least 6 rects, got {rect_count}");
+        assert!(
+            rect_count >= 6,
+            "expected at least 6 rects, got {rect_count}"
+        );
     }
 }

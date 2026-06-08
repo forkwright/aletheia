@@ -69,7 +69,9 @@ pub fn emit(
     let mut out = String::new();
     emit_svg_open(&mut out, chart, canvas);
     emit_gridlines(&mut out, &plot, &y_scale, &y_ticks);
-    emit_axes(&mut out, &plot, &x_scale, &y_scale, &x_ticks, &y_ticks, theme, chart);
+    emit_axes(
+        &mut out, &plot, &x_scale, &y_scale, &x_ticks, &y_ticks, theme, chart,
+    );
     emit_dots(&mut out, chart, &x_scale, &y_scale, theme, mode)?;
     if chart.data_labels {
         emit_labels(&mut out, chart, &x_scale, &y_scale, theme, mode)?;
@@ -101,12 +103,7 @@ fn emit_svg_open(out: &mut String, chart: &Chart, canvas: &Canvas) {
     );
 }
 
-fn emit_gridlines(
-    out: &mut String,
-    plot: &PlotBox,
-    y_scale: &Scale,
-    y_ticks: &[f64],
-) {
+fn emit_gridlines(out: &mut String, plot: &PlotBox, y_scale: &Scale, y_ticks: &[f64]) {
     out.push_str("<g class=\"gridlines\">");
     for tick in y_ticks {
         let y = y_scale.map(*tick);
@@ -255,11 +252,7 @@ fn escape_xml(s: &str) -> String {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "test assertions"
-)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::model::{
@@ -359,10 +352,7 @@ mod tests {
         let mut chart = scatter_chart();
         chart.series.push(Series {
             name: CiteOrText::Text("Series B".to_owned()),
-            points: vec![
-                pt_xy(1.5, cite("y4", 12.0)),
-                pt_xy(2.5, cite("y5", 18.0)),
-            ],
+            points: vec![pt_xy(1.5, cite("y4", 12.0)), pt_xy(2.5, cite("y5", 18.0))],
             tone: ToneRef::Indexed(1),
             axis: AxisSide::Left,
             style: SeriesStyle::Default,
