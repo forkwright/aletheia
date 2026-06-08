@@ -3102,6 +3102,13 @@ pub struct RecallWeights {
     /// Weight for graph `PageRank` importance (hub entities boosted).
     /// Default: 0.10
     pub graph_importance: f64,
+    /// Weight for serendipity (graph obscurity + semantic distance novelty).
+    ///
+    /// Non-zero values blend in an unexpectedness score derived from existing
+    /// recall fields: `graph_importance` as obscurity (`1 - PageRank`) and
+    /// vector distance as novelty. Default: 0.0 (inert — existing behaviour
+    /// preserved). Enable by setting a positive weight in config.
+    pub serendipity: f64,
     /// Weight for Bayesian surprise (topic-shift signal from EM-LLM).
     ///
     /// Non-zero values blend in a per-candidate surprise score produced by
@@ -3141,6 +3148,11 @@ pub struct FactorScores {
     pub access_frequency: f64,
     /// `PageRank` graph importance score [0.0, 1.0] (1.0 = highest hub).
     pub graph_importance: f64,
+    /// Serendipity score [0.0, 1.0] (1.0 = obscure and distant).
+    ///
+    /// Computed from existing recall fields, not a separate discovery pass.
+    /// Default: 0.0 — inert unless `RecallWeights::serendipity > 0`.
+    pub serendipity: f64,
     /// Bayesian surprise contribution [0.0, 1.0].
     ///
     /// Normalised inverse of the KL-divergence score from `SurpriseCalculator`.
@@ -3246,6 +3258,7 @@ impl RecallEngine {
     ) -> Vec<ScoredResult>;
     pub fn rank (&self, mut candidates: Vec<ScoredResult>) -> Vec<ScoredResult>;
     pub fn score_graph_importance (&self, importance: f64) -> f64;
+    pub fn score_serendipity (&self, graph_importance: f64, distance: f64) -> f64;
     pub fn score_surprise (&self, surprise_nats: f64, midpoint_nats: f64) -> f64;
     pub fn score_evidence_coverage (
         &self,

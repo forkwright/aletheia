@@ -774,6 +774,15 @@ pub struct KnowledgeConfig {
     /// `fact_multiplicity` side-index (via `RecallEngine::score_convergence`).
     /// Threaded into `RecallWeights::convergence` at engine construction.
     pub recall_convergence_weight: f64,
+    /// Recall weight for serendipity. Default: 0.0 (inert).
+    ///
+    /// Non-zero values boost candidates that are both graph-obscure and
+    /// farther away in semantic distance, using existing recall fields only.
+    /// Threaded into `RecallWeights::serendipity` at engine construction.
+    ///
+    /// WARNING: this is a novelty/serendipity signal, not a relevance booster
+    /// — keep it small relative to `vector_similarity`.
+    pub recall_serendipity_weight: f64,
     /// Admission policy applied to every `insert_fact` call. Default: `default` (admit-all).
     ///
     /// Set to `structured` to activate the five-factor A-MAC gate
