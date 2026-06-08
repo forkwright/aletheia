@@ -8,15 +8,23 @@
 //! - `qa_gate`              — run prose lint and optional factbase validation, returning a structured QA report
 
 use std::future::Future;
+use std::io::{Cursor, Read as _, Write as _};
 use std::pin::Pin;
 
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
+use poiesis_charts::render::{Canvas, DocCanvas};
+use poiesis_charts::{
+    Chart, ColorMode as ChartColorMode, ResolvedTheme as ChartResolvedTheme, render_chart,
+};
 use poiesis_core::{
     Block, Document, Factbase, Metadata, QaIssue, QaIssueKind, QaReport, Renderer, RichText, Span,
 };
 use poiesis_lint::{LintConfig, Linter};
+use poiesis_theme::{sinks::emit_typst_template, summus};
 use poiesis_verify::Verifier;
+use zip::write::SimpleFileOptions;
+use zip::{ZipArchive, ZipWriter};
 
 use crate::builtins::workspace::validate_path;
 use crate::error::Result;
@@ -43,6 +51,96 @@ fn extract_str<'a>(
     args.get(key)
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| ToolResult::error(format!("missing required argument: {key}")))
+}
+
+const DEFAULT_TYPST_TEMPLATE: &str = include_str!("../../../poiesis/typst/templates/default.typ");
+const TYPST_CHART_APPENDIX: &str = r#"
+#if "chart_svg" in data [
+  #v(16pt)
+  #align(center)[
+    #image(bytes(data.chart_svg), format: "svg", width: 100%)
+  ]
+]
+"#;
+
+fn render_chart_svg(data: &serde_json::Value) -> std::result::Result<Option<String>, String> {
+    let Some(chart_value) = data.get("chart") else {
+        return Ok(None);
+    };
+
+    let chart: Chart = serde_json::from_value(chart_value.clone())
+        .map_err(|e| format!("chart must be valid JSON: {e}"))?;
+    let theme = ChartResolvedTheme::from_poiesis_theme(&summus());
+    let svg = render_chart(
+        &chart,
+        &theme,
+        &Canvas::Doc(DocCanvas::default()),
+        ChartColorMode::Resolved,
+    )
+    .map_err(|e| format!("chart render failed: {e}"))?;
+    Ok(Some(svg))
+}
+
+pub(crate) fn extract_zip_entry(
+    zip_bytes: &[u8],
+    name: &str,
+) -> std::result::Result<Vec<u8>, String> {
+    let cursor = Cursor::new(zip_bytes);
+    let mut archive = ZipArchive::new(cursor).map_err(|e| format!("failed to open zip: {e}"))?;
+    let mut file = archive
+        .by_name(name)
+        .map_err(|e| format!("missing zip entry {name}: {e}"))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|e| format!("failed to read zip entry {name}: {e}"))?;
+    Ok(bytes)
+}
+
+pub(crate) fn rewrite_zip(
+    original: &[u8],
+    replacements: &[(&str, &[u8])],
+) -> std::result::Result<Vec<u8>, String> {
+    let cursor = Cursor::new(original);
+    let mut archive = ZipArchive::new(cursor).map_err(|e| format!("failed to open zip: {e}"))?;
+    let mut output = ZipWriter::new(Cursor::new(Vec::new()));
+    let mut remaining = std::collections::BTreeMap::new();
+    for (name, bytes) in replacements {
+        remaining.insert(*name, *bytes);
+    }
+
+    for idx in 0..archive.len() {
+        let mut file = archive
+            .by_index(idx)
+            .map_err(|e| format!("failed to read zip entry #{idx}: {e}"))?;
+        let name = file.name().to_owned();
+        if name.ends_with('/') {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|e| format!("failed to read zip entry {name}: {e}"))?;
+        let payload = remaining.remove(name.as_str()).unwrap_or(bytes.as_slice());
+        output
+            .start_file(&name, SimpleFileOptions::default())
+            .map_err(|e| format!("failed to write zip entry {name}: {e}"))?;
+        output
+            .write_all(payload)
+            .map_err(|e| format!("failed to write zip entry {name}: {e}"))?;
+    }
+
+    for (name, bytes) in remaining {
+        output
+            .start_file(name, SimpleFileOptions::default())
+            .map_err(|e| format!("failed to write zip entry {name}: {e}"))?;
+        output
+            .write_all(bytes)
+            .map_err(|e| format!("failed to write zip entry {name}: {e}"))?;
+    }
+
+    let cursor = output
+        .finish()
+        .map_err(|e| format!("failed to finish zip: {e}"))?;
+    Ok(cursor.into_inner())
 }
 
 // ── generate_document ─────────────────────────────────────────────────────────
@@ -454,6 +552,10 @@ fn verify_report_def() -> ToolDef {
 struct RenderTypstReportExecutor;
 
 impl ToolExecutor for RenderTypstReportExecutor {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "tool executor wires the full report render path"
+    )]
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -462,23 +564,69 @@ impl ToolExecutor for RenderTypstReportExecutor {
         Box::pin(async move {
             let args = &input.arguments;
 
-            // Optional inline JSON data; defaults to empty object.
-            let data: serde_json::Value = if let Some(raw) = extract_opt_str(args, "data") {
-                match serde_json::from_str(raw) {
+            // NOTE: Optional inline JSON data; accepts either a structured object or a JSON string.
+            let mut data: serde_json::Value = match args.get("data") {
+                None => serde_json::json!({}),
+                Some(serde_json::Value::Object(_)) => match args.get("data").cloned() {
+                    Some(value) => value,
+                    None => {
+                        return Ok(ToolResult::error(
+                            "data object must be present after lookup".to_owned(),
+                        ));
+                    }
+                },
+                Some(serde_json::Value::String(raw)) => match serde_json::from_str(raw) {
                     Ok(v) => v,
                     Err(e) => {
                         return Ok(ToolResult::error(format!("data must be valid JSON: {e}")));
                     }
+                },
+                Some(_) => {
+                    return Ok(ToolResult::error(
+                        "data must be a JSON object or JSON string".to_owned(),
+                    ));
                 }
-            } else {
-                serde_json::json!({})
             };
 
-            // Choose source: inline `source` wins over `template` slug.
+            if let Some(chart_svg) = match render_chart_svg(&data) {
+                Ok(svg) => svg,
+                Err(e) => return Ok(ToolResult::error(e)),
+            } && let Some(obj) = data.as_object_mut()
+            {
+                obj.insert("chart_svg".to_owned(), serde_json::Value::String(chart_svg));
+            }
+
+            let theme = summus();
+            let theme_source = match emit_typst_template(&theme) {
+                Ok(source) => source,
+                Err(e) => {
+                    return Ok(ToolResult::error(format!("theme typst sink failed: {e}")));
+                }
+            };
+
+            // NOTE: Inline `source` wins over the `template` slug.
             let pdf_result = if let Some(source) = extract_opt_str(args, "source") {
-                poiesis_typst::render_typst(source, &data)
+                let mut source_text = String::with_capacity(theme_source.len() + source.len() + 2);
+                source_text.push_str(&theme_source);
+                source_text.push_str("\n\n");
+                source_text.push_str(source);
+                poiesis_typst::render_typst(&source_text, &data)
             } else if let Some(slug) = extract_opt_str(args, "template") {
-                poiesis_typst::render_template(slug, &data)
+                match slug {
+                    "default" => {
+                        let mut source_text = String::with_capacity(
+                            theme_source.len() + DEFAULT_TYPST_TEMPLATE.len() + 64,
+                        );
+                        source_text.push_str(&theme_source);
+                        source_text.push_str("\n\n");
+                        source_text.push_str(DEFAULT_TYPST_TEMPLATE);
+                        if data.get("chart_svg").is_some() {
+                            source_text.push_str(TYPST_CHART_APPENDIX);
+                        }
+                        poiesis_typst::render_typst(&source_text, &data)
+                    }
+                    other => poiesis_typst::render_template(other, &data),
+                }
             } else {
                 return Ok(ToolResult::error(
                     "render_typst_report requires 'source' (inline Typst) or 'template' (slug)"
@@ -493,7 +641,7 @@ impl ToolExecutor for RenderTypstReportExecutor {
                 }
             };
 
-            // Optional: write to a caller-provided path in addition to returning bytes.
+            // NOTE: Write to a caller-provided path in addition to returning bytes.
             if let Some(out_path) = extract_opt_str(args, "out_path") {
                 let validated = match validate_path(out_path, ctx, &input.name) {
                     Ok(path) => path,
@@ -532,14 +680,16 @@ fn render_typst_report_def() -> ToolDef {
     ToolDef {
         name: koina::id::ToolName::from_static("render_typst_report"), // kanon:ignore RUST/expect
         description: "Render a Typst source string (or built-in template slug) to a PDF, \
-                      with optional JSON data injected at the virtual path `data.json`."
+                      with optional JSON data injected at the virtual path `data.json` and \
+                      an embedded chart payload when present."
             .to_owned(),
         extended_description: Some(
             "Pass either `source` (inline Typst markup) or `template` (one of the built-in \
              slugs, currently: `default`). The JSON blob passed as `data` is exposed to the \
-             Typst document as a virtual file read via `json(\"data.json\")`. The result \
-             contains a text summary plus a base64-encoded PDF document block; optionally \
-             also writes the PDF to `out_path` on the filesystem."
+             Typst document as a virtual file read via `json(\"data.json\")`. When `data.chart` \
+             is present, the executor renders it through poiesis-charts and appends the SVG to \
+             the default template. The result contains a text summary plus a base64-encoded PDF \
+             document block; optionally also writes the PDF to `out_path` on the filesystem."
                 .to_owned(),
         ),
         input_schema: InputSchema {

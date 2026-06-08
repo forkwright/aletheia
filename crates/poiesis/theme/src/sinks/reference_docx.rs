@@ -63,11 +63,7 @@ pub fn emit_reference_docx(theme: &ResolvedTheme) -> Result<Vec<u8>, ThemeError>
         "word/styles.xml",
         build_styles_xml(theme).as_bytes(),
     )?;
-    pack_entry(
-        &mut zip,
-        "word/settings.xml",
-        WORD_SETTINGS.as_bytes(),
-    )?;
+    pack_entry(&mut zip, "word/settings.xml", WORD_SETTINGS.as_bytes())?;
     pack_entry(
         &mut zip,
         "word/theme/theme1.xml",
@@ -93,12 +89,11 @@ fn pack_entry(
             entry: name.into(),
             message: e.to_string(),
         })?;
-    zip.write_all(data)
-        .map_err(|e| ThemeError::ZipWrite {
-            sink: "reference_docx".into(),
-            entry: name.into(),
-            message: e.to_string(),
-        })
+    zip.write_all(data).map_err(|e| ThemeError::ZipWrite {
+        sink: "reference_docx".into(),
+        entry: name.into(),
+        message: e.to_string(),
+    })
 }
 
 fn build_styles_xml(theme: &ResolvedTheme) -> String {
@@ -238,7 +233,11 @@ mod tests {
     #[test]
     fn docx_is_valid_zip() {
         let bytes = emit_reference_docx(&summus()).expect("emit");
-        assert_eq!(&bytes[..2], b"PK", "DOCX output must be a valid ZIP");
+        assert_eq!(
+            bytes.get(..2),
+            Some(b"PK".as_slice()),
+            "DOCX output must be a valid ZIP"
+        );
     }
 
     #[test]
@@ -264,7 +263,11 @@ mod tests {
             .expect("styles.xml entry")
             .read_to_string(&mut styles)
             .expect("read styles");
-        let sans = summus().lookup_family("sans").expect("sans family")[0].clone();
+        let sans = summus()
+            .lookup_family("sans")
+            .and_then(|family| family.first())
+            .cloned()
+            .expect("sans family");
         assert!(
             styles.contains(&format!(r#"w:ascii="{sans}""#)),
             "styles.xml must carry body sans font {sans}: {styles}"

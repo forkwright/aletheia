@@ -6,9 +6,13 @@
 //! verify, `generate_document`) are exercised by the underlying crates' tests.
 
 use std::collections::HashSet;
+use std::io::{Cursor, Read};
 use std::sync::{Arc, RwLock};
 
+use base64::Engine as _;
 use koina::id::{NousId, SessionId, ToolName};
+use poiesis_theme::summus;
+use zip::ZipArchive;
 
 use super::*;
 use crate::builtins::render_docx_report::RenderDocxReportExecutor;
@@ -33,6 +37,26 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
         name: ToolName::new(name).expect("valid"),
         tool_use_id: "toolu_test".to_owned(),
         arguments: args,
+    }
+}
+
+fn document_bytes(result: &ToolResult, media_type: &str) -> Vec<u8> {
+    match &result.content {
+        crate::types::ToolResultContent::Blocks(blocks) => {
+            let source = blocks
+                .iter()
+                .find_map(|block| match block {
+                    ToolResultBlock::Document { source } if source.media_type == media_type => {
+                        Some(&source.data)
+                    }
+                    _ => None,
+                })
+                .expect("document block must exist");
+            base64::engine::general_purpose::STANDARD
+                .decode(source)
+                .expect("document block must decode")
+        }
+        other => panic!("expected Blocks content, got {other:?}"),
     }
 }
 
@@ -192,6 +216,76 @@ async fn render_typst_report_malformed_typst_is_error() {
 }
 
 #[tokio::test]
+async fn render_typst_report_renders_chart_payload() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "render_typst_report",
+        serde_json::json!({
+            "template": "default",
+            "data": {
+                "title": "Chart Report",
+                "body": ["This report carries a chart."],
+                "chart": {
+                    "kind": "bar",
+                    "series": [
+                        {
+                            "name": "Revenue",
+                            "tone": 0,
+                            "points": [
+                                {
+                                    "label": "Q1",
+                                    "y": { "id": "f1", "value": 12.0, "unit": "number" }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }),
+    );
+    let result = RenderTypstReportExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(!result.is_error, "chart render must succeed: {result:?}");
+
+    let bytes = document_bytes(&result, "application/pdf");
+    assert!(bytes.starts_with(b"%PDF-"), "rendered document must be PDF");
+    assert!(bytes.len() > 200, "rendered PDF must not be empty");
+}
+
+#[tokio::test]
+async fn render_typst_report_bad_chart_is_error() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "render_typst_report",
+        serde_json::json!({
+            "template": "default",
+            "data": {
+                "chart": "not a chart"
+            }
+        }),
+    );
+    let result = RenderTypstReportExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(result.is_error, "bad chart must fail");
+    assert!(
+        result
+            .content
+            .text_summary()
+            .contains("chart must be valid JSON"),
+        "unexpected error text: {:?}",
+        result.content
+    );
+}
+
+#[tokio::test]
 async fn generate_document_unsupported_block_is_error() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
@@ -257,6 +351,117 @@ async fn render_xlsx_report_missing_data_is_error() {
         .await
         .expect("exec");
     assert!(result.is_error, "missing data must error");
+}
+
+#[tokio::test]
+async fn render_pptx_report_applies_summus_theme() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "render_pptx_report",
+        serde_json::json!({
+            "data": {
+                "slides": [
+                    {
+                        "title": "Theme Check",
+                        "content": [
+                            { "text": "Hello, alice." }
+                        ]
+                    }
+                ]
+            }
+        }),
+    );
+    let result = RenderPptxReportExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(!result.is_error, "pptx render must succeed: {result:?}");
+
+    let bytes = document_bytes(
+        &result,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    );
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).expect("valid zip");
+    let mut theme_xml = String::new();
+    archive
+        .by_name("ppt/theme/theme1.xml")
+        .expect("theme1.xml must exist")
+        .read_to_string(&mut theme_xml)
+        .expect("read theme1.xml");
+    assert!(
+        theme_xml.contains("232E54"),
+        "theme1.xml must carry the summus navy color: {theme_xml}"
+    );
+}
+
+#[tokio::test]
+async fn render_docx_report_applies_summus_reference() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "render_docx_report",
+        serde_json::json!({
+            "data": {
+                "title": "Docx Check",
+                "paragraphs": [
+                    { "text": "Hello, bob." }
+                ]
+            }
+        }),
+    );
+    let result = RenderDocxReportExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(!result.is_error, "docx render must succeed: {result:?}");
+
+    let bytes = document_bytes(
+        &result,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).expect("valid zip");
+    let mut styles_xml = String::new();
+    archive
+        .by_name("word/styles.xml")
+        .expect("styles.xml must exist")
+        .read_to_string(&mut styles_xml)
+        .expect("read styles.xml");
+    assert!(
+        styles_xml.contains("Geist"),
+        "styles.xml must carry the summus sans family: {styles_xml}"
+    );
+}
+
+#[test]
+fn chart_theme_adapter_maps_summus() {
+    let theme = summus();
+    let chart_theme = poiesis_charts::ResolvedTheme::from_poiesis_theme(&theme);
+    assert_eq!(chart_theme.theme_name, "summus");
+    assert_eq!(
+        chart_theme.series[0].hex,
+        theme
+            .lookup_color(&theme.chart.series[0])
+            .expect("series[0]")
+            .as_str()
+    );
+    assert_eq!(
+        chart_theme.series[1].hex,
+        theme
+            .lookup_color(&theme.chart.series[1])
+            .expect("series[1]")
+            .as_str()
+    );
+    assert!(
+        chart_theme.font_sans.contains("Geist"),
+        "sans family must come from the theme"
+    );
+    assert!(
+        chart_theme.font_mono.contains("Geist Mono"),
+        "mono family must come from the theme"
+    );
 }
 
 #[tokio::test]

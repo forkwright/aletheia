@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 poiesis-core = { path = "../core" }
+poiesis-theme = { path = "../theme", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
@@ -23,6 +24,7 @@ insta = { version = "1", features = ["yaml"] }
 
 [features]
 default = []
+theme-bridge = ["dep:poiesis-theme"]
 # Vega-Lite fallback for kinds the pure-Rust emitter does not own
 # (heatmap, boxplot, sankey, candlestick, faceted, regression, log/time scales).
 # Off by default: a chart spec that requires Vega-Lite while this feature is

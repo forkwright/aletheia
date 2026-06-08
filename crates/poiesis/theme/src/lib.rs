@@ -3,11 +3,15 @@
 //!
 //! Every poiesis render path consumes a [`ResolvedTheme`]; the `theme` crate is
 //! the single home for the tokens that every backend reads from and for the
-//! sinks that pre-bake brand assets for the three rendering families:
+//! sinks that pre-bake brand assets for the seven rendering families:
 //!
 //! - CSS custom properties for the HTML/PDF deck path (see [`sinks::css`]),
 //! - OOXML `clrScheme` / `fontScheme` for the PPTX path (see [`sinks::ooxml`]),
-//! - flat doc-vars map for the Pandoc document path (see [`sinks::docvars`]).
+//! - flat doc-vars map for the Pandoc document path (see [`sinks::docvars`]),
+//! - `LaTeX` prelude for document emission (see [`sinks::latex`]),
+//! - packed base PPTX template for slide baking (see [`sinks::pptx`]),
+//! - packed `reference.docx` for Pandoc DOCX (see [`sinks::reference_docx`]),
+//! - Typst prelude for the PDF report path (see [`sinks::typst`]).
 //!
 //! Components reference tokens (e.g. `color.tone.positive`, `type.role.title`),
 //! never literal hex or typeface strings. Swapping `theme: summus → ardent`
@@ -22,7 +26,9 @@
 //! This crate ships the locked surface from `planning/poiesis-evolution/B-002`:
 //! [`ThemeId`], the [`Theme`] TOML shape, [`ResolvedTheme`], a discoverable
 //! [`Registry`], the seed `summus` brand, the CSS sink, the OOXML `theme1.xml`
-//! emitter, the doc-vars emitter, and the three `THEME/*` lint rule shapes.
+//! emitter, the doc-vars emitter, the `LaTeX` sink, the base PPTX sink, the
+//! `reference.docx` sink, the Typst sink, and the three `THEME/*` lint rule
+//! shapes.
 //! Per-crate downstream wiring (a packed `<name>-base.pptx` for B-004, the
 //! [B-001] `Renderer` parameter, the [B-008] lint-engine registration, and the
 //! `theme` CLI verbs from [B-010]) is the next phase; the per-sink modules
@@ -50,6 +56,6 @@ pub mod tokens;
 
 pub use error::ThemeError;
 pub use id::ThemeId;
-pub use registry::Registry;
+pub use registry::{Registry, summus};
 pub use resolved::ResolvedTheme;
 pub use tokens::Theme;

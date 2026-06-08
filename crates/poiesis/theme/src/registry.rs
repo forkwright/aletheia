@@ -169,6 +169,24 @@ impl Registry {
     }
 }
 
+/// Return the embedded `summus` theme resolved into renderer-facing tokens.
+///
+/// WHY: deployed binaries should not depend on a filesystem-bound registry
+/// just to obtain the flagship theme. Embedding the seed theme keeps the
+/// consumer path deterministic and available in release artifacts.
+#[must_use]
+pub fn summus() -> ResolvedTheme {
+    let raw = include_str!("../themes/summus.toml");
+    let theme: Theme = match toml::from_str(raw) {
+        Ok(theme) => theme,
+        Err(err) => panic!("embedded summus theme failed to parse: {err}"),
+    };
+    match ResolvedTheme::from_theme(theme) {
+        Ok(resolved) => resolved,
+        Err(err) => panic!("embedded summus theme failed to resolve: {err}"),
+    }
+}
+
 /// Parse a candidate string into a [`ThemeId`], lifting the parse error into
 /// the crate's top-level [`ThemeError`].
 ///
