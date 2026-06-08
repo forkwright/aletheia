@@ -24,6 +24,7 @@ fn graph_recall_inactive_when_proximity_weight_zero() {
     let w = RecallWeights {
         relationship_proximity: 0.0,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..RecallWeights::default()
     };
     assert!(
@@ -37,6 +38,7 @@ fn graph_enhanced_scoring_skipped_when_weight_zero() {
     let weights = RecallWeights {
         relationship_proximity: 0.0,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..RecallWeights::default()
     };
     let e = RecallEngine::with_weights(weights);
@@ -144,6 +146,7 @@ fn with_weights_overrides_all() {
         relationship_proximity: 0.1,
         access_frequency: 0.05,
         graph_importance: 0.05,
+        serendipity: 0.0,
         ..RecallWeights::default()
     };
     let e = RecallEngine::with_weights(custom);
@@ -205,6 +208,7 @@ fn builder_chain_preserves_all() {
         relationship_proximity: 0.05,
         access_frequency: 0.05,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..RecallWeights::default()
     };
     let e = RecallEngine::with_weights(custom).with_max_access_count(50.0);
@@ -285,6 +289,7 @@ fn compute_score_single_factor_nonzero() {
         relationship_proximity: 0.0,
         access_frequency: 0.0,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..RecallWeights::default()
     };
     let e = RecallEngine::with_weights(weights);
@@ -316,6 +321,7 @@ fn rank_preserves_equal_scores() {
         relationship_proximity: 0.5,
         access_frequency: 0.5,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..FactorScores::default()
     };
     let candidates = vec![
@@ -371,6 +377,7 @@ fn rank_large_input() {
                 nous_id: "syn".to_owned(),
                 factors: FactorScores {
                     vector_similarity: sim,
+                    serendipity: 0.0,
                     ..FactorScores::default()
                 },
                 score: 0.0,
@@ -695,6 +702,7 @@ fn integration_full_recall_with_decay() {
                 relationship_proximity: 0.5,
                 access_frequency: 0.3,
                 graph_importance: 0.0,
+                serendipity: 0.0,
                 ..FactorScores::default()
             },
             score: 0.0,

@@ -173,15 +173,16 @@ impl RecallStage {
     /// Build the episteme recall-engine weights for `config`.
     ///
     /// WHY: the seven base factors keep their episteme defaults (the single
-    /// source of truth) so existing scoring math is unchanged; only the two
-    /// speculative weights — surprise and evidence-coverage — are threaded from
-    /// the knowledge config. Both default 0.0, so recall is inert until an
-    /// operator enables them.
+    /// source of truth) so existing scoring math is unchanged; only the
+    /// configurable overlay weights — surprise, evidence-coverage,
+    /// convergence, and serendipity — are threaded from the knowledge config.
+    /// All default 0.0, so recall is inert until an operator enables them.
     fn engine_weights(config: &RecallConfig) -> mneme::recall::RecallWeights {
         mneme::recall::RecallWeights {
             surprise: config.surprise_weight,
             evidence_coverage: config.evidence_coverage_weight,
             convergence: config.convergence_weight,
+            serendipity: config.serendipity_weight,
             ..mneme::recall::RecallWeights::default()
         }
     }
@@ -823,6 +824,12 @@ impl RecallStage {
                     // engine short-circuits to 0.0 when its weight is unset, so
                     // legacy/non-consolidated facts (source_count 0) stay inert.
                     convergence: self.engine.score_convergence(r.source_count),
+                    // WHY: serendipity blends graph obscurity and vector distance
+                    // from existing recall fields; it stays inert unless its
+                    // weight is enabled.
+                    serendipity: self
+                        .engine
+                        .score_serendipity(r.graph_importance, r.distance),
                     graph_importance: self.engine.score_graph_importance(r.graph_importance),
                 },
                 content: r.content,

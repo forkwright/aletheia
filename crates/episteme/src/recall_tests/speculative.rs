@@ -7,6 +7,7 @@ use super::super::*;
 fn engine_with_surprise_weight(w: f64) -> RecallEngine {
     RecallEngine::with_weights(RecallWeights {
         surprise: w,
+        serendipity: 0.0,
         ..RecallWeights::default()
     })
 }
@@ -14,6 +15,7 @@ fn engine_with_surprise_weight(w: f64) -> RecallEngine {
 fn engine_with_evidence_weight(w: f64) -> RecallEngine {
     RecallEngine::with_weights(RecallWeights {
         evidence_coverage: w,
+        serendipity: 0.0,
         ..RecallWeights::default()
     })
 }
@@ -75,6 +77,7 @@ fn surprise_weight_affects_final_rank() {
         vector_similarity: 0.6,
         decay: 0.8,
         relevance: 1.0,
+        serendipity: 0.0,
         ..FactorScores::default()
     };
 
@@ -160,6 +163,7 @@ fn evidence_coverage_weight_affects_final_rank() {
         vector_similarity: 0.7,
         decay: 0.9,
         relevance: 1.0,
+        serendipity: 0.0,
         ..FactorScores::default()
     };
 
@@ -210,6 +214,7 @@ fn total_includes_speculative_weights() {
     let w = RecallWeights {
         surprise: 0.05,
         evidence_coverage: 0.05,
+        serendipity: 0.0,
         ..RecallWeights::default()
     };
     let base = RecallWeights::default().total();

@@ -26,6 +26,7 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
             relationship_proximity: 0.5,
             access_frequency: 0.3,
             graph_importance: 0.0,
+            serendipity: 0.0,
             surprise: 0.0,
             evidence_coverage: 0.0,
             convergence: 0.0,

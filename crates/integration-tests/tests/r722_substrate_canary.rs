@@ -116,6 +116,7 @@ mod fixtures {
                 relationship_proximity: 0.0,
                 access_frequency: 0.0,
                 graph_importance: 0.0,
+                serendipity: 0.0,
                 surprise: 0.0,
                 evidence_coverage: 0.0,
                 convergence: 0.0,

@@ -39,6 +39,7 @@ fn rank_sorts_by_score_descending() {
                 decay: 0.8,
                 relevance: 1.0,
                 epistemic_tier: 1.0,
+                serendipity: 0.0,
                 ..FactorScores::default()
             },
             score: 0.0,
@@ -102,6 +103,7 @@ fn custom_weights_change_ranking() {
         relationship_proximity: 0.0,
         access_frequency: 0.0,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..RecallWeights::default()
     };
     let e = RecallEngine::with_weights(weights);
@@ -146,6 +148,7 @@ fn all_weights_zero_returns_zero() {
         relationship_proximity: 1.0,
         access_frequency: 1.0,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..FactorScores::default()
     };
     assert!(
@@ -233,6 +236,7 @@ fn rank_single_element() {
         nous_id: "syn".to_owned(),
         factors: FactorScores {
             vector_similarity: 0.5,
+            serendipity: 0.0,
             ..FactorScores::default()
         },
         score: 0.0,
@@ -282,6 +286,7 @@ fn single_weight_isolation() {
         relationship_proximity: 0.0,
         access_frequency: 0.0,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..FactorScores::default()
     };
     let e = engine();
@@ -306,6 +311,7 @@ fn scores_are_bounded_zero_to_one() {
             relationship_proximity: 1.0,
             access_frequency: 1.0,
             graph_importance: 0.0,
+            serendipity: 0.0,
             ..FactorScores::default()
         },
         FactorScores {
@@ -358,6 +364,7 @@ fn higher_epistemic_tier_scores_higher_composite() {
         relevance: 0.5,
         relationship_proximity: 0.5,
         access_frequency: 0.5,
+        serendipity: 0.0,
         ..FactorScores::default()
     };
 
@@ -405,6 +412,7 @@ fn verified_tier_scores_higher_than_inferred_in_ranking() {
                 relationship_proximity: 0.5,
                 access_frequency: 0.3,
                 graph_importance: 0.0,
+                serendipity: 0.0,
                 ..FactorScores::default()
             },
             score: 0.0,
@@ -457,6 +465,7 @@ fn recent_facts_score_higher_composite() {
         relationship_proximity: 0.4,
         access_frequency: 0.3,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..FactorScores::default()
     };
 
@@ -486,6 +495,7 @@ fn score_deterministic() {
         relationship_proximity: 0.4,
         access_frequency: 0.2,
         graph_importance: 0.0,
+        serendipity: 0.0,
         ..FactorScores::default()
     };
 
@@ -527,6 +537,7 @@ fn rank_deterministic() {
                 factors: FactorScores {
                     vector_similarity: 0.3,
                     decay: 0.9,
+                    serendipity: 0.0,
                     ..FactorScores::default()
                 },
                 score: 0.0,

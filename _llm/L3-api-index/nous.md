@@ -2823,6 +2823,14 @@ pub struct RecallConfig {
     /// non-zero value boosts facts consolidated from more converging sources.
     #[serde(default)]
     pub convergence_weight: f64,
+    /// Recall-engine weight for serendipity. Default 0.0 (inert).
+    ///
+    /// Sourced from `knowledge.recall_serendipity_weight`; threaded into
+    /// [`mneme::recall::RecallWeights::serendipity`] at engine construction so
+    /// a non-zero value boosts obscure, distant candidates from existing
+    /// recall fields.
+    #[serde(default)]
+    pub serendipity_weight: f64,
     /// Inject factor metadata into recalled knowledge prompts.
     ///
     /// When enabled, each recalled fact includes its factor scores so the

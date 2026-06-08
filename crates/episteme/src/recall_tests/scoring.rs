@@ -414,6 +414,7 @@ fn perfect_score() {
         relationship_proximity: 1.0,
         access_frequency: 1.0,
         graph_importance: 1.0,
+        serendipity: 1.0,
         surprise: 1.0,
         evidence_coverage: 1.0,
         convergence: 1.0,
@@ -443,6 +444,7 @@ fn vector_similarity_dominates() {
     };
     let high_decay = FactorScores {
         decay: 1.0,
+        serendipity: 0.0,
         ..FactorScores::default()
     };
     assert!(
@@ -450,6 +452,28 @@ fn vector_similarity_dominates() {
         "vector_similarity weight (0.35) should dominate decay weight (0.20): high_vec={}, high_decay={}",
         e.compute_score(&high_vec),
         e.compute_score(&high_decay)
+    );
+}
+
+/// Serendipity stays inert at default weight 0.0, so adding the factor does not
+/// change the composite score unless the operator enables it.
+#[test]
+fn serendipity_inert_when_weight_zero() {
+    let e = engine();
+    let base = FactorScores {
+        vector_similarity: 0.7,
+        decay: 0.8,
+        relevance: 1.0,
+        graph_importance: 0.2,
+        ..FactorScores::default()
+    };
+    let obscurer_and_farther = FactorScores {
+        serendipity: 1.0,
+        ..base.clone()
+    };
+    assert!(
+        (e.compute_score(&base) - e.compute_score(&obscurer_and_farther)).abs() < f64::EPSILON,
+        "default serendipity weight should leave composite score unchanged"
     );
 }
 
@@ -499,11 +523,28 @@ fn convergence_factor_scores_multiplicity() {
     };
     let consolidated_cand = FactorScores {
         convergence: engine.score_convergence(20),
+        serendipity: 0.0,
         ..base
     };
     assert!(
         engine.compute_score(&consolidated_cand) > engine.compute_score(&singleton_cand),
         "the higher-multiplicity candidate must rank above an equal-confidence singleton"
+    );
+}
+
+/// Serendipity rewards obscure and distant candidates when enabled.
+#[test]
+fn serendipity_scores_obscure_and_distant_higher() {
+    let engine = RecallEngine::with_weights(RecallWeights {
+        serendipity: 1.0,
+        ..RecallWeights::default()
+    });
+
+    let close_and_hub = engine.score_serendipity(0.9, 0.1);
+    let obscure_and_far = engine.score_serendipity(0.1, 2.0);
+    assert!(
+        obscure_and_far > close_and_hub,
+        "obscure+far candidate ({obscure_and_far}) should outscore hub+close ({close_and_hub})"
     );
 }
 
