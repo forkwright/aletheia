@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "e37d89cea242842b54f911899b4d88f017bab8b86ecab7c28f62b2841fa0d53f"
+source_hash = "172be426c8342633d71860bd78998d3ae932547fa4c92bbd9e0395e28e7f2fdc"
 l3_token_estimate = 167
 
 [[crates]]
@@ -86,8 +86,8 @@ l3_token_estimate = 20097
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "06fc46d6a4958b795e0ab498c3183d456507ee5b245b02d71430951364ed4735"
-l3_token_estimate = 32579
+source_hash = "297fa5e9138a147dc51be0072c78c48537f4357e5c82e59c42730bf6ebcdc0ad"
+l3_token_estimate = 32790
 
 [[crates]]
 name = "gnosis"
@@ -152,8 +152,8 @@ l3_token_estimate = 34413
 [[crates]]
 name = "oikonomos"
 path = "crates/daemon"
-source_hash = "ddcaeb8e676e7b0ee79d8bce7892841e0f6a63ccb4cab0513a8abebd923b3ca1"
-l3_token_estimate = 12316
+source_hash = "3d996e1125c7468e879c93b525ba8c3d91cfd48084263053980d80cdbb446b66"
+l3_token_estimate = 12453
 
 [[crates]]
 name = "organon"
@@ -284,8 +284,8 @@ l3_token_estimate = 6587
 [[crates]]
 name = "taxis"
 path = "crates/taxis"
-source_hash = "8fd91b7beaed44b73a4cf019321ff008c1c107714dbcafdf6dfadcb5f21f9d54"
-l3_token_estimate = 24318
+source_hash = "c7510d8cba04b8e303b120d296730c0e0d2f7b31b41bec3ba7f35d72c5f9524b"
+l3_token_estimate = 24404
 
 [[crates]]
 name = "theatron"
