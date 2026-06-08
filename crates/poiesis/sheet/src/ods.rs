@@ -67,6 +67,22 @@ impl Renderer for OdsRenderer {
                     sheet.set_value(row, 0, rt.plain_text());
                     row += 1;
                 }
+                Block::Note(note) => {
+                    sheet.set_value(
+                        row,
+                        0,
+                        format!("{}: {}", note.kind.label(), note.body.plain_text()),
+                    );
+                    row += 1;
+                }
+                Block::DisplayMath(expr) => {
+                    sheet.set_value(row, 0, expr.clone());
+                    row += 1;
+                }
+                Block::RawBlock { content, .. } => {
+                    sheet.set_value(row, 0, content.clone());
+                    row += 1;
+                }
                 Block::Table(table) => {
                     // Header row
                     for (col, header) in table.headers.iter().enumerate() {

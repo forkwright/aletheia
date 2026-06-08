@@ -18,6 +18,17 @@ pub enum Block {
     },
     /// A body paragraph of rich text.
     Paragraph(RichText),
+    /// A typed admonition block with a semantic kind and rich-text body.
+    Note(Note),
+    /// A block-level display math expression.
+    DisplayMath(String),
+    /// A raw block payload with a format tag and content string.
+    RawBlock {
+        /// Raw content format, such as `latex` or `html`.
+        format: String,
+        /// Raw content payload.
+        content: String,
+    },
     /// A data table with a header row and data rows.
     Table(Table),
     /// A bulleted or numbered list.
@@ -32,6 +43,35 @@ pub enum Block {
     /// A forced page break for paginated formats (PDF, ODT, PPTX).
     /// Ignored by spreadsheet backends.
     PageBreak,
+}
+```
+
+```rust
+pub struct Note {
+    /// The semantic admonition kind.
+    pub kind: NoteKind,
+    /// The note body as rich text.
+    pub body: RichText,
+}
+```
+
+```rust
+pub enum NoteKind {
+    /// A plain note.
+    Note,
+    /// A caution or warning.
+    Warning,
+    /// A helpful tip.
+    Tip,
+    /// A high-priority note.
+    Important,
+}
+```
+
+```rust
+impl NoteKind {
+    pub fn as_str (self) -> &'static str;
+    pub fn label (self) -> &'static str;
 }
 ```
 
@@ -194,7 +234,8 @@ impl ComponentRegistry {
 pub struct Document {
     /// Document-level properties (title, author, creation time).
     pub metadata: Metadata,
-    /// Ordered block-level content: headings, paragraphs, tables, lists, images, page breaks.
+    /// Ordered block-level content: headings, paragraphs, notes, tables,
+    /// lists, images, display math, raw blocks, and page breaks.
     pub content: Vec<Block>,
 }
 ```
@@ -833,6 +874,8 @@ pub enum Span {
     Italic(String),
     /// Inline code with monospace rendering.
     Code(String),
+    /// Citation placeholder carrying a fact id.
+    Cite(String),
     /// Hyperlink with visible label and target URL.
     Link {
         /// Display text shown to the reader.

@@ -40,6 +40,8 @@ pub enum Span {
     Italic(String),
     /// Inline code with monospace rendering.
     Code(String),
+    /// Citation placeholder carrying a fact id.
+    Cite(String),
     /// Hyperlink with visible label and target URL.
     Link {
         /// Display text shown to the reader.
@@ -53,7 +55,9 @@ impl Span {
     /// The text content of the span, regardless of styling.
     pub(crate) fn text(&self) -> &str {
         match self {
-            Self::Plain(s) | Self::Bold(s) | Self::Italic(s) | Self::Code(s) => s.as_str(),
+            Self::Plain(s) | Self::Bold(s) | Self::Italic(s) | Self::Code(s) | Self::Cite(s) => {
+                s.as_str()
+            }
             Self::Link { text, .. } => text.as_str(),
         }
     }

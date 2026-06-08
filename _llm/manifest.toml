@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-06-06T03:05:34Z"
+generated_at = "2026-06-08T13:23:34Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -170,8 +170,8 @@ l3_token_estimate = 4605
 [[crates]]
 name = "poiesis-core"
 path = "crates/poiesis/core"
-source_hash = "74497ac7201cd1a3c2204be8b4c056cdc283951cbe9837c94eca180aebde4176"
-l3_token_estimate = 6280
+source_hash = "064e3213c774e58da91a83c5d94814a4ea7d432999453c64b79cbbf565449403"
+l3_token_estimate = 6519
 
 [[crates]]
 name = "poiesis-deck"
@@ -194,7 +194,7 @@ l3_token_estimate = 446
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "ab21f3dde2c2244bcfd27306c1c7ffd06e8fb16998011a91667234e36a728b92"
+source_hash = "7be6bd60737ae62d030a3254beb91529f63d9d7a9d0db1ecb2af51daacf15bc7"
 l3_token_estimate = 2269
 
 [[crates]]
@@ -230,13 +230,13 @@ l3_token_estimate = 302
 [[crates]]
 name = "poiesis-sheet"
 path = "crates/poiesis/sheet"
-source_hash = "4a4578740560ee5248761b8ae48e3ddb481a09769d396fb309e9f4b10857a388"
+source_hash = "eef43a64447c0da56ea1a1526e292e830d7cb5799bd8902b7c13300dfe22f844"
 l3_token_estimate = 1175
 
 [[crates]]
 name = "poiesis-slides"
 path = "crates/poiesis/slides"
-source_hash = "6a58b500e89a7c10191b0f9fc5b4b0b35d6933799dfd2594ecf0b883a875a30c"
+source_hash = "1acfca3d017925f9fac4a3dd2c7eedbc705f7e9ab3698d4a8606ee0967b4e4e9"
 l3_token_estimate = 600
 
 [[crates]]
