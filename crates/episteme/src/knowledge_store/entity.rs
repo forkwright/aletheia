@@ -168,6 +168,30 @@ impl KnowledgeStore {
         Ok(relationships)
     }
 
+    /// Build a serendipity-ready graph snapshot from the current store.
+    #[expect(dead_code, reason = "serendipity adapter is staged for later wiring")]
+    pub(crate) fn build_serendipity_snapshot(
+        &self,
+        seed_entity_ids: &[String],
+    ) -> crate::error::Result<crate::serendipity::GraphSnapshot> {
+        let ctx = self.build_graph_context(seed_entity_ids)?;
+        let nodes = self
+            .list_entities()?
+            .into_iter()
+            .map(|entity| (entity.id.as_str().to_owned(), entity.name));
+        let edges = self.list_all_relationships()?.into_iter().map(|rel| {
+            (
+                rel.src.as_str().to_owned(),
+                rel.dst.as_str().to_owned(),
+                rel.relation,
+            )
+        });
+
+        Ok(crate::serendipity::GraphSnapshot::from_graph_context(
+            &ctx, nodes, edges,
+        ))
+    }
+
     /// Find duplicate entity candidates for a given nous using default tuning.
     ///
     /// Convenience wrapper around

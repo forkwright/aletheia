@@ -79,6 +79,8 @@ pub mod recall;
 pub mod rl;
 /// Steward rule proposal generation from observed tool-usage patterns.
 pub mod rule_proposals;
+/// Serendipity engine for discovery and unexpected connection finding.
+pub(crate) mod serendipity;
 /// Side-query memory relevance selector with LRU caching and already-surfaced tracking.
 pub mod side_query;
 /// Skill storage helpers and SKILL.md parser.
