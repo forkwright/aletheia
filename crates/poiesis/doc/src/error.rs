@@ -42,6 +42,13 @@ pub enum Error {
         detail: String,
     },
 
+    /// ODT rendering via the clean-room backend failed.
+    #[snafu(display("odt render failed: {detail}"))]
+    OdtRenderFailed {
+        /// Human-readable description.
+        detail: String,
+    },
+
     /// The requested format requires Pandoc, which is not yet available.
     #[snafu(display("{format} output requires Pandoc (coming in B-012); use pdf or xlsx for now"))]
     PandocRequired {

@@ -194,8 +194,8 @@ l3_token_estimate = 446
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "7be6bd60737ae62d030a3254beb91529f63d9d7a9d0db1ecb2af51daacf15bc7"
-l3_token_estimate = 2269
+source_hash = "f3a0cb314b15883c3644b8f250fec00c098d96d34d02dbefbe8d6ad34bbdd4d2"
+l3_token_estimate = 2251
 
 [[crates]]
 name = "poiesis-inspect"
@@ -238,6 +238,12 @@ name = "poiesis-slides"
 path = "crates/poiesis/slides"
 source_hash = "1acfca3d017925f9fac4a3dd2c7eedbc705f7e9ab3698d4a8606ee0967b4e4e9"
 l3_token_estimate = 600
+
+[[crates]]
+name = "poiesis-text"
+path = "crates/poiesis/text"
+source_hash = "a1ac3f2a8037c8dc32c9dd6d15e7ab92cbc9055d64e68596c3841d98feda20a6"
+l3_token_estimate = 508
 
 [[crates]]
 name = "poiesis-theme"
