@@ -86,7 +86,7 @@ l3_token_estimate = 20097
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "22f6490f56dca0c164a2c6ffdab2c3f8b2f3c98621a399a1c9358299d7dba406"
+source_hash = "04ac782b8283a6926bc6e42cd63fe7471cb9926f3b59439430081987fa4cb0d2"
 l3_token_estimate = 32393
 
 [[crates]]

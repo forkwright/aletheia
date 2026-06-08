@@ -5,7 +5,16 @@
 //! - **Surprise scoring**: identify facts the agent hasn't accessed recently
 //! - **Path exploration**: find paths between seemingly unrelated entities
 //! - **Serendipity injection**: select "did you know?" facts for context injection
-#![cfg_attr(not(test), allow(dead_code))]
+// WARNING: the engine is intentionally inert until chunks 2b (recall factor) +
+// 2c (idle discovery) wire it to a production caller; `expect` self-surfaces and
+// must be removed once those land.
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "serendipity engine has no production caller until chunks 2b/2c wire it"
+    )
+)]
 
 use std::collections::{HashMap, HashSet};
 
