@@ -755,6 +755,7 @@ pub struct NamedTone {
 
 ```rust
 impl ResolvedTheme {
+    pub fn from_poiesis_theme (t: &poiesis_theme::ResolvedTheme) -> Self;
     pub fn summus_stub () -> Self;
     pub fn fill_for (
         &self,

@@ -158,14 +158,14 @@ l3_token_estimate = 12316
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "7d8dd9d9ba07830464a5b48e877649148796c2e70353ff94ab611944d54e7623"
+source_hash = "5cf7e46774253b74a5eba1a24fdbe5d9056005b94bb5138ce9a32db5514c10b9"
 l3_token_estimate = 11827
 
 [[crates]]
 name = "poiesis-charts"
 path = "crates/poiesis/charts"
-source_hash = "0a0c6849477e74604443beeb8e63df4475a152f27017ed2bb3f753d40e0b99b3"
-l3_token_estimate = 4577
+source_hash = "de23b269feadc812001046054a0aef35383cdb47e141bf4e1f17b0b1eca19a7e"
+l3_token_estimate = 4596
 
 [[crates]]
 name = "poiesis-core"
@@ -248,8 +248,8 @@ l3_token_estimate = 508
 [[crates]]
 name = "poiesis-theme"
 path = "crates/poiesis/theme"
-source_hash = "dc0f8de581ecc18aa81f68fe6a1eb0d45ab6aabb31c2e238326472fd7c7a18d9"
-l3_token_estimate = 5242
+source_hash = "f469fd5868ffbf56de8509a5bd5abbb49c7ba51637f62a5fb163505a216f3fd5"
+l3_token_estimate = 5254
 
 [[crates]]
 name = "poiesis-typst"

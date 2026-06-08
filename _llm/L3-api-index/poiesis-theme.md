@@ -250,6 +250,10 @@ impl Registry {
 }
 ```
 
+```rust
+pub fn summus () -> ResolvedTheme
+```
+
 > Parse a candidate string into a [`ThemeId`], lifting the parse error into
 > the crate's top-level [`ThemeError`].
 > 
@@ -374,7 +378,7 @@ pub fn emit_docvars_yaml (theme: &ResolvedTheme) -> Result<String, ThemeError>
 
 ## `src/sinks/latex.rs`
 
-> Emit a LaTeX preamble fragment with `\definecolor` and `\newcommand`
+> Emit a `LaTeX` preamble fragment with `\definecolor` and `\newcommand`
 > declarations for every brand token in the [`ResolvedTheme`].
 > 
 > Downstream `.tex` files `\input` or `\include` this file to access brand
