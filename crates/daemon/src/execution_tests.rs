@@ -126,6 +126,10 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledge {
     fn materialize_derived_facts(&self) -> Result<MaintenanceReport> {
         Ok(MaintenanceReport::default())
     }
+
+    fn discover_serendipitous_facts(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
 }
 
 struct RealKnowledge {
@@ -195,6 +199,10 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for RealKnowledge {
     }
 
     fn materialize_derived_facts(&self) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn discover_serendipitous_facts(&self, _nous_id: &str) -> Result<MaintenanceReport> {
         Ok(MaintenanceReport::default())
     }
 }
@@ -590,6 +598,28 @@ async fn knowledge_task_with_executor_returns_report() {
         "expected '7 processed' in output, got: {output}"
     );
     assert!(output.contains("2 modified"));
+}
+
+#[tokio::test]
+async fn serendipity_discovery_with_executor_returns_report() {
+    let executor: Arc<dyn crate::maintenance::KnowledgeMaintenanceExecutor> =
+        Arc::new(MockKnowledge);
+    let result = execute_builtin(
+        &BuiltinTask::SerendipityDiscovery,
+        "test-nous",
+        None,
+        None,
+        None,
+        Some(executor),
+    )
+    .await
+    .expect("should succeed");
+    assert!(result.success);
+    let output = result.output.expect("output");
+    assert!(
+        output.contains("0 processed"),
+        "expected zero-count report for mock executor, got: {output}"
+    );
 }
 
 // --- cron execution counter helpers ---

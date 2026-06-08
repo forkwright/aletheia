@@ -169,7 +169,6 @@ impl KnowledgeStore {
     }
 
     /// Build a serendipity-ready graph snapshot from the current store.
-    #[expect(dead_code, reason = "serendipity adapter is staged for later wiring")]
     pub(crate) fn build_serendipity_snapshot(
         &self,
         seed_entity_ids: &[String],

@@ -27,7 +27,8 @@ use oikonomos::error::Error as DaemonError;
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DbStatus, DriftDetectionConfig, DriftDetector,
     KnowledgeMaintenanceConfig, MaintenanceConfig, MaintenanceReport, ProposeRulesConfig,
-    RetentionConfig, RetentionExecutor, RetentionSummary, TraceRotationConfig, TraceRotator,
+    RetentionConfig, RetentionExecutor, RetentionSummary, SerendipityMaintenanceConfig,
+    TraceRotationConfig, TraceRotator,
 };
 use oikonomos::probe::{
     Probe, ProbeAuditConfig, ProbeAuditSummary, ProbeCategory, ProbeResult, ProbeSet,
@@ -176,6 +177,8 @@ fn knowledge_maintenance_config_default_disabled_with_default_auto_dream() {
     let cfg = KnowledgeMaintenanceConfig::default();
     assert!(!cfg.enabled);
     assert!(!cfg.auto_dream.enabled);
+    assert!(!cfg.serendipity.enabled);
+    assert_eq!(cfg.serendipity.cadence, "0 0 7 * * *");
 }
 
 #[test]
@@ -464,6 +467,7 @@ fn builtin_task_serde_roundtrips_through_json() {
         BuiltinTask::DbSizeMonitor,
         BuiltinTask::ProbeAudit,
         BuiltinTask::SelfPrompt,
+        BuiltinTask::SerendipityDiscovery,
     ] {
         let json = serde_json::to_string(&task).expect("serialize BuiltinTask");
         let back: BuiltinTask = serde_json::from_str(&json).expect("deserialize BuiltinTask");

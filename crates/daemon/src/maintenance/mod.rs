@@ -25,6 +25,7 @@ pub use drift_detection::{DriftDetectionConfig, DriftDetector, DriftReport};
 pub use fjall_backup::{FjallBackup, FjallBackupConfig, FjallBackupReport};
 pub use knowledge::{
     AutoDreamConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor, MaintenanceReport,
+    SerendipityMaintenanceConfig,
 };
 pub use prompt_audit_rotation::{
     PromptAuditRetentionConfig, PromptAuditRetentionReport, PromptAuditRotator,

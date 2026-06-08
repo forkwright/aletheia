@@ -25,12 +25,35 @@ pub struct MaintenanceSettings {
     /// Whether background knowledge graph maintenance tasks are enabled.
     #[serde(default)]
     pub knowledge_maintenance_enabled: bool,
+    /// Serendipity discovery maintenance settings.
+    pub knowledge_maintenance_serendipity: SerendipityMaintenanceSettings,
     /// Watchdog process monitor settings.
     pub watchdog: WatchdogSettings,
     /// Periodic cron task settings (evolution, reflection, graph cleanup).
     pub cron_tasks: CronTaskSettings,
     /// Fjall knowledge store backup settings.
     pub backup: BackupSettings,
+}
+
+/// Serendipity discovery maintenance settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct SerendipityMaintenanceSettings {
+    /// Whether the serendipity discovery task is enabled.
+    pub enabled: bool,
+    /// Cron cadence used when the task is scheduled.
+    pub cadence: String,
+}
+
+impl Default for SerendipityMaintenanceSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cadence: "0 0 7 * * *".to_owned(),
+        }
+    }
 }
 
 /// Trace file rotation settings.

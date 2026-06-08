@@ -59,6 +59,12 @@ pub trait KnowledgeMaintenanceExecutor: Send + Sync {
     /// chains, defeasible defaults) in sequence and persists results. Returns the
     /// total number of derived facts written.
     fn materialize_derived_facts(&self) -> crate::error::Result<MaintenanceReport>;
+
+    /// Run the serendipity discovery engine over recently active entities.
+    fn discover_serendipitous_facts(
+        &self,
+        nous_id: &str,
+    ) -> crate::error::Result<MaintenanceReport>;
 }
 
 /// Configuration for knowledge maintenance task scheduling.
@@ -68,6 +74,8 @@ pub struct KnowledgeMaintenanceConfig {
     pub enabled: bool,
     /// Auto-dream consolidation settings.
     pub auto_dream: AutoDreamConfig,
+    /// Serendipity discovery idle-maintenance settings.
+    pub serendipity: SerendipityMaintenanceConfig,
 }
 
 /// Configuration for auto-dream memory consolidation.
@@ -96,6 +104,24 @@ impl Default for AutoDreamConfig {
             min_sessions: 5,
             scan_interval_secs: 600,
             stale_threshold_secs: 3_600,
+        }
+    }
+}
+
+/// Configuration for serendipity discovery maintenance.
+#[derive(Debug, Clone)]
+pub struct SerendipityMaintenanceConfig {
+    /// Whether serendipity discovery is enabled.
+    pub enabled: bool,
+    /// Cron cadence for the scheduled discovery task.
+    pub cadence: String,
+}
+
+impl Default for SerendipityMaintenanceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cadence: "0 0 7 * * *".to_owned(),
         }
     }
 }
@@ -164,6 +190,18 @@ mod tests {
                 ..Default::default()
             })
         }
+
+        fn discover_serendipitous_facts(
+            &self,
+            _nous_id: &str,
+        ) -> crate::error::Result<MaintenanceReport> {
+            Ok(MaintenanceReport {
+                items_processed: 0,
+                items_modified: 0,
+                detail: Some("Serendipity discovery: 0 discoveries surfaced".to_owned()),
+                ..Default::default()
+            })
+        }
     }
 
     #[test]
@@ -190,6 +228,8 @@ mod tests {
     fn default_config_is_disabled() {
         let config = KnowledgeMaintenanceConfig::default();
         assert!(!config.enabled);
+        assert!(!config.serendipity.enabled);
+        assert_eq!(config.serendipity.cadence, "0 0 7 * * *");
     }
 
     #[test]

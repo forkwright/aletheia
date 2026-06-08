@@ -168,6 +168,45 @@ fn register_maintenance_tasks_respects_enabled() {
 }
 
 #[test]
+fn serendipity_discovery_task_registers_at_daily_seven_utc() {
+    let token = CancellationToken::new();
+    let mut config = MaintenanceConfig::default();
+    config.knowledge_maintenance.enabled = true;
+    config.knowledge_maintenance.serendipity.enabled = true;
+    let executor: Arc<dyn crate::maintenance::KnowledgeMaintenanceExecutor> =
+        Arc::new(MockKnowledgeExecutor);
+
+    let mut runner = TaskRunner::new("system", token).with_maintenance(config);
+    runner = runner.with_knowledge_maintenance(executor);
+    runner.register_maintenance_tasks();
+
+    let task = runner
+        .tasks
+        .iter()
+        .find(|task| task.def.id == "serendipity-discovery")
+        .expect("serendipity task should be scheduled");
+    assert!(matches!(
+        &task.def.schedule,
+        Schedule::Cron(expr) if expr == "0 0 7 * * *"
+    ));
+}
+
+#[test]
+fn serendipity_discovery_task_skips_when_disabled() {
+    let token = CancellationToken::new();
+    let mut config = MaintenanceConfig::default();
+    config.knowledge_maintenance.enabled = true;
+    config.knowledge_maintenance.serendipity.enabled = false;
+
+    let mut runner = TaskRunner::new("system", token).with_maintenance(config);
+    runner.register_maintenance_tasks();
+
+    let statuses = runner.status();
+    let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
+    assert!(!ids.contains(&"serendipity-discovery"));
+}
+
+#[test]
 fn routing_store_refresh_registers_when_store_is_attached() {
     let token = CancellationToken::new();
     let config = MaintenanceConfig::default();
@@ -455,6 +494,13 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledgeExecutor 
 
     fn materialize_derived_facts(
         &self,
+    ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
+        Ok(crate::maintenance::MaintenanceReport::default())
+    }
+
+    fn discover_serendipitous_facts(
+        &self,
+        _nous_id: &str,
     ) -> crate::error::Result<crate::maintenance::MaintenanceReport> {
         Ok(crate::maintenance::MaintenanceReport::default())
     }
