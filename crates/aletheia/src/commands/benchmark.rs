@@ -1,7 +1,7 @@
 //! `aletheia benchmark`: run memory benchmarks (`LongMemEval`, `LoCoMo`) against a
 //! live instance.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::{Args, Subcommand};
@@ -13,6 +13,7 @@ use dokimion::benchmarks::{
     BenchmarkMetadata, BenchmarkReport, BenchmarkRunner, BenchmarkRunnerConfig, EvalClient,
     MemoryBenchmark,
 };
+use episteme::rl::{LongMemEvalReward, MemoryOutcome, RewardFn};
 
 use crate::error::Result;
 
@@ -64,6 +65,9 @@ pub(crate) struct RunArgs {
     /// Write a compact baseline summary for training reward loaders
     #[arg(long)]
     pub baseline_out: Option<PathBuf>,
+    /// Compare the run against a saved compact baseline summary and surface the reward
+    #[arg(long)]
+    pub baseline_in: Option<PathBuf>,
     /// Query the knowledge store after ingestion and compute Recall@k / NDCG@k
     #[arg(long)]
     pub retrieval_k: Option<usize>,
@@ -193,10 +197,16 @@ async fn run_benchmark(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Resul
         println!("Baseline summary written to {}", path.display());
     }
 
+    let reward_surface = if let Some(ref path) = args.baseline_in {
+        Some(load_reward_surface(&report, path)?)
+    } else {
+        None
+    };
+
     if args.json {
         print_report_json(&report).whatever_context("failed to serialize report")?;
     } else {
-        print_report_human(&report);
+        print_report_human(&report, reward_surface.as_ref());
     }
 
     Ok(())
@@ -222,6 +232,38 @@ impl BenchmarkBaselineSummary {
             judge_accuracy: report.judge_accuracy(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RewardSurface {
+    outcome: MemoryOutcome,
+    baseline_exact_match_rate: f64,
+    reward: f64,
+}
+
+fn load_reward_surface(report: &BenchmarkReport, baseline_path: &Path) -> Result<RewardSurface> {
+    let reward_fn = LongMemEvalReward::from_json_file(baseline_path)
+        .whatever_context("failed to load baseline summary for reward calculation")?;
+    let outcome = MemoryOutcome {
+        exact_match_rate: report.exact_match_rate(),
+        mean_f1: Some(report.mean_f1()),
+    };
+    let reward = reward_fn.reward(&outcome);
+
+    Ok(RewardSurface {
+        outcome,
+        baseline_exact_match_rate: reward_fn.baseline_exact_match_rate,
+        reward,
+    })
+}
+
+fn format_reward_surface(surface: &RewardSurface) -> String {
+    format!(
+        "Reward vs baseline: {:+.3} (EM {:.1}% vs baseline {:.1}%)",
+        surface.reward,
+        surface.outcome.exact_match_rate * 100.0,
+        surface.baseline_exact_match_rate * 100.0,
+    )
 }
 
 async fn collect_metadata(
@@ -253,7 +295,7 @@ async fn collect_metadata(
 
 /// Print a human-readable benchmark report with per-category breakdown
 /// and peer baseline comparison.
-fn print_report_human(report: &BenchmarkReport) {
+fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSurface>) {
     let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
 
     let header = if let Some(ref meta) = report.metadata {
@@ -335,6 +377,10 @@ fn print_report_human(report: &BenchmarkReport) {
         println!("\nLLM-as-judge accuracy: {:.1}%", judge_acc * 100.0);
     }
 
+    if let Some(surface) = reward_surface {
+        println!("\n{}", format_reward_surface(surface));
+    }
+
     // Peer baseline comparison
     print_baselines(report, use_color);
 }
@@ -396,6 +442,8 @@ fn print_report_json(report: &BenchmarkReport) -> std::result::Result<(), serde_
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use dokimion::benchmarks::{BenchmarkScore, QuestionResult};
+    use std::io::Write as _;
 
     fn base_args() -> RunArgs {
         RunArgs {
@@ -408,6 +456,7 @@ mod tests {
             json: false,
             output: None,
             baseline_out: None,
+            baseline_in: None,
             retrieval_k: None,
             judge_endpoint: None,
             judge_model: "gpt-4o".to_owned(),
@@ -478,5 +527,70 @@ mod tests {
         a.retrieval_k = Some(10);
         a.timeout = 1;
         validate_args(&a).unwrap();
+    }
+
+    fn sample_report() -> BenchmarkReport {
+        BenchmarkReport::new(
+            "LongMemEval",
+            vec![
+                QuestionResult {
+                    id: "q1".to_owned(),
+                    category: "factual".to_owned(),
+                    actual_answer: "blue".to_owned(),
+                    expected_answers: vec!["blue".to_owned()],
+                    score: BenchmarkScore {
+                        exact_match: true,
+                        f1: 1.0,
+                        contains: true,
+                    },
+                    judge_score: None,
+                    retrieved_facts: None,
+                    recall_at_k: None,
+                    ndcg_at_k: None,
+                },
+                QuestionResult {
+                    id: "q2".to_owned(),
+                    category: "factual".to_owned(),
+                    actual_answer: "green".to_owned(),
+                    expected_answers: vec!["red".to_owned()],
+                    score: BenchmarkScore {
+                        exact_match: false,
+                        f1: 0.0,
+                        contains: false,
+                    },
+                    judge_score: None,
+                    retrieved_facts: None,
+                    recall_at_k: None,
+                    ndcg_at_k: None,
+                },
+            ],
+        )
+    }
+
+    #[test]
+    fn reward_surface_uses_real_report_and_baseline_file() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let path = tempdir.path().join("baseline.json");
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(
+            serde_json::json!({
+                "benchmark": "LongMemEval",
+                "exact_match_rate": 0.35,
+                "mean_f1": 0.40
+            })
+            .to_string()
+            .as_bytes(),
+        )
+        .unwrap();
+
+        let report = sample_report();
+        let surface = load_reward_surface(&report, &path).unwrap();
+
+        assert!((surface.outcome.exact_match_rate - 0.5).abs() < f64::EPSILON);
+        assert!((surface.reward - 0.15).abs() < f64::EPSILON);
+        assert_eq!(
+            format_reward_surface(&surface),
+            "Reward vs baseline: +0.150 (EM 50.0% vs baseline 35.0%)"
+        );
     }
 }

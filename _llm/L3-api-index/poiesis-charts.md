@@ -671,8 +671,6 @@ pub fn emit (
 >   fallback and `charts-vega` is disabled.
 > - [`crate::Error::BadSeriesShape`]  -  series count violates the per-kind
 >   contract.
-> - [`crate::Error::EmitterStub`]  -  pure-Rust arm for this kind is not yet
->   implemented (stub list above).
 > - [`crate::Error::UnresolvedTone`]  -  a series references a tone the
 >   theme does not provide.
 ```rust

@@ -5,15 +5,18 @@
 //!
 //! - [`render_docx`] — build a `.docx` file from a JSON descriptor.
 //! - [`inspect_docx`] — extract paragraph text from an existing `.docx` file.
+//! - [`render_odt_from_doc`] — build `.odt` bytes from the document model via
+//!   the clean-room ZIP/XML backend.
 //! - [`pandoc`] — Pandoc subprocess wrapper, AST serialization, and unified
-//!   dispatch (`render_doc`) for the full format matrix (B-012).
+//!   dispatch (`render_doc`) for the remaining format matrix (B-012).
 //!
 //! ## Pandoc dispatch (B-012)
 //!
 //! [`pandoc::render_doc`] routes by format:
 //! - PDF → `poiesis-typst` in-process fast-lane (default).
 //! - PDF with explicit `LaTeX` engine → Pandoc + `LaTeX`.
-//! - docx / odt / md / latex / html / epub → Pandoc subprocess.
+//! - docx / md / latex / html / epub → Pandoc subprocess.
+//! - odt → clean-room ZIP/XML backend in `poiesis-text`.
 //!
 //! # GPL-clean boundary
 //!
@@ -30,6 +33,7 @@ pub mod pandoc;
 pub use error::Error;
 pub use pandoc_probe::{PandocProbe, PandocProbeError};
 
+use poiesis_core::Renderer;
 use serde_json::Value;
 use snafu::ResultExt;
 use tracing::instrument;
@@ -198,15 +202,17 @@ pub fn render_pdf_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
 
 /// Render a [`poiesis_core::Document`] to ODT bytes.
 ///
-/// ODT output requires the Pandoc backend (B-012) which has not landed yet.
-/// Returns [`Error::PandocRequired`] until B-012 ships.
+/// This uses the clean-room `poiesis-text` ODT backend and does not require
+/// Pandoc.
 ///
 /// # Errors
 ///
-/// Always returns [`Error::PandocRequired`] in this stub implementation.
-pub fn render_odt_from_doc(_doc: &poiesis_core::Document) -> Result<Vec<u8>> {
-    Err(Error::PandocRequired {
-        format: "odt".to_owned(),
+/// Returns [`Error::OdtRenderFailed`] if the ODT encoder fails.
+#[instrument(skip(doc))]
+pub fn render_odt_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
+    let renderer = poiesis_text::OdtRenderer::new();
+    renderer.render(doc).map_err(|e| Error::OdtRenderFailed {
+        detail: e.to_string(),
     })
 }
 
@@ -309,17 +315,23 @@ mod tests {
     }
 
     #[test]
-    fn render_odt_from_doc_returns_error() {
-        use poiesis_core::{Document, Metadata};
+    fn render_odt_from_doc_produces_pk_magic() {
+        use poiesis_core::{Block, Document, Metadata, RichText};
         let doc = Document {
             metadata: Metadata {
                 title: "Test".to_owned(),
                 author: None,
                 created: None,
             },
-            content: vec![],
+            content: vec![
+                Block::Heading {
+                    level: 1,
+                    text: RichText::from("Section"),
+                },
+                Block::Paragraph(RichText::from("Content.")),
+            ],
         };
-        let err = render_odt_from_doc(&doc).expect_err("must fail");
-        assert!(matches!(err, Error::PandocRequired { .. }));
+        let bytes = render_odt_from_doc(&doc).expect("must render");
+        assert!(bytes.starts_with(b"PK"), "must be an ODT ZIP archive");
     }
 }

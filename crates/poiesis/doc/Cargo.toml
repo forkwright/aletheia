@@ -21,6 +21,9 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 # XML parsing for inspect
 quick-xml = "0.39"
 
+# ODT backend — clean-room ZIP/XML emitter
+poiesis-text = { path = "../text", default-features = false, features = ["odt"] }
+
 # Document model + Typst fast-lane (B-012/B-013)
 poiesis-core = { path = "../core" }
 poiesis-typst = { path = "../typst" }

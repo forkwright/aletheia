@@ -12,20 +12,19 @@
 //!
 //! | Kind     | Status                          | Owner       |
 //! |----------|---------------------------------|-------------|
-//! | bar      | stub (`Error::EmitterStub`)     | follow-up   |
-//! | column   | stub (`Error::EmitterStub`)     | follow-up   |
-//! | line     | stub (`Error::EmitterStub`)     | follow-up   |
-//! | area     | stub (`Error::EmitterStub`)     | follow-up   |
-//! | combo    | scaffolded (`emit_combo`)       | this PR     |
-//! | scatter  | stub (`Error::EmitterStub`)     | follow-up   |
-//! | pie      | stub (`Error::EmitterStub`)     | follow-up   |
-//! | doughnut | stub (`Error::EmitterStub`)     | follow-up   |
-//! | stat     | stub (`Error::EmitterStub`)     | follow-up   |
+//! | bar      | implemented / wired             | this PR     |
+//! | column   | implemented / wired             | this PR     |
+//! | line     | implemented / wired             | this PR     |
+//! | area     | implemented / wired             | this PR     |
+//! | combo    | implemented / wired             | B-005 gate  |
+//! | scatter  | implemented / wired             | this PR     |
+//! | pie      | implemented / wired             | this PR     |
+//! | doughnut | implemented / wired             | this PR     |
+//! | stat     | implemented / wired             | this PR     |
 //!
-//! The `combo` arm is scaffolded first because the B-005 acceptance gate
-//! reproduces the offsite slide-3 chart, which is a combo. The other arms
-//! follow the same module shape (one file each under `kinds/`); the design
-//! fan-out is tracked in the PR body.
+//! The pure-Rust emitter now covers `bar`, `column`, `line`, `area`,
+//! `combo`, `scatter`, `pie`, `doughnut`, and `stat`. The remaining chart
+//! kinds route to Vega-Lite behind the `charts-vega` feature.
 
 mod canvas;
 mod kinds;
@@ -53,8 +52,6 @@ pub use crate::theme::ColorMode;
 ///   fallback and `charts-vega` is disabled.
 /// - [`crate::Error::BadSeriesShape`] — series count violates the per-kind
 ///   contract.
-/// - [`crate::Error::EmitterStub`] — pure-Rust arm for this kind is not yet
-///   implemented (stub list above).
 /// - [`crate::Error::UnresolvedTone`] — a series references a tone the
 ///   theme does not provide.
 pub fn render_chart(
@@ -66,17 +63,15 @@ pub fn render_chart(
     chart.validate()?;
 
     match chart.kind {
+        ChartKind::Bar => kinds::bar::emit(chart, theme, canvas, mode),
+        ChartKind::Column => kinds::column::emit(chart, theme, canvas, mode),
+        ChartKind::Line => kinds::line::emit(chart, theme, canvas, mode),
+        ChartKind::Area => kinds::area::emit(chart, theme, canvas, mode),
         ChartKind::Combo => kinds::combo::emit(chart, theme, canvas, mode),
-        ChartKind::Bar
-        | ChartKind::Column
-        | ChartKind::Line
-        | ChartKind::Area
-        | ChartKind::Scatter
-        | ChartKind::Pie
-        | ChartKind::Doughnut
-        | ChartKind::Stat => Err(crate::Error::EmitterStub {
-            kind: chart.kind.name().to_owned(),
-        }),
+        ChartKind::Scatter => kinds::scatter::emit(chart, theme, canvas, mode),
+        ChartKind::Pie => kinds::pie::emit(chart, theme, canvas, mode),
+        ChartKind::Doughnut => kinds::doughnut::emit(chart, theme, canvas, mode),
+        ChartKind::Stat => kinds::stat::emit(chart, theme, canvas, mode),
         ChartKind::Heatmap | ChartKind::Boxplot | ChartKind::Sankey | ChartKind::Candlestick => {
             #[cfg(feature = "charts-vega")]
             {
@@ -99,9 +94,10 @@ pub fn render_chart(
 mod tests {
     use super::*;
     use crate::model::{
-        Axes, AxisSide, Chart, ChartKind, CiteOrText, FactCite, FactId, LegendSpec, Point, Series,
-        SeriesStyle, ToneRef, Unit,
+        Axes, AxisSide, Chart, ChartKind, CiteOrScalar, CiteOrText, FactCite, FactId, LegendSpec,
+        Point, Series, SeriesStyle, ToneRef, Unit,
     };
+    use crate::render::canvas::DeckCanvas;
 
     fn combo_spec() -> Chart {
         let cite = |id: &str, v: f64| FactCite {
@@ -164,17 +160,208 @@ mod tests {
     }
 
     #[test]
-    fn stub_kinds_return_emitter_stub_error() {
-        let mut spec = combo_spec();
-        spec.kind = ChartKind::Line;
-        spec.series.truncate(1);
-        let theme = ResolvedTheme::summus_stub();
-        let r = render_chart(
+    fn bar_renders() {
+        let spec = chart_spec(
+            ChartKind::Bar,
+            vec![series(
+                "Revenue",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("MAR", 18.0), point("APR", 22.0)],
+            )],
+            true,
+        );
+        assert_kind_svg(&spec, &["<svg", "<g class=\"bars\">", "<rect"]);
+    }
+
+    #[test]
+    fn column_renders() {
+        let spec = chart_spec(
+            ChartKind::Column,
+            vec![series(
+                "Revenue",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("MAR", 18.0), point("APR", 22.0)],
+            )],
+            true,
+        );
+        assert_kind_svg(&spec, &["<svg", "<g class=\"bars\">", "<rect"]);
+    }
+
+    #[test]
+    fn line_renders() {
+        let spec = chart_spec(
+            ChartKind::Line,
+            vec![series(
+                "Revenue",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("MAR", 18.0), point("APR", 22.0)],
+            )],
+            true,
+        );
+        assert_kind_svg(
             &spec,
+            &["<svg", "<g class=\"lines\">", "<polyline", "<circle"],
+        );
+    }
+
+    #[test]
+    fn area_renders() {
+        let spec = chart_spec(
+            ChartKind::Area,
+            vec![series(
+                "Revenue",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("MAR", 18.0), point("APR", 22.0)],
+            )],
+            true,
+        );
+        assert_kind_svg(
+            &spec,
+            &["<svg", "<g class=\"areas\">", "<polygon", "<polyline"],
+        );
+    }
+
+    #[test]
+    fn scatter_renders() {
+        let spec = chart_spec(
+            ChartKind::Scatter,
+            vec![series(
+                "Revenue",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![scatter_point(1.0, 18.0), scatter_point(2.0, 22.0)],
+            )],
+            true,
+        );
+        assert_kind_svg(&spec, &["<svg", "<g class=\"dots\">", "<circle"]);
+    }
+
+    #[test]
+    fn pie_renders() {
+        let spec = chart_spec(
+            ChartKind::Pie,
+            vec![series(
+                "Revenue",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("MAR", 30.0), point("APR", 70.0)],
+            )],
+            true,
+        );
+        assert_kind_svg(&spec, &["<svg", "<g class=\"sectors\">", "<path"]);
+    }
+
+    #[test]
+    fn doughnut_renders() {
+        let spec = chart_spec(
+            ChartKind::Doughnut,
+            vec![series(
+                "Revenue",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("MAR", 30.0), point("APR", 70.0)],
+            )],
+            true,
+        );
+        assert_kind_svg(&spec, &["<svg", "<g class=\"sectors\">", "<path"]);
+    }
+
+    #[test]
+    fn stat_renders() {
+        let spec = chart_spec(
+            ChartKind::Stat,
+            vec![series(
+                "Users",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("MAR", 42.0)],
+            )],
+            false,
+        );
+        assert_kind_svg(&spec, &["<svg", "<g class=\"stat\">", "42"]);
+    }
+
+    fn chart_spec(kind: ChartKind, series: Vec<Series>, data_labels: bool) -> Chart {
+        Chart {
+            kind,
+            title: None,
+            series,
+            axes: Axes::default(),
+            legend: LegendSpec::Auto,
+            data_labels,
+            caption: None,
+        }
+    }
+
+    fn series(
+        name: &str,
+        tone: usize,
+        style: SeriesStyle,
+        axis: AxisSide,
+        points: Vec<Point>,
+    ) -> Series {
+        Series {
+            name: CiteOrText::Text(name.to_owned()),
+            points,
+            tone: ToneRef::Indexed(tone),
+            axis,
+            style,
+        }
+    }
+
+    fn point(label: &str, value: f64) -> Point {
+        Point {
+            label: Some(CiteOrText::Text(label.to_owned())),
+            x: None,
+            y: cite(value),
+        }
+    }
+
+    fn scatter_point(x: f64, y: f64) -> Point {
+        Point {
+            label: None,
+            x: Some(CiteOrScalar::Scalar(x)),
+            y: cite(y),
+        }
+    }
+
+    fn cite(value: f64) -> FactCite {
+        FactCite {
+            id: FactId(format!("fact-{value}")),
+            value,
+            unit: Unit::Number,
+        }
+    }
+
+    fn assert_kind_svg(spec: &Chart, markers: &[&str]) {
+        let theme = ResolvedTheme::summus_stub();
+        let svg = render_chart(
+            spec,
             &theme,
             &Canvas::Deck(DeckCanvas::default()),
             ColorMode::Resolved,
-        );
-        assert!(matches!(r, Err(crate::Error::EmitterStub { kind }) if kind == "line"));
+        )
+        .expect("kind emits");
+        assert!(!svg.is_empty());
+        assert!(svg.starts_with("<svg"));
+        for marker in markers {
+            assert!(
+                svg.contains(marker),
+                "expected {} SVG to contain {marker}, got {svg}",
+                spec.kind.name()
+            );
+        }
     }
 }

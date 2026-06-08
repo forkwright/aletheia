@@ -1,11 +1,6 @@
 # WHY: Core gate — enforces fmt, clippy, and test coverage on every PR.
 # Replaces the self-hosted `kanon gate` invocation (kanon is a private binary
 # unavailable on GitHub-hosted runners) with equivalent explicit cargo steps.
-# theatron/skene/koilon excluded from clippy and nextest: koilon's Config::load
-# hangs ~120s on ephemeral ubuntu runners (network/dbus/keyring probe at init),
-# matching the established local gate scope. See #4387 and metis CLAUDE.md §
-# metis-local-work era. CI runs the gate directly (fmt/clippy/nextest); the
-# legacy Gate-Passed local-attestation trailer is no longer required.
 name: Gate Attestation
 
 on:
@@ -82,15 +77,11 @@ jobs:
 
       - name: cargo clippy
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
-        # WHY: theatron/skene/koilon excluded — koilon Config::load hangs on
-        # ephemeral ubuntu runners (network/dbus/keyring probe timeout ~120s).
-        # Matches the established local gate scope on metis.
-        run: cargo clippy --workspace --all-targets --exclude theatron --exclude skene --exclude koilon -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo nextest run
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
-        # WHY: same theatron/skene/koilon exclusion as clippy above.
-        run: cargo nextest run --workspace --exclude theatron --exclude skene --exclude koilon
+        run: cargo nextest run --workspace
 
       - name: Gate summary
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}

@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-06-08T13:23:34Z"
+generated_at = "2026-06-08T17:46:24Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "46fcc3ff8e1fb4773a7d0486897e92a109372fe011aa4329031f539e033138b5"
+source_hash = "afdc0436cd05a268317662ca46c4c7e6709d82927b7f6ee30a760d47b3a14c59"
 l3_token_estimate = 167
 
 [[crates]]
@@ -86,7 +86,7 @@ l3_token_estimate = 20097
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "04ac782b8283a6926bc6e42cd63fe7471cb9926f3b59439430081987fa4cb0d2"
+source_hash = "75bd989d15c074c65129c0262c87708b00e2e41f296600c2da0286fafc2b326c"
 l3_token_estimate = 32393
 
 [[crates]]
@@ -116,7 +116,7 @@ l3_token_estimate = 1170
 [[crates]]
 name = "koilon"
 path = "crates/theatron/koilon"
-source_hash = "e4df5f3664a681dbde3cf88c7c82729182cc198b08fe155a184a8cde262c19fb"
+source_hash = "42b63e1cb5084410f1fa58e852f4a5289f9b184921ffb552ad8ecac0d36f3829"
 l3_token_estimate = 11570
 
 [[crates]]
@@ -164,8 +164,8 @@ l3_token_estimate = 11827
 [[crates]]
 name = "poiesis-charts"
 path = "crates/poiesis/charts"
-source_hash = "7c3c6b37c8d800f4a57df8f523d08f08e06320e9facdafa19d1a17f750d7d500"
-l3_token_estimate = 4605
+source_hash = "0a0c6849477e74604443beeb8e63df4475a152f27017ed2bb3f753d40e0b99b3"
+l3_token_estimate = 4577
 
 [[crates]]
 name = "poiesis-core"
@@ -194,8 +194,8 @@ l3_token_estimate = 446
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "7be6bd60737ae62d030a3254beb91529f63d9d7a9d0db1ecb2af51daacf15bc7"
-l3_token_estimate = 2269
+source_hash = "f3a0cb314b15883c3644b8f250fec00c098d96d34d02dbefbe8d6ad34bbdd4d2"
+l3_token_estimate = 2251
 
 [[crates]]
 name = "poiesis-inspect"
@@ -238,6 +238,12 @@ name = "poiesis-slides"
 path = "crates/poiesis/slides"
 source_hash = "1acfca3d017925f9fac4a3dd2c7eedbc705f7e9ab3698d4a8606ee0967b4e4e9"
 l3_token_estimate = 600
+
+[[crates]]
+name = "poiesis-text"
+path = "crates/poiesis/text"
+source_hash = "a1ac3f2a8037c8dc32c9dd6d15e7ab92cbc9055d64e68596c3841d98feda20a6"
+l3_token_estimate = 508
 
 [[crates]]
 name = "poiesis-theme"
@@ -284,7 +290,7 @@ l3_token_estimate = 24198
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "9b1e020b438d58ed06b60b21f5aada64196ad610c755da5bca435d67fc194fdc"
+source_hash = "d4dc4328dd3141b8808f6dc7a0fc9673d9ae4c33e1c5d47ba6e80ffcdba2180f"
 l3_token_estimate = 22042
 
 [[crates]]

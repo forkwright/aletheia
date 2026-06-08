@@ -44,6 +44,13 @@ pub enum Error {
         detail: String,
     },
 
+    /// ODT rendering via the clean-room backend failed.
+    #[snafu(display("odt render failed: {detail}"))]
+    OdtRenderFailed {
+        /// Human-readable description.
+        detail: String,
+    },
+
     /// The requested format requires Pandoc, which is not yet available.
     #[snafu(display("{format} output requires Pandoc (coming in B-012); use pdf or xlsx for now"))]
     PandocRequired {
@@ -94,16 +101,8 @@ pub fn inspect_docx (bytes: &[u8]) -> Result<DocxSummary>
 pub fn render_pdf_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
 ```
 
-> Render a [`poiesis_core::Document`] to ODT bytes.
-> 
-> ODT output requires the Pandoc backend (B-012) which has not landed yet.
-> Returns [`Error::PandocRequired`] until B-012 ships.
-> 
-> # Errors
-> 
-> Always returns [`Error::PandocRequired`] in this stub implementation.
 ```rust
-pub fn render_odt_from_doc (_doc: &poiesis_core::Document) -> Result<Vec<u8>>
+pub fn render_odt_from_doc (doc: &poiesis_core::Document) -> Result<Vec<u8>>
 ```
 
 ## `src/pandoc/ast.rs`

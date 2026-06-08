@@ -13,7 +13,7 @@ Typed chart model + deterministic SVG emitter. Implements B-005 (poiesis chart s
 1. `src/lib.rs` — module map + determinism contract.
 2. `src/model.rs` — `Chart`, `Series`, `Axes`, `FactCite`, `ChartKind::render_path`.
 3. `src/render.rs` — `render_chart` entry point + per-kind dispatch.
-4. `src/render/kinds/combo.rs` — the only fully implemented arm today; the B-005 acceptance gate.
+4. `src/render/kinds/combo.rs` — the multi-axis acceptance gate and the reference multi-series arm.
 5. `src/scale.rs` — linear `Scale` + `nice()` + `ticks()` (consumed by every arm).
 6. `src/format.rs` — fixed-precision number formatting (the only path from `f64` to `<text>`).
 
@@ -27,21 +27,21 @@ Three rules, all enforced in code:
 | Element order | Per-kind arms write groups in a fixed source order (`gridlines → axes → bars → line → labels → x-labels`). No map iteration into output. |
 | IDs | Content-derived or index-based. No UUIDs, no `rand`. |
 
-The combo arm has a re-emit-must-be-byte-identical test (`output_is_deterministic_across_two_renders`). Per-kind golden snapshots via `insta` land with each follow-up arm.
+The combo arm has a re-emit-must-be-byte-identical test (`output_is_deterministic_across_two_renders`). The other wired arms have direct render assertions that check the root SVG plus their expected structural markers.
 
 ## Per-kind emitter status
 
 | Kind | Status |
 |---|---|
-| combo | **Implemented** — covers the B-005 acceptance gate |
-| bar | Stub (`Error::EmitterStub`) — design doc in PR body |
-| column | Stub — column arm shares ~70 % with combo's column primitives; extract during follow-up |
-| line | Stub — line arm shares with combo's line primitives |
-| area | Stub — line + closed polygon |
-| scatter | Stub — Cartesian-x scale + circles only |
-| pie | Stub — angle accumulator + arc emitter |
-| doughnut | Stub — pie with inner-radius cut |
-| stat | Stub — single big number + sparkline |
+| combo | **Implemented / wired** — covers the B-005 acceptance gate |
+| bar | **Implemented / wired** — horizontal grouped bars |
+| column | **Implemented / wired** — vertical grouped bars |
+| line | **Implemented / wired** — polyline + markers |
+| area | **Implemented / wired** — filled polygon + top edge |
+| scatter | **Implemented / wired** — Cartesian-x scale + circles |
+| pie | **Implemented / wired** — arc sectors |
+| doughnut | **Implemented / wired** — pie with inner-radius cut |
+| stat | **Implemented / wired** — single big number |
 
 Follow-up arms reuse `Scale` + `format` + `Canvas`; only the per-arm geometry differs.
 

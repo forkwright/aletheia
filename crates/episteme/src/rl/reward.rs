@@ -91,7 +91,13 @@ fn exact_match_rate_from_questions(value: &serde_json::Value) -> Option<f64> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
+    use std::fs;
+    use std::io::Write as _;
+
+    use tempfile::tempdir;
+
     use super::{LongMemEvalReward, MemoryOutcome, RewardFn, extract_exact_match_rate};
 
     #[test]
@@ -125,6 +131,31 @@ mod tests {
         let outcome = MemoryOutcome {
             exact_match_rate: 0.50,
             mean_f1: None,
+        };
+
+        assert!((reward.reward(&outcome) - 0.15).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn loads_reward_from_file_and_scores_real_outcome() {
+        let tempdir = tempdir().unwrap();
+        let path = tempdir.path().join("baseline.json");
+        let mut file = fs::File::create(&path).unwrap();
+        file.write_all(
+            serde_json::json!({
+                "benchmark": "LongMemEval",
+                "exact_match_rate": 0.35,
+                "mean_f1": 0.42
+            })
+            .to_string()
+            .as_bytes(),
+        )
+        .unwrap();
+
+        let reward = LongMemEvalReward::from_json_file(&path).unwrap();
+        let outcome = MemoryOutcome {
+            exact_match_rate: 0.50,
+            mean_f1: Some(0.40),
         };
 
         assert!((reward.reward(&outcome) - 0.15).abs() < f64::EPSILON);
