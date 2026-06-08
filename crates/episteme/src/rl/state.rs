@@ -11,6 +11,7 @@ use super::Action;
 /// The concrete 66-constant schema referenced by the Phase 06b issue is not
 /// present in this repository. A named feature map keeps the scaffold useful
 /// for reward-loader and harness work without freezing placeholder constants.
+// TODO(#3969) Phase-06b boundary type: the learned RL loop stays 1.x.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MemoryState {
     /// Stable identifier for the memory item or policy decision point.
@@ -39,6 +40,7 @@ impl MemoryState {
 }
 
 /// A single memory-policy transition emitted by a future training environment.
+// TODO(#3969) Phase-06b boundary type: transition wiring stays out of the 1.x learned policy loop.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MemoryTransition {
     /// State before the action.

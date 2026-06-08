@@ -69,6 +69,7 @@ symbolon = { path = "../symbolon" }
 pylon = { path = "../pylon" }
 agora = { path = "../agora" }
 dokimion = { path = "../eval" }
+episteme = { path = "../episteme" }
 thesauros = { path = "../thesauros" }
 koilon = { path = "../theatron/koilon", optional = true }
 # WHY: direct deps needed to wire per-crate metric registration at startup.

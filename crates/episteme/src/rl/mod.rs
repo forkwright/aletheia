@@ -1,8 +1,8 @@
 //! Reinforcement-learning readiness types for memory policy experiments.
 //!
-//! This module intentionally defines only stable boundary types. The concrete
-//! environment is deferred until the in-tree memory-policy constants have been
-//! inventoried into a durable state schema.
+//! The benchmark reward surface is wired and evaluated against real benchmark
+//! outcomes, but the learned policy / training loop remains a Phase-06b
+//! boundary.
 
 /// Memory policy action space placeholders.
 pub mod actions;
