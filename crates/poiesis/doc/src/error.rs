@@ -42,6 +42,13 @@ pub enum Error {
         detail: String,
     },
 
+    /// PDF rendering needed a system `LaTeX` engine but none was available.
+    #[snafu(display("pdf LaTeX engine unavailable: {source}"))]
+    PdfLatexEngineUnavailable {
+        /// Detailed probing error from the Pandoc `LaTeX` route.
+        source: crate::pandoc::PandocError,
+    },
+
     /// ODT rendering via the clean-room backend failed.
     #[snafu(display("odt render failed: {detail}"))]
     OdtRenderFailed {

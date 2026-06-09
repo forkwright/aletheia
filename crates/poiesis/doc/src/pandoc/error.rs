@@ -38,6 +38,16 @@ pub enum PandocError {
         found_patch: u32,
     },
 
+    /// A LaTeX-backed PDF export needed `xelatex` or `lualatex`, but neither was usable.
+    #[snafu(display(
+        "latex engine not found (searched: {}). Install xelatex or lualatex via a TeX distribution such as TeX Live or MacTeX; on NixOS run `nix develop`",
+        searched.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+    ))]
+    LatexEngineNotInstalled {
+        /// Candidate paths that were searched.
+        searched: Vec<PathBuf>,
+    },
+
     /// The Pandoc writer returned a non-zero exit code.
     #[snafu(display("pandoc writer failed for format {fmt}: {stderr}"))]
     WriterFailed {
@@ -78,4 +88,14 @@ pub enum PandocError {
         /// Underlying SVG rasterization error.
         source: crate::raster::RasterError,
     },
+}
+
+impl From<crate::latex_probe::LatexProbeError> for PandocError {
+    fn from(err: crate::latex_probe::LatexProbeError) -> Self {
+        match err {
+            crate::latex_probe::LatexProbeError::NotInstalled { searched } => {
+                Self::LatexEngineNotInstalled { searched }
+            }
+        }
+    }
 }

@@ -8,9 +8,14 @@ mod banned_words;
 mod citations;
 /// Error types for the lint pipeline.
 pub mod error;
+mod raw_latex;
 mod structure;
 
 pub use error::LintError;
+/// Export-target selector for document portability linting.
+pub use raw_latex::ExportTarget;
+/// Lint raw `LaTeX` portability against a target export format.
+pub use raw_latex::check_raw_latex_nonportable;
 
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
@@ -47,6 +52,8 @@ pub enum FindingKind {
     RequiredSectionMissing,
     /// A heading exceeds the allowed length.
     HeaderLength,
+    /// Raw `LaTeX` was found in a document exported to a non-`LaTeX` target.
+    RawLatexNonPortable,
 }
 
 /// Data needed to apply an automatic fix for a banned word.

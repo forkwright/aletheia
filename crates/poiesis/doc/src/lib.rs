@@ -15,7 +15,8 @@
 //! - [`render_epub_from_doc`] — build `.epub` bytes from a document model via
 //!   Pandoc.
 //! - [`render_pdf_from_doc`] — build `.pdf` bytes from the document model via
-//!   the embedded Typst compiler.
+//!   Typst by default or the system `LaTeX` engine path when the content needs
+//!   it.
 //! - [`inspect_docx`] — extract paragraph text from an existing `.docx` file.
 //! - [`render_odt_from_doc`] — build `.odt` bytes from the document model via
 //!   the clean-room ZIP/XML backend.
@@ -25,8 +26,8 @@
 //! ## Pandoc dispatch (B-012)
 //!
 //! [`pandoc::render_doc`] routes by format:
-//! - PDF → `poiesis-typst` in-process fast-lane (default).
-//! - PDF with explicit `LaTeX` engine → Pandoc + `LaTeX`.
+//! - PDF → `poiesis-typst` in-process fast-lane by default.
+//! - PDF with explicit `LaTeX` engine or math/raw-`LaTeX` content → Pandoc + `LaTeX`.
 //! - docx / md / latex / html / epub → Pandoc subprocess.
 //!
 //! # GPL-clean boundary
@@ -35,14 +36,16 @@
 //! the `pandoc` Rust crate.
 
 mod error;
+mod latex_probe;
 mod pandoc_probe;
 mod raster;
-mod typst_bridge;
 
 /// Pandoc subprocess wrapper, AST serialization, and format dispatch (B-012).
 pub mod pandoc;
 
 pub use error::Error;
+/// Re-export of the system `LaTeX` engine probe.
+pub use latex_probe::{LatexProbe, LatexProbeError};
 /// Re-export of the Pandoc dispatcher for callers that want it directly.
 pub use pandoc::render_doc;
 pub use pandoc_probe::{PandocProbe, PandocProbeError};
@@ -196,22 +199,30 @@ pub fn inspect_docx(bytes: &[u8]) -> Result<DocxSummary> {
     Ok(DocxSummary::new(paragraphs))
 }
 
-/// Render a [`poiesis_core::Document`] to PDF bytes via the embedded Typst compiler.
+/// Render a [`poiesis_core::Document`] to PDF bytes.
 ///
-/// Intermediate replacement for the retired text-format PDF backend.
-/// The Pandoc-backed path (B-012) will supersede this for the full format matrix.
+/// This keeps the Typst fast-lane for common documents, but content that
+/// needs `LaTeX` math or raw `LaTeX` blocks is routed through the system-engine
+/// `LaTeX` path when available.
 ///
 /// # Errors
 ///
-/// Returns [`Error::PdfRenderFailed`] if Typst compilation fails.
+/// Returns [`Error::PdfRenderFailed`] if Typst compilation fails, or
+/// [`Error::PdfLatexEngineUnavailable`] when `LaTeX` content is present but no
+/// system engine could be probed.
 #[instrument(skip(doc))]
 pub fn render_pdf_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
-    let source = typst_bridge::doc_to_typst(doc);
-    poiesis_typst::render_typst(&source, &serde_json::json!({})).map_err(|e| {
-        Error::PdfRenderFailed {
-            detail: e.to_string(),
+    match pandoc::render_doc(doc, &pandoc::DocOpts::default_pdf()) {
+        Ok(bytes) => Ok(bytes),
+        Err(pandoc::PandocError::LatexEngineNotInstalled { searched }) => {
+            Err(Error::PdfLatexEngineUnavailable {
+                source: pandoc::PandocError::LatexEngineNotInstalled { searched },
+            })
         }
-    })
+        Err(e) => Err(Error::PdfRenderFailed {
+            detail: e.to_string(),
+        }),
+    }
 }
 
 /// Render a [`poiesis_core::Document`] to DOCX bytes via Pandoc.
@@ -391,6 +402,19 @@ mod tests {
         }
     }
 
+    fn math_doc() -> poiesis_core::Document {
+        use poiesis_core::{Block, Document, Metadata};
+
+        Document {
+            metadata: Metadata {
+                title: "Math".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::DisplayMath("x^2 + y^2 = z^2".to_owned())],
+        }
+    }
+
     #[test]
     fn render_docx_from_doc_produces_bytes_when_pandoc_present() {
         if !pandoc_present() {
@@ -445,5 +469,48 @@ mod tests {
     fn render_odt_from_doc_produces_pk_magic() {
         let bytes = render_odt_from_doc(&simple_doc()).expect("must render");
         assert!(bytes.starts_with(b"PK"), "must be an ODT ZIP archive");
+    }
+
+    #[test]
+    fn display_math_routes_to_latex_and_html_mathml_without_needing_latex() {
+        if !pandoc_present() {
+            return;
+        }
+
+        let doc = math_doc();
+
+        let latex = String::from_utf8(render_latex_from_doc(&doc).expect("latex must render"))
+            .expect("latex must be utf-8");
+        assert!(
+            latex.contains("\\begin{document}"),
+            "latex output must be standalone"
+        );
+        assert!(
+            latex.contains("x^2 + y^2 = z^2"),
+            "latex output must include the display math expression"
+        );
+
+        let html = String::from_utf8(render_html_from_doc(&doc).expect("html must render"))
+            .expect("html must be utf-8");
+        assert!(
+            html.contains("<math") || html.contains("MathML"),
+            "html output must include MathML math markup"
+        );
+
+        if LatexProbe::check().engine().is_ok() {
+            let bytes = render_pdf_from_doc(&doc).expect("latex-backed pdf must render");
+            assert!(bytes.starts_with(b"%PDF"), "must be a PDF");
+        } else {
+            let err = render_pdf_from_doc(&doc).expect_err("missing latex engine must error");
+            match err {
+                Error::PdfLatexEngineUnavailable { source } => {
+                    assert!(
+                        source.to_string().contains("latex engine not found"),
+                        "missing engine error must be actionable"
+                    );
+                }
+                other => panic!("unexpected pdf error variant: {other:?}"),
+            }
+        }
     }
 }

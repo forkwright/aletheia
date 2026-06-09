@@ -64,6 +64,8 @@ pub enum FindingKind {
     RequiredSectionMissing,
     /// A heading exceeds the allowed length.
     HeaderLength,
+    /// Raw `LaTeX` was found in a document exported to a non-`LaTeX` target.
+    RawLatexNonPortable,
 }
 ```
 
@@ -116,4 +118,20 @@ impl Linter {
     ) -> Result<Vec<Finding>, LintError>;
     pub fn to_json (findings: &[Finding]) -> Result<String, LintError>;
 }
+```
+
+## `src/raw_latex.rs`
+
+```rust
+pub enum ExportTarget {
+    /// A target that can render raw `LaTeX`, such as `.tex` or `LaTeX`-backed PDF.
+    Latex,
+    /// Any non-`LaTeX` target such as HTML, DOCX, EPUB, or Typst fast-lane PDF.
+    NonLatex,
+}
+```
+
+> Check whether raw `LaTeX` content would be non-portable for the export target.
+```rust
+pub fn check_raw_latex_nonportable (doc: &Document, target: ExportTarget) -> Vec<Finding>
 ```

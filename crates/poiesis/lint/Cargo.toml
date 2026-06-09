@@ -11,6 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+poiesis-core = { path = "../core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
