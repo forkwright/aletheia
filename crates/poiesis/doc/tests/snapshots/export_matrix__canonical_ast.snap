@@ -1,0 +1,298 @@
+---
+source: crates/poiesis/doc/tests/export_matrix.rs
+expression: "serde_json::to_string_pretty(&ast)?"
+---
+{
+  "blocks": [
+    {
+      "c": [
+        1,
+        [
+          "",
+          [],
+          []
+        ],
+        [
+          {
+            "c": "Export Matrix",
+            "t": "Str"
+          }
+        ]
+      ],
+      "t": "Header"
+    },
+    {
+      "c": [
+        {
+          "c": "See ",
+          "t": "Str"
+        },
+        {
+          "c": [
+            [
+              "",
+              [
+                "apx-cite"
+              ],
+              [
+                [
+                  "data-factid",
+                  "fact-42"
+                ]
+              ]
+            ],
+            []
+          ],
+          "t": "Span"
+        },
+        {
+          "c": " for details.",
+          "t": "Str"
+        }
+      ],
+      "t": "Para"
+    },
+    {
+      "c": [
+        [
+          "",
+          [],
+          []
+        ],
+        [
+          null,
+          []
+        ],
+        [
+          [
+            {
+              "t": "AlignDefault"
+            },
+            {
+              "t": "ColWidthDefault"
+            }
+          ],
+          [
+            {
+              "t": "AlignDefault"
+            },
+            {
+              "t": "ColWidthDefault"
+            }
+          ]
+        ],
+        [
+          [
+            "",
+            [],
+            []
+          ],
+          [
+            [
+              [
+                "",
+                [],
+                []
+              ],
+              [
+                [
+                  [
+                    "",
+                    [],
+                    []
+                  ],
+                  {
+                    "t": "AlignDefault"
+                  },
+                  1,
+                  1,
+                  [
+                    {
+                      "c": [
+                        {
+                          "c": "Quarter",
+                          "t": "Str"
+                        }
+                      ],
+                      "t": "Para"
+                    }
+                  ]
+                ],
+                [
+                  [
+                    "",
+                    [],
+                    []
+                  ],
+                  {
+                    "t": "AlignDefault"
+                  },
+                  1,
+                  1,
+                  [
+                    {
+                      "c": [
+                        {
+                          "c": "Value",
+                          "t": "Str"
+                        }
+                      ],
+                      "t": "Para"
+                    }
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ],
+        [
+          [
+            [
+              "",
+              [],
+              []
+            ],
+            0,
+            [],
+            [
+              [
+                [
+                  "",
+                  [],
+                  []
+                ],
+                [
+                  [
+                    [
+                      "",
+                      [],
+                      []
+                    ],
+                    {
+                      "t": "AlignDefault"
+                    },
+                    1,
+                    1,
+                    [
+                      {
+                        "c": [
+                          {
+                            "c": "North",
+                            "t": "Str"
+                          }
+                        ],
+                        "t": "Para"
+                      }
+                    ]
+                  ],
+                  [
+                    [
+                      "",
+                      [],
+                      []
+                    ],
+                    {
+                      "t": "AlignDefault"
+                    },
+                    1,
+                    1,
+                    [
+                      {
+                        "c": [
+                          {
+                            "c": "10",
+                            "t": "Str"
+                          }
+                        ],
+                        "t": "Para"
+                      }
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ],
+        [
+          [
+            "",
+            [],
+            []
+          ],
+          []
+        ]
+      ],
+      "t": "Table"
+    },
+    {
+      "c": [
+        {
+          "c": [
+            [
+              "apx-figure-0",
+              [
+                "apx-figure"
+              ],
+              [
+                [
+                  "data-figure-id",
+                  "apx-figure-0"
+                ]
+              ]
+            ],
+            [
+              {
+                "c": "Revenue",
+                "t": "Str"
+              },
+              {
+                "t": "Space"
+              },
+              {
+                "c": "trend",
+                "t": "Str"
+              }
+            ],
+            [
+              "apx-figure://apx-figure-0",
+              ""
+            ]
+          ],
+          "t": "Image"
+        }
+      ],
+      "t": "Para"
+    }
+  ],
+  "meta": {
+    "author": {
+      "c": [
+        {
+          "c": [
+            {
+              "c": "alice",
+              "t": "Str"
+            }
+          ],
+          "t": "MetaInlines"
+        }
+      ],
+      "t": "MetaList"
+    },
+    "title": {
+      "c": [
+        {
+          "c": "Export Matrix",
+          "t": "Str"
+        }
+      ],
+      "t": "MetaInlines"
+    }
+  },
+  "pandoc-api-version": [
+    1,
+    23,
+    1,
+    1
+  ]
+}

@@ -1,0 +1,5 @@
+---
+source: crates/poiesis/doc/tests/export_matrix.rs
+expression: too_old_probe_error
+---
+pandoc at /tmp/poiesis-doc-export-matrix-too-old-pandoc/pandoc is version 2.19.2, but >= 3.0.0 is required. Upgrade via https://pandoc.org/installing.html or `nix develop`

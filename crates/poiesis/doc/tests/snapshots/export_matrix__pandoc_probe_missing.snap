@@ -1,0 +1,5 @@
+---
+source: crates/poiesis/doc/tests/export_matrix.rs
+expression: missing_probe_error
+---
+pandoc not found (searched: /tmp/poiesis-doc-export-matrix-missing-pandoc/pandoc). Install pandoc >= 3.0.0; on NixOS run `nix develop`, on Ubuntu/Debian run `apt install pandoc`, on macOS run `brew install pandoc`, or download from https://pandoc.org/installing.html
