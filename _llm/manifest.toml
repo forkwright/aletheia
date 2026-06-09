@@ -110,7 +110,7 @@ l3_token_estimate = 13362
 [[crates]]
 name = "integration-tests"
 path = "crates/integration-tests"
-source_hash = "e03fb30d54171af6217fdd19cba6c65dda25f49cb01d361abfa682da35da2817"
+source_hash = "9e910ebae71346f647991528fceb5f300b800ec4e46d08ff45f4fcbe30210791"
 l3_token_estimate = 1170
 
 [[crates]]
