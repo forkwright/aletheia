@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use snafu::ResultExt;
 
@@ -176,15 +177,19 @@ impl Registry {
 /// consumer path deterministic and available in release artifacts.
 #[must_use]
 pub fn summus() -> ResolvedTheme {
-    let raw = include_str!("../themes/summus.toml");
-    let theme: Theme = match toml::from_str(raw) {
-        Ok(theme) => theme,
-        Err(err) => panic!("embedded summus theme failed to parse: {err}"),
-    };
-    match ResolvedTheme::from_theme(theme) {
-        Ok(resolved) => resolved,
-        Err(err) => panic!("embedded summus theme failed to resolve: {err}"),
+    #[expect(
+        clippy::expect_used,
+        reason = "embedded summus.toml is valid by construction"
+    )]
+    fn embedded_summus() -> ResolvedTheme {
+        let theme: Theme = toml::from_str(include_str!("../themes/summus.toml"))
+            .expect("embedded summus.toml is valid by construction");
+        ResolvedTheme::from_theme(theme).expect("embedded summus.toml is valid by construction")
     }
+
+    static SUMMUS: LazyLock<ResolvedTheme> = LazyLock::new(embedded_summus);
+
+    SUMMUS.clone()
 }
 
 /// Parse a candidate string into a [`ThemeId`], lifting the parse error into

@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 use poiesis_theme::registry::{Registry, parse_theme_id};
 use poiesis_theme::sinks::{emit_css, emit_docvars_json, emit_docvars_yaml, emit_theme_xml};
+use poiesis_theme::summus;
 use poiesis_theme::tokens::HexColor;
 
 fn summus_dir() -> PathBuf {
@@ -90,6 +91,30 @@ fn summus_round_trip_loads_resolves_and_emits_all_sinks() {
     assert!(
         yaml.contains("positive: \"#318891\""),
         "yaml must carry resolved positive tone"
+    );
+}
+
+#[test]
+fn embedded_summus_matches_disk_summus() {
+    let registry = Registry::load_dir(&summus_dir()).expect("load themes/");
+    let id = parse_theme_id("summus").expect("parse summus id");
+    let disk = registry.resolve(&id).expect("resolve disk summus");
+    let embedded = summus();
+
+    assert_eq!(
+        embedded.id.as_str(),
+        disk.id.as_str(),
+        "theme id must match"
+    );
+    assert_eq!(
+        embedded.role.get("navy").map(HexColor::as_str),
+        disk.role.get("navy").map(HexColor::as_str),
+        "navy role hex must match between embedded and disk themes"
+    );
+    assert_eq!(
+        embedded.tone.get("positive").map(HexColor::as_str),
+        disk.tone.get("positive").map(HexColor::as_str),
+        "positive tone must match between embedded and disk themes"
     );
 }
 
