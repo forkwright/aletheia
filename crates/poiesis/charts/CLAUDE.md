@@ -47,7 +47,7 @@ Follow-up arms reuse `Scale` + `format` + `Canvas`; only the per-arm geometry di
 
 ## Theme seam
 
-`ResolvedTheme` lives in `src/theme.rs` because `poiesis-theme` (B-002) is not yet on `main`. When B-002 lands, this crate switches to `poiesis_theme::summus().resolve()` and deletes `ResolvedTheme::summus_stub`. The stub mirrors the offsite navy + teal pair (`#232E54`, `#318891`) so B-005 acceptance test 2 ("colors come only from `theme: summus`") can be exercised today.
+`ResolvedTheme` lives in `src/theme.rs` as the chart-local theme seam. B-002 has landed, so the crate bridges through `ResolvedTheme::from_poiesis_theme()` when the `theme-bridge` feature is enabled. `ResolvedTheme::summus_stub()` is retained for the offsite acceptance test, not deleted; it still mirrors the navy + teal pair (`#232E54`, `#318891`) so B-005 acceptance test 2 ("colors come only from `theme: summus`") remains reproducible.
 
 ## Patterns
 
@@ -60,4 +60,4 @@ Follow-up arms reuse `Scale` + `format` + `Canvas`; only the per-arm geometry di
 
 Uses: `poiesis-core`, `serde`, `serde_json`, `snafu`, `tracing`. Dev: `insta` for golden snapshots.
 
-Used by: nothing yet (organon adds the wiring when B-003/B-004 land).
+Used by: organon (doc/figure resvg path).

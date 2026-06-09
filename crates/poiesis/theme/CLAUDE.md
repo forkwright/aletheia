@@ -9,8 +9,9 @@ tightens: this crate's conventions narrow the parent only — sink ownership, by
 ## At a glance
 
 Theme registry, token model, and brand-asset sinks for poiesis. One source of
-brand truth (a `themes/<name>.toml` file) → three sinks (CSS custom
-properties, OOXML `theme1.xml`, Pandoc doc-vars). Three `THEME/*` lint rules
+brand truth (a `themes/<name>.toml` file) → seven sinks (CSS custom
+properties, OOXML `theme1.xml`, Pandoc doc-vars, LaTeX, PPTX, reference.docx,
+Typst). Three `THEME/*` lint rules
 mechanically enforce that specs reference tokens, never raw hex or typeface
 literals.
 
@@ -32,7 +33,7 @@ Locks: spec 03 of forkwright/kanon#978 (apodeixis Phase-00 bootstrap).
 
 ## Patterns
 
-- **One source → three sinks.** Each sink owns its serialization. Cross-sink
+- **One source → seven sinks.** Each sink owns its serialization. Cross-sink
   emission shares nothing beyond `ResolvedTheme`. Adding a sink is a new module
   in `src/sinks/`.
 - **TOML order preserved.** `IndexMap` everywhere a brand-author cares about
@@ -62,10 +63,13 @@ Locks: spec 03 of forkwright/kanon#978 (apodeixis Phase-00 bootstrap).
 | CSS sink                  | shipped (`src/sinks/css.rs`)             | regression-byte test against offsite CSS once [B-003] lands |
 | OOXML `theme1.xml`        | shipped (`src/sinks/ooxml.rs`)           | full `assets/<name>-base.pptx` raw OOXML pack belongs to [B-004]; this crate emits the `theme1.xml` body |
 | Pandoc doc-vars           | shipped (`src/sinks/docvars.rs`, JSON + YAML) | generate `reference.docx/odt/template.{typ,latex}` in [B-006] |
+| LaTeX prelude             | shipped (`src/sinks/latex.rs`)           | `\definecolor` / `\newcommand` assets for the doc backend |
+| PPTX pack                 | shipped (`src/sinks/pptx.rs`)            | packed base PPTX template with the theme baked in |
+| reference.docx            | shipped (`src/sinks/reference_docx.rs`)  | Pandoc reference-doc asset for DOCX theming |
+| Typst prelude             | shipped (`src/sinks/typst.rs`)           | Typst prelude for the PDF / report template path |
 | `THEME/*` lint rules      | shipped (`src/lint.rs`) — rule shapes + scan/check APIs | register with the [B-008] basanos engine |
 
 ## Dependencies
 
 Uses: indexmap, jiff, regex, serde, serde_json, snafu, toml.
-Used by: (none yet). The intended consumers are [B-001] core, [B-003] HTML
-deck, [B-004] PPTX, [B-006] doc, and [B-008] QA gate.
+Used by: organon (hard dep); poiesis-charts (optional theme-bridge feature).

@@ -1,31 +1,32 @@
-# B-002 poiesis-theme Escalation Log
+# SUPERSEDED / RESOLVED: B-002/B-012 Escalation Log
 
-Design choices deferred from mechanical kimi dispatch — review before merging.
+Design choices deferred from mechanical kimi dispatch are preserved here for history only. The v1.0 marathon landed the real filters and routing that close the loop: `apx-cite` and `apx-figure` are wired now (#4448, #4450), content-trigger LaTeX routing is live (#4451), and B-002/B-005 are on main. Treat every "Default if no answer", "blocked", "stub", "identity filter", and "not yet defined" note below as resolved by that shipped reality.
 
 ## B-002-B: `emit_base_pptx` OOXML design choices
 
 ### PPTX `fmtScheme` in `<a:themeElements>`
 
-ECMA-376 requires `<a:fmtScheme>` inside `<a:themeElements>`. The existing `sinks/ooxml.rs`
-emits a stub `<a:fmtScheme name=""/>`. For a base.pptx, Office consumers need the
+ECMA-376 requires `<a:fmtScheme>` inside `<a:themeElements>`. The scaffold-era `sinks/ooxml.rs`
+emitted a stub `<a:fmtScheme name=""/>`; the shipped implementation now embeds the full
+Office-default format scheme. For a base.pptx, Office consumers need the
 `<a:fillStyleLst>`, `<a:lnStyleLst>`, `<a:effectStyleLst>`, and `<a:bgFillStyleLst>` children
 to be non-empty, otherwise the format scheme is invalid and PowerPoint falls back to Office
-defaults. **Decision needed**: should `emit_base_pptx` embed the full Office-default format scheme
-(copy from slides/pptx.rs `THEME` static) or keep the stub? Recommendation: embed the Office-
-default format scheme so the base.pptx opens cleanly in both PowerPoint and LibreOffice.
+defaults. **RESOLVED:** `emit_base_pptx` embeds the full Office-default format scheme from
+`slides/pptx.rs`, so the base.pptx opens cleanly in both PowerPoint and LibreOffice.
 
 ### Blank slide layout type
 
 The one blank title slide in base.pptx should reference a `slideLayout` of type `"blank"` or
 `"title"`. Using `type="blank"` (no placeholders) is safest for a template/base file; `type="title"`
 creates a title+content placeholder. The existing slides crate uses `type="titleAndContent"` for
-content slides. **Decision**: use `type="blank"` for the base.pptx master slide layout.
+content slides. **RESOLVED:** the base.pptx master slide layout uses `type="blank"`.
 
 ### `<p:sldMaster>` color map
 
 The slideMaster must carry a `<p:clrMap>` mapping scheme slots to DrawingML token names (e.g.
 `bg1="lt1" tx1="dk1"`). This is required for theme colors to propagate through the layout hierarchy.
-The mapping is standard OOXML and does not vary by theme — copy from slides/pptx.rs.
+The mapping is standard OOXML and does not vary by theme — copied from `slides/pptx.rs` in the
+shipped implementation.
 
 ---
 
@@ -42,29 +43,29 @@ needed for functional Pandoc output:
 - `Body Text` (body paragraph)
 - `Default Paragraph Font` (character style)
 
-**Decision**: emit all 9 styles listed above. Styles absent from the reference.docx cause Pandoc
+**RESOLVED:** emit all 9 styles listed above. Styles absent from the reference.docx cause Pandoc
 to fall back to its internal defaults — missing styles do not break output, just theme application.
-Emit a minimal set (Normal + Heading 1–3) for the initial implementation; the remaining styles can
-be added in a follow-up without breaking existing consumers.
+The shipped reference-doc includes the full set; the minimal-set note is historical only.
 
 ### Word XML namespace minimum for styles.xml
 
 `word/styles.xml` needs at minimum `xmlns:w` and `xmlns:r`. The `w:rsid*` attributes are optional
 (Pandoc ignores them). The `w:styleId` must match what Pandoc expects exactly (e.g. `"Normal"`,
 `"Heading1"` — note: Pandoc maps `heading 1` display name to `styleId="Heading1"`). The mapping
-is: `styleId="Heading1"` with `<w:name w:val="heading 1"/>`.
+is: `styleId="Heading1"` with `<w:name w:val="heading 1"/>`. The shipped asset uses that shape.
 
 ### ODT style naming for Pandoc
 
 Pandoc's ODT reader looks for styles by name with underscore normalization: `Heading_1` maps to
-"Heading 1". Use `style:name="Heading_1"` and `style:display-name="Heading 1"`.
+"Heading 1". Use `style:name="Heading_1"` and `style:display-name="Heading 1"`. The shipped ODT
+reference asset follows that convention.
 
 ### Embedded fonts vs. font references
 
 The reference.docx and reference.odt should use **font name references** only (not embedded font
 blobs). LibreOffice and Word will substitute if the named font (Geist, Newsreader) is not installed,
 falling back to system defaults. Embedding fonts requires font license verification and adds binary
-payload — out of scope for B-002.
+payload — out of scope for B-002. The shipped assets keep the font references only.
 
 ---
 
@@ -81,14 +82,13 @@ payload — out of scope for B-002.
 
 **Date:** 2026-05-29
 **Entry:** B-012 — poiesis Pandoc backend module under poiesis-doc
-**Status:** Scaffold committed; Q1 + Q2 resolved by B-001 landing; Q3 + Q4 still need operator answers
+**Status:** Superseded by the v1.0 marathon; Q1-Q4 are resolved in the shipped implementation
 
-> **UPDATE 2026-05-29:** B-001 has landed at `0cb2bd3b` (PR #4350). Q1 and Q2 are resolved —
-> defaults accepted. See notes under each question. Q3 and Q4 remain open.
+> **UPDATE 2026-05-29:** B-001 landed at `0cb2bd3b` (PR #4350), and the later v1.0 marathon closed the remaining gaps. Q1-Q4 are resolved in the current tree; the notes below are historical only.
 
-This PR delivers the mechanical scaffold: `PandocRunner`, `OutputFormat`, `DocOpts`, the dispatch
-routing skeleton, and stub Lua filters. Q3 and Q4 below need operator answers before the full
-implementation (Lua filter logic) can be finalised. Q1 and Q2 are now closed.
+This PR delivered the mechanical scaffold: `PandocRunner`, `OutputFormat`, `DocOpts`, the dispatch
+routing skeleton, and scaffold-era Lua filters. The landed tree now replaces the stubs with the real
+filters and the live dispatch matrix. Q1-Q4 are resolved in the current branch.
 
 ---
 
@@ -117,8 +117,7 @@ will change.
 
 > **RESOLVED (B-001 landed `0cb2bd3b`):** B-001 added `envelope.rs`, `factbase.rs`, `ids.rs`
 > (including `FactId`) to `poiesis-core`, but did NOT add `Span::Cite` to `rich_text.rs`.
-> **Default accepted:** B-012 serializes `poiesis_core::Document`; `Cite` path is a no-op stub;
-> upgrade to `DeliverableSpec` is a tracked follow-on. B-012 does NOT add types to `poiesis-core`.
+> **RESOLVED:** The current tree serializes `poiesis_core::Document` through the landed Pandoc AST path, and the historical `Cite` stub is gone from the filter flow. The `DeliverableSpec` upgrade remains a follow-on, but the scaffold-era "no-op stub" answer is obsolete.
 
 ---
 
@@ -139,10 +138,7 @@ additions). Until B-001 lands, the content trigger cannot fire.
 2. If B-012 adds these variants to `poiesis-core`, it creates a B-001 ordering constraint: B-001
    must not introduce conflicting variants. Is that acceptable?
 
-> **RESOLVED (B-001 landed `0cb2bd3b`):** B-001 did NOT add `Block::DisplayMath` or
-> `Block::RawBlock` to `block.rs` (verified). **Default accepted:** Content-trigger routing stays
-> stubbed; PDF always routes to Typst; `DocOpts::pdf_engine(PdfEngine::Latex)` is the only LaTeX
-> override path. Full content-trigger wires in as a follow-on when Block variants land.
+> **RESOLVED:** Content-trigger routing is wired in the landed tree. PDF now follows the Typst fast-lane by default and switches to the Pandoc/LaTeX path when math/raw-`LaTeX` content or an explicit engine override requires it.
 
 ---
 
@@ -171,9 +167,7 @@ know:
    the writer format from `FORMAT` (pandoc's global) or from a `doc.cite.source_mode` metadata
    key? The spec mentions the latter as a knob but doesn't specify the key name.
 
-**Default if no answer:** `apx-cite.lua` is a stub that passes `Span("apx-cite")` through
-unchanged (identity filter). The sidecar contract is declared as a TODO comment in the stub. Full
-impl unblocked once Q1 (B-001 Cite type) and Q3 schema are answered.
+> **RESOLVED:** `apx-cite.lua` is now a real filter in the landed backend; the identity-filter fallback is obsolete, and the sidecar contract is implemented in the shipped path rather than left as a TODO.
 
 ---
 
@@ -196,14 +190,13 @@ defined.
    { svg: "<svg>...</svg>", png_path: "/tmp/...png" }` before spawning Pandoc. The filter reads
    it and substitutes. Is this the right shape?
 
-**Default if no answer:** `apx-figure.lua` is a stub (identity). The sidecar contract is
-documented as a TODO comment.
+> **RESOLVED:** `apx-figure.lua` is now a real filter wired to the chart emitter; the identity stub is obsolete and the figure sidecar contract is now exercised by the shipped path.
 
 ---
 
-## What this PR ships without escalation answers
+## Historical scaffold snapshot
 
-The scaffold below is correct and final regardless of the above answers:
+The table below is the original scaffold snapshot, preserved for provenance. Every row now maps to shipped code in the v1.0 marathon tree.
 
 | Item | Status |
 |---|---|
@@ -211,19 +204,19 @@ The scaffold below is correct and final regardless of the above answers:
 | `PandocError` enum | Shipped |
 | `OutputFormat` enum (docx, odt, pdf, md, latex, html, epub) | Shipped |
 | `DocOpts` struct (format + optional pdf_engine override) | Shipped |
-| `render_doc()` dispatch skeleton (Typst for PDF, error-stub for others) | Shipped |
-| `crates/poiesis/filters/apx-cite.lua` stub | Shipped |
-| `crates/poiesis/filters/apx-figure.lua` stub | Shipped |
-| `crates/poiesis/filters/apx-theme.lua` stub | Shipped |
+| `render_doc()` dispatch skeleton (Typst for PDF, error-stub for others) | Replaced by the live dispatch matrix |
+| `crates/poiesis/filters/apx-cite.lua` stub | Replaced by the real filter |
+| `crates/poiesis/filters/apx-figure.lua` stub | Replaced by the real filter |
+| `crates/poiesis/filters/apx-theme.lua` stub | Replaced by the real filter |
 | `cargo deny` assertion placeholder comment | Shipped |
 | Unit tests for dispatch routing | Shipped |
 
-Items blocked on answers above (not in this PR):
+Items that were unresolved in the scaffold are now resolved in the shipped tree:
 
-| Item | Blocked on |
+| Item | Resolution |
 |---|---|
-| Full `Document` → Pandoc JSON AST serialization | Q1 (B-001 types) |
-| Content-trigger LaTeX routing | Q2 (B-001 Block variants) |
-| `apx-cite.lua` factbase resolution | Q1 + Q3 |
-| `apx-figure.lua` chart baking | Q4 (B-005 API) |
-| `reference.{docx,odt}` theming assets | B-002 (not yet landed) |
+| Full `Document` → Pandoc JSON AST serialization | The landed `poiesis-doc` Pandoc AST path |
+| Content-trigger LaTeX routing | The shipped Typst/Pandoc/LaTeX route selection |
+| `apx-cite.lua` factbase resolution | The real `apx-cite` filter |
+| `apx-figure.lua` chart baking | The real `apx-figure` filter and chart bridge |
+| `reference.{docx,odt}` theming assets | The landed theme sinks and doc backend |
