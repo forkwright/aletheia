@@ -2,8 +2,8 @@
 
 Each file in this directory sketches the geometry, fixed source order, and
 shared-primitive reuse for one `ChartKind` emitter arm. The combo arm
-(`src/render/kinds/combo.rs`) is the implemented reference; the others are
-stubs returning `Error::EmitterStub`.
+(`src/render/kinds/combo.rs`) is the implemented reference; the remaining
+notes track the other arms in the same source-order vocabulary.
 
 These notes are intentionally short — each one names what's specific to the
 kind and points at the shared primitives the arm reuses. They are the

@@ -12,7 +12,7 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 
 1. `src/lib.rs`: Module structure and re-exports from eidos/graphe
 2. `src/extract/mod.rs`: ExtractionEngine, ExtractionProvider trait, extracted types
-3. `src/recall.rs`: RecallEngine 6-factor scoring (recency, relevance, confidence, access, tier, graph)
+3. `src/recall/mod.rs`: RecallEngine 11-factor scoring (recency, relevance, confidence, access, tier, graph, surprise, evidence coverage, convergence, serendipity, decay)
 4. `src/knowledge_store/mod.rs`: Knowledge store facade (Datalog schema, HNSW index)
 5. `src/conflict.rs`: Conflict detection pipeline for fact insertion
 6. `src/embedding.rs`: EmbeddingProvider trait, CandelProvider, MockEmbeddingProvider
@@ -23,8 +23,8 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 |------|------|---------|
 | `ExtractionEngine` | `extract/engine.rs` | LLM-driven entity/relationship/fact extraction from conversations |
 | `ExtractionProvider` | `extract/provider.rs` | Trait for LLM calls during extraction |
-| `RecallEngine` | `recall.rs` | 6-factor scoring engine for knowledge retrieval ranking |
-| `RecallWeights` | `recall.rs` | Per-factor weight configuration for recall scoring |
+| `RecallEngine` | `src/recall/mod.rs` | 11-factor scoring engine for knowledge retrieval ranking |
+| `RecallWeights` | `src/recall/mod.rs` | Per-factor weight configuration for recall scoring |
 | `EmbeddingProvider` | `embedding.rs` | Trait: `embed(text) -> Vec<f32>` for vector embeddings |
 | `ConflictClassification` | `conflict.rs` | Enum: Contradiction, Supersession, Elaboration, Independent |
 | `ConsolidationProvider` | `consolidation/mod.rs` | Trait for LLM-driven fact consolidation decisions |
@@ -44,7 +44,7 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 
 ## Patterns
 
-- **6-factor recall**: recency, relevance, confidence, access frequency, knowledge tier, graph intelligence. Weighted sum produces final score.
+- **11-factor recall**: recency, relevance, confidence, access frequency, knowledge tier, graph intelligence, surprise, evidence coverage, convergence, serendipity, decay. Weighted sum produces final score.
 - **Conflict pipeline**: new facts checked against existing via embedding similarity. Classified as contradiction, supersession, elaboration, or independent.
 - **Extraction refinement**: turn classification, correction detection, quality filters, and fact type classification in `extract/refinement`.
 - **Serendipity engine**: cross-domain discovery and surprise scoring in `serendipity/mod.rs`.
@@ -61,7 +61,7 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 | Task | Where |
 |------|-------|
 | Add extraction type | `src/extract/types.rs` (new struct) + `src/extract/engine.rs` (extraction logic) |
-| Modify recall scoring | `src/recall.rs` (RecallEngine, FactorScores, RecallWeights) |
+| Modify recall scoring | `src/recall/mod.rs` (RecallEngine, FactorScores, RecallWeights) |
 | Add embedding provider | `src/embedding.rs` (implement EmbeddingProvider trait) |
 | Add conflict type | `src/conflict.rs` (ConflictClassification enum) |
 | Add knowledge store relation | `src/knowledge_store/mod.rs` (Datalog schema) + `src/query/schema.rs` |

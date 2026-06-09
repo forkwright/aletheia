@@ -87,18 +87,6 @@ pub enum Error {
         path: String,
     },
 
-    /// A pure-Rust emitter arm is not yet implemented for this kind.
-    ///
-    /// Distinct from [`Error::VegaRequired`]: the kind belongs to the Rust
-    /// path, but the per-kind code is still stubbed. The PR body documents
-    /// which arms are stubbed and the completion plan; this error is the
-    /// gate-traceable handle on each stub.
-    #[snafu(display("kind `{kind}` is scaffolded but the emitter arm is not yet implemented"))]
-    EmitterStub {
-        /// The chart kind whose emitter arm is still a stub.
-        kind: String,
-    },
-
     /// Vega-Lite shell-out failed (npx not found, non-zero exit, etc.).
     #[snafu(display("vega-lite shell-out failed: {message}"))]
     VegaShellout {

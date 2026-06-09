@@ -73,7 +73,7 @@ pub mod ops_facts;
 pub mod query;
 /// LLM-powered query rewriting for recall pipeline enhancement.
 pub mod query_rewrite;
-/// 6-factor recall scoring engine for knowledge retrieval ranking.
+/// 11-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
 /// Reinforcement-learning readiness types for future memory-policy training.
 pub mod rl;

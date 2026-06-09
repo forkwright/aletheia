@@ -1,5 +1,5 @@
 //! Graph-enhanced recall scoring: wires `PageRank`, `Louvain` community detection,
-//! and bounded BFS proximity into the 6-factor recall pipeline.
+//! and bounded BFS proximity into the 11-factor recall pipeline.
 //!
 //! This module provides:
 //! - [`GraphContext`](crate::graph_intelligence::GraphContext): per-query snapshot of graph scores loaded from `graph_scores` relation

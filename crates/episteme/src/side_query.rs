@@ -1,7 +1,7 @@
 //! Side-query memory relevance selector.
 //!
 //! Uses a lighter model to pre-filter memory entries from a manifest before
-//! the full 6-factor recall scoring runs. Implements `already_surfaced` tracking
+//! the full 11-factor recall scoring runs. Implements `already_surfaced` tracking
 //! to avoid re-selecting previously injected memories, and an LRU cache to skip
 //! redundant side-queries for unchanged (query, manifest) pairs.
 //!

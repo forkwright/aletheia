@@ -86,7 +86,7 @@ l3_token_estimate = 20097
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "68d1c9813ec230fdbe386e184d4ceab2fd4ffbe52a3fb8f4accb360d3a93b131"
+source_hash = "da0795564ee45c9cd5ec475e5afd07bce9000a2a01330c26e79fadb3f952a889"
 l3_token_estimate = 32790
 
 [[crates]]
@@ -164,8 +164,8 @@ l3_token_estimate = 11827
 [[crates]]
 name = "poiesis-charts"
 path = "crates/poiesis/charts"
-source_hash = "de23b269feadc812001046054a0aef35383cdb47e141bf4e1f17b0b1eca19a7e"
-l3_token_estimate = 4596
+source_hash = "43d1867a2aa876b700a4852d12b66950138fba01a07dac5eda28ed77d5a67e91"
+l3_token_estimate = 4457
 
 [[crates]]
 name = "poiesis-core"
@@ -194,7 +194,7 @@ l3_token_estimate = 446
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "893d982f0631ff2873f9329d4d05644002ad4cda03853fbe7d5bbbad19ecb30e"
+source_hash = "4674726dc7bd502665ea510bdd174b0d777bd4cd26fb9af7044f81d776cd42c4"
 l3_token_estimate = 3417
 
 [[crates]]
