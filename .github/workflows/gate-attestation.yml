@@ -81,7 +81,7 @@ jobs:
 
       - name: cargo nextest run
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
-        run: cargo nextest run --workspace
+        run: cargo nextest run --workspace --features test-core
 
       - name: Gate summary
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}

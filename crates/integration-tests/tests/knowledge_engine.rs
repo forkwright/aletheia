@@ -208,8 +208,8 @@ fn schema_version_queryable() {
     let version = store.schema_version().expect("version");
     // Tracks `KnowledgeStore::SCHEMA_VERSION`. Recent additive migrations:
     // v8->v9 `fact_multiplicity` side-index; v10->v11 `scope`+`visibility` on
-    // `facts`; v11->v12 `project_id` on `facts`.
-    assert_eq!(version, 12);
+    // `facts`; v11->v12 `project_id` on `facts`; v12->v13 `name_embedding` on `entities`.
+    assert_eq!(version, 13);
 }
 
 // Verify ordering of multiple facts by confidence (descending).

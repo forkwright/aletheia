@@ -2,9 +2,8 @@
 
 Each file in this directory sketches the geometry, fixed source order, and
 shared-primitive reuse for one `ChartKind` emitter arm. The combo arm
-(`src/render/kinds/combo.rs`) is the implemented reference; the rest are now
-implemented and wired, so these notes describe the shipped emitters rather
-than stubs.
+(`src/render/kinds/combo.rs`) is the implemented reference; the remaining
+notes track the other arms in the same source-order vocabulary.
 
 These notes are intentionally short — each one names what's specific to the
 kind and points at the shared primitives the arm reuses. They are the
@@ -39,15 +38,15 @@ The combo arm follows this; new arms keep the order.
 
 | Kind | File |
 |---|---|
-| bar | implemented / wired — see `src/render/kinds/bar.rs` |
-| column | implemented / wired — see `src/render/kinds/column.rs` |
-| line | implemented / wired — see `src/render/kinds/line.rs` |
-| area | implemented / wired — see `src/render/kinds/area.rs` |
-| scatter | implemented / wired — see `src/render/kinds/scatter.rs` |
-| pie | implemented / wired — see `src/render/kinds/pie.rs` |
-| doughnut | implemented / wired — see `src/render/kinds/doughnut.rs` |
-| stat | implemented / wired — see `src/render/kinds/stat.rs` |
-| combo | implemented / wired — see `src/render/kinds/combo.rs` |
+| bar | [bar.md](bar.md) |
+| column | [column.md](column.md) |
+| line | [line.md](line.md) |
+| area | [area.md](area.md) |
+| scatter | [scatter.md](scatter.md) |
+| pie | [pie.md](pie.md) |
+| doughnut | [doughnut.md](doughnut.md) |
+| stat | [stat.md](stat.md) |
+| combo | implemented — see `src/render/kinds/combo.rs` |
 
 Vega-Lite kinds (`heatmap`, `boxplot`, `sankey`, `candlestick`) route through
 `Chart::validate` and emit via the `charts-vega` feature; their design
