@@ -2142,6 +2142,7 @@ impl NousManager {
     ) -> crate::error::Result<NousHandle>;
     pub fn get (&self, nous_id: &str) -> Option<&NousHandle>;
     pub fn secret_vault (&self) -> Option<&hermeneus::secret::SecretVault>;
+    pub fn blackboard_store (&self) -> Option<&Arc<dyn BlackboardStore>>;
     pub fn get_config (&self, nous_id: &str) -> Option<&NousConfig>;
     pub fn configs (&self) -> Vec<&NousConfig>;
     pub async fn reload_actor_configs (
