@@ -7047,10 +7047,12 @@ name = "poiesis-doc"
 version = "0.30.0"
 dependencies = [
  "docx-rs",
+ "poiesis-charts",
  "poiesis-core",
  "poiesis-text",
  "poiesis-typst",
  "quick-xml 0.39.2",
+ "resvg",
  "serde",
  "serde_json",
  "snafu",

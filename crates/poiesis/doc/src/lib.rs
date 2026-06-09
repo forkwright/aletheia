@@ -36,6 +36,7 @@
 
 mod error;
 mod pandoc_probe;
+mod raster;
 mod typst_bridge;
 
 /// Pandoc subprocess wrapper, AST serialization, and format dispatch (B-012).

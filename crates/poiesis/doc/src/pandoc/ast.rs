@@ -4,7 +4,7 @@
 //! (`pandoc -f json`). The mapping is near-identity per B-006 § 1, with the
 //! typed note/cite/math/raw-block forms carried directly into the AST.
 
-use poiesis_core::{Block, Document, NoteKind, RichText, Span};
+use poiesis_core::{Block, Document, Image as DocImage, NoteKind, RichText, Span};
 use serde_json::{Value, json};
 
 /// Serialize a `Document` to Pandoc JSON AST bytes.
@@ -12,7 +12,12 @@ use serde_json::{Value, json};
 /// The emitted JSON matches Pandoc's `--from json` input format.
 /// `pandoc-api-version` is pinned to `[1, 23, 1, 1]` for Pandoc 3.7.x.
 pub fn document_to_pandoc_json(doc: &Document) -> Vec<u8> {
-    let blocks: Vec<Value> = doc.content.iter().map(block_to_pandoc).collect();
+    let mut figure_index = 0usize;
+    let blocks: Vec<Value> = doc
+        .content
+        .iter()
+        .map(|block| block_to_pandoc(block, &mut figure_index))
+        .collect();
 
     let ast = json!({
         "pandoc-api-version": [1, 23, 1, 1],
@@ -47,7 +52,7 @@ fn build_meta(doc: &Document) -> Value {
     Value::Object(meta)
 }
 
-fn block_to_pandoc(block: &Block) -> Value {
+fn block_to_pandoc(block: &Block, figure_index: &mut usize) -> Value {
     match block {
         Block::Heading { level, text } => {
             let level_val = u64::from((*level).clamp(1, 6));
@@ -146,15 +151,48 @@ fn block_to_pandoc(block: &Block) -> Value {
                 json!({ "t": "BulletList", "c": inlines })
             }
         }
-        Block::Image(_) => {
-            // Images not yet supported — emit a placeholder Para.
-            // TODO(B-005/B-012): wire apx-figure.lua chart emitter.
-            json!({
-                "t": "Para",
-                "c": [{"t": "Str", "c": "[image placeholder]"}]
-            })
-        }
+        Block::Image(image) => image_to_pandoc(image, figure_index),
     }
+}
+
+fn image_to_pandoc(image: &DocImage, figure_index: &mut usize) -> Value {
+    let figure_id = super::figure::figure_id(*figure_index);
+    *figure_index += 1;
+
+    let caption = inline_text(&image.alt);
+    let figure_src = format!("apx-figure://{figure_id}");
+    let figure_id_attr = figure_id.clone();
+    let attr = json!([
+        figure_id_attr,
+        ["apx-figure"],
+        [["data-figure-id", figure_id]]
+    ]);
+
+    json!({
+        "t": "Para",
+        "c": [{
+            "t": "Image",
+            "c": [
+                attr,
+                caption,
+                [figure_src, ""]
+            ]
+        }]
+    })
+}
+
+fn inline_text(text: &str) -> Vec<Value> {
+    let mut inlines = Vec::new();
+    for (idx, word) in text.split_whitespace().enumerate() {
+        if idx > 0 {
+            inlines.push(json!({"t": "Space"}));
+        }
+        inlines.push(json!({"t": "Str", "c": word}));
+    }
+    if inlines.is_empty() {
+        inlines.push(json!({"t": "Str", "c": "Figure"}));
+    }
+    inlines
 }
 
 fn pandoc_cell(content: &Value) -> Value {

@@ -195,6 +195,58 @@ pub enum PandocError {
         /// Underlying I/O error.
         source: std::io::Error,
     },
+
+    /// A chart figure could not be rendered into SVG.
+    #[snafu(display("failed to render figure {figure_id}: {source}"))]
+    FigureRenderFailed {
+        /// Stable figure identifier.
+        figure_id: String,
+        /// Underlying figure rendering error.
+        source: super::figure::FigureError,
+    },
+
+    /// A chart figure SVG could not be rasterized into PNG.
+    #[snafu(display("failed to rasterize figure {figure_id}: {source}"))]
+    FigureRasterizeFailed {
+        /// Stable figure identifier.
+        figure_id: String,
+        /// Underlying SVG rasterization error.
+        source: crate::raster::RasterError,
+    },
+}
+```
+
+## `src/pandoc/figure.rs`
+
+```rust
+pub enum FigureError {
+    /// The embedded figure bytes were not valid UTF-8.
+    #[snafu(display("figure SVG is not valid UTF-8: {source}"))]
+    Utf8 {
+        /// Underlying UTF-8 error.
+        source: std::str::Utf8Error,
+    },
+
+    /// The embedded figure bytes were not valid JSON.
+    #[snafu(display("figure chart JSON is invalid: {source}"))]
+    Json {
+        /// Underlying JSON parse error.
+        source: serde_json::Error,
+    },
+
+    /// The figure MIME type is not supported by the chart path.
+    #[snafu(display("unsupported figure MIME type: {mime}"))]
+    UnsupportedMime {
+        /// Observed MIME type.
+        mime: String,
+    },
+
+    /// Chart rendering failed.
+    #[snafu(display("chart render failed: {source}"))]
+    ChartRender {
+        /// Underlying chart renderer error.
+        source: poiesis_charts::Error,
+    },
 }
 ```
 
@@ -355,6 +407,35 @@ pub enum PandocProbeError {
         found: PandocVersion,
         /// Minimum version required.
         required: PandocVersion,
+    },
+}
+```
+
+## `src/raster.rs`
+
+```rust
+pub enum RasterError {
+    /// SVG parsing failed.
+    #[snafu(display("invalid SVG: {source}"))]
+    ParseSvg {
+        /// Underlying SVG parse error.
+        source: usvg::Error,
+    },
+
+    /// Pixmap allocation failed for the rendered size.
+    #[snafu(display("failed to allocate pixmap {width}x{height}"))]
+    PixmapAlloc {
+        /// Output width in pixels.
+        width: u32,
+        /// Output height in pixels.
+        height: u32,
+    },
+
+    /// PNG encoding failed after rendering.
+    #[snafu(display("PNG encoding failed: {message}"))]
+    EncodePng {
+        /// Human-readable PNG encoding error.
+        message: String,
     },
 }
 ```
