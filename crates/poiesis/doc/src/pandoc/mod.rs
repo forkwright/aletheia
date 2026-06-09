@@ -4,8 +4,8 @@
 //! [`OutputFormat`] (supported export formats), and [`DocOpts`] (render options).
 //!
 //! The `render_doc` function is the unified dispatch entry point: it routes
-//! PDF to `poiesis-typst` (in-process fast-lane) and all other formats to
-//! the Pandoc subprocess.
+//! PDF to `poiesis-typst` (in-process fast-lane) unless the document content
+//! requires `LaTeX`, in which case it probes a system engine and uses Pandoc.
 //!
 //! # GPL-clean boundary
 //!
@@ -41,7 +41,7 @@ pub enum OutputFormat {
     Docx,
     /// `OpenDocument` text (.odt).
     Odt,
-    /// PDF — routed to Typst fast-lane by default; `LaTeX` when overridden.
+    /// PDF — routed to Typst fast-lane by default; `LaTeX` when overridden or content-triggered.
     Pdf,
     /// GitHub-Flavoured Markdown.
     Markdown,
@@ -78,6 +78,17 @@ pub enum PdfEngine {
     XeLaTeX,
     /// `lualatex` — alternative `LaTeX` engine.
     LuaLaTeX,
+}
+
+impl PdfEngine {
+    /// Return the Pandoc `--pdf-engine` flag value for system engines.
+    fn pandoc_arg(self) -> Option<&'static str> {
+        match self {
+            Self::Typst => None,
+            Self::XeLaTeX => Some("xelatex"),
+            Self::LuaLaTeX => Some("lualatex"),
+        }
+    }
 }
 
 /// Options controlling the render call.
@@ -276,6 +287,17 @@ impl PandocRunner {
             _ => {}
         }
 
+        if matches!(opts.format, OutputFormat::Html) {
+            cmd.arg("--mathml");
+        }
+
+        if matches!(opts.format, OutputFormat::Pdf)
+            && let Some(engine) = opts.pdf_engine
+            && let Some(engine_arg) = engine.pandoc_arg()
+        {
+            cmd.arg("--pdf-engine").arg(engine_arg);
+        }
+
         cmd.arg(tmp_path);
 
         let output = cmd.output().map_err(|e| PandocError::Spawn { source: e })?;
@@ -304,12 +326,12 @@ fn parse_pandoc_version(output: &str) -> Option<(u32, u32, u32)> {
 /// Unified dispatch: render a [`Document`] to bytes using the appropriate backend.
 ///
 /// Routing rules (per B-006 § 3):
-/// 1. `opts.format == Pdf` and no `pdf_engine` override → Typst in-process.
+/// 1. `opts.format == Pdf` and no `pdf_engine` override plus no `LaTeX`-only
+///    content → Typst in-process.
 /// 2. `opts.pdf_engine == Some(Typst)` → Typst in-process.
-/// 3. `opts.pdf_engine == Some(XeLaTeX | LuaLaTeX)` → Pandoc + `LaTeX` engine.
-/// 4. Content-trigger routing (`DisplayMath`/`RawBlock(latex)`) remains a
-///    later routing chunk. See ESCALATION.md Q2.
-/// 5. All other formats → Pandoc via `PandocRunner`.
+/// 3. `opts.pdf_engine == Some(XeLaTeX | LuaLaTeX)` or content-triggered PDF
+///    (`DisplayMath` / `RawBlock(LaTeX)`) → Pandoc + `LaTeX` engine.
+/// 4. All other formats → Pandoc via `PandocRunner`.
 ///
 /// # Errors
 ///
@@ -318,12 +340,8 @@ fn parse_pandoc_version(output: &str) -> Option<(u32, u32, u32)> {
 /// Typst failures.
 #[instrument(skip(doc), fields(fmt = ?opts.format))]
 pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError> {
-    // Route PDF to Typst fast-lane unless an explicit LaTeX engine is set.
-    let use_typst = matches!(opts.format, OutputFormat::Pdf)
-        && !matches!(
-            opts.pdf_engine,
-            Some(PdfEngine::XeLaTeX | PdfEngine::LuaLaTeX)
-        );
+    let pdf_engine = select_pdf_engine(doc, opts)?;
+    let use_typst = matches!(opts.format, OutputFormat::Pdf) && pdf_engine.is_none();
 
     if use_typst {
         return render_doc_via_typst(doc);
@@ -333,6 +351,9 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
     let runner = PandocRunner::probe(None)?;
     let ast_json = ast::document_to_pandoc_json(doc);
     let mut render_opts = opts.clone();
+    if let Some(engine) = pdf_engine {
+        render_opts.pdf_engine = Some(engine);
+    }
     render_opts.lua_filters.extend(default_lua_filters());
     let facts_sidecar = write_apx_facts_sidecar(doc)?;
     let figures_sidecar = write_apx_figures_sidecar(doc)?;
@@ -347,6 +368,36 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
         ),
     ];
     runner.render(&ast_json, &render_opts, &extra_env)
+}
+
+fn select_pdf_engine(doc: &Document, opts: &DocOpts) -> Result<Option<PdfEngine>, PandocError> {
+    if !matches!(opts.format, OutputFormat::Pdf) {
+        return Ok(None);
+    }
+
+    if let Some(engine @ (PdfEngine::XeLaTeX | PdfEngine::LuaLaTeX)) = opts.pdf_engine {
+        return Ok(Some(engine));
+    }
+
+    if matches!(opts.pdf_engine, Some(PdfEngine::Typst)) {
+        return Ok(None);
+    }
+
+    if opts.pdf_engine.is_none() && document_needs_latex_pdf(doc) {
+        return Ok(Some(crate::LatexProbe::check().engine()?));
+    }
+
+    Ok(None)
+}
+
+fn document_needs_latex_pdf(doc: &Document) -> bool {
+    use poiesis_core::Block;
+
+    doc.content.iter().any(|block| match block {
+        Block::DisplayMath(_) => true,
+        Block::RawBlock { format, .. } => format.eq_ignore_ascii_case("latex"),
+        _ => false,
+    })
 }
 
 #[derive(Debug, serde::Serialize)]

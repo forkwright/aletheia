@@ -7094,6 +7094,7 @@ dependencies = [
 name = "poiesis-lint"
 version = "0.30.0"
 dependencies = [
+ "poiesis-core",
  "serde",
  "serde_json",
  "snafu",
