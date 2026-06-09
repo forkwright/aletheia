@@ -44,6 +44,13 @@ pub enum Error {
         detail: String,
     },
 
+    /// PDF rendering needed a system `LaTeX` engine but none was available.
+    #[snafu(display("pdf LaTeX engine unavailable: {source}"))]
+    PdfLatexEngineUnavailable {
+        /// Detailed probing error from the Pandoc `LaTeX` route.
+        source: crate::pandoc::PandocError,
+    },
+
     /// ODT rendering via the clean-room backend failed.
     #[snafu(display("odt render failed: {detail}"))]
     OdtRenderFailed {
@@ -58,6 +65,48 @@ pub enum Error {
     PandocRequired {
         /// The requested format name (e.g. "docx").
         format: String,
+    },
+}
+```
+
+## `src/latex_probe.rs`
+
+```rust
+pub enum LatexProbe {
+    /// A usable system engine was found.
+    Present {
+        /// Selected PDF engine.
+        engine: PdfEngine,
+        /// Absolute path to the chosen binary.
+        path: PathBuf,
+        /// First line reported by `--version`.
+        version: String,
+    },
+    /// Neither `xelatex` nor `lualatex` could be used.
+    Missing {
+        /// Candidate paths that were searched.
+        searched: Vec<PathBuf>,
+    },
+}
+```
+
+```rust
+impl LatexProbe {
+    pub fn check () -> Self;
+    pub fn engine (self) -> Result<PdfEngine, LatexProbeError>;
+}
+```
+
+```rust
+pub enum LatexProbeError {
+    /// Neither `xelatex` nor `lualatex` was usable on PATH.
+    #[snafu(display(
+        "latex engine not found (searched: {}). Install xelatex or lualatex via a TeX distribution such as TeX Live or MacTeX; on NixOS run `nix develop`",
+        format_paths(searched)
+    ))]
+    NotInstalled {
+        /// Candidate paths that were searched.
+        searched: Vec<PathBuf>,
     },
 }
 ```
@@ -173,6 +222,16 @@ pub enum PandocError {
         found_patch: u32,
     },
 
+    /// A LaTeX-backed PDF export needed `xelatex` or `lualatex`, but neither was usable.
+    #[snafu(display(
+        "latex engine not found (searched: {}). Install xelatex or lualatex via a TeX distribution such as TeX Live or MacTeX; on NixOS run `nix develop`",
+        searched.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+    ))]
+    LatexEngineNotInstalled {
+        /// Candidate paths that were searched.
+        searched: Vec<PathBuf>,
+    },
+
     /// The Pandoc writer returned a non-zero exit code.
     #[snafu(display("pandoc writer failed for format {fmt}: {stderr}"))]
     WriterFailed {
@@ -258,7 +317,7 @@ pub enum OutputFormat {
     Docx,
     /// `OpenDocument` text (.odt).
     Odt,
-    /// PDF — routed to Typst fast-lane by default; `LaTeX` when overridden.
+    /// PDF — routed to Typst fast-lane by default; `LaTeX` when overridden or content-triggered.
     Pdf,
     /// GitHub-Flavoured Markdown.
     Markdown,
