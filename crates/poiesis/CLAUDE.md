@@ -2,13 +2,13 @@
 
 ## At a glance
 
-Report tooling family: format-agnostic document model plus rendering backends (Typst→PDF, ODT, XLSX, ODS, PPTX, DOCX) and report-quality checks (prose lint, numeric claim verify). Zero internal dependencies. Entry points: `core/src/lib.rs` (Document, Renderer) and `typst/src/lib.rs` (`render_typst`, `render_template`).
+Report tooling family: format-agnostic document model plus rendering backends (Typst→PDF, ODT, XLSX, ODS, PPTX, DOCX, and Pandoc-backed DOCX/HTML/MD/LaTeX/EPUB) and report-quality checks (prose lint, numeric claim verify). Zero internal dependencies. Entry points: `core/src/lib.rs` (Document, Renderer) and `typst/src/lib.rs` (`render_typst`, `render_template`).
 
 **Typst is the primary renderer.** Prefer `poiesis-typst` for prose-oriented PDF output - it supports templates, math, citations, breakable blocks, cross-references, and JSON data injection, with structured compile diagnostics carrying source locations. The `text/pdf` backend (via `krilla`) remains for the document-model path where no template system or data injection is needed.
 
 ## Depth
 
-Report tooling family: format-agnostic document model, Typst-based PDF primary renderer, format-specific backends (ODT/XLSX/ODS/PPTX/DOCX), and report-quality checks (lint + verify). ~2K lines.
+Report tooling family: format-agnostic document model, Typst-based PDF primary renderer, format-specific backends (ODT/XLSX/ODS/PPTX/DOCX/Pandoc), and report-quality checks (lint + verify). ~2K lines.
 
 ## Read first
 
@@ -24,9 +24,12 @@ Report tooling family: format-agnostic document model, Typst-based PDF primary r
 |------|------|---------|
 | `render_typst` | `typst/src/lib.rs` | Primary PDF path: Typst source + JSON data → PDF bytes |
 | `render_template` | `typst/src/lib.rs` | Resolve a built-in template slug and render |
+| `render_doc` | `doc/src/pandoc/mod.rs` | Unified Pandoc dispatcher: docx/html/md/latex/epub subprocess, PDF Typst fast-lane with LaTeX override |
 | `PoiesisError` | `typst/src/error.rs` | Typst render errors (serialize, compile, PDF export, unknown slug) |
 | `Document` | `core/src/document.rs` | Format-agnostic document: metadata + ordered content blocks |
 | `Renderer` | `core/src/renderer.rs` | Trait: `render(&self, &Document) -> Result<Vec<u8>, Error>` |
+| `DocOpts` | `doc/src/pandoc/mod.rs` | Pandoc render options: format, PDF engine, Lua filters, reference-doc |
+| `OutputFormat` | `doc/src/pandoc/mod.rs` | Pandoc target matrix (docx, odt, pdf, md, latex, html, epub) |
 | `Metadata` | `core/src/metadata.rs` | Title, author, optional creation timestamp |
 | `Block` | `core/src/block.rs` | Block-level element: Heading, Paragraph, Table, List, Image, PageBreak |
 | `RichText` | `core/src/rich_text.rs` | Sequence of styled inline `Span`s |
@@ -37,6 +40,7 @@ Report tooling family: format-agnostic document model, Typst-based PDF primary r
 | `OdsRenderer` | `sheet/src/ods.rs` | ODS backend via `spreadsheet-ods` |
 | `PptxRenderer` | `slides/src/pptx.rs` | PowerPoint backend via hand-rolled ZIP/XML emitter |
 | `render_docx` | `doc/src/lib.rs` | DOCX backend via `docx-rs`: JSON descriptor → DOCX bytes |
+| `render_odt_from_doc` | `doc/src/lib.rs` | Clean-room ODT backend for document-model exports |
 | `inspect_docx` | `doc/src/lib.rs` | Extract paragraph text from DOCX ZIP via `zip` + `quick-xml` |
 | `DocxSummary` | `doc/src/lib.rs` | Text summary of an inspected DOCX file |
 | `Linter` | `lint/src/lib.rs` | Report prose linter (banned words, citations, structure) |
@@ -63,6 +67,7 @@ Current slugs: `default`.
 | `ods` | `poiesis-sheet` | yes | ODS output via `spreadsheet-ods` |
 | `pptx` | `poiesis-slides` | yes | PPTX output via hand-rolled ZIP/XML emitter |
 | `docx` | `poiesis-doc` | yes | DOCX output via `docx-rs` |
+| `pandoc` | `poiesis-doc` | yes | DOCX/HTML/MD/LaTeX/EPUB via Pandoc subprocess; PDF uses Typst unless LaTeX is required |
 
 ## Patterns
 
@@ -71,6 +76,7 @@ Current slugs: `default`.
 - **Trait-based backends**: Each non-Typst subcrate implements `Renderer`; callers pass the same `Document` to any backend.
 - **Feature-gated dependencies**: Every backend is behind a Cargo feature so consumers only compile what they need.
 - **Plain-text fallback**: Non-Typst backends that cannot natively express a feature (images in PDF/spreadsheets, rich text in XLSX) degrade to plain text or alt text instead of failing.
+- **Pandoc dispatch**: `poiesis-doc` owns the `render_*_from_doc` matrix. DOCX/HTML/MD/LaTeX/EPUB route through Pandoc; PDF stays on Typst unless math/raw-`LaTeX` content or an explicit engine override requires the Pandoc/LaTeX path.
 - **ZIP-based packaging**: ODT, XLSX, ODS, and PPTX are all ZIP archives; tests verify the `PK` magic bytes.
 - **In-memory Typst world**: `poiesis-typst` embeds the compiler as a library; source and injected data live in memory (no temp files, no CLI subprocess).
 

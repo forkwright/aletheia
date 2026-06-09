@@ -97,7 +97,7 @@ Install the in-tree hooks once per clone: `scripts/install-hooks.sh` (auto-run b
 
 1. `cargo +1.94.0 fmt --all -- --check` clean — **fmt is a required CI check** and runs *first* in gate-attestation, so a fmt-only miss aborts the whole gate
 2. `cargo test -p <affected-crate>` passes
-3. `cargo clippy --workspace`: zero warnings (CI-exact: `--all-targets --exclude theatron --exclude skene --exclude koilon -- -D warnings`)
+3. `cargo clippy --workspace`: zero warnings (CI-exact: `--all-targets -- -D warnings`)
 4. `_llm` index fresh on crate changes: `uv run scripts/llm-extract-l3.py && git add _llm/`
 5. No `unwrap()` in library code
 6. New errors use snafu with context
