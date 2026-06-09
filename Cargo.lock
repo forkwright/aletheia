@@ -7047,6 +7047,7 @@ name = "poiesis-doc"
 version = "0.30.0"
 dependencies = [
  "docx-rs",
+ "insta",
  "poiesis-charts",
  "poiesis-core",
  "poiesis-text",

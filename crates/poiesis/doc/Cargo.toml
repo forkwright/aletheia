@@ -44,4 +44,5 @@ tracing = { workspace = true }
 tempfile = "3"
 
 [dev-dependencies]
+insta = "1"
 serde_json = { workspace = true }

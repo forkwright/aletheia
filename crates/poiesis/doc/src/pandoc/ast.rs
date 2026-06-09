@@ -98,7 +98,9 @@ fn block_to_pandoc(block: &Block, figure_index: &mut usize) -> Value {
             json!({ "t": "HorizontalRule" })
         }
         Block::Table(table) => {
-            // Simple table: header row + data rows, one column per header.
+            // WHY: Pandoc 1.23 Table AST shapes — Caption is a bare
+            // [shortcaption, [Block]] array (not a tagged node), a Row is
+            // [Attr, [Cell]], and a TableBody is [Attr, RowHeadColumns, [Row], [Row]].
             let col_count = table.headers.len();
             let col_spec: Vec<Value> = (0..col_count)
                 .map(|_| json!([{"t": "AlignDefault"}, {"t": "ColWidthDefault"}]))
@@ -109,6 +111,7 @@ fn block_to_pandoc(block: &Block, figure_index: &mut usize) -> Value {
                 .iter()
                 .map(|h| pandoc_cell(&json!([{"t": "Para", "c": [{"t": "Str", "c": h}]}])))
                 .collect();
+            let head_row = json!([["", [], []], header_cells]);
 
             let data_rows: Vec<Value> = table
                 .rows
@@ -120,7 +123,7 @@ fn block_to_pandoc(block: &Block, figure_index: &mut usize) -> Value {
                             pandoc_cell(&json!([{"t": "Para", "c": inlines_to_pandoc(cell)}]))
                         })
                         .collect();
-                    json!([[], cells])
+                    json!([["", [], []], cells])
                 })
                 .collect();
 
@@ -128,10 +131,10 @@ fn block_to_pandoc(block: &Block, figure_index: &mut usize) -> Value {
                 "t": "Table",
                 "c": [
                     ["", [], []],
-                    {"t": "Caption", "c": [null, []]},
+                    [null, []],
                     col_spec,
-                    [["", [], []], [header_cells]],
-                    [["", [], []], data_rows],
+                    [["", [], []], [head_row]],
+                    [[["", [], []], 0, [], data_rows]],
                     [["", [], []], []]
                 ]
             })
@@ -196,7 +199,9 @@ fn inline_text(text: &str) -> Vec<Value> {
 }
 
 fn pandoc_cell(content: &Value) -> Value {
-    json!([["", [], []], {"t": "AlignDefault"}, 1, 1, [content]])
+    // WHY: Pandoc Cell = [Attr, Alignment, RowSpan, ColSpan, [Block]]; `content`
+    // is already the [Block] list, so embed it directly (no extra wrapping).
+    json!([["", [], []], {"t": "AlignDefault"}, 1, 1, content])
 }
 
 fn inlines_to_pandoc(rt: &RichText) -> Vec<Value> {
