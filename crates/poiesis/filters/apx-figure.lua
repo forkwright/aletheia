@@ -1,17 +1,102 @@
---[[
-apx-figure.lua — select SVG vs PNG per writer for Figure blocks.
+-- NOTE: apx-figure.lua swaps chart figures to SVG or PNG assets per writer.
 
-STUB: passes through unchanged. Full implementation requires:
-- B-005: poiesis-charts SVG emitter API
-- B-012 ESCALATION.md Q4: APX_FIGURES sidecar JSON schema
-- APX_FIGURES env var: JSON mapping figure_id -> { svg, png_path }
+local figures_cache = nil
 
-Format rules (planned):
-- html / latex / typst-pdf: inline/linked SVG
-- docx / odt / epub: PNG bake via resvg at print density
+local function load_figures()
+  if figures_cache ~= nil then
+    return figures_cache
+  end
 
-See ESCALATION.md Q4.
-]]
+  local path = os.getenv("APX_FIGURES")
+  if path == nil or path == "" then
+    figures_cache = {}
+    return figures_cache
+  end
 
--- Identity filter: return blocks unchanged until wired.
-return {}
+  local loader, err = loadfile(path)
+  if loader == nil then
+    figures_cache = {}
+    return figures_cache
+  end
+
+  local ok, decoded = pcall(loader)
+  if ok and type(decoded) == "table" then
+    figures_cache = decoded
+  else
+    figures_cache = {}
+  end
+
+  return figures_cache
+end
+
+local function is_raster_format()
+  return FORMAT == "docx" or FORMAT == "odt" or FORMAT:match("epub") ~= nil
+end
+
+local function figure_id(img)
+  if type(img.identifier) == "string" and img.identifier:match("^apx%-figure%-%d+$") then
+    return img.identifier
+  end
+
+  local fallback = img.attributes["data-figure-id"]
+  if type(fallback) == "string" and fallback:match("^apx%-figure%-%d+$") then
+    return fallback
+  end
+
+  return nil
+end
+
+local function ensure_svg_file(figure_id_value, svg)
+  local path = os.tmpname() .. "-" .. figure_id_value .. ".svg"
+  local handle = assert(io.open(path, "w"))
+  handle:write(svg)
+  handle:close()
+  return path
+end
+
+local function replace_image(img)
+  local id = figure_id(img)
+  if id == nil then
+    return nil
+  end
+
+  local figure = load_figures()[id]
+  if figure == nil then
+    return pandoc.Str("[missing-figure:" .. id .. "]")
+  end
+
+  if is_raster_format() then
+    local png_path = figure.png_path
+    if type(png_path) ~= "string" or png_path == "" then
+      return pandoc.Str("[missing-figure:" .. id .. "]")
+    end
+    return pandoc.Image(img.caption, png_path, img.title, img.attr)
+  end
+
+  local svg = figure.svg
+  if type(svg) ~= "string" or svg == "" then
+    return pandoc.Str("[missing-figure:" .. id .. "]")
+  end
+
+  if FORMAT:match("html") ~= nil then
+    return pandoc.RawInline("html", svg)
+  end
+
+  local svg_path = figure.svg_path
+  if type(svg_path) ~= "string" or svg_path == "" then
+    svg_path = ensure_svg_file(id, svg)
+    figure.svg_path = svg_path
+  end
+
+  return pandoc.Image(img.caption, svg_path, img.title, img.attr)
+end
+
+function Image(img)
+  return replace_image(img)
+end
+
+function Figure(fig)
+  return fig:walk({
+    Image = replace_image,
+  })
+end

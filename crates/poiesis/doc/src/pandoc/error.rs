@@ -60,4 +60,22 @@ pub enum PandocError {
         /// Underlying I/O error.
         source: std::io::Error,
     },
+
+    /// A chart figure could not be rendered into SVG.
+    #[snafu(display("failed to render figure {figure_id}: {source}"))]
+    FigureRenderFailed {
+        /// Stable figure identifier.
+        figure_id: String,
+        /// Underlying figure rendering error.
+        source: super::figure::FigureError,
+    },
+
+    /// A chart figure SVG could not be rasterized into PNG.
+    #[snafu(display("failed to rasterize figure {figure_id}: {source}"))]
+    FigureRasterizeFailed {
+        /// Stable figure identifier.
+        figure_id: String,
+        /// Underlying SVG rasterization error.
+        source: crate::raster::RasterError,
+    },
 }

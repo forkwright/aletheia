@@ -21,12 +21,14 @@
 pub mod ast;
 /// Error types for the Pandoc subprocess wrapper.
 pub mod error;
+/// Figure helpers and chart rendering for `Image` payloads.
+pub(crate) mod figure;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::raster;
 use poiesis_core::Document;
-use serde::Serialize;
 use tracing::instrument;
 
 pub use error::PandocError;
@@ -250,8 +252,7 @@ impl PandocRunner {
             .arg("-f")
             .arg("json")
             .arg("-t")
-            .arg(fmt)
-            .arg(tmp_path);
+            .arg(fmt);
 
         for (key, value) in extra_env {
             cmd.env(key, value);
@@ -274,6 +275,8 @@ impl PandocRunner {
             }
             _ => {}
         }
+
+        cmd.arg(tmp_path);
 
         let output = cmd.output().map_err(|e| PandocError::Spawn { source: e })?;
 
@@ -332,14 +335,21 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
     let mut render_opts = opts.clone();
     render_opts.lua_filters.extend(default_lua_filters());
     let facts_sidecar = write_apx_facts_sidecar(doc)?;
-    let extra_env = vec![(
-        "APX_FACTS".to_owned(),
-        facts_sidecar.path().display().to_string(),
-    )];
+    let figures_sidecar = write_apx_figures_sidecar(doc)?;
+    let extra_env = vec![
+        (
+            "APX_FACTS".to_owned(),
+            facts_sidecar.path().display().to_string(),
+        ),
+        (
+            "APX_FIGURES".to_owned(),
+            figures_sidecar.sidecar.path().display().to_string(),
+        ),
+    ];
     runner.render(&ast_json, &render_opts, &extra_env)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct ApxFactSidecarEntry {
     display: String,
     source_footnote: Option<String>,
@@ -347,7 +357,16 @@ struct ApxFactSidecarEntry {
 
 fn default_lua_filters() -> Vec<PathBuf> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../filters");
-    vec![root.join("apx-cite.lua"), root.join("apx-theme.lua")]
+    vec![
+        root.join("apx-cite.lua"),
+        root.join("apx-theme.lua"),
+        root.join("apx-figure.lua"),
+    ]
+}
+
+struct FigureSidecarArtifacts {
+    sidecar: tempfile::NamedTempFile,
+    _png_files: Vec<tempfile::NamedTempFile>,
 }
 
 fn write_apx_facts_sidecar(doc: &Document) -> Result<tempfile::NamedTempFile, PandocError> {
@@ -383,6 +402,91 @@ fn write_apx_facts_sidecar(doc: &Document) -> Result<tempfile::NamedTempFile, Pa
     tmp.write_all(&serialized)
         .map_err(|source| PandocError::TempFile { source })?;
     Ok(tmp)
+}
+
+fn write_apx_figures_sidecar(doc: &Document) -> Result<FigureSidecarArtifacts, PandocError> {
+    use std::io::Write;
+
+    let mut sidecar = String::from("return {\n");
+    let mut png_files = Vec::new();
+    let mut figure_index = 0usize;
+
+    for block in &doc.content {
+        let poiesis_core::Block::Image(image) = block else {
+            continue;
+        };
+
+        let figure_id = figure::figure_id(figure_index);
+        let svg =
+            figure::svg_from_image(image).map_err(|source| PandocError::FigureRenderFailed {
+                figure_id: figure_id.clone(),
+                source,
+            })?;
+        let png = raster::svg_to_png(&svg, raster::DEFAULT_DPI).map_err(|source| {
+            PandocError::FigureRasterizeFailed {
+                figure_id: figure_id.clone(),
+                source,
+            }
+        })?;
+
+        let mut png_file = tempfile::Builder::new()
+            .suffix(".png")
+            .tempfile()
+            .map_err(|source| PandocError::TempFile { source })?;
+        png_file
+            .write_all(&png)
+            .map_err(|source| PandocError::TempFile { source })?;
+
+        sidecar.push_str("  [");
+        sidecar.push_str(&lua_string_literal(&figure_id));
+        sidecar.push_str("] = {\n");
+        sidecar.push_str("    svg = ");
+        sidecar.push_str(&lua_string_literal(&svg));
+        sidecar.push_str(",\n");
+        sidecar.push_str("    png_path = ");
+        sidecar.push_str(&lua_string_literal(&png_file.path().display().to_string()));
+        sidecar.push_str(",\n");
+        sidecar.push_str("  },\n");
+        png_files.push(png_file);
+        figure_index += 1;
+    }
+
+    sidecar.push_str("}\n");
+
+    let mut tmp = tempfile::Builder::new()
+        .suffix(".lua")
+        .tempfile()
+        .map_err(|source| PandocError::TempFile { source })?;
+    tmp.write_all(sidecar.as_bytes())
+        .map_err(|source| PandocError::TempFile { source })?;
+
+    Ok(FigureSidecarArtifacts {
+        sidecar: tmp,
+        _png_files: png_files,
+    })
+}
+
+fn lua_string_literal(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            '\u{0008}' => escaped.push_str("\\b"),
+            '\u{000C}' => escaped.push_str("\\f"),
+            ch if ch.is_control() => {
+                use std::fmt::Write as _;
+                let _ = write!(escaped, "\\x{:02X}", u32::from(ch));
+            }
+            ch => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
 }
 
 fn collect_fact_ids_from_block(
@@ -673,6 +777,116 @@ mod tests {
         assert!(
             latex.contains("Mind the gap."),
             "latex output must include the note body"
+        );
+    }
+
+    fn chart_doc() -> Document {
+        use poiesis_charts::model::{
+            AxisSide, Chart, ChartKind, FactCite, FactId, LegendSpec, Point, Series, SeriesStyle,
+            ToneRef, Unit,
+        };
+        use poiesis_core::Image;
+
+        let chart = Chart {
+            kind: ChartKind::Line,
+            title: None,
+            series: vec![Series {
+                name: poiesis_charts::CiteOrText::Text("Revenue".to_owned()),
+                points: vec![
+                    Point {
+                        label: Some(poiesis_charts::CiteOrText::Text("JAN".to_owned())),
+                        x: None,
+                        y: FactCite {
+                            id: FactId("rev-1".to_owned()),
+                            value: 1.0,
+                            unit: Unit::Number,
+                        },
+                    },
+                    Point {
+                        label: Some(poiesis_charts::CiteOrText::Text("FEB".to_owned())),
+                        x: None,
+                        y: FactCite {
+                            id: FactId("rev-2".to_owned()),
+                            value: 2.0,
+                            unit: Unit::Number,
+                        },
+                    },
+                ],
+                tone: ToneRef::Indexed(0),
+                axis: AxisSide::Left,
+                style: SeriesStyle::Default,
+            }],
+            axes: poiesis_charts::Axes::default(),
+            legend: LegendSpec::Auto,
+            data_labels: false,
+            caption: None,
+        };
+
+        let data = serde_json::to_vec(&chart).expect("chart json");
+
+        Document {
+            metadata: Metadata {
+                title: "Chart Figure".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::Image(Image {
+                data,
+                mime: "application/vnd.poiesis.chart+json".to_owned(),
+                alt: "Revenue trend".to_owned(),
+            })],
+        }
+    }
+
+    fn docx_media_entries(bytes: &[u8]) -> Vec<String> {
+        let cursor = std::io::Cursor::new(bytes);
+        let mut archive = zip::ZipArchive::new(cursor).expect("docx zip");
+        let mut names = Vec::new();
+
+        for idx in 0..archive.len() {
+            let file = archive.by_index(idx).expect("zip entry");
+            let name = file.name().to_owned();
+            if name.contains("media/") {
+                names.push(name);
+            }
+        }
+
+        names
+    }
+
+    #[test]
+    fn chart_figure_renders_png_in_docx() {
+        if !pandoc_available() {
+            return;
+        }
+
+        let bytes = render_docx_from_doc(&chart_doc()).expect("docx must render");
+        let media = docx_media_entries(&bytes);
+        assert!(
+            media.iter().any(|name| {
+                std::path::Path::new(name)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
+            }),
+            "docx must embed a PNG media entry, got: {media:?}"
+        );
+    }
+
+    #[test]
+    fn chart_figure_renders_svg_in_html() {
+        if !pandoc_available() {
+            return;
+        }
+
+        let html = String::from_utf8(render_html_from_doc(&chart_doc()).expect("html must render"))
+            .expect("html must be utf-8");
+        assert!(
+            html.contains("<svg"),
+            "html output must include inline SVG, got: {html}"
+        );
+        assert!(
+            !html.contains(".png"),
+            "html output must not reference raster PNG assets, got: {html}"
         );
     }
 }
