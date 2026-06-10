@@ -24,7 +24,7 @@ hermeneus = { path = "../hermeneus" }
 prometheus-client = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
-fjall = { version = "3", optional = true }
+fjall = { version = "3", default-features = false, features = ["lz4"], optional = true }
 jiff = { workspace = true, features = ["serde"] }
 jiff-cron = "0.3"
 parking_lot = { version = "0.12", default-features = false }

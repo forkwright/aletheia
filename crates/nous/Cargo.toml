@@ -47,7 +47,7 @@ taxis = { path = "../taxis" }
 thesauros = { path = "../thesauros" }
 # WHY: nous owns two small fjall-backed trackers (competence, uncertainty)
 # that persist per-agent/domain scores and calibration points.
-fjall = { version = "3", default-features = false }
+fjall = { version = "3", default-features = false, features = ["lz4"] }
 jiff = { workspace = true }
 prometheus-client = { workspace = true }
 regex = { workspace = true }

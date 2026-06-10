@@ -19,7 +19,7 @@ path = "src/main.rs"
 [dependencies]
 graphe = { path = "../graphe" }
 eidos = { path = "../eidos" }
-fjall = { version = "3", default-features = false }
+fjall = { version = "3", default-features = false, features = ["lz4"] }
 koina = { path = "../koina", features = ["fjall"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { workspace = true }
