@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
-use crate::provider::{DeploymentTarget, LlmProvider};
+use crate::provider::{DeploymentTarget, LlmProvider, MatchKind};
 use crate::seat_bridged::SeatBridgedProvider;
 use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
 
@@ -172,9 +172,9 @@ impl CodexProvider {
             self.timeout,
         ))
         .await?;
-        let text = parse::parse_output(&output.stdout)?;
+        let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
 
-        Ok(parse::text_to_response(&text, model))
+        Ok(parse::text_to_response(&text, usage, model))
     }
 
     /// Execute a streaming completion, emitting `StreamEvent::TextDelta` for each
@@ -200,7 +200,7 @@ impl CodexProvider {
             self.timeout,
         ))
         .await?;
-        let text = parse::parse_output(&output.stdout)?;
+        let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
 
         // WHY: Codex's CLI does not support line-by-line streaming; we emit the
         // full response as a single TextDelta so callers that consume
@@ -208,7 +208,7 @@ impl CodexProvider {
         // which seat-bridged provider they're talking to.
         on_event(StreamEvent::TextDelta { text: text.clone() });
 
-        Ok(parse::text_to_response(&text, model))
+        Ok(parse::text_to_response(&text, usage, model))
     }
 }
 
@@ -275,7 +275,17 @@ impl LlmProvider for CodexProvider {
     }
 
     fn supports_model(&self, model: &str) -> bool {
-        model.starts_with(CODEX_MODEL_PREFIX) || SUPPORTED_MODELS.contains(&model)
+        self.match_specificity(model).is_some()
+    }
+
+    fn match_specificity(&self, model: &str) -> Option<MatchKind> {
+        if model.starts_with(CODEX_MODEL_PREFIX) {
+            Some(MatchKind::Prefix)
+        } else if SUPPORTED_MODELS.contains(&model) {
+            Some(MatchKind::Exact)
+        } else {
+            None
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -506,6 +516,24 @@ mod tests {
         assert!(provider.supports_model("codex/gpt-5-codex"));
         assert!(provider.supports_model("gpt-5-codex"));
         assert!(!provider.supports_model("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn match_specificity_prefers_prefix_and_exact() {
+        let provider = CodexProvider {
+            codex_binary: PathBuf::from("codex"),
+            default_model: "codex/gpt-5-codex".to_owned(),
+            timeout: Duration::from_secs(1),
+        };
+        assert_eq!(
+            provider.match_specificity("codex/gpt-5-codex"),
+            Some(MatchKind::Prefix)
+        );
+        assert_eq!(
+            provider.match_specificity("gpt-5-codex"),
+            Some(MatchKind::Exact)
+        );
+        assert_eq!(provider.match_specificity("claude-sonnet-4-6"), None);
     }
 
     #[test]

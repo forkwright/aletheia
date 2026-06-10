@@ -1,7 +1,7 @@
 //! Kimi subprocess management.
 //!
 //! Spawns `kimi --print --output-format stream-json --input-format text --afk --yolo --thinking
-//! -w <cwd> --model <model>` and writes the prompt over stdin.
+//! -w <cwd> [--model <model>]` and writes the prompt over stdin.
 //! manages the child process lifecycle: stdout reading, timeout, and cleanup.
 
 use std::path::Path;
@@ -81,7 +81,7 @@ fn compose_prompt(system_prompt: Option<&str>, prompt: &str) -> Result<String> {
     }
 }
 
-fn build_kimi_command(kimi_binary: &Path, cwd: &Path, model: &str) -> Command {
+fn build_kimi_command(kimi_binary: &Path, cwd: &Path, model: Option<&str>) -> Command {
     let mut cmd = Command::new(kimi_binary);
     cmd.arg("--print")
         .arg("--output-format")
@@ -92,10 +92,11 @@ fn build_kimi_command(kimi_binary: &Path, cwd: &Path, model: &str) -> Command {
         .arg("--yolo")
         .arg("--thinking")
         .arg("-w")
-        .arg(cwd)
-        .arg("--model")
-        .arg(model)
-        .current_dir(cwd)
+        .arg(cwd);
+    if let Some(model) = model {
+        cmd.arg("--model").arg(model);
+    }
+    cmd.current_dir(cwd)
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -128,7 +129,7 @@ pub(crate) struct KimiOutput {
 pub(crate) struct KimiProcessConfig<'a> {
     pub kimi_binary: &'a Path,
     pub cwd: &'a Path,
-    pub model: &'a str,
+    pub model: Option<&'a str>,
     pub timeout: Duration,
 }
 
@@ -295,7 +296,7 @@ pub(crate) async fn run_streaming(
 fn spawn_kimi(
     kimi_binary: &Path,
     cwd: &Path,
-    model: &str,
+    model: Option<&str>,
     log_message: &'static str,
 ) -> Result<Child> {
     debug!(
@@ -407,9 +408,15 @@ where
 
         let trimmed = line.trim();
         if trimmed.starts_with('{') {
-            if let Some(text) = parse_json_message_text(trimmed)? {
-                on_delta(&text);
-                stream_deltas.push(text);
+            match parse_json_message_text(trimmed) {
+                Ok(Some(text)) => {
+                    on_delta(&text);
+                    stream_deltas.push(text);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    warn!(error = %e, line = %trimmed, "failed to parse Kimi stream-json output");
+                }
             }
             continue;
         }

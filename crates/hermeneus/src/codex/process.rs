@@ -81,6 +81,7 @@ pub(crate) async fn run_completion(
         .arg("--skip-git-repo-check")
         .arg("--color")
         .arg("never")
+        .arg("--json")
         .arg("-")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
