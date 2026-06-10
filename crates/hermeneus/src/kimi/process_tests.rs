@@ -66,7 +66,7 @@ fn process_config<'a>(kimi_binary: &'a Path, cwd: &'a Path) -> KimiProcessConfig
     KimiProcessConfig {
         kimi_binary,
         cwd,
-        model: "kimi-k2-thinking",
+        model: None,
         timeout: Duration::from_secs(10),
     }
 }
@@ -153,7 +153,7 @@ async fn read_stream_with_callback_invokes_for_text_parts() {
 async fn read_stream_parses_stream_json_text_content() {
     let buf = stream_buf(&[
         r#"{"role":"tool","content":"ignored"}"#,
-        r#"{"role":"assistant","content":"hello"}"#,
+        r#"{"role":"assistant","content":[{"type":"think","think":"hidden"},{"type":"text","text":"hello"}]}"#,
         r#"{"role":"assistant","content":[{"type":"think","think":"hidden"},{"type":"text","text":" world"}]}"#,
     ]);
 
@@ -163,10 +163,23 @@ async fn read_stream_parses_stream_json_text_content() {
     assert_eq!(output.stream_deltas, vec!["hello", " world"]);
 }
 
+#[tokio::test]
+async fn read_stream_skips_malformed_json_lines() {
+    let buf = stream_buf(&[
+        "not json",
+        r#"{"role":"assistant","content":[{"type":"think","think":"hidden"},{"type":"text","text":"ok"}]}"#,
+    ]);
+
+    let output = read_stream(buf.as_slice()).await.unwrap();
+
+    assert_eq!(output.result_text, "ok");
+    assert_eq!(output.stream_deltas, vec!["ok"]);
+}
+
 #[test]
 fn build_kimi_command_uses_validated_headless_invocation_and_scrubs_api_key() {
     let cwd = Path::new("/tmp");
-    let mut cmd = build_kimi_command(Path::new("/usr/bin/kimi"), cwd, "kimi-k2-thinking");
+    let mut cmd = build_kimi_command(Path::new("/usr/bin/kimi"), cwd, None);
     cmd.env("MOONSHOT_API_KEY", "raw-api-key");
     scrub_kimi_auth_env(&mut cmd);
 
@@ -175,6 +188,7 @@ fn build_kimi_command_uses_validated_headless_invocation_and_scrubs_api_key() {
         .get_args()
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
+    assert!(!args.iter().any(|arg| arg == "--model"));
     assert_eq!(
         args,
         vec![
@@ -188,8 +202,6 @@ fn build_kimi_command_uses_validated_headless_invocation_and_scrubs_api_key() {
             "--thinking",
             "-w",
             "/tmp",
-            "--model",
-            "kimi-k2-thinking",
         ]
     );
 
@@ -214,11 +226,11 @@ async fn run_completion_uses_stub_kimi_shape() {
 [ "$7" = "--yolo" ] || exit 2
 [ "$8" = "--thinking" ] || exit 2
 [ "$9" = "-w" ] || exit 2
-[ "${11}" = "--model" ] || exit 2
-[ "${12}" = "kimi-k2-thinking" ] || exit 2
+[ "$10" = "$(pwd)" ] || exit 2
+test $# -eq 10 || exit 2
 prompt="$(cat)"
 [ "$prompt" = "prompt text" ] || exit 2
-printf '{"role":"assistant","content":"stub ok"}\n'"#,
+printf '{"role":"assistant","content":[{"type":"think","think":"..."},{"type":"text","text":"stub ok"}]}\n'"#,
     );
 
     let cwd = std::env::temp_dir();

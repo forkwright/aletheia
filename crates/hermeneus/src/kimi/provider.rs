@@ -20,7 +20,7 @@ use tracing::{debug, info, warn};
 
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
-use crate::provider::LlmProvider;
+use crate::provider::{LlmProvider, MatchKind};
 use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
 
 use super::parse;
@@ -139,10 +139,6 @@ impl KimiProvider {
         }
     }
 
-    fn cli_model_name(model: &str) -> &str {
-        model.strip_prefix(KIMI_MODEL_PREFIX).unwrap_or(model)
-    }
-
     /// Format message history into a single prompt string for Kimi.
     fn format_prompt(request: &CompletionRequest) -> String {
         if request.messages.len() == 1
@@ -200,7 +196,7 @@ impl KimiProvider {
         let process_config = process::KimiProcessConfig {
             kimi_binary: &self.kimi_binary,
             cwd: &self.working_directory,
-            model: Self::cli_model_name(model),
+            model: None,
             timeout: self.timeout,
         };
 
@@ -227,7 +223,7 @@ impl KimiProvider {
         let process_config = process::KimiProcessConfig {
             kimi_binary: &self.kimi_binary,
             cwd: &self.working_directory,
-            model: Self::cli_model_name(model),
+            model: None,
             timeout: self.timeout,
         };
 
@@ -303,7 +299,20 @@ impl LlmProvider for KimiProvider {
     }
 
     fn supports_model(&self, model: &str) -> bool {
-        model.starts_with(KIMI_MODEL_PREFIX) || SUPPORTED_MODELS.contains(&model)
+        self.match_specificity(model).is_some()
+    }
+
+    fn match_specificity(&self, model: &str) -> Option<MatchKind> {
+        if SUPPORTED_MODELS.contains(&model) {
+            // WHY: Kimi's canonical default model string is namespaced, so
+            // the exact supported-model match should win over the broader
+            // `kimi/` prefix for that one model ID.
+            Some(MatchKind::Exact)
+        } else if model.starts_with(KIMI_MODEL_PREFIX) {
+            Some(MatchKind::Prefix)
+        } else {
+            None
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -332,6 +341,25 @@ mod tests {
         assert!(!KimiProvider::warn_dropped_tools(0));
         assert!(KimiProvider::warn_dropped_tools(1));
         assert!(!KimiProvider::warn_dropped_tools(2));
+    }
+
+    #[test]
+    fn match_specificity_prefers_prefix_and_exact() {
+        let provider = KimiProvider {
+            kimi_binary: PathBuf::from("kimi"),
+            working_directory: PathBuf::from("."),
+            default_model: DEFAULT_MODEL.to_owned(),
+            timeout: Duration::from_secs(1),
+        };
+        assert_eq!(
+            provider.match_specificity("kimi/experimental"),
+            Some(MatchKind::Prefix)
+        );
+        assert_eq!(
+            provider.match_specificity(DEFAULT_MODEL),
+            Some(MatchKind::Exact)
+        );
+        assert_eq!(provider.match_specificity("claude-sonnet-4-6"), None);
     }
 }
 

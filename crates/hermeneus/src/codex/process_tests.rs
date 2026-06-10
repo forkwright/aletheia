@@ -3,6 +3,8 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 
+use crate::codex::parse;
+
 use super::*;
 
 const ETXTBSY: i32 = 26;
@@ -118,7 +120,7 @@ async fn run_completion_spawn_failure_reports_binary_path() {
 }
 
 #[tokio::test]
-async fn run_completion_success_collects_plain_output() {
+async fn run_completion_success_collects_jsonl_output() {
     let script = write_script(
         "completion_ok",
         r#"test "$1" = "exec" || exit 31
@@ -126,19 +128,39 @@ test "$2" = "--dangerously-bypass-approvals-and-sandbox" || exit 32
 test "$3" = "--skip-git-repo-check" || exit 33
 test "$4" = "--color" || exit 34
 test "$5" = "never" || exit 35
-test "$6" = "-" || exit 36
-test -z "${OPENAI_API_KEY+x}" || exit 37
+test "$6" = "--json" || exit 36
+test "$7" = "-" || exit 37
+test -z "${OPENAI_API_KEY+x}" || exit 38
 input="$(cat)"
-test "$input" = "prompt text" || exit 38
-printf 'codex says hello\n'"#,
+test "$input" = "prompt text" || exit 39
+printf '{"type":"item.completed","item":{"type":"agent_message","text":"codex says hello"}}\n'
+printf '{"type":"turn.completed","usage":{"input_tokens":4,"cached_input_tokens":1,"output_tokens":2}}\n'"#,
     );
 
     let output = run_completion(&script, None, "prompt text", Duration::from_secs(10))
         .await
         .unwrap();
 
-    assert_eq!(output.stdout, "codex says hello\n");
+    assert!(output.stdout.contains(r#""type":"item.completed""#));
+    assert!(output.stdout.contains("codex says hello"));
+    assert!(output.stdout.contains(r#""type":"turn.completed""#));
     let _ = fs::remove_file(&script);
+}
+
+#[test]
+fn parse_output_jsonl_fixture_captures_text_and_usage() {
+    let parsed = parse::parse_output(
+        r#"{"type":"item.completed","item":{"type":"agent_message","text":"hello "}}
+{"type":"item.completed","item":{"type":"agent_message","text":"world"}}
+{"type":"turn.completed","usage":{"input_tokens":12,"cached_input_tokens":5,"output_tokens":7}}"#,
+    )
+    .unwrap();
+
+    assert_eq!(parsed.text, "hello world");
+    assert_eq!(parsed.usage.input_tokens, 12);
+    assert_eq!(parsed.usage.output_tokens, 7);
+    assert_eq!(parsed.usage.cache_read_tokens, 5);
+    assert_eq!(parsed.usage.cache_write_tokens, 0);
 }
 
 #[tokio::test]
