@@ -660,7 +660,25 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
                 }
                 src.push_str(")\n\n");
             }
-            Block::Image(_) => {} // skip in stub
+            Block::Image(image) => {
+                // WARNING: the in-process Typst fast-lane cannot embed image bytes
+                // (TypstWorld wires only data.json); emit alt text as a visible
+                // placeholder rather than silently dropping the block.
+                let alt = if image.alt.trim().is_empty() {
+                    "untitled figure"
+                } else {
+                    image.alt.trim()
+                };
+                let alt_escaped = alt
+                    .replace('\\', "\\\\")
+                    .replace('#', "\\#")
+                    .replace('[', "\\[")
+                    .replace(']', "\\]");
+                let _ = write!(
+                    src,
+                    "#figure(rect(width: 100%, stroke: 0.5pt)[#emph[Figure: {alt_escaped}]])\n\n"
+                );
+            }
         }
     }
 

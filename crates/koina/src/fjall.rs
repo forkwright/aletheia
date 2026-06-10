@@ -58,9 +58,15 @@ impl FjallDb {
     ///
     /// Returns a `String` error message if the database cannot be opened.
     pub fn open_existing(path: &Path) -> Result<Self, FjallOpenError> {
-        let db = SingleWriterTxDatabase::builder(path)
-            .open()
-            .map_err(|e| FjallOpenError::Open(format!("fjall open: {e}")))?;
+        let db = SingleWriterTxDatabase::builder(path).open().map_err(|e| {
+            if matches!(e, fjall::Error::Locked) {
+                FjallOpenError::Locked {
+                    path: path.to_path_buf(),
+                }
+            } else {
+                FjallOpenError::Open(format!("fjall open: {e}"))
+            }
+        })?;
 
         Ok(Self {
             db,
@@ -83,9 +89,15 @@ impl FjallDb {
             source,
         })?;
 
-        let db = SingleWriterTxDatabase::builder(path)
-            .open()
-            .map_err(|e| FjallOpenError::Open(format!("fjall open: {e}")))?;
+        let db = SingleWriterTxDatabase::builder(path).open().map_err(|e| {
+            if matches!(e, fjall::Error::Locked) {
+                FjallOpenError::Locked {
+                    path: path.to_path_buf(),
+                }
+            } else {
+                FjallOpenError::Open(format!("fjall open: {e}"))
+            }
+        })?;
 
         for name in partitions {
             db.keyspace(name, KeyspaceCreateOptions::default)
@@ -149,6 +161,12 @@ pub enum FjallOpenError {
     },
     /// Failed to open the fjall database or a partition.
     Open(String),
+    /// The fjall keyspace at `path` is locked by another process holding the
+    /// exclusive file lock (typically a running aletheia server).
+    Locked {
+        /// The locked store path.
+        path: std::path::PathBuf,
+    },
 }
 
 impl std::fmt::Display for FjallOpenError {
@@ -159,6 +177,11 @@ impl std::fmt::Display for FjallOpenError {
             }
             Self::TempDir { source } => write!(f, "failed to create temp directory: {source}"),
             Self::Open(msg) => f.write_str(msg),
+            Self::Locked { path } => write!(
+                f,
+                "the aletheia store at {} is locked — a running aletheia server holds it. Stop the server, or use the HTTP API (e.g. `aletheia memory`, `aletheia maintenance`, `aletheia session-export --url ...`) which talks to the running server instead of opening the store directly.",
+                path.display()
+            ),
         }
     }
 }
@@ -167,7 +190,7 @@ impl std::error::Error for FjallOpenError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::CreateDir { source, .. } | Self::TempDir { source } => Some(source),
-            Self::Open(_) => None,
+            Self::Open(_) | Self::Locked { .. } => None,
         }
     }
 }
@@ -208,6 +231,22 @@ mod tests {
             .keyspace("data", KeyspaceCreateOptions::default)
             .unwrap();
         ks.insert("k", b"v").unwrap();
+    }
+
+    #[test]
+    fn locked_error_includes_path() {
+        let path = std::path::PathBuf::from("/tmp/aletheia-store");
+        let err = FjallOpenError::Locked { path: path.clone() };
+        let rendered = err.to_string();
+
+        assert!(
+            rendered.contains("is locked"),
+            "missing lock hint: {rendered}"
+        );
+        assert!(
+            rendered.contains(path.to_string_lossy().as_ref()),
+            "missing path in message: {rendered}"
+        );
     }
 
     #[test]
