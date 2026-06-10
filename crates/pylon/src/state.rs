@@ -38,6 +38,8 @@ pub struct AppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
+    /// Resolved workspace root used by the desktop file browser.
+    pub workspace_root: PathBuf,
     /// JWT token creation and validation.
     pub jwt_manager: Arc<JwtManager>,
     /// Revocation-aware authentication facade.
@@ -96,6 +98,43 @@ impl AppState {
     #[must_use]
     pub fn config_rx(&self) -> tokio::sync::watch::Receiver<AletheiaConfig> {
         self.config_tx.subscribe()
+    }
+}
+
+/// Resolve the workspace root used by the desktop file browser.
+///
+/// WHY: the desktop app expects a stable workspace tree under `nous/workspace`.
+/// When that directory is present and canonicalizes inside the instance root,
+/// we use it directly. Otherwise we fall back to the instance root so the
+/// gateway still serves a usable file browser even when the shared workspace
+/// directory has not been created yet.
+#[must_use]
+pub fn resolve_workspace_root(oikos: &Oikos) -> PathBuf {
+    let instance_root = std::fs::canonicalize(oikos.root()).unwrap_or_else(|_| oikos.root().into());
+    let workspace_root = oikos.workspace_root();
+
+    if workspace_root.exists()
+        && let Ok(canonical_workspace_root) = std::fs::canonicalize(&workspace_root)
+        && canonical_workspace_root.starts_with(&instance_root)
+    {
+        return canonical_workspace_root;
+    }
+
+    instance_root
+}
+
+/// State slice for workspace file-browser handlers.
+#[derive(Clone)]
+pub struct WorkspaceState {
+    /// Resolved workspace root used for path validation and file access.
+    pub workspace_root: PathBuf,
+}
+
+impl FromRef<Arc<AppState>> for WorkspaceState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        Self {
+            workspace_root: state.workspace_root.clone(),
+        }
     }
 }
 

@@ -105,6 +105,7 @@ fn minimal_app_state() -> Arc<AppState> {
 
     let metrics_registry = koina::metrics::MetricsRegistry::new();
     crate::metrics::init(&metrics_registry);
+    let workspace_root = crate::state::resolve_workspace_root(&oikos);
 
     Arc::new(AppState {
         session_store,
@@ -112,6 +113,7 @@ fn minimal_app_state() -> Arc<AppState> {
         provider_registry,
         tool_registry,
         oikos,
+        workspace_root,
         jwt_manager: Arc::new(JwtManager::new(JwtConfig::default())),
         auth_facade: Arc::new(
             AuthFacade::in_memory(AuthConfig {

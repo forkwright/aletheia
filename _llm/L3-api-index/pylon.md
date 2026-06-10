@@ -1352,6 +1352,109 @@ pub struct HistoryMessage {
 }
 ```
 
+## `src/handlers/workspace.rs`
+
+```rust
+pub async fn list_files (
+    State(state): State<WorkspaceState>,
+    Query(query): Query<FilesQuery>,
+) -> Result<Json<Vec<FileEntry>>, ApiError>
+```
+
+```rust
+pub async fn git_status (
+    State(state): State<WorkspaceState>,
+) -> Result<Json<Vec<GitStatusEntry>>, ApiError>
+```
+
+```rust
+pub async fn file_content (
+    State(state): State<WorkspaceState>,
+    Query(query): Query<ContentQuery>,
+) -> Result<Response, ApiError>
+```
+
+```rust
+pub async fn file_diff (
+    State(state): State<WorkspaceState>,
+    Query(query): Query<DiffQuery>,
+) -> Result<Response, ApiError>
+```
+
+```rust
+pub async fn search (
+    State(state): State<WorkspaceState>,
+    Query(mut query): Query<SearchQuery>,
+) -> Result<Json<Vec<SearchResult>>, ApiError>
+```
+
+## `src/handlers/workspace_dto.rs`
+
+```rust
+pub struct FilesQuery {
+    /// Directory path relative to the workspace root.
+    #[serde(default)]
+    pub path: Option<String>,
+}
+```
+
+```rust
+pub struct FileEntry {
+    /// Basename for the entry.
+    pub name: String,
+    /// Workspace-relative path using forward slashes.
+    pub path: String,
+    /// Whether this entry is a directory.
+    pub is_dir: bool,
+    /// File size in bytes, or `0` for directories.
+    pub size: u64,
+}
+```
+
+```rust
+pub struct GitStatusEntry {
+    /// Workspace-relative path using forward slashes.
+    pub path: String,
+    /// Status code normalized for the desktop file tree (`M`, `A`, `D`, `?`).
+    pub status: String,
+}
+```
+
+```rust
+pub struct ContentQuery {
+    /// Workspace-relative file path.
+    pub path: String,
+}
+```
+
+```rust
+pub struct DiffQuery {
+    /// Workspace-relative path passed to `git diff -- <path>`.
+    pub path: String,
+}
+```
+
+```rust
+pub struct SearchQuery {
+    /// Case-insensitive filename/content query.
+    pub q: String,
+    /// Maximum number of results to return.
+    #[serde(default = "default_search_limit")]
+    pub limit: usize,
+}
+```
+
+```rust
+pub struct SearchResult {
+    /// Workspace-relative path using forward slashes.
+    pub path: String,
+    /// 1-based line number when the match came from file contents.
+    pub line: usize,
+    /// Match snippet or filename preview.
+    pub snippet: String,
+}
+```
+
 ## `src/idempotency.rs`
 
 > Thread-safe idempotency cache with LRU eviction and TTL expiry.
@@ -1849,6 +1952,8 @@ pub struct AppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
+    /// Resolved workspace root used by the desktop file browser.
+    pub workspace_root: PathBuf,
     /// JWT token creation and validation.
     pub jwt_manager: Arc<JwtManager>,
     /// Revocation-aware authentication facade.
@@ -1903,6 +2008,17 @@ pub struct AppState {
 ```rust
 impl AppState {
     pub fn config_rx (&self) -> tokio::sync::watch::Receiver<AletheiaConfig>;
+}
+```
+
+```rust
+pub fn resolve_workspace_root (oikos: &Oikos) -> PathBuf
+```
+
+```rust
+pub struct WorkspaceState {
+    /// Resolved workspace root used for path validation and file access.
+    pub workspace_root: PathBuf,
 }
 ```
 

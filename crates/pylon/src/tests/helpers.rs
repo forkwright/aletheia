@@ -112,6 +112,7 @@ async fn test_state_with_provider_private_and_auth_mode(
 
     // WHY: Create oikos directory structure required by the actor pipeline
     std::fs::create_dir_all(root.join("nous/syn")).expect("mkdir nous/syn");
+    std::fs::create_dir_all(root.join("nous/workspace/src")).expect("mkdir nous/workspace/src");
     if include_private_nous {
         std::fs::create_dir_all(root.join("nous/hidden")).expect("mkdir nous/hidden");
     }
@@ -152,6 +153,24 @@ bind = "localhost"
     )]
     std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn, a test agent.")
         .expect("write SOUL.md");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "pylon test helpers write workspace fixtures to temp directories; synchronous I/O is required in test setup"
+    )]
+    std::fs::write(
+        root.join("nous/workspace/README.md"),
+        "Workspace root fixture.\n",
+    )
+    .expect("write workspace README");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "pylon test helpers write workspace fixtures to temp directories; synchronous I/O is required in test setup"
+    )]
+    std::fs::write(
+        root.join("nous/workspace/src/main.rs"),
+        "fn main() {\n    println!(\"hello from workspace\");\n}\n",
+    )
+    .expect("write workspace source");
     if include_private_nous {
         #[expect(
             clippy::disallowed_methods,
@@ -222,6 +241,7 @@ bind = "localhost"
 
     let jwt_manager = test_jwt_manager();
     let auth_facade = test_auth_facade();
+    let workspace_root = crate::state::resolve_workspace_root(&oikos);
 
     let mut default_config = taxis::config::AletheiaConfig::default();
     default_config.gateway.sse_heartbeat_interval_secs = 1;
@@ -238,6 +258,7 @@ bind = "localhost"
         provider_registry,
         tool_registry,
         oikos,
+        workspace_root,
         jwt_manager,
         auth_facade,
         start_time: Instant::now(),

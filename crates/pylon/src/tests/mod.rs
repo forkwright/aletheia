@@ -31,3 +31,4 @@ mod signal;
 mod sse_events;
 mod streaming;
 mod subscribe;
+mod workspace;

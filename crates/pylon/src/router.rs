@@ -18,7 +18,7 @@ use koina::http::{API_HEALTH, API_V1};
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{
-    config, events, health, insights, knowledge, metrics, nous, planning, sessions,
+    config, events, health, insights, knowledge, metrics, nous, planning, sessions, workspace,
 };
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
@@ -93,6 +93,17 @@ pub fn build_router_with(
             require_bearer_auth,
         ));
 
+    let workspace_routes = Router::new()
+        .route("/files", get(workspace::list_files))
+        .route("/git-status", get(workspace::git_status))
+        .route("/files/content", get(workspace::file_content))
+        .route("/diff", get(workspace::file_diff))
+        .route("/search", get(workspace::search))
+        .route_layer(axum::middleware::from_fn_with_state(
+            Arc::clone(&state),
+            require_bearer_auth,
+        ));
+
     let v1 = Router::new()
         .route(
             "/sessions",
@@ -132,6 +143,7 @@ pub fn build_router_with(
             "/config/{section}",
             get(config::get_section).put(config::update_section),
         )
+        .nest("/workspace", workspace_routes)
         .nest("/knowledge", knowledge_routes)
         .route("/metrics/agents", get(insights::get_agent_perf))
         .route("/metrics/agents/{id}", get(insights::get_agent_perf_one))

@@ -2241,6 +2241,7 @@ impl Oikos {
     pub fn discover () -> Self;
     pub fn discover_with (env: &impl Environment) -> Self;
     pub fn root (&self) -> &Path;
+    pub fn workspace_root (&self) -> PathBuf;
     pub fn theke (&self) -> PathBuf;
     pub fn shared (&self) -> PathBuf;
     pub fn nous_dir (&self, id: &str) -> PathBuf;

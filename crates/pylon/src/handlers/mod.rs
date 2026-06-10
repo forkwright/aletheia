@@ -34,3 +34,5 @@ pub mod nous;
 pub(crate) mod planning;
 /// Session lifecycle, history retrieval, and SSE message streaming.
 pub mod sessions;
+/// Workspace file-browser and git diff endpoints.
+pub mod workspace;

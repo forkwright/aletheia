@@ -87,6 +87,7 @@ impl TestEnvBuilder {
         // directories cause fail-closed behaviour that hides real bugs.
         for dir in [
             "nous/syn",
+            "nous/workspace",
             "shared",
             "theke",
             "data",
@@ -156,6 +157,7 @@ impl TestEnvBuilder {
         }
 
         let (jwt_manager, auth_facade) = test_auth_state(self.jwt_access_ttl);
+        let workspace_root = pylon::state::resolve_workspace_root(&oikos);
 
         let default_config = AletheiaConfig::default();
         let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
@@ -167,6 +169,7 @@ impl TestEnvBuilder {
             provider_registry,
             tool_registry,
             oikos,
+            workspace_root,
             jwt_manager,
             auth_facade,
             start_time: Instant::now(),
