@@ -7,10 +7,11 @@
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use koina::system::{Environment, RealSystem};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
@@ -135,8 +136,33 @@ impl CodexProvider {
         parts.join("\n\n")
     }
 
+    fn warn_dropped_tools(dropped_tools: usize) -> bool {
+        // WHY: Seat-bridged subprocess providers run their own CLI-side agentic loop, so
+        // aletheia's tools are intentionally not translated through this adapter.
+        static WARNED: AtomicBool = AtomicBool::new(false);
+
+        if dropped_tools == 0 {
+            return false;
+        }
+
+        let warned = WARNED
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok();
+
+        if warned {
+            warn!(
+                provider = "codex",
+                dropped_tools,
+                "codex dropped {dropped_tools} tool definitions; this seat-bridged CLI runs its own agentic loop so aletheia's tools are not invoked. Use a native API provider for aletheia's tool-loop"
+            );
+        }
+
+        warned
+    }
+
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let model = self.resolve_model(&request.model);
+        Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
 
         let output = Box::pin(process::run_completion(
@@ -164,6 +190,7 @@ impl CodexProvider {
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
         let model = self.resolve_model(&request.model);
+        Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
 
         let output = Box::pin(process::run_completion(
@@ -517,5 +544,12 @@ mod tests {
         );
         assert_eq!(provider.subprocess_timeout(), Duration::from_secs(300));
         assert_eq!(provider.cli_product_name(), "codex");
+    }
+
+    #[test]
+    fn warns_once_for_dropped_tools() {
+        assert!(!CodexProvider::warn_dropped_tools(0));
+        assert!(CodexProvider::warn_dropped_tools(1));
+        assert!(!CodexProvider::warn_dropped_tools(2));
     }
 }
