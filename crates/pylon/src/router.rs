@@ -18,7 +18,7 @@ use koina::http::{API_HEALTH, API_V1};
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{
-    config, events, health, insights, knowledge, metrics, nous, planning, sessions, workspace,
+    config, events, health, insights, knowledge, metrics, nous, ops, planning, sessions, workspace,
 };
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
@@ -140,6 +140,7 @@ pub fn build_router_with(
         .route("/events", get(sessions::events))
         .route("/events/subscribe", get(events::subscribe))
         .route("/events/discovery", get(events::discovery))
+        .route("/ops/tools", get(ops::tools))
         .route("/nous", get(nous::list).post(nous::create))
         .route(
             "/nous/{id}",

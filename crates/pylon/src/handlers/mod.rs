@@ -30,6 +30,8 @@ pub mod knowledge;
 pub mod metrics;
 /// Nous agent listing and status inspection.
 pub mod nous;
+/// Ops registry and tool usage summary endpoints.
+pub mod ops;
 /// Planning project verification endpoints.
 pub(crate) mod planning;
 /// Session lifecycle, history retrieval, and SSE message streaming.

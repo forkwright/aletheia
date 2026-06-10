@@ -192,6 +192,21 @@ impl FromRef<Arc<AppState>> for MetricsState {
     }
 }
 
+/// State slice for ops/registry introspection handlers.
+#[derive(Clone)]
+pub struct OpsState {
+    /// Registry of tools available to nous agents.
+    pub tool_registry: Arc<ToolRegistry>,
+}
+
+impl FromRef<Arc<AppState>> for OpsState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        Self {
+            tool_registry: Arc::clone(&state.tool_registry),
+        }
+    }
+}
+
 /// State slice for nous agent handlers.
 #[derive(Clone)]
 pub struct NousState {

@@ -25,6 +25,7 @@ mod knowledge;
 mod message;
 mod middleware;
 mod nous;
+mod ops;
 mod per_user_rate_limit;
 mod session;
 mod signal;
