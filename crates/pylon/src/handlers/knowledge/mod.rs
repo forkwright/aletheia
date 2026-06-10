@@ -270,7 +270,7 @@ pub async fn list_entities(
     query.order = query.order.to_ascii_lowercase();
 
     let mut entities = get_stored_entities(&state);
-    let stats: std::collections::HashMap<String, EntityStats> = {
+    let entity_stats_map: std::collections::HashMap<String, EntityStats> = {
         #[cfg(feature = "knowledge-store")]
         {
             load_entity_stats(&state, &query)?
@@ -312,7 +312,7 @@ pub async fn list_entities(
 
     if let Some(min_confidence) = query.min_confidence {
         entities.retain(|entity| {
-            stats
+            entity_stats_map
                 .get(entity.id.as_str())
                 .map_or(0.0, |item: &EntityStats| item.confidence)
                 >= min_confidence
@@ -325,7 +325,7 @@ pub async fn list_entities(
         .into_iter()
         .map(|entity| {
             let entity_id = entity.id.as_str().to_owned();
-            build_entity_list_item(entity, stats.get(&entity_id))
+            build_entity_list_item(entity, entity_stats_map.get(&entity_id))
         })
         .collect();
 

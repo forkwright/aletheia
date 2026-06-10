@@ -34,7 +34,10 @@ fn ensure_agent_definition<'a>(
         .iter()
         .position(|agent| agent.id == runtime.id.as_ref())
     {
-        return &mut config.agents.list[index];
+        return match config.agents.list.get_mut(index) {
+            Some(agent) => agent,
+            None => unreachable!("existing agent index must be valid"),
+        };
     }
 
     config.agents.list.push(NousDefinition {
@@ -56,8 +59,10 @@ fn ensure_agent_definition<'a>(
         behavior: None,
     });
 
-    let index = config.agents.list.len().saturating_sub(1);
-    &mut config.agents.list[index]
+    match config.agents.list.last_mut() {
+        Some(agent) => agent,
+        None => unreachable!("pushed agent definition must be present"),
+    }
 }
 
 fn allowlist_for_agent<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a [String]> {

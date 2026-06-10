@@ -5,7 +5,6 @@
 )]
 
 use super::*;
-use crate::error::ApiError;
 
 fn make_fact(id: &str, content: &str, confidence: f64) -> mneme::knowledge::Fact {
     use mneme::id::FactId;

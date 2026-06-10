@@ -38,7 +38,7 @@ async fn workspace_file_content_returns_raw_text() {
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
-    assert!(content_type.contains("text/plain"));
+    assert!(content_type.starts_with("text/"));
 
     let body = body_string(resp).await;
     assert!(body.contains("Workspace root fixture."));

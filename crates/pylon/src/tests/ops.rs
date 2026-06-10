@@ -39,7 +39,7 @@ async fn get_ops_tools_returns_registry_and_metrics() {
         description: "Probe tool for ops tests.".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
-            properties: Default::default(),
+            properties: vec![].into_iter().collect(),
             required: Vec::new(),
         },
         category: ToolCategory::Workspace,

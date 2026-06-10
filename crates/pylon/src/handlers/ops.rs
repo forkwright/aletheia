@@ -17,9 +17,9 @@ fn metrics_snapshot() -> (u64, u64) {
     registry.with_registry(organon::metrics::register);
 
     let mut encoded = String::new();
-    registry
-        .encode(&mut encoded)
-        .expect("encoding into a String is infallible");
+    if let Err(err) = registry.encode(&mut encoded) {
+        unreachable!("encoding into a String is infallible: {err}");
+    }
 
     let mut total_calls = 0_u64;
     let mut total_errors = 0_u64;

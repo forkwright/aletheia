@@ -148,6 +148,10 @@ pub async fn git_status(
 }
 
 /// GET /api/v1/workspace/files/content
+#[expect(
+    clippy::disallowed_methods,
+    reason = "workspace content endpoints intentionally use synchronous filesystem reads for bounded local file access"
+)]
 #[utoipa::path(
     get,
     path = "/api/v1/workspace/files/content",
@@ -168,7 +172,7 @@ pub async fn file_content(
     Query(query): Query<ContentQuery>,
 ) -> Result<Response, ApiError> {
     let path = resolve_workspace_file(&state.workspace_root, &query.path)?;
-    let metadata = std::fs::symlink_metadata(&path).map_err(|_| {
+    let metadata = std::fs::symlink_metadata(&path).map_err(|_err| {
         NotFoundSnafu {
             path: query.path.clone(),
         }
@@ -304,10 +308,10 @@ pub async fn search(
 
 fn resolve_workspace_directory(root: &Path, path: Option<&str>) -> Result<PathBuf, ApiError> {
     match path.map(str::trim) {
-        None | Some("") | Some(".") => Ok(root.to_path_buf()),
+        None | Some("" | ".") => Ok(root.to_path_buf()),
         Some(path) => {
             let resolved = resolve_workspace_file(root, path)?;
-            let metadata = std::fs::metadata(&resolved).map_err(|_| {
+            let metadata = std::fs::metadata(&resolved).map_err(|_err| {
                 NotFoundSnafu {
                     path: path.to_owned(),
                 }
@@ -327,7 +331,7 @@ fn resolve_workspace_directory(root: &Path, path: Option<&str>) -> Result<PathBu
 fn resolve_workspace_file(root: &Path, path: &str) -> Result<PathBuf, ApiError> {
     let relative = normalize_relative_path(path)?;
     let joined = root.join(&relative);
-    let canonical = std::fs::canonicalize(&joined).map_err(|_| {
+    let canonical = std::fs::canonicalize(&joined).map_err(|_err| {
         NotFoundSnafu {
             path: path.to_owned(),
         }
@@ -386,7 +390,7 @@ fn normalize_relative_path(path: &str) -> Result<PathBuf, ApiError> {
 }
 
 fn relative_workspace_path(root: &Path, path: &Path) -> Result<String, ApiError> {
-    let relative = path.strip_prefix(root).map_err(|_| {
+    let relative = path.strip_prefix(root).map_err(|_err| {
         InternalSnafu {
             message: format!(
                 "workspace entry {} is not rooted under {}",
@@ -413,13 +417,15 @@ fn parse_git_status_line(line: &str) -> Option<GitStatusEntry> {
     }
 
     let bytes = line.as_bytes();
-    let x = bytes[0] as char;
-    let y = bytes[1] as char;
+    let Some([x, y, ..]) = bytes.get(..2) else {
+        return None;
+    };
+    let x = char::from(*x);
+    let y = char::from(*y);
     let status = match (x, y) {
         ('D', _) | (_, 'D') => "D",
         ('A', _) | (_, 'A') => "A",
-        ('M', _) | (_, 'M') => "M",
-        ('R', _) | (_, 'R') => "M",
+        ('M' | 'R', _) | (_, 'M' | 'R') => "M",
         ('C', _) | (_, 'C') => "A",
         _ => return None,
     };
@@ -508,7 +514,7 @@ fn search_workspace(
 
         if name.to_lowercase().contains(query_lower) {
             matched = true;
-            snippet = name.clone();
+            snippet.clone_from(&name);
         } else if let Ok(content) = std::fs::read_to_string(&path) {
             for (idx, line) in content.lines().enumerate() {
                 if line.to_lowercase().contains(query_lower) {
@@ -538,11 +544,15 @@ mod tests {
 
     #[test]
     fn git_status_line_normalizes_porcelain_codes() {
-        let added = parse_git_status_line("A  src/main.rs").expect("added");
+        let Some(added) = parse_git_status_line("A  src/main.rs") else {
+            panic!("added");
+        };
         assert_eq!(added.status, "A");
         assert_eq!(added.path, "src/main.rs");
 
-        let untracked = parse_git_status_line("?? notes.txt").expect("untracked");
+        let Some(untracked) = parse_git_status_line("?? notes.txt") else {
+            panic!("untracked");
+        };
         assert_eq!(untracked.status, "?");
         assert_eq!(untracked.path, "notes.txt");
     }

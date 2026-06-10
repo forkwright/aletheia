@@ -207,7 +207,7 @@ pub async fn list_sessions(
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(|s| s.to_ascii_lowercase());
+        .map(str::to_ascii_lowercase);
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
     let state_clone = state.clone();
