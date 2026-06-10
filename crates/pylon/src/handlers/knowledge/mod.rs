@@ -14,10 +14,11 @@ pub(crate) mod entity;
 #[cfg(test)]
 pub(crate) use dto::default_limit;
 pub use dto::{
-    EntitiesQuery, EntitiesResponse, EntityMemory, FactDetailResponse, FactsQuery, FactsResponse,
-    FlagRequest, FlagSeverity, ForgetRequest, GraphCheckReport, MergeRequest,
-    RelationshipsResponse, SearchQuery, SearchResponse, SearchResult, SimilarFact, TimelineEvent,
-    TimelineQuery, TimelineResponse, UpdateConfidenceRequest, UpdateSensitivityRequest,
+    EntitiesQuery, EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship,
+    FactDetailResponse, FactsQuery, FactsResponse, FlagRequest, FlagSeverity, ForgetRequest,
+    GraphCheckReport, MergeRequest, RelationshipDirection, RelationshipsResponse, SearchQuery,
+    SearchResponse, SearchResult, SimilarFact, TimelineEvent, TimelineQuery, TimelineResponse,
+    UpdateConfidenceRequest, UpdateSensitivityRequest,
 };
 pub(crate) use dto::{default_order, default_sort};
 pub use entity::{
@@ -38,6 +39,16 @@ const VALID_SORT_FIELDS: &[&str] = &[
 /// Valid sort directions (checked case-insensitively).
 const VALID_ORDER_VALUES: &[&str] = &["asc", "desc"];
 
+/// Valid sort fields for entity listing.
+const VALID_ENTITY_SORT_FIELDS: &[&str] = &[
+    "page_rank",
+    "confidence",
+    "memory_count",
+    "relationship_count",
+    "updated_at",
+    "name",
+];
+
 // MAX_SEARCH_LIMIT is now read from `config.api_limits.max_search_limit` at runtime.
 
 /// Validate sort/order query parameters, returning 400 with descriptive errors.
@@ -47,6 +58,26 @@ fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
             message: format!(
                 "invalid sort field '{sort}': valid fields are {}",
                 VALID_SORT_FIELDS.join(", "),
+            ),
+        }
+        .build());
+    }
+    if !VALID_ORDER_VALUES.contains(&order.to_ascii_lowercase().as_str()) {
+        return Err(BadRequestSnafu {
+            message: format!("invalid order '{order}': valid values are asc, desc"),
+        }
+        .build());
+    }
+    Ok(())
+}
+
+/// Validate entity sort/order query parameters.
+fn validate_entity_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
+    if !VALID_ENTITY_SORT_FIELDS.contains(&sort) {
+        return Err(BadRequestSnafu {
+            message: format!(
+                "invalid sort field '{sort}': valid fields are {}",
+                VALID_ENTITY_SORT_FIELDS.join(", "),
             ),
         }
         .build());
@@ -216,6 +247,12 @@ pub async fn get_fact(
     params(
         ("limit" = Option<usize>, Query, description = "Maximum results (default: 100, max: 1000)"),
         ("offset" = Option<usize>, Query, description = "Pagination offset"),
+        ("q" = Option<String>, Query, description = "Search text filter"),
+        ("sort" = Option<String>, Query, description = "Sort field: page_rank, confidence, memory_count, relationship_count, updated_at, name (default: page_rank)"),
+        ("order" = Option<String>, Query, description = "Sort direction: asc or desc (default: desc)"),
+        ("entity_type" = Option<Vec<String>>, Query, description = "Entity type filter; repeat to include multiple types"),
+        ("min_confidence" = Option<f64>, Query, description = "Minimum confidence threshold"),
+        ("agent" = Option<Vec<String>>, Query, description = "Agent filter; repeat to include multiple agents"),
     ),
     responses(
         (status = 200, description = "Entity list with total count"),
@@ -229,9 +266,70 @@ pub async fn list_entities(
 ) -> Result<Json<EntitiesResponse>, ApiError> {
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
     query.limit = query.limit.min(max_facts_limit);
+    validate_entity_sort_order(&query.sort, &query.order)?;
+    query.order = query.order.to_ascii_lowercase();
 
-    let entities = get_stored_entities(&state);
+    let mut entities = get_stored_entities(&state);
+    let stats: std::collections::HashMap<String, EntityStats> = {
+        #[cfg(feature = "knowledge-store")]
+        {
+            load_entity_stats(&state, &query)?
+        }
+        #[cfg(not(feature = "knowledge-store"))]
+        {
+            std::collections::HashMap::new()
+        }
+    };
+
+    if !query.agent.is_empty() {
+        #[cfg(feature = "knowledge-store")]
+        let allowed = load_agent_entity_ids(&state, &query.agent)?;
+        #[cfg(not(feature = "knowledge-store"))]
+        let allowed: std::collections::HashSet<String> = std::collections::HashSet::new();
+        entities.retain(|entity| allowed.contains(entity.id.as_str()));
+    }
+
+    if let Some(ref filter) = query.q {
+        let filter_lower = filter.to_lowercase();
+        entities.retain(|entity| {
+            entity.name.to_lowercase().contains(&filter_lower)
+                || entity
+                    .aliases
+                    .iter()
+                    .any(|alias| alias.to_lowercase().contains(&filter_lower))
+                || entity.entity_type.to_lowercase().contains(&filter_lower)
+        });
+    }
+
+    if !query.entity_type.is_empty() {
+        let entity_types: std::collections::HashSet<String> = query
+            .entity_type
+            .iter()
+            .map(|ty| ty.to_lowercase())
+            .collect();
+        entities.retain(|entity| entity_types.contains(&entity.entity_type.to_lowercase()));
+    }
+
+    if let Some(min_confidence) = query.min_confidence {
+        entities.retain(|entity| {
+            stats
+                .get(entity.id.as_str())
+                .map_or(0.0, |item: &EntityStats| item.confidence)
+                >= min_confidence
+        });
+    }
+
     let total = entities.len();
+
+    let mut entities: Vec<EntityListItem> = entities
+        .into_iter()
+        .map(|entity| {
+            let entity_id = entity.id.as_str().to_owned();
+            build_entity_list_item(entity, stats.get(&entity_id))
+        })
+        .collect();
+
+    sort_entity_items(&mut entities, &query.sort, &query.order);
 
     let start = query.offset.min(entities.len());
     let end = (start + query.limit).min(entities.len());
@@ -268,6 +366,219 @@ pub async fn entity_relationships(
 ) -> Result<Json<RelationshipsResponse>, ApiError> {
     let relationships = get_entity_relationships(&state, &id)?;
     Ok(Json(RelationshipsResponse { relationships }))
+}
+
+#[derive(Debug, Clone, Default)]
+struct EntityStats {
+    confidence: f64,
+    page_rank: f64,
+    memory_count: u32,
+    relationship_count: u32,
+}
+
+#[cfg(feature = "knowledge-store")]
+fn load_agent_entity_ids(
+    state: &KnowledgeState,
+    agents: &[String],
+) -> Result<std::collections::HashSet<String>, ApiError> {
+    use std::collections::{BTreeMap, HashSet};
+
+    let mut entity_ids = HashSet::new();
+    let Some(store) = state.knowledge_store.as_ref() else {
+        return Ok(entity_ids);
+    };
+
+    for agent in agents {
+        let script = r"
+            ?[entity_id] :=
+                *fact_entities{fact_id, entity_id},
+                *facts{id: fact_id, nous_id, is_forgotten, superseded_by},
+                nous_id == $nous_id,
+                is_forgotten == false,
+                is_null(superseded_by)
+        ";
+        let mut params = BTreeMap::new();
+        params.insert(
+            "nous_id".to_owned(),
+            mneme::engine::DataValue::Str(agent.clone()),
+        );
+        let result = store
+            .run_query(script, params)
+            .map_err(|e| ApiError::Internal {
+                message: e.to_string(),
+                location: snafu::location!(),
+            })?;
+        for row in 0..result.row_count() {
+            if let Some(entity_id) = result.get_string(row, "entity_id") {
+                entity_ids.insert(entity_id);
+            }
+        }
+    }
+
+    Ok(entity_ids)
+}
+
+#[cfg(feature = "knowledge-store")]
+fn load_entity_stats(
+    state: &KnowledgeState,
+    query: &EntitiesQuery,
+) -> Result<std::collections::HashMap<String, EntityStats>, ApiError> {
+    use std::collections::{BTreeMap, HashMap};
+
+    let mut stats: HashMap<String, EntityStats> = HashMap::new();
+    let Some(store) = state.knowledge_store.as_ref() else {
+        return Ok(stats);
+    };
+
+    // NOTE: the entity list is already a page-sized slice, so it is safe to load
+    // the broader graph counters once and filter in memory.
+    if let Ok(relationships) = store.list_all_relationships() {
+        for relationship in relationships {
+            let src = relationship.src.as_str().to_owned();
+            let dst = relationship.dst.as_str().to_owned();
+            stats.entry(src).or_default().relationship_count += 1;
+            stats.entry(dst).or_default().relationship_count += 1;
+        }
+    }
+
+    let mut params = BTreeMap::new();
+    let agent_filter = build_agent_filter_clause(&query.agent, &mut params);
+
+    let fact_stats_script = format!(
+        r#"
+            ?[entity_id, count(fact_id), mean(confidence)] :=
+                *fact_entities{{fact_id, entity_id}},
+                *facts{{id: fact_id, confidence, nous_id, is_forgotten, superseded_by}},
+                is_forgotten == false,
+                is_null(superseded_by)
+                {agent_filter}
+        "#
+    );
+
+    if let Ok(result) = store.run_query(&fact_stats_script, params) {
+        for row in 0..result.row_count() {
+            let Some(entity_id) = result.get_string(row, "entity_id") else {
+                continue;
+            };
+            let memory_count = result
+                .get_i64(row, "count(fact_id)")
+                .and_then(|value| u32::try_from(value).ok())
+                .unwrap_or(0);
+            let confidence = result.get_f64(row, "mean(confidence)").unwrap_or(0.0);
+            let entry = stats.entry(entity_id).or_default();
+            entry.memory_count = memory_count;
+            entry.confidence = confidence;
+        }
+    }
+
+    let pagerank_script = format!(
+        r#"
+            ?[entity_id, score] :=
+                *graph_scores{{entity_id, score_type, score}},
+                score_type == 'pagerank'
+        "#
+    );
+
+    let pagerank_params = BTreeMap::new();
+    if let Ok(result) = store.run_query(&pagerank_script, pagerank_params) {
+        for row in 0..result.row_count() {
+            let Some(entity_id) = result.get_string(row, "entity_id") else {
+                continue;
+            };
+            let page_rank = result.get_f64(row, "score").unwrap_or(0.0);
+            stats.entry(entity_id).or_default().page_rank = page_rank;
+        }
+    }
+
+    Ok(stats)
+}
+
+#[cfg(feature = "knowledge-store")]
+fn build_agent_filter_clause(
+    agents: &[String],
+    params: &mut std::collections::BTreeMap<String, mneme::engine::DataValue>,
+) -> String {
+    if agents.is_empty() {
+        return String::new();
+    }
+
+    for (idx, agent) in agents.iter().enumerate() {
+        params.insert(
+            format!("agent_{idx}"),
+            mneme::engine::DataValue::Str(agent.clone()),
+        );
+    }
+
+    let clauses = (0..agents.len())
+        .map(|idx| format!("nous_id == $agent_{idx}"))
+        .collect::<Vec<_>>()
+        .join(" or ");
+    format!(", ({clauses})")
+}
+
+fn build_entity_list_item(
+    entity: mneme::knowledge::Entity,
+    stats: Option<&EntityStats>,
+) -> EntityListItem {
+    let stats = stats.cloned().unwrap_or_default();
+    EntityListItem {
+        id: entity.id.as_str().to_owned(),
+        name: entity.name,
+        entity_type: entity.entity_type,
+        aliases: entity.aliases,
+        created_at: entity.created_at.to_string(),
+        updated_at: entity.updated_at.to_string(),
+        confidence: stats.confidence,
+        page_rank: stats.page_rank,
+        memory_count: stats.memory_count,
+        relationship_count: stats.relationship_count,
+    }
+}
+
+fn sort_entity_items(items: &mut [EntityListItem], sort: &str, order: &str) {
+    let descending = order == "desc";
+    match sort {
+        "page_rank" => items.sort_by(|a, b| {
+            a.page_rank
+                .partial_cmp(&b.page_rank)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        }),
+        "confidence" => items.sort_by(|a, b| {
+            a.confidence
+                .partial_cmp(&b.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        }),
+        "memory_count" => items.sort_by(|a, b| {
+            a.memory_count
+                .cmp(&b.memory_count)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        }),
+        "relationship_count" => items.sort_by(|a, b| {
+            a.relationship_count
+                .cmp(&b.relationship_count)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        }),
+        "updated_at" => items.sort_by(|a, b| {
+            a.updated_at
+                .cmp(&b.updated_at)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        }),
+        "name" => items.sort_by(|a, b| {
+            a.name
+                .to_lowercase()
+                .cmp(&b.name.to_lowercase())
+                .then_with(|| a.id.cmp(&b.id))
+        }),
+        _ => {
+            // NOTE: validation rejects unknown fields before this point.
+        }
+    }
+
+    if descending {
+        items.reverse();
+    }
 }
 
 mod bulk_import;

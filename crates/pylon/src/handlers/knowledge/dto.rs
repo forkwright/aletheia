@@ -44,6 +44,14 @@ pub(crate) fn default_order() -> String {
     "desc".to_string()
 }
 
+pub(crate) fn default_entity_sort() -> String {
+    "page_rank".to_string()
+}
+
+pub(crate) fn default_entity_order() -> String {
+    "desc".to_string()
+}
+
 pub(crate) fn default_limit() -> usize {
     100
 }
@@ -72,41 +80,85 @@ pub struct EntitiesQuery {
     #[serde(default)]
     pub q: Option<String>,
     /// Sort field.
-    #[serde(default = "default_sort")]
+    #[serde(default = "default_entity_sort")]
     pub sort: String,
     /// Sort order.
-    #[serde(default = "default_order")]
+    #[serde(default = "default_entity_order")]
     pub order: String,
     /// Entity type filter.
     #[serde(default)]
-    pub entity_type: Option<String>,
+    pub entity_type: Vec<String>,
     /// Minimum confidence threshold.
     #[serde(default)]
     pub min_confidence: Option<f64>,
     /// Agent filter.
     #[serde(default)]
-    pub agent: Option<String>,
+    pub agent: Vec<String>,
 }
 
 /// Response wrapper for entity listing.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
 )]
 pub struct EntitiesResponse {
-    pub entities: Vec<mneme::knowledge::Entity>,
+    pub entities: Vec<EntityListItem>,
     pub total: usize,
 }
 
+/// Entity row returned by the list endpoint.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct EntityListItem {
+    pub id: String,
+    pub name: String,
+    pub entity_type: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub confidence: f64,
+    pub page_rank: f64,
+    pub memory_count: u32,
+    pub relationship_count: u32,
+}
+
 /// Response wrapper for relationships.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
 )]
 pub struct RelationshipsResponse {
-    pub relationships: Vec<mneme::knowledge::Relationship>,
+    pub relationships: Vec<EntityRelationship>,
+}
+
+/// Direction of a relationship relative to the current entity.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+pub enum RelationshipDirection {
+    /// The relationship points away from the viewed entity.
+    Outgoing,
+    /// The relationship points toward the viewed entity.
+    Incoming,
+}
+
+/// Entity relationship row returned by the detail view.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct EntityRelationship {
+    pub id: String,
+    pub entity_id: String,
+    pub entity_name: String,
+    pub relationship_type: String,
+    pub direction: RelationshipDirection,
+    pub confidence: f64,
 }
 
 /// Memory record linked to an entity.

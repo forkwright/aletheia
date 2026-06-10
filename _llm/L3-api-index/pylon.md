@@ -590,33 +590,69 @@ pub struct EntitiesQuery {
     #[serde(default)]
     pub q: Option<String>,
     /// Sort field.
-    #[serde(default = "default_sort")]
+    #[serde(default = "default_entity_sort")]
     pub sort: String,
     /// Sort order.
-    #[serde(default = "default_order")]
+    #[serde(default = "default_entity_order")]
     pub order: String,
     /// Entity type filter.
     #[serde(default)]
-    pub entity_type: Option<String>,
+    pub entity_type: Vec<String>,
     /// Minimum confidence threshold.
     #[serde(default)]
     pub min_confidence: Option<f64>,
     /// Agent filter.
     #[serde(default)]
-    pub agent: Option<String>,
+    pub agent: Vec<String>,
 }
 ```
 
 ```rust
 pub struct EntitiesResponse {
-    pub entities: Vec<mneme::knowledge::Entity>,
+    pub entities: Vec<EntityListItem>,
     pub total: usize,
 }
 ```
 
 ```rust
+pub struct EntityListItem {
+    pub id: String,
+    pub name: String,
+    pub entity_type: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub confidence: f64,
+    pub page_rank: f64,
+    pub memory_count: u32,
+    pub relationship_count: u32,
+}
+```
+
+```rust
 pub struct RelationshipsResponse {
-    pub relationships: Vec<mneme::knowledge::Relationship>,
+    pub relationships: Vec<EntityRelationship>,
+}
+```
+
+```rust
+pub enum RelationshipDirection {
+    /// The relationship points away from the viewed entity.
+    Outgoing,
+    /// The relationship points toward the viewed entity.
+    Incoming,
+}
+```
+
+```rust
+pub struct EntityRelationship {
+    pub id: String,
+    pub entity_id: String,
+    pub entity_name: String,
+    pub relationship_type: String,
+    pub direction: RelationshipDirection,
+    pub confidence: f64,
 }
 ```
 
