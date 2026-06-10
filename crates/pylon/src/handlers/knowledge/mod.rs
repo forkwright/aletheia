@@ -273,7 +273,7 @@ pub async fn list_entities(
     let entity_stats_map: std::collections::HashMap<String, EntityStats> = {
         #[cfg(feature = "knowledge-store")]
         {
-            load_entity_stats(&state, &query)?
+            load_entity_stats(&state, &query)
         }
         #[cfg(not(feature = "knowledge-store"))]
         {
@@ -422,12 +422,12 @@ fn load_agent_entity_ids(
 fn load_entity_stats(
     state: &KnowledgeState,
     query: &EntitiesQuery,
-) -> Result<std::collections::HashMap<String, EntityStats>, ApiError> {
+) -> std::collections::HashMap<String, EntityStats> {
     use std::collections::{BTreeMap, HashMap};
 
     let mut entity_stats: HashMap<String, EntityStats> = HashMap::new();
     let Some(store) = state.knowledge_store.as_ref() else {
-        return Ok(entity_stats);
+        return entity_stats;
     };
 
     // NOTE: the entity list is already a page-sized slice, so it is safe to load
@@ -471,13 +471,12 @@ fn load_entity_stats(
         }
     }
 
-    let pagerank_script = format!(
-        r"
+    let pagerank_script = r"
             ?[entity_id, score] :=
                 *graph_scores{{entity_id, score_type, score}},
                 score_type == 'pagerank'
         "
-    );
+    .to_string();
 
     let pagerank_params = BTreeMap::new();
     if let Ok(result) = store.run_query(&pagerank_script, pagerank_params) {
@@ -490,7 +489,7 @@ fn load_entity_stats(
         }
     }
 
-    Ok(entity_stats)
+    entity_stats
 }
 
 #[cfg(feature = "knowledge-store")]

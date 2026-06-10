@@ -318,9 +318,10 @@ async fn list_entities_honors_filters_and_relationship_counts() {
         agent: vec!["test-nous".to_owned()],
     };
 
-    let response = list_entities(State(state), Query(query))
-        .await
-        .expect("list entities");
+    let response = match list_entities(State(state), Query(query)).await {
+        Ok(response) => response,
+        Err(err) => panic!("list entities: {err:?}"),
+    };
     assert_eq!(response.0.total, 1);
     assert_eq!(response.0.entities.len(), 1);
     let entity = &response.0.entities[0];
@@ -345,9 +346,10 @@ async fn get_entity_missing_returns_404() {
         event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
     };
 
-    let err = get_entity(State(state), Path("missing-entity".to_owned()))
-        .await
-        .expect_err("missing entity should return an error");
+    let err = match get_entity(State(state), Path("missing-entity".to_owned())).await {
+        Ok(_) => panic!("missing entity should return an error"),
+        Err(err) => err,
+    };
     match err {
         ApiError::NotFound { path, .. } => {
             assert_eq!(path, "entity/missing-entity");
