@@ -37,7 +37,7 @@ pub struct ArtifactMetadata {
     pub producer: String,
     /// Timestamp when the artifact was produced.
     pub produced_at: String,
-    /// Model type (e.g. "heuristic_rule_bank").
+    /// Model type (e.g. `heuristic_rule_bank`).
     pub model_type: String,
     /// Array of class names in index order.
     pub classes: Vec<String>,
@@ -48,7 +48,7 @@ pub struct ArtifactMetadata {
 
 ```rust
 pub struct AuthorProbs {
-    /// Per-class probability scores [user, subagent, system_scaffolding, template].
+    /// Per-class probability scores [user, subagent, `system_scaffolding`, template].
     pub probabilities: [f32; 4],
     /// Timestamp of classification.
     pub classified_at: Timestamp,

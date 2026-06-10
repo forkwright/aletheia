@@ -1,6 +1,6 @@
 # L1 - Workspace Overview
 
-Aletheia is a single-binary Rust agent runtime with 47 workspace crates plus the excluded `proskenion` desktop shell. Imports flow from leaf/foundation crates upward into memory, tools, runtime, gateways, and finally the `aletheia` binary. Lower layers must not depend on higher layers; facade crates (`mneme`, `theatron`) exist to stabilize downstream imports, not to hide arbitrary logic.
+Aletheia is a single-binary Rust agent runtime with 48 workspace crates plus the excluded `proskenion` desktop shell. Imports flow from leaf/foundation crates upward into memory, tools, runtime, gateways, and finally the `aletheia` binary. Lower layers must not depend on higher layers; facade crates (`mneme`, `theatron`) exist to stabilize downstream imports, not to hide arbitrary logic.
 
 ## Crate list
 
@@ -48,6 +48,7 @@ Aletheia is a single-binary Rust agent runtime with 47 workspace crates plus the
 | `poiesis-deck` | `crates/poiesis/deck` | Slide deck authoring model for poiesis. |
 | `poiesis-deck-layout` | `crates/poiesis/deck-layout` | Layout engine for poiesis slide decks. |
 | `poiesis-doc` | `crates/poiesis/doc` | DOCX write and inspect backend for poiesis. |
+| `poiesis-text` | `crates/poiesis/text` | Text extraction and document conversion helpers for poiesis. |
 | `poiesis-printer-chromium` | `crates/poiesis/printer-chromium` | Chromium-based headless print backend for poiesis. |
 | `poiesis-diff` | `crates/poiesis/diff` | Cell-level diff for XLSX and PPTX documents. |
 | `poiesis-inspect` | `crates/poiesis/inspect` | Text extraction from PDF, XLSX, and PPTX documents. |
@@ -69,7 +70,7 @@ Aletheia is a single-binary Rust agent runtime with 47 workspace crates plus the
 
 **CLI and operators.** Binary wiring, migrations, evals, and integration canaries: `aletheia`, `aletheia-sessions-migrate`, `dokimion`, `integration-tests`.
 
-**Poiesis document stack.** Report model, renderers, diff/inspect/intake/scaffold helpers: `poiesis-core`, `poiesis-charts`, `poiesis-theme`, `poiesis-sheet`, `poiesis-slides`, `poiesis-deck`, `poiesis-deck-layout`, `poiesis-lint`, `poiesis-verify`, `poiesis-typst`, `poiesis-intake`, `poiesis-doc`, `poiesis-printer-chromium`, `poiesis-diff`, `poiesis-inspect`, `poiesis-scaffold`.
+**Poiesis document stack.** Report model, renderers, diff/inspect/intake/scaffold helpers: `poiesis-core`, `poiesis-charts`, `poiesis-theme`, `poiesis-sheet`, `poiesis-slides`, `poiesis-deck`, `poiesis-deck-layout`, `poiesis-lint`, `poiesis-verify`, `poiesis-typst`, `poiesis-intake`, `poiesis-doc`, `poiesis-text`, `poiesis-printer-chromium`, `poiesis-diff`, `poiesis-inspect`, `poiesis-scaffold`.
 
 **Presentation.** Shared UI client, TUI, facade, and excluded desktop shell: `skene`, `koilon`, `theatron`, `proskenion`.
 

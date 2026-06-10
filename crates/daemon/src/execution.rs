@@ -562,7 +562,7 @@ async fn execute_probe_audit(
                 // WHY: the response contains all probe answers in a single block.
                 // We check the full text for each probe's required/forbidden
                 // patterns rather than trying to parse per-probe sections.
-                // This is robust against formatting variation in the LLM response.
+                // This tolerates formatting variation in the LLM response.
                 if response_text.to_lowercase().contains(probe_id) || !response_text.is_empty() {
                     Some(response_text)
                 } else {

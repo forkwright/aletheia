@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The variants mirror the planned policy vocabulary without encoding the
 /// still-missing Phase 05c parameter inventory.
-// TODO(#3969) Phase-06b boundary type: the learned RL policy remains 1.x.
+// TODO(#3969)[deliberate-prudent]: Phase-06b boundary type: the learned RL policy remains 1.x.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[non_exhaustive]

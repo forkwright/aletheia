@@ -8,11 +8,11 @@ tightens: ["tool registration, schema, tag, and sandbox guidance"]
 
 ## At a glance
 
-Tool registry, executors, and sandbox for built-in tools. Depends on koina, hermeneus, and taxis. Entry point: `src/lib.rs` (ToolRegistry, ToolExecutor).
+Tool registry, executors, and sandbox for built-in tools. Depends on koina, hermeneus, taxis, eidos, gnosis, and the poiesis helper crates. Entry point: `src/lib.rs` (ToolRegistry, ToolExecutor).
 
 ## Depth
 
-Tool registry, executors, and sandbox. 16K lines. 49 built-in tools.
+Tool registry, executors, and sandbox. 16K lines. 67 built-in tools.
 
 ## Read first
 
@@ -34,7 +34,7 @@ Tool registry, executors, and sandbox. 16K lines. 49 built-in tools.
 | `SandboxConfig` | `sandbox/mod.rs` | Landlock + seccomp + egress policy |
 | `ProcessGuard` | `process_guard.rs` | RAII child process wrapper, `pub(crate)` (prevents orphans/zombies) |
 
-## Built-in tools (49)
+## Built-in tools (67)
 
 | Category | Tools |
 |----------|-------|
@@ -49,6 +49,8 @@ Tool registry, executors, and sandbox. 16K lines. 49 built-in tools.
 | Enable Tool | enable_tool |
 | Planning | plan_create, plan_research, plan_requirements, plan_roadmap, plan_discuss, plan_execute, plan_verify, plan_status, plan_step_complete, plan_step_fail, plan_verify_criteria |
 | Research | web_fetch, http_request, web_search |
+| Knowledge / metadata | architecture_fact, code_graph_query, parameters, skill_read, working_checkpoint |
+| Poiesis reports | generate_document, lint_report, verify_report, render_typst_report, qa_gate, intake_report, scaffold_report, render_docx_report, render_pptx_report, render_xlsx_report, render_eval_report, render_graph_audit, diff_report, inspect_report |
 | Triage | issue_scan, issue_triage, issue_approve |
 | Computer Use | computer_use (feature-gated: `computer-use`) |
 
@@ -108,5 +110,5 @@ Most tools carry 1–2 tags; a few carry 3.
 
 ## Dependencies
 
-Uses: koina, hermeneus, tokio, serde, snafu, tracing, landlock, seccompiler
-Used by: nous, pylon, thesauros, aletheia (binary)
+Uses: koina, hermeneus, taxis, eidos, gnosis, poiesis report crates, reqwest, tokio, serde, snafu, tracing, landlock, seccompiler
+Used by: agora, aletheia, diaporeia, dokimion, integration-tests, nous, pylon, thesauros

@@ -3,7 +3,10 @@
     clippy::expect_used,
     reason = "OpenAPI JSON serialization is infallible"
 )]
-#![allow(clippy::needless_for_each)] // triggered by utoipa OpenApi derive macro
+#![expect(
+    clippy::needless_for_each,
+    reason = "utoipa OpenApi derive expands to generated for_each loops"
+)]
 
 use std::sync::Arc;
 

@@ -5,6 +5,9 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/forkwright/aletheia"
 
+[lints]
+workspace = true
+
 [dependencies]
 jiff = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
