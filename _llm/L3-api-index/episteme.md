@@ -2165,6 +2165,7 @@ impl KnowledgeStore {
         &self,
         rel: &crate::knowledge::Relationship,
     ) -> crate::error::Result<()>;
+    pub fn remove_orphaned_entities (&self) -> crate::error::Result<usize>;
     pub fn list_entities (&self) -> crate::error::Result<Vec<crate::knowledge::Entity>>;
     pub fn list_all_relationships (
         &self,
@@ -2225,6 +2226,7 @@ impl KnowledgeStore {
         provider: Option<&dyn crate::embedding::EmbeddingProvider>,
         tuning: &crate::dedup::DedupTuning,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
+    pub fn orphaned_entity_ids (&self) -> crate::error::Result<Vec<String>>;
 }
 ```
 
@@ -2232,6 +2234,10 @@ impl KnowledgeStore {
 
 ```rust
 impl KnowledgeStore {
+    pub fn reembed_all (
+        &self,
+        provider: &dyn crate::embedding::EmbeddingProvider,
+    ) -> crate::error::Result<usize>;
     pub fn insert_fact (&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()>;
     pub fn backfill_fact_embeddings (
         &self,

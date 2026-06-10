@@ -17,9 +17,9 @@ impl KnowledgeStore {
     ) -> crate::error::Result<usize> {
         let facts = self.list_all_facts(i64::MAX)?;
         let written = self.backfill_fact_embeddings(&facts, provider);
-        usize::try_from(written).map_err(|_| {
+        usize::try_from(written).map_err(|err| {
             crate::error::ConversionSnafu {
-                message: "reembedded fact count overflowed usize".to_owned(),
+                message: format!("reembedded fact count overflowed usize: {err}"),
             }
             .build()
         })

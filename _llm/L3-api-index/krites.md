@@ -1354,6 +1354,23 @@ pub enum StorageError {
         location: snafu::Location,
     },
 
+    /// The on-disk store is locked by another process.
+    ///
+    /// WHY: fjall takes an exclusive lock per keyspace; without a dedicated
+    /// variant the lock surfaces as an opaque "transaction failed: open"
+    /// message. Mirrors `koina::fjall::FjallOpenError::Locked` so every
+    /// store (session, auth, knowledge) reports lock contention the same
+    /// actionable way.
+    #[snafu(display(
+        "the store at {} is locked — a running aletheia server holds it. Stop the server, or use the HTTP API (e.g. `aletheia memory`, `aletheia maintenance`) which talks to the running server instead of opening the store directly.",
+        path.display()
+    ))]
+    Locked {
+        path: std::path::PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Attempted a write operation on a read-only transaction.
     #[snafu(display("write attempted on a read-only transaction"))]
     WriteInReadTransaction {

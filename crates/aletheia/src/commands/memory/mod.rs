@@ -171,53 +171,14 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
             );
 
         match action {
-            Action::Check { json } => {
-                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
-                run_check(&store, json)
-            }
-            Action::Sample { count, nous_id } => {
-                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
-                run_sample(&store, count, nous_id.as_deref())
-            }
-            Action::Dedup { nous_id, dry_run } => {
-                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
-                run_dedup(&store, &nous_id, dry_run, &dedup_tuning)
-            }
-            Action::Patterns { nous_id, limit } => {
-                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
-                run_patterns(&store, nous_id.as_deref(), limit)
-            }
-            Action::ExportGraph {
-                format,
-                nous_id,
-                scope,
-                output_path,
-            } => {
-                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
-                run_export_graph(&store, format, nous_id.as_deref(), scope, &output_path)
-            }
-            Action::DedupPending { nous_id } => {
-                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
-                run_dedup_pending(&store, &nous_id)
-            }
-            Action::DedupApprove {
-                nous_id,
-                canonical_id,
-                merged_id,
-            } => {
-                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
-                run_dedup_approve(&store, &nous_id, &canonical_id, &merged_id)
-            }
-            Action::DedupReject {
-                nous_id,
-                entity_a,
-                entity_b,
-            } => {
-                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
-                run_dedup_reject(&store, &nous_id, &entity_a, &entity_b)
-            }
+            // WHY: reembed/gc iterate every cohort store themselves, so they
+            // must not pre-open the shared store like the other actions.
             Action::Reembed => run_reembed(&oikos, recovery_dim, loaded_config.as_ref()),
             Action::Gc => run_gc(&oikos, recovery_dim),
+            store_action => {
+                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
+                run_store_action(&store, store_action, &dedup_tuning)
+            }
         }
     }
 
@@ -237,7 +198,7 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
 /// `session_export.rs` (refs #4255 / #4259 / #4263 / #4265).
 fn validate_action(action: &Action) -> Result<()> {
     match action {
-        Action::Check { .. } => Ok(()),
+        Action::Check { .. } | Action::Reembed | Action::Gc => Ok(()),
         Action::Sample { count, nous_id } => {
             if *count == 0 {
                 whatever!("--count must be greater than 0");
@@ -274,7 +235,6 @@ fn validate_action(action: &Action) -> Result<()> {
             }
             Ok(())
         }
-        Action::Reembed | Action::Gc => Ok(()),
         Action::DedupApprove {
             nous_id,
             canonical_id,
@@ -562,6 +522,41 @@ async fn run_check_via_api(url: &str, json: bool) -> Result<()> {
 
 // --- recovery ---
 
+/// Dispatch the store-backed memory actions against an opened shared store.
+#[cfg(feature = "recall")]
+fn run_store_action(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    action: Action,
+    dedup_tuning: &mneme::dedup::DedupTuning,
+) -> Result<()> {
+    match action {
+        Action::Check { json } => run_check(store, json),
+        Action::Sample { count, nous_id } => run_sample(store, count, nous_id.as_deref()),
+        Action::Dedup { nous_id, dry_run } => run_dedup(store, &nous_id, dry_run, dedup_tuning),
+        Action::Patterns { nous_id, limit } => run_patterns(store, nous_id.as_deref(), limit),
+        Action::ExportGraph {
+            format,
+            nous_id,
+            scope,
+            output_path,
+        } => run_export_graph(store, format, nous_id.as_deref(), scope, &output_path),
+        Action::DedupPending { nous_id } => run_dedup_pending(store, &nous_id),
+        Action::DedupApprove {
+            nous_id,
+            canonical_id,
+            merged_id,
+        } => run_dedup_approve(store, &nous_id, &canonical_id, &merged_id),
+        Action::DedupReject {
+            nous_id,
+            entity_a,
+            entity_b,
+        } => run_dedup_reject(store, &nous_id, &entity_a, &entity_b),
+        Action::Reembed | Action::Gc => {
+            whatever!("BUG: reembed/gc must dispatch before the shared store opens")
+        }
+    }
+}
+
 #[cfg(feature = "recall")]
 fn open_recovery_store(
     path: &Path,
@@ -571,26 +566,15 @@ fn open_recovery_store(
         dim,
         ..Default::default()
     };
+    // NOTE: lock contention surfaces from the typed
+    // `krites::storage::StorageError::Locked` with operator guidance baked
+    // into its display; no string inspection is needed here.
     mneme::knowledge_store::KnowledgeStore::open_fjall(path, config).map_err(|err| {
-        let message = err.to_string();
-        if is_store_lock_error(&message) {
-            crate::error::Error::msg(format!(
-                "knowledge store at {} is locked by another process. Stop the server first, then rerun this command.",
-                path.display()
-            ))
-        } else {
-            crate::error::Error::msg(format!(
-                "failed to open knowledge store at {}: {message}",
-                path.display()
-            ))
-        }
+        crate::error::Error::msg(format!(
+            "failed to open knowledge store at {}: {err}",
+            path.display()
+        ))
     })
-}
-
-#[cfg(feature = "recall")]
-fn is_store_lock_error(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("lock") || lower.contains("busy") || lower.contains("in use")
 }
 
 #[cfg(feature = "recall")]
@@ -657,13 +641,16 @@ fn run_reembed(
         let written = store
             .reembed_all(provider.as_ref())
             .with_whatever_context(|err| {
-                format!("failed to re-embed facts in {}: {err}", store_path.display())
+                format!(
+                    "failed to re-embed facts in {}: {err}",
+                    store_path.display()
+                )
             })?;
         println!("reembed: {} -> {} facts", store_path.display(), written);
         total = total.saturating_add(written);
     }
 
-    println!("Re-embedded {total} facts across {} store(s).", store_count);
+    println!("Re-embedded {total} facts across {store_count} store(s).");
     Ok(())
 }
 

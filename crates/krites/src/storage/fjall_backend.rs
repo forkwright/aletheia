@@ -40,6 +40,12 @@ pub fn new_krites_fjall(
     let db = fjall::SingleWriterTxDatabase::builder(path)
         .open()
         .map_err(|e| {
+            if matches!(e, fjall::Error::Locked) {
+                return crate::storage::error::LockedSnafu {
+                    path: path.to_path_buf(),
+                }
+                .build();
+            }
             TransactionFailedSnafu {
                 backend: "fjall",
                 message: format!("open: {e}"),
