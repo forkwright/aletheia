@@ -22,7 +22,7 @@ koina = { path = "../koina", features = ["fjall"] }
 keyring = { version = "3", optional = true }
 argon2 = { version = "0.5", features = ["std"] }
 blake3 = "1"
-fjall = { version = "3", default-features = false }
+fjall = { version = "3", default-features = false, features = ["lz4"] }
 jiff = { workspace = true, features = ["serde"] }
 prometheus-client = { workspace = true }
 rand = { workspace = true }

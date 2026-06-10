@@ -60,7 +60,7 @@ snafu = { workspace = true }
 tracing = { workspace = true }
 
 # Storage backends
-fjall = { version = "3", default-features = false, optional = true }
+fjall = { version = "3", default-features = false, features = ["lz4"], optional = true }
 
 # Hot-reload
 notify = { workspace = true, optional = true }

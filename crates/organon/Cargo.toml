@@ -93,7 +93,7 @@ optional = true
 
 [dev-dependencies]
 energeia = { path = "../energeia", features = ["storage-fjall"] }
-fjall = { version = "3" }
+fjall = { version = "3", default-features = false, features = ["lz4"] }
 indexmap = { workspace = true }
 proptest = { workspace = true }
 rustls = { workspace = true }

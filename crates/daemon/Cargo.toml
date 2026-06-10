@@ -30,7 +30,7 @@ axum = { workspace = true }
 # the lock to the file descriptor, so the lock lives until the File is dropped.
 rustix = { version = "1", default-features = false, features = ["fs", "std"] }
 # WHY: fjall is the task-state backend -- pure Rust LSM-tree, zero C deps.
-fjall = { version = "3", default-features = false }
+fjall = { version = "3", default-features = false, features = ["lz4"] }
 flate2 = { workspace = true }
 jiff = { workspace = true, features = ["serde"] }
 # WHY: file watcher triggers (inotify on Linux)
