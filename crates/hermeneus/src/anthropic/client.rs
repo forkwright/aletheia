@@ -16,7 +16,9 @@ use koina::secret::SecretString;
 
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
-use crate::provider::{LlmProvider, ModelPricing, PromptCacheMode, ProviderConfig};
+use crate::provider::{
+    DeploymentTarget, LlmProvider, ModelPricing, PromptCacheMode, ProviderConfig, leak_models,
+};
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
@@ -56,6 +58,17 @@ pub struct AnthropicProvider {
     /// markers are scrubbed before the wire request is built so operator
     /// content never enters Anthropic's prompt cache.
     prompt_cache_mode: PromptCacheMode,
+    /// Instance name for logs, health tracking, and registry diagnostics.
+    /// `"anthropic"` for the first-party endpoint; operator-declared
+    /// compatible endpoints carry their config name (e.g. `"kimi-coding"`).
+    instance_name: String,
+    /// Model IDs this instance claims for registry routing. The first-party
+    /// catalog by default; an operator-declared compatible endpoint claims
+    /// exactly its configured model list instead.
+    model_refs: &'static [&'static str],
+    /// Where this instance's traffic terminates, for the recall
+    /// sensitivity filter (#3404, #3413).
+    deployment_target: DeploymentTarget,
 }
 
 /// Static credential provider for backward-compatible `from_config()`.
@@ -77,6 +90,25 @@ impl CredentialProvider for StaticCredentialProvider {
     )]
     fn name(&self) -> &str {
         "static"
+    }
+}
+
+/// Resolve the instance name from config: operator-declared name, or the
+/// first-party default.
+fn instance_name(config: &ProviderConfig) -> String {
+    config
+        .name
+        .clone()
+        .unwrap_or_else(|| "anthropic".to_owned())
+}
+
+/// Resolve the routing model claims from config: the operator-declared list
+/// for compatible endpoints, or the first-party catalog when unset.
+fn model_refs(config: &ProviderConfig) -> &'static [&'static str] {
+    if config.models.is_empty() {
+        SUPPORTED_MODELS
+    } else {
+        leak_models(&config.models)
     }
 }
 
@@ -176,6 +208,9 @@ impl AnthropicProvider {
             cc_profile: None, // API key mode — no mimicry needed
             non_streaming_timeout: NON_STREAMING_TIMEOUT,
             prompt_cache_mode: config.prompt_cache_mode,
+            instance_name: instance_name(config),
+            model_refs: model_refs(config),
+            deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -229,6 +264,9 @@ impl AnthropicProvider {
             cc_profile,
             non_streaming_timeout: NON_STREAMING_TIMEOUT,
             prompt_cache_mode: config.prompt_cache_mode,
+            instance_name: instance_name(config),
+            model_refs: model_refs(config),
+            deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
@@ -281,7 +319,7 @@ impl AnthropicProvider {
         mut on_event: impl FnMut(StreamEvent) + Send,
     ) -> Result<CompletionResponse> {
         let span = info_span!("llm_call",
-            llm.provider = "anthropic",
+            llm.provider = %self.instance_name,
             llm.model = %request.model,
             llm.duration_ms = tracing::field::Empty,
             llm.tokens_in = tracing::field::Empty,
@@ -436,14 +474,14 @@ impl AnthropicProvider {
                         "LLM call complete"
                     );
                     crate::metrics::record_completion(
-                        "anthropic",
+                        &self.instance_name,
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
                         cost,
                         true,
                     );
                     crate::metrics::record_cache_tokens(
-                        "anthropic",
+                        &self.instance_name,
                         resp.usage.cache_read_tokens,
                         resp.usage.cache_write_tokens,
                     );
@@ -515,7 +553,7 @@ impl AnthropicProvider {
         tracing::Span::current().record("llm.retries", self.max_retries);
         tracing::Span::current().record("llm.status", "error");
 
-        crate::metrics::record_completion("anthropic", 0, 0, 0.0, false);
+        crate::metrics::record_completion(&self.instance_name, 0, 0, 0.0, false);
         crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
 
         Err(last_error.unwrap_or_else(|| {
@@ -750,7 +788,7 @@ impl AnthropicProvider {
 
     async fn execute_with_retry(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let span = info_span!("llm_call",
-            llm.provider = "anthropic",
+            llm.provider = %self.instance_name,
             llm.model = %request.model,
             llm.duration_ms = tracing::field::Empty,
             llm.tokens_in = tracing::field::Empty,
@@ -877,14 +915,14 @@ impl AnthropicProvider {
                         "LLM call complete"
                     );
                     crate::metrics::record_completion(
-                        "anthropic",
+                        &self.instance_name,
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
                         cost,
                         true,
                     );
                     crate::metrics::record_cache_tokens(
-                        "anthropic",
+                        &self.instance_name,
                         resp.usage.cache_read_tokens,
                         resp.usage.cache_write_tokens,
                     );
@@ -942,7 +980,7 @@ impl AnthropicProvider {
         tracing::Span::current().record("llm.retries", self.max_retries);
         tracing::Span::current().record("llm.status", "error");
 
-        crate::metrics::record_completion("anthropic", 0, 0, 0.0, false);
+        crate::metrics::record_completion(&self.instance_name, 0, 0, 0.0, false);
         crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
 
         Err(last_error.unwrap_or_else(|| {
@@ -963,15 +1001,15 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn supported_models(&self) -> &[&str] {
-        SUPPORTED_MODELS
+        self.model_refs
     }
 
-    #[expect(
-        clippy::unnecessary_literal_bound,
-        reason = "trait requires &str return, static string is fine"
-    )]
     fn name(&self) -> &str {
-        "anthropic"
+        &self.instance_name
+    }
+
+    fn deployment_target(&self) -> DeploymentTarget {
+        self.deployment_target
     }
 
     fn supports_streaming(&self) -> bool {
