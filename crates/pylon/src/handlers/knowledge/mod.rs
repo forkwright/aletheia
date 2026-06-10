@@ -10,15 +10,21 @@ use crate::error::{ApiError, BadRequestSnafu};
 use crate::state::KnowledgeState;
 
 mod dto;
+pub(crate) mod entity;
 #[cfg(test)]
 pub(crate) use dto::default_limit;
 pub use dto::{
-    EntitiesQuery, EntitiesResponse, FactDetailResponse, FactsQuery, FactsResponse, ForgetRequest,
-    GraphCheckReport, RelationshipsResponse, SearchQuery, SearchResponse, SearchResult,
-    SimilarFact, TimelineEvent, TimelineQuery, TimelineResponse, UpdateConfidenceRequest,
-    UpdateSensitivityRequest,
+    EntitiesQuery, EntitiesResponse, EntityMemory, FactDetailResponse, FactsQuery, FactsResponse,
+    FlagRequest, FlagSeverity, ForgetRequest, GraphCheckReport, MergeRequest,
+    RelationshipsResponse, SearchQuery, SearchResponse, SearchResult, SimilarFact, TimelineEvent,
+    TimelineQuery, TimelineResponse, UpdateConfidenceRequest, UpdateSensitivityRequest,
 };
 pub(crate) use dto::{default_order, default_sort};
+pub use entity::{
+    __path_delete_entity, __path_entity_memories, __path_flag_entity, __path_get_entity,
+    __path_merge_entities,
+};
+pub use entity::{delete_entity, entity_memories, flag_entity, get_entity, merge_entities};
 
 /// Valid sort fields for fact listing.
 const VALID_SORT_FIELDS: &[&str] = &[

@@ -586,6 +586,24 @@ pub struct EntitiesQuery {
     /// Offset for pagination.
     #[serde(default)]
     pub offset: usize,
+    /// Search text filter.
+    #[serde(default)]
+    pub q: Option<String>,
+    /// Sort field.
+    #[serde(default = "default_sort")]
+    pub sort: String,
+    /// Sort order.
+    #[serde(default = "default_order")]
+    pub order: String,
+    /// Entity type filter.
+    #[serde(default)]
+    pub entity_type: Option<String>,
+    /// Minimum confidence threshold.
+    #[serde(default)]
+    pub min_confidence: Option<f64>,
+    /// Agent filter.
+    #[serde(default)]
+    pub agent: Option<String>,
 }
 ```
 
@@ -599,6 +617,51 @@ pub struct EntitiesResponse {
 ```rust
 pub struct RelationshipsResponse {
     pub relationships: Vec<mneme::knowledge::Relationship>,
+}
+```
+
+```rust
+pub struct EntityMemory {
+    pub id: String,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    pub confidence: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+}
+```
+
+```rust
+pub struct MergeRequest {
+    /// Canonical entity ID to keep.
+    #[serde(alias = "primary_id")]
+    pub canonical_id: String,
+    /// Entity ID to merge and remove.
+    #[serde(alias = "secondary_id")]
+    pub merged_id: String,
+}
+```
+
+```rust
+pub enum FlagSeverity {
+    /// Low-priority review.
+    Low,
+    /// Medium-priority review.
+    Medium,
+    /// High-priority review.
+    High,
+}
+```
+
+```rust
+pub struct FlagRequest {
+    /// Human-readable reason for the flag.
+    pub reason: String,
+    /// Review severity.
+    pub severity: FlagSeverity,
 }
 ```
 
@@ -710,6 +773,47 @@ pub struct GraphCheckReport {
     /// Overall health: `"healthy"` or `"issues_found"`.
     pub status: &'static str,
 }
+```
+
+## `src/handlers/knowledge/entity.rs`
+
+```rust
+pub async fn get_entity (
+    State(state): State<KnowledgeState>,
+    Path(id): Path<String>,
+) -> Result<Json<mneme::knowledge::Entity>, ApiError>
+```
+
+```rust
+pub async fn entity_memories (
+    State(state): State<KnowledgeState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<EntityMemory>>, ApiError>
+```
+
+```rust
+pub async fn merge_entities (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Json(body): Json<MergeRequest>,
+) -> Result<StatusCode, ApiError>
+```
+
+```rust
+pub async fn flag_entity (
+    State(_state): State<KnowledgeState>,
+    claims: Claims,
+    Path(_id): Path<String>,
+    Json(_body): Json<FlagRequest>,
+) -> Result<StatusCode, ApiError>
+```
+
+```rust
+pub async fn delete_entity (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError>
 ```
 
 ## `src/handlers/knowledge/ingest.rs`

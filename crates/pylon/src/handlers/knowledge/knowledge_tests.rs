@@ -5,6 +5,7 @@
 )]
 
 use super::*;
+use crate::error::ApiError;
 
 fn make_fact(id: &str, content: &str, confidence: f64) -> mneme::knowledge::Fact {
     use mneme::id::FactId;
@@ -212,6 +213,32 @@ fn entity_relationships_queries_store_for_inbound_and_outbound_edges() {
             .iter()
             .any(|r| r.dst.as_str() == "entity-a" && r.relation == "supports")
     );
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn get_entity_missing_returns_404() {
+    use std::sync::Arc;
+
+    use axum::extract::{Path, State};
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let config = taxis::config::AletheiaConfig::default();
+    let state = KnowledgeState {
+        knowledge_store: Some(store),
+        config: Arc::new(tokio::sync::RwLock::new(config)),
+        event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
+    };
+
+    let err = get_entity(State(state), Path("missing-entity".to_owned()))
+        .await
+        .expect_err("missing entity should return an error");
+    match err {
+        ApiError::NotFound { path, .. } => {
+            assert_eq!(path, "entity/missing-entity");
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
 }
 
 #[test]

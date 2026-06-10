@@ -2,9 +2,10 @@
 //! Knowledge endpoint request and response wire shapes.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Query parameters for listing facts.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct FactsQuery {
     /// Filter by nous agent ID.
     #[serde(default)]
@@ -59,7 +60,7 @@ pub struct FactsResponse {
 }
 
 /// Query parameters for listing entities.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct EntitiesQuery {
     /// Maximum results to return (default: 100, max: 1000).
     #[serde(default = "default_limit")]
@@ -67,6 +68,24 @@ pub struct EntitiesQuery {
     /// Offset for pagination.
     #[serde(default)]
     pub offset: usize,
+    /// Search text filter.
+    #[serde(default)]
+    pub q: Option<String>,
+    /// Sort field.
+    #[serde(default = "default_sort")]
+    pub sort: String,
+    /// Sort order.
+    #[serde(default = "default_order")]
+    pub order: String,
+    /// Entity type filter.
+    #[serde(default)]
+    pub entity_type: Option<String>,
+    /// Minimum confidence threshold.
+    #[serde(default)]
+    pub min_confidence: Option<f64>,
+    /// Agent filter.
+    #[serde(default)]
+    pub agent: Option<String>,
 }
 
 /// Response wrapper for entity listing.
@@ -88,6 +107,56 @@ pub struct EntitiesResponse {
 )]
 pub struct RelationshipsResponse {
     pub relationships: Vec<mneme::knowledge::Relationship>,
+}
+
+/// Memory record linked to an entity.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct EntityMemory {
+    pub id: String,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    pub confidence: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+}
+
+/// Request body for entity merge operations.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct MergeRequest {
+    /// Canonical entity ID to keep.
+    #[serde(alias = "primary_id")]
+    pub canonical_id: String,
+    /// Entity ID to merge and remove.
+    #[serde(alias = "secondary_id")]
+    pub merged_id: String,
+}
+
+/// Entity flagging severity.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum FlagSeverity {
+    /// Low-priority review.
+    Low,
+    /// Medium-priority review.
+    Medium,
+    /// High-priority review.
+    High,
+}
+
+/// Request body for entity review flags.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct FlagRequest {
+    /// Human-readable reason for the flag.
+    pub reason: String,
+    /// Review severity.
+    pub severity: FlagSeverity,
 }
 
 /// Body for forget/restore actions.

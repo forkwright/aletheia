@@ -81,10 +81,17 @@ pub fn build_router_with(
             axum::routing::put(knowledge::update_sensitivity),
         )
         .route("/entities", get(knowledge::list_entities))
+        .route("/entities/merge", post(knowledge::merge_entities))
+        .route(
+            "/entities/{id}",
+            get(knowledge::get_entity).delete(knowledge::delete_entity),
+        )
+        .route("/entities/{id}/memories", get(knowledge::entity_memories))
         .route(
             "/entities/{id}/relationships",
             get(knowledge::entity_relationships),
         )
+        .route("/entities/{id}/flag", post(knowledge::flag_entity))
         .route("/search", get(knowledge::search))
         .route("/timeline", get(knowledge::timeline))
         .route("/check", get(knowledge::check_graph_health))
