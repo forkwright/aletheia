@@ -474,6 +474,74 @@ fn update_entity_name_embedding_clears_with_none() {
     );
 }
 
+/// Recovery path: recompute fact embeddings for a restored store that has
+/// facts but no rows in the embeddings relation yet.
+#[test]
+fn reembed_all_populates_fact_embeddings() {
+    let store = make_store();
+    let f1 = make_fact("fact-1", "agent-a", "Alice likes Rust");
+    let f2 = make_fact("fact-2", "agent-b", "Bob prefers Go");
+    store.insert_fact(&f1).expect("insert fact 1");
+    store.insert_fact(&f2).expect("insert fact 2");
+
+    let provider = crate::embedding::MockEmbeddingProvider::new(crate::test_fixtures::DIM);
+    let written = store.reembed_all(&provider).expect("reembed all facts");
+    assert_eq!(written, 2, "every fact should receive an embedding");
+
+    let rows = store
+        .run_query(
+            r"?[id, source_id] := *embeddings{id, source_id}",
+            std::collections::BTreeMap::new(),
+        )
+        .expect("query embeddings");
+    assert_eq!(rows.row_count(), 2, "two embedding rows should exist");
+
+    let mut source_ids = Vec::new();
+    for row in 0..rows.row_count() {
+        source_ids.push(rows.get_string(row, "source_id").expect("source_id"));
+    }
+    assert!(
+        source_ids.iter().any(|id| id == "fact-1"),
+        "fact-1 embedding should be present"
+    );
+    assert!(
+        source_ids.iter().any(|id| id == "fact-2"),
+        "fact-2 embedding should be present"
+    );
+}
+
+/// Garbage-collection path: delete only entities that have no relationships
+/// and no fact references, leaving linked entities intact.
+#[test]
+fn remove_orphaned_entities_deletes_only_unlinked_rows() {
+    let store = make_store();
+
+    let orphan = make_entity("ent-orphan", "Orphan", "concept");
+    let linked = make_entity("ent-linked", "Linked", "concept");
+    store.insert_entity(&orphan).expect("insert orphan");
+    store.insert_entity(&linked).expect("insert linked");
+
+    let fact = make_fact("fact-linked", "agent-a", "linked fact");
+    store.insert_fact(&fact).expect("insert fact");
+    store
+        .insert_fact_entity(&fact.id, &linked.id)
+        .expect("link fact to entity");
+
+    let removed = store
+        .remove_orphaned_entities()
+        .expect("remove orphaned entities");
+    assert_eq!(removed, 1, "only the orphan should be removed");
+
+    let surviving = store.list_entities().expect("list entities");
+    assert_eq!(surviving.len(), 1, "linked entity should remain");
+    assert_eq!(surviving[0].id, linked.id);
+
+    let removed_again = store
+        .remove_orphaned_entities()
+        .expect("second remove_orphaned_entities call");
+    assert_eq!(removed_again, 0, "garbage collection should be idempotent");
+}
+
 /// `approve_merge` is the operational half of #4165 Path A. Insert two
 /// entities that land in the review queue (score in `[0.70, 0.90)`),
 /// then approve the merge and assert that:

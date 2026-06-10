@@ -11,6 +11,7 @@ use super::{
     commands::backup::{BackupAction, BackupArgs},
     commands::credential,
     commands::maintenance,
+    commands::memory,
     commands::session_create::SessionCreateArgs,
     commands::session_export::ExportFormat,
     commands::tls,
@@ -94,6 +95,36 @@ fn status_custom_url_parses() {
         }
         _ => panic!("expected Status command"),
     }
+}
+
+#[test]
+fn memory_reembed_parses() {
+    let cli = Cli::parse_from(["aletheia", "memory", "reembed"]);
+    assert!(
+        matches!(
+            cli.command,
+            Some(Command::Memory {
+                action: memory::Action::Reembed,
+                ..
+            })
+        ),
+        "memory reembed subcommand should parse"
+    );
+}
+
+#[test]
+fn memory_gc_parses() {
+    let cli = Cli::parse_from(["aletheia", "memory", "gc"]);
+    assert!(
+        matches!(
+            cli.command,
+            Some(Command::Memory {
+                action: memory::Action::Gc,
+                ..
+            })
+        ),
+        "memory gc subcommand should parse"
+    );
 }
 
 #[test]

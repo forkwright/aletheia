@@ -36,6 +36,26 @@ impl KnowledgeStore {
         self.run_mut(&queries::upsert_relationship(), params)
     }
 
+    /// Remove entities that have neither relationships nor fact references.
+    ///
+    /// The orphan predicate matches the operator-facing validation check:
+    /// entities are safe to delete only when they have no incoming or
+    /// outgoing relationships and no `fact_entities` rows pointing at them.
+    #[instrument(skip(self))]
+    pub fn remove_orphaned_entities(&self) -> crate::error::Result<usize> {
+        let orphaned_ids = self.orphaned_entity_ids()?;
+        let mut removed = 0usize;
+
+        for orphan_id in orphaned_ids {
+            let entity_id =
+                crate::id::EntityId::new(&orphan_id).context(crate::error::InvalidIdSnafu)?;
+            self.delete_entity(&entity_id)?;
+            removed = removed.saturating_add(1);
+        }
+
+        Ok(removed)
+    }
+
     /// Query 2-hop entity neighborhood.
     ///
     /// Returns a [`QueryResult`] whose rows correspond to the Datalog output of
@@ -815,6 +835,29 @@ impl KnowledgeStore {
             });
         }
         Ok(entities)
+    }
+
+    /// Return the entity IDs that can be garbage-collected safely.
+    ///
+    /// This keeps the garbage-collection command aligned with the same orphan
+    /// predicate used by the validation report: no relationships in either
+    /// direction and no facts referencing the entity.
+    pub fn orphaned_entity_ids(&self) -> crate::error::Result<Vec<String>> {
+        use std::collections::BTreeMap;
+
+        let script = r"?[id] :=
+            *entities{id},
+            not *relationships{src: id},
+            not *relationships{dst: id},
+            not *fact_entities{entity_id: id}";
+        let rows = self.run_read(script, BTreeMap::new())?;
+        let mut ids = Vec::with_capacity(rows.rows.len());
+        for row in &rows.rows {
+            if let Some(id) = row.first().and_then(|v| v.get_str()) {
+                ids.push(id.to_owned());
+            }
+        }
+        Ok(ids)
     }
 
     /// Load a single entity by ID.
