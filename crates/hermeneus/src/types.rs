@@ -676,7 +676,7 @@ impl std::str::FromStr for StopReason {
 }
 
 /// Token usage for a completion.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Usage {
     /// Input tokens consumed.
     pub input_tokens: u64,
