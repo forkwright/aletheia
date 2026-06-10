@@ -239,7 +239,7 @@ pub async fn entity_memories(
             :order -recorded_at
         ";
         let mut params = BTreeMap::new();
-        params.insert("entity_id".to_owned(), DataValue::Str(id.clone()));
+        params.insert("entity_id".to_owned(), DataValue::Str(id.clone().into()));
         let rows = store
             .run_query(script, params)
             .map_err(|e| ApiError::Internal {
@@ -386,8 +386,8 @@ pub async fn delete_entity(
         let rel_links = list_entity_relationship_links(store, entity_id.as_str())?;
         for (src, dst) in rel_links {
             let mut params = BTreeMap::new();
-            params.insert("src".to_owned(), DataValue::Str(src));
-            params.insert("dst".to_owned(), DataValue::Str(dst));
+            params.insert("src".to_owned(), DataValue::Str(src.into()));
+            params.insert("dst".to_owned(), DataValue::Str(dst.into()));
             if let Err(e) = store.run_mut_query(
                 r"?[src, dst] := *relationships{src, dst, relation, weight, created_at}, src = $src, dst = $dst :rm relationships {src, dst}",
                 params,
@@ -399,10 +399,10 @@ pub async fn delete_entity(
         let fact_links = list_entity_fact_links(store, entity_id.as_str())?;
         for fact_id in fact_links {
             let mut params = BTreeMap::new();
-            params.insert("fact_id".to_owned(), DataValue::Str(fact_id));
+            params.insert("fact_id".to_owned(), DataValue::Str(fact_id.into()));
             params.insert(
                 "entity_id".to_owned(),
-                DataValue::Str(entity_id.as_str().to_owned()),
+                DataValue::Str(entity_id.as_str().to_owned().into()),
             );
             if let Err(e) = store.run_mut_query(
                 r"?[fact_id, entity_id] := *fact_entities{fact_id, entity_id}, fact_id = $fact_id, entity_id = $entity_id :rm fact_entities {fact_id, entity_id}",
@@ -415,8 +415,8 @@ pub async fn delete_entity(
         let merge_links = list_entity_pending_merge_links(store, entity_id.as_str())?;
         for (entity_a, entity_b) in merge_links {
             let mut params = BTreeMap::new();
-            params.insert("entity_a".to_owned(), DataValue::Str(entity_a));
-            params.insert("entity_b".to_owned(), DataValue::Str(entity_b));
+            params.insert("entity_a".to_owned(), DataValue::Str(entity_a.into()));
+            params.insert("entity_b".to_owned(), DataValue::Str(entity_b.into()));
             if let Err(e) = store.run_mut_query(
                 r"?[entity_a, entity_b] := *pending_merges{entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity, type_match, alias_overlap, merge_score, created_at}, entity_a = $entity_a, entity_b = $entity_b :rm pending_merges {entity_a, entity_b}",
                 params,
@@ -428,7 +428,7 @@ pub async fn delete_entity(
         let mut params = BTreeMap::new();
         params.insert(
             "id".to_owned(),
-            DataValue::Str(entity_id.as_str().to_owned()),
+            DataValue::Str(entity_id.as_str().to_owned().into()),
         );
         store
             .run_mut_query(

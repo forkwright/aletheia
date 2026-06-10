@@ -425,9 +425,9 @@ fn load_entity_stats(
 ) -> Result<std::collections::HashMap<String, EntityStats>, ApiError> {
     use std::collections::{BTreeMap, HashMap};
 
-    let mut stats: HashMap<String, EntityStats> = HashMap::new();
+    let mut entity_stats: HashMap<String, EntityStats> = HashMap::new();
     let Some(store) = state.knowledge_store.as_ref() else {
-        return Ok(stats);
+        return Ok(entity_stats);
     };
 
     // NOTE: the entity list is already a page-sized slice, so it is safe to load
@@ -436,8 +436,8 @@ fn load_entity_stats(
         for relationship in relationships {
             let src = relationship.src.as_str().to_owned();
             let dst = relationship.dst.as_str().to_owned();
-            stats.entry(src).or_default().relationship_count += 1;
-            stats.entry(dst).or_default().relationship_count += 1;
+            entity_stats.entry(src).or_default().relationship_count += 1;
+            entity_stats.entry(dst).or_default().relationship_count += 1;
         }
     }
 
@@ -445,14 +445,14 @@ fn load_entity_stats(
     let agent_filter = build_agent_filter_clause(&query.agent, &mut params);
 
     let fact_stats_script = format!(
-        r#"
+        r"
             ?[entity_id, count(fact_id), mean(confidence)] :=
                 *fact_entities{{fact_id, entity_id}},
                 *facts{{id: fact_id, confidence, nous_id, is_forgotten, superseded_by}},
                 is_forgotten == false,
                 is_null(superseded_by)
                 {agent_filter}
-        "#
+        "
     );
 
     if let Ok(result) = store.run_query(&fact_stats_script, params) {
@@ -465,18 +465,18 @@ fn load_entity_stats(
                 .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or(0);
             let confidence = result.get_f64(row, "mean(confidence)").unwrap_or(0.0);
-            let entry = stats.entry(entity_id).or_default();
+            let entry = entity_stats.entry(entity_id).or_default();
             entry.memory_count = memory_count;
             entry.confidence = confidence;
         }
     }
 
     let pagerank_script = format!(
-        r#"
+        r"
             ?[entity_id, score] :=
                 *graph_scores{{entity_id, score_type, score}},
                 score_type == 'pagerank'
-        "#
+        "
     );
 
     let pagerank_params = BTreeMap::new();
@@ -486,11 +486,11 @@ fn load_entity_stats(
                 continue;
             };
             let page_rank = result.get_f64(row, "score").unwrap_or(0.0);
-            stats.entry(entity_id).or_default().page_rank = page_rank;
+            entity_stats.entry(entity_id).or_default().page_rank = page_rank;
         }
     }
 
-    Ok(stats)
+    Ok(entity_stats)
 }
 
 #[cfg(feature = "knowledge-store")]
