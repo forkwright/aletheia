@@ -86,7 +86,7 @@ impl ConnectionState {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectionConfig {
-    /// Base URL of the pylon server (e.g. `http://localhost:3000`).
+    /// Base URL of the pylon server (e.g. `http://localhost:18789`).
     pub server_url: String,
     /// Optional authentication token. Injected as `Authorization: Bearer <token>`.
     ///
@@ -129,8 +129,11 @@ fn default_auto_reconnect() -> bool {
 
 impl Default for ConnectionConfig {
     fn default() -> Self {
+        // WHY: skene's discovery config owns the gateway port default; deriving
+        // it here keeps this URL from drifting when that port changes.
+        let port = skene::discovery::DiscoveryConfig::default().port;
         Self {
-            server_url: "http://localhost:3000".to_string(), // kanon:ignore SECURITY/hardcoded-loopback-url -- Default impl placeholder; users set a real URL in first-launch wizard
+            server_url: format!("http://localhost:{port}"), // kanon:ignore SECURITY/hardcoded-loopback-url -- runtime loopback URL; port derived from skene discovery config, not hardcoded
             auth_token: None,
             auto_reconnect: true,
             connect_timeout_secs: DEFAULT_CONNECT_TIMEOUT.as_secs(),
@@ -253,7 +256,8 @@ mod tests {
     #[test]
     fn connection_config_default() {
         let cfg = ConnectionConfig::default();
-        assert_eq!(cfg.server_url, "http://localhost:3000");
+        let port = skene::discovery::DiscoveryConfig::default().port;
+        assert_eq!(cfg.server_url, format!("http://localhost:{port}"));
         assert!(cfg.auth_token.is_none());
         assert!(cfg.auto_reconnect);
         assert_eq!(cfg.connect_timeout_secs, 30);
@@ -293,14 +297,14 @@ mod tests {
 
     #[test]
     fn connection_config_toml_defaults_auto_reconnect() {
-        let toml_str = r#"server_url = "http://localhost:3000""#;
+        let toml_str = r#"server_url = "https://example.com:8080""#;
         let cfg: ConnectionConfig = toml::from_str(toml_str).unwrap();
         assert!(cfg.auto_reconnect);
     }
 
     #[test]
     fn connection_config_toml_defaults_connect_timeout() {
-        let toml_str = r#"server_url = "http://localhost:3000""#;
+        let toml_str = r#"server_url = "https://example.com:8080""#;
         let cfg: ConnectionConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.connect_timeout_secs, DEFAULT_CONNECT_TIMEOUT.as_secs());
     }

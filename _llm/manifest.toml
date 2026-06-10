@@ -116,7 +116,7 @@ l3_token_estimate = 1170
 [[crates]]
 name = "koilon"
 path = "crates/theatron/koilon"
-source_hash = "42b63e1cb5084410f1fa58e852f4a5289f9b184921ffb552ad8ecac0d36f3829"
+source_hash = "0d78de892a1eba630167062d63b364b154b9544d17b04db4baa3ce6d4bdc7ed7"
 l3_token_estimate = 11570
 
 [[crates]]
@@ -272,8 +272,8 @@ l3_token_estimate = 15500
 [[crates]]
 name = "skene"
 path = "crates/theatron/skene"
-source_hash = "cc73757ba59f45e9d68e1e523f823b113a4f1af6300754b06c6b45de3ec5b86f"
-l3_token_estimate = 4825
+source_hash = "1c836d038a049fb1bc2dcf337b6bff39a0f54caa2d0cb348b5cffe7081b12665"
+l3_token_estimate = 4844
 
 [[crates]]
 name = "symbolon"
@@ -290,8 +290,8 @@ l3_token_estimate = 24404
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "5d58cf2c026b6beb54eb9047e25655543018573fb20ca8434049b2a25606b1dd"
-l3_token_estimate = 22042
+source_hash = "8e4e69a26822df7b5f6c2372e24399a64d1d8e1ce26d484adf2140725340a0fb"
+l3_token_estimate = 22061
 
 [[crates]]
 name = "thesauros"

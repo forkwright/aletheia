@@ -106,6 +106,7 @@
   --tracking-tight: -0.01em;
   --tracking-normal: 0;
   --tracking-wide: 0.04em;
+  --tracking-wider: 0.1em;
 
   /* Missing spacing tokens identified by audit */
   --space-5: 1.25rem;   /* 20px */
@@ -115,4 +116,10 @@
   --z-modal: 100;
   --z-tooltip: 1000;
   --z-toast: 9999;
+
+  /* ------------------------------------------------------------------ */
+  /* Layout dimensions                                                  */
+  /* ------------------------------------------------------------------ */
+  --sidebar-width: 220px;
+  --sidebar-width-collapsed: 48px;
 }

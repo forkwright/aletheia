@@ -192,8 +192,9 @@ pub struct TurnOutcome {
     /// Session this turn belongs to.
     #[serde(rename = "sessionId", alias = "session_id")]
     pub session_id: SessionId,
-    /// Model used for this turn.
-    pub model: String,
+    /// Model used for this turn; `None` when the gateway could not resolve it.
+    #[serde(default)]
+    pub model: Option<String>,
     /// Number of tool calls made.
     #[serde(rename = "toolCalls", alias = "tool_calls", default)]
     pub tool_calls: u32,
