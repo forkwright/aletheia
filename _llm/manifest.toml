@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "06f8d55c46e9c5da4ff70e29527bc38c879c5c80ccd6fe7fb9113a5122d5802c"
+source_hash = "5bb58fdea5dd3f3fdbf8e32e49fc3b139dd0b32cf16626256eb25fbeff4b0644"
 l3_token_estimate = 167
 
 [[crates]]
@@ -86,8 +86,8 @@ l3_token_estimate = 20097
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "43fa591013c0471deca7f194567ab76de1043923975ca9e271336ed753a94a1d"
-l3_token_estimate = 32790
+source_hash = "770e958f9812d2bd1482b6fcbb9e51775538ad0b3866f98509eb657bed6269cd"
+l3_token_estimate = 32863
 
 [[crates]]
 name = "gnosis"
@@ -128,8 +128,8 @@ l3_token_estimate = 7453
 [[crates]]
 name = "krites"
 path = "crates/krites"
-source_hash = "50fe968a79e7515cffcf18b7855cc7ca54af4ec1b61300a3f72ef7f103f3e30e"
-l3_token_estimate = 9904
+source_hash = "508129f78819572d7c09b9f0c881b30b042d8527a614eee7dc338627495f5466"
+l3_token_estimate = 10102
 
 [[crates]]
 name = "melete"
@@ -266,7 +266,7 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "2e04af61bf5d5794c1b919a072328a9dd2047c8b5e5e7765fbb731ae8b94fb3a"
+source_hash = "da0e59e688da5dbc73999dfca5e2795cac9ff575866cee0a9ab5a67e3db3d453"
 l3_token_estimate = 17595
 
 [[crates]]

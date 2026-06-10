@@ -346,9 +346,8 @@ async fn get_entity_missing_returns_404() {
         event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
     };
 
-    let err = match get_entity(State(state), Path("missing-entity".to_owned())).await {
-        Ok(_) => panic!("missing entity should return an error"),
-        Err(err) => err,
+    let Err(err) = get_entity(State(state), Path("missing-entity".to_owned())).await else {
+        panic!("missing entity should return an error");
     };
     match err {
         ApiError::NotFound { path, .. } => {
