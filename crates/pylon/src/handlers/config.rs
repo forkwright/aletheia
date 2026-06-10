@@ -18,6 +18,7 @@ const VALID_SECTIONS: &[&str] = &[
     "gateway",
     "channels",
     "bindings",
+    "feature_flags",
     "embedding",
     "data",
     "packs",
@@ -29,7 +30,8 @@ const VALID_SECTIONS: &[&str] = &[
 mod config_dto;
 pub use config_dto::{
     AgentsConfig, ChannelBinding, ChannelsConfig, ConfigReloadResponse, ConfigUpdateResponse,
-    DataConfig, EmbeddingSettings, GatewayConfig, MaintenanceConfig, ModelPricing,
+    DataConfig, EmbeddingSettings, FeatureFlagConfig, GatewayConfig, MaintenanceConfig,
+    ModelPricing,
 };
 
 pub use section_schemas::*; // kanon:ignore RUST/barrel-reexport -- WHY: section_schemas is a private submodule; the pub use glob is the intended public API surface for config endpoint types
@@ -38,8 +40,8 @@ pub use section_schemas::*; // kanon:ignore RUST/barrel-reexport -- WHY: section
 mod section_schemas {
     use crate::error::{ApiError, FieldError};
     use crate::handlers::config::config_dto::{
-        AgentsConfig, ChannelBinding, ChannelsConfig, DataConfig, EmbeddingSettings, GatewayConfig,
-        MaintenanceConfig, ModelPricing,
+        AgentsConfig, ChannelBinding, ChannelsConfig, DataConfig, EmbeddingSettings,
+        FeatureFlagConfig, GatewayConfig, MaintenanceConfig, ModelPricing,
     };
     use std::collections::HashMap;
 
@@ -60,6 +62,7 @@ mod section_schemas {
         Gateway(Value),
         Channels(Value),
         Bindings(Value),
+        FeatureFlags(Value),
         Embedding(Value),
         Data(Value),
         Packs(Value),
@@ -74,6 +77,7 @@ mod section_schemas {
                 .item(GatewayConfig::schema())
                 .item(ChannelsConfig::schema())
                 .item(Vec::<ChannelBinding>::schema())
+                .item(Vec::<FeatureFlagConfig>::schema())
                 .item(EmbeddingSettings::schema())
                 .item(DataConfig::schema())
                 .item(Vec::<String>::schema())
@@ -94,6 +98,10 @@ mod section_schemas {
             schemas.push((GatewayConfig::name().into(), GatewayConfig::schema()));
             schemas.push((ChannelsConfig::name().into(), ChannelsConfig::schema()));
             schemas.push((ChannelBinding::name().into(), ChannelBinding::schema()));
+            schemas.push((
+                FeatureFlagConfig::name().into(),
+                FeatureFlagConfig::schema(),
+            ));
             schemas.push((
                 EmbeddingSettings::name().into(),
                 EmbeddingSettings::schema(),
@@ -166,6 +174,10 @@ mod section_schemas {
                 "bindings" => {
                     serde_json::from_value::<Vec<taxis::config::ChannelBinding>>(value.clone())
                         .map(|_| Self::Bindings(value))
+                }
+                "feature_flags" => {
+                    serde_json::from_value::<Vec<taxis::config::FeatureFlagConfig>>(value.clone())
+                        .map(|_| Self::FeatureFlags(value))
                 }
                 "embedding" => {
                     serde_json::from_value::<taxis::config::EmbeddingSettings>(value.clone())
@@ -421,6 +433,7 @@ pub async fn update_section(
         | ConfigSectionPayload::Gateway(v)
         | ConfigSectionPayload::Channels(v)
         | ConfigSectionPayload::Bindings(v)
+        | ConfigSectionPayload::FeatureFlags(v)
         | ConfigSectionPayload::Embedding(v)
         | ConfigSectionPayload::Data(v)
         | ConfigSectionPayload::Packs(v)

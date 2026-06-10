@@ -128,6 +128,7 @@ use crate::state::AppState;
         crate::handlers::config::AgentsConfig,
         crate::handlers::config::GatewayConfig,
         crate::handlers::config::ChannelsConfig,
+        crate::handlers::config::FeatureFlagConfig,
         crate::handlers::config::ChannelBinding,
         crate::handlers::config::EmbeddingSettings,
         crate::handlers::config::DataConfig,

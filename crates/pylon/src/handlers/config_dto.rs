@@ -27,6 +27,16 @@ pub struct ConfigReloadResponse {
     pub changed: Vec<String>,
 }
 
+/// Schema for a single feature flag entry.
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureFlagConfig {
+    pub key: String,
+    pub description: String,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 /// Schema for the `agents` config section.
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
