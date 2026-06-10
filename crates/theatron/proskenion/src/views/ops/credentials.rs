@@ -1,7 +1,7 @@
 //! Credential management panel: display, validate, rotate, add, and remove credentials.
 //!
-//! TODO(#107)[deliberate-prudent]: move CredentialApiEntry and related request types to skene
-//! when /api/system/credentials is implemented in pylon.
+//! NOTE: keep `CredentialApiEntry` and related request types local until
+//! pylon exposes `/api/system/credentials`.
 
 use dioxus::prelude::*;
 

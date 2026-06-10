@@ -12,7 +12,7 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 
 1. `src/lib.rs`: Module structure and re-exports from eidos/graphe
 2. `src/extract/mod.rs`: ExtractionEngine, ExtractionProvider trait, extracted types
-3. `src/recall/mod.rs`: RecallEngine 11-factor scoring (recency, relevance, confidence, access, tier, graph, surprise, evidence coverage, convergence, serendipity, decay)
+3. `src/recall/mod.rs`: RecallEngine 11-factor scoring (vector similarity, decay, relevance, epistemic tier, relationship proximity, access frequency, graph importance, serendipity, surprise, evidence coverage, convergence)
 4. `src/knowledge_store/mod.rs`: Knowledge store facade (Datalog schema, HNSW index)
 5. `src/conflict.rs`: Conflict detection pipeline for fact insertion
 6. `src/embedding.rs`: EmbeddingProvider trait, CandelProvider, MockEmbeddingProvider
@@ -44,7 +44,7 @@ Knowledge pipeline: extraction, recall, conflict detection, consolidation, embed
 
 ## Patterns
 
-- **11-factor recall**: recency, relevance, confidence, access frequency, knowledge tier, graph intelligence, surprise, evidence coverage, convergence, serendipity, decay. Weighted sum produces final score.
+- **11-factor recall**: vector similarity, decay, relevance, epistemic tier, relationship proximity, access frequency, graph importance, serendipity, surprise, evidence coverage, convergence. Weighted sum produces final score.
 - **Conflict pipeline**: new facts checked against existing via embedding similarity. Classified as contradiction, supersession, elaboration, or independent.
 - **Extraction refinement**: turn classification, correction detection, quality filters, and fact type classification in `extract/refinement`.
 - **Serendipity engine**: cross-domain discovery and surprise scoring in `serendipity/mod.rs`.

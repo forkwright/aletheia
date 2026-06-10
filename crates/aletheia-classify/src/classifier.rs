@@ -75,7 +75,7 @@ pub struct ArtifactMetadata {
     pub producer: String,
     /// Timestamp when the artifact was produced.
     pub produced_at: String,
-    /// Model type (e.g. "heuristic_rule_bank").
+    /// Model type (e.g. `heuristic_rule_bank`).
     pub model_type: String,
     /// Array of class names in index order.
     pub classes: Vec<String>,
@@ -105,7 +105,7 @@ impl ArtifactMetadata {
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct AuthorProbs {
-    /// Per-class probability scores [user, subagent, system_scaffolding, template].
+    /// Per-class probability scores [user, subagent, `system_scaffolding`, template].
     pub probabilities: [f32; 4],
     /// Timestamp of classification.
     pub classified_at: Timestamp,
@@ -120,8 +120,7 @@ impl AuthorProbs {
             .iter()
             .enumerate()
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(idx, _)| idx)
-            .unwrap_or(0);
+            .map_or(0, |(idx, _)| idx);
         AuthorClass::from_index(max_idx).unwrap_or(AuthorClass::User)
     }
 
@@ -177,6 +176,10 @@ impl Classifier {
     /// # Errors
     ///
     /// Returns an error if metadata cannot be read, parsed, or validated.
+    #[expect(
+        clippy::unused_async,
+        reason = "public API stays async for future async artifact loading"
+    )]
     pub async fn load(artifact_dir: &Path) -> Result<Self> {
         let metadata_path = artifact_dir.join("metadata.json");
 
@@ -246,7 +249,11 @@ impl Default for Classifier {
 
 /// Compute per-class probabilities from surface features.
 ///
-/// Returns a 4-element array: [user, subagent, system_scaffolding, template].
+/// Returns a 4-element array: [user, subagent, `system_scaffolding`, template].
+#[expect(
+    clippy::too_many_lines,
+    reason = "keeping the heuristic rule bank together makes the scoring logic easier to audit"
+)]
 fn heuristic_probabilities(text: &str) -> [f32; 4] {
     let lower = text.to_lowercase();
     let len = text.chars().count();
@@ -283,8 +290,7 @@ fn heuristic_probabilities(text: &str) -> [f32; 4] {
         .trim_start()
         .chars()
         .next()
-        .map(char::is_lowercase)
-        .unwrap_or(false)
+        .is_some_and(char::is_lowercase)
     {
         human_score += 1.5;
     }
@@ -470,6 +476,14 @@ fn is_emoji(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::expect_used,
+        clippy::float_cmp,
+        clippy::indexing_slicing,
+        clippy::cast_precision_loss,
+        reason = "test-only golden checks intentionally use direct equality, indexing, and panic-on-failure asserts"
+    )]
+
     use super::*;
 
     #[test]

@@ -16,7 +16,7 @@ Module and crate names use Greek terms reflecting their essential nature (nous =
 
 ## Current substrate shape
 
-The current runtime is a 47-crate workspace plus the excluded `proskenion`
+The current runtime is a 48-crate workspace plus the excluded `proskenion`
 desktop shell. The compact generated inventory lives in
 [`_llm/L1-workspace.md`](../_llm/L1-workspace.md); this document describes the
 human architecture and invariants.
@@ -134,7 +134,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust crate workspace
 
-47 crates in the workspace, with `proskenion` excluded and built via its own
+48 crates in the workspace, with `proskenion` excluded and built via its own
 manifest. The table below calls out the primary architecture crates; the full
 generated inventory is `_llm/L1-workspace.md`.
 
@@ -230,8 +230,8 @@ Additional workspace crates include `aletheia-classify`, `aletheia-lexica`,
 `aletheia-memory-mcp`, `aletheia-routing`, `aletheia-sessions-migrate`,
 `gnosis`, and the poiesis backend/helper crates (`poiesis-doc`,
 `poiesis-diff`, `poiesis-inspect`, `poiesis-intake`, `poiesis-scaffold`,
-`poiesis-typst`). Keep the generated `_llm/L1-workspace.md` list in sync when
-workspace membership changes.
+`poiesis-text`, `poiesis-typst`). Keep the generated `_llm/L1-workspace.md`
+list in sync when workspace membership changes.
 
 ### Mneme facade
 

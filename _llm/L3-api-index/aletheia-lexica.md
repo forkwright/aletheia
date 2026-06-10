@@ -192,7 +192,7 @@ pub const CORRECTION_PREFIXES: &[&str] = &[
 
 ## `src/stopwords.rs`
 
-> Comprehensive English stopwords for terminology discovery and text filtering.
+> English stopwords for terminology discovery and text filtering.
 > 
 > Covers prepositions, pronouns, auxiliary verbs, determiners, and common
 > conjunctions. Sourced from `nous/src/recall/reranking.rs`.
