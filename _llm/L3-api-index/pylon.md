@@ -238,6 +238,7 @@ pub enum ConfigSectionPayload {
         Gateway(Value),
         Channels(Value),
         Bindings(Value),
+        FeatureFlags(Value),
         Embedding(Value),
         Data(Value),
         Packs(Value),
@@ -298,6 +299,15 @@ pub struct ConfigReloadResponse {
     pub restart_required: Vec<String>,
     /// All changed field paths (both hot and cold).
     pub changed: Vec<String>,
+}
+```
+
+```rust
+pub struct FeatureFlagConfig {
+    pub key: String,
+    pub description: String,
+    #[serde(default)]
+    pub enabled: bool,
 }
 ```
 
@@ -1098,6 +1108,24 @@ pub async fn tools (
 ```
 
 ```rust
+pub async fn update_enabled (
+    State(state): State<NousState>,
+    claims: Claims,
+    Path(id): Path<String>,
+    Json(body): Json<NousToggleRequest>,
+) -> Result<Json<NousSummary>, ApiError>
+```
+
+```rust
+pub async fn update_tool (
+    State(state): State<NousState>,
+    claims: Claims,
+    Path(id): Path<String>,
+    Json(body): Json<ToolToggleRequest>,
+) -> Result<Json<ToolsResponse>, ApiError>
+```
+
+```rust
 pub async fn recover (
     State(state): State<NousState>,
     claims: Claims,
@@ -1163,10 +1191,14 @@ pub struct NousSummary {
     pub id: String,
     /// Human-readable display name (falls back to `id`).
     pub name: String,
+    /// Whether the agent is enabled in the operator surface.
+    pub enabled: bool,
     /// LLM model assigned to this agent.
     pub model: String,
     /// Lifecycle status (e.g. `"active"`).
     pub status: String,
+    /// Tool toggle summaries for the agent.
+    pub tools: Vec<ToolSummary>,
 }
 ```
 
@@ -1202,6 +1234,8 @@ pub struct ToolsResponse {
 pub struct ToolSummary {
     /// Tool name as sent to the LLM.
     pub name: String,
+    /// Whether the tool is enabled for this agent.
+    pub enabled: bool,
     /// Human-readable description.
     pub description: String,
     /// Tool category (e.g. `"Builtin"`, `"Pack"`).
@@ -1211,6 +1245,66 @@ pub struct ToolSummary {
     /// When `false` the tool is lazy and must be activated via `enable_tool`
     /// before the agent can use it.
     pub auto_activate: bool,
+}
+```
+
+```rust
+pub struct NousToggleRequest {
+    /// Whether the agent should be enabled.
+    pub enabled: bool,
+}
+```
+
+```rust
+pub struct ToolToggleRequest {
+    /// Tool name to toggle.
+    pub tool: String,
+    /// Whether the tool should be enabled.
+    pub enabled: bool,
+}
+```
+
+## `src/handlers/ops.rs`
+
+```rust
+pub async fn tools (
+    State(state): State<OpsState>,
+    claims: Claims,
+) -> Result<Json<OpsToolsResponse>, ApiError>
+```
+
+## `src/handlers/ops_dto.rs`
+
+```rust
+pub struct ActiveTool {
+    /// Tool display name.
+    pub name: String,
+    /// Tool identifier used by the registry.
+    pub id: String,
+}
+```
+
+```rust
+pub struct ToolHistoryEntry {
+    /// Tool name.
+    pub name: String,
+    /// Whether the call ended in an error outcome.
+    pub is_error: bool,
+    /// Call duration in milliseconds.
+    pub duration_ms: u64,
+}
+```
+
+```rust
+pub struct OpsToolsResponse {
+    /// Currently active tool registry entries.
+    pub active_tools: Vec<ActiveTool>,
+    /// Historical tool calls, if the runtime has a history source.
+    pub tool_history: Vec<ToolHistoryEntry>,
+    /// Total recorded tool calls from organon metrics.
+    pub total_calls: u64,
+    /// Total recorded error calls from organon metrics.
+    pub total_errors: u64,
 }
 ```
 
@@ -1395,6 +1489,10 @@ pub struct StreamTurnRequest {
 pub struct ListSessionsParams {
     /// Filter sessions by agent ID.
     pub nous_id: Option<String>,
+    /// Case-insensitive search across session id, key, status, and display name.
+    pub search: Option<String>,
+    /// Filter sessions by lifecycle status (`active`, `archived`, `distilled`).
+    pub status: Option<String>,
     /// Maximum number of sessions to return (default 50, max 1000).
     pub limit: Option<u32>,
     /// Cursor token from a previous response's `next_cursor` field.
@@ -2193,11 +2291,22 @@ pub struct MetricsState {
 ```
 
 ```rust
+pub struct OpsState {
+    /// Registry of tools available to nous agents.
+    pub tool_registry: Arc<ToolRegistry>,
+}
+```
+
+```rust
 pub struct NousState {
     /// Manages nous actor lifecycles and provides handles.
     pub nous_manager: Arc<NousManager>,
     /// Registry of tools available to nous agents.
     pub tool_registry: Arc<ToolRegistry>,
+    /// Runtime configuration used for persisted nous toggle intent.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// Broadcast channel for config change notifications.
+    pub config_tx: tokio::sync::watch::Sender<AletheiaConfig>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
 }

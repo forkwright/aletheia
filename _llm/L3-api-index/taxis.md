@@ -256,6 +256,9 @@ pub struct NousDefinition {
     /// Human-readable display name.
     #[serde(default)]
     pub name: Option<String>,
+    /// Whether the agent is enabled in the operator surface.
+    #[serde(default = "default_agent_enabled")]
+    pub enabled: bool,
     /// Model override; when `None`, inherits from `AgentDefaults`.
     #[serde(default)]
     pub model: Option<ModelSpec>,
@@ -285,6 +288,9 @@ pub struct NousDefinition {
     /// Recall pipeline override; when `None`, inherits from [`AgentDefaults::recall`].
     #[serde(default)]
     pub recall: Option<RecallSettings>,
+    /// Tool allowlist override; when `None`, all tools are enabled.
+    #[serde(default)]
+    pub tool_allowlist: Option<Vec<String>>,
     /// Named recall behavior profile; when `None`, resolves to [`RecallProfile::Default`].
     #[serde(default)]
     pub recall_profile: Option<RecallProfile>,
@@ -1206,6 +1212,20 @@ pub struct TuningConfig {
 }
 ```
 
+## `src/config/feature_flags.rs`
+
+```rust
+pub struct FeatureFlagConfig {
+    /// Stable flag identifier.
+    pub key: String,
+    /// Human-readable description of what the flag controls.
+    pub description: String,
+    /// Whether the feature is currently enabled.
+    #[serde(default)]
+    pub enabled: bool,
+}
+```
+
 ## `src/config/gateway.rs`
 
 ```rust
@@ -1654,6 +1674,10 @@ pub struct AletheiaConfig {
     pub channels: ChannelsConfig,
     /// Routes mapping channel sources to nous agents.
     pub bindings: Vec<ChannelBinding>,
+    /// Operator-controlled feature toggles surfaced through the config API.
+    #[serde(rename = "feature_flags")]
+    #[serde(default)]
+    pub feature_flags: Vec<FeatureFlagConfig>,
     /// Embedding provider configuration for the recall pipeline.
     pub embedding: EmbeddingSettings,
     /// External domain pack paths (directories containing pack.toml).

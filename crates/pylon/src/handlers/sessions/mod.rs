@@ -30,6 +30,21 @@ use crate::error::{
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::SessionsState;
 
+fn session_matches_search(session: &mneme::types::Session, search: &str) -> bool {
+    let search = search.to_lowercase();
+    let fields = [
+        session.id.as_str(),
+        session.nous_id.as_str(),
+        session.session_key.as_str(),
+        session.status.as_str(),
+        session.origin.display_name.as_deref().unwrap_or(""),
+    ];
+
+    fields
+        .into_iter()
+        .any(|field| field.to_lowercase().contains(&search))
+}
+
 /// POST /api/v1/sessions: create a new session.
 ///
 /// # Cancel safety
@@ -150,6 +165,8 @@ pub async fn create(
     path = "/api/v1/sessions",
     params(
         ("nous_id" = Option<String>, Query, description = "Filter sessions by agent ID"),
+        ("search" = Option<String>, Query, description = "Case-insensitive substring search across session id, key, status, and display name"),
+        ("status" = Option<String>, Query, description = "Filter sessions by lifecycle status (active, archived, distilled)"),
         ("limit" = Option<u32>, Query, description = "Maximum number of sessions to return (default 50, max 1000)"),
         ("after" = Option<String>, Query, description = "Cursor token from a previous response's next_cursor field"),
     ),
@@ -179,6 +196,18 @@ pub async fn list_sessions(
         (Some(scoped), _) => Some(scoped.to_owned()),
         (None, requested) => requested.map(str::to_owned),
     };
+    let search = params
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    let status = params
+        .status
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_ascii_lowercase());
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
     let state_clone = state.clone();
@@ -189,6 +218,20 @@ pub async fn list_sessions(
             .map_err(ApiError::from)
     })
     .await??;
+
+    let sessions: Vec<_> = sessions
+        .into_iter()
+        .filter(|session| {
+            search
+                .as_deref()
+                .is_none_or(|query| session_matches_search(session, query))
+        })
+        .filter(|session| {
+            status
+                .as_deref()
+                .is_none_or(|requested| session.status.as_str() == requested)
+        })
+        .collect();
 
     let total = u64::try_from(sessions.len()).unwrap_or(u64::MAX);
     let items: Vec<SessionListItem> = sessions
