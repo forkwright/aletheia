@@ -195,6 +195,7 @@ pub(super) fn render_config(a: &Answers) -> String {
     // works regardless of where the instance directory is placed on disk.
     // Oikos::validate_workspace_path resolves relative paths against the root.
     let workspace = format!("nous/{}", a.agent_id);
+    let pricing_key = toml_edit::Key::new(&a.model).to_string();
     let mut config = format!(
         r#"# Aletheia Instance Configuration
 # Config cascade: compiled defaults -> this file -> ALETHEIA_* env vars
@@ -275,7 +276,7 @@ workspace = "{workspace}"
 # warn_threshold_mb = 100
 
 # --- Cost tracking ---
-[pricing.{model}]
+[pricing.{pricing_key}]
 inputCostPerMtok = 3.0
 outputCostPerMtok = 15.0
 
@@ -286,6 +287,7 @@ source = "{credential_source}"
         bind = a.bind,
         auth_mode = a.auth_mode,
         model = a.model,
+        pricing_key = pricing_key,
         timezone = a.timezone,
         agent_id = a.agent_id,
         agent_name = a.agent_name,
@@ -317,7 +319,9 @@ extraExecPaths = ["~"]
 
 #[cfg(test)]
 mod tests {
-    use super::pronoea_template;
+    use std::path::PathBuf;
+
+    use super::{Answers, pronoea_template, render_config};
 
     const TEMPLATE_PROSOCHE: &str =
         include_str!("../../../../instance.example/nous/_template/PROSOCHE.md");
@@ -355,6 +359,33 @@ mod tests {
             assert!(
                 numbered_check_count(content) <= 5,
                 "{name} must fit within the 5-tool-call heartbeat budget"
+            );
+        }
+    }
+
+    #[test]
+    fn render_config_emits_valid_toml_for_any_model_id() {
+        for model in [
+            "codex/gpt-5-codex",
+            "kimi/kimi-k2-thinking",
+            "claude-sonnet-4-6",
+        ] {
+            let answers = Answers {
+                root: PathBuf::from("/tmp/aletheia-init"),
+                api_key: None,
+                api_provider: "anthropic".to_owned(),
+                model: model.to_owned(),
+                agent_id: "alice".to_owned(),
+                agent_name: "Alice".to_owned(),
+                bind: "localhost".to_owned(),
+                auth_mode: "none".to_owned(),
+                timezone: "America/Chicago".to_owned(),
+                credential_source: "auto".to_owned(),
+            };
+
+            assert!(
+                toml::from_str::<toml::Value>(&render_config(&answers)).is_ok(),
+                "rendered config must parse for model id {model}"
             );
         }
     }

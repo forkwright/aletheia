@@ -112,6 +112,7 @@ toml_edit = "0.25"
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+hermeneus = { path = "../hermeneus", features = ["test-support"] }
 mneme = { path = "../mneme", features = ["test-support"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
