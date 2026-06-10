@@ -362,11 +362,7 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
                 }
             }
             ProviderKind::Anthropic => {
-                // Already registered via the credential-chain path above.
-                tracing::debug!(
-                    provider = %entry.name,
-                    "declarative Anthropic entry skipped — provider already registered via credential chain"
-                );
+                register_declared_anthropic(registry, entry);
             }
             ProviderKind::ClaudeCode => {
                 // WHY: declarative registration of the CC adapter would
@@ -399,6 +395,63 @@ fn register_declared_providers(registry: &mut ProviderRegistry, config: &Alethei
                 );
             }
         }
+    }
+}
+
+/// Register a declarative Anthropic-protocol provider entry.
+///
+/// WHY: the first-party Anthropic provider is registered by the
+/// credential-chain path in [`build_provider_registry`], so a declarative
+/// entry without its own credential would double-register it. An entry
+/// naming its own `apiKeyEnv` is a distinct Anthropic-protocol endpoint
+/// (proxy, self-hosted, or a compatible third-party host) and registers
+/// independently with its configured base URL and model claims.
+fn register_declared_anthropic(
+    registry: &mut ProviderRegistry,
+    entry: &taxis::config::LlmProviderConfig,
+) {
+    let Some(env_name) = entry.api_key_env.as_deref() else {
+        tracing::debug!(
+            provider = %entry.name,
+            "declarative Anthropic entry without apiKeyEnv skipped — first-party provider is registered via the credential chain"
+        );
+        return;
+    };
+    let key = match std::env::var(env_name) {
+        Ok(v) if !v.is_empty() => SecretString::from(v),
+        _ => {
+            warn!(
+                provider = %entry.name,
+                env = env_name,
+                "apiKeyEnv unset or empty for declarative Anthropic provider — skipping"
+            );
+            return;
+        }
+    };
+    let cfg = ProviderConfig {
+        api_key: Some(key),
+        base_url: entry.base_url.clone(),
+        name: Some(entry.name.clone()),
+        models: entry.models.clone(),
+        deployment_target: map_deployment_target(entry.deployment_target),
+        ..ProviderConfig::default()
+    };
+    match AnthropicProvider::from_config(&cfg) {
+        Ok(provider) => {
+            info!(
+                provider = %entry.name,
+                target = ?entry.deployment_target,
+                base_url = ?entry.base_url,
+                models = ?entry.models,
+                "Anthropic-protocol provider registered"
+            );
+            registry.register(Box::new(provider));
+        }
+        Err(e) => warn!(
+            provider = %entry.name,
+            error = %e,
+            "failed to init declarative Anthropic provider"
+        ),
     }
 }
 
@@ -883,6 +936,60 @@ mod tests {
         assert_eq!(
             configured_openai_api_family(&entry),
             HermeneusOpenAiApiFamily::ChatCompletions
+        );
+    }
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var requires unsafe in edition 2024; nextest isolates each test in its own process"
+    )]
+    #[test]
+    fn declarative_anthropic_with_own_key_registers() {
+        use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
+
+        // SAFETY: nextest runs this test in its own process; no other
+        // thread reads or mutates the environment concurrently.
+        unsafe { std::env::set_var("TEST_DECL_ANTHROPIC_KEY", "sk-test-123") };
+        let mut config = AletheiaConfig::default();
+        config.providers.push(LlmProviderConfig {
+            name: "kimi-coding".to_owned(),
+            kind: ProviderKind::Anthropic,
+            base_url: Some("https://compat.api.example.com".to_owned()),
+            api_key_env: Some("TEST_DECL_ANTHROPIC_KEY".to_owned()),
+            api_family: None,
+            deployment_target: DeploymentTarget::Cloud,
+            models: vec!["kimi-for-coding".to_owned()],
+        });
+        let mut registry = ProviderRegistry::new();
+        register_declared_providers(&mut registry, &config);
+        assert!(
+            registry.find_provider("kimi-for-coding").is_some(),
+            "declarative Anthropic-protocol entry with its own key must register and claim its models"
+        );
+        assert!(
+            registry.find_provider("claude-opus-4-6").is_none(),
+            "custom-model instance must not claim first-party models"
+        );
+    }
+
+    #[test]
+    fn declarative_anthropic_without_key_env_is_skipped() {
+        use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
+
+        let mut config = AletheiaConfig::default();
+        config.providers.push(LlmProviderConfig {
+            name: "anthropic-cloud".to_owned(),
+            kind: ProviderKind::Anthropic,
+            base_url: None,
+            api_key_env: None,
+            api_family: None,
+            deployment_target: DeploymentTarget::Cloud,
+            models: Vec::new(),
+        });
+        let mut registry = ProviderRegistry::new();
+        register_declared_providers(&mut registry, &config);
+        assert!(
+            registry.find_provider("claude-opus-4-6").is_none(),
+            "entry without apiKeyEnv defers to the credential-chain registration"
         );
     }
 }

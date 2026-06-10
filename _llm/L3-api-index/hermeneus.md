@@ -111,6 +111,17 @@ pub struct AnthropicProvider {
     /// markers are scrubbed before the wire request is built so operator
     /// content never enters Anthropic's prompt cache.
     prompt_cache_mode: PromptCacheMode,
+    /// Instance name for logs, health tracking, and registry diagnostics.
+    /// `"anthropic"` for the first-party endpoint; operator-declared
+    /// compatible endpoints carry their config name (e.g. `"kimi-coding"`).
+    instance_name: String,
+    /// Model IDs this instance claims for registry routing. The first-party
+    /// catalog by default; an operator-declared compatible endpoint claims
+    /// exactly its configured model list instead.
+    model_refs: &'static [&'static str],
+    /// Where this instance's traffic terminates, for the recall
+    /// sensitivity filter (#3404, #3413).
+    deployment_target: DeploymentTarget,
 }
 ```
 
@@ -1283,6 +1294,19 @@ pub struct ProviderConfig {
     /// unconfigured provider speaks to an external service.
     #[serde(default)]
     pub deployment_target: DeploymentTarget,
+    /// Instance name for logs, health tracking, and registry diagnostics.
+    /// `None` uses the implementation's static name (e.g. `"anthropic"`).
+    /// Set when declaring multiple instances of one provider type so each
+    /// is distinguishable (e.g. first-party Anthropic plus a compatible
+    /// third-party endpoint).
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Model identifiers this instance claims for registry routing. Empty
+    /// uses the implementation's built-in catalog. Set when the endpoint
+    /// serves models outside that catalog (e.g. an Anthropic-protocol
+    /// endpoint hosting non-Anthropic models).
+    #[serde(default)]
+    pub models: Vec<String>,
 }
 ```
 

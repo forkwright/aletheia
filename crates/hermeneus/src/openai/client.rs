@@ -20,7 +20,7 @@ use koina::secret::SecretString;
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
-use crate::provider::{DeploymentTarget, LlmProvider};
+use crate::provider::{DeploymentTarget, LlmProvider, leak_models};
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::error::{map_error_response, map_request_error};
@@ -603,24 +603,6 @@ fn record_stream_success(
         true,
     );
     crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
-}
-
-/// Leak a `Vec<String>` of model IDs to a `&'static [&'static str]` slice.
-///
-/// Called once at provider construction so [`LlmProvider::supported_models`]
-/// can return a borrowed static slice — the provider outlives every request
-/// in normal operation, and leaking keeps the trait signature (`&[&str]`)
-/// simple without forcing every caller into dynamic storage.
-fn leak_models(models: &[String]) -> &'static [&'static str] {
-    let leaked: Vec<&'static str> = models
-        .iter()
-        .map(|s| {
-            let boxed: Box<str> = s.clone().into_boxed_str();
-            let static_ref: &'static str = Box::leak(boxed);
-            static_ref
-        })
-        .collect();
-    Box::leak(leaked.into_boxed_slice())
 }
 
 impl std::fmt::Debug for OpenAiProvider {

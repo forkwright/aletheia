@@ -14,7 +14,7 @@ use super::*;
 use crate::anthropic::pricing::{backoff_delay, estimate_cost, model_family};
 use crate::error::Error;
 use crate::models::BACKOFF_MAX_MS;
-use crate::provider::{LlmProvider, ProviderConfig};
+use crate::provider::{DeploymentTarget, LlmProvider, ProviderConfig};
 use crate::types::{CompletionRequest, Content, Message, Role};
 
 fn test_config_with(base_url: &str) -> ProviderConfig {
@@ -28,6 +28,8 @@ fn test_config_with(base_url: &str) -> ProviderConfig {
         cc_mimicry: None,
         prompt_cache_mode: crate::provider::PromptCacheMode::Disabled,
         deployment_target: crate::provider::DeploymentTarget::Cloud,
+        name: None,
+        models: Vec::new(),
     }
 }
 
@@ -102,6 +104,51 @@ fn from_config_valid() {
         debug.contains("custom.api.example.com"),
         "debug should show base_url: {debug}"
     );
+}
+
+#[test]
+fn from_config_custom_models_claim_routing() {
+    let config = ProviderConfig {
+        // NOTE: test-only fixture value, not a real credential
+        api_key: Some(SecretString::from("sk-test-123")),
+        base_url: Some("https://compat.api.example.com".to_owned()),
+        name: Some("kimi-coding".to_owned()),
+        models: vec!["kimi-for-coding".to_owned()],
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    assert_eq!(provider.name(), "kimi-coding");
+    assert_eq!(provider.supported_models(), ["kimi-for-coding"]);
+    assert!(provider.supports_model("kimi-for-coding"));
+    assert!(
+        !provider.supports_model("claude-opus-4-6"),
+        "custom-model instance must not claim first-party models"
+    );
+}
+
+#[test]
+fn from_config_default_models_and_name_unchanged() {
+    let config = ProviderConfig {
+        // NOTE: test-only fixture value, not a real credential
+        api_key: Some(SecretString::from("sk-test-123")),
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    assert_eq!(provider.name(), "anthropic");
+    assert!(provider.supports_model("claude-opus-4-6"));
+}
+
+#[test]
+fn from_config_deployment_target_propagates() {
+    let config = ProviderConfig {
+        // NOTE: test-only fixture value, not a real credential
+        api_key: Some(SecretString::from("sk-test-123")),
+        base_url: Some("https://compat.api.example.com".to_owned()),
+        deployment_target: DeploymentTarget::LocalHosted,
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    assert_eq!(provider.deployment_target(), DeploymentTarget::LocalHosted);
 }
 
 #[tokio::test]

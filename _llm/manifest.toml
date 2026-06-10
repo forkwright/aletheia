@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "0c89c38a3c02ac051eb03ce9c2d87c259607deca7e73fcc2b8accb6cbaa4ff4c"
+source_hash = "4b0670282da3d7f08ffcd97ca366ecb08228e5805ef35214300454b09df70452"
 l3_token_estimate = 167
 
 [[crates]]
@@ -104,8 +104,8 @@ l3_token_estimate = 5222
 [[crates]]
 name = "hermeneus"
 path = "crates/hermeneus"
-source_hash = "78921499777a967cd716d113b895d177980d21b6dd5b0a5c6e078b5f69117ce4"
-l3_token_estimate = 13362
+source_hash = "6438ff4c4173ef4fa0b9ee5bd431ea74874cba2c1da356d908a824e63e5e97a0"
+l3_token_estimate = 13698
 
 [[crates]]
 name = "integration-tests"

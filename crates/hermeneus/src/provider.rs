@@ -240,6 +240,19 @@ pub struct ProviderConfig {
     /// unconfigured provider speaks to an external service.
     #[serde(default)]
     pub deployment_target: DeploymentTarget,
+    /// Instance name for logs, health tracking, and registry diagnostics.
+    /// `None` uses the implementation's static name (e.g. `"anthropic"`).
+    /// Set when declaring multiple instances of one provider type so each
+    /// is distinguishable (e.g. first-party Anthropic plus a compatible
+    /// third-party endpoint).
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Model identifiers this instance claims for registry routing. Empty
+    /// uses the implementation's built-in catalog. Set when the endpoint
+    /// serves models outside that catalog (e.g. an Anthropic-protocol
+    /// endpoint hosting non-Anthropic models).
+    #[serde(default)]
+    pub models: Vec<String>,
 }
 
 impl std::fmt::Debug for ProviderConfig {
@@ -253,6 +266,8 @@ impl std::fmt::Debug for ProviderConfig {
             .field("cc_mimicry", &self.cc_mimicry)
             .field("prompt_cache_mode", &self.prompt_cache_mode)
             .field("deployment_target", &self.deployment_target)
+            .field("name", &self.name)
+            .field("models", &self.models)
             .finish_non_exhaustive()
     }
 }
@@ -321,8 +336,28 @@ impl Default for ProviderConfig {
             // `aletheia.toml` so the recall filter lets `Internal` /
             // `Confidential` facts through to the non-cloud boundary.
             deployment_target: DeploymentTarget::Cloud,
+            name: None,
+            models: Vec::new(),
         }
     }
+}
+
+/// Leak a `Vec<String>` of model IDs to a `&'static [&'static str]` slice.
+///
+/// Called once at provider construction so [`LlmProvider::supported_models`]
+/// can return a borrowed static slice — the provider outlives every request
+/// in normal operation, and leaking keeps the trait signature (`&[&str]`)
+/// simple without forcing every caller into dynamic storage.
+pub(crate) fn leak_models(models: &[String]) -> &'static [&'static str] {
+    let leaked: Vec<&'static str> = models
+        .iter()
+        .map(|s| {
+            let boxed: Box<str> = s.clone().into_boxed_str();
+            let static_ref: &'static str = Box::leak(boxed);
+            static_ref
+        })
+        .collect();
+    Box::leak(leaked.into_boxed_slice())
 }
 
 struct ProviderEntry {

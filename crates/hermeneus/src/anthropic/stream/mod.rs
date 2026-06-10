@@ -98,9 +98,9 @@ pub(crate) fn parse_sse_stream(
             continue;
         }
 
-        if let Some(event_type) = line.strip_prefix("event: ") {
+        if let Some(event_type) = sse_field_value(line, "event:") {
             event_type.clone_into(&mut current_event_type);
-        } else if let Some(data) = line.strip_prefix("data: ") {
+        } else if let Some(data) = sse_field_value(line, "data:") {
             // WHY: SSE spec requires multiple data: lines to be concatenated with newlines.
             if !current_data.is_empty() {
                 current_data.push('\n');
@@ -111,6 +111,17 @@ pub(crate) fn parse_sse_stream(
     }
 
     Ok(())
+}
+
+/// Extract an SSE field value, tolerating the spec-optional space after `:`.
+///
+/// WHY: WHATWG SSE permits `data:value` and `data: value` equally — the
+/// first-party API emits the space, but compatible Anthropic-protocol
+/// endpoints (e.g. Kimi) emit none, and requiring it silently drops every
+/// stream event from such endpoints.
+fn sse_field_value<'a>(line: &'a str, field: &str) -> Option<&'a str> {
+    let rest = line.strip_prefix(field)?;
+    Some(rest.strip_prefix(' ').unwrap_or(rest))
 }
 
 /// Parse SSE events incrementally from a live HTTP response stream.
@@ -162,9 +173,9 @@ pub(crate) async fn parse_sse_response(
                     }
                     current_event_type.clear();
                     current_data.clear();
-                } else if let Some(et) = line.strip_prefix("event: ") {
+                } else if let Some(et) = sse_field_value(line, "event:") {
                     et.clone_into(&mut current_event_type);
-                } else if let Some(data) = line.strip_prefix("data: ") {
+                } else if let Some(data) = sse_field_value(line, "data:") {
                     // WHY: SSE spec requires multiple data: lines to be concatenated with newlines.
                     if !current_data.is_empty() {
                         current_data.push('\n');
@@ -244,6 +255,47 @@ data: {\"type\":\"message_stop\"}\n\
         assert_eq!(response.content.len(), 1);
         match &response.content[0] {
             ContentBlock::Text { text, .. } => assert_eq!(text, "Hello world"),
+            _ => panic!("expected Text block"),
+        }
+    }
+
+    #[test]
+    fn parses_spaceless_field_framing() {
+        // WHY: WHATWG SSE makes the space after `:` optional; compatible
+        // Anthropic-protocol endpoints (e.g. Kimi) emit `data:{...}` with no
+        // space, which a space-required parser drops silently.
+        let sse = "\
+event:message_start\n\
+data:{\"type\":\"message_start\",\"message\":{\"id\":\"msg_k\",\"model\":\"kimi-for-coding\",\"usage\":{\"input_tokens\":9,\"output_tokens\":0}}}\n\
+\n\
+event:content_block_start\n\
+data:{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\
+\n\
+event:content_block_delta\n\
+data:{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"OK\"}}\n\
+\n\
+event:content_block_stop\n\
+data:{\"type\":\"content_block_stop\",\"index\":0}\n\
+\n\
+event:message_delta\n\
+data:{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\
+\n\
+event:message_stop\n\
+data:{\"type\":\"message_stop\"}\n\
+\n";
+
+        let (events, response) = collect_events(sse);
+
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "OK")),
+            "space-less data: lines must still produce deltas"
+        );
+        assert_eq!(response.id, "msg_k");
+        assert_eq!(response.stop_reason, StopReason::EndTurn);
+        match &response.content[0] {
+            ContentBlock::Text { text, .. } => assert_eq!(text, "OK"),
             _ => panic!("expected Text block"),
         }
     }
