@@ -155,6 +155,16 @@ pub(crate) fn SetupWizard() -> Element {
 
 // --- Progress bar ---
 
+/// Placeholder for the wizard server-URL input, derived from skene's
+/// discovery default so it never drifts from the real gateway port.
+fn default_server_placeholder() -> &'static str {
+    static PLACEHOLDER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PLACEHOLDER.get_or_init(|| {
+        let port = skene::discovery::DiscoveryConfig::default().port;
+        format!("http://localhost:{port}")
+    })
+}
+
 #[component]
 fn WizardProgress(current: usize, total: usize) -> Element {
     rsx! {
@@ -216,7 +226,7 @@ fn StepServer(wizard_data: Signal<WizardData>, on_next: EventHandler<()>) -> Ele
                 input {
                     style: "background: var(--input-bg); border: 1px solid var(--input-border); border-radius: var(--radius-md); \
                             padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
-                    placeholder: "http://localhost:3000", // kanon:ignore SECURITY/hardcoded-loopback-url -- UI placeholder shown in wizard input; not a live URL
+                    placeholder: default_server_placeholder(), // kanon:ignore SECURITY/hardcoded-loopback-url -- UI placeholder shown in wizard input; not a live URL
                     value: "{wizard_data.read().server_url}",
                     oninput: move |e| { wizard_data.write().server_url = e.value(); },
                 }

@@ -40,7 +40,7 @@ impl EntitySort {
 }
 
 /// Entity type classification.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum EntityType {
     Person,
     Concept,
@@ -52,7 +52,34 @@ pub(crate) enum EntityType {
     Other(String),
 }
 
+impl<'de> serde::Deserialize<'de> for EntityType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self::from_raw(String::deserialize(deserializer)?))
+    }
+}
+
 impl EntityType {
+    /// Classify a raw server string, case-insensitively.
+    ///
+    /// WHY: the backend stores `entity_type` as free-form text; a
+    /// non-canonical value must map to `Other` instead of failing the
+    /// deserialization of every entity in the payload.
+    fn from_raw(raw: String) -> Self {
+        match raw.to_ascii_lowercase().as_str() {
+            "person" => Self::Person,
+            "concept" => Self::Concept,
+            "project" => Self::Project,
+            "tool" => Self::Tool,
+            "location" => Self::Location,
+            "organization" => Self::Organization,
+            "event" => Self::Event,
+            _ => Self::Other(raw),
+        }
+    }
+
     /// All fixed entity types for filter UI.
     pub(crate) const FIXED: &[Self] = &[
         Self::Person,
@@ -760,6 +787,29 @@ mod tests {
         }
         let other = EntityType::Other("Custom".to_string());
         assert_eq!(other.label(), "Custom");
+    }
+
+    #[test]
+    fn entity_type_deserialize_is_case_insensitive_with_other_fallback() {
+        let person: EntityType = serde_json::from_str(r#""person""#).expect("lowercase parses");
+        assert_eq!(person, EntityType::Person);
+
+        let shouty: EntityType = serde_json::from_str(r#""ORGANIZATION""#).expect("upper parses");
+        assert_eq!(shouty, EntityType::Organization);
+
+        let unknown: EntityType = serde_json::from_str(r#""depends_on""#).expect("unknown parses");
+        assert_eq!(unknown, EntityType::Other("depends_on".to_string()));
+    }
+
+    #[test]
+    fn entity_with_non_canonical_type_still_deserializes() {
+        let entity: Entity =
+            serde_json::from_str(r#"{"id":"e1","name":"Alpha","entity_type":"weird_type"}"#)
+                .expect("entity parses despite unknown type");
+        assert_eq!(
+            entity.entity_type,
+            EntityType::Other("weird_type".to_string())
+        );
     }
 
     #[test]
