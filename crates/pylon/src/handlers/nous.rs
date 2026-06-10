@@ -4,19 +4,84 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-
 use symbolon::types::Role;
 
 use crate::error::{ApiError, ErrorResponse, FieldError, NousNotFoundSnafu, ValidationFailedSnafu};
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::NousState;
 
+use nous::config::NousConfig;
+use taxis::config::{AletheiaConfig, NousDefinition};
+
 #[path = "nous_dto.rs"]
 mod nous_dto;
 pub use nous_dto::{
     AgentDefinition, CreateAgentResponse, NousListResponse, NousStatus, NousSummary,
-    RecoverResponse, ToolSummary, ToolsResponse,
+    NousToggleRequest, RecoverResponse, ToolSummary, ToolToggleRequest, ToolsResponse,
 };
+
+fn agent_definition<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a NousDefinition> {
+    config.agents.list.iter().find(|agent| agent.id == id)
+}
+
+fn ensure_agent_definition<'a>(
+    config: &'a mut AletheiaConfig,
+    runtime: &NousConfig,
+) -> &'a mut NousDefinition {
+    if let Some(index) = config
+        .agents
+        .list
+        .iter()
+        .position(|agent| agent.id == runtime.id.as_ref())
+    {
+        return &mut config.agents.list[index];
+    }
+
+    config.agents.list.push(NousDefinition {
+        id: runtime.id.to_string(),
+        name: runtime.name.clone(),
+        enabled: true,
+        model: None,
+        workspace: runtime.workspace.to_string_lossy().into_owned(),
+        thinking_enabled: None,
+        agency: None,
+        allowed_roots: Vec::new(),
+        domains: Vec::new(),
+        default: false,
+        private: runtime.private,
+        episteme_cohort: None,
+        recall: None,
+        tool_allowlist: None,
+        recall_profile: None,
+        behavior: None,
+    });
+
+    let index = config.agents.list.len().saturating_sub(1);
+    &mut config.agents.list[index]
+}
+
+fn allowlist_for_agent<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a [String]> {
+    agent_definition(config, id).and_then(|agent| agent.tool_allowlist.as_deref())
+}
+
+fn tool_summaries_for_agent(state: &NousState, allowlist: Option<&[String]>) -> Vec<ToolSummary> {
+    state
+        .tool_registry
+        .definitions()
+        .into_iter()
+        .map(|def| {
+            let enabled =
+                allowlist.is_none_or(|list| list.iter().any(|name| name == def.name.as_str()));
+            ToolSummary {
+                name: def.name.as_str().to_owned(),
+                enabled,
+                description: def.description.clone(),
+                category: format!("{:?}", def.category),
+                auto_activate: def.auto_activate,
+            }
+        })
+        .collect()
+}
 
 /// GET /api/v1/nous: list registered nous agents.
 #[utoipa::path(
@@ -31,6 +96,7 @@ pub use nous_dto::{
 pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousListResponse> {
     let include_private = claims.role >= Role::Operator;
     let scoped = claims.nous_id.as_deref();
+    let config = state.config.read().await;
     let nous: Vec<NousSummary> = state
         .nous_manager
         .configs()
@@ -42,11 +108,18 @@ pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousLi
         // handler `require_nous_access` blocks them from acting on those
         // agents.
         .filter(|c| scoped.is_none_or(|s| s == c.id.as_ref()))
-        .map(|c| NousSummary {
-            id: c.id.to_string(),
-            name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
-            model: c.generation.model.clone(),
-            status: "active".to_owned(),
+        .map(|c| {
+            let agent_id = c.id.as_ref();
+            let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
+            let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, agent_id));
+            NousSummary {
+                id: c.id.to_string(),
+                name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
+                enabled,
+                model: c.generation.model.clone(),
+                status: "active".to_owned(),
+                tools,
+            }
         })
         .collect();
     Json(NousListResponse { nous })
@@ -102,9 +175,10 @@ pub async fn get_status(
 
 /// GET /api/v1/nous/{id}/tools: list tools available to a nous.
 ///
-/// Returns only the tools that the requesting agent is permitted to use,
-/// filtered by the agent's `tool_allowlist` from its `NousConfig`. When no
-/// allowlist is configured, all registered tools are returned (#3229).
+/// Returns the full registry with a per-tool `enabled` bit derived from the
+/// persisted agent config. When no allowlist is configured, every tool is
+/// enabled. This keeps the desktop toggle surface in sync even when the live
+/// actor has not reloaded yet.
 ///
 /// # Cancel safety
 ///
@@ -127,32 +201,177 @@ pub async fn tools(
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
     require_nous_access(&claims, &id)?;
-    let config = state
+    if state.nous_manager.get_config(&id).is_none() {
+        return Err(NousNotFoundSnafu { id }.build());
+    }
+
+    let config = state.config.read().await;
+    let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
+
+    Ok(Json(ToolsResponse { tools }))
+}
+
+/// PATCH /api/v1/nous/{id}: toggle an agent's enabled state.
+///
+/// The toggle is persisted to the config file and mirrored into the live
+/// actor via `sleep`/`wake` when the actor is currently running. If the actor
+/// is unavailable, the persisted config still reflects the operator's intent
+/// and the returned summary shows the new state.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/nous/{id}",
+    params(("id" = String, Path, description = "Nous agent ID")),
+    request_body = NousToggleRequest,
+    responses(
+        (status = 200, description = "Updated nous summary", body = NousSummary),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Nous not found", body = ErrorResponse),
+        (status = 422, description = "Validation failed", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn update_enabled(
+    State(state): State<NousState>,
+    claims: Claims,
+    Path(id): Path<String>,
+    Json(body): Json<NousToggleRequest>,
+) -> Result<Json<NousSummary>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    require_nous_access(&claims, &id)?;
+
+    let runtime = state
         .nous_manager
         .get_config(&id)
-        .ok_or_else(|| NousNotFoundSnafu { id }.build())?;
+        .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?
+        .clone();
 
-    let defs = state.tool_registry.definitions();
+    {
+        let mut config = state.config.write().await;
+        let agent = ensure_agent_definition(&mut config, &runtime);
+        agent.enabled = body.enabled;
+        let persisted = config.clone();
+        taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
+            message: format!("failed to write config: {e}"),
+            location: snafu::location!(),
+        })?;
+        let _ = state.config_tx.send(persisted);
+    }
 
-    // WHY: Without filtering, the API returns the global tool registry
-    // regardless of which agent is requesting. Agents with a `tool_allowlist`
-    // (e.g. role-restricted sub-agents) should only see their permitted tools.
-    // This matches the execution-layer enforcement in `execute/mod.rs` (#3229).
-    let tools = defs
+    if let Some(handle) = state.nous_manager.get(&id) {
+        let live_result = if body.enabled {
+            handle.wake().await
+        } else {
+            handle.sleep().await
+        };
+        if let Err(e) = live_result {
+            tracing::warn!(nous_id = %id, error = %e, "failed to update live agent lifecycle; config intent persisted");
+        }
+    }
+
+    let config = state.config.read().await;
+    let enabled = agent_definition(&config, &id).is_none_or(|agent| agent.enabled);
+    let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
+    drop(config);
+    let status = match state.nous_manager.get(&id) {
+        Some(handle) => handle
+            .status()
+            .await
+            .map_or_else(|_| "unknown".to_owned(), |s| s.lifecycle.to_string()),
+        None => "unknown".to_owned(),
+    };
+
+    Ok(Json(NousSummary {
+        id: runtime.id.to_string(),
+        name: runtime
+            .name
+            .clone()
+            .unwrap_or_else(|| runtime.id.to_string()),
+        enabled,
+        model: runtime.generation.model.clone(),
+        status,
+        tools,
+    }))
+}
+
+/// PATCH /api/v1/nous/{id}/tools: toggle one agent tool.
+///
+/// This persists the operator intent to the config file and returns the
+/// updated tool summary. Runtime tool-gating follows the actor's current
+/// config snapshot and will pick up the persisted allowlist on reload.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/nous/{id}/tools",
+    params(("id" = String, Path, description = "Nous agent ID")),
+    request_body = ToolToggleRequest,
+    responses(
+        (status = 200, description = "Updated tool list", body = ToolsResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Nous not found", body = ErrorResponse),
+        (status = 422, description = "Validation failed", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn update_tool(
+    State(state): State<NousState>,
+    claims: Claims,
+    Path(id): Path<String>,
+    Json(body): Json<ToolToggleRequest>,
+) -> Result<Json<ToolsResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    require_nous_access(&claims, &id)?;
+
+    let runtime = state
+        .nous_manager
+        .get_config(&id)
+        .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?
+        .clone();
+
+    let tool_names: Vec<String> = state
+        .tool_registry
+        .definitions()
         .into_iter()
-        .filter(|d| {
-            config
-                .tool_allowlist
-                .as_ref()
-                .is_none_or(|allowlist| allowlist.iter().any(|a| a == d.name.as_str()))
-        })
-        .map(|d| ToolSummary {
-            name: d.name.as_str().to_owned(),
-            description: d.description.clone(),
-            category: format!("{:?}", d.category),
-            auto_activate: d.auto_activate,
-        })
+        .map(|def| def.name.as_str().to_owned())
         .collect();
+    if !tool_names.iter().any(|name| name == &body.tool) {
+        return Err(ApiError::BadRequest {
+            message: format!("unknown tool '{}'", body.tool),
+            location: snafu::location!(),
+        });
+    }
+
+    {
+        let mut config = state.config.write().await;
+        let agent = ensure_agent_definition(&mut config, &runtime);
+        let mut allowlist = agent
+            .tool_allowlist
+            .take()
+            .unwrap_or_else(|| tool_names.clone());
+        if body.enabled {
+            if !allowlist.iter().any(|name| name == &body.tool) {
+                allowlist.push(body.tool.clone());
+            }
+        } else {
+            allowlist.retain(|name| name != &body.tool);
+        }
+
+        allowlist.sort();
+        allowlist.dedup();
+        agent.tool_allowlist = if allowlist.len() == tool_names.len() {
+            None
+        } else {
+            Some(allowlist)
+        };
+
+        let persisted = config.clone();
+        taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
+            message: format!("failed to write config: {e}"),
+            location: snafu::location!(),
+        })?;
+        let _ = state.config_tx.send(persisted);
+    }
+
+    let config = state.config.read().await;
+    let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
 
     Ok(Json(ToolsResponse { tools }))
 }
@@ -501,9 +720,11 @@ mod tests {
 
             use nous::manager::NousManager;
             use organon::registry::ToolRegistry;
+            use taxis::config::AletheiaConfig;
 
             let _: &Arc<NousManager> = &state.nous_manager;
             let _: &Arc<ToolRegistry> = &state.tool_registry;
+            let _: &Arc<tokio::sync::RwLock<AletheiaConfig>> = &state.config;
         }
         // If the above compiles, NousState contains both required fields.
         assert!(std::mem::size_of::<NousState>() > 0);
@@ -515,14 +736,17 @@ mod tests {
             nous: vec![NousSummary {
                 id: "alice".to_owned(),
                 name: "Alice".to_owned(),
+                enabled: true,
                 model: "anthropic/claude-opus-4-6".to_owned(),
                 status: "active".to_owned(),
+                tools: vec![],
             }],
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert!(json.get("nous").is_some());
         assert_eq!(json["nous"][0]["id"], "alice");
         assert_eq!(json["nous"][0]["status"], "active");
+        assert_eq!(json["nous"][0]["enabled"], true);
     }
 
     #[test]
@@ -537,12 +761,15 @@ mod tests {
         let summary = NousSummary {
             id: "bob".to_owned(),
             name: "bob".to_owned(), // fallback case: name == id
+            enabled: false,
             model: "anthropic/claude-sonnet-4-6".to_owned(),
             status: "active".to_owned(),
+            tools: vec![],
         };
         let json = serde_json::to_value(&summary).unwrap();
         assert_eq!(json["name"], "bob");
         assert_eq!(json["id"], "bob");
+        assert_eq!(json["enabled"], false);
     }
 
     #[test]
@@ -569,6 +796,7 @@ mod tests {
         let resp = ToolsResponse {
             tools: vec![ToolSummary {
                 name: "read_file".to_owned(),
+                enabled: true,
                 description: "Read a file from disk".to_owned(),
                 category: "Builtin".to_owned(),
                 auto_activate: true,
@@ -576,8 +804,23 @@ mod tests {
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["tools"][0]["name"], "read_file");
+        assert_eq!(json["tools"][0]["enabled"], true);
         assert_eq!(json["tools"][0]["category"], "Builtin");
         assert_eq!(json["tools"][0]["auto_activate"], true);
+    }
+
+    #[test]
+    fn tool_summary_serializes_enabled_bit() {
+        let tool = ToolSummary {
+            name: "search".to_owned(),
+            enabled: false,
+            description: "Search the workspace".to_owned(),
+            category: "Builtin".to_owned(),
+            auto_activate: false,
+        };
+        let json = serde_json::to_value(&tool).unwrap();
+        assert_eq!(json["enabled"], false);
+        assert_eq!(json["name"], "search");
     }
 
     #[test]

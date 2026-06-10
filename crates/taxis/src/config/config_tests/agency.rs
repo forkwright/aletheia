@@ -72,6 +72,7 @@ fn resolve_agency_unrestricted_sets_high_iterations() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "free");
@@ -104,6 +105,7 @@ fn resolve_agency_restricted_uses_old_defaults() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "safe");
@@ -137,6 +139,7 @@ fn resolve_agency_per_agent_overrides_global() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "override");

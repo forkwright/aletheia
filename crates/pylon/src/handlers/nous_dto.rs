@@ -53,10 +53,14 @@ pub struct NousSummary {
     pub id: String,
     /// Human-readable display name (falls back to `id`).
     pub name: String,
+    /// Whether the agent is enabled in the operator surface.
+    pub enabled: bool,
     /// LLM model assigned to this agent.
     pub model: String,
     /// Lifecycle status (e.g. `"active"`).
     pub status: String,
+    /// Tool toggle summaries for the agent.
+    pub tools: Vec<ToolSummary>,
 }
 
 /// Detailed status of a single nous agent.
@@ -92,6 +96,8 @@ pub struct ToolsResponse {
 pub struct ToolSummary {
     /// Tool name as sent to the LLM.
     pub name: String,
+    /// Whether the tool is enabled for this agent.
+    pub enabled: bool,
     /// Human-readable description.
     pub description: String,
     /// Tool category (e.g. `"Builtin"`, `"Pack"`).
@@ -101,4 +107,20 @@ pub struct ToolSummary {
     /// When `false` the tool is lazy and must be activated via `enable_tool`
     /// before the agent can use it.
     pub auto_activate: bool,
+}
+
+/// Request body for toggling a nous agent.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct NousToggleRequest {
+    /// Whether the agent should be enabled.
+    pub enabled: bool,
+}
+
+/// Request body for toggling a nous tool.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ToolToggleRequest {
+    /// Tool name to toggle.
+    pub tool: String,
+    /// Whether the tool should be enabled.
+    pub enabled: bool,
 }

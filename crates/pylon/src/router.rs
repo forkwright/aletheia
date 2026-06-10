@@ -141,8 +141,14 @@ pub fn build_router_with(
         .route("/events/subscribe", get(events::subscribe))
         .route("/events/discovery", get(events::discovery))
         .route("/nous", get(nous::list).post(nous::create))
-        .route("/nous/{id}", get(nous::get_status))
-        .route("/nous/{id}/tools", get(nous::tools))
+        .route(
+            "/nous/{id}",
+            get(nous::get_status).patch(nous::update_enabled),
+        )
+        .route(
+            "/nous/{id}/tools",
+            get(nous::tools).patch(nous::update_tool),
+        )
         .route("/nous/{id}/recover", post(nous::recover))
         .route("/config", get(config::get_config))
         .route("/config/reload", post(config::reload_config))

@@ -292,6 +292,9 @@ pub struct NousDefinition {
     /// Human-readable display name.
     #[serde(default)]
     pub name: Option<String>,
+    /// Whether the agent is enabled in the operator surface.
+    #[serde(default = "default_agent_enabled")]
+    pub enabled: bool,
     /// Model override; when `None`, inherits from `AgentDefaults`.
     #[serde(default)]
     pub model: Option<ModelSpec>,
@@ -321,12 +324,42 @@ pub struct NousDefinition {
     /// Recall pipeline override; when `None`, inherits from [`AgentDefaults::recall`].
     #[serde(default)]
     pub recall: Option<RecallSettings>,
+    /// Tool allowlist override; when `None`, all tools are enabled.
+    #[serde(default)]
+    pub tool_allowlist: Option<Vec<String>>,
     /// Named recall behavior profile; when `None`, resolves to [`RecallProfile::Default`].
     #[serde(default)]
     pub recall_profile: Option<RecallProfile>,
     /// Per-agent behavioral override; when `None`, inherits from [`AgentDefaults::behavior`].
     #[serde(default)]
     pub behavior: Option<AgentBehaviorDefaults>,
+}
+
+impl Default for NousDefinition {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: None,
+            enabled: true,
+            model: None,
+            workspace: String::new(),
+            thinking_enabled: None,
+            agency: None,
+            allowed_roots: Vec::new(),
+            domains: Vec::new(),
+            default: false,
+            private: false,
+            episteme_cohort: None,
+            recall: None,
+            tool_allowlist: None,
+            recall_profile: None,
+            behavior: None,
+        }
+    }
+}
+
+fn default_agent_enabled() -> bool {
+    true
 }
 
 /// Per-agent behavioral parameters: safety, hooks, distillation, competence,

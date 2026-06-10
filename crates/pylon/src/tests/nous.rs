@@ -20,6 +20,8 @@ async fn list_nous_returns_agents() {
     let agents = body["nous"].as_array().unwrap();
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "syn");
+    assert_eq!(agents[0]["enabled"], true);
+    assert!(agents[0]["tools"].is_array());
 }
 
 #[tokio::test]
@@ -97,6 +99,37 @@ async fn get_nous_tools() {
 }
 
 #[tokio::test]
+async fn patch_nous_enabled_updates_summary() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn",
+        Some(serde_json::json!({ "enabled": false })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["id"], "syn");
+    assert_eq!(body["enabled"], false);
+}
+
+#[tokio::test]
+async fn patch_nous_tools_unknown_tool_returns_400() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn/tools",
+        Some(serde_json::json!({ "tool": "definitely-not-real", "enabled": true })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
 async fn nous_list_from_manager() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
@@ -110,6 +143,7 @@ async fn nous_list_from_manager() {
     assert_eq!(agents[0]["id"], "syn");
     assert_eq!(agents[0]["model"], "mock-model");
     assert_eq!(agents[0]["status"], "active");
+    assert_eq!(agents[0]["enabled"], true);
 }
 
 #[tokio::test]

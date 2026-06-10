@@ -199,6 +199,10 @@ pub struct NousState {
     pub nous_manager: Arc<NousManager>,
     /// Registry of tools available to nous agents.
     pub tool_registry: Arc<ToolRegistry>,
+    /// Runtime configuration used for persisted nous toggle intent.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// Broadcast channel for config change notifications.
+    pub config_tx: tokio::sync::watch::Sender<AletheiaConfig>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
 }
@@ -208,6 +212,8 @@ impl FromRef<Arc<AppState>> for NousState {
         Self {
             nous_manager: Arc::clone(&state.nous_manager),
             tool_registry: Arc::clone(&state.tool_registry),
+            config: Arc::clone(&state.config),
+            config_tx: state.config_tx.clone(),
             oikos: Arc::clone(&state.oikos),
         }
     }

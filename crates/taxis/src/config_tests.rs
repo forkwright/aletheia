@@ -343,6 +343,7 @@ fn resolve_merges_agent_overrides() {
         episteme_cohort: None,
         recall: None,
         recall_profile: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -398,6 +399,7 @@ fn resolve_merges_allowed_roots() {
         episteme_cohort: None,
         recall: None,
         recall_profile: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -425,6 +427,7 @@ fn resolve_thinking_override() {
         episteme_cohort: None,
         recall: None,
         recall_profile: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "thinker");
@@ -643,6 +646,7 @@ fn resolve_agency_unrestricted_sets_high_iterations() {
         episteme_cohort: None,
         recall: None,
         recall_profile: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "free");
@@ -674,6 +678,7 @@ fn resolve_agency_restricted_uses_old_defaults() {
         episteme_cohort: None,
         recall: None,
         recall_profile: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "safe");
@@ -706,6 +711,7 @@ fn resolve_agency_per_agent_overrides_global() {
         episteme_cohort: None,
         recall: None,
         recall_profile: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "override");

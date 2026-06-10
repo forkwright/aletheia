@@ -72,6 +72,7 @@ fn resolve_nous_per_agent_override_wins() {
             competence_correction_penalty: 0.10,
             ..Default::default()
         }),
+        ..Default::default()
     });
     let resolved = resolve_nous(&config, "custom");
     assert!(
@@ -108,6 +109,7 @@ fn resolve_nous_non_overriding_agent_uses_defaults() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
     let resolved = resolve_nous(&config, "plain");
     assert_eq!(
@@ -139,6 +141,7 @@ fn resolve_nous_recall_profile_override_wins() {
         recall: None,
         recall_profile: Some(RecallProfile::IdentityContinuity),
         behavior: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "identity");
@@ -168,6 +171,7 @@ fn resolve_nous_episteme_cohort_override_wins() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "identity");

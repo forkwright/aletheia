@@ -921,6 +921,7 @@ fn validate_startup_rejects_agent_workspace_missing_soul() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let err = validate_startup(&config, &oikos).unwrap_err();

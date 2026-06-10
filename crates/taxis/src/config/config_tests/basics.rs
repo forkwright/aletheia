@@ -306,6 +306,7 @@ fn resolve_merges_agent_overrides() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -363,6 +364,7 @@ fn resolve_merges_allowed_roots() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -391,6 +393,7 @@ fn resolve_thinking_override() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let resolved = resolve_nous(&config, "thinker");
