@@ -104,7 +104,7 @@ l3_token_estimate = 5222
 [[crates]]
 name = "hermeneus"
 path = "crates/hermeneus"
-source_hash = "1c3372fe881b0812ac402f3ecdc852b50f7bf50fafd261b84a6762c2e7b169a5"
+source_hash = "e4e4891319a8d19a81e0cc17b1c4aebad4ab26787e06b5ff3855e93e04e814ad"
 l3_token_estimate = 13362
 
 [[crates]]

@@ -12,10 +12,11 @@
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use koina::system::{Environment, RealSystem};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
@@ -167,8 +168,33 @@ impl KimiProvider {
         parts.join("\n\n")
     }
 
+    fn warn_dropped_tools(dropped_tools: usize) -> bool {
+        // WHY: Seat-bridged subprocess providers run their own CLI-side agentic loop, so
+        // aletheia's tools are intentionally not translated through this adapter.
+        static WARNED: AtomicBool = AtomicBool::new(false);
+
+        if dropped_tools == 0 {
+            return false;
+        }
+
+        let warned = WARNED
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok();
+
+        if warned {
+            warn!(
+                provider = "kimi",
+                dropped_tools,
+                "kimi dropped {dropped_tools} tool definitions; this seat-bridged CLI runs its own agentic loop so aletheia's tools are not invoked. Use a native API provider for aletheia's tool-loop"
+            );
+        }
+
+        warned
+    }
+
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let model = self.resolve_model(&request.model);
+        Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
         let system = request.system.as_deref();
         let process_config = process::KimiProcessConfig {
@@ -195,6 +221,7 @@ impl KimiProvider {
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
         let model = self.resolve_model(&request.model);
+        Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
         let system = request.system.as_deref();
         let process_config = process::KimiProcessConfig {
@@ -293,6 +320,18 @@ impl LlmProvider for KimiProvider {
         on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(self.execute_streaming(request, on_event))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn warns_once_for_dropped_tools() {
+        assert!(!KimiProvider::warn_dropped_tools(0));
+        assert!(KimiProvider::warn_dropped_tools(1));
+        assert!(!KimiProvider::warn_dropped_tools(2));
     }
 }
 

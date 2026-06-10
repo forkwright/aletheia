@@ -36,6 +36,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [bindings](#bindings)
 - [embedding](#embedding)
 - [credential](#credential)
+- [provider capability matrix](#provider-capability-matrix)
 - [data](#data)
 - [nous_behavior](#nous_behavior)
 - [daemon_behavior](#daemon_behavior)
@@ -337,6 +338,19 @@ Controls how the server discovers LLM API credentials. The `source` field select
 source = "auto"
 claude_code_credentials = "~/.claude/.credentials.json"
 ```
+
+---
+
+## provider capability matrix
+
+Aletheia can route completions through either the native Anthropic provider or seat-bridged CLI providers. The seat-bridged providers run the CLI's own agentic loop, so `request.tools` are not translated into Aletheia tool execution.
+
+| Provider path | Credential source | Simple chat + recall | Aletheia organon tool-loop | Notes |
+|---|---|---|---|---|
+| Native Anthropic provider | `ANTHROPIC_API_KEY` | yes | yes | Serializes `request.tools` and parses `ToolUse` blocks. |
+| Claude Code subprocess (`cc`) | Local Claude Code OAuth seat; no API key | yes | no | Runs `claude -p`; tools stay inside the CLI's own loop. |
+| Codex subprocess (`codex`) | Local Codex seat; no API key | yes | no | Runs `codex exec`; tools stay inside the CLI's own loop. |
+| Kimi subprocess (`kimi`) | Local Kimi seat; no API key | yes | no | Runs `kimi`; tools stay inside the CLI's own loop. |
 
 ---
 
