@@ -587,6 +587,12 @@ pub enum FjallOpenError {
     },
     /// Failed to open the fjall database or a partition.
     Open(String),
+    /// The fjall keyspace at `path` is locked by another process holding the
+    /// exclusive file lock (typically a running aletheia server).
+    Locked {
+        /// The locked store path.
+        path: std::path::PathBuf,
+    },
 }
 ```
 

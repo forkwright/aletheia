@@ -122,8 +122,8 @@ l3_token_estimate = 11570
 [[crates]]
 name = "koina"
 path = "crates/koina"
-source_hash = "6671a6250a584e440529584640240d2b9207d18d306c76a941bcab4b8e3d7308"
-l3_token_estimate = 7394
+source_hash = "f2d971d8fb72f6ecbef58b8b250ab47f43c7f5f9da6d216f075ce4af8f1b6aef"
+l3_token_estimate = 7453
 
 [[crates]]
 name = "krites"
@@ -194,7 +194,7 @@ l3_token_estimate = 446
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "4674726dc7bd502665ea510bdd174b0d777bd4cd26fb9af7044f81d776cd42c4"
+source_hash = "587a8e827bf3e7f058231d2306172e96eb20a2d5bf32a9d5b35752e4cd984d33"
 l3_token_estimate = 3417
 
 [[crates]]
