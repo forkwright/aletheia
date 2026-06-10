@@ -1,7 +1,7 @@
 // kanon:ignore RUST/file-too-long — module contains tightly-coupled memory subcommand implementations; splitting would hurt cohesion
 //! `aletheia memory`: knowledge graph inspection and maintenance.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Subcommand, ValueEnum};
 use snafu::prelude::*;
@@ -96,6 +96,10 @@ pub(crate) enum Action {
         /// Output file path
         output_path: PathBuf,
     },
+    /// Recompute fact embeddings for every store on disk.
+    Reembed,
+    /// Remove orphaned entities with no relationships and no fact links.
+    Gc,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -142,45 +146,78 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
             );
         }
 
-        let config = mneme::knowledge_store::KnowledgeConfig::default();
-        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
-            .whatever_context("failed to open knowledge store")?;
-
         // WHY (#4165 D): load the resolved aletheia config so the dedup
         // CLI honours the operator's `knowledge_dedup_*` knobs the same
         // way the scheduled maintenance task does. A missing/invalid
         // config falls back to the historical defaults — the same shape
         // every prior CLI invocation used — so this is strictly additive.
-        #[allow(unused_variables, reason = "consumed only by Dedup branch")]
-        let dedup_tuning = taxis::loader::load_config(&oikos)
+        let loaded_config = if matches!(action, Action::Dedup { .. } | Action::Reembed) {
+            Some(taxis::loader::load_config(&oikos))
+        } else {
+            None
+        };
+        let dedup_tuning = loaded_config
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
             .map_or(mneme::dedup::DedupTuning::DEFAULT, |cfg| {
                 crate::knowledge_maintenance::tuning_from_behavior(&cfg.agents.defaults.behavior)
             });
+        let recovery_dim = loaded_config
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .map_or_else(
+                || mneme::knowledge_store::KnowledgeConfig::default().dim,
+                |cfg| cfg.embedding.dimension,
+            );
 
         match action {
-            Action::Check { json } => run_check(&store, json),
-            Action::Sample { count, nous_id } => run_sample(&store, count, nous_id.as_deref()),
+            Action::Check { json } => {
+                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
+                run_check(&store, json)
+            }
+            Action::Sample { count, nous_id } => {
+                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
+                run_sample(&store, count, nous_id.as_deref())
+            }
             Action::Dedup { nous_id, dry_run } => {
+                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
                 run_dedup(&store, &nous_id, dry_run, &dedup_tuning)
             }
-            Action::Patterns { nous_id, limit } => run_patterns(&store, nous_id.as_deref(), limit),
+            Action::Patterns { nous_id, limit } => {
+                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
+                run_patterns(&store, nous_id.as_deref(), limit)
+            }
             Action::ExportGraph {
                 format,
                 nous_id,
                 scope,
                 output_path,
-            } => run_export_graph(&store, format, nous_id.as_deref(), scope, &output_path),
-            Action::DedupPending { nous_id } => run_dedup_pending(&store, &nous_id),
+            } => {
+                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
+                run_export_graph(&store, format, nous_id.as_deref(), scope, &output_path)
+            }
+            Action::DedupPending { nous_id } => {
+                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
+                run_dedup_pending(&store, &nous_id)
+            }
             Action::DedupApprove {
                 nous_id,
                 canonical_id,
                 merged_id,
-            } => run_dedup_approve(&store, &nous_id, &canonical_id, &merged_id),
+            } => {
+                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
+                run_dedup_approve(&store, &nous_id, &canonical_id, &merged_id)
+            }
             Action::DedupReject {
                 nous_id,
                 entity_a,
                 entity_b,
-            } => run_dedup_reject(&store, &nous_id, &entity_a, &entity_b),
+            } => {
+                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
+                run_dedup_reject(&store, &nous_id, &entity_a, &entity_b)
+            }
+            Action::Reembed => run_reembed(&oikos, recovery_dim, loaded_config.as_ref()),
+            Action::Gc => run_gc(&oikos, recovery_dim),
         }
     }
 
@@ -237,6 +274,7 @@ fn validate_action(action: &Action) -> Result<()> {
             }
             Ok(())
         }
+        Action::Reembed | Action::Gc => Ok(()),
         Action::DedupApprove {
             nous_id,
             canonical_id,
@@ -522,6 +560,150 @@ async fn run_check_via_api(url: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
+// --- recovery ---
+
+#[cfg(feature = "recall")]
+fn open_recovery_store(
+    path: &Path,
+    dim: usize,
+) -> Result<std::sync::Arc<mneme::knowledge_store::KnowledgeStore>> {
+    let config = mneme::knowledge_store::KnowledgeConfig {
+        dim,
+        ..Default::default()
+    };
+    mneme::knowledge_store::KnowledgeStore::open_fjall(path, config).map_err(|err| {
+        let message = err.to_string();
+        if is_store_lock_error(&message) {
+            crate::error::Error::msg(format!(
+                "knowledge store at {} is locked by another process. Stop the server first, then rerun this command.",
+                path.display()
+            ))
+        } else {
+            crate::error::Error::msg(format!(
+                "failed to open knowledge store at {}: {message}",
+                path.display()
+            ))
+        }
+    })
+}
+
+#[cfg(feature = "recall")]
+fn is_store_lock_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("lock") || lower.contains("busy") || lower.contains("in use")
+}
+
+#[cfg(feature = "recall")]
+fn recovery_store_paths(oikos: &taxis::oikos::Oikos) -> Result<Vec<PathBuf>> {
+    let root = oikos.knowledge_db();
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut stores = Vec::new();
+    for entry in
+        std::fs::read_dir(&root).whatever_context("failed to enumerate knowledge store cohorts")?
+    {
+        let entry = entry.whatever_context("failed to inspect knowledge store cohort")?;
+        let path = entry.path();
+        if path.is_dir() {
+            stores.push(path);
+        }
+    }
+    stores.sort();
+    Ok(stores)
+}
+
+#[cfg(feature = "recall")]
+fn run_reembed(
+    oikos: &taxis::oikos::Oikos,
+    dim: usize,
+    loaded_config: Option<&std::result::Result<taxis::config::AletheiaConfig, taxis::error::Error>>,
+) -> Result<()> {
+    let config = match loaded_config {
+        Some(Ok(cfg)) => cfg,
+        Some(Err(err)) => {
+            whatever!("failed to load instance config for memory reembed: {err}");
+        }
+        None => {
+            whatever!(
+                "failed to load instance config for memory reembed; the configured embedding provider is required"
+            );
+        }
+    };
+    let embedding_config = mneme::embedding::EmbeddingConfig {
+        provider: config.embedding.provider.clone(),
+        model: config.embedding.model.clone(),
+        dimension: Some(config.embedding.dimension),
+        api_key: None,
+        base_url: None,
+    };
+    let provider = mneme::embedding::create_provider(&embedding_config)
+        .whatever_context("failed to create configured embedding provider")?;
+
+    let stores = recovery_store_paths(oikos)?;
+    if stores.is_empty() {
+        whatever!(
+            "no knowledge stores found under {}\n  \
+             Start the server or run a migration/import first.",
+            oikos.knowledge_db().display()
+        );
+    }
+
+    let store_count = stores.len();
+    let mut total = 0usize;
+    for store_path in stores {
+        let store = open_recovery_store(&store_path, dim)?;
+        let written = store
+            .reembed_all(provider.as_ref())
+            .with_whatever_context(|err| {
+                format!("failed to re-embed facts in {}: {err}", store_path.display())
+            })?;
+        println!("reembed: {} -> {} facts", store_path.display(), written);
+        total = total.saturating_add(written);
+    }
+
+    println!("Re-embedded {total} facts across {} store(s).", store_count);
+    Ok(())
+}
+
+#[cfg(feature = "recall")]
+fn run_gc(oikos: &taxis::oikos::Oikos, dim: usize) -> Result<()> {
+    let stores = recovery_store_paths(oikos)?;
+    if stores.is_empty() {
+        whatever!(
+            "no knowledge stores found under {}\n  \
+             Start the server or run a migration/import first.",
+            oikos.knowledge_db().display()
+        );
+    }
+
+    let mut total = 0usize;
+    for store_path in &stores {
+        let store = open_recovery_store(store_path, dim)?;
+        let removed = store
+            .remove_orphaned_entities()
+            .with_whatever_context(|err| {
+                format!(
+                    "failed to remove orphaned entities in {}: {err}",
+                    store_path.display()
+                )
+            })?;
+        println!(
+            "gc: {} -> {} orphaned entities removed",
+            store_path.display(),
+            removed
+        );
+        total = total.saturating_add(removed);
+    }
+
+    println!(
+        "Removed {total} orphaned entities across {} store(s).",
+        stores.len()
+    );
+    Ok(())
+}
+
 // --- check ---
 
 #[cfg(feature = "recall")]
@@ -659,20 +841,9 @@ fn count_relation(
 fn find_orphaned_entities(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<Vec<String>> {
-    use std::collections::BTreeMap;
-    let script = r"
-        ?[id] :=
-            *entities{id},
-            not *relationships{src: id},
-            not *relationships{dst: id},
-            not *fact_entities{entity_id: id}
-    ";
-    let result = store
-        .run_query(script, BTreeMap::new())
-        .whatever_context("orphan query failed")?;
-    Ok((0..result.row_count())
-        .filter_map(|i| result.get_string(i, "id"))
-        .collect())
+    store
+        .orphaned_entity_ids()
+        .whatever_context("orphan query failed")
 }
 
 #[cfg(feature = "recall")]

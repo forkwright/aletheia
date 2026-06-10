@@ -4,6 +4,27 @@ use super::marshal::{extract_str, fact_to_params, rows_to_facts};
 use super::{KnowledgeStore, queries};
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
+    /// Recompute and persist embeddings for every fact in the store.
+    ///
+    /// This is the recovery path for restored or migrated stores that still
+    /// have facts but lost their vector rows. The provider is expected to be
+    /// the active configured embedding backend; the helper reuses the same
+    /// batch/backoff logic as the import-time backfill path.
+    #[instrument(skip(self, provider))]
+    pub fn reembed_all(
+        &self,
+        provider: &dyn crate::embedding::EmbeddingProvider,
+    ) -> crate::error::Result<usize> {
+        let facts = self.list_all_facts(i64::MAX)?;
+        let written = self.backfill_fact_embeddings(&facts, provider);
+        usize::try_from(written).map_err(|_| {
+            crate::error::ConversionSnafu {
+                message: "reembedded fact count overflowed usize".to_owned(),
+            }
+            .build()
+        })
+    }
+
     /// Insert or update a fact.
     ///
     /// The fact is validated (non-empty content, length limit, confidence range)
