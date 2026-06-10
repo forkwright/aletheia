@@ -280,19 +280,22 @@ async fn list_entities_honors_filters_and_relationship_counts() {
     let mut params = BTreeMap::new();
     params.insert(
         "fact_id".to_owned(),
-        DataValue::Str("fact-alice".to_owned()),
+        DataValue::Str("fact-alice".to_owned().into()),
     );
     params.insert(
         "entity_id".to_owned(),
-        DataValue::Str("entity-a".to_owned()),
+        DataValue::Str("entity-a".to_owned().into()),
     );
-    params.insert("created_at".to_owned(), DataValue::Str(now.to_string()));
+    params.insert(
+        "created_at".to_owned(),
+        DataValue::Str(now.to_string().into()),
+    );
     store
         .run_mut_query(
-            r#"
+            r"
                 ?[fact_id, entity_id, created_at] <- [[ $fact_id, $entity_id, $created_at ]]
                 :put fact_entities { fact_id, entity_id => created_at }
-            "#,
+            ",
             params,
         )
         .unwrap();

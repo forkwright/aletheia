@@ -60,7 +60,7 @@ fn list_entity_relationship_links(
             dst = $entity_id
     ";
     let mut params = BTreeMap::new();
-    params.insert("entity_id".to_owned(), DataValue::Str(id.to_owned()));
+    params.insert("entity_id".to_owned(), DataValue::Str(id.to_owned().into()));
     let rows = store
         .run_query(script, params)
         .map_err(|e| ApiError::Internal {
@@ -90,7 +90,7 @@ fn list_entity_fact_links(
             entity_id = $entity_id
     ";
     let mut params = BTreeMap::new();
-    params.insert("entity_id".to_owned(), DataValue::Str(id.to_owned()));
+    params.insert("entity_id".to_owned(), DataValue::Str(id.to_owned().into()));
     let rows = store
         .run_query(script, params)
         .map_err(|e| ApiError::Internal {
@@ -145,7 +145,7 @@ fn list_entity_pending_merge_links(
             entity_b = $entity_id
     ";
     let mut params = BTreeMap::new();
-    params.insert("entity_id".to_owned(), DataValue::Str(id.to_owned()));
+    params.insert("entity_id".to_owned(), DataValue::Str(id.to_owned().into()));
     let rows = store
         .run_query(script, params)
         .map_err(|e| ApiError::Internal {

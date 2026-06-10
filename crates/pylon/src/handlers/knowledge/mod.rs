@@ -400,7 +400,7 @@ fn load_agent_entity_ids(
         let mut params = BTreeMap::new();
         params.insert(
             "nous_id".to_owned(),
-            mneme::engine::DataValue::Str(agent.clone()),
+            mneme::engine::DataValue::Str(agent.clone().into()),
         );
         let result = store
             .run_query(script, params)
@@ -505,7 +505,7 @@ fn build_agent_filter_clause(
     for (idx, agent) in agents.iter().enumerate() {
         params.insert(
             format!("agent_{idx}"),
-            mneme::engine::DataValue::Str(agent.clone()),
+            mneme::engine::DataValue::Str(agent.clone().into()),
         );
     }
 
