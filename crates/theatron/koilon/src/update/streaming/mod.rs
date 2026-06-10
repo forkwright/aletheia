@@ -262,7 +262,10 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
             text,
             text_lower,
             timestamp: None,
-            model: Some(sanitize_for_display(&outcome.model).into_owned()),
+            model: outcome
+                .model
+                .as_deref()
+                .map(|m| sanitize_for_display(m).into_owned()),
             tool_calls,
             kind: crate::state::MessageKind::default(),
         });
@@ -297,7 +300,7 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         .input_tokens
         .saturating_add(outcome.cache_read_tokens);
     if ctx_used > 0 {
-        let ctx_total = model_context_window(&outcome.model);
+        let ctx_total = model_context_window(outcome.model.as_deref().unwrap_or("unknown"));
         app.dashboard.context_tokens_used = Some(ctx_used);
         app.dashboard.context_tokens_total = Some(ctx_total);
         // WHY: clamped to [0, 100] before try_from; u8 cannot overflow.

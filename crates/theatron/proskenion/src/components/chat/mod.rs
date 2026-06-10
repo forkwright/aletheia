@@ -371,7 +371,7 @@ impl ChatStateManager {
                 let message = ChatMessage {
                     role: MessageRole::Assistant,
                     content: std::mem::take(&mut state.streaming.text),
-                    model: Some(outcome.model),
+                    model: outcome.model,
                     tool_calls: outcome.tool_calls,
                     input_tokens: outcome.input_tokens,
                     output_tokens: outcome.output_tokens,
