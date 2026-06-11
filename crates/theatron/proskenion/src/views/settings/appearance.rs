@@ -107,9 +107,43 @@ pub(crate) fn AppearancePanel() -> Element {
                         style: "font-size: var(--text-xs); color: var(--text-muted); width: 22px;",
                         "20"
                     }
+                    input {
+                        r#type: "number",
+                        min: "12",
+                        max: "20",
+                        step: "1",
+                        value: "{current.font_size}",
+                        style: "width: 52px; background: var(--input-bg); border: 1px solid var(--input-border); \
+                                border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); \
+                                color: var(--text-primary); font-size: var(--text-sm); \
+                                font-family: var(--font-mono); text-align: center;",
+                        // WHY: oninput applies only in-range values so partial typing
+                        // ("1" en route to "16") does not snap to the clamp floor.
+                        oninput: move |e| {
+                            if let Ok(v) = e.value().parse::<u8>() {
+                                if (12..=20).contains(&v) {
+                                    appearance.write().set_font_size(v);
+                                    let store = server_store.read();
+                                    let app = appearance.read();
+                                    let keys = keybindings.read();
+                                    settings_config::save_state(&store, &app, &keys);
+                                }
+                            }
+                        },
+                        // WHY: onchange (blur/Enter) clamps out-of-range final values to [12, 20].
+                        onchange: move |e| {
+                            if let Ok(v) = e.value().parse::<u8>() {
+                                appearance.write().set_font_size(v);
+                                let store = server_store.read();
+                                let app = appearance.read();
+                                let keys = keybindings.read();
+                                settings_config::save_state(&store, &app, &keys);
+                            }
+                        },
+                    }
                     span {
-                        style: "font-size: var(--text-sm); color: var(--text-primary); width: 36px; text-align: right;",
-                        "{current.font_size}px"
+                        style: "font-size: var(--text-xs); color: var(--text-muted);",
+                        "px"
                     }
                 }
             }

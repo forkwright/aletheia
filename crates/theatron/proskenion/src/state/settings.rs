@@ -416,7 +416,7 @@ pub(crate) fn default_actions() -> Vec<KeyAction> {
         },
         KeyAction {
             id: "nav_files",
-            label: "Go to Files",
+            label: "Go to Theke",
             category: KeyCategory::Navigation,
             default: KeyCombo {
                 ctrl: true,

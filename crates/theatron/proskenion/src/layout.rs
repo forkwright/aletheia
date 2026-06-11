@@ -3,30 +3,15 @@
 use dioxus::prelude::*;
 
 use crate::app::Route;
-use crate::components::agent_sidebar::AgentSidebarView;
 use crate::components::help_overlay::HelpOverlay;
 use crate::components::topbar::TopBar;
 use crate::state::navigation::NavAction;
 use crate::state::pipeline::RoutingState;
 use crate::state::view_preservation::ViewPreservationStore;
 
-const SIDEBAR_COLLAPSED_STYLE: &str = "\
-    width: 48px; \
-    background: var(--bg-surface); \
-    color: var(--text-primary); \
-    padding: var(--space-4) 0; \
-    display: flex; \
-    flex-direction: column; \
-    gap: var(--space-1); \
-    flex-shrink: 0; \
-    border-right: 1px solid var(--border-separator); \
-    overflow-y: auto; \
-    overflow-x: hidden; \
-    transition: width var(--duration-slow, 350ms) cubic-bezier(0.16, 1, 0.3, 1);\
-";
+use crate::components::agent_sidebar::AgentSidebarView;
 
-const SIDEBAR_EXPANDED_STYLE: &str = "\
-    width: 220px; \
+const SIDEBAR_BASE_STYLE: &str = "\
     background: var(--bg-surface); \
     color: var(--text-primary); \
     padding: var(--space-4) 0; \
@@ -37,7 +22,7 @@ const SIDEBAR_EXPANDED_STYLE: &str = "\
     border-right: 1px solid var(--border-separator); \
     overflow-y: auto; \
     overflow-x: hidden; \
-    transition: width var(--duration-slow, 350ms) cubic-bezier(0.16, 1, 0.3, 1);\
+    transition: width var(--duration-slow) var(--ease-out-expo);\
 ";
 
 const CONTENT_STYLE: &str = "\
@@ -90,22 +75,25 @@ pub(crate) fn Layout() -> Element {
         help_visible,
     );
 
-    let sidebar_style = if *sidebar_collapsed.read() {
-        SIDEBAR_COLLAPSED_STYLE
+    let sidebar_width = if *sidebar_collapsed.read() {
+        "var(--sidebar-width-collapsed)"
     } else {
-        SIDEBAR_EXPANDED_STYLE
+        "var(--sidebar-width)"
     };
 
     rsx! {
         div {
-            style: "display: flex; height: 100vh; font-family: var(--font-body, system-ui, -apple-system, sans-serif);",
+            // WHY: paint the shell root explicitly — body resolves dark-theme
+            // tokens (data-theme lives on an inner div), so any unpainted gap
+            // would render near-black on the light theme.
+            style: "display: flex; height: 100vh; background: var(--bg); color: var(--text-primary); font-family: var(--font-body, system-ui, -apple-system, sans-serif);",
             // NOTE: tabindex="-1" + onkeydown lets the root div capture keyboard events.
             tabindex: "-1",
             onkeydown: keyboard_handler,
             "aria-label": "Aletheia application",
 
             nav {
-                style: "{sidebar_style}",
+                style: "width: {sidebar_width}; {SIDEBAR_BASE_STYLE}",
                 role: "navigation",
                 "aria-label": "Main navigation",
                 if !*sidebar_collapsed.read() {
@@ -121,7 +109,7 @@ pub(crate) fn Layout() -> Element {
                     div { class: "sidebar-section-label", "Workspace" }
                 }
                 NavItem { to: Route::Chat {}, icon: "💬", label: "Chat", shortcut: "Ctrl+1", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::Files {}, icon: "📁", label: "Files", shortcut: "Ctrl+2", collapsed: *sidebar_collapsed.read() }
+                NavItem { to: Route::Files {}, icon: "📁", label: "Theke", shortcut: "Ctrl+2", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Planning {}, icon: "📋", label: "Planning", shortcut: "Ctrl+3", collapsed: *sidebar_collapsed.read() }
 
                 // ── Knowledge section ──
@@ -152,6 +140,7 @@ pub(crate) fn Layout() -> Element {
                 // sits below nav so it reads as a distinct shaded panel.
                 AgentSidebarView { collapsed: *sidebar_collapsed.read() }
             }
+            // Content area: topbar + main
             div {
                 style: "flex: 1; display: flex; flex-direction: column; overflow: hidden;",
                 TopBar {}
@@ -163,6 +152,7 @@ pub(crate) fn Layout() -> Element {
                 }
             }
 
+            // Help overlay (F1)
             HelpOverlay { visible: help_visible }
         }
     }

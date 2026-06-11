@@ -46,18 +46,18 @@ const CHIP_STYLE: &str = "\
     display: inline-flex; \
     align-items: center; \
     gap: var(--space-1); \
-    background: var(--border); \
-    border: 1px solid var(--accent); \
+    background: var(--bg-surface); \
+    border: 1px solid var(--border-selected); \
     border-radius: var(--radius-xl); \
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
-    color: #7a7aff;\
+    color: var(--text-primary);\
 ";
 
 const CHIP_CLOSE_STYLE: &str = "\
     background: none; \
     border: none; \
-    color: #7a7aff; \
+    color: var(--text-secondary); \
     cursor: pointer; \
     font-size: var(--text-base); \
     padding: 0; \

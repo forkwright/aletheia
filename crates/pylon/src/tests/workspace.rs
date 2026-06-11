@@ -49,7 +49,7 @@ async fn workspace_path_traversal_is_rejected() {
     let (app, _dir) = app().await;
     let req = Request::builder()
         .method("GET")
-        .uri("/api/v1/workspace/files/content?path=../theke/USER.md")
+        .uri("/api/v1/workspace/files/content?path=../nous/syn/SOUL.md")
         .header("authorization", format!("Bearer {}", default_token()))
         .body(Body::empty())
         .expect("request");

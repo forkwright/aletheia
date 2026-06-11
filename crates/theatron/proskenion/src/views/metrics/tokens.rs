@@ -233,9 +233,14 @@ pub(crate) fn Tokens() -> Element {
 }
 
 fn loaded_tokens_view(
-    data: TokenMetricsResponse,
+    mut data: TokenMetricsResponse,
     mut agent_filter: Signal<Option<String>>,
 ) -> Element {
+    // WHY: breakdowns must reflect only what the period actually used —
+    // zero-usage agents and models are noise, not data.
+    data.agents.retain(|a| a.total() > 0);
+    data.models.retain(|m| m.total() > 0);
+
     let today_d = compute_delta_u64(data.today_total(), data.prev_today_total());
     let week_d = compute_delta_u64(data.week_total(), data.prev_week_total());
     let month_d = compute_delta_u64(data.month_total(), data.prev_month_total());
@@ -262,8 +267,8 @@ fn loaded_tokens_view(
                 reason = "u64 token counts to f64 for chart series"
             )]
             secondary: pt.output_tokens as f64,
-            primary_color: "#5b6af0".to_string(),
-            secondary_color: "#10b981".to_string(),
+            primary_color: "var(--accent)".to_string(),
+            secondary_color: "var(--status-success)".to_string(),
         })
         .collect();
 

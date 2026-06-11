@@ -136,7 +136,7 @@ pub(crate) fn Timeline(
                                     onclick: move |_| on_block_click.call(idx),
 
                                     div {
-                                        style: "position: absolute; left: 0; top: 0; width: {progress_w}px; height: 100%; background: rgba(255,255,255,0.06); border-radius: var(--radius-md) 0 0 var(--radius-md);",
+                                        style: "position: absolute; left: 0; top: 0; width: {progress_w}px; height: 100%; background: var(--progress-veil); border-radius: var(--radius-md) 0 0 var(--radius-md);",
                                     }
 
                                     div {
@@ -199,18 +199,17 @@ fn render_dependency(
         end_y + 3.5,
     );
 
+    // NOTE: SVG presentation attributes do not resolve var(); theme tokens
+    // must go through the style attribute.
     rsx! {
         path {
             key: "line-{dep.from_idx}-{dep.to_idx}",
             d: "{curve}",
-            stroke: "#4a9aff",
-            stroke_width: "1.5",
-            fill: "none",
+            style: "stroke: var(--status-info); stroke-width: 1.5; fill: none;",
         }
         path {
             d: "{arrow}",
-            fill: "#4a9aff",
-            stroke: "none",
+            style: "fill: var(--status-info); stroke: none;",
         }
     }
 }

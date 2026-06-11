@@ -98,7 +98,7 @@ const FLAG_ICON_STYLE: &str = "\
 const LOAD_MORE_STYLE: &str = "\
     padding: var(--space-3); \
     text-align: center; \
-    color: #7a7aff; \
+    color: var(--accent); \
     cursor: pointer; \
     font-size: var(--text-sm); \
     transition: background-color var(--transition-quick), \
@@ -213,7 +213,7 @@ pub(crate) fn EntityList(
                                             }
                                         }
                                         span {
-                                            style: "{TYPE_BADGE_STYLE} background: {type_color}22; color: {type_color};",
+                                            style: "{TYPE_BADGE_STYLE} background: color-mix(in srgb, {type_color} 14%, transparent); color: {type_color};",
                                             "{type_label}"
                                         }
                                     }

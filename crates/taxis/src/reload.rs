@@ -27,7 +27,8 @@ const RESTART_PREFIXES: &[&str] = &[
     "messaging.bufferCapacity",
     // WHY: idempotency capacity sets the LRU cache size at server startup.
     "apiLimits.idempotencyCapacity",
-    // WHY: model context limits are loaded into provider/model routing state.
+    // WHY: the workspace file-API root is resolved into AppState at startup.
+    "workspace.root",
 ];
 
 /// Returns true if changing the given dotted field path requires a restart.

@@ -171,9 +171,9 @@ fn ConnectedApp() -> Element {
     // and has access to the finalized connection config.
     crate::services::sse_coroutine::start_sse_coroutine(&config.read());
 
-    // WHY: Fetch agents immediately on connection so the topbar agent pills
-    // are populated. Without this, agents only appear when the Ops view is
-    // visited — the topbar would be empty on first launch.
+    // WHY: Fetch agents immediately on connection so the sidebar nous roster
+    // is populated. Without this, agents only appear when the Ops view is
+    // visited — the roster would be empty on first launch.
     {
         let cfg = config.read().clone();
         let mut agents: Signal<AgentStore> = use_context();

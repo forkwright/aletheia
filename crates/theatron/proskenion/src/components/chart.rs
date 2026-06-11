@@ -398,15 +398,18 @@ pub(crate) fn GroupedBarChart(
 // ── Series colors ──
 
 /// Palette for multi-series charts (8 visually distinct hues).
+///
+/// WHY: Every entry resolves through `[data-theme]` so series hues stay
+/// legible and on-palette in both dark and light themes.
 pub(crate) const SERIES_COLORS: &[&str] = &[
-    "#5b6af0",
+    "var(--status-info)",
     "var(--status-success)",
     "var(--status-warning)",
     "var(--status-error)",
-    "#a855f7",
-    "#06b6d4",
-    "#f97316",
-    "#ec4899",
+    "var(--thanatochromia)",
+    "var(--aporia)",
+    "var(--natural)",
+    "var(--aima)",
 ];
 
 // ── Line chart types ──
@@ -554,7 +557,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
             div {
                 style: "display: flex; gap: var(--space-3); font-size: var(--text-xs); color: var(--text-muted);",
                 span { "min-p25" }
-                span { style: "color: #5b6af0;", "p25-p50" }
+                span { style: "color: var(--status-info);", "p25-p50" }
                 span { style: "color: var(--status-success);", "p50-p75" }
                 span { style: "color: var(--status-warning);", "p75-p95" }
                 span { style: "color: var(--status-error);", "p95-max" }
@@ -589,7 +592,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
                                 style: "flex: 1; height: 16px; display: flex; border-radius: var(--radius-sm); overflow: hidden;",
                                 title: "{tip}",
                                 div { style: "width: {w_min_p25}%; background: var(--input-border); min-width: 1px;" }
-                                div { style: "width: {w_p25_p50}%; background: #5b6af0; min-width: 1px;" }
+                                div { style: "width: {w_p25_p50}%; background: var(--status-info); min-width: 1px;" }
                                 div { style: "width: {w_p50_p75}%; background: var(--status-success); min-width: 1px;" }
                                 div { style: "width: {w_p75_p95}%; background: var(--status-warning); min-width: 1px;" }
                                 div { style: "width: {w_p95_max}%; background: var(--status-error); min-width: 1px;" }

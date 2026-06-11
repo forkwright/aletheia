@@ -102,15 +102,15 @@ pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
 
 fn band_colors(status: WaveStatus) -> (&'static str, &'static str) {
     match status {
-        WaveStatus::Active => ("var(--bg-surface)", "#4a9aff"),
-        WaveStatus::Complete => ("#0f1a0f", "#2a4a2a"),
-        WaveStatus::Pending => ("#151520", "var(--border)"),
+        WaveStatus::Active => ("var(--bg-surface)", "var(--status-info)"),
+        WaveStatus::Complete => ("var(--status-success-bg)", "var(--status-success)"),
+        WaveStatus::Pending => ("var(--bg-surface-dim)", "var(--border)"),
     }
 }
 
 fn progress_color(status: WaveStatus) -> &'static str {
     match status {
-        WaveStatus::Active => "#4a9aff",
+        WaveStatus::Active => "var(--status-info)",
         WaveStatus::Complete => "var(--status-success)",
         WaveStatus::Pending => "var(--border)",
     }
@@ -119,8 +119,8 @@ fn progress_color(status: WaveStatus) -> &'static str {
 #[must_use]
 pub(crate) fn status_badge_style(status: WaveStatus) -> String {
     let (bg, color) = match status {
-        WaveStatus::Active => ("#1e1e5a", "#4a9aff"),
-        WaveStatus::Complete => ("#0f2a0f", "var(--status-success)"),
+        WaveStatus::Active => ("var(--status-info-bg)", "var(--status-info)"),
+        WaveStatus::Complete => ("var(--status-success-bg)", "var(--status-success)"),
         WaveStatus::Pending => ("var(--border)", "var(--text-muted)"),
     };
     format!("{BADGE_BASE} background: {bg}; color: {color};")

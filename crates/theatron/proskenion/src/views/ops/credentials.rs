@@ -648,9 +648,9 @@ fn CredentialCard(
     let show_remove = *confirm_remove.read();
 
     let role_bg = if entry.role == CredentialRole::Primary {
-        "background: #1a2a4a; color: #4a9aff;"
+        "background: var(--status-info-bg); color: var(--status-info);"
     } else {
-        "background: #2a2a2a; color: var(--text-secondary);"
+        "background: var(--bg-surface-bright); color: var(--text-secondary);"
     };
 
     rsx! {

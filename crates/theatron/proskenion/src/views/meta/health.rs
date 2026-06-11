@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 
 use crate::state::meta::{MemoryHealthStore, health_score_color};
 use crate::views::meta::{
-    CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, GRID_STYLE, LineChart, MUTED_TEXT,
+    CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, ChartCard, ChartKind, GRID_STYLE, MUTED_TEXT,
 };
 
 const TABLE_HEADER_STYLE: &str = "\
@@ -85,19 +85,14 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
 
         // NOTE: Health trend over time.
         if !store.health_over_time.is_empty() {
-            h3 {
-                style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
-                "Health Trend"
-            }
-            div {
-                style: "{CARD_STYLE}",
-                LineChart {
-                    data: store.health_over_time.clone(),
-                    width: 600.0,
-                    height: 150.0,
-                    color: "var(--status-success)",
-                    show_labels: true,
-                }
+            ChartCard {
+                title: "Health Trend",
+                kind: ChartKind::Line,
+                data: store.health_over_time.clone(),
+                color: "var(--status-success)",
+                width: 960.0,
+                height: 220.0,
+                card_style: "margin-top: var(--space-3);",
             }
         }
 
@@ -214,7 +209,7 @@ fn confidence_bucket_color(range_label: &str) -> &'static str {
     // WHY: Higher confidence = greener, lower = redder.
     match range_label {
         s if s.starts_with("0.8") || s.starts_with("0.9") => "var(--status-success)",
-        s if s.starts_with("0.6") || s.starts_with("0.7") => "#4a9aff",
+        s if s.starts_with("0.6") || s.starts_with("0.7") => "var(--status-info)",
         s if s.starts_with("0.4") || s.starts_with("0.5") => "var(--status-warning)",
         _ => "var(--status-error)",
     }

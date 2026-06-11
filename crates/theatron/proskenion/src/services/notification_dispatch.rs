@@ -138,6 +138,10 @@ impl NotificationDispatch {
                     self.disconnect_at = Some(Instant::now());
                 }
                 self.was_connected = false;
+                // WHY: While disconnected, no other event types arrive — the
+                // reconnect loop's repeated Disconnected events are the only
+                // chance for the delayed loss notification to fire.
+                self.check_connection_lost(prefs, dnd, window_focused, on_sent, toast_fallback);
             }
             _ => {
                 // NOTE: On other events, check if the delayed connection-loss

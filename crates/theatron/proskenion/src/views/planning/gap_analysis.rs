@@ -195,8 +195,12 @@ pub(crate) fn GapAnalysisPanel(requirements: Vec<RequirementVerification>) -> El
 
 fn priority_badge_style(priority: RequirementPriority) -> &'static str {
     match priority {
-        RequirementPriority::P0 => "background: #3a0f0f; color: var(--status-error);",
-        RequirementPriority::P1 => "background: #2a1f05; color: var(--status-warning);",
+        RequirementPriority::P0 => {
+            "background: var(--status-error-bg); color: var(--status-error);"
+        }
+        RequirementPriority::P1 => {
+            "background: var(--status-warning-bg); color: var(--status-warning);"
+        }
         RequirementPriority::P2 => "background: var(--bg-surface-dim); color: var(--accent);",
         RequirementPriority::P3 => "background: var(--bg-surface); color: var(--text-muted);",
     }

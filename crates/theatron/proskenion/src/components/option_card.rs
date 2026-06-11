@@ -17,7 +17,7 @@ const CARD_STYLE: &str = "\
 
 const CARD_RECOMMENDED: &str = "\
     background: var(--bg-surface); \
-    border: 2px solid #4a9aff; \
+    border: 2px solid var(--status-info); \
     border-radius: var(--radius-md); \
     padding: var(--space-4) var(--space-4); \
     cursor: pointer; \
@@ -27,7 +27,7 @@ const CARD_RECOMMENDED: &str = "\
 ";
 
 const CARD_SELECTED: &str = "\
-    background: #1a2a3a; \
+    background: var(--status-success-bg); \
     border: 2px solid var(--status-success); \
     border-radius: var(--radius-md); \
     padding: var(--space-4) var(--space-4); \
@@ -56,8 +56,8 @@ const BADGE_RECOMMENDED: &str = "\
     font-weight: var(--weight-semibold); \
     padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-md); \
-    background: #1a2a4a; \
-    color: #4a9aff; \
+    background: var(--status-info-bg); \
+    color: var(--status-info); \
     text-transform: uppercase; \
     letter-spacing: 0.3px;\
 ";
@@ -68,7 +68,7 @@ const BADGE_SELECTED: &str = "\
     font-weight: var(--weight-semibold); \
     padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-md); \
-    background: #0f2a0f; \
+    background: var(--status-success-bg); \
     color: var(--status-success); \
     text-transform: uppercase; \
     letter-spacing: 0.3px;\

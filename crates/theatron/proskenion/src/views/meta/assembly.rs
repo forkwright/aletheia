@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use super::{
     AgentEntry, AgentPerformanceApiResponse, AgentPerformanceStore, CostMetricsApiResponse,
     EntityEntry, FactEntry, HealthApiResponse, JournalEventEntry, KnowledgeGrowthStore,
-    MemoryHealthStore, MetaData, QualityMetricsApiResponse, QualityStore, SessionEntry,
-    SystemReflectionStore, TimeSeriesPointEntry, TimelineEntry, TokenMetricsApiResponse,
+    META_SERIES_COLORS, MemoryHealthStore, MetaData, QualityMetricsApiResponse, QualityStore,
+    SessionEntry, SystemReflectionStore, TimeSeriesPointEntry, TimelineEntry,
+    TokenMetricsApiResponse,
 };
 
 /// Assemble all fetched data into the composite `MetaData` structure.
@@ -27,7 +28,7 @@ pub(super) fn assemble_meta_data(
     quality: QualityMetricsApiResponse,
     journal: Vec<JournalEventEntry>,
 ) -> MetaData {
-    // ── Performance ──
+    // -- Performance --
     let mut scorecards = Vec::new();
     let mut anomalies = Vec::new();
     let mut tokens_per_response_series: HashMap<String, Vec<crate::state::meta::DataPoint>> =
@@ -114,7 +115,7 @@ pub(super) fn assemble_meta_data(
         endpoint_available: true,
     };
 
-    // ── Quality ──
+    // -- Quality --
     let mut depth = crate::state::meta::DepthDistribution::default();
     for s in &sessions {
         match crate::state::meta::DepthDistribution::classify(s.message_count) {
@@ -139,7 +140,7 @@ pub(super) fn assemble_meta_data(
         charts_endpoint_available: true,
     };
 
-    // ── Knowledge growth ──
+    // -- Knowledge growth --
     let total_entity_count = usize_to_u64(entities.len());
     let total_relationship_count: u32 = entities.iter().map(|e| e.relationship_count).sum();
 
@@ -182,8 +183,7 @@ pub(super) fn assemble_meta_data(
             |(i, (t, count)): (usize, (&str, u32))| crate::state::meta::EntityTypeSlice {
                 entity_type: t.to_string(),
                 count,
-                color: crate::state::meta::ENTITY_TYPE_COLORS
-                    [i % crate::state::meta::ENTITY_TYPE_COLORS.len()],
+                color: META_SERIES_COLORS[i % META_SERIES_COLORS.len()],
             },
         )
         .collect();
@@ -212,7 +212,7 @@ pub(super) fn assemble_meta_data(
         acceleration,
     };
 
-    // ── Memory health ──
+    // -- Memory health --
     let avg_confidence = if facts.is_empty() {
         0.0
     } else {

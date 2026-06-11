@@ -2,6 +2,7 @@
 
 mod assembly;
 mod charts;
+mod drilldown;
 mod health;
 mod knowledge;
 mod performance;
@@ -20,8 +21,10 @@ use crate::state::meta::{
 };
 
 pub(crate) use charts::{BarChart, LineChart};
+pub(crate) use drilldown::{ChartCard, ChartKind};
 
 use assembly::assemble_meta_data;
+use drilldown::{ChartDrilldown, ExpandedChart};
 use health::MemoryHealthSection;
 use knowledge::KnowledgeGrowthSection;
 use performance::AgentPerformanceSection;
@@ -305,14 +308,14 @@ const HEADER_STYLE: &str = "\
     padding: 0 0 var(--space-3) 0; \
     position: sticky; \
     top: 0; \
-    background: var(--bg-surface-dim); \
+    background: var(--bg); \
     z-index: 10;\
 ";
 
 const REFRESH_BTN: &str = "\
-    background: var(--border); \
+    background: var(--bg-surface); \
     color: var(--text-primary); \
-    border: 1px solid var(--border); \
+    border: 1px solid var(--input-border); \
     border-radius: var(--radius-md); \
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
@@ -355,10 +358,10 @@ pub(crate) const SECTION_TITLE_STYLE: &str = "\
 
 pub(crate) const SECTION_BODY_STYLE: &str = "\
     padding: var(--space-4); \
-    background: #12121e; \
+    background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-top: none; \
-    border-radius: 0 0 var(--radius-lg) var(--radius-lg); \
+    border-radius: 0 0 var(--radius-md) var(--radius-md); \
     margin-bottom: var(--space-3);\
 ";
 
@@ -397,6 +400,21 @@ pub(crate) const CARD_SUB: &str = "\
 
 pub(crate) const MUTED_TEXT: &str = "font-size: var(--text-xs); color: var(--text-muted);";
 
+/// Theme-token palette for multi-series meta charts.
+///
+/// WHY: Every entry resolves through `[data-theme]` so series hues stay
+/// legible and on-palette in both dark and light themes.
+pub(crate) const META_SERIES_COLORS: &[&str] = &[
+    "var(--natural)",
+    "var(--aporia)",
+    "var(--status-info)",
+    "var(--aima)",
+    "var(--thanatochromia)",
+    "var(--status-warning)",
+    "var(--status-success)",
+    "var(--accent)",
+];
+
 const AUTO_REFRESH_INTERVAL_MS: u64 = 300_000;
 
 // ── Component ──
@@ -406,6 +424,7 @@ pub(crate) fn Meta() -> Element {
     let config: Signal<ConnectionConfig> = use_context();
     let mut fetch_state = use_signal(|| FetchState::<MetaData>::Loading);
     let mut expanded = use_signal(|| [true, true, true, true, true]);
+    use_context_provider(|| Signal::new(Option::<ExpandedChart>::None));
 
     let mut do_refresh = move || {
         let cfg = config.read().clone();
@@ -500,6 +519,8 @@ pub(crate) fn Meta() -> Element {
                     }
                 },
             }
+
+            ChartDrilldown {}
         }
     }
 }

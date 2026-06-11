@@ -408,6 +408,44 @@ fn chat_state_default() {
 }
 
 #[test]
+fn last_is_user_message_matches_failed_turn_tail() {
+    let mut state = make_state();
+    state.messages.push(ChatMessage {
+        role: MessageRole::User,
+        content: "send this".to_string(),
+        model: None,
+        tool_calls: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        thinking: None,
+        tool_call_details: Vec::new(),
+        plans: Vec::new(),
+    });
+
+    assert!(state.last_is_user_message("send this"));
+    assert!(!state.last_is_user_message("different text"));
+}
+
+#[test]
+fn last_is_user_message_false_for_empty_or_assistant_tail() {
+    let mut state = make_state();
+    assert!(!state.last_is_user_message("anything"));
+
+    state.messages.push(ChatMessage {
+        role: MessageRole::Assistant,
+        content: "reply".to_string(),
+        model: None,
+        tool_calls: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        thinking: None,
+        tool_call_details: Vec::new(),
+        plans: Vec::new(),
+    });
+    assert!(!state.last_is_user_message("reply"));
+}
+
+#[test]
 fn full_turn_lifecycle() {
     let mut state = make_state();
     let mut mgr = make_manager();

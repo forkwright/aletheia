@@ -9,7 +9,7 @@ use crate::state::memory::{EntityListStore, FlagSeverity};
 const OVERLAY_STYLE: &str = "\
     position: fixed; \
     top: 0; left: 0; right: 0; bottom: 0; \
-    background: rgba(0, 0, 0, 0.6); \
+    background: var(--bg-overlay); \
     display: flex; \
     align-items: center; \
     justify-content: center; \
@@ -141,8 +141,8 @@ const MERGE_NAME_STYLE: &str = "\
 ";
 
 const WARNING_STYLE: &str = "\
-    background: #4a2a1a; \
-    border: 1px solid var(--status-warning)44; \
+    background: var(--status-warning-bg); \
+    border: 1px solid color-mix(in srgb, var(--status-warning) 35%, transparent); \
     border-radius: var(--radius-md); \
     padding: var(--space-3); \
     color: var(--status-warning); \
@@ -151,8 +151,8 @@ const WARNING_STYLE: &str = "\
 ";
 
 const IMPACT_STYLE: &str = "\
-    background: #4a1a1a; \
-    border: 1px solid var(--status-error)44; \
+    background: var(--status-error-bg); \
+    border: 1px solid color-mix(in srgb, var(--status-error) 35%, transparent); \
     border-radius: var(--radius-md); \
     padding: var(--space-3); \
     color: var(--status-error); \

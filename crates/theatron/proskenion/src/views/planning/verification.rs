@@ -67,7 +67,7 @@ const TH_STYLE: &str = "\
 
 const TD_STYLE: &str = "\
     padding: var(--space-2) 10px; \
-    border-bottom: 1px solid #1a1a2a; \
+    border-bottom: 1px solid var(--border-separator); \
     vertical-align: top;\
 ";
 
@@ -93,7 +93,7 @@ const REFRESH_BTN: &str = "\
 ";
 
 const VERIFY_BTN: &str = "\
-    background: #1a2a4a; \
+    background: var(--bg-surface); \
     color: var(--accent); \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \

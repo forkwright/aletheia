@@ -246,7 +246,7 @@ const ENTRY_STYLE: &str = "\
     align-items: center; \
     gap: var(--space-2); \
     padding: var(--space-2) 0; \
-    border-bottom: 1px solid #222; \
+    border-bottom: 1px solid var(--border-separator); \
     font-size: var(--text-sm);\
 ";
 

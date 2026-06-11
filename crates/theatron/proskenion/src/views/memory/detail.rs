@@ -101,7 +101,7 @@ const REL_TYPE_STYLE: &str = "\
 ";
 
 const REL_ENTITY_STYLE: &str = "\
-    color: #7a7aff; \
+    color: var(--accent); \
     font-weight: var(--weight-medium); \
     flex: 1;\
 ";
@@ -131,7 +131,7 @@ const MEMORY_META_STYLE: &str = "\
 ";
 
 const EXPAND_BTN_STYLE: &str = "\
-    color: #7a7aff; \
+    color: var(--accent); \
     font-size: var(--text-xs); \
     cursor: pointer; \
     background: none; \
@@ -175,9 +175,9 @@ const ACTION_BTN_STYLE: &str = "\
 ";
 
 const ACTION_BTN_DANGER_STYLE: &str = "\
-    background: #4a1a1a; \
+    background: var(--status-error-bg); \
     color: var(--status-error); \
-    border: 1px solid var(--status-error)44; \
+    border: 1px solid color-mix(in srgb, var(--status-error) 35%, transparent); \
     border-radius: var(--radius-md); \
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
@@ -262,7 +262,7 @@ pub(crate) fn EntityDetail(
                             }
                         }
                         span {
-                            style: "{TYPE_BADGE_STYLE} background: {type_color}22; color: {type_color};",
+                            style: "{TYPE_BADGE_STYLE} background: color-mix(in srgb, {type_color} 14%, transparent); color: {type_color};",
                             "{type_label}"
                         }
                         div {

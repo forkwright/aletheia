@@ -144,19 +144,13 @@ fn cost_th(
     }
 }
 
-/// Muted variant of an accent color for previous-period bars.
+/// Muted variant of an agent's accent color for previous-period bars.
 ///
-/// WHY: previous-period bars use 40% opacity to visually recede behind current-period bars.
+/// WHY: previous-period bars recede to 40% strength behind current-period
+/// bars; deriving from agent_color keeps the two palettes in lockstep.
 fn muted_color(index: usize) -> String {
-    const PALETTE: &[&str] = &[
-        "rgba(91,106,240,0.4)",
-        "rgba(16,185,129,0.4)",
-        "rgba(245,158,11,0.4)",
-        "rgba(244,63,94,0.4)",
-        "rgba(14,165,233,0.4)",
-        "rgba(139,92,246,0.4)",
-        "rgba(236,72,153,0.4)",
-        "rgba(20,184,166,0.4)",
-    ];
-    PALETTE[index % PALETTE.len()].to_string()
+    format!(
+        "color-mix(in srgb, {} 40%, transparent)",
+        agent_color(index)
+    )
 }

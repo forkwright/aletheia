@@ -51,11 +51,12 @@ const CHIPS_ROW_STYLE: &str = "\
 const CHIP_STYLE: &str = "\
     display: flex; \
     align-items: center; \
-    gap: var(--space-1); \
-    background: var(--border); \
+    gap: var(--space-2); \
+    background: var(--bg-surface); \
     color: var(--text-primary); \
-    border-radius: var(--radius-lg); \
-    padding: var(--space-1) 10px; \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-full); \
+    padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs);\
 ";
 
@@ -70,7 +71,7 @@ const CHIP_DISMISS_STYLE: &str = "\
 ";
 
 const CLEAR_ALL_STYLE: &str = "\
-    color: #7a7aff; \
+    color: var(--accent); \
     font-size: var(--text-xs); \
     cursor: pointer; \
     background: none; \
@@ -191,7 +192,7 @@ pub(crate) fn EntitySearchBar(
                             rsx! {
                                 div {
                                     key: "type-{label}",
-                                    style: "{CHIP_STYLE} border: 1px solid {color}44;",
+                                    style: "{CHIP_STYLE} border-color: color-mix(in srgb, {color} 35%, transparent);",
                                     span { style: "color: {color};", "{label}" }
                                     span {
                                         style: "{CHIP_DISMISS_STYLE}",

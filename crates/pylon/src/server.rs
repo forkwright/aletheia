@@ -148,7 +148,8 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let knowledge_store = nous_manager.knowledge_store().cloned();
 
     let (config_tx, _config_rx) = tokio::sync::watch::channel(aletheia_config.clone());
-    let workspace_root = crate::state::resolve_workspace_root(&oikos);
+    let workspace_root =
+        crate::state::resolve_workspace_root(&oikos, aletheia_config.workspace.root.as_deref());
 
     // WHY: pylon's standalone server only registers its own metric families.
     // The aletheia binary uses `register_all_metrics` to register every

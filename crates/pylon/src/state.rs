@@ -1,6 +1,6 @@
 //! Shared application state accessible in all Axum handlers.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -103,13 +103,43 @@ impl AppState {
 
 /// Resolve the workspace root used by the desktop file browser.
 ///
-/// WHY: the desktop app expects a stable workspace tree under `nous/workspace`.
-/// When that directory is present and canonicalizes inside the instance root,
-/// we use it directly. Otherwise we fall back to the instance root so the
-/// gateway still serves a usable file browser even when the shared workspace
-/// directory has not been created yet.
+/// Resolution order:
+/// 1. `[workspace] root` from config; relative paths resolve against the
+///    instance root.
+/// 2. The instance theke directory, when present.
+/// 3. The shared agent workspace (`nous/workspace`), when it canonicalizes
+///    inside the instance root.
+/// 4. The instance root.
+///
+/// WHY theke-first: the desktop Theke view is a direct file manager for the
+/// human + nous collaborative space; the agent workspace remains the fallback
+/// for instances without one. Every returned root is canonicalized so the
+/// handlers' path-traversal guard (`canonical.starts_with(root)`) holds even
+/// when the root itself is a symlink.
 #[must_use]
-pub fn resolve_workspace_root(oikos: &Oikos) -> PathBuf {
+pub fn resolve_workspace_root(oikos: &Oikos, configured_root: Option<&Path>) -> PathBuf {
+    if let Some(configured) = configured_root {
+        let absolute = if configured.is_absolute() {
+            configured.to_path_buf()
+        } else {
+            oikos.root().join(configured)
+        };
+        match std::fs::canonicalize(&absolute) {
+            Ok(canonical) => return canonical,
+            Err(e) => {
+                tracing::warn!(
+                    path = %absolute.display(),
+                    error = %e,
+                    "configured workspace root is unusable; falling back to instance defaults"
+                );
+            }
+        }
+    }
+
+    if let Ok(canonical_theke) = std::fs::canonicalize(oikos.theke()) {
+        return canonical_theke;
+    }
+
     let instance_root = std::fs::canonicalize(oikos.root()).unwrap_or_else(|_| oikos.root().into());
     let workspace_root = oikos.workspace_root();
 

@@ -1,7 +1,7 @@
 // kanon:ignore RUST/file-too-long -- metrics state split is tracked under #3988
 //! Metrics state: token usage, cost tracking, and budget management.
 
-// ── Enums ──
+// -- Enums --------------------------------------------------------------------
 
 /// Time granularity for metric series.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -114,7 +114,7 @@ pub(crate) enum AgentCostSort {
     CostPer1k,
 }
 
-// ── API response types ──
+// -- API response types -------------------------------------------------------
 
 /// A single data point in a token usage time series.
 #[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
@@ -358,7 +358,7 @@ pub(crate) struct CostMetricsResponse {
     pub prev_month_cost: f64,
 }
 
-// ── Budget config (local-only) ──
+// -- Budget config (local-only) -----------------------------------------------
 
 /// Monthly spend budget configured locally.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -367,7 +367,7 @@ pub(crate) struct BudgetConfig {
     pub monthly_limit_usd: f64,
 }
 
-// ── Computed display types ──
+// -- Computed display types ---------------------------------------------------
 
 /// Summary card data: current value with delta vs previous period.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -377,7 +377,7 @@ pub(crate) struct SummaryDelta {
     pub is_up: bool,
 }
 
-// ── Helper functions ──
+// -- Helper functions ---------------------------------------------------------
 
 /// Compute a summary delta from current and previous u64 values.
 #[expect(
@@ -434,7 +434,7 @@ pub(crate) fn project_month_end(current_spend: f64, day_of_month: u32, days_in_m
     daily_rate * f64::from(days_in_month)
 }
 
-// ── Display formatters ──
+// -- Display formatters -------------------------------------------------------
 
 /// Format a token count with K/M suffix.
 #[expect(
@@ -462,7 +462,7 @@ pub(crate) fn format_cost(value: f64) -> String {
     format!("${value:.2}")
 }
 
-// ── Date helpers ──
+// -- Date helpers -------------------------------------------------------------
 
 /// Today's date as an ISO-8601 string (YYYY-MM-DD).
 pub(crate) fn today_date_str() -> String {
@@ -539,33 +539,7 @@ fn days_in_month(year: u32, month: u32) -> u32 {
     }
 }
 
-// ── Pricing table (client-side fallback) ──
-
-/// Cost per 1K output tokens for a model (USD).
-///
-/// NOTE: Pricing as of 2026-03. Used only when the API does not return costs.
-pub(crate) fn cost_per_1k_output(model: &str) -> f64 {
-    if model.contains("opus-4") {
-        0.075
-    } else if model.contains("sonnet-4") {
-        0.015
-    } else if model.contains("haiku-4") {
-        0.00125
-    } else if model.contains("opus-3") {
-        0.060
-    } else if model.contains("sonnet-3-5")
-        || model.contains("sonnet-3.5")
-        || model.contains("sonnet-3")
-    {
-        0.015
-    } else if model.contains("haiku-3") {
-        0.00125
-    } else {
-        0.015
-    }
-}
-
-// ── Color helpers ──
+// -- Color helpers ------------------------------------------------------------
 
 /// Consistent accent color for an agent by list position.
 pub(crate) fn agent_color(index: usize) -> &'static str {
@@ -588,7 +562,7 @@ pub(crate) fn model_color(model: &str) -> &'static str {
     }
 }
 
-// ── Sort helpers ──
+// -- Sort helpers -------------------------------------------------------------
 
 /// Sort agent token rows in-place.
 pub(crate) fn sort_agent_token_rows(
@@ -647,7 +621,7 @@ pub(crate) fn sort_agent_cost_rows(rows: &mut [AgentCostRow], col: AgentCostSort
     });
 }
 
-// ── Tests ──
+// -- Tests --------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -950,20 +924,6 @@ mod tests {
     fn today_date_str_format() {
         let s = today_date_str();
         assert_eq!(s.len(), 10);
-    }
-
-    #[test]
-    fn cost_per_1k_output_pricing_table() {
-        assert!((cost_per_1k_output("claude-opus-4") - 0.075).abs() < 0.0001);
-        assert!((cost_per_1k_output("claude-sonnet-4") - 0.015).abs() < 0.0001);
-        assert!((cost_per_1k_output("claude-haiku-4") - 0.00125).abs() < 0.00001);
-        assert!((cost_per_1k_output("claude-opus-3") - 0.060).abs() < 0.0001);
-        assert!((cost_per_1k_output("claude-sonnet-3-5") - 0.015).abs() < 0.0001);
-        assert!((cost_per_1k_output("claude-sonnet-3.5") - 0.015).abs() < 0.0001);
-        assert!((cost_per_1k_output("claude-sonnet-3") - 0.015).abs() < 0.0001);
-        assert!((cost_per_1k_output("claude-haiku-3") - 0.00125).abs() < 0.00001);
-        // Unknown model defaults to sonnet pricing.
-        assert!((cost_per_1k_output("unknown-model-9000") - 0.015).abs() < 0.0001);
     }
 
     #[test]

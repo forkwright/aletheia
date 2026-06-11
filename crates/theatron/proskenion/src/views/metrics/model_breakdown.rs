@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::components::chart::{ChartEntry, DonutChart};
-use crate::state::metrics::{ModelTokenRow, cost_per_1k_output, format_tokens, model_color};
+use crate::state::metrics::{ModelTokenRow, format_tokens, model_color};
 
 /// Per-model token breakdown with donut chart.
 ///
@@ -57,14 +57,12 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
                             th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "Output" }
                             th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "Total" }
                             th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "%" }
-                            th { style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted);", "$/1K out" }
                         }
                     }
                     tbody {
                         for model in &models {
                             {
                                 let pct = model.pct_of_total(grand_total);
-                                let price = cost_per_1k_output(&model.model);
                                 let color = model_color(&model.model);
                                 let short = short_model_name(&model.model);
                                 rsx! {
@@ -80,7 +78,6 @@ pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> El
                                         td { style: "padding: var(--space-2) var(--space-2); color: var(--text-secondary); text-align: right;", "{format_tokens(model.output_tokens)}" }
                                         td { style: "padding: var(--space-2) var(--space-2); color: var(--text-primary); text-align: right; font-weight: var(--weight-semibold);", "{format_tokens(model.total())}" }
                                         td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "{pct:.1}%" }
-                                        td { style: "padding: var(--space-2) var(--space-2); color: var(--text-muted); text-align: right;", "${price:.4}" }
                                     }
                                 }
                             }
