@@ -475,9 +475,9 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             continue;
         }
 
-        // #4163/A — `get_history` filters `is_distilled == true`, dropping the
-        // distilled tail. The portability raw entry point returns every row in
-        // seq order so an export-then-import round-trip stays faithful.
+        // WHY(#4163): `get_history` filters `is_distilled == true`, dropping
+        // the distilled tail. The portability raw entry point returns every
+        // row in seq order so an export-then-import round-trip stays faithful.
         let messages = store
             .get_history_raw(&session.id, limit)
             .with_whatever_context(|_| format!("failed to read history for {}", session.id))?
@@ -503,7 +503,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             })
             .collect();
 
-        // #4163/B — populate working_state from the live blackboard. The key
+        // WHY(#4163): working_state comes from the live blackboard. The key
         // convention `ws:{nous_id}:{session_id}` mirrors
         // `nous::working_state::WorkingState::persist_key`. `distillation_priming`
         // has a schema slot for forward compatibility but no live producer
@@ -534,10 +534,10 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         });
     }
 
-    // #4163/B — populate top-level knowledge from the live store (typed
-    // Facts/Entities/Relationships). Vectors + opaque graph (`memory`) are
-    // still gapped; tracked as the v2 known-gap so PR3/PR4 / a follow-up can
-    // close them without another version bump.
+    // WHY(#4163): top-level knowledge comes from the live store (typed
+    // Facts/Entities/Relationships). Vectors + opaque graph (`memory`) are a
+    // known v2 gap; the schema slots let them be closed without another
+    // version bump.
     let knowledge = export_knowledge(&oikos, &args.nous_id)?;
 
     let exported_at = jiff::Timestamp::now().to_string();
@@ -700,7 +700,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         );
     }
 
-    // SECURITY (#4241): if --target-id is absent, the imported nous.id is
+    // WARNING(#4241): if --target-id is absent, the imported nous.id is
     // used directly to derive on-disk paths. Validate before any I/O.
     if args.target_id.is_none() {
         validate_agent_id_for_paths(&agent_file.nous.id, "imported nous.id")?;
@@ -1886,7 +1886,7 @@ workspace = "nous/{agent_id}"
         assert_eq!(history[0].content, "round trip");
     }
 
-    /// #4163/C — import preserves session status, timestamps, and metrics
+    /// WHY(#4163): import preserves session status, timestamps, and metrics
     /// via [`import_session`].
     #[test]
     fn import_preserves_session_status_4163_c() {
@@ -1983,7 +1983,7 @@ workspace = "nous/{agent_id}"
         );
     }
 
-    /// #4163/D — import preserves per-message `seq`, `is_distilled`, and
+    /// WHY(#4163): import preserves per-message `seq`, `is_distilled`, and
     /// `created_at` via [`insert_message_raw`].
     #[test]
     fn import_preserves_message_metadata_4163_d() {
@@ -2089,12 +2089,8 @@ workspace = "nous/{agent_id}"
         }
     }
 
-    /// #4163/A — `export_agent` now reads session history via
-    /// `get_history_raw`, so distilled messages survive the export. This was
-    /// previously a pinning test for the bug; with PR2 it flips into a
-    /// fidelity proof. The detailed per-field assertions (seq order,
-    /// `is_distilled` preservation, `created_at` exactness) are tightened
-    /// further in PR4.
+    /// WHY(#4163): regression — `export_agent` must read session history via
+    /// `get_history_raw` so distilled messages survive the export.
     #[test]
     fn export_preserves_distilled_messages_4163_a() {
         let source = tempfile::tempdir().unwrap();
@@ -2162,10 +2158,10 @@ workspace = "nous/{agent_id}"
         );
     }
 
-    /// #4163/B — `export_agent` reads the per-session working state from the
-    /// blackboard at `ws:{nous_id}:{session_id}` and serializes it into the
-    /// `workingState` slot. Before PR2 this slot was hardcoded to `None`,
-    /// silently dropping any task stack / focus state on round-trip.
+    /// WHY(#4163): regression — `export_agent` reads the per-session working
+    /// state from the blackboard at `ws:{nous_id}:{session_id}` and serializes
+    /// it into the `workingState` slot; a hardcoded `None` here silently drops
+    /// task stack / focus state on round-trip.
     #[test]
     fn export_preserves_working_state_4163_b() {
         let source = tempfile::tempdir().unwrap();
@@ -2536,7 +2532,7 @@ workspace = "nous/{agent_id}"
         store.insert_relationship(&relationship).unwrap();
     }
 
-    /// #4163/PR4 — typed knowledge (Fact, Entity, Relationship) round-trips
+    /// WHY(#4163): typed knowledge (Fact, Entity, Relationship) round-trips
     /// through export → import.
     #[cfg(feature = "recall")]
     #[test]
@@ -2703,7 +2699,7 @@ workspace = "nous/{agent_id}"
         );
     }
 
-    /// #4163/PR4 — a full export → import → re-export cycle produces identical
+    /// WHY(#4163): a full export → import → re-export cycle produces identical
     /// JSON on every field except `exported_at` and `generator`.
     #[cfg(feature = "recall")]
     #[expect(

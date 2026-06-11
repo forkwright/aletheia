@@ -16,8 +16,7 @@
 //!
 //! 1. **API stability**: downstream application crates import from `mneme`
 //!    instead of from `eidos`/`graphe`/`episteme`/`krites` directly. If
-//!    sub-crates are reorganized (as happened in Phase 03), downstream `use`
-//!    statements do not change.
+//!    sub-crates are reorganized, downstream `use` statements do not change.
 //!
 //! 2. **Feature gating**: mneme gates `krites` behind the `mneme-engine`
 //!    feature flag. Without the facade, every consuming crate would need to
@@ -29,8 +28,6 @@
 //!
 //! **Alarm threshold**: if this file exceeds 500 lines, the facade is accreting
 //! logic that belongs in a sub-crate. Audit and extract.
-//!
-//! Evaluated per STANDARDS.md "Everything must earn its place" in issue #3243.
 
 // ── Types (eidos) ──────────────────────────────────────────────────────────
 
@@ -82,24 +79,11 @@ pub use krites as engine;
 // ── Session persistence (graphe) ───────────────────────────────────────────
 
 /// Mneme-specific error types and result alias.
-///
-/// # Facade surface
-///
-/// [`Error`](error::Error)
 pub mod error {
     pub use graphe::error::Error;
 }
 
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
-///
-/// # Facade surface
-///
-/// [`AgentFile`](portability::AgentFile),
-/// [`ExportedMessage`](portability::ExportedMessage),
-/// [`ExportedNote`](portability::ExportedNote),
-/// [`ExportedSession`](portability::ExportedSession),
-/// [`NousInfo`](portability::NousInfo),
-/// [`WorkspaceData`](portability::WorkspaceData)
 pub mod portability {
     pub use graphe::portability::{
         AGENT_FILE_VERSION, AgentFile, ExportedMessage, ExportedNote, ExportedSession,
@@ -108,28 +92,11 @@ pub mod portability {
 }
 
 /// Session store — fjall LSM-tree backend.
-///
-/// # Facade surface
-///
-/// [`SessionStore`](store::SessionStore)
 pub mod store {
     pub use graphe::store::SessionStore;
 }
 
 /// Core types for sessions, messages, usage records, and agent notes.
-///
-/// # Facade surface
-///
-/// [`AgentNote`](types::AgentNote),
-/// [`BlackboardRow`](types::BlackboardRow),
-/// [`Message`](types::Message),
-/// [`Role`](types::Role),
-/// [`Session`](types::Session),
-/// [`SessionMetrics`](types::SessionMetrics),
-/// [`SessionOrigin`](types::SessionOrigin),
-/// [`SessionStatus`](types::SessionStatus),
-/// [`SessionType`](types::SessionType),
-/// [`UsageRecord`](types::UsageRecord)
 pub mod types {
     pub use graphe::types::{
         AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin,
@@ -139,18 +106,12 @@ pub mod types {
 
 // ── Training data types (eidos) ───────────────────────────────────────
 //
-// Training capture *logic* (the JSONL writer, quality gate, and
+// NOTE: training capture *logic* (the JSONL writer, quality gate, and
 // `TrainingCapture` struct) lives in `nous::training` — it is a pipeline
 // tap, not a memory operation. Mneme re-exports only the shared types
 // that the configuration layer needs.
 
 /// Training data types re-exported from eidos.
-///
-/// # Facade surface
-///
-/// [`TrainingConfig`](training::TrainingConfig),
-/// [`TrainingRecord`](training::TrainingRecord),
-/// [`TRAINING_RECORD_SCHEMA_VERSION`](training::TRAINING_RECORD_SCHEMA_VERSION)
 pub mod training {
     pub use eidos::training::{
         RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
@@ -161,25 +122,11 @@ pub mod training {
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
 
 /// LLM-driven fact consolidation for knowledge maintenance.
-///
-/// # Facade surface
-///
-/// [`ConsolidationConfig`](consolidation::ConsolidationConfig)
 pub mod consolidation {
     pub use episteme::consolidation::ConsolidationConfig;
 }
 
 /// Embedding provider trait and implementations (candle, mock).
-///
-/// # Facade surface
-///
-/// [`EmbeddingError`](embedding::EmbeddingError),
-/// [`EmbeddingProvider`](embedding::EmbeddingProvider),
-/// [`MockEmbeddingProvider`](embedding::MockEmbeddingProvider) (requires `test-support` feature),
-/// [`DegradedEmbeddingProvider`](embedding::DegradedEmbeddingProvider),
-/// [`EmbeddingConfig`](embedding::EmbeddingConfig),
-/// [`create_provider`](embedding::create_provider),
-/// [`is_degraded_provider`](embedding::is_degraded_provider)
 pub mod embedding {
     pub use episteme::embedding::{
         DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingError, EmbeddingProvider,
@@ -191,25 +138,11 @@ pub mod embedding {
 }
 
 /// Embedding evaluation gate: Recall@K and MRR for model upgrade checks.
-///
-/// # Facade surface
-///
-/// [`EvalDataset`](embedding_eval::EvalDataset),
-/// [`EvalRunResult`](embedding_eval::EvalRunResult),
-/// [`compare_models`](embedding_eval::compare_models)
 pub mod embedding_eval {
     pub use episteme::embedding_eval::{EvalDataset, EvalRunResult, compare_models};
 }
 
 /// Data source ingestion pipeline: file → chunk → fact extraction.
-///
-/// # Facade surface
-///
-/// [`IngestFormat`](ingest::IngestFormat),
-/// [`parse_format`](ingest::parse_format),
-/// [`IngestChunk`](ingest::IngestChunk),
-/// [`IngestConfig`](ingest::IngestConfig),
-/// [`ingest_content`](ingest::ingest_content)
 pub mod ingest {
     pub use episteme::ingest::{
         IngestChunk, IngestConfig, IngestFormat, ingest_content, parse_format,
@@ -217,16 +150,6 @@ pub mod ingest {
 }
 
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
-///
-/// # Facade surface
-///
-/// [`ConversationMessage`](extract::ConversationMessage),
-/// [`ExtractionConfig`](extract::ExtractionConfig),
-/// [`ExtractionEngine`](extract::ExtractionEngine),
-/// [`ExtractionError`](extract::ExtractionError),
-/// [`ExtractionProvider`](extract::ExtractionProvider),
-/// [`ExtractedToolCall`](extract::ExtractedToolCall),
-/// [`LlmCallSnafu`](extract::LlmCallSnafu)
 pub mod extract {
     pub use episteme::extract::{
         BookkeepingProviderKind, ConversationMessage, ExtractedToolCall, ExtractionConfig,
@@ -235,17 +158,6 @@ pub mod extract {
 }
 
 /// Instinct system: behavioral memory from tool usage patterns.
-///
-/// # Facade surface
-///
-/// [`DEFAULT_MAX_CONTEXT_SUMMARY_LEN`](instinct::DEFAULT_MAX_CONTEXT_SUMMARY_LEN),
-/// [`DEFAULT_MAX_PARAM_VALUE_LEN`](instinct::DEFAULT_MAX_PARAM_VALUE_LEN),
-/// [`DEFAULT_PROMOTION_MIN_CONFIDENCE`](instinct::DEFAULT_PROMOTION_MIN_CONFIDENCE),
-/// [`DEFAULT_PROMOTION_MIN_PROJECTS`](instinct::DEFAULT_PROMOTION_MIN_PROJECTS),
-/// [`ToolObservation`](instinct::ToolObservation),
-/// [`ToolOutcome`](instinct::ToolOutcome),
-/// [`sanitize_parameters`](instinct::sanitize_parameters),
-/// [`truncate_context_summary`](instinct::truncate_context_summary)
 pub mod instinct {
     pub use episteme::instinct::{
         DEFAULT_MAX_CONTEXT_SUMMARY_LEN, DEFAULT_MAX_PARAM_VALUE_LEN,
@@ -255,12 +167,6 @@ pub mod instinct {
 }
 
 /// `CozoDB`-backed knowledge store for graph traversal and vector search.
-///
-/// # Facade surface
-///
-/// [`HybridQuery`](knowledge_store::HybridQuery),
-/// [`KnowledgeConfig`](knowledge_store::KnowledgeConfig),
-/// [`KnowledgeStore`](knowledge_store::KnowledgeStore)
 #[cfg(feature = "mneme-engine")]
 pub mod knowledge_store {
     pub use episteme::knowledge_store::{
@@ -273,13 +179,6 @@ pub mod knowledge_store {
 /// Downstream consumers (e.g. the binary crate's runtime setup) need access
 /// to the concrete policy types to wire the config-selected policy into
 /// `KnowledgeConfig` without depending on `episteme` directly.
-///
-/// # Facade surface
-///
-/// [`AdmissionPolicy`](admission::AdmissionPolicy),
-/// [`DefaultAdmissionPolicy`](admission::DefaultAdmissionPolicy),
-/// [`StructuredAdmissionPolicy`](admission::StructuredAdmissionPolicy),
-/// [`StructuredAdmissionConfig`](admission::StructuredAdmissionConfig)
 #[cfg(feature = "mneme-engine")]
 pub mod admission {
     pub use episteme::admission::{
@@ -289,12 +188,8 @@ pub mod admission {
 }
 
 /// Entity dedup tuning (#4165 D): operator-configurable weights/thresholds
-/// the CLI and scheduled maintenance task feed into the dedup pipeline.
-///
-/// # Facade surface
-///
-/// [`DedupTuning`](dedup::DedupTuning) and the `DEFAULT_*` constants the
-/// runtime falls back to when no config override is available.
+/// the CLI and scheduled maintenance task feed into the dedup pipeline,
+/// plus the `DEFAULT_*` fallbacks used when no config override is available.
 #[cfg(feature = "mneme-engine")]
 pub mod dedup {
     pub use episteme::dedup::{
@@ -305,11 +200,6 @@ pub mod dedup {
 }
 
 /// Operational metrics registration for knowledge and session storage.
-///
-/// # Facade surface
-///
-/// [`register_knowledge`](metrics::register_knowledge),
-/// [`register_sessions`](metrics::register_sessions)
 pub mod metrics {
     pub use episteme::metrics::register as register_knowledge;
     pub use graphe::metrics::{record_backup_duration, register as register_sessions};
@@ -328,15 +218,7 @@ pub mod query_rewrite {
     };
 }
 
-/// 6-factor recall scoring engine for knowledge retrieval ranking.
-///
-/// # Facade surface
-///
-/// [`FactorScores`](recall::FactorScores),
-/// [`RecallEngine`](recall::RecallEngine),
-/// [`ProjectRecallScope`](recall::ProjectRecallScope),
-/// [`RecallWeights`](recall::RecallWeights),
-/// [`ScoredResult`](recall::ScoredResult)
+/// 11-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall {
     pub use episteme::recall::{
         FactorScores, ProjectRecallScope, RecallEngine, RecallWeights, ScoredResult,
@@ -352,23 +234,13 @@ pub mod recall {
     }
 }
 
-/// Bayesian-surprise calculator (`EM-LLM`) for topic-shift detection.
-///
-/// # Facade surface
-///
-/// [`SurpriseCalculator`](surprise::SurpriseCalculator) — the session-scoped
-/// running-distribution scorer threaded into recall surprise scoring.
+/// Bayesian-surprise calculator (`EM-LLM`) for topic-shift detection: a
+/// session-scoped running-distribution scorer threaded into recall scoring.
 pub mod surprise {
     pub use episteme::surprise::{DEFAULT_EMA_ALPHA, DEFAULT_THRESHOLD, SurpriseCalculator};
 }
 
 /// Evidence-gap tracking (`MemR3`) for iterative retrieval.
-///
-/// # Facade surface
-///
-/// [`EvidenceGapTracker`](evidence_gap::EvidenceGapTracker),
-/// [`EvidenceQuery`](evidence_gap::EvidenceQuery),
-/// [`AnsweredQuestion`](evidence_gap::AnsweredQuestion)
 pub mod evidence_gap {
     pub use episteme::evidence_gap::{AnsweredQuestion, EvidenceGapTracker, EvidenceQuery};
 }
@@ -382,13 +254,6 @@ pub mod side_query {
 }
 
 /// Skill storage helpers and SKILL.md parser.
-///
-/// # Facade surface
-///
-/// [`SkillContent`](skill::SkillContent),
-/// [`export_skills_to_cc`](skill::export_skills_to_cc),
-/// [`parse_skill_md`](skill::parse_skill_md),
-/// [`scan_skill_dir`](skill::scan_skill_dir)
 pub mod skill {
     pub use episteme::skill::{
         SkillContent, export_skills_to_cc, format_skill_md, parse_skill_md, scan_skill_dir,
@@ -396,29 +261,12 @@ pub mod skill {
 }
 
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
-///
-/// # Facade surface
-///
-/// [`CandidateTracker`](skills::CandidateTracker),
-/// [`PendingSkill`](skills::PendingSkill),
-/// [`SkillExtractor`](skills::SkillExtractor),
-/// [`ToolCallRecord`](skills::ToolCallRecord),
-/// [`TrackResult`](skills::TrackResult)
-///
-/// Also re-exports the `extract` submodule for skill extraction provider types.
 pub mod skills {
     pub use episteme::skills::{
         CandidateTracker, PendingSkill, SkillExtractor, ToolCallRecord, TrackResult,
     };
 
     /// Skill extraction provider types.
-    ///
-    /// # Facade surface
-    ///
-    /// [`LlmCallSnafu`](extract::LlmCallSnafu),
-    /// [`PendingSkill`](extract::PendingSkill),
-    /// [`SkillExtractionError`](extract::SkillExtractionError),
-    /// [`SkillExtractionProvider`](extract::SkillExtractionProvider)
     pub mod extract {
         pub use episteme::skills::extract::{
             LlmCallSnafu, PendingSkill, SkillExtractionError, SkillExtractionProvider,

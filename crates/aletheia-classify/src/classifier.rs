@@ -243,10 +243,6 @@ impl Default for Classifier {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Heuristic rule bank
-// ---------------------------------------------------------------------------
-
 /// Compute per-class probabilities from surface features.
 ///
 /// Returns a 4-element array: [user, subagent, `system_scaffolding`, template].
@@ -280,12 +276,10 @@ fn heuristic_probabilities(text: &str) -> [f32; 4] {
         human_score += 2.5;
     }
 
-    // Emojis (common BMP ranges + supplementary)
     if text.chars().any(is_emoji) {
         human_score += 2.5;
     }
 
-    // Lowercase start
     if text
         .trim_start()
         .chars()
@@ -295,7 +289,6 @@ fn heuristic_probabilities(text: &str) -> [f32; 4] {
         human_score += 1.5;
     }
 
-    // Missing apostrophes in contractions
     let contractions = [
         "dont ", "cant ", "wont ", "im ", "youre ", "thats ", "isnt ", "wasnt ",
     ];
@@ -303,33 +296,27 @@ fn heuristic_probabilities(text: &str) -> [f32; 4] {
         human_score += 1.5;
     }
 
-    // "u" as a standalone word
     if lower.split_whitespace().any(|w| w == "u") {
         human_score += 1.5;
     }
 
-    // Internet abbreviations
     let abbrevs = ["tbh", "imo", "idk", "np", "fyi", "btw"];
     if abbrevs.iter().any(|a| lower.contains(a)) {
         human_score += 1.5;
     }
 
-    // Multiple punctuation
     if text.contains("???") || text.contains("!!!") {
         human_score += 1.5;
     }
 
-    // Gratitude
     if lower.contains("thanks") || lower.contains("thank you") || lower.contains("thx") {
         human_score += 1.0;
     }
 
-    // URL or file path
     if lower.contains("http") || lower.contains("www.") || text.contains('/') {
         human_score += 1.0;
     }
 
-    // Short question
     if text.trim_end().ends_with('?') && len < 100 {
         human_score += 1.0;
     }
@@ -373,7 +360,6 @@ fn heuristic_probabilities(text: &str) -> [f32; 4] {
         agent_score += numbered_count.min(3) as f32; // kanon:ignore RUST/as-cast
     }
 
-    // Step-numbered instructions (e.g. "Step 1:")
     let step_count = text
         .lines()
         .filter(|l| {
@@ -430,19 +416,17 @@ fn heuristic_probabilities(text: &str) -> [f32; 4] {
         agent_score += 2.5;
     }
 
-    // No first-person "I" in long text
     if len > 120 && !lower.split_whitespace().any(|w| w == "i") {
         agent_score += 2.0;
     }
 
-    // Formal hedging
     let hedges = ["however,", "therefore,", "furthermore,", "moreover,"];
     if hedges.iter().any(|h| lower.contains(h)) {
         agent_score += 1.5;
     }
 
     // ── Convert scores to probabilities ──────────────────────────────
-    // Exponential mapping gives sharp separation when one score dominates.
+    // WHY: exponential mapping gives sharp separation when one score dominates.
     let human_exp = human_score.exp();
     let agent_exp = agent_score.exp();
     let other_exp = 0.5_f32; // shared prior for system_scaffolding + template

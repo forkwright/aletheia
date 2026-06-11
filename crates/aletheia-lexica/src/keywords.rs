@@ -1,8 +1,6 @@
 //! Keyword lists for task classification and intent detection.
 
 /// Keywords that suggest a coding or implementation task.
-///
-/// Sourced from `nous/src/bootstrap/mod.rs`.
 pub const CODING_KEYWORDS: &[&str] = &[
     "write",
     "create",
@@ -24,8 +22,6 @@ pub const CODING_KEYWORDS: &[&str] = &[
 ];
 
 /// Keywords that suggest a research or investigation task.
-///
-/// Sourced from `nous/src/bootstrap/mod.rs`.
 pub const RESEARCH_KEYWORDS: &[&str] = &[
     "what",
     "research",
@@ -42,8 +38,6 @@ pub const RESEARCH_KEYWORDS: &[&str] = &[
 ];
 
 /// Keywords that suggest a planning or design task.
-///
-/// Sourced from `nous/src/bootstrap/mod.rs`.
 pub const PLANNING_KEYWORDS: &[&str] = &[
     "plan",
     "design",
@@ -59,8 +53,6 @@ pub const PLANNING_KEYWORDS: &[&str] = &[
 ];
 
 /// Keywords that suggest a casual conversation rather than a task.
-///
-/// Sourced from `nous/src/bootstrap/mod.rs`.
 pub const CONVERSATION_KEYWORDS: &[&str] = &[
     "hello",
     "hi",
@@ -76,8 +68,6 @@ pub const CONVERSATION_KEYWORDS: &[&str] = &[
 ];
 
 /// Keywords that map to an analysis intake request.
-///
-/// Sourced from `poiesis/intake/src/lib.rs`.
 pub const INTAKE_ANALYSIS_KEYWORDS: &[&str] = &[
     "analyze",
     "analysis",
@@ -93,8 +83,6 @@ pub const INTAKE_ANALYSIS_KEYWORDS: &[&str] = &[
 ];
 
 /// Keywords that map to a report intake request.
-///
-/// Sourced from `poiesis/intake/src/lib.rs`.
 pub const INTAKE_REPORT_KEYWORDS: &[&str] = &[
     "report",
     "write",
@@ -108,8 +96,6 @@ pub const INTAKE_REPORT_KEYWORDS: &[&str] = &[
 ];
 
 /// Keywords that map to a dashboard intake request.
-///
-/// Sourced from `poiesis/intake/src/lib.rs`.
 pub const INTAKE_DASHBOARD_KEYWORDS: &[&str] = &[
     "dashboard",
     "panel",

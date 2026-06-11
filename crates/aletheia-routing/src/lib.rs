@@ -144,10 +144,6 @@ impl Router for RecordingRouter {
     }
 }
 
-// ---------------------------------------------------------------------------
-// FallthroughRouter
-// ---------------------------------------------------------------------------
-
 /// A router combinator that falls through to a secondary router when the
 /// primary router's confidence is below a threshold.
 ///

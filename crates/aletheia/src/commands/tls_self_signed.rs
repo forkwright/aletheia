@@ -155,10 +155,7 @@ pub(crate) fn generate(
     Ok(SelfSignedCert { cert_pem, key_pem })
 }
 
-// ---------------------------------------------------------------------------
-// ASN.1 helpers
-// ---------------------------------------------------------------------------
-
+// ── ASN.1 helpers ──
 struct Writer(Vec<u8>);
 
 impl Writer {

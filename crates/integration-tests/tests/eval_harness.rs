@@ -81,10 +81,10 @@ async fn eval_nous_scenarios_pass() {
 
 #[tokio::test]
 async fn eval_session_scenarios_pass() {
-    // WHY: filter by EXACT category to exclude `canary-session-*` scenarios
-    // that exercise the LLM and would fail against the mock provider. Bug
-    // #2999: previous version used `filter: Some("session")` which matched
-    // any id containing "session" — including the canary-session ids.
+    // WHY(#2999): filter by EXACT category to exclude `canary-session-*`
+    // scenarios that exercise the LLM and would fail against the mock
+    // provider — a substring id filter on "session" also matches the
+    // canary-session ids.
     let (base_url, token, _dir) = start_test_server().await;
 
     let config = RunConfig {

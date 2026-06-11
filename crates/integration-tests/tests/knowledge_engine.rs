@@ -206,9 +206,7 @@ fn schema_version_queryable() {
     })
     .expect("open_mem");
     let version = store.schema_version().expect("version");
-    // Tracks `KnowledgeStore::SCHEMA_VERSION`. Recent additive migrations:
-    // v8->v9 `fact_multiplicity` side-index; v10->v11 `scope`+`visibility` on
-    // `facts`; v11->v12 `project_id` on `facts`; v12->v13 `name_embedding` on `entities`.
+    // NOTE: pins `KnowledgeStore::SCHEMA_VERSION`; bump when a migration lands.
     assert_eq!(version, 13);
 }
 

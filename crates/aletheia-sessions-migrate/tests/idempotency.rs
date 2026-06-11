@@ -1,4 +1,4 @@
-//! Test 3 from the deliverable: running the migrator twice on the same
+//! Running the migrator twice on the same
 //! source-and-dest must not corrupt data. Without `--force`, the second
 //! run errors loudly. With `--force`, the second run replays the same
 //! data on top of the existing keys (overwrite semantics).

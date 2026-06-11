@@ -34,10 +34,7 @@ use organon::types::{
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-// ---------------------------------------------------------------------------
-// Synthetic tool definitions
-// ---------------------------------------------------------------------------
-
+// ── Synthetic tool definitions ──
 /// Minimal irreversible tool executor for the approval gate path.
 struct ConfirmingExecutor {
     executed: Arc<Mutex<bool>>,
@@ -74,10 +71,7 @@ fn irreversible_tool_def() -> ToolDef {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Mock LLM provider helpers
-// ---------------------------------------------------------------------------
-
+// ── Mock LLM provider helpers ──
 /// Request-aware mock provider for the approval gate e2e path.
 ///
 /// Returns `tool_use_response` for calls that contain a user message in the
@@ -190,10 +184,7 @@ fn text_response(text: &str) -> CompletionResponse {
     }
 }
 
-// ---------------------------------------------------------------------------
-// HTTP helpers
-// ---------------------------------------------------------------------------
-
+// ── HTTP helpers ──
 /// Read from a `TcpStream` until `session_id` is found in a `message_start`
 /// SSE event, then send it over the channel and continue reading the rest.
 ///
@@ -314,10 +305,7 @@ async fn build_approval_harness(tool_id: &str) -> (TestHarness, Arc<Mutex<bool>>
     (harness, executed)
 }
 
-// ---------------------------------------------------------------------------
-// Test scenarios
-// ---------------------------------------------------------------------------
-
+// ── Test scenarios ──
 /// Irreversible tool call → operator approves → tool executes.
 ///
 /// Asserts:

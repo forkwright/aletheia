@@ -4,10 +4,6 @@ use std::sync::Arc;
 
 use snafu::Snafu;
 
-// ---------------------------------------------------------------------------
-// RequestFeatures
-// ---------------------------------------------------------------------------
-
 /// High-level category inferred from a task prompt or user message.
 ///
 /// Used as the aggregation key for per-provider success-rate statistics.
@@ -155,10 +151,6 @@ impl From<String> for ProviderId {
     }
 }
 
-// ---------------------------------------------------------------------------
-// RequestFeatures
-// ---------------------------------------------------------------------------
-
 /// Sovereignty boundary for a routing request.
 ///
 /// Mirrors `hermeneus::provider::DeploymentTarget` without creating a hard
@@ -262,10 +254,6 @@ impl RequestFeatures {
     }
 }
 
-// ---------------------------------------------------------------------------
-// RoutingDecision
-// ---------------------------------------------------------------------------
-
 /// Output of a [`Router::route`] call: selected provider and optional confidence.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -282,9 +270,8 @@ pub struct RoutingDecision {
 impl RoutingDecision {
     /// Construct a new routing decision.
     ///
-    /// WHY: `#[non_exhaustive]` prevents struct-literal construction outside
-    /// this crate. This constructor gives crates that implement or wrap the
-    /// trait a stable way to build the struct.
+    /// WHY: same `#[non_exhaustive]` constructor rationale as
+    /// [`RequestFeatures::new`].
     pub fn new(provider: impl Into<Arc<str>>, confidence: Option<f64>) -> Self {
         Self {
             provider: provider.into(),
@@ -292,10 +279,6 @@ impl RoutingDecision {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// TurnOutcome
-// ---------------------------------------------------------------------------
 
 /// Outcome of a completed turn, fed back via [`Router::after_action`].
 #[derive(Debug, Clone)]
@@ -320,8 +303,8 @@ pub struct TurnOutcome {
 impl TurnOutcome {
     /// Construct a new turn outcome.
     ///
-    /// WHY: `#[non_exhaustive]` prevents struct-literal construction outside
-    /// this crate. This constructor gives implementors a stable build path.
+    /// WHY: same `#[non_exhaustive]` constructor rationale as
+    /// [`RequestFeatures::new`].
     pub fn new(
         provider: ProviderId,
         task_category: TaskCategory,
@@ -336,10 +319,6 @@ impl TurnOutcome {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// RouterError
-// ---------------------------------------------------------------------------
 
 /// Errors from router operations.
 #[derive(Debug, Snafu)]

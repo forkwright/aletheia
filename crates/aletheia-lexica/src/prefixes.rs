@@ -5,8 +5,6 @@
 /// Simple keyword matching is intentionally conservative. False negatives
 /// (missed corrections) are preferable to false positives (storing random
 /// sentences as corrections).
-///
-/// Sourced from `nous/src/hooks/builtins/correction.rs`.
 pub const CORRECTION_PREFIXES: &[&str] = &[
     "don't ",
     "do not ",

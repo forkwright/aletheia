@@ -182,7 +182,6 @@ impl RuntimeBuilder {
             "config loaded"
         );
 
-        // Validate all config sections
         if self.config_strict {
             let config_value = serde_json::to_value(&self.config)
                 .whatever_context("failed to serialize config for validation")?;
@@ -213,16 +212,15 @@ impl RuntimeBuilder {
         // construction. No global init required — the registry is installed in
         // AppState and exposed on the /metrics endpoint.
 
-        // JWT key resolution
         let jwt_key: Option<SecretString> =
             self.config.gateway.auth.signing_key.clone().or_else(|| {
                 RealSystem
                     .var("ALETHEIA_JWT_SECRET")
                     .map(SecretString::from)
             });
-        // WHY: honor the configured clock-skew leeway on every path so the
-        // advertised 30s tolerance (or an operator override) applies uniformly.
-        // Fixes #3379.
+        // WHY (#3379): honor the configured clock-skew leeway on every path so
+        // the advertised 30s tolerance (or an operator override) applies
+        // uniformly.
         let jwt_leeway = self.config.jwt.clock_skew_leeway_secs;
         let jwt_config = match jwt_key {
             Some(k) => JwtConfig {
@@ -239,7 +237,6 @@ impl RuntimeBuilder {
             .validate_for_auth_mode(self.config.gateway.auth.mode.as_str())
             .whatever_context("JWT key security check failed")?;
 
-        // Domain packs
         // WHY: load_packs performs synchronous file I/O; wrap in spawn_blocking
         // so the async runtime thread is not stalled during pack discovery.
         let loaded_packs = if self.domain_packs {
@@ -252,7 +249,6 @@ impl RuntimeBuilder {
         };
         let packs = Arc::new(loaded_packs);
 
-        // Session store
         let db_path = self.oikos.sessions_db();
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).with_whatever_context(|_| {
@@ -278,14 +274,12 @@ impl RuntimeBuilder {
         })?;
         let jwt_manager = JwtManager::new(jwt_config);
 
-        // Provider registry
         let provider_registry = if self.credentials {
             Arc::new(build_provider_registry(&self.config, &self.oikos))
         } else {
             Arc::new(ProviderRegistry::new())
         };
 
-        // Tool registry
         let after_action_log_dir = self.oikos.logs().join("after-actions");
         #[cfg(feature = "energeia")]
         let mut energeia_services: Option<
@@ -307,7 +301,6 @@ impl RuntimeBuilder {
             ToolRegistry::new()
         };
 
-        // Register domain pack tools
         if self.domain_packs {
             let tool_errors = thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
             for err in &tool_errors {
@@ -315,7 +308,6 @@ impl RuntimeBuilder {
             }
         }
 
-        // Register external tools FROM [tools] config section
         let tools_config = crate::external_tools::load_tools_config(&self.oikos);
         let tool_manifest = crate::external_tools::register_external_tools(
             &tools_config,
@@ -340,15 +332,13 @@ impl RuntimeBuilder {
 
         let tool_registry = Arc::new(tool_registry);
 
-        // Embedding provider — lazy initialization (#3474)
-        //
-        // WHY: the embedding model download/load can be slow or fail. Loading
-        // synchronously here blocks the HTTP gateway from binding. Wrapping in
-        // `LazyEmbeddingProvider` lets the gateway start immediately and defers
-        // the real init to first use.
+        // WHY (#3474): the embedding model download/load can be slow or fail.
+        // Loading synchronously here blocks the HTTP gateway from binding.
+        // Wrapping in `LazyEmbeddingProvider` lets the gateway start
+        // immediately and defers the real init to first use.
         let embedding_provider: Arc<dyn mneme::embedding::EmbeddingProvider> = if self.embedding {
             let lazy = Arc::new(LazyEmbeddingProvider::new(self.config.embedding.clone()));
-            // Spawn background init so the model loads without blocking startup.
+            // WHY: eager background init warms the model without blocking startup.
             let lazy_clone = Arc::clone(&lazy);
             task_tracker.spawn(async move {
                 lazy_clone.get().await;
@@ -360,10 +350,8 @@ impl RuntimeBuilder {
             ))
         };
 
-        // Cross-nous router
         let cross_router = Arc::new(CrossNousRouter::default());
 
-        // Signal provider
         let signal_provider = if self.tool_services {
             build_signal_provider(&self.config.channels.signal, &self.config.messaging)
         } else {
@@ -375,7 +363,6 @@ impl RuntimeBuilder {
             None
         };
 
-        // Tool services
         let (cross_nous, messenger, note_store, blackboard_store, planning) = if self.tool_services
         {
             let cross_nous: Arc<dyn organon::types::CrossNousService> =
@@ -412,7 +399,6 @@ impl RuntimeBuilder {
             (None, None, None, None, None)
         };
 
-        // Knowledge stores
         #[cfg(feature = "recall")]
         let knowledge_stores = if self.embedding {
             let mut cohorts = BTreeSet::from(["shared".to_owned()]);
@@ -427,7 +413,6 @@ impl RuntimeBuilder {
         #[cfg(feature = "recall")]
         let shared_knowledge_store = knowledge_stores.get("shared").cloned();
 
-        // Vector search
         #[cfg(feature = "recall")]
         #[expect(
             clippy::as_conversions,
@@ -441,13 +426,11 @@ impl RuntimeBuilder {
         #[cfg(not(feature = "recall"))]
         let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> = None;
 
-        // External recall sources (issue #2338)
         #[cfg(feature = "recall")]
         let recall_source_registry = {
             let mut registry = crate::recall_sources::RecallSourceRegistry::new();
             let http_client = Arc::new(reqwest::Client::new());
 
-            // Academic source (Semantic Scholar)
             let api_key = RealSystem.var("SEMANTIC_SCHOLAR_API_KEY").or_else(|| {
                 tracing::warn!("SEMANTIC_SCHOLAR_API_KEY not set");
                 None
@@ -459,7 +442,6 @@ impl RuntimeBuilder {
                 ),
             ));
 
-            // LLM context source (model cards + pricing)
             registry.register(Arc::new(
                 crate::recall_sources::llm_context::LlmContextSource::from_known_models(
                     &self.config.pricing,
@@ -473,7 +455,6 @@ impl RuntimeBuilder {
             Arc::new(registry)
         };
 
-        // Knowledge search adapter for tool layer
         #[cfg(feature = "recall")]
         #[expect(
             clippy::as_conversions,
@@ -561,7 +542,7 @@ impl RuntimeBuilder {
             spawn_impl.set_tool_services(Arc::clone(&tool_services));
         }
 
-        // Clone shared store Arc before moving cohort stores into NousManager
+        // WHY: cloned before the cohort stores move into NousManager below.
         #[cfg(feature = "recall")]
         let knowledge_store_for_daemon = shared_knowledge_store.clone();
 
@@ -582,7 +563,6 @@ impl RuntimeBuilder {
         .with_audit_log(Arc::clone(&audit_log))
         .with_empirical_router(Arc::clone(&empirical_router));
 
-        // Spawn nous actors
         {
             for agent_def in &self.config.agents.list {
                 let (nous_config, pipeline_config) =
@@ -608,7 +588,6 @@ impl RuntimeBuilder {
         let task_state_root = self.oikos.data().join("daemon-task-state");
 
         if self.daemons {
-            // System maintenance daemon
             let daemon_token = shutdown_token.child_token();
             let system_state_store =
                 oikonomos::state::TaskStateStore::open(&task_state_root.join("system"))
@@ -683,10 +662,8 @@ impl RuntimeBuilder {
 
         let nous_manager = Arc::new(nous_manager);
 
-        // Signal ready
         nous_manager.ready();
 
-        // Channel registry + inbound dispatch
         let ready_rx = nous_manager.ready_rx();
         let (_channel_registry, _dispatch_handle) = start_inbound_dispatch(
             &self.config,
@@ -697,7 +674,6 @@ impl RuntimeBuilder {
             &shutdown_token,
         )?;
 
-        // Per-agent daemon runners (need Arc<NousManager>)
         if self.daemons {
             let daemon_bridge = Arc::new(daemon_bridge::NousDaemonBridge::new(Arc::clone(
                 &nous_manager,
@@ -768,7 +744,6 @@ impl RuntimeBuilder {
             }
         }
 
-        // AppState construction
         let aletheia_config = self.config.clone();
         #[cfg(feature = "recall")]
         let knowledge_store = nous_manager.knowledge_store().cloned();

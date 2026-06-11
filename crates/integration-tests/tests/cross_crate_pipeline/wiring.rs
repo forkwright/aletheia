@@ -5,10 +5,6 @@
 )]
 use super::*;
 
-// ===========================================================================
-// Additional wiring tests
-// ===========================================================================
-
 #[tokio::test]
 async fn capturing_provider_receives_tool_definitions() {
     let captured = Arc::new(Mutex::new(Vec::new()));
@@ -28,13 +24,11 @@ async fn capturing_provider_receives_tool_definitions() {
     let requests = captured.lock().expect("lock poisoned");
     assert!(!requests.is_empty());
 
-    // When tools are registered, LLM should receive tool definitions
     assert!(
         !requests[0].tools.is_empty(),
         "LLM request should include tool definitions when tools are registered"
     );
 
-    // Verify that known builtins appear
     let tool_names: Vec<&str> = requests[0].tools.iter().map(|t| t.name.as_str()).collect();
     assert!(
         tool_names.contains(&"note"),
@@ -74,7 +68,6 @@ async fn nous_list_and_status_endpoints() {
     let harness = TestHarness::build().await;
     let router = harness.router();
 
-    // List nous agents
     let resp = router
         .clone()
         .oneshot(harness.authed_get("/api/v1/nous"))
@@ -86,7 +79,6 @@ async fn nous_list_and_status_endpoints() {
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "test-nous");
 
-    // Get agent status
     let resp = router
         .clone()
         .oneshot(harness.authed_get("/api/v1/nous/test-nous"))
@@ -94,7 +86,6 @@ async fn nous_list_and_status_endpoints() {
         .expect("get status");
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // Get agent tools
     let resp = router
         .clone()
         .oneshot(harness.authed_get("/api/v1/nous/test-nous/tools"))
@@ -102,7 +93,6 @@ async fn nous_list_and_status_endpoints() {
         .expect("get tools");
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // Nonexistent agent
     let resp = router
         .clone()
         .oneshot(harness.authed_get("/api/v1/nous/nonexistent"))

@@ -24,10 +24,6 @@ use hermeneus::test_utils::MockProvider;
 use hermeneus::types::*;
 use integration_tests::harness::{TestHarness, body_json, body_string};
 
-// ---------------------------------------------------------------------------
-// Mock providers
-// ---------------------------------------------------------------------------
-
 /// Captures all LLM requests for inspection.
 struct CapturingMockProvider {
     response: CompletionResponse,
