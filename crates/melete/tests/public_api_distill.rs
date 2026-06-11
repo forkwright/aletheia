@@ -4,11 +4,7 @@
     reason = "tests index into fixed-size vectors where panic would itself be a failure signal"
 )]
 
-// Split: DistillConfig + DistillSection + DistillEngine.
-
-// ---------------------------------------------------------------------------
-// DistillConfig
-// ---------------------------------------------------------------------------
+// ── DistillConfig ──
 
 mod distill_config {
     use melete::distill::{DistillConfig, DistillSection};
@@ -115,9 +111,7 @@ mod distill_config {
     }
 }
 
-// ---------------------------------------------------------------------------
-// DistillSection
-// ---------------------------------------------------------------------------
+// ── DistillSection ──
 
 mod distill_section {
     use melete::distill::DistillSection;
@@ -153,9 +147,7 @@ mod distill_section {
     }
 }
 
-// ---------------------------------------------------------------------------
-// DistillEngine — the core async entry point
-// ---------------------------------------------------------------------------
+// ── DistillEngine: the core async entry point ──
 
 mod distill_engine {
     use hermeneus::test_utils::MockProvider;
@@ -422,5 +414,3 @@ mod distill_engine {
         );
     }
 }
-
-// ---------------------------------------------------------------------------

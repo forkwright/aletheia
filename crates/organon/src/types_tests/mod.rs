@@ -1,4 +1,4 @@
-//! Split from `types_tests.rs` (984 lines) to satisfy `RUST/file-too-long`.
+//! Tests for the tool type system: reversibility, serde round-trips, diagnostics.
 
 mod reversibility;
 mod serde_roundtrips;

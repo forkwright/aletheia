@@ -1,4 +1,4 @@
-//! (Split from `policy_tests.rs` — see parent mod.)
+//! Sandbox failure-mode (fail-closed) and edge-case tests.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(clippy::unwrap_used, reason = "test assertions")]
@@ -10,17 +10,14 @@ use std::process::Command;
 use super::super::*;
 use super::policy_with_system_paths;
 
-// =================================================================================
-// FAILURE MODE TESTS (FAIL-CLOSED BEHAVIOR)
-// =================================================================================
+// ── Failure modes (fail-closed behavior) ──
 
 /// Test that enforcing mode fails closed when Landlock is unavailable.
 #[cfg(target_os = "linux")]
 #[test]
 fn enforcing_fails_closed_when_landlock_unavailable() {
-    // This test verifies the code path when Landlock is unavailable
-    // We can't force a kernel to lack Landlock in a unit test.
-    // Instead we verify the error message structure
+    // WHY: a unit test cannot force a Landlock-less kernel, so branch on the
+    // probe: assert the error shape when absent, the success path when present.
     let workspace = tempfile::tempdir().expect("create workspace");
 
     let policy = SandboxPolicy {
@@ -48,7 +45,6 @@ fn enforcing_fails_closed_when_landlock_unavailable() {
             "error must mention Landlock: {err_msg}"
         );
     } else {
-        // Landlock is available, just verify it works
         let result = apply_sandbox(&mut cmd, policy);
         assert!(
             result.is_ok(),
@@ -63,7 +59,7 @@ fn enforcing_fails_closed_when_landlock_unavailable() {
 fn permissive_fails_open_when_landlock_unavailable() {
     let workspace = tempfile::tempdir().expect("create workspace");
 
-    // Use full system paths to ensure binaries can be executed
+    // WHY: full system paths so binaries can still execute under the sandbox.
     let policy = SandboxPolicy {
         enabled: true,
         read_paths: vec![
@@ -91,7 +87,6 @@ fn permissive_fails_open_when_landlock_unavailable() {
     let mut cmd = Command::new("/bin/echo");
     cmd.arg("permissive test");
 
-    // Permissive mode must NOT error regardless of Landlock availability
     let result = apply_sandbox(&mut cmd, policy);
     assert!(result.is_ok(), "permissive mode must not error: {result:?}");
 
@@ -128,9 +123,7 @@ fn disabled_policy_allows_all() {
     );
 }
 
-// =================================================================================
-// EDGE CASE TESTS
-// =================================================================================
+// ── Edge cases ──
 
 /// Test /proc/self access restrictions (escape vector).
 #[cfg(target_os = "linux")]
@@ -139,15 +132,14 @@ fn proc_self_access_restricted() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Try to access /proc/self/environ which could leak environment variables
+    // WHY: /proc/self/environ would leak parent environment variables if readable.
     let mut cmd = Command::new("cat");
     cmd.arg("/proc/self/environ");
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
     let output = cmd.output().expect("spawn child");
-    // Note: /proc is in read_paths by default, so this may succeed
-    // The important thing is that the sandbox setup doesn't crash
-    // and the process can still access /proc for basic operations
+    // NOTE: /proc is in read_paths by default so the read may succeed; this
+    // test only guards that sandbox setup and spawn complete without crashing.
     assert!(
         output.status.success() || !output.status.success(),
         "proc access test should complete without crashing"
@@ -185,7 +177,7 @@ fn proc_write_blocked() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Try to write to /proc (should be blocked since /proc is only in read_paths)
+    // WHY: /proc is only in read_paths, so writes must be blocked.
     let mut cmd = Command::new("sh");
     cmd.arg("-c")
         .arg("echo 0 > /proc/self/oom_score_adj 2>&1; echo ret=$?");
@@ -198,7 +190,6 @@ fn proc_write_blocked() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Should fail with permission denied
     assert!(
         combined.contains("Permission denied")
             || combined.contains("Operation not permitted")
@@ -215,16 +206,14 @@ fn device_access_allowed() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Test /dev/null which is commonly used
     let mut cmd = Command::new("sh");
     cmd.arg("-c").arg("echo test > /dev/null");
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
     let output = cmd.output();
-    // Device access may or may not work depending on Landlock ABI version
-    // The important thing is that the sandbox setup doesn't crash
+    // NOTE: device access depends on the Landlock ABI version; only assert
+    // that sandbox setup does not crash.
     if let Ok(out) = output {
-        // If it runs, great - if not, that's also acceptable behavior
         let _ = out.status.success();
     }
 }
@@ -236,7 +225,6 @@ fn long_path_names_work() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Create a deeply nested directory structure
     let mut deep_path = workspace.path().to_path_buf();
     for i in 0..20 {
         deep_path = deep_path.join(format!("subdir_{i:02}"));
@@ -283,11 +271,9 @@ fn directory_traversal_blocked() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Create a deep nested structure in workspace
     let nested = workspace.path().join("a").join("b").join("c");
     std::fs::create_dir_all(&nested).expect("create nested dirs");
 
-    // Try to traverse outside workspace using relative paths
     let mut cmd = Command::new("sh");
     cmd.current_dir(&nested);
     cmd.arg("-c").arg(format!(
@@ -303,7 +289,6 @@ fn directory_traversal_blocked() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Should fail with permission denied - the secret file is outside allowed paths
     assert!(
         combined.contains("Permission denied")
             || combined.contains("Operation not permitted")
@@ -329,7 +314,6 @@ fn hardlink_escape_blocked() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Try to create a hard link from workspace to outside file
     let hardlink_path = workspace.path().join("hardlink_escape");
     let cmd_str = format!(
         "ln {} {} 2>&1; echo ret=$?",
@@ -348,7 +332,6 @@ fn hardlink_escape_blocked() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Should fail - hard link across permission boundaries should be blocked
     assert!(
         combined.contains("Permission denied")
             || combined.contains("Operation not permitted")
@@ -440,13 +423,13 @@ fn execution_outside_allowed_paths_blocked() {
         .expect("chmod script");
 
     let workspace = tempfile::tempdir().expect("create workspace");
-    // Policy does NOT include outside_dir in exec_paths
     let policy = policy_with_system_paths(workspace.path());
 
     let mut cmd = Command::new(&script);
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
-    // The spawn itself may fail with permission denied
+    // NOTE: the spawn itself may fail with permission denied — that also
+    // counts as a successful block.
     let output_result = cmd.output();
     if let Ok(output) = output_result {
         let combined = format!(
@@ -455,7 +438,6 @@ fn execution_outside_allowed_paths_blocked() {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        // Should fail - execution outside allowed paths should be blocked
         assert!(
             !output.status.success()
                 || combined.contains("Permission denied")
@@ -463,7 +445,6 @@ fn execution_outside_allowed_paths_blocked() {
             "execution outside allowed paths should be blocked: {combined}"
         );
     }
-    // If spawn failed with permission denied, that's also a successful block
 }
 
 /// Test concurrent sandbox applications (stress test).
@@ -482,8 +463,8 @@ fn concurrent_sandbox_applications() {
             let mut cmd = Command::new("echo");
             cmd.arg(format!("concurrent test {i}"));
 
-            // We can't actually apply sandbox in threads due to pre_exec constraints,
-            // but we can verify the policy structure
+            // WHY: pre_exec constraints prevent applying the sandbox from
+            // threads, so only the shared policy structure is verified.
             assert!(policy_clone.enabled);
             assert!(!policy_clone.read_paths.is_empty());
         });

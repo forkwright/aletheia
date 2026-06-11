@@ -182,10 +182,10 @@ fn default_similarity_threshold() -> f64 {
 impl Default for DistillConfig {
     fn default() -> Self {
         Self {
-            // WHY (#3739): read from koina::defaults::DEFAULT_MODEL instead of a
-            // literal so the default tracks the fleet-wide model pin. Previously
-            // hardcoded to claude-sonnet-4-20250514, which silently routed
-            // distillation to an Anthropic model on local-only deployments.
+            // WHY(#3739): read from koina::defaults::DEFAULT_MODEL instead of a
+            // literal so the default tracks the fleet-wide model pin — a
+            // hardcoded literal silently routes distillation to an Anthropic
+            // model on local-only deployments.
             model: koina::defaults::DEFAULT_MODEL.to_owned(),
             max_output_tokens: 4096,
             min_messages: 6,
@@ -376,7 +376,6 @@ impl DistillEngine {
 
         let tail = self.config.verbatim_tail.min(messages.len());
         let split_at = messages.len() - tail;
-        // split_at == messages.len() - tail where tail <= messages.len(), so split_at <= messages.len()
         #[expect(
             clippy::indexing_slicing,
             reason = "split_at = messages.len() - tail where tail ≤ messages.len()"
@@ -662,9 +661,9 @@ fn extract_bullet_items<'a>(content: &[&'a str]) -> Vec<&'a str> {
 
 /// Process one markdown section of a distillation summary into flush items.
 ///
-/// WHY: All 7 standard sections are extracted. Previously only 3 were handled,
-/// permanently losing Completed Work, Current State, Open Threads, and Summary
-/// across distillation boundaries.
+/// INVARIANT: all 7 standard sections are extracted — any section not handled
+/// here (e.g. Completed Work, Current State, Open Threads, Summary) is
+/// permanently lost across distillation boundaries.
 fn collect_flush_section(
     section: &str,
     lines: &[&str],

@@ -213,12 +213,8 @@ fn egress_allowlist_loopback_permits_localhost() {
     let output = cmd.output().expect("spawn child");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // NOTE: In a network namespace, loopback is available but we need
-    // to bring up the lo interface. The loopback interface exists but
-    // may be down. Connection may succeed or fail depending on whether
-    // the namespace auto-configures lo. Either way, the key test is
-    // that the sandbox setup itself succeeded (no crash).
-    // The egress_deny_blocks_network test verifies external blocking.
+    // NOTE: The namespace's lo interface may be down, so the connect may succeed
+    // or fail; assert only that setup completed. egress_deny_blocks_network covers blocking.
     assert!(
         stdout.contains("exit=0") || stdout.contains("exit=1"),
         "command must complete (not hang) with allowlist: {stdout}"

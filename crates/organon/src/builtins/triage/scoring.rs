@@ -113,7 +113,6 @@ pub(crate) fn score_relevance(issue: &GitHubIssue, context_keywords: &[&str]) ->
         reasons.push(format!("priority {priority}: +{priority_score:.2}"));
     }
 
-    // Clamp to [0.0, 1.0]
     score = score.clamp(0.0, 1.0);
 
     let rationale = if reasons.is_empty() {
@@ -137,7 +136,6 @@ pub(crate) fn compute_priority_score(result: &RelevanceResult) -> f64 {
         None => 0.7,
     };
 
-    // Estimate impact from label signals
     let impact = estimate_impact(&result.issue);
 
     result.relevance * priority_weight * impact
@@ -149,17 +147,14 @@ fn estimate_impact(issue: &GitHubIssue) -> f64 {
 
     let mut impact: f64 = 1.0;
 
-    // Security issues have higher impact
     if label_lower.iter().any(|l| l.contains("security")) {
         impact *= 1.5;
     }
 
-    // Bugs have moderate impact boost
     if label_lower.iter().any(|l| l.contains("bug")) {
         impact *= 1.2;
     }
 
-    // Performance issues
     if label_lower
         .iter()
         .any(|l| l.contains("performance") || l.contains("perf"))

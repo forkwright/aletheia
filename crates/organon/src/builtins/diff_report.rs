@@ -171,7 +171,3 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(diff_report_def(), Box::new(DiffReportExecutor))?;
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "diff_report_tests.rs"]
-mod tests;

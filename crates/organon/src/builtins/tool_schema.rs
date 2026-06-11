@@ -6,13 +6,9 @@
 //! seen.  The returned JSON object is the complete `input_schema` that would
 //! normally appear in the system-prompt tool block.
 //!
-//! # Usage pattern (deferred-schemas mode)
-//!
-//! 1. The system prompt lists all tools with `name` + `description` only.
-//! 2. Agent decides it wants to call, say, `plan_create`.
-//! 3. Agent calls `tool_schema { "tool_name": "plan_create" }`.
-//! 4. Response contains the full `input_schema` JSON object.
-//! 5. Agent constructs its `plan_create` call with the correct parameters.
+//! Usage (deferred-schemas mode): the system prompt lists tools by name and
+//! description only; agents call `tool_schema {"tool_name": …}` for the full
+//! `input_schema` before constructing the real call.
 //!
 //! # Feature flag
 //!

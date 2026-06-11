@@ -280,7 +280,7 @@ fn test_validate_path_relative_resolves_inside_workspace() {
     let name = koina::id::ToolName::new("read").expect("valid");
     // WHY: Use canonicalized dir for both workspace and allowed_roots so that
     // the validator's canonical form of the input matches the canonical root on
-    // all platforms, including macOS where /var -> /private/var. Closes #3573.
+    // all platforms, including macOS where /var -> /private/var.
     let ctx = ToolContext {
         nous_id: koina::id::NousId::new("test-agent").expect("valid"),
         session_id: koina::id::SessionId::new(),
@@ -340,7 +340,7 @@ fn test_normalize_removes_current_dir_component() {
 fn test_validate_path_accepts_canonical_root_with_symlinked_input() {
     // WHY: oikos canonicalizes roots at startup, so the allowed_roots contain
     // the canonical (symlink-resolved) path. Input paths using the non-canonical
-    // form (through a symlink) must still be accepted. Closes #1981.
+    // form (through a symlink) must still be accepted.
     let dir = tempfile::tempdir().expect("create temp dir");
     let real_dir = dir.path().join("real");
     std::fs::create_dir(&real_dir).expect("create real dir");

@@ -12,9 +12,7 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
+// ── Label sets ──
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct NousStatusLabels {
@@ -27,9 +25,7 @@ struct NousLabels {
     nous_id: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
+// ── Metric families ──
 
 static DISTILLATION_TOTAL: LazyLock<Family<NousStatusLabels, Counter>> =
     LazyLock::new(Family::default);
@@ -44,10 +40,6 @@ static DISTILLATION_DURATION_SECONDS: LazyLock<NousHistogramFamily> =
     LazyLock::new(|| Family::new_with_constructor(distillation_duration_histogram));
 
 static TOKENS_SAVED_TOTAL: LazyLock<Family<NousLabels, Counter>> = LazyLock::new(Family::default);
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -68,9 +60,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
+// ── Recording ──
 
 /// Record a completed distillation operation.
 pub(crate) fn record_distillation(nous_id: &str, duration_secs: f64, success: bool) {

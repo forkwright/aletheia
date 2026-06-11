@@ -1,10 +1,9 @@
 //! Generic HTTP client tool (`http_request`) supporting POST/PUT/DELETE/PATCH
 //! in addition to GET, with configurable headers and body.
 //!
-//! WHY: `web_fetch` handles only GET and strips HTML. Agents that need to call
-//! REST APIs (POST JSON, PUT YAML, DELETE) had no path. This adds a generic
-//! method-aware HTTP tool that reuses the SSRF guards from `research.rs`.
-//! Closes #3441.
+//! WHY: `web_fetch` handles only GET and strips HTML, leaving agents that need
+//! to call REST APIs (POST JSON, PUT YAML, DELETE) without a path. This is the
+//! generic method-aware HTTP tool, reusing the SSRF guards from `research.rs`.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;

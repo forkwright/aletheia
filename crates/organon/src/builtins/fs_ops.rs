@@ -1,9 +1,9 @@
 //! Filesystem mutation tools: `mkdir`, `mv`, `cp`, `rm`.
 //!
-//! WHY: organon's `write` tool covers file creation, but agents previously had
-//! no way to create directories (outside of implicit parent creation during
+//! WHY: organon's `write` tool covers file creation, but agents have no other
+//! way to create directories (outside of implicit parent creation during
 //! `write`), move or rename paths, copy files, or delete paths. These are
-//! standard operations on an agent workspace. Closes #3440.
+//! standard operations on an agent workspace.
 //!
 //! Every operation validates paths through `workspace::validate_path` and
 //! rejects:
@@ -67,10 +67,6 @@ fn is_protected(path: &Path) -> Option<&'static str> {
         .find(|&name| filename == name)
 }
 
-// -------------------------------------------------------------------------
-// mkdir
-// -------------------------------------------------------------------------
-
 pub(crate) struct MkdirExecutor;
 
 impl ToolExecutor for MkdirExecutor {
@@ -110,10 +106,6 @@ impl ToolExecutor for MkdirExecutor {
         })
     }
 }
-
-// -------------------------------------------------------------------------
-// mv
-// -------------------------------------------------------------------------
 
 pub(crate) struct MvExecutor;
 
@@ -192,10 +184,6 @@ fn remove_path(path: &Path) -> std::io::Result<()> {
         std::fs::remove_file(path)
     }
 }
-
-// -------------------------------------------------------------------------
-// cp
-// -------------------------------------------------------------------------
 
 pub(crate) struct CpExecutor;
 
@@ -282,10 +270,6 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-// -------------------------------------------------------------------------
-// rm
-// -------------------------------------------------------------------------
-
 pub(crate) struct RmExecutor;
 
 impl ToolExecutor for RmExecutor {
@@ -345,10 +329,6 @@ impl ToolExecutor for RmExecutor {
         })
     }
 }
-
-// -------------------------------------------------------------------------
-// Registration
-// -------------------------------------------------------------------------
 
 /// Register filesystem mutation tools (`mkdir`, `mv`, `cp`, `rm`).
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {

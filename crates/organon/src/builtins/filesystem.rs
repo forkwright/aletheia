@@ -28,7 +28,6 @@ use super::workspace::{
 /// WHY: Close TOCTOU window between `validate_path` and actual filesystem access.
 /// A symlink could be swapped after validation to point outside allowed roots.
 /// Canonicalize resolves symlinks; if the canonical path differs, re-validate.
-/// Closes #2162.
 fn canonicalize_and_revalidate(
     validated_path: PathBuf,
     ctx: &ToolContext,
@@ -46,7 +45,7 @@ fn canonicalize_and_revalidate(
 
 /// WHY: Unbounded patterns can trigger catastrophic backtracking in the regex
 /// engine (`ReDoS`). Cap at 1000 chars which covers all legitimate search
-/// patterns. Closes #2167.
+/// patterns.
 /// Fallback default; runtime reads `ctx.tool_config.max_pattern_length`.
 #[expect(
     dead_code,
@@ -58,7 +57,7 @@ fn truncate_output(mut output: String) -> String {
     if output.len() > MAX_OUTPUT_BYTES {
         // WHY: Truncating at an arbitrary byte position can split a multi-byte
         // UTF-8 character, producing invalid UTF-8. Walk backwards to the
-        // nearest char boundary before truncating. Closes #3335.
+        // nearest char boundary before truncating.
         let mut end = MAX_OUTPUT_BYTES;
         while end > 0 && !output.is_char_boundary(end) {
             end -= 1;
@@ -72,7 +71,6 @@ fn truncate_output(mut output: String) -> String {
 /// WHY: Subprocess commands (grep, find, ls) must not run indefinitely.
 /// A 60-second wall-clock timeout prevents hung processes from consuming
 /// resources. On timeout the [`ProcessGuard`] kills and reaps the child.
-/// Closes #2168, #2133.
 const SUBPROCESS_TIMEOUT: Duration = Duration::from_mins(1);
 
 fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
@@ -154,7 +152,7 @@ impl ToolExecutor for GrepExecutor {
 
             // WHY: Close TOCTOU window: a symlink validated above could be
             // swapped before the subprocess reads it. Canonicalize and
-            // re-validate the resolved target. Closes #2162.
+            // re-validate the resolved target.
             let path = canonicalize_and_revalidate(path, ctx, &input.name)?;
 
             let output = try_rg(pattern, &path, max_results, case_sensitive, glob_filter)

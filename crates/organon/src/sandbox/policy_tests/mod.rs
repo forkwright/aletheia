@@ -1,4 +1,4 @@
-//! Split from `policy_tests.rs` (1198 lines) to satisfy `RUST/file-too-long`.
+//! Shared fixtures for the sandbox policy test modules.
 
 use std::path::PathBuf;
 
@@ -45,7 +45,6 @@ fn policy_with_system_paths(workspace: &std::path::Path) -> SandboxPolicy {
         workspace.to_path_buf(),
     ];
 
-    // Write paths are also readable
     for wp in &write_paths {
         if !read_paths.contains(wp) {
             read_paths.push(wp.clone());

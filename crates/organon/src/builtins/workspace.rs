@@ -27,7 +27,7 @@ use crate::types::{
 /// Strip absolute path prefixes from an error message, showing only the filename.
 ///
 /// WHY: Full filesystem paths in error messages sent to the LLM leak instance
-/// directory structure. Show only the filename component instead. Closes #1716.
+/// directory structure. Show only the filename component instead.
 fn sanitize_path_in_msg(path: &std::path::Path) -> String {
     path.file_name()
         .and_then(|n| n.to_str())
@@ -38,7 +38,6 @@ fn sanitize_path_in_msg(path: &std::path::Path) -> String {
 /// Maximum content size for the write tool (10 MB).
 ///
 /// WHY: Prevents disk exhaustion or fork-bomb-like abuse via oversized writes.
-/// Closes #1714.
 /// Fallback default; runtime reads `ctx.tool_config.max_write_bytes`.
 #[expect(
     dead_code,
@@ -62,7 +61,7 @@ fn expand_tilde_str(raw: &str) -> std::borrow::Cow<'_, str> {
 
 /// WHY: Shell metacharacters in path arguments could escape to a shell if any
 /// downstream code ever passes them unsanitized. Null bytes truncate C-strings
-/// causing path confusion. Reject both upfront. Closes #2163.
+/// causing path confusion. Reject both upfront.
 const SHELL_METACHARACTERS: &[char] = &[';', '|', '&', '$', '`', '(', ')'];
 
 pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) -> Result<PathBuf> {
@@ -93,7 +92,7 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
     // WHY: LLMs commonly emit `~/file` or `~` to refer to HOME. Without
     // expansion the path resolves relative to workspace, producing a confusing
     // "outside allowed roots" error. Expand before any other resolution so the
-    // absolute path check below works correctly: closes #1244.
+    // absolute path check below works correctly.
     let expanded = expand_tilde_str(raw);
     let raw_expanded = expanded.as_ref();
 
@@ -113,24 +112,24 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
     // tempfile::tempdir() returns /var/folders/... whose canonical form is
     // /private/var/folders/... Comparing a canonicalized root against a path
     // that was only partially canonicalized (parent only, or not at all) produces
-    // false "outside allowed roots" rejections. Closes #3573.
+    // false "outside allowed roots" rejections.
     let canonical = if normalized.exists() {
         normalized
             .canonicalize()
             .unwrap_or_else(|_| normalized.clone())
     } else {
-        // Walk up to find the deepest ancestor that actually exists, canonicalize
-        // it, then re-attach all the non-existent trailing components.
+        // WHY: canonicalize() fails on paths that do not exist yet, so walk up
+        // to the deepest existing ancestor, canonicalize that, then re-attach
+        // the non-existent trailing components.
         let mut existing = normalized.as_path();
-        // Collect the non-existent suffix components in forward (top-down) order.
-        // We prepend each new component so that: given path /a/b/c where /a/b
-        // exists but /a/b/c does not, we collect ["c"] and join as /canonical_a_b/c.
+        // INVARIANT: suffix_components stays in forward (top-down) path order —
+        // given /a/b/c where /a/b exists but /a/b/c does not, we collect ["c"]
+        // and join as /canonical_a_b/c — so each new component is prepended.
         let mut suffix_components: Vec<std::ffi::OsString> = Vec::new();
         loop {
             match existing.parent() {
                 Some(parent) if !existing.exists() => {
                     if let Some(name) = existing.file_name() {
-                        // Insert at front to preserve path order (deepest component last).
                         suffix_components.insert(0, name.to_owned());
                     }
                     existing = parent;
@@ -154,7 +153,7 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
     // the allowed roots. The previous two-phase approach hard-rejected in the
     // normalized check before reaching the canonical check, which broke when
     // oikos canonicalized roots at startup (resolving symlinks) but the input
-    // path used the non-canonical form. Closes #1981.
+    // path used the non-canonical form.
     let allowed = ctx.allowed_roots.iter().any(|root| {
         let canon_root = root.canonicalize().unwrap_or_else(|_| normalize(root));
         canonical.starts_with(&canon_root) || normalized.starts_with(&canon_root)
@@ -172,7 +171,7 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
     // target. Using the normalized (non-canonical) path leaves a TOCTOU
     // window where a symlink could be swapped after validation but before
     // I/O. Returning canonical shrinks this window because the kernel
-    // path lookup won't follow the original symlink. Closes #2786.
+    // path lookup won't follow the original symlink.
     Ok(canonical)
 }
 
@@ -254,7 +253,6 @@ const PROTECTED_FILES: &[&str] = &[
 
 /// WHY: Sensitive file extensions that must never be written by the LLM.
 /// Checked case-insensitively so `.PEM` and `.pem` are both blocked.
-/// Closes #2165.
 const PROTECTED_EXTENSIONS: &[&str] = &["key", "pem", "p12", "pfx"];
 
 /// Filename prefixes (case-sensitive) that identify credential files.
@@ -335,7 +333,7 @@ impl ToolExecutor for ReadExecutor {
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
             // WHY: validate_path returns the canonical path (symlinks resolved),
             // so the I/O below operates on the resolved target, not the original
-            // symlink. This eliminates the TOCTOU window from #2162.
+            // symlink. This eliminates the symlink-swap TOCTOU window.
             let path = validate_path(path_str, ctx, &input.name)?;
 
             let max_read = ctx.tool_config.max_read_bytes;
@@ -407,7 +405,7 @@ impl ToolExecutor for WriteExecutor {
             let append = extract_opt_bool(&input.arguments, "append").unwrap_or(false);
             let path = validate_path(path_str, ctx, &input.name)?;
 
-            // WHY: Enforce content size limit to prevent disk exhaustion. Closes #1714.
+            // WHY: Enforce content size limit to prevent disk exhaustion.
             let max_write = ctx.tool_config.max_write_bytes;
             if content.len() > max_write {
                 return Ok(err_result(format!(
@@ -416,7 +414,6 @@ impl ToolExecutor for WriteExecutor {
                 )));
             }
 
-            // WHY: Block writes to protected bootstrap files
             if let Some(protected) = is_protected_file(&path, &ctx.workspace) {
                 return Ok(err_result(format!(
                     "cannot overwrite protected file: {protected}"
@@ -585,7 +582,7 @@ fn parse_command_args(command: &str) -> std::result::Result<(String, Vec<String>
 ///
 /// We clear the entire environment and re-add only variables needed for basic
 /// process operation. Operators needing additional variables should add them to
-/// the `SandboxConfig` allowlist. Closes #3374.
+/// the `SandboxConfig` allowlist.
 const SAFE_ENV_VARS: &[&str] = &[
     "PATH",
     "HOME",
@@ -637,7 +634,7 @@ impl ToolExecutor for ExecExecutor {
                 .stderr(Stdio::piped());
 
             // WHY: Clear inherited environment to prevent API key exfiltration.
-            // See SAFE_ENV_VARS constant for rationale. Closes #3374.
+            // See SAFE_ENV_VARS constant for rationale.
             cmd.env_clear();
             for &var in SAFE_ENV_VARS {
                 if let Some(val) = std::env::var_os(var) {
@@ -647,7 +644,7 @@ impl ToolExecutor for ExecExecutor {
 
             // WHY: Apply process resource limits before sandbox to constrain fork-bombs
             // and runaway CPU usage. RLIMIT_NPROC caps child process count;
-            // RLIMIT_CPU caps CPU seconds. Closes #1717.
+            // RLIMIT_CPU caps CPU seconds.
             #[cfg(target_os = "linux")]
             {
                 let nproc_cap = u64::from(self.sandbox.nproc_limit);
@@ -665,14 +662,14 @@ impl ToolExecutor for ExecExecutor {
                         // WHY: Cap subprocess count to prevent fork bombs.
                         // RLIMIT_NPROC counts ALL user processes, not just sandbox
                         // children, so the limit must be high enough to accommodate
-                        // existing background processes. Closes #1984.
+                        // existing background processes.
                         let nproc_limit = Rlimit {
                             current: Some(nproc_cap),
                             maximum: Some(nproc_cap),
                         };
                         let _ = setrlimit(Resource::Nproc, nproc_limit);
 
-                        // Cap CPU time to 60 seconds to prevent runaway processes
+                        // WHY: Cap CPU time to prevent runaway processes.
                         let cpu_limit = Rlimit {
                             current: Some(60),
                             maximum: Some(60),
@@ -745,7 +742,7 @@ impl ToolExecutor for ExecExecutor {
             if output.len() > MAX_OUTPUT_BYTES {
                 // WHY: Truncating at an arbitrary byte position can split a multi-byte
                 // UTF-8 character, producing invalid UTF-8. Walk backwards to the
-                // nearest char boundary before truncating. Closes #3335.
+                // nearest char boundary before truncating.
                 let mut end = MAX_OUTPUT_BYTES;
                 while end > 0 && !output.is_char_boundary(end) {
                     end -= 1;

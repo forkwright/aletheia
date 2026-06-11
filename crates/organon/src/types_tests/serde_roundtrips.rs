@@ -1,4 +1,4 @@
-//! (Split from `types_tests.rs` — see parent mod.)
+//! Serde round-trip tests for tool types.
 
 #![expect(
     clippy::indexing_slicing,

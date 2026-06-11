@@ -18,7 +18,7 @@ use crate::types::{
 use super::workspace::{extract_opt_u64, extract_str, validate_path};
 
 /// WHY: Full filesystem paths in error messages leak instance directory
-/// structure to the LLM. Show workspace-relative path instead. Closes #2166.
+/// structure to the LLM. Show workspace-relative path instead.
 fn relativize_path(path: &Path, workspace: &Path) -> String {
     path.strip_prefix(workspace)
         .unwrap_or(path)
@@ -76,7 +76,7 @@ impl ToolExecutor for ViewFileExecutor {
 
             // WHY: A symlink validated against allowed_roots could point outside
             // the workspace. Resolve and re-validate so the actual target is
-            // checked. Closes #2169.
+            // checked.
             let symlink_meta = std::fs::symlink_metadata(&path);
             if let Ok(ref meta) = symlink_meta
                 && meta.is_symlink()

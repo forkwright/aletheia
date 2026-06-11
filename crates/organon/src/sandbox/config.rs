@@ -67,7 +67,7 @@ pub struct SandboxConfig {
     /// prevent agents from reading files outside a specific directory.
     ///
     /// WHY: without a home-directory default, agents cannot read user files
-    /// (dotfiles, project repos, etc.) even in permissive mode: closes #1823.
+    /// (dotfiles, project repos, etc.) even in permissive mode.
     pub allowed_root: PathBuf,
     /// Additional filesystem paths granted read access.
     pub extra_read_paths: Vec<PathBuf>,
@@ -92,7 +92,6 @@ pub struct SandboxConfig {
     /// WHY: `RLIMIT_NPROC` counts ALL processes for the user, not just sandbox
     /// children. The previous default of 64 caused EAGAIN failures on systems
     /// running dispatch agents or other background processes. Default: 256.
-    /// Closes #1984.
     pub nproc_limit: u32,
 }
 
@@ -177,12 +176,12 @@ impl SandboxConfig {
 
         // WHY: Use RealSystem::temp_dir() instead of hardcoded /tmp to support
         // systems where the temp directory differs (e.g. /var/folders on macOS,
-        // or a custom TMPDIR). Closes #1697.
+        // or a custom TMPDIR).
         let mut write_paths = vec![RealSystem.temp_dir()];
 
         // WHY: System binary dirs are always executable. workspace and
         // allowed_roots are also added so agents can execute scripts they own
-        // or that live in shared data directories: closes #1246.
+        // or that live in shared data directories.
         // /lib and /lib64 are included because the kernel opens the ELF
         // dynamic linker (ld-linux-*.so) with exec intent during execve().
         // Without Execute on these paths, all dynamically-linked binaries
@@ -219,7 +218,7 @@ impl SandboxConfig {
         }
 
         // WHY: allowed_root is the operator-configured default read root (defaults
-        // to HOME). Expand tilde so config files can use `~` portably: closes #1823.
+        // to HOME). Expand tilde so config files can use `~` portably.
         let expanded_allowed_root = expand_tilde(&self.allowed_root);
         if !read_paths.contains(&expanded_allowed_root) {
             read_paths.push(expanded_allowed_root);

@@ -1,4 +1,4 @@
-//! (Split from `policy_tests.rs` — see parent mod.)
+//! Sandbox edge-case tests: temp-dir access, read-only enforcement, policy construction.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
@@ -13,7 +13,7 @@ fn temp_directory_access() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Use the workspace temp directory, not system /tmp
+    // NOTE: uses the workspace temp directory, not system /tmp.
     let temp_file = workspace.path().join("sandbox_temp_test.txt");
     let cmd_str = format!(
         "echo 'temp test' > {} && cat {} && rm {}",
@@ -42,11 +42,10 @@ fn temp_directory_access() {
 
 /// Test read-only paths are actually read-only.
 // WHY(#3707): assert on the filesystem invariant, not the shell exit
-// string. The Landlock restriction we're testing is "file-under-
-// read_paths is not modified". Different kernel versions surface that
-// as different shell exit codes (1 on fedora 43's 6.19 kernel, 2 on
-// GitHub's ubuntu-latest), and the test used to branch on a brittle
-// string match. The security invariant is: file contents unchanged +
+// string. The Landlock restriction under test is "file-under-read_paths
+// is not modified"; different kernel versions surface that as different
+// shell exit codes (1 on fedora 43's 6.19 kernel, 2 on GitHub's
+// ubuntu-latest). The security invariant is: file contents unchanged +
 // child did not report success.
 /// Original contents written to the read-only fixture before the
 /// sandboxed child attempts to overwrite it. Declared at module scope
@@ -67,7 +66,6 @@ fn read_only_paths_cannot_be_written() {
 
     let workspace = tempfile::tempdir().expect("create workspace");
     let mut policy = policy_with_system_paths(workspace.path());
-    // Add read-only dir to read_paths but NOT write_paths
     policy.read_paths.push(read_only_dir.path().to_path_buf());
 
     let cmd_str = format!("echo 'modified' > {}", test_file.display());
@@ -78,8 +76,8 @@ fn read_only_paths_cannot_be_written() {
 
     let output = cmd.output().expect("spawn child");
 
-    // Invariant 1: the file on disk is unchanged. Landlock enforcement
-    // is visible here regardless of shell exit conventions.
+    // INVARIANT: the file on disk is unchanged — Landlock enforcement is
+    // visible here regardless of shell exit conventions.
     let after = std::fs::read_to_string(&test_file).expect("read test file");
     assert_eq!(
         after,
@@ -89,9 +87,9 @@ fn read_only_paths_cannot_be_written() {
         String::from_utf8_lossy(&output.stderr),
     );
 
-    // Invariant 2: the child reported a non-zero exit (some signal of
-    // failure). We don't depend on *which* non-zero code — the shell
-    // picks 1 on some kernels and 2 on others for redirection failure.
+    // INVARIANT: the child reports a non-zero exit (some signal of failure).
+    // Which code is kernel-dependent — the shell picks 1 on some kernels and
+    // 2 on others for redirection failure.
     assert!(
         !output.status.success(),
         "child reported success despite read-only Landlock policy; stdout={}, stderr={}",
@@ -106,7 +104,6 @@ fn read_only_paths_cannot_be_written() {
 fn sandbox_policy_apply_unit() {
     let workspace = tempfile::tempdir().expect("create workspace");
 
-    // Create a policy with minimal paths
     let policy = SandboxPolicy {
         enabled: true,
         read_paths: vec![
@@ -132,7 +129,6 @@ fn sandbox_policy_apply_unit() {
         egress_allowlist: Vec::new(),
     };
 
-    // Verify the policy structure
     assert!(policy.enabled);
     assert!(!policy.read_paths.is_empty());
     assert!(!policy.write_paths.is_empty());

@@ -1,8 +1,8 @@
 //! `web_search` tool — agent-side web search via the Brave Search API.
 //!
-//! WHY: The previous design relied on Anthropic's server-side `web_search` tool,
-//! which only works with Anthropic-hosted models. Agents using other providers
-//! (Kimi, local Qwen, etc.) had no search capability. Closes #3437.
+//! WHY: Anthropic's server-side `web_search` tool only works with
+//! Anthropic-hosted models; agents on other providers (Kimi, local Qwen, etc.)
+//! need an agent-side search path.
 //!
 //! Availability: requires `BRAVE_SEARCH_API_KEY` in the environment. If the
 //! key is absent the tool still registers, but every call returns an error

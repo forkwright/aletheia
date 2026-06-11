@@ -199,7 +199,7 @@ fn policy_includes_system_paths() {
     // WHY: On macOS `/tmp` is a symlink to `/private/tmp` AND `RealSystem::temp_dir()`
     // returns the per-user `/var/folders/.../T` directory, not `/tmp`. Compare
     // against whatever the platform temp dir actually is (canonicalized on
-    // both sides) so the assertion passes on every runner. Closes #3573.
+    // both sides) so the assertion passes on every runner.
     let expected = RealSystem
         .temp_dir()
         .canonicalize()
