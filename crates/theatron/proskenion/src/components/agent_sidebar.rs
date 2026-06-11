@@ -35,7 +35,6 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
     let mut store = use_context::<Signal<AgentStore>>();
     let event_state = use_context::<Signal<EventState>>();
 
-    // When collapsed, just show a minimal indicator.
     if collapsed {
         let agent_count = store.read().all().len();
         return rsx! {

@@ -99,7 +99,7 @@ impl SseEventRouter {
         }
     }
 
-    // -- Connection lifecycle ------------------------------------------------
+    // ── Connection lifecycle ──
 
     fn on_connected(&mut self) -> bool {
         self.reconnect_attempts = 0;
@@ -115,14 +115,14 @@ impl SseEventRouter {
         true
     }
 
-    // -- Init ----------------------------------------------------------------
+    // ── Init ──
 
     fn on_init(&mut self, active_turns: &[ActiveTurn]) -> bool {
         self.state.active_turns = active_turns.to_vec();
         true
     }
 
-    // -- Turn lifecycle ------------------------------------------------------
+    // ── Turn lifecycle ──
 
     fn on_turn_before(
         &mut self,
@@ -155,7 +155,7 @@ impl SseEventRouter {
         self.state.active_turns.len() != before
     }
 
-    // -- Tool events ---------------------------------------------------------
+    // ── Tool events ──
 
     fn on_tool_called(&mut self, nous_id: &NousId, tool_name: &str) -> bool {
         // NOTE: Update agent status to reflect tool activity.
@@ -178,7 +178,7 @@ impl SseEventRouter {
         true
     }
 
-    // -- Status update -------------------------------------------------------
+    // ── Status update ──
 
     fn on_status_update(&mut self, nous_id: &NousId, status: &str) -> bool {
         let prev = self.state.agent_statuses.get(nous_id);
@@ -191,7 +191,7 @@ impl SseEventRouter {
         true
     }
 
-    // -- Distillation --------------------------------------------------------
+    // ── Distillation ──
 
     fn on_distill_before(&mut self, nous_id: &NousId) -> bool {
         self.state
@@ -217,7 +217,7 @@ impl SseEventRouter {
         true
     }
 
-    // -- Checkpoint events ---------------------------------------------------
+    // ── Checkpoint events ──
 
     fn on_checkpoint_changed(&mut self, project_id: &str) -> bool {
         let counter = self
@@ -254,7 +254,7 @@ mod tests {
         TurnId::from(id)
     }
 
-    // -- Connection lifecycle ------------------------------------------------
+    // ── Connection lifecycle ──
 
     #[test]
     fn connected_sets_state_and_resets_attempts() {
@@ -297,7 +297,7 @@ mod tests {
         assert_eq!(router.reconnect_attempts, 0);
     }
 
-    // -- Init ----------------------------------------------------------------
+    // ── Init ──
 
     #[test]
     fn init_replaces_active_turns() {
@@ -327,7 +327,7 @@ mod tests {
         assert_eq!(&*router.state().active_turns[1].nous_id, "mneme");
     }
 
-    // -- Turn lifecycle ------------------------------------------------------
+    // ── Turn lifecycle ──
 
     #[test]
     fn turn_before_adds_active_turn() {
@@ -394,7 +394,7 @@ mod tests {
         assert!(!changed);
     }
 
-    // -- Status update -------------------------------------------------------
+    // ── Status update ──
 
     #[test]
     fn status_update_stores_agent_status() {
@@ -429,7 +429,7 @@ mod tests {
         assert!(!changed);
     }
 
-    // -- Tool events ---------------------------------------------------------
+    // ── Tool events ──
 
     #[test]
     fn tool_called_updates_status() {
@@ -464,7 +464,7 @@ mod tests {
         );
     }
 
-    // -- Distillation --------------------------------------------------------
+    // ── Distillation ──
 
     #[test]
     fn distill_lifecycle() {
@@ -500,7 +500,7 @@ mod tests {
         assert!(!router.state().distillation[&id].is_active());
     }
 
-    // -- Ping ----------------------------------------------------------------
+    // ── Ping ──
 
     #[test]
     fn ping_returns_no_change() {
@@ -508,7 +508,7 @@ mod tests {
         assert!(!router.apply(&SseEvent::Ping));
     }
 
-    // -- Checkpoint events ---------------------------------------------------
+    // ── Checkpoint events ──
 
     #[test]
     fn checkpoint_created_increments_revision() {
@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(router.state().checkpoint_revisions.get("proj-2"), Some(&1),);
     }
 
-    // -- Session events (no state change) ------------------------------------
+    // ── Session events (no state change) ──
 
     #[test]
     fn session_created_returns_no_change() {
@@ -578,17 +578,15 @@ mod tests {
         assert!(!changed);
     }
 
-    // -- Full lifecycle integration ------------------------------------------
+    // ── Full lifecycle integration ──
 
     #[test]
     fn full_sse_lifecycle() {
         let mut router = SseEventRouter::new();
 
-        // Connect
         router.apply(&SseEvent::Connected);
         assert!(router.state().connection.is_connected());
 
-        // Receive init with one active turn
         router.apply(&SseEvent::Init {
             active_turns: vec![ActiveTurn {
                 nous_id: nous("syn"),
@@ -598,13 +596,11 @@ mod tests {
         });
         assert_eq!(router.state().active_turns.len(), 1);
 
-        // Agent starts working
         router.apply(&SseEvent::StatusUpdate {
             nous_id: nous("syn"),
             status: "working".to_string(),
         });
 
-        // New turn begins on another agent
         router.apply(&SseEvent::TurnBefore {
             nous_id: nous("mneme"),
             session_id: session("s2"),
@@ -612,7 +608,6 @@ mod tests {
         });
         assert_eq!(router.state().active_turns.len(), 2);
 
-        // First turn completes
         router.apply(&SseEvent::TurnAfter {
             nous_id: nous("syn"),
             session_id: session("s1"),
@@ -620,7 +615,6 @@ mod tests {
         assert_eq!(router.state().active_turns.len(), 1);
         assert_eq!(&*router.state().active_turns[0].nous_id, "mneme");
 
-        // Disconnect and reconnect
         router.apply(&SseEvent::Disconnected);
         assert!(!router.state().connection.is_connected());
         router.apply(&SseEvent::Connected);

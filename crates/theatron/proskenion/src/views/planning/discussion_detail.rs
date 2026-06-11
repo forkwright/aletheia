@@ -73,15 +73,12 @@ pub(crate) fn DiscussionDetailView(
                     "Error: {err}"
                 }
             } else if let Some(disc) = discussion.read().as_ref() {
-                // Question
                 div { style: "font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text-primary); margin-bottom: var(--space-2);", "{disc.question}" }
 
-                // Context
                 if !disc.context.is_empty() {
                     div { style: "font-size: var(--text-base); color: var(--text-secondary); padding: var(--space-3) var(--space-4); background: var(--bg-surface-dim); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: var(--space-3);", "{disc.context}" }
                 }
 
-                // Current answer (if answered)
                 if disc.status == DiscussionStatus::Answered {
                     if let Some(summary) = DiscussionStore::answer_summary(disc) {
                         div {
@@ -92,7 +89,6 @@ pub(crate) fn DiscussionDetailView(
                     }
                 }
 
-                // All options
                 div { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 var(--space-2);", "Options" }
                 div {
                     style: "display: flex; flex-direction: column; gap: var(--space-2);",
@@ -108,7 +104,6 @@ pub(crate) fn DiscussionDetailView(
                     }
                 }
 
-                // Discussion history
                 if !disc.history.is_empty() {
                     div { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 var(--space-2);", "History" }
                     for (i, entry) in disc.history.iter().enumerate() {

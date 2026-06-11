@@ -53,7 +53,6 @@ fn render_keybindings(app: &App, width: u16, theme: &Theme) -> Line<'static> {
 fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     let total = usize::from(width);
 
-    // Right side (lowest priority): scroll position, cost, context gauge.
     let mut right_spans = Vec::new();
     right_spans.extend(scroll_position_spans(app, theme));
     right_spans.extend(cost_spans(app, theme));
@@ -74,11 +73,9 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     right_spans.push(Span::raw(" "));
     let right_width: usize = right_spans.iter().map(|s| s.content.width()).sum();
 
-    // Connection status (highest priority: always shown first).
     let conn_spans = connection_indicator_spans(app, theme);
     let conn_width: usize = conn_spans.iter().map(|s| s.content.width()).sum();
 
-    // Agent identity (second priority: truncated when narrow).
     let agent_spans = agent_identity_spans(app, theme);
     let agent_width: usize = agent_spans.iter().map(|s| s.content.width()).sum();
 
@@ -94,12 +91,9 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = vec![Span::raw(" ")];
     let mut used = PREFIX;
 
-    // Always include connection status.
     spans.extend(conn_spans);
     used += conn_width;
 
-    // Agent identity: budget excludes what's already used plus the separator and
-    // enough room for at least one right-side character if it fits.
     let agent_budget = total.saturating_sub(used + SEP);
     if agent_budget >= 2 {
         spans.push(Span::styled(" │ ", theme.style_dim()));
@@ -116,7 +110,6 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         }
     }
 
-    // Optional: credential type indicator.
     let cred_spans = credential_indicator_spans(app, theme);
     let cred_w: usize = cred_spans.iter().map(|s| s.content.width()).sum();
     if cred_w > 0 && used + cred_w + 1 < total {
@@ -124,7 +117,6 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         used += cred_w;
     }
 
-    // Optional: tool indicator.
     let tool_spans = tool_indicator_spans(app, theme);
     let tool_w: usize = tool_spans.iter().map(|s| s.content.width()).sum();
     if tool_w > 0 && used + tool_w + 1 < total {
@@ -132,7 +124,6 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         used += tool_w;
     }
 
-    // Optional: selection indicator.
     if let Some(idx) = app.interaction.selected_message {
         let total_msgs = app.dashboard.messages.len();
         let sel = [
@@ -147,7 +138,6 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         }
     }
 
-    // Optional: filter indicator.
     if app.interaction.filter.active
         && !app.interaction.filter.editing
         && !app.interaction.filter.text.is_empty()
@@ -167,7 +157,6 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         }
     }
 
-    // Optional: stall warning message (visible during agent stall detection).
     if let Some(ref msg) = app.connection.stall_message {
         let stall = [
             Span::styled(" │ ", theme.style_dim()),
@@ -217,7 +206,6 @@ fn truncate_spans_to_width(spans: Vec<Span<'static>>, max_width: usize) -> Vec<S
             result.push(span);
             remaining -= sw;
         } else {
-            // Truncate this span's content to fit, then append "…".
             let cut = truncate_str_to_cols(&span.content, remaining);
             result.push(Span::styled(format!("{cut}…"), span.style));
             remaining = 0;
@@ -569,10 +557,8 @@ mod tests {
     #[test]
     fn render_info_bar_very_narrow_does_not_panic() {
         let app = test_app();
-        // Must not panic on very narrow terminals.
         for w in 0u16..20 {
             let line = render_info_bar(&app, w, &app.theme);
-            // Every span must not exceed the given width when summed.
             let total: usize = line.spans.iter().map(|s| s.content.width()).sum();
             assert!(
                 total <= usize::from(w) + 5, // small slack for edge cases in span building
@@ -585,10 +571,8 @@ mod tests {
     #[test]
     fn render_info_bar_wide_includes_right_side() {
         let app = test_app();
-        // On a wide terminal the right side (cost, context gauge) must appear.
         let line = render_info_bar(&app, 200, &app.theme);
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-        // Cost element always present on wide terminals.
         assert!(
             text.contains('$') || text.contains('░'),
             "wide status bar must include cost or context gauge"

@@ -75,7 +75,6 @@ pub(crate) fn Chat() -> Element {
     // the LOAD_MORE_THRESHOLD loads the next page (#3321).
     let mut loaded_page_count = use_signal(|| 1_usize);
 
-    // Virtual scroll state
     let mut scroll_top = use_signal(|| 0.0_f64);
     let mut container_height = use_signal(|| 600.0_f64);
 
@@ -118,7 +117,6 @@ pub(crate) fn Chat() -> Element {
         pending_chat_selection.set(None);
     });
 
-    // Derive the active agent ID from the agent store.
     let active_nous_id = agent_store.read().active_id.clone();
 
     let is_streaming = legacy_state.read().streaming.is_streaming;
@@ -143,7 +141,6 @@ pub(crate) fn Chat() -> Element {
     let has_more_history = total_message_count > loaded_limit;
     let messages: Vec<ChatMessage> = legacy_state.read().project_messages(Some(loaded_limit));
 
-    // Virtual scroll: compute visible range using shared utility.
     let total_messages = messages.len();
     let (range_start, range_end) = visible_range(
         scroll_top(),
@@ -227,7 +224,6 @@ pub(crate) fn Chat() -> Element {
             plans: Vec::new(),
         });
 
-        // Register a tab for this agent if not already open.
         if let Some(ref agent_id) = agent_store.read().active_id {
             let bar = tab_bar.read();
             let already_open = bar.tabs.iter().any(|t| &t.agent_id == agent_id);
@@ -292,7 +288,6 @@ pub(crate) fn Chat() -> Element {
             };
             let routing_agent_id = skene::id::NousId::from(nous_id.as_str());
 
-            // Signal bootstrap stage at turn start.
             update_routing_stage(
                 &mut routing_signal,
                 PipelineStage::Bootstrap,
@@ -418,7 +413,6 @@ pub(crate) fn Chat() -> Element {
             SessionTabsView {}
 
             if messages.is_empty() && !is_streaming {
-                // Empty state
                 div {
                     style: "
                         flex: 1;
@@ -443,7 +437,6 @@ pub(crate) fn Chat() -> Element {
                     }
                 }
             } else {
-                // Message list with virtual scrolling
                 div {
                     style: "
                         flex: 1;
@@ -487,12 +480,10 @@ pub(crate) fn Chat() -> Element {
                     },
                     "data-chat-scroll": "true",
 
-                    // Virtual scroll spacer (top)
                     div {
                         style: "height: {pad_top}px;",
                     }
 
-                    // "Load more" indicator when older messages exist
                     if has_more_history {
                         div {
                             style: "\
@@ -509,7 +500,6 @@ pub(crate) fn Chat() -> Element {
                         }
                     }
 
-                    // Visible messages
                     for (idx , msg , grouped) in visible_messages {
                         MessageBubble {
                             key: "{idx}",
@@ -519,7 +509,6 @@ pub(crate) fn Chat() -> Element {
                         }
                     }
 
-                    // Streaming indicator
                     if is_streaming {
                         div {
                             style: "
@@ -645,21 +634,17 @@ pub(crate) fn Chat() -> Element {
                                             rsx! {}
                                         }
                                     }
-                                    // Rich tool call panels (expandable)
                                     for detail in legacy_state.read().streaming.tool_call_details.iter() {
                                         ToolPanel { tool: detail.clone() }
                                     }
-                                    // Tool approval dialogs
                                     for approval in legacy_state.read().streaming.approvals.iter() {
                                         if !approval.resolved {
                                             {render_approval(approval.clone(), legacy_state)}
                                         }
                                     }
-                                    // Planning cards
                                     for plan in legacy_state.read().streaming.plans.iter() {
                                         PlanningCard { plan: plan.clone() }
                                     }
-                                    // Active tool calls (compact)
                                     for tc in legacy_state.read().streaming.tool_calls.iter() {
                                         div {
                                             style: "
@@ -689,7 +674,6 @@ pub(crate) fn Chat() -> Element {
                         }
                     }
 
-                    // Virtual scroll spacer (bottom)
                     div {
                         style: "height: {pad_bottom}px;",
                     }

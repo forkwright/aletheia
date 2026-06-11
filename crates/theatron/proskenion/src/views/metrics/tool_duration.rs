@@ -35,7 +35,6 @@ pub(crate) fn ToolDurationView(tools: Vec<ToolStat>) -> Element {
     rsx! {
         div { style: "display: flex; flex-direction: column; gap: var(--space-5);",
 
-            // Percentile bar chart
             PercentileBarChart { entries: perc_entries }
 
         }

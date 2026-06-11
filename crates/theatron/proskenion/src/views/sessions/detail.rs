@@ -230,7 +230,6 @@ pub(crate) fn SessionDetail(
                         rsx! {
                             div {
                                 style: "{DETAIL_CONTAINER_STYLE}",
-                                // Header
                                 div {
                                     style: "{HEADER_STYLE}",
                                     div {
@@ -278,10 +277,8 @@ pub(crate) fn SessionDetail(
                                         }
                                     }
                                 }
-                                // Stats grid
                                 div {
                                     style: "{STATS_GRID_STYLE}",
-                                    // Message count
                                     div {
                                         style: "{STAT_CARD_STYLE}",
                                         div { style: "{STAT_LABEL_STYLE}", "Messages" }
@@ -292,7 +289,6 @@ pub(crate) fn SessionDetail(
                                             }
                                         }
                                     }
-                                    // Token usage
                                     div {
                                         style: "{STAT_CARD_STYLE}",
                                         div { style: "{STAT_LABEL_STYLE}", "Token Usage" }
@@ -303,7 +299,6 @@ pub(crate) fn SessionDetail(
                                             div { style: "{STAT_SUB_STYLE}",
                                                 "{format_tokens(detail.input_tokens)} in / {format_tokens(detail.output_tokens)} out"
                                             }
-                                            // Token bar
                                             div {
                                                 style: "{TOKEN_BAR_BG_STYLE}",
                                                 div {
@@ -312,7 +307,6 @@ pub(crate) fn SessionDetail(
                                             }
                                         }
                                     }
-                                    // Duration
                                     if detail.started_at.is_some() {
                                         div {
                                             style: "{STAT_CARD_STYLE}",
@@ -322,7 +316,6 @@ pub(crate) fn SessionDetail(
                                             }
                                         }
                                     }
-                                    // Model
                                     if let Some(ref model) = detail.model {
                                         div {
                                             style: "{STAT_CARD_STYLE}",
@@ -334,7 +327,6 @@ pub(crate) fn SessionDetail(
                                         }
                                     }
                                 }
-                                // Distillation history
                                 if !detail.distillation_events.is_empty() {
                                     div {
                                         style: "display: flex; flex-direction: column; gap: var(--space-2);",
@@ -357,7 +349,6 @@ pub(crate) fn SessionDetail(
                                         }
                                     }
                                 }
-                                // Message preview
                                 if !detail.message_previews.is_empty() {
                                     div {
                                         style: "display: flex; flex-direction: column; gap: var(--space-1);",

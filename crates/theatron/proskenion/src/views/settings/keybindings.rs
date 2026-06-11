@@ -26,7 +26,6 @@ pub(crate) fn KeybindingsPanel() -> Element {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-6); max-width: 700px;",
 
-            // Global reset
             div {
                 style: "display: flex; justify-content: flex-end;",
                 button {
@@ -43,7 +42,6 @@ pub(crate) fn KeybindingsPanel() -> Element {
                 }
             }
 
-            // Capture overlay when recording
             if recording_id.read().is_some() {
                 div {
                     style: "position: fixed; inset: 0; background: rgba(0,0,0,0.6); \
@@ -52,7 +50,6 @@ pub(crate) fn KeybindingsPanel() -> Element {
                     autofocus: true,
                     onkeydown: move |evt| {
                         let key = evt.data().key().to_string();
-                        // Ignore bare modifier keypresses.
                         if matches!(key.as_str(), "Control" | "Alt" | "Shift" | "Meta") {
                             return;
                         }
@@ -99,7 +96,6 @@ pub(crate) fn KeybindingsPanel() -> Element {
                 }
             }
 
-            // Conflict dialog
             if let Some((ref combo, ref conflict_id, ref target_id)) = conflict_state.read().clone() {
                 {
                     let conflict_label = default_actions()
@@ -156,7 +152,6 @@ pub(crate) fn KeybindingsPanel() -> Element {
                 }
             }
 
-            // Action table grouped by category
             for category in KeyCategory::all() {
                 {
                     let cat = *category;
@@ -171,7 +166,6 @@ pub(crate) fn KeybindingsPanel() -> Element {
                             key: "{cat:?}",
                             style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;",
 
-                            // Category header
                             div {
                                 style: "display: flex; justify-content: space-between; align-items: center; \
                                         padding: var(--space-3) var(--space-4); background: #161626; border-bottom: 1px solid var(--border);",
@@ -195,7 +189,6 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                 }
                             }
 
-                            // Action rows
                             for action in cat_actions.iter() {
                                 {
                                     let action_id = action.id;

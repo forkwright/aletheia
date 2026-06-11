@@ -208,7 +208,6 @@ pub(crate) fn MergeDialog(
                      relationships, and memories merged into the primary entity."
                 }
 
-                // Side by side preview
                 div {
                     style: "{MERGE_SIDE_STYLE}",
                     div {
@@ -227,7 +226,6 @@ pub(crate) fn MergeDialog(
                     }
                 }
 
-                // Entity selection
                 div {
                     style: "{DIALOG_BODY_STYLE}",
                     "Select the entity to merge into "
@@ -336,7 +334,6 @@ pub(crate) fn FlagDialog(
                     " for human review."
                 }
 
-                // Severity
                 label {
                     style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);",
                     "Severity"
@@ -362,7 +359,6 @@ pub(crate) fn FlagDialog(
                     }
                 }
 
-                // Reason
                 label {
                     style: "font-size: var(--text-sm); color: var(--text-secondary); display: block; margin-bottom: var(--space-1);",
                     "Reason"

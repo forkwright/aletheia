@@ -86,9 +86,9 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
     if stall_duration < RECONNECT_TIMEOUT {
         return;
     }
-    // Prevent re-triggering every tick: only fire once per disconnect cycle.
-    // Clearing the timestamp means we won't enter this branch again until a
-    // fresh SseDisconnected event sets a new timestamp.
+    // WHY: Fire once per disconnect cycle -- clearing the timestamp keeps this
+    // branch from re-triggering every tick until a fresh SseDisconnected event
+    // sets a new timestamp.
     app.connection.sse_disconnected_at = None;
 
     let stall_secs = stall_duration.as_secs();
@@ -97,7 +97,6 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
         "SSE stalled for {stall_secs}s — forcing reconnect"
     );
 
-    // Replace the SSE connection with a fresh one.
     app.restore_sse(Some(crate::api::sse::SseConnection::connect(
         app.client.raw_client().clone(),
         &app.config.url,
@@ -140,7 +139,6 @@ pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, sessio
         agent.active_tool = None;
         if !is_focused {
             agent.unread_count += 1;
-            // Ring terminal bell for new messages on inactive agents.
             if app.layout.bell_enabled {
                 // kanon:ignore RUST/no-silent-result-swallow — best-effort terminal bell; failure is benign
                 let _ = std::io::Write::write_all(&mut std::io::stderr(), b"\x07");

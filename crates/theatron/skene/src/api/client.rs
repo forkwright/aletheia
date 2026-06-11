@@ -11,14 +11,6 @@ use super::types::{
     NousTool, NousToolsResponse, Session, SessionsResponse,
 };
 
-// `fn encode_path` lifted into `keryx::url::encode_path_segment` (theatron
-// v1.2.0). Implementation behavior preserved exactly: RFC 3986 unreserved-
-// characters passthrough (`A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`), `%XX`
-// uppercase-hex everywhere else. keryx's helper uses a byte-level hex table
-// kanon:ignore RUST/expect — doc comment describing keryx helper; no actual expect call in code
-// instead of `write!()` to avoid `.expect()` on infallible String formatting,
-// but the output bytes are identical.
-
 /// Build the shared reqwest client used by all API paths (REST, streaming, SSE).
 ///
 /// Default headers set here apply to every request made with this client:
@@ -28,7 +20,7 @@ use super::types::{
 /// - Accept: application/json (SSE callers override this per-request to text/event-stream)
 ///
 /// WHY: A single client shares the connection pool and TLS session cache across all
-/// request types. Building one per call (as the previous streaming/SSE code did) creates
+/// request types. Building one per call creates
 /// a new pool per turn and leaks connections until they time out.
 pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
     let mut headers = header::HeaderMap::new();
@@ -925,8 +917,3 @@ impl ApiClient {
         &self.client
     }
 }
-
-// encode_path_* tests removed: function lifted into
-// keryx::url::encode_path_segment (theatron v1.2.0); its tests live in
-// keryx's crate (6 tests covering passthrough, percent-encoding,
-// multibyte UTF-8, empty input, control characters, and uppercase-hex).

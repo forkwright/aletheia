@@ -137,16 +137,6 @@ pub(crate) fn is_binary_content(bytes: &[u8]) -> bool {
         .is_some_and(|slice| slice.contains(&0))
 }
 
-// extension_to_language lifted into `gramma::syntax::language_from_path`
-// (theatron v1.2.0). Consumers use that helper directly. Kept as the
-// canonical source of file-path-to-syntect-token resolution across
-// fleet desktop surfaces; behavior preserved for known extensions.
-// The local fallback returned the bare extension verbatim for unknown
-// inputs; gramma's helper returns "text" instead, which `syntect`'s
-// `find_syntax_by_token`/`_by_extension` chain at the call site
-// already handles identically (both fall through to plain text via
-// `unwrap_or_else(|| find_syntax_plain_text())`).
-
 /// Derive a unicode icon for a file based on extension.
 pub(crate) fn file_icon(path: &str, is_dir: bool) -> &'static str {
     if is_dir {
@@ -237,10 +227,6 @@ mod tests {
         assert!(!is_binary_content(b"hello world"));
         assert!(!is_binary_content(&[]));
     }
-
-    // extension_to_language tests removed: function lifted into
-    // gramma::syntax::language_from_path (theatron v1.2.0); its tests
-    // live in gramma's crate.
 
     #[test]
     fn file_icon_returns_folder_for_directory() {

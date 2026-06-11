@@ -107,7 +107,6 @@ pub(crate) fn NotificationSettings() -> Element {
             style: "{SECTION_STYLE}",
             div { style: "{SECTION_TITLE}", "Notifications" }
 
-            // Global toggle
             div {
                 style: "{ROW_STYLE}",
                 span { style: "{LABEL_STYLE}", "Desktop notifications" }
@@ -123,7 +122,6 @@ pub(crate) fn NotificationSettings() -> Element {
                 }
             }
 
-            // Per-event: agent completion
             div {
                 style: "{ROW_STYLE}",
                 span { style: "{LABEL_STYLE}", "Agent completion" }
@@ -139,7 +137,6 @@ pub(crate) fn NotificationSettings() -> Element {
                 }
             }
 
-            // Per-event: tool approval (warn if disabled)
             div {
                 style: if !tool_approval { ROW_STYLE } else { ROW_STYLE },
                 span {
@@ -161,7 +158,6 @@ pub(crate) fn NotificationSettings() -> Element {
                 }
             }
 
-            // Per-event: errors
             div {
                 style: "{ROW_STYLE}",
                 span { style: "{LABEL_STYLE}", "Errors" }
@@ -177,7 +173,6 @@ pub(crate) fn NotificationSettings() -> Element {
                 }
             }
 
-            // Per-event: connection status
             div {
                 style: "{ROW_STYLE}",
                 span { style: "{LABEL_STYLE}", "Connection status" }
@@ -193,7 +188,6 @@ pub(crate) fn NotificationSettings() -> Element {
                 }
             }
 
-            // Sound
             div {
                 style: "{ROW_STYLE}",
                 span { style: "{LABEL_STYLE}", "Sound" }
@@ -209,7 +203,6 @@ pub(crate) fn NotificationSettings() -> Element {
                 }
             }
 
-            // Only when backgrounded
             div {
                 style: "{ROW_STYLE}",
                 span { style: "{LABEL_STYLE}", "Only when app is backgrounded" }
@@ -225,7 +218,6 @@ pub(crate) fn NotificationSettings() -> Element {
                 }
             }
 
-            // Do Not Disturb
             div {
                 style: "border-bottom: none; {ROW_STYLE}",
                 span {

@@ -192,7 +192,6 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                         };
 
                         rsx! {
-                            // Overall progress
                             div {
                                 style: "{PROGRESS_SUMMARY}",
                                 span { "{progress_text}" }
@@ -204,7 +203,6 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                                 }
                             }
 
-                            // Wave bands
                             for wave in &state.waves {
                                 WaveBand {
                                     key: "{wave.wave_number}",

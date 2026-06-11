@@ -191,7 +191,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
             let client = authenticated_client(&cfg);
             let base = cfg.server_url.trim_end_matches('/');
 
-            // Fetch requirements and proposals in parallel.
             let req_url = format!("{base}/api/planning/projects/{pid}/requirements");
             let prop_url = format!("{base}/api/planning/projects/{pid}/proposals");
 
@@ -298,7 +297,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                     let v2_count = store.by_category(RequirementCategory::V2).len();
                     let oos_count = store.by_category(RequirementCategory::OutOfScope).len();
 
-                    // Apply filters.
                     let cat = *active_category.read();
                     let query = search_query.read().clone();
                     let s_filter = *status_filter.read();
@@ -315,7 +313,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                     filtered.sort_by_key(|r| r.priority);
 
                     rsx! {
-                        // Pending proposals
                         if !pending_proposals.is_empty() {
                             div {
                                 style: "margin-bottom: var(--space-3);",
@@ -333,7 +330,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                             }
                         }
 
-                        // Category tabs
                         div {
                             style: "{TAB_BAR}",
                             button {
@@ -353,7 +349,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                             }
                         }
 
-                        // Filter bar
                         div {
                             style: "{FILTER_BAR}",
                             input {
@@ -399,7 +394,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                             }
                         }
 
-                        // Requirements table
                         div {
                             style: "flex: 1; overflow-y: auto;",
                             if filtered.is_empty() {
@@ -461,7 +455,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                     tr {
                                                         key: "{req.id}",
 
-                                                        // Title (click to edit)
                                                         td {
                                                             style: "{TD_STYLE} color: var(--text-primary);",
                                                             if is_editing_title {
@@ -493,7 +486,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                             }
                                                         }
 
-                                                        // Description (click to edit)
                                                         td {
                                                             style: "{TD_STYLE} color: var(--text-secondary);",
                                                             if is_editing_desc {
@@ -547,7 +539,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                         }
                                                         td { style: "{TD_STYLE} color: var(--text-secondary);", "{agent}" }
 
-                                                        // Category dropdown
                                                         td {
                                                             style: "{TD_STYLE}",
                                                             select {

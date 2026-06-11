@@ -102,10 +102,7 @@ pub(crate) fn App() -> Element {
     let keybindings = use_signal(|| loaded_settings.keybinding_store());
     let is_first_run = use_signal(|| first_run);
 
-    // NOTE: Read saved theme preference; default to Dark if unset or
-    // unrecognized. Uses themelion::ThemeMode::from_slug (theatron v1.2.0)
-    // to parse the lowercase config slug; pre-v1.2 this was a hand-rolled
-    // match across 4 proskenion sites, now centralized in themelion.
+    // NOTE: Saved theme preference; defaults to Dark if unset or unrecognized.
     let initial_theme = themelion::theme::ThemeMode::from_slug(appearance.read().theme.as_str())
         .unwrap_or(themelion::theme::ThemeMode::Dark);
 
@@ -154,8 +151,8 @@ pub(crate) fn App() -> Element {
 fn ConnectedApp() -> Element {
     let config = use_context::<Signal<crate::state::connection::ConnectionConfig>>();
 
-    // Provide notification signals. Preferences are loaded from disk; DND and
-    // history are ephemeral and reset on each app launch.
+    // NOTE: Notification preferences load from disk; DND and history are
+    // ephemeral and reset on each app launch.
     use_context_provider(|| Signal::new(config::load_notification_prefs()));
     use_context_provider(|| Signal::new(NotificationHistory::default()));
     use_context_provider(|| Signal::new(DndState::default()));

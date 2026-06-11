@@ -220,7 +220,7 @@ pub enum CloseBehavior {
 mod tests {
     use super::*;
 
-    // -- TrayIconStatus --
+    // ── TrayIconStatus ──
 
     #[test]
     fn tray_icon_all_idle_connected() {
@@ -266,7 +266,7 @@ mod tests {
         );
     }
 
-    // -- WindowState --
+    // ── WindowState ──
 
     #[test]
     fn window_state_default() {
@@ -311,7 +311,7 @@ mod tests {
         assert_eq!(state.height, 800);
     }
 
-    // -- CloseBehavior --
+    // ── CloseBehavior ──
 
     #[test]
     fn close_behavior_default_is_quit() {

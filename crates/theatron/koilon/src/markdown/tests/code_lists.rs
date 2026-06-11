@@ -120,7 +120,6 @@ fn fenced_code_block_unknown_language_renders_plain() {
 
 #[test]
 fn code_block_shows_language_in_header() {
-    // The language name must appear in the header line
     let lines = test_render("```rust\nlet x = 1;\n```");
     let header_line = lines.iter().find(|l| line_text(l).contains("rust"));
     assert!(
@@ -133,7 +132,6 @@ fn code_block_shows_language_in_header() {
 fn code_block_has_box_drawing_border() {
     let lines = test_render("```rust\nx\n```");
     let all = all_lines_text(&lines);
-    // Top-left corner, vertical bar inside, bottom-left corner
     assert!(all.contains('╭'), "must have top-left ╭");
     assert!(all.contains('│'), "must have vertical bar │");
     assert!(all.contains('╰'), "must have bottom-left ╰");
@@ -246,7 +244,6 @@ fn blockquote_renders_with_vertical_bar_prefix() {
 
 #[test]
 fn blockquote_border_uses_accent_foreground_color() {
-    // The │ border span must use theme.borders.normal color.
     let (lines, theme) = test_render_with_theme("> check color");
     assert!(
         any_line_has_fg(&lines, "│ ", theme.borders.normal),
@@ -261,7 +258,6 @@ fn blockquote_with_bold_content_applies_bold_modifier() {
         any_line_has_modifier(&lines, "bold inside", Modifier::BOLD),
         "bold inside blockquote must carry BOLD modifier"
     );
-    // Border must still be present on the same line
     let border_line = lines.iter().find(|l| line_text(l).contains('│'));
     assert!(
         border_line.is_some(),

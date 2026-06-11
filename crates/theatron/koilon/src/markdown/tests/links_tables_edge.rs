@@ -123,7 +123,6 @@ fn simple_table_renders_header_and_row() {
 
 #[test]
 fn table_header_cells_render_with_bold() {
-    // The first row (header) uses style_accent_bold; data rows use fg.
     let (lines, theme) = test_render_with_theme("| Head |\n|-----|\n| data |");
     assert!(
         any_line_has_modifier(&lines, "Head", Modifier::BOLD),
@@ -146,7 +145,6 @@ fn table_with_three_columns_renders_all_cells() {
     assert!(all.contains('a'), "table cell a must appear");
     assert!(all.contains('b'), "table cell b must appear");
     assert!(all.contains('c'), "table cell c must appear");
-    // Column separators (┬ in top border, ┼ in header sep, ┴ in bottom)
     assert!(all.contains('┬'), "3-col table must have ┬ in top border");
     assert!(
         all.contains('┼'),
@@ -168,7 +166,6 @@ fn horizontal_rule_spans_full_line() {
         all.contains('─'),
         "horizontal rule must render as a line of ─ characters"
     );
-    // Must be a solid run of dashes (at least 10)
     let rule_line = lines.iter().find(|l| line_text(l).contains('─'));
     assert!(rule_line.is_some(), "rule line must exist");
     let rule_text = line_text(rule_line.expect("horizontal rule line must exist"));
@@ -196,7 +193,6 @@ fn horizontal_rule_uses_dim_foreground_color() {
 
 #[test]
 fn consecutive_paragraphs_have_blank_line_separator() {
-    // Two separate paragraphs must each appear in output
     let lines = test_render("first paragraph\n\nsecond paragraph");
     let all = all_lines_text(&lines);
     assert!(
@@ -208,7 +204,6 @@ fn consecutive_paragraphs_have_blank_line_separator() {
         "second paragraph must appear in output"
     );
 
-    // They must be on different lines
     let first = lines
         .iter()
         .position(|l| line_text(l).contains("first paragraph"));
@@ -234,7 +229,6 @@ fn hard_line_break_creates_new_line() {
     assert!(all.contains("line one"), "first line must appear");
     assert!(all.contains("line two"), "second line must appear");
 
-    // The two parts must end up on separate lines
     let first = lines.iter().position(|l| line_text(l).contains("line one"));
     let second = lines.iter().position(|l| line_text(l).contains("line two"));
     assert!(
@@ -250,13 +244,11 @@ fn hard_line_break_creates_new_line() {
 
 #[test]
 fn soft_break_renders_as_space_between_words() {
-    // Two lines in the same paragraph (no blank line) join with a soft break (space)
     let lines = test_render("line one\nline two");
     // In a tight paragraph pulldown-cmark emits Text, SoftBreak, Text → same line
     let all = all_lines_text(&lines);
     assert!(all.contains("line one"), "first part must appear");
     assert!(all.contains("line two"), "second part must appear");
-    // Both should be on the same line joined by a space
     let joined = lines.iter().find(|l| {
         let t = line_text(l);
         t.contains("line one") && t.contains("line two")
@@ -280,7 +272,6 @@ fn empty_input_renders_no_lines() {
 
 #[test]
 fn whitespace_only_input_renders_empty() {
-    // Must not panic and should produce no meaningful content
     let lines = test_render("   \n\n   ");
     // No assertion on exact count: just that it doesn't crash
     let _ = lines;
@@ -288,7 +279,6 @@ fn whitespace_only_input_renders_empty() {
 
 #[test]
 fn deeply_nested_list_indents_each_level() {
-    // 5 levels of nesting: must not panic, indent grows correctly
     let md = "- l1\n  - l2\n    - l3\n      - l4\n        - l5";
     let lines = test_render(md);
     let all = all_lines_text(&lines);
@@ -310,7 +300,6 @@ fn deeply_nested_list_indents_each_level() {
 
 #[test]
 fn very_long_line_does_not_truncate_content() {
-    // A single paragraph line >500 chars must render without panicking
     let long = "word ".repeat(120); // ~600 chars
     let lines = test_render(long.trim());
     assert!(
@@ -321,7 +310,6 @@ fn very_long_line_does_not_truncate_content() {
 
 #[test]
 fn unicode_content_renders_correctly() {
-    // Emoji, CJK, and combining characters must all pass through cleanly
     let md = "Hello 🎉 world 你好世界 café";
     let lines = test_render(md);
     let all = all_lines_text(&lines);
@@ -332,7 +320,6 @@ fn unicode_content_renders_correctly() {
 
 #[test]
 fn mixed_heading_and_paragraph_renders_both() {
-    // Full document with multiple element types must render all parts
     let md =
         "# Title\n\nA paragraph.\n\n- item\n\n> quote\n\n```rust\ncode\n```\n\n| H |\n|---|\n| v |";
     let lines = test_render(md);
@@ -356,7 +343,6 @@ fn unclosed_bold_marker_renders_as_plain_text() {
 #[test]
 fn ansi_escape_sequences_pass_through_unchanged() {
     // The renderer itself does not strip ANSI: callers sanitize before passing.
-    // Verify the renderer handles arbitrary bytes without panicking.
     let lines = test_render("plain text without escapes");
     let all = all_lines_text(&lines);
     assert!(all.contains("plain text"), "plain text must pass through");
@@ -378,7 +364,6 @@ fn ordered_list_renders_with_bullet_prefix() {
 
 #[test]
 fn code_block_language_label_uses_accent_color() {
-    // Language label must be styled with code_lang color
     let (lines, theme) = test_render_with_theme("```python\npass\n```");
     let header = lines.iter().find(|l| line_text(l).contains("python"));
     assert!(header.is_some(), "python language label must appear");
@@ -394,7 +379,6 @@ fn code_block_language_label_uses_accent_color() {
 
 #[test]
 fn blockquote_text_uses_dim_foreground_color() {
-    // Text inside blockquote must use the muted style
     let (lines, theme) = test_render_with_theme("> muted content");
     assert!(
         any_line_has_fg(&lines, "muted content", theme.text.fg_muted),
@@ -404,7 +388,6 @@ fn blockquote_text_uses_dim_foreground_color() {
 
 #[test]
 fn inline_code_has_background_color() {
-    // Inline code must have both fg (warning) and bg (code_bg)
     let (lines, theme) = test_render_with_theme("use `foo`");
     let code_span = lines
         .iter()

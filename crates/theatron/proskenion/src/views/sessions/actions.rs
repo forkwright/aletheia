@@ -153,7 +153,6 @@ pub(crate) fn BulkActionBar(
                 "Clear selection"
             }
         }
-        // Archive confirmation dialog
         if *show_archive_confirm.read() {
             ConfirmDialog {
                 title: "Archive sessions?".to_string(),

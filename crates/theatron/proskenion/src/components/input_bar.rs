@@ -141,7 +141,6 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
                     let key = evt.key();
                     let modifiers = evt.modifiers();
 
-                    // Ctrl+Enter: submit
                     if key == Key::Enter && modifiers.contains(Modifiers::CONTROL) {
                         evt.prevent_default();
                         do_submit();
@@ -158,7 +157,6 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
                         return;
                     }
 
-                    // Up arrow: navigate to previous history entry
                     if key == Key::ArrowUp && !is_streaming {
                         if input.write().history_prev() {
                             evt.prevent_default();
@@ -166,7 +164,6 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
                         return;
                     }
 
-                    // Down arrow: navigate to next history entry
                     if key == Key::ArrowDown && !is_streaming && input.write().history_next() {
                         evt.prevent_default();
                     }

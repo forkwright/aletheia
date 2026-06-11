@@ -48,7 +48,6 @@ pub(crate) fn ThinkingPanel(props: ThinkingPanelProps) -> Element {
     let chevron = if is_expanded { "\u{25BC}" } else { "\u{25B6}" };
     rsx! {
         div {
-            // Header: clickable toggle
             div {
                 style: "display: flex; align-items: center; gap: var(--space-2); cursor: pointer; user-select: none; color: var(--text-secondary); font-size: var(--text-xs); font-style: italic; margin-top: var(--space-2); transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                 onclick: move |_| {

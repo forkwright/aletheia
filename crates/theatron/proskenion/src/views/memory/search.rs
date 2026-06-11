@@ -100,10 +100,8 @@ pub(crate) fn EntitySearchBar(
     rsx! {
         div {
             style: "{SEARCH_BAR_STYLE}",
-            // Search and filter controls
             div {
                 style: "{SEARCH_ROW_STYLE}",
-                // Text search with debounce
                 input {
                     style: "{SEARCH_INPUT_STYLE}",
                     r#type: "text",
@@ -123,7 +121,6 @@ pub(crate) fn EntitySearchBar(
                     },
                 }
 
-                // Type filter
                 select {
                     style: "{FILTER_SELECT_STYLE}",
                     value: "",
@@ -153,7 +150,6 @@ pub(crate) fn EntitySearchBar(
                     }
                 }
 
-                // Confidence filter
                 select {
                     style: "{FILTER_SELECT_STYLE}",
                     value: "{min_confidence}",
@@ -170,11 +166,9 @@ pub(crate) fn EntitySearchBar(
                 }
             }
 
-            // Active filter chips
             if has_filters {
                 div {
                     style: "{CHIPS_ROW_STYLE}",
-                    // Search query chip
                     if !search_query.is_empty() {
                         div {
                             style: "{CHIP_STYLE}",
@@ -189,7 +183,6 @@ pub(crate) fn EntitySearchBar(
                             }
                         }
                     }
-                    // Type filter chips
                     for et in type_filter.iter() {
                         {
                             let label = et.label().to_string();
@@ -212,7 +205,6 @@ pub(crate) fn EntitySearchBar(
                             }
                         }
                     }
-                    // Confidence chip
                     if min_confidence > 0.0 {
                         {
                             #[expect(clippy::cast_sign_loss, reason = "min_confidence clamped 0.0–1.0")]
@@ -235,7 +227,6 @@ pub(crate) fn EntitySearchBar(
                             }
                         }
                     }
-                    // Agent filter chips
                     for agent in agent_filter.iter() {
                         {
                             let agent_name = agent.clone();
@@ -258,7 +249,6 @@ pub(crate) fn EntitySearchBar(
                             }
                         }
                     }
-                    // Clear all
                     button {
                         style: "{CLEAR_ALL_STYLE}",
                         onclick: move |_| on_clear_all.call(()),

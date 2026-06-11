@@ -134,11 +134,9 @@ pub(crate) fn Tokens() -> Element {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
-            // Controls row
             div {
                 style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
 
-                // Granularity
                 div {
                     style: "display: flex; gap: var(--space-1);",
                     for g in [Granularity::Daily, Granularity::Weekly, Granularity::Monthly] {
@@ -157,7 +155,6 @@ pub(crate) fn Tokens() -> Element {
 
                 div { style: "width: 1px; height: 20px; background: var(--border);" }
 
-                // Date range presets
                 div {
                     style: "display: flex; gap: var(--space-1);",
                     for r in [DateRange::Last7Days, DateRange::Last30Days, DateRange::Last90Days] {
@@ -187,7 +184,6 @@ pub(crate) fn Tokens() -> Element {
                     }
                 }
 
-                // Custom date inputs
                 if matches!(*date_range.read(), DateRange::Custom { .. }) {
                     input {
                         style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg-surface); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
@@ -215,7 +211,6 @@ pub(crate) fn Tokens() -> Element {
                 }
             }
 
-            // Body: loading / error / loaded
             match fetch_state.read().clone() {
                 FetchState::Loading => rsx! {
                     div {
@@ -246,7 +241,6 @@ fn loaded_tokens_view(
     let month_d = compute_delta_u64(data.month_total(), data.prev_month_total());
     let grand_total = data.grand_total_tokens();
 
-    // Build time series columns, downsampled to MAX_CHART_COLS
     let series = &data.series;
     let step = if series.len() > MAX_CHART_COLS {
         series.len() / MAX_CHART_COLS
@@ -279,7 +273,6 @@ fn loaded_tokens_view(
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
-            // Summary cards
             div {
                 style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
                 {
@@ -299,7 +292,6 @@ fn loaded_tokens_view(
                 }
             }
 
-            // Time series chart
             div {
                 style: "{SECTION_STYLE}",
                 div { style: "{SECTION_TITLE_STYLE}",
@@ -317,7 +309,6 @@ fn loaded_tokens_view(
                 }
             }
 
-            // Agent breakdown
             if !data.agents.is_empty() {
                 div {
                     style: "{SECTION_STYLE}",
@@ -331,7 +322,6 @@ fn loaded_tokens_view(
                 }
             }
 
-            // Model breakdown
             if !data.models.is_empty() {
                 div {
                     style: "{SECTION_STYLE}",

@@ -95,7 +95,6 @@ pub(crate) fn MessageBubble(
     rsx! {
         div {
             style: "{container_style} {margin_top}",
-            // Role label (hidden for grouped messages)
             if !is_grouped {
                 div {
                     style: "
@@ -110,7 +109,6 @@ pub(crate) fn MessageBubble(
                     "{role_label}"
                 }
             }
-            // Message bubble
             div {
                 style: "{bubble_style}",
                 if is_user || is_system {
@@ -123,7 +121,6 @@ pub(crate) fn MessageBubble(
                     Markdown { content: message.content.clone() }
                 }
             }
-            // Timestamp and metadata footer
             div {
                 style: "
                     display: flex;

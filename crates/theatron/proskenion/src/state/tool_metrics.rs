@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, time::Duration};
 
-// -- API response types -------------------------------------------------------
+// ── API response types ──
 
 /// Top-level response from `/api/tool-stats`.
 ///
@@ -111,7 +111,7 @@ pub(crate) struct ToolInvocation {
     pub error: Option<String>,
 }
 
-// -- UI state types -----------------------------------------------------------
+// ── UI state types ──
 
 /// Time period selector shared across all metrics tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -231,7 +231,7 @@ pub(crate) fn percentile_nearest_rank(sorted_values: &[u64], p: f64) -> u64 {
     sorted_values.get(idx).copied().unwrap_or(0)
 }
 
-// -- Tests --------------------------------------------------------------------
+// ── Tests ──
 
 #[cfg(test)]
 mod tests {

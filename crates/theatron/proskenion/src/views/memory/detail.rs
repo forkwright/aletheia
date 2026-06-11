@@ -253,7 +253,6 @@ pub(crate) fn EntityDetail(
             rsx! {
                 div {
                     style: "{DETAIL_CONTAINER_STYLE}",
-                    // Header
                     div {
                         style: "{HEADER_STYLE}",
                         span { style: "{ENTITY_NAME_STYLE}",
@@ -278,7 +277,6 @@ pub(crate) fn EntityDetail(
                                 "{format_page_rank(page_rank)}"
                             }
                         }
-                        // Action buttons
                         div {
                             style: "{ACTION_BAR_STYLE}",
                             button {
@@ -299,7 +297,6 @@ pub(crate) fn EntityDetail(
                         }
                     }
 
-                    // Properties
                     if !properties.is_empty() {
                         div {
                             style: "{SECTION_STYLE}",
@@ -318,7 +315,6 @@ pub(crate) fn EntityDetail(
                         }
                     }
 
-                    // Relationships
                     div {
                         style: "{SECTION_STYLE}",
                         div {
@@ -366,7 +362,6 @@ pub(crate) fn EntityDetail(
                         }
                     }
 
-                    // Memories
                     div {
                         style: "{SECTION_STYLE}",
                         div {
@@ -446,7 +441,6 @@ pub(crate) fn EntityDetail(
                         }
                     }
 
-                    // Metadata
                     div {
                         style: "{SECTION_STYLE}",
                         div { style: "{SECTION_HEADER_STYLE}", "Metadata" }
@@ -484,7 +478,6 @@ pub(crate) fn EntityDetail(
                         }
                     }
 
-                    // Action dialogs
                     if *show_merge.read() {
                         MergeDialog {
                             entity_id: entity_id.clone(),

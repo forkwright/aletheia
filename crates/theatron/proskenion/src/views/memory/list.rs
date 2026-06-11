@@ -139,7 +139,6 @@ pub(crate) fn EntityList(
     rsx! {
         div {
             style: "{LIST_CONTAINER_STYLE}",
-            // Sort bar
             div {
                 style: "{SORT_BAR_STYLE}",
                 span { "Sort:" }
@@ -169,7 +168,6 @@ pub(crate) fn EntityList(
                 }
             }
 
-            // Scrollable list
             if entities.is_empty() {
                 div {
                     style: "{EMPTY_STYLE}",
@@ -205,7 +203,6 @@ pub(crate) fn EntityList(
                                         let id = entity_id.clone();
                                         move |_| on_select_entity.call(id.clone())
                                     },
-                                    // Row header: name + type badge
                                     div {
                                         style: "{ROW_HEADER_STYLE}",
                                         span {
@@ -220,9 +217,7 @@ pub(crate) fn EntityList(
                                             "{type_label}"
                                         }
                                     }
-                                    // Confidence bar
                                     ConfidenceBar { value: confidence, width: "120px" }
-                                    // Stats row
                                     div {
                                         style: "{STATS_ROW_STYLE}",
                                         span { "PR: {format_page_rank(page_rank)}" }
@@ -236,7 +231,6 @@ pub(crate) fn EntityList(
                             }
                         }
                     }
-                    // Pagination
                     if has_more {
                         div {
                             style: "{LOAD_MORE_STYLE}",
@@ -244,7 +238,6 @@ pub(crate) fn EntityList(
                             "Load more..."
                         }
                     }
-                    // Count footer
                     div { style: "{COUNT_STYLE}", "{count} entities loaded" }
                 }
             }

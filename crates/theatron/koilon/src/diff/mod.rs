@@ -34,7 +34,7 @@ mod tests {
         Theme::detect()
     }
 
-    // --- DiffMode ---
+    // ── DiffMode ──
 
     #[test]
     fn mode_cycles_correctly() {
@@ -50,7 +50,7 @@ mod tests {
         assert_eq!(DiffMode::WordDiff.label(), "Word Diff");
     }
 
-    // --- compute_diff ---
+    // ── compute_diff ──
 
     #[test]
     fn compute_diff_no_changes() {
@@ -89,7 +89,7 @@ mod tests {
         assert_eq!(diff.path, "src/main.rs");
     }
 
-    // --- collapse_to_replacements ---
+    // ── collapse_to_replacements ──
 
     #[test]
     fn collapse_pairs_delete_insert_to_replace() {
@@ -131,7 +131,7 @@ mod tests {
         assert!(matches!(&collapsed[0].changes[0], DiffChange::Insert(_)));
     }
 
-    // --- Unified rendering ---
+    // ── Unified rendering ──
 
     #[test]
     fn unified_render_has_file_header() {
@@ -173,7 +173,7 @@ mod tests {
         assert!(all_text.contains("+new_line"));
     }
 
-    // --- Side-by-side rendering ---
+    // ── Side-by-side rendering ──
 
     #[test]
     fn side_by_side_render_has_header() {
@@ -198,7 +198,7 @@ mod tests {
         }
     }
 
-    // --- Word diff rendering ---
+    // ── Word diff rendering ──
 
     #[test]
     fn word_diff_render_has_header() {
@@ -217,13 +217,11 @@ mod tests {
     fn word_diff_highlights_changed_tokens() {
         let theme = default_theme();
         let diff = compute_diff("test.rs", "let x = 42;\n", "let x = 99;\n");
-        // Collapse to get Replace variants
         let collapsed_file = FileDiff {
             path: diff.path,
             hunks: collapse_to_replacements(&diff.hunks),
         };
         let lines = render_word_diff(&collapsed_file, &theme);
-        // Should have word-level spans with different styles
         let all_spans: Vec<&Span> = lines.iter().flat_map(|l| l.spans.iter()).collect();
         assert!(
             all_spans.len() > 2,
@@ -231,7 +229,7 @@ mod tests {
         );
     }
 
-    // --- DiffViewState ---
+    // ── DiffViewState ──
 
     #[test]
     fn diff_view_state_empty() {
@@ -278,7 +276,7 @@ mod tests {
         assert_eq!(state.scroll_offset, 19); // total_lines - 1
     }
 
-    // --- parse_git_diff ---
+    // ── parse_git_diff ──
 
     #[test]
     fn parse_git_diff_basic() {
@@ -342,7 +340,7 @@ diff --git a/b.rs b/b.rs
         assert_eq!(parse_hunk_header("@@ -1 +1 @@"), (1, 1));
     }
 
-    // --- render_diff_view ---
+    // ── render_diff_view ──
 
     #[test]
     fn render_diff_view_empty_shows_no_changes() {
@@ -368,7 +366,7 @@ diff --git a/b.rs b/b.rs
         assert!(state.total_lines > 0);
     }
 
-    // --- Large diff ---
+    // ── Large diff ──
 
     #[test]
     fn large_diff_renders_without_panic() {
@@ -391,7 +389,7 @@ diff --git a/b.rs b/b.rs
         assert!(state.total_lines > 10);
     }
 
-    // --- truncate_str ---
+    // ── truncate_str ──
 
     #[test]
     fn truncate_str_short() {
@@ -409,7 +407,7 @@ diff --git a/b.rs b/b.rs
         assert!(result.len() <= 8); // may have ellipsis char
     }
 
-    // --- File path display ---
+    // ── File path display ──
 
     #[test]
     fn file_path_displayed_in_all_modes() {
@@ -441,7 +439,7 @@ diff --git a/b.rs b/b.rs
         assert!(sbs_text.contains("important.rs"));
     }
 
-    // --- DiffChange variants ---
+    // ── DiffChange variants ──
 
     #[test]
     fn diff_change_replace_has_old_and_new() {
@@ -467,7 +465,7 @@ diff --git a/b.rs b/b.rs
         assert_ne!(eq, del, "Equal != Delete");
     }
 
-    // --- FileDiff / DiffHunk fields ---
+    // ── FileDiff / DiffHunk fields ──
 
     #[test]
     fn file_diff_path_preserved() {
@@ -488,7 +486,7 @@ diff --git a/b.rs b/b.rs
         assert!(hunk.new_start >= 1, "new_start must be >= 1");
     }
 
-    // --- DiffViewState additional ---
+    // ── DiffViewState additional ──
 
     #[test]
     fn diff_view_state_initial_mode_is_unified() {

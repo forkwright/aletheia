@@ -445,7 +445,6 @@ server_url = "http://custom:9000"
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "config file must be 0600");
 
-        // Load back.
         let loaded_content = std::fs::read_to_string(&path).unwrap();
         let loaded: DesktopConfig = toml::from_str(&loaded_content).unwrap();
         assert_eq!(loaded.connection.server_url, "http://test-host:9000");
@@ -464,7 +463,6 @@ server_url = "http://custom:9000"
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("desktop.toml");
 
-        // First, write a config containing both sections.
         let initial = DesktopConfig {
             connection: ConnectionConfig {
                 server_url: "http://preserve.me:3000".to_string(),
@@ -475,7 +473,6 @@ server_url = "http://custom:9000"
         let serialized = toml::to_string_pretty(&initial).unwrap();
         std::fs::write(&path, &serialized).unwrap();
 
-        // Reload and verify.
         let raw = std::fs::read_to_string(&path).unwrap();
         let parsed: DesktopConfig = toml::from_str(&raw).unwrap();
         assert_eq!(parsed.connection.server_url, "http://preserve.me:3000");

@@ -66,7 +66,6 @@ pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
         div {
             style: "{band_style}",
 
-            // Header
             div {
                 style: "{BAND_HEADER}",
                 div {
@@ -86,7 +85,6 @@ pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
                 }
             }
 
-            // Progress bar
             div {
                 style: "{PROGRESS_TRACK}",
                 div {
@@ -94,7 +92,6 @@ pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
                 }
             }
 
-            // Plan cards row
             div {
                 style: "{PLANS_ROW}",
                 {children}

@@ -78,7 +78,6 @@ pub(crate) fn Files() -> Element {
     let is_searching = use_signal(|| false);
     let mut view = use_signal(|| FilesView::Browser);
 
-    // Resize state -- replaces the inline is_resizing/resize_start_x/resize_start_width signals.
     let resize = use_resize_state(DEFAULT_TREE_WIDTH, MIN_TREE_WIDTH, MAX_TREE_WIDTH);
 
     // WHY: Restore preserved state on mount (#2411 context preservation).
@@ -91,7 +90,6 @@ pub(crate) fn Files() -> Element {
         }
     });
 
-    // Save state on unmount.
     use_drop(move || {
         let path_text = selected_path.read().as_deref().unwrap_or("").to_string();
         preservation.write().save(
@@ -143,7 +141,6 @@ pub(crate) fn Files() -> Element {
             rsx! {
                 div {
                     style: "{FILES_LAYOUT_STYLE}",
-                    // Header
                     div {
                         style: "{HEADER_STYLE}",
                         h2 {
@@ -162,7 +159,6 @@ pub(crate) fn Files() -> Element {
                             if collapsed { "\u{25B6} Show Tree" } else { "\u{25C0} Hide Tree" }
                         }
                     }
-                    // Two-panel layout
                     div {
                         style: "{PANELS_STYLE}",
                         role: "region",
@@ -176,7 +172,6 @@ pub(crate) fn Files() -> Element {
                         onmouseup: move |_| {
                             resize.on_up();
                         },
-                        // Tree panel
                         if !collapsed {
                             div {
                                 id: "files-tree-panel",
@@ -194,13 +189,11 @@ pub(crate) fn Files() -> Element {
                                     }
                                 }
                             }
-                            // Resize handle -- replaces inline div
                             ResizeHandle {
                                 dir: ResizeDir::Horizontal,
                                 state: resize,
                             }
                         }
-                        // Viewer panel
                         div {
                             role: "region",
                             "aria-label": "File viewer",

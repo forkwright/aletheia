@@ -290,12 +290,10 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                     rsx! {
                         div {
                             style: "flex: 1; overflow-y: auto;",
-                            // Timestamp
                             div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--space-3);",
                                 "Last verified: {last_verified}"
                             }
 
-                            // Coverage bars
                             div {
                                 style: "{COVERAGE_SECTION}",
                                 div { style: "{SECTION_LABEL}", "Coverage" }
@@ -304,7 +302,6 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                                 CoverageBar { coverage: v2_cov, label: "v2".to_string() }
                             }
 
-                            // Requirement table
                             div { style: "{SECTION_LABEL}", "Requirements" }
                             if reqs.is_empty() {
                                 div { style: "color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-2) 0;",
@@ -359,7 +356,6 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                                 }
                             }
 
-                            // Gap analysis panel
                             div {
                                 style: "{GAP_SECTION}",
                                 div { style: "{SECTION_LABEL}", "Gap Analysis" }

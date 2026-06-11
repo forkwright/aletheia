@@ -68,7 +68,7 @@ fn any_line_has_fg(lines: &[Line], text: &str, color: Color) -> bool {
     lines.iter().any(|l| span_has_fg(l, text, color))
 }
 
-// ── Existing regression tests (kept as-is) ────────────────────────────
+// ── Regression tests ──────────────────────────────────────────────────
 
 #[test]
 fn bold_text() {
@@ -286,7 +286,6 @@ fn inline_code_renders_without_bold_modifier() {
         all.contains("`std::mem::take`"),
         "inline code must appear with backticks"
     );
-    // Inline code uses theme.status.warning as fg
     assert!(
         any_line_has_fg(&lines, "`std::mem::take`", theme.status.warning),
         "inline code must have warning fg color"
@@ -295,7 +294,6 @@ fn inline_code_renders_without_bold_modifier() {
 
 #[test]
 fn nested_formatting_applies_outer_and_inner_modifiers() {
-    // Bold wrapping italic
     let lines = test_render("**bold _bold-italic_ bold**");
     let all = all_lines_text(&lines);
     assert!(
@@ -376,7 +374,6 @@ fn h4_heading_renders_without_size_modifier() {
 
 #[test]
 fn heading_applies_correct_fg_color() {
-    // Headings use style_accent_bold: accent fg + BOLD modifier
     let (lines, theme) = test_render_with_theme("# Styled Heading");
     assert!(!lines.is_empty(), "heading must produce at least one line");
     assert!(

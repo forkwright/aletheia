@@ -83,7 +83,6 @@ fn handle_event(state: &mut WizardState, event: Event) {
         return;
     };
 
-    // Global quit: Ctrl+C or Ctrl+Q
     if modifiers == KeyModifiers::CONTROL && matches!(code, KeyCode::Char('c') | KeyCode::Char('q'))
     {
         state.should_quit = true;
@@ -150,7 +149,6 @@ fn handle_edit_keys(state: &mut WizardState, code: KeyCode, _modifiers: KeyModif
 }
 
 fn handle_nav_keys(state: &mut WizardState, code: KeyCode, modifiers: KeyModifiers) {
-    // Ready step: Enter confirms
     if state.step == TOTAL_STEPS - 1 && code == KeyCode::Enter {
         state.completed = true;
         return;
@@ -169,7 +167,6 @@ fn handle_nav_keys(state: &mut WizardState, code: KeyCode, modifiers: KeyModifie
         .unwrap_or(false);
 
     match code {
-        // Field navigation
         KeyCode::Up | KeyCode::BackTab => {
             if let Some(step) = state.current_step_mut() {
                 step.nav_up();
@@ -181,7 +178,6 @@ fn handle_nav_keys(state: &mut WizardState, code: KeyCode, modifiers: KeyModifie
             }
         }
 
-        // Select cycling
         KeyCode::Left if is_select => {
             if let Some(step) = state.current_step_mut() {
                 step.cycle_select_prev();
@@ -193,7 +189,6 @@ fn handle_nav_keys(state: &mut WizardState, code: KeyCode, modifiers: KeyModifie
             }
         }
 
-        // Enter: begin edit (text) or cycle select
         KeyCode::Enter if is_select => {
             if let Some(step) = state.current_step_mut() {
                 step.cycle_select_next();
@@ -205,7 +200,6 @@ fn handle_nav_keys(state: &mut WizardState, code: KeyCode, modifiers: KeyModifie
             }
         }
 
-        // Step navigation
         KeyCode::Char('n') | KeyCode::Char(']') => {
             state.next_step();
         }
@@ -225,7 +219,6 @@ fn handle_nav_keys(state: &mut WizardState, code: KeyCode, modifiers: KeyModifie
             state.back_step();
         }
 
-        // Abort
         KeyCode::Esc => {
             state.should_quit = true;
         }
@@ -322,7 +315,6 @@ mod tests {
     #[test]
     fn handle_event_enter_on_ready_step_sets_completed() {
         let mut state = WizardState::new(None, None);
-        // Advance to the last step
         for _ in 0..(TOTAL_STEPS - 1) {
             state.next_step();
         }
@@ -351,18 +343,15 @@ mod tests {
     fn handle_event_edit_commit_on_enter() {
         let mut state = WizardState::new(None, None);
         state.next_step(); // Account step
-        // Begin edit
         handle_event(
             &mut state,
             Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
         );
         assert!(state.steps.get(1).unwrap().editing.is_some());
-        // Type a character
         handle_event(
             &mut state,
             Event::Key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE)),
         );
-        // Commit
         handle_event(
             &mut state,
             Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),

@@ -54,9 +54,7 @@ const DEFAULT_TERMINAL_HEIGHT: u16 = 40;
 /// Minimum interval between renders in milliseconds (30fps cap).
 const MIN_RENDER_INTERVAL_MS: u64 = 33;
 
-// ---------------------------------------------------------------------------
-// Sub-structs: group related fields so App stays under ~10 top-level fields.
-// ---------------------------------------------------------------------------
+// ── Sub-state groups: keep App under ~10 top-level fields ──
 
 /// Agent roster, sessions, messages, and cost tracking.
 pub struct DashboardState {
@@ -336,9 +334,8 @@ impl App {
 
     #[tracing::instrument(skip(self), fields(url = %self.config.url))]
     async fn connect(&mut self) -> Result<()> {
-        // WHY: The old code flattened all health-check failures to a boolean,
-        // making connection-refused indistinguishable from an unhealthy server.
-        // We now issue the request directly and surface the actual error.
+        // WHY: Issue the request directly and surface the actual error so
+        // connection-refused stays distinguishable from an unhealthy server.
         match self
             .client
             .raw_client()
@@ -402,7 +399,8 @@ impl App {
         }
 
         // SAFETY: sanitized at ingestion: all agent fields from API are sanitized here.
-        // Best-effort: if agent fetch fails, start with empty list and show error toast.
+        // NOTE: Best-effort -- if the agent fetch fails, start with an empty list
+        // and show an error toast.
         let agents = match self.client.agents().await {
             Ok(a) => a,
             Err(e) => {
@@ -435,7 +433,7 @@ impl App {
             })
             .collect();
 
-        // Sort agents alphabetically by name for consistent default selection
+        // WHY: sorted alphabetically so the default selection is deterministic.
         self.dashboard.agents.sort_by(|a, b| a.name.cmp(&b.name));
 
         self.dashboard.focused_agent = self
@@ -465,7 +463,6 @@ impl App {
                     .collect();
             }
 
-            // Create initial tab for the default agent/session
             let agent_name = self
                 .dashboard
                 .agents

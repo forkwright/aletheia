@@ -197,7 +197,8 @@ impl App {
     /// that the cache is valid and `needs_fallback` stays false during normal rendering.
     pub(crate) fn rebuild_virtual_scroll(&mut self) {
         let tw = self.viewport.terminal_width;
-        // Mirror the layout logic from view/mod.rs to derive the chat column width.
+        // WARNING: Mirrors the layout logic in view/mod.rs to derive the chat
+        // column width -- keep the two in sync or the height cache goes stale.
         let show_sidebar = self.layout.sidebar_visible && tw >= LAYOUT_MIN_SIDEBAR_TERMINAL_WIDTH;
         let rest = if show_sidebar {
             tw.saturating_sub(LAYOUT_SIDEBAR_WIDTH)

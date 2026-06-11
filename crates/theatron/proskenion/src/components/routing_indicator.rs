@@ -76,13 +76,11 @@ pub(crate) fn RoutingIndicator() -> Element {
             "aria-live": "polite",
             "aria-label": "Agent routing status: {display_text}",
 
-            // Status dot
             span {
                 style: "{dot_style} background: {dot_color};",
                 "aria-hidden": "true",
             }
 
-            // Status text
             span {
                 "{display_text}"
             }

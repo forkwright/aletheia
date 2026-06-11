@@ -28,7 +28,7 @@ use performance::AgentPerformanceSection;
 use quality::ConversationQualitySection;
 use reflection::SystemReflectionSection;
 
-// -- Fetch response types -----------------------------------------------------
+// ── Fetch response types ──
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct HealthApiResponse {
@@ -186,7 +186,7 @@ struct AgentsApiResponse {
     nous: Vec<AgentEntry>,
 }
 
-// -- New insights endpoint response types -----------------------------------
+// ── New insights endpoint response types ──
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct AgentPerformanceApiResponse {
@@ -287,7 +287,7 @@ struct MetaData {
     reflection: SystemReflectionStore,
 }
 
-// -- Styles -------------------------------------------------------------------
+// ── Styles ──
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -398,7 +398,7 @@ pub(crate) const MUTED_TEXT: &str = "font-size: var(--text-xs); color: var(--tex
 
 const AUTO_REFRESH_INTERVAL_MS: u64 = 300_000;
 
-// -- Component ----------------------------------------------------------------
+// ── Component ──
 
 #[component]
 pub(crate) fn Meta() -> Element {
@@ -503,7 +503,7 @@ pub(crate) fn Meta() -> Element {
     }
 }
 
-// -- Accordion ----------------------------------------------------------------
+// ── Accordion ──
 
 #[component]
 fn AccordionSection(
@@ -532,7 +532,7 @@ fn AccordionSection(
     }
 }
 
-// -- Data fetch ---------------------------------------------------------------
+// ── Data fetch ──
 
 async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let client = authenticated_client(cfg);

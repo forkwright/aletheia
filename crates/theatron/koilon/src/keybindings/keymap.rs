@@ -148,7 +148,6 @@ impl KeyMap {
     pub(crate) fn build(overrides: &HashMap<String, String>) -> Self {
         let mut action_to_keys: HashMap<Action, Vec<(KeyModifiers, KeyCode)>> = HashMap::new();
 
-        // Populate defaults.
         for &(action, ref keys) in &Self::defaults() {
             action_to_keys.entry(action).or_default().extend(keys);
         }

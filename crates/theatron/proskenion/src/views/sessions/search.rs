@@ -109,7 +109,6 @@ pub(crate) fn SessionSearchBar(
     rsx! {
         div {
             style: "{SEARCH_BAR_STYLE}",
-            // Search input
             input {
                 style: "{SEARCH_INPUT_STYLE}",
                 r#type: "text",
@@ -130,10 +129,8 @@ pub(crate) fn SessionSearchBar(
                     debounce_timer.set(Some(new_timer));
                 },
             }
-            // Filter row
             div {
                 style: "{FILTER_ROW_STYLE}",
-                // Status filter
                 select {
                     style: "{SELECT_STYLE}",
                     value: status_filter_value(current_status),
@@ -148,7 +145,6 @@ pub(crate) fn SessionSearchBar(
                         }
                     }
                 }
-                // Agent filter
                 if !agent_names.is_empty() {
                     select {
                         style: "{SELECT_STYLE}",
@@ -172,7 +168,6 @@ pub(crate) fn SessionSearchBar(
                         }
                     }
                 }
-                // Clear all button
                 if has_filters {
                     button {
                         style: "{CLEAR_BTN_STYLE}",
@@ -181,7 +176,6 @@ pub(crate) fn SessionSearchBar(
                     }
                 }
             }
-            // Active filter chips
             if has_filters {
                 div {
                     style: "{CHIPS_ROW_STYLE}",

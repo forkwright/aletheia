@@ -69,7 +69,6 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
                 emit_connection_toasts(prev_connected, now_connected);
             }
 
-            // Dispatch desktop notifications for relevant events.
             // NOTE: Window focus state defaults to false (always notify).
             // Full focus integration requires wiring Dioxus desktop window
             // events -- tracked separately.

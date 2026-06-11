@@ -147,7 +147,7 @@ impl NotificationDispatch {
         }
     }
 
-    // -- Event handlers -------------------------------------------------------
+    // ── Event handlers ──
 
     fn on_turn_after(
         &mut self,
@@ -285,7 +285,7 @@ impl NotificationDispatch {
         );
     }
 
-    // -- Grouping -------------------------------------------------------------
+    // ── Grouping ──
 
     /// Dispatch with coalescing: the first notification in a 3s window fires
     /// immediately; subsequent arrivals increment the pending group count.
@@ -354,7 +354,7 @@ impl NotificationDispatch {
             .retain(|_, g| now.duration_since(g.started_at) < GROUP_WINDOW);
     }
 
-    // -- Send -----------------------------------------------------------------
+    // ── Send ──
 
     /// Apply DND, rate limit, then dispatch the notification.
     #[expect(
@@ -402,7 +402,7 @@ impl NotificationDispatch {
         });
     }
 
-    // -- Rate limiting --------------------------------------------------------
+    // ── Rate limiting ──
 
     /// Returns `true` if a notification for `category` is within the rate limit.
     ///
@@ -465,7 +465,7 @@ mod tests {
 
     fn no_fallback(_sev: ToastSeverity, _title: &str) {}
 
-    // -- Dispatch: event routing ---------------------------------------------
+    // ── Dispatch: event routing ──
 
     #[test]
     fn turn_after_dispatches_when_unfocused() {
@@ -516,7 +516,7 @@ mod tests {
         );
     }
 
-    // -- Focus rules ----------------------------------------------------------
+    // ── Focus rules ──
 
     #[test]
     fn only_when_backgrounded_suppresses_errors_when_focused() {
@@ -543,7 +543,7 @@ mod tests {
         assert!(history.is_empty());
     }
 
-    // -- Rate limiting --------------------------------------------------------
+    // ── Rate limiting ──
 
     #[test]
     fn rate_limit_caps_at_five_per_minute() {
@@ -559,7 +559,7 @@ mod tests {
         assert_eq!(allowed, RATE_LIMIT_PER_MINUTE);
     }
 
-    // -- Grouping -------------------------------------------------------------
+    // ── Grouping ──
 
     #[test]
     fn grouping_coalesces_second_arrival_within_window() {
@@ -590,7 +590,7 @@ mod tests {
         );
     }
 
-    // -- Preferences ----------------------------------------------------------
+    // ── Preferences ──
 
     #[test]
     fn disabled_category_not_dispatched() {
@@ -616,7 +616,7 @@ mod tests {
         assert!(history.is_empty());
     }
 
-    // -- DND ------------------------------------------------------------------
+    // ── DND ──
 
     #[test]
     fn dnd_suppresses_completion_notifications() {
@@ -643,7 +643,7 @@ mod tests {
         );
     }
 
-    // -- Helpers --------------------------------------------------------------
+    // ── Helpers ──
 
     #[test]
     fn truncate_chars_at_boundary() {

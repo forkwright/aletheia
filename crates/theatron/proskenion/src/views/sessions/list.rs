@@ -204,7 +204,6 @@ pub(crate) fn SessionRow(
                 let id = id_for_click;
                 move |_| on_click.call(id.clone())
             },
-            // Checkbox
             input {
                 r#type: "checkbox",
                 style: "{CHECKBOX_STYLE}",
@@ -217,20 +216,15 @@ pub(crate) fn SessionRow(
                     move |_| on_toggle_select.call(id.clone())
                 },
             }
-            // Status dot
             div {
                 style: "{STATUS_DOT_STYLE} background: {status_dot_color};",
             }
-            // Title
             div {
                 style: "{TITLE_STYLE}",
                 "{title}"
             }
-            // Agent badge
             span { style: "{AGENT_BADGE_STYLE}", "{agent_name}" }
-            // Message count
             span { style: "{META_STYLE}", "{message_count} msgs" }
-            // Last activity
             span { style: "{META_STYLE}", "{relative_time}" }
         }
     }
@@ -252,12 +246,10 @@ pub(crate) fn SessionList(
     rsx! {
         div {
             style: "display: flex; flex-direction: column; height: 100%;",
-            // Sort bar
             SessionSortBar {
                 list_store,
                 on_sort_change,
             }
-            // Select all bar
             if !sessions.is_empty() {
                 div {
                     style: "display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-bottom: 1px solid var(--bg-surface); font-size: var(--text-xs); color: var(--text-secondary);",
@@ -279,7 +271,6 @@ pub(crate) fn SessionList(
                     }
                 }
             }
-            // Session rows
             if sessions.is_empty() {
                 div {
                     style: "{EMPTY_STYLE}",
@@ -310,7 +301,6 @@ pub(crate) fn SessionList(
                             },
                         }
                     }
-                    // Load more
                     if has_more {
                         div {
                             style: "{LOAD_MORE_STYLE}",

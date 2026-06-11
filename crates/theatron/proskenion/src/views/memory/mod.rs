@@ -147,14 +147,14 @@ pub(crate) fn Memory() -> Element {
     let mut preservation = use_context::<Signal<ViewPreservationStore>>();
     use_hook(|| {
         if let Some(saved) = preservation.write().restore(&ViewKey::Memory) {
-            // Restore search query from the preserved input text.
+            // NOTE: an empty preserved input means no search was active; leave
+            // the store's default query untouched.
             if !saved.input_text.is_empty() {
                 list_store.write().search_query = saved.input_text;
             }
         }
     });
 
-    // Save state on unmount.
     use_drop(move || {
         preservation.write().save(
             ViewKey::Memory,
@@ -286,7 +286,6 @@ pub(crate) fn Memory() -> Element {
                 let base = cfg.server_url.trim_end_matches('/');
                 let encoded: String = form_urlencoded::byte_serialize(id.as_bytes()).collect();
 
-                // Fetch entity detail, relationships, and memories in parallel.
                 let entity_url = format!("{base}/api/v1/knowledge/entities/{encoded}");
                 let rels_url = format!("{base}/api/v1/knowledge/entities/{encoded}/relationships");
                 let mems_url = format!("{base}/api/v1/knowledge/entities/{encoded}/memories");
@@ -303,8 +302,6 @@ pub(crate) fn Memory() -> Element {
                 };
 
                 // WHY: If the entity fetch failed, still try to show what we can.
-                // Fall back to finding the entity in the list store if the detail
-                // endpoint returned an error.
 
                 let relationships: Vec<Relationship> = match rels_res {
                     Ok(resp) if resp.status().is_success() => match resp.text().await {
@@ -356,7 +353,6 @@ pub(crate) fn Memory() -> Element {
     rsx! {
         div {
             style: "{MEMORY_LAYOUT_STYLE}",
-            // Header
             div {
                 style: "{HEADER_STYLE}",
                 h2 {
@@ -365,7 +361,6 @@ pub(crate) fn Memory() -> Element {
                 }
                 div {
                     style: "display: flex; gap: var(--space-2); align-items: center;",
-                    // Back/forward navigation
                     button {
                         style: if can_back { "{NAV_BTN_STYLE}" } else { "{NAV_BTN_DISABLED_STYLE}" },
                         disabled: !can_back,
@@ -407,7 +402,6 @@ pub(crate) fn Memory() -> Element {
                 }
             }
 
-            // Breadcrumbs
             if breadcrumbs.len() > 1 {
                 div {
                     style: "{BREADCRUMB_STYLE}",
@@ -438,7 +432,6 @@ pub(crate) fn Memory() -> Element {
                 }
             }
 
-            // Search bar
             EntitySearchBar {
                 list_store,
                 on_search_change: move |_query: String| {
@@ -455,7 +448,6 @@ pub(crate) fn Memory() -> Element {
                 },
             }
 
-            // Two-panel layout
             div {
                 style: "{PANELS_STYLE}",
                 onmousemove: move |evt: Event<MouseData>| {
@@ -469,7 +461,6 @@ pub(crate) fn Memory() -> Element {
                 onmouseup: move |_| {
                     is_resizing.set(false);
                 },
-                // List panel
                 div {
                     style: "{LIST_PANEL_STYLE} width: {width}px;",
                     EntityList {
@@ -492,7 +483,6 @@ pub(crate) fn Memory() -> Element {
                         },
                     }
                 }
-                // Resize handle
                 div {
                     style: "{RESIZE_HANDLE_STYLE}",
                     onmousedown: move |evt: Event<MouseData>| {
@@ -501,7 +491,6 @@ pub(crate) fn Memory() -> Element {
                         resize_start_width.set(*list_width.read());
                     },
                 }
-                // Detail panel
                 div {
                     style: "{DETAIL_PANEL_STYLE}",
                     if selected_entity_id.read().is_some() {
