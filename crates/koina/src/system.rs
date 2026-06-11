@@ -47,8 +47,6 @@ use std::sync::{Arc, Mutex};
 
 use jiff::{SignedDuration, Timestamp};
 
-// ── FileSystem ────────────────────────────────────────────────────────────────
-
 /// Abstraction over filesystem read, write, and query operations.
 ///
 /// Implement this trait to substitute an in-memory store in tests instead of
@@ -118,8 +116,6 @@ pub trait FileSystem: Send + Sync {
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
 }
 
-// ── Clock ─────────────────────────────────────────────────────────────────────
-
 /// Abstraction over the system clock.
 ///
 /// Use [`RealSystem`] in production and a frozen [`TestSystem`] in tests to
@@ -136,8 +132,6 @@ pub trait Clock: Send + Sync {
     #[must_use]
     fn elapsed(&self, since: Timestamp) -> SignedDuration;
 }
-
-// ── Environment ───────────────────────────────────────────────────────────────
 
 /// Abstraction over the process environment.
 ///
@@ -189,16 +183,12 @@ pub trait Environment: Send + Sync {
     fn args(&self) -> Vec<String>;
 }
 
-// ── RealSystem ────────────────────────────────────────────────────────────────
-
 /// Production system implementation backed by the operating system.
 ///
 /// Delegates every operation to the standard library or OS syscalls.
 /// Construct once and pass by reference wherever a trait bound is required.
 #[derive(Debug, Clone, Default)]
 pub struct RealSystem;
-
-// ── TestSystem ────────────────────────────────────────────────────────────────
 
 /// In-memory system implementation for deterministic testing.
 ///
@@ -364,8 +354,6 @@ impl Default for TestSystem {
 // Trait implementations are in a separate module to avoid trait-impl colocation.
 mod system_impl;
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
@@ -374,8 +362,6 @@ mod tests {
     use jiff::Timestamp;
 
     use super::*;
-
-    // ── FileSystem ────────────────────────────────────────────────────────
 
     #[test]
     fn read_missing_file_returns_not_found() {
@@ -517,8 +503,6 @@ mod tests {
         assert!(sys.get_file(Path::new("/absent")).is_none());
     }
 
-    // ── Clock ─────────────────────────────────────────────────────────────
-
     #[test]
     fn frozen_clock_returns_configured_time() {
         let ts: Timestamp = "2025-06-15T12:00:00Z".parse().unwrap();
@@ -540,8 +524,6 @@ mod tests {
         let sys = TestSystem::new();
         assert_eq!(sys.now(), Timestamp::UNIX_EPOCH);
     }
-
-    // ── Environment ───────────────────────────────────────────────────────
 
     #[test]
     fn var_returns_configured_value() {
@@ -581,8 +563,6 @@ mod tests {
         sys.add_env("LATE", "value");
         assert_eq!(sys.var("LATE").as_deref(), Some("value"));
     }
-
-    // ── Trait-object compatibility ─────────────────────────────────────────
 
     #[test]
     fn filesystem_trait_object_compiles() {

@@ -142,10 +142,8 @@ impl Default for OpenAiProviderConfig {
             request_timeout: Duration::from_mins(2),
             max_retries: 3,
             api_family: OpenAiApiFamily::ChatCompletions,
-            // WHY (#3736): the trait default is Cloud and we must mirror it
-            // here so `..Default::default()` in call sites (e.g. the
-            // declarative registration path in aletheia's setup.rs) does
-            // not silently downgrade a caller-specified target.
+            // WHY(#3736): mirror the trait default so `..Default::default()`
+            // does not silently downgrade a caller-specified target.
             deployment_target: DeploymentTarget::Cloud,
         }
     }
@@ -153,9 +151,8 @@ impl Default for OpenAiProviderConfig {
 
 /// Returns true when the URL is safe to use without TLS.
 ///
-/// WHY: delegates to `koina::http::is_plaintext_loopback_url` so the
-/// plaintext HTTP scheme literal lives in exactly one audited place
-/// (see `SECURITY/insecure-transport`).
+/// WHY: delegate to `koina::http::is_plaintext_loopback_url` so the plaintext
+/// HTTP scheme literal lives in exactly one audited place.
 fn is_loopback_url(url: &str) -> bool {
     koina::http::is_plaintext_loopback_url(url)
 }
@@ -633,12 +630,8 @@ impl LlmProvider for OpenAiProvider {
         &self.config.name
     }
 
-    /// WHY (#3736): the trait default is Cloud, but OpenAI-compatible
-    /// providers also cover loopback llama.cpp / logismos / ollama
-    /// deployments that should receive `Internal` or `Confidential` facts.
-    /// Returning the configured value propagates the TOML-level
-    /// `deployment_target` all the way to the recall sovereignty filter in
-    /// `nous::recall::filter_by_sensitivity`.
+    /// WHY(#3736): OpenAI-compatible providers can still be loopback/self-hosted,
+    /// so they must propagate the configured deployment target to recall filtering.
     fn deployment_target(&self) -> DeploymentTarget {
         self.config.deployment_target
     }
@@ -699,16 +692,8 @@ mod tests {
 
     #[test]
     fn deployment_target_propagates_from_config() {
-        // WHY (#3736): regression for the sovereignty bug where
-        // OpenAiProviderConfig.deployment_target was accepted in TOML,
-        // logged at startup, then silently discarded. The recall
-        // pipeline's sensitivity filter reads this value off the
-        // provider trait, so if it never propagates, every
-        // OpenAI-compat provider — including loopback llama.cpp /
-        // logismos — gets treated as Cloud and has Internal /
-        // Confidential facts stripped.
-
-        // LocalHosted propagates.
+        // WHY(#3736): regression — deployment_target was accepted in TOML but
+        // dropped before recall filtering, treating non-cloud providers as Cloud.
         let local_hosted = OpenAiProvider::new(OpenAiProviderConfig {
             name: "local-hosted".to_owned(),
             base_url: "http://127.0.0.1:8088/v1".to_owned(),
@@ -723,7 +708,6 @@ mod tests {
             "LocalHosted config must propagate through OpenAiProvider::deployment_target()"
         );
 
-        // Embedded propagates.
         let embedded = OpenAiProvider::new(OpenAiProviderConfig {
             name: "embedded".to_owned(),
             base_url: "http://127.0.0.1:8089/v1".to_owned(),
@@ -738,7 +722,6 @@ mod tests {
             "Embedded config must propagate through OpenAiProvider::deployment_target()"
         );
 
-        // Default (no field set) stays Cloud — the safe trait default.
         let default_cloud = OpenAiProvider::new(OpenAiProviderConfig {
             name: "cloud".to_owned(),
             base_url: "https://api.openai.com/v1".to_owned(),
@@ -755,12 +738,8 @@ mod tests {
 
     #[test]
     fn deployment_target_ordering_is_sovereignty_safe() {
-        // WHY (#3736): the recall admission rule is `sensitivity <=
-        // target` under the ordering `Cloud < LocalHosted < Embedded`.
-        // If a refactor ever reorders the variants, the filter would
-        // admit Internal/Confidential facts to Cloud providers. Guard
-        // the ordering here so any reorder blows up this test loudly
-        // instead of silently leaking data.
+        // WHY(#3736): the recall rule is `sensitivity <= target`; reordering
+        // the enum would let Cloud providers admit `Internal`/`Confidential` facts.
         assert!(DeploymentTarget::Cloud < DeploymentTarget::LocalHosted);
         assert!(DeploymentTarget::LocalHosted < DeploymentTarget::Embedded);
     }

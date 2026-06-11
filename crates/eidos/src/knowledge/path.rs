@@ -51,7 +51,7 @@ pub const PATH_VALIDATION_FS_LAYERS: usize = 7;
 pub const SYMLINK_HOP_LIMIT: usize = 40;
 
 impl PathValidationLayer {
-    /// All layer variants in application order.
+    /// All layer variants in enum order.
     pub const ALL: [Self; 8] = [
         Self::NullByte,
         Self::Canonicalization,
@@ -109,8 +109,6 @@ impl std::str::FromStr for PathValidationLayer {
         }
     }
 }
-
-// ── Path validation error ────────────────────────────────────────────────
 
 /// Error from defense-in-depth path validation.
 ///
@@ -228,8 +226,6 @@ impl std::fmt::Display for PathValidationError {
 
 impl std::error::Error for PathValidationError {}
 
-// ── Validated path newtype ───────────────────────────────────────────────
-
 /// A filesystem path that has passed all defense-in-depth validation layers.
 ///
 /// This newtype can only be constructed through [`validate_memory_path()`],
@@ -300,8 +296,6 @@ impl std::fmt::Display for ValidatedPath {
     }
 }
 
-// ── Path validation function ─────────────────────────────────────────────
-
 /// Validate a memory path against all defense-in-depth security layers.
 ///
 /// Applies each [`PathValidationLayer`] in order. The path must pass all
@@ -331,14 +325,14 @@ pub fn validate_memory_path(
 ) -> std::result::Result<ValidatedPath, PathValidationError> {
     let path_str = path.to_string_lossy();
 
-    // SAFETY: Layer 1 — reject null bytes that truncate C-level syscalls.
+    // INVARIANT: Layer 1 rejects null bytes before any filesystem access.
     if path_str.contains('\0') {
         return Err(PathValidationError::NullByte {
             path: path_str.into_owned(),
         });
     }
 
-    // SAFETY: Layer 2 — reject `..` components and backslashes.
+    // INVARIANT: Layer 2 rejects `..` components and backslashes before normalization.
     for component in path.components() {
         if matches!(component, Component::ParentDir) {
             return Err(PathValidationError::Canonicalization {
@@ -354,7 +348,7 @@ pub fn validate_memory_path(
         });
     }
 
-    // SAFETY: Layer 3 — detect percent-encoded traversal separators.
+    // INVARIANT: Layer 3 rejects percent-encoded traversal separators.
     let lower = path_str.to_ascii_lowercase();
     for pattern in &["%2e", "%2f", "%5c"] {
         if lower.contains(pattern) {
@@ -365,9 +359,7 @@ pub fn validate_memory_path(
         }
     }
 
-    // SAFETY: Layer 4 — detect fullwidth characters that
-    // normalize to ASCII separators under NFKC (U+FF0E → '.', U+FF0F → '/',
-    // U+FF3C → '\').
+    // INVARIANT: Layer 4 rejects fullwidth separators that normalize to ASCII.
     for ch in path_str.chars() {
         if matches!(ch, '\u{FF0E}' | '\u{FF0F}' | '\u{FF3C}') {
             return Err(PathValidationError::UnicodeNormalization {
@@ -385,7 +377,7 @@ pub fn validate_memory_path(
     };
     let normalized = normalize_path_components(&full_path);
 
-    // SAFETY: Layer 5 — resolved path must stay within scope_dir.
+    // INVARIANT: Layer 5 keeps the normalized path within `scope_dir`.
     if !normalized.starts_with(&scope_dir) {
         return Err(PathValidationError::ScopeContainment {
             path: normalized,
@@ -394,10 +386,8 @@ pub fn validate_memory_path(
         });
     }
 
-    // SAFETY: Layers 6–7 — symlink resolution, dangling symlink, loop detection.
-    // WHY: Only checked when the path exists on the filesystem. Pure string
-    // layers above have already validated the path structure for paths that
-    // don't yet exist.
+    // WHY: Layers 6-7 only run when the path exists; pure string layers above
+    // already validated the shape for non-existent paths.
     validate_symlinks(&normalized, root, &scope_dir, scope)?;
 
     Ok(ValidatedPath {
@@ -414,8 +404,7 @@ fn normalize_path_components(path: &Path) -> PathBuf {
     let mut parts: Vec<Component<'_>> = Vec::new();
     for c in path.components() {
         match c {
-            // WHY: ParentDir should already be rejected by Layer 2, but
-            // defense-in-depth means we handle it here too.
+            // WHY: ParentDir should already be rejected by Layer 2, but defense in depth keeps this helper defensive.
             Component::ParentDir => {
                 parts.pop();
             }
@@ -437,8 +426,7 @@ fn validate_symlinks(
     scope_dir: &Path,
     scope: MemoryScope,
 ) -> std::result::Result<(), PathValidationError> {
-    // WHY: symlink_metadata returns info about the link itself (not its target),
-    // so is_symlink() is accurate even for dangling links.
+    // WHY: `symlink_metadata` reports the link itself, so `is_symlink()` stays accurate even when dangling.
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return Ok(()); // Path doesn't exist yet; pure layers sufficient.
     };
@@ -447,10 +435,9 @@ fn validate_symlinks(
         return Ok(()); // Not a symlink; no further checks needed.
     }
 
-    // Resolve symlinks with hop counting for loop detection.
+    // WHY: resolve symlinks with hop counting so loops are bounded.
     let canonical = resolve_with_hop_limit(path)?;
 
-    // Layer 6: Symlink resolution — canonical path must stay within root.
     if !canonical.starts_with(root) {
         return Err(PathValidationError::SymlinkResolution {
             path: path.to_path_buf(),
@@ -458,7 +445,6 @@ fn validate_symlinks(
         });
     }
 
-    // Re-check scope containment on the canonical path.
     if !canonical.starts_with(scope_dir) {
         return Err(PathValidationError::ScopeContainment {
             path: canonical,

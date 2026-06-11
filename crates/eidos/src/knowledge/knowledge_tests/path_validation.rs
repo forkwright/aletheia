@@ -1,14 +1,6 @@
-//! (See parent module for full rationale.)
-
 use std::path::{Path, PathBuf};
 
 use super::super::*;
-
-// Split: PathValidationLayer / PathValidationError / ValidatedPath tests.
-
-// ---------------------------------------------------------------------------
-// PathValidationLayer tests
-// ---------------------------------------------------------------------------
 
 #[test]
 fn path_validation_layer_serde_roundtrip() {
@@ -148,10 +140,6 @@ fn symlink_hop_limit_matches_linux_eloop() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// PathValidationError tests
-// ---------------------------------------------------------------------------
-
 #[test]
 fn path_validation_error_layer_mapping() {
     // WHY: Every error variant must map back to the correct layer for logging.
@@ -256,10 +244,6 @@ fn path_validation_error_is_std_error() {
     let _: &dyn std::error::Error = &err;
 }
 
-// ---------------------------------------------------------------------------
-// ValidatedPath tests
-// ---------------------------------------------------------------------------
-
 #[test]
 fn validated_path_accessors() {
     // WHY: ValidatedPath's public API must expose path and scope without
@@ -322,10 +306,6 @@ fn validated_path_display() {
         "Display should render the path"
     );
 }
-
-// ---------------------------------------------------------------------------
-// validate_memory_path() — positive tests per scope
-// ---------------------------------------------------------------------------
 
 #[test]
 fn valid_user_scope_path() {
@@ -414,5 +394,3 @@ fn valid_path_with_dots_in_filename() {
         "dots in filename (not traversal) should validate"
     );
 }
-
-// ---------------------------------------------------------------------------

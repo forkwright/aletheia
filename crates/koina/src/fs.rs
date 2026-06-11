@@ -18,8 +18,7 @@ use std::path::{Path, PathBuf};
 /// - The canonicalized path does not start with the canonicalized root.
 /// - Canonicalization itself fails (e.g. root directory does not exist).
 pub fn validate_within_root(path: &Path, root: &Path) -> std::io::Result<PathBuf> {
-    // Pre-canonicalization: reject `..` components to catch obvious traversal
-    // attempts before touching the filesystem.
+    // WHY: reject `..` before filesystem access to catch traversal early.
     for component in path.components() {
         if let std::path::Component::ParentDir = component {
             return Err(std::io::Error::new(
@@ -44,7 +43,7 @@ pub fn validate_within_root(path: &Path, root: &Path) -> std::io::Result<PathBuf
         }
     };
 
-    // Post-canonicalization containment check (catches symlink escapes).
+    // WHY: re-check containment after canonicalization to catch symlink escapes.
     if !canonical_path.starts_with(&canonical_root) {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
@@ -169,7 +168,6 @@ mod tests {
         let outside_file = outside.path().join("secret.txt");
         std::fs::write(&outside_file, b"secret").unwrap();
 
-        // Create a symlink inside root that points outside
         let link = root.path().join("escape-link");
         std::os::unix::fs::symlink(&outside_file, &link).unwrap();
 

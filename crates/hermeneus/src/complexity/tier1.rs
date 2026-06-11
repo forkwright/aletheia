@@ -22,10 +22,6 @@ use std::borrow::Cow;
 use regex::Regex;
 use tracing::debug;
 
-// ---------------------------------------------------------------------------
-// Tier1Handler trait
-// ---------------------------------------------------------------------------
-
 /// A deterministic handler for `NoLlm`-tier prompts.
 ///
 /// Implementors inspect the user's message and either return a direct
@@ -39,10 +35,6 @@ pub trait Tier1Handler: Send + Sync {
     /// to pass to the next handler.
     fn try_handle(&self, prompt: &str) -> Option<String>;
 }
-
-// ---------------------------------------------------------------------------
-// Tier1Registry
-// ---------------------------------------------------------------------------
 
 /// Registry of [`Tier1Handler`]s tried in registration order.
 ///
@@ -115,10 +107,6 @@ impl Tier1Registry {
     }
 }
 
-// ---------------------------------------------------------------------------
-// RegexReplaceHandler
-// ---------------------------------------------------------------------------
-
 /// Handler that matches a prompt against a regex and returns a template
 /// response with named captures substituted.
 ///
@@ -180,10 +168,6 @@ impl Tier1Handler for RegexReplaceHandler {
     }
 }
 
-// ---------------------------------------------------------------------------
-// ExactMatchHandler
-// ---------------------------------------------------------------------------
-
 /// Handler that matches a prompt via case-insensitive exact match and returns
 /// a fixed response.
 ///
@@ -231,10 +215,6 @@ impl Tier1Handler for ExactMatchHandler {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Built-in registry builder
-// ---------------------------------------------------------------------------
 
 /// Build a `Tier1Registry` pre-populated with the default built-in handlers.
 ///

@@ -181,9 +181,8 @@ impl<'a> ChatCompletionRequest<'a> {
             .build());
         }
 
-        // Thinking: the OpenAI Chat Completions wire format has no equivalent
-        // concept. The model is never given a separate thinking budget, so the
-        // request is sent verbatim and the operator's budget_tokens is dropped.
+        // WHY: Chat Completions has no separate thinking budget, so we drop it
+        // and warn instead of inventing wire-format fields.
         if let Some(thinking) = &req.thinking
             && thinking.enabled
         {
@@ -220,8 +219,7 @@ impl<'a> ChatCompletionRequest<'a> {
 
         let mut messages: Vec<ChatMessage> = Vec::with_capacity(req.messages.len() + 1);
 
-        // Prepend system message. Anthropic carries `system` at the top level;
-        // OpenAI expects it as the first message with role="system".
+        // WHY: OpenAI expects `system` as the first message rather than a top-level field.
         if let Some(system) = req.system.as_deref()
             && !system.is_empty()
         {
@@ -377,8 +375,6 @@ impl<'a> ResponsesRequest<'a> {
 fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
     match msg.role {
         Role::System => {
-            // System messages inside the messages vec (rather than at top
-            // level) get merged as plain system prefaces.
             out.push(ChatMessage {
                 role: "system",
                 content: Some(msg.content.text()),
@@ -386,55 +382,48 @@ fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
                 tool_call_id: None,
             });
         }
-        Role::User => {
-            // User messages with tool_result blocks split into one
-            // `role: "tool"` per result, plus one message for remaining
-            // user text.
-            match &msg.content {
-                Content::Text(text) => {
+        Role::User => match &msg.content {
+            Content::Text(text) => {
+                out.push(ChatMessage {
+                    role: "user",
+                    content: Some(text.clone()),
+                    tool_calls: Vec::new(),
+                    tool_call_id: None,
+                });
+            }
+            Content::Blocks(blocks) => {
+                let mut text_parts: Vec<String> = Vec::new();
+                for block in blocks {
+                    match block {
+                        ContentBlock::Text { text, .. } if !text.is_empty() => {
+                            text_parts.push(text.clone());
+                        }
+                        ContentBlock::ToolResult {
+                            tool_use_id,
+                            content,
+                            ..
+                        } => {
+                            out.push(ChatMessage {
+                                role: "tool",
+                                content: Some(tool_result_to_string(content)),
+                                tool_calls: Vec::new(),
+                                tool_call_id: Some(tool_use_id.clone()),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+                if !text_parts.is_empty() {
                     out.push(ChatMessage {
                         role: "user",
-                        content: Some(text.clone()),
+                        content: Some(text_parts.join("\n")),
                         tool_calls: Vec::new(),
                         tool_call_id: None,
                     });
                 }
-                Content::Blocks(blocks) => {
-                    let mut text_parts: Vec<String> = Vec::new();
-                    for block in blocks {
-                        match block {
-                            ContentBlock::Text { text, .. } if !text.is_empty() => {
-                                text_parts.push(text.clone());
-                            }
-                            ContentBlock::ToolResult {
-                                tool_use_id,
-                                content,
-                                ..
-                            } => {
-                                out.push(ChatMessage {
-                                    role: "tool",
-                                    content: Some(tool_result_to_string(content)),
-                                    tool_calls: Vec::new(),
-                                    tool_call_id: Some(tool_use_id.clone()),
-                                });
-                            }
-                            _ => {} // Thinking/server-side blocks have no user-side equivalent.
-                        }
-                    }
-                    if !text_parts.is_empty() {
-                        out.push(ChatMessage {
-                            role: "user",
-                            content: Some(text_parts.join("\n")),
-                            tool_calls: Vec::new(),
-                            tool_call_id: None,
-                        });
-                    }
-                }
             }
-        }
+        },
         Role::Assistant => {
-            // Assistant messages coalesce text + tool_use into a single
-            // message with `content` and `tool_calls`.
             let mut text_parts: Vec<String> = Vec::new();
             let mut tool_calls: Vec<ChatToolCall> = Vec::new();
             match &msg.content {
@@ -462,7 +451,7 @@ fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
                                     },
                                 });
                             }
-                            _ => {} // Thinking/server-side blocks have no OpenAI equivalent (thinking warned at request build; server_tools rejected).
+                            _ => {}
                         }
                     }
                 }
@@ -472,9 +461,9 @@ fn translate_message(msg: &Message, out: &mut Vec<ChatMessage>) {
             } else {
                 Some(text_parts.join("\n"))
             };
-            // OpenAI rejects assistant messages where both `content` and
-            // `tool_calls` are empty. Synthesize a single space to keep
-            // the payload valid — matches openai-python behavior.
+            // WHY: OpenAI rejects assistant messages where both `content` and
+            // `tool_calls` are empty, so synthesize an empty string to keep the
+            // payload valid.
             let content = if content.is_none() && tool_calls.is_empty() {
                 Some(String::new())
             } else {
@@ -494,8 +483,7 @@ fn tool_result_to_string(content: &ToolResultContent) -> String {
     match content {
         ToolResultContent::Text(s) => s.clone(),
         ToolResultContent::Blocks(_) => {
-            // OpenAI tool role accepts only text content; collapse via the
-            // existing summary helper (images / documents become tags).
+            // WHY: OpenAI tool-role content must be text; summarize non-text blocks.
             content.text_summary()
         }
     }
@@ -543,7 +531,7 @@ fn translate_responses_user_message(msg: &Message, out: &mut Vec<ResponsesInputI
                         output: tool_result_to_string(content),
                     }),
                     _ => {
-                        // Images/documents have no Responses input mapping yet.
+                        // NOTE: Images/documents have no Responses input mapping yet.
                     }
                 }
             }
@@ -578,7 +566,7 @@ fn translate_responses_assistant_message(msg: &Message, out: &mut Vec<ResponsesI
                         });
                     }
                     _ => {
-                        // Tool results and non-text media are not assistant output items.
+                        // NOTE: Tool results and non-text media are not assistant output items.
                     }
                 }
             }
@@ -612,7 +600,7 @@ fn translate_output_format(format: &OutputFormat) -> WireResponseFormat {
 fn translate_tool_choice(choice: &ToolChoice) -> serde_json::Value {
     match choice {
         ToolChoice::Auto => serde_json::Value::String("auto".to_owned()),
-        // OpenAI uses "required" to force any tool; Anthropic calls this "any".
+        // NOTE: OpenAI uses "required" to force any tool; Anthropic calls this "any".
         ToolChoice::Any => serde_json::Value::String("required".to_owned()),
         ToolChoice::Tool { name } => serde_json::json!({
             "type": "function",

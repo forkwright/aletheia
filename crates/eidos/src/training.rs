@@ -1,7 +1,5 @@
 //! Training data capture types.
 //!
-//! Configuration and record types for training data capture.
-
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
@@ -84,16 +82,7 @@ impl Default for TrainingConfig {
 
 /// Current schema version for [`TrainingRecord`].
 ///
-/// Bump this constant whenever fields are added, removed, or change
-/// semantics so that records from different epochs can be distinguished
-/// at read time.
-///
-/// # History
-///
-/// - v0: initial, no `schema_version` field persisted
-/// - v1: added `schema_version` field
-/// - v2: added episteme labels (`turn_type`, `is_correction`, `fact_types`, `quality_score`)
-/// - v3: added `tool_outcomes`, `recall_signals`, `pii_redacted`
+/// Bump this constant when the persisted record shape changes incompatibly.
 pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 3;
 
 /// Outcome of a single tool invocation during a turn.
@@ -186,7 +175,7 @@ pub struct TrainingRecord {
     /// When the turn was captured.
     pub timestamp: Timestamp,
 
-    // ── Episteme labels (v2) ──────────────────────────────────────────
+    // NOTE: Episteme labels (v2) group the four fields below.
     /// Classification of the conversation turn (e.g. "discussion", "correction").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_type: Option<String>,
@@ -200,7 +189,7 @@ pub struct TrainingRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quality_score: Option<f32>,
 
-    // ── Behavioural signals (v3) ──────────────────────────────────────
+    // NOTE: Behavioural signals (v3) covers `tool_outcomes`.
     /// Outcomes of tool calls made during the turn, in invocation order.
     ///
     /// `None` when the turn had no tool calls. An empty vec is reserved

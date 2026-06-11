@@ -36,8 +36,6 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 
-// ── Error types ──────────────────────────────────────────────────────────────
-
 /// Errors from [`FactStore`] operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -81,8 +79,6 @@ pub enum FactError {
         source: serde_json::Error,
     },
 }
-
-// ── Core types ───────────────────────────────────────────────────────────────
 
 /// Architectural scope that a fact applies to.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -168,8 +164,6 @@ impl ArchitectureFact {
     }
 }
 
-// ── FactStore ────────────────────────────────────────────────────────────────
-
 /// Flat-JSON-file backed store for [`ArchitectureFact`]s.
 ///
 /// One file per fact: `<dir>/<safe_id>.json` where `<safe_id>` is the fact's
@@ -203,7 +197,6 @@ impl FactStore {
 
     /// Translate a fact `id` to a safe filename (no path separators).
     fn id_to_filename(id: &str) -> String {
-        // Replace chars that are unsafe in filenames.
         let mut name: String = id
             .chars()
             .map(|c| match c {
@@ -331,8 +324,6 @@ impl FactStore {
     }
 }
 
-// ── Seed facts helper (used by tests and initial population) ─────────────────
-
 /// Build the five seed facts that describe aletheia's own architecture.
 ///
 /// These are written by `PR-3789` and provide the initial populated state
@@ -409,14 +400,10 @@ pub fn seed_facts() -> Vec<ArchitectureFact> {
     ]
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
-
-    // ── ArchitectureFact serde round-trip ────────────────────────────────
 
     #[test]
     fn serde_round_trip() {
@@ -478,8 +465,6 @@ mod tests {
         );
     }
 
-    // ── FactScope parsing ────────────────────────────────────────────────
-
     #[test]
     fn fact_scope_serde_all_variants() {
         for (scope, expected) in [
@@ -502,8 +487,6 @@ mod tests {
         assert_eq!(FactScope::Concept.to_string(), "concept");
         assert_eq!(FactScope::Boundary.to_string(), "boundary");
     }
-
-    // ── FactStore get/put/list/search ────────────────────────────────────
 
     #[tokio::test]
     async fn put_then_get_returns_fact() {

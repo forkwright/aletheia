@@ -21,12 +21,9 @@ pub(crate) enum CcEvent {
 
     /// Final result event with usage and cost.
     ///
-    /// WHY(#3717): `result` is only present on success-shaped events
-    /// (`subtype = "success"`). When CC hits `error_max_turns` or another
-    /// error subtype, it omits `result` entirely and populates `errors`
-    /// (array of messages) + `terminal_reason` instead. Making `result`
-    /// optional + surfacing `errors`/`terminal_reason` keeps the parser
-    /// from dropping the whole event on error-subtype terminations.
+    /// WHY(#3717): success-shaped result events carry `result`; error subtypes
+    /// carry `errors` and `terminal_reason` instead, so the parser must accept
+    /// both shapes.
     #[serde(rename = "result")]
     Result {
         #[cfg_attr(
@@ -84,22 +81,10 @@ pub(crate) enum CcEvent {
 
 /// Assistant message body.
 ///
-/// Two on-wire shapes coexist depending on `claude` CLI version:
-///
-/// 1. **Legacy** (CC ≤ 1.x): the message envelope itself carries `text`:
-///    `{"type":"assistant","message":{"type":"text","text":"…"}}`
-///
-/// 2. **Current** (CC 2.x, `2.1.119` confirmed): the envelope wraps an
-///    Anthropic-API-shaped message whose `content` is an array of blocks,
-///    of which a `text`-typed block carries the actual text:
-///    `{"type":"assistant","message":{"type":"message","role":"assistant",
-///      "content":[{"type":"text","text":"…"}], …}}`
-///
-/// `Self::deserialize` accepts both. The flattened text is exposed on
-/// `Self::text` regardless of which shape arrived. Without this, CC 2.x's
-/// nested `content[0].text` lands as an empty string, the `on_delta`
-/// guard at `process.rs:531` skips emitting `TextDelta`, and TUIs that
-/// render incrementally see nothing until the final `result` event.
+/// `Self::deserialize` accepts both the legacy CC ≤ 1.x envelope with
+/// top-level `text` and the CC 2.x Anthropic-shaped envelope with a text
+/// block. The flattened text is exposed on `Self::text` so the streaming
+/// path in `read_stream_with_callback` still emits `TextDelta`s incrementally.
 #[derive(Debug)]
 pub(crate) struct AssistantMessage {
     /// Message type kept for forward compat / debugging.
@@ -151,11 +136,7 @@ impl<'de> Deserialize<'de> for AssistantMessage {
                 message_type,
                 content,
             } => {
-                // Concatenate every text-typed block's text. A normal
-                // assistant turn has exactly one `text` block; tool-use
-                // turns have a `text` block plus `tool_use` blocks
-                // whose text we ignore here (they go through the
-                // tool-stream channel, not the text-delta channel).
+                // Concatenate text blocks; tool-use blocks are handled on the tool stream.
                 let text = content
                     .into_iter()
                     .filter(|b| b.block_type == "text")
@@ -294,11 +275,9 @@ mod tests {
         }
     }
 
-    // WHY(#3717): regression — when CC hits `error_max_turns` the `result`
-    // field is absent and the event instead carries `errors` + `terminal_reason`.
-    // Before this fix, `result: String` made the whole event fail to parse
-    // with "missing field `result`", dropping it and producing a
-    // pipeline_error upstream.
+    // WHY(#3717): error-subtype result events omit `result` and carry
+    // `errors` + `terminal_reason` instead; accept that shape instead of
+    // dropping the event.
     #[test]
     fn parse_result_event_error_subtype_omits_result_field() {
         let line = r#"{"type":"result","subtype":"error_max_turns","duration_ms":4065,"duration_api_ms":5062,"is_error":true,"num_turns":2,"stop_reason":"tool_use","session_id":"sess_456","total_cost_usd":0.125,"usage":{"input_tokens":1,"output_tokens":2},"permission_denials":[],"terminal_reason":"max_turns","fast_mode_state":"off","uuid":"u-1","errors":["Reached maximum number of turns (1)"]}"#;
@@ -327,11 +306,8 @@ mod tests {
         }
     }
 
-    // WHY(#3717): regression — CC's stream-json emits a top-level
-    // `{"type":"user"}` envelope for tool_result messages. The parser must
-    // accept this variant and route it to the ignored `User` arm (the
-    // tool-result content is handled via the Assistant turn that preceded
-    // it; this echo is informational).
+    // WHY(#3717): CC emits `{"type":"user"}` echo envelopes for tool_result
+    // messages; accept and ignore them so the stream keeps advancing.
     #[test]
     fn parse_user_event_with_tool_result_message() {
         let line = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"File does not exist.","is_error":true,"tool_use_id":"toolu_abc"}]},"parent_tool_use_id":null,"session_id":"s-1","uuid":"u-2","timestamp":"2026-04-19T13:41:32.010Z","tool_use_result":"Error: File does not exist"}"#;

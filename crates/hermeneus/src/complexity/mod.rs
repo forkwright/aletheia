@@ -27,8 +27,6 @@ const DEFAULT_HIGH_THRESHOLD: u32 = 70;
 /// Default threshold below which queries are eligible for a no-LLM fast path.
 const DEFAULT_NO_LLM_THRESHOLD: u32 = 5;
 
-// --- Regex patterns (compiled once) ---
-
 #[expect(
     clippy::expect_used,
     reason = "compile-time-constant regex literals cannot fail"

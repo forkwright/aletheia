@@ -15,10 +15,6 @@ use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct ProviderDirectionLabels {
     provider: String,
@@ -48,10 +44,6 @@ struct CircuitTransitionLabels {
     from: String,
     to: String,
 }
-
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
 
 static LLM_TOKENS_TOTAL: LazyLock<Family<ProviderDirectionLabels, Counter>> =
     LazyLock::new(Family::default);
@@ -92,10 +84,6 @@ static LLM_CONCURRENCY_LATENCY_EWMA: LazyLock<Family<ProviderLabels, Gauge<f64, 
 
 static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<Family<ProviderLabels, Gauge>> =
     LazyLock::new(Family::default);
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 /// Register this crate's metrics with the shared registry.
 ///
@@ -154,10 +142,6 @@ pub fn register(registry: &mut Registry) {
         LLM_CONCURRENCY_IN_FLIGHT.clone(),
     );
 }
-
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
 
 /// Record a completed LLM API call.
 pub fn record_completion(

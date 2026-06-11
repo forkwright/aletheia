@@ -9,26 +9,8 @@ use super::*;
 /// has an open writable descriptor anywhere in the kernel.
 const ETXTBSY: i32 = 26;
 
-/// Write a shell script to a unique temp path, make it executable, and
-/// verify the path is safe to exec before returning.
-///
-/// Returns the final script path. The caller is responsible for cleanup
-/// (or letting the OS reclaim the temp dir on process exit).
-///
-/// Defeats the Linux ETXTBSY (errno 26, "Text file busy") race described
-/// in forkwright/aletheia#3723 with two layers of defense:
-///
-/// 1. Stage the script at a `.tmp` sibling and rename into place. The
-///    writer's file descriptor is tied to the tmp dentry and fully
-///    released before rename exposes the final inode, so the common
-///    case sees the final path land with a zero writer-count.
-/// 2. Probe the final path by sacrificially spawning it and killing the
-///    child immediately. An exec syscall is the only observer that
-///    fires when the inode still has an open writer, so a successful
-///    spawn is the definitive signal that the caller's real spawn
-///    cannot race. Transient ETXTBSY is swallowed and retried on a
-///    short sleep; the loop caps so a genuinely busy file surfaces an
-///    error rather than hanging.
+/// WHY: stage the script at a temp sibling, rename into place, and probe
+/// the final path so a real spawn cannot race ETXTBSY.
 fn write_script(name: &str, body: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NONCE: AtomicU64 = AtomicU64::new(0);
@@ -107,8 +89,7 @@ async fn read_stream_assistant_then_result() {
 
 #[tokio::test]
 async fn read_stream_result_only() {
-    // WHY: CC can emit a result event with no preceding assistant deltas
-    // (e.g. when the response is short and CC batches it into the result).
+    // WHY: CC can emit a result event with no preceding assistant deltas.
     let buf =
         stream_buf(&[r#"{"type":"result","subtype":"success","result":"ok","is_error":false}"#]);
     let output = read_stream(buf.as_slice()).await.unwrap();
@@ -118,8 +99,7 @@ async fn read_stream_result_only() {
 
 #[tokio::test]
 async fn read_stream_no_result_synthesizes_from_deltas() {
-    // WHY: If CC exits without emitting a result event we fall back to
-    // joining the collected text deltas. This guards graceful degradation.
+    // WHY: If CC exits without a result event, join collected text deltas.
     let buf = stream_buf(&[
         r#"{"type":"assistant","message":{"type":"text","text":"part1 "}}"#,
         r#"{"type":"assistant","message":{"type":"text","text":"part2"}}"#,
@@ -131,8 +111,7 @@ async fn read_stream_no_result_synthesizes_from_deltas() {
 
 #[tokio::test]
 async fn read_stream_empty_input_errors() {
-    // WHY: No result event AND no deltas is unrecoverable — caller needs to
-    // know the subprocess produced nothing usable.
+    // WHY: no result event and no deltas is unrecoverable.
     let buf: Vec<u8> = Vec::new();
     let err = read_stream(buf.as_slice()).await.unwrap_err();
     assert!(
@@ -143,8 +122,7 @@ async fn read_stream_empty_input_errors() {
 
 #[tokio::test]
 async fn read_stream_blank_lines_skipped() {
-    // WHY: parse_event treats blank lines as None — read_stream must not
-    // crash on them and must not synthesize empty deltas.
+    // WHY: blank lines parse as `None`, so read_stream must skip them.
     let buf = b"\n\n   \n{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"ok\",\"is_error\":false}\n";
     let output = read_stream(buf.as_slice()).await.unwrap();
     assert_eq!(output.result_text, "ok");
@@ -152,8 +130,7 @@ async fn read_stream_blank_lines_skipped() {
 
 #[tokio::test]
 async fn read_stream_invalid_json_skipped() {
-    // WHY: parse_event returns None on invalid JSON (logged as warning) —
-    // read_stream should continue past it to subsequent valid events.
+    // WHY: invalid JSON yields `None`, so read_stream should continue past it.
     let buf = stream_buf(&[
         "not json at all",
         r#"{"type":"result","subtype":"success","result":"recovered","is_error":false}"#,
@@ -184,8 +161,7 @@ async fn read_stream_with_callback_invokes_for_each_delta() {
 
 #[tokio::test]
 async fn read_stream_with_callback_skips_empty_text() {
-    // WHY: An assistant event with empty text should not invoke the
-    // callback (matches read_stream behavior to avoid empty UI updates).
+    // WHY: empty assistant text should not invoke the callback.
     let buf = stream_buf(&[
         r#"{"type":"assistant","message":{"type":"text","text":""}}"#,
         r#"{"type":"assistant","message":{"type":"text","text":"real"}}"#,
@@ -204,8 +180,7 @@ async fn read_stream_with_callback_skips_empty_text() {
 
 #[tokio::test]
 async fn read_stream_propagates_is_error_flag() {
-    // WHY: A `result` event with is_error=true is preserved on the output
-    // so the provider layer can map it to a hermeneus::Error variant.
+    // WHY: preserve `is_error=true` so the provider layer can map the error.
     let buf = stream_buf(&[
         r#"{"type":"result","subtype":"error","result":"rate limit","is_error":true}"#,
     ]);
@@ -214,13 +189,8 @@ async fn read_stream_propagates_is_error_flag() {
     assert_eq!(output.result_text, "rate limit");
 }
 
-// WHY(#3717): regression — when CC terminates with `subtype = "error_max_turns"`
-// (or any error subtype) it omits the `result` field entirely, populating
-// `errors` + `terminal_reason` instead. Before the fix, the event failed
-// deserialization ("missing field `result`") and the whole turn was
-// dropped as pipeline_error. Now we parse it, propagate is_error=true,
-// and synthesize a human-readable result_text from terminal_reason +
-// errors for downstream error mapping.
+// WHY(#3717): error subtypes omit `result`; parse `errors` and `terminal_reason`
+// instead, then synthesize `result_text` for downstream error mapping.
 #[tokio::test]
 async fn read_stream_error_subtype_without_result_field() {
     let buf = stream_buf(&[
@@ -243,11 +213,8 @@ async fn read_stream_error_subtype_without_result_field() {
     assert_eq!(output.session_id.as_deref(), Some("sess_err"));
 }
 
-// WHY(#3717): regression — CC also emits `{"type":"user"}` echo events
-// carrying `tool_result` content blocks. These must parse without
-// emitting the `unknown variant \`user\`` warning and must not end the
-// read_stream loop. Verify by feeding a user event followed by a normal
-// result event and checking the result survives.
+// WHY(#3717): CC emits `{"type":"user"}` echo events for `tool_result` blocks;
+// accept them so the stream keeps flowing.
 #[tokio::test]
 async fn read_stream_ignores_user_tool_result_event() {
     let buf = stream_buf(&[
@@ -259,16 +226,11 @@ async fn read_stream_ignores_user_tool_result_event() {
     assert_eq!(output.result_text, "recovered");
 }
 
-// ── parse_oauth_token_from_json ───────────────────────────────────────────
-// WHY: Tests target the JSON-parsing helper rather than read_oauth_token
-// directly. read_oauth_token wraps parse_oauth_token_from_json with I/O
-// and HOME resolution. Testing the parser in isolation avoids env var
-// manipulation (unsafe in Rust 2024) while covering all key branches.
+// WHY: tests target the JSON parser directly so they avoid I/O and env mutation.
 
 #[test]
 fn parse_oauth_token_succeeds_with_valid_credentials() {
-    // WHY: Happy path — valid JSON with the expected key hierarchy returns
-    // the access token string without error.
+    // WHY: valid JSON with the expected key hierarchy returns the access token.
     let json = r#"{"claudeAiOauth":{"accessToken":"test-token-abc123"}}"#;
     let token = parse_oauth_token_from_json(json).unwrap();
     assert_eq!(token, "test-token-abc123");
@@ -276,9 +238,7 @@ fn parse_oauth_token_succeeds_with_valid_credentials() {
 
 #[test]
 fn parse_oauth_token_fails_when_access_token_key_absent() {
-    // WHY: JSON exists but lacks the `accessToken` key — must return an
-    // error rather than silently returning empty, so callers don't inject
-    // a blank token into the subprocess environment.
+    // WHY: missing `accessToken` must return an error, not an empty token.
     let json = r#"{"claudeAiOauth":{"someOtherKey":"value"}}"#;
     let err = parse_oauth_token_from_json(json).unwrap_err();
     assert!(
@@ -289,8 +249,7 @@ fn parse_oauth_token_fails_when_access_token_key_absent() {
 
 #[test]
 fn parse_oauth_token_fails_when_top_level_key_absent() {
-    // WHY: JSON without the `claudeAiOauth` wrapper must fail cleanly —
-    // this covers flat credential formats that don't contain CC OAuth data.
+    // WHY: missing `claudeAiOauth` must fail cleanly.
     let json = r#"{"someOtherProvider":{"accessToken":"irrelevant"}}"#;
     let err = parse_oauth_token_from_json(json).unwrap_err();
     assert!(
@@ -301,8 +260,7 @@ fn parse_oauth_token_fails_when_top_level_key_absent() {
 
 #[test]
 fn parse_oauth_token_fails_on_malformed_json() {
-    // WHY: Malformed credentials (e.g. truncated write) must return an
-    // error, not panic. The caller silently skips OAuth injection on error.
+    // WHY: malformed credentials must return an error, not panic.
     let err = parse_oauth_token_from_json("not-json{{{").unwrap_err();
     assert!(
         !err.to_string().is_empty(),
@@ -347,12 +305,9 @@ fn scrub_cc_auth_env_marks_token_env_for_removal() {
     );
 }
 
-// ── run_completion ────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn run_completion_spawn_failure_reports_binary_path() {
-    // WHY: A missing or non-executable binary must produce a ProviderInit
-    // error that names the bad path so the operator can diagnose it.
+    // WHY: a missing or non-executable binary must name the bad path.
     let binary = PathBuf::from("/nonexistent/path/to/claude-binary");
     let err = run_completion(
         &binary,
@@ -378,10 +333,8 @@ async fn run_completion_spawn_failure_reports_binary_path() {
 
 #[tokio::test]
 async fn run_completion_tolerates_nonzero_max_tokens() {
-    // WHY: The claude CLI exposes no max-output-token flag, so a non-zero
-    // max_tokens is unenforceable and must be ignored (with a one-time warning),
-    // not rejected. Previously this hard-errored, breaking every turn on the
-    // default zero-config CC provider. See #4158.
+    // WHY(#4158): `claude` has no max-output-token flag, so non-zero `max_tokens`
+    // must be ignored rather than rejected.
     let script = write_script(
         "completion_max_tokens_ok",
         r#"cat > /dev/null
@@ -407,9 +360,7 @@ printf '{"type":"result","subtype":"success","result":"ok","is_error":false}\n'"
 
 #[tokio::test]
 async fn run_completion_success_collects_output() {
-    // WHY: End-to-end subprocess path with a real script. Verifies that
-    // run_completion feeds stdin, reads stdout stream-json, and returns
-    // a populated CcOutput with the result text and delta list intact.
+    // WHY: end-to-end subprocess path verifies stdin, stdout, and delta capture.
     let script = write_script(
         "completion_ok",
         // Discard all args and stdin; emit a two-event stream.
@@ -528,8 +479,6 @@ exit 1"#,
     );
     let _ = fs::remove_file(&script);
 }
-
-// ── run_streaming ─────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn run_streaming_spawn_failure_reports_binary_path() {
@@ -659,8 +608,6 @@ async fn run_streaming_timeout_returns_error() {
     );
     let _ = fs::remove_file(&script);
 }
-
-// ── output size limits (#3324) ───────────────────────────────────────────
 
 #[tokio::test]
 async fn read_stream_rejects_oversized_output_by_bytes() {
