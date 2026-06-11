@@ -107,7 +107,6 @@ impl AgentSdkEngine {
     /// checked here. `OAuth` token validation, MCP plugin wiring, permission
     /// enforcement, and native SDK availability checks remain future work.
     pub fn new(config: AgentSdkConfig) -> Result<Self> {
-        // WHY: Verify the model identifier is valid during construction.
         if config.default_model.is_empty() {
             return error::InvalidModelSnafu {
                 model: "(empty)".to_string(),
@@ -115,9 +114,6 @@ impl AgentSdkEngine {
             .fail();
         }
 
-        // Future-work: validate OAuth token, init MCP plugin system, set up
-        // permission system, and replace the CLI subprocess with a native SDK
-        // transport when that integration exists.
         Ok(Self {
             config,
             binary: "claude".to_owned(),

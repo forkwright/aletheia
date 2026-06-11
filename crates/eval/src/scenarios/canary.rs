@@ -37,10 +37,6 @@ use tools::{
     ToolWebSearchStructured,
 };
 
-// ---------------------------------------------------------------------------
-// CanaryProvider
-// ---------------------------------------------------------------------------
-
 /// Provider that returns all canary scenarios for regression testing.
 pub struct CanaryProvider;
 

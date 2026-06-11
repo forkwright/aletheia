@@ -18,10 +18,6 @@ use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::{PipelineError, StageSnafu};
 use crate::types::{DispatchResult, QaVerdict};
 
-// ---------------------------------------------------------------------------
-// After-action record types (stable JSONL schema, append-only)
-// ---------------------------------------------------------------------------
-
 /// One line of after-action telemetry per dispatch.
 #[derive(Debug, Serialize)]
 struct AfterActionRecord {
@@ -47,10 +43,6 @@ struct AfterActionSessionOutcome {
     pr_url: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// PostProcessingStage
-// ---------------------------------------------------------------------------
-
 /// Post-processing stage: record metrics, assemble result, finish store record,
 /// append after-action JSONL.
 pub(crate) struct PostProcessingStage;
@@ -62,8 +54,6 @@ impl PipelineStage for PostProcessingStage {
 
     async fn run(&self, ctx: &mut PipelineContext) -> Result<(), PipelineError> {
         let t0 = Instant::now();
-
-        // --- Record Prometheus metrics for all outcomes ---
 
         for outcome in &ctx.outcomes {
             let model = outcome.model.as_deref().unwrap_or("unknown");
@@ -88,8 +78,6 @@ impl PipelineStage for PostProcessingStage {
             );
         }
 
-        // --- Assemble DispatchResult ---
-
         let total_cost = ctx.outcomes.iter().map(|o| o.cost_usd).sum();
         let duration_ms = u64::try_from(ctx.start.elapsed().as_millis()).unwrap_or(u64::MAX);
 
@@ -101,8 +89,6 @@ impl PipelineStage for PostProcessingStage {
             aborted: ctx.aborted,
             completed_at: Timestamp::now(),
         };
-
-        // --- Finish dispatch record ---
 
         #[cfg(feature = "storage-fjall")]
         if let (Some(store), Some(store_id)) = (&ctx.store, &ctx.store_dispatch_id) {
@@ -133,21 +119,15 @@ impl PipelineStage for PostProcessingStage {
 
         ctx.result = Some(result);
 
-        // --- Record own latency so the after-action record includes it ---
+        // WHY: latency recorded before the append so the after-action record includes this stage.
 
         ctx.record_stage_latency(self.name(), t0.elapsed());
-
-        // --- Append after-action JSONL record ---
 
         append_after_action_record(ctx).await?;
 
         Ok(())
     }
 }
-
-// ---------------------------------------------------------------------------
-// After-action record helpers
-// ---------------------------------------------------------------------------
 
 /// Build and append the after-action JSONL record.
 ///
@@ -310,10 +290,6 @@ fn compute_prompt_hash(prompts: &[crate::prompt::PromptSpec]) -> crate::error::R
     Ok(format!("sha256:{hex}"))
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
@@ -449,9 +425,7 @@ mod tests {
         assert!(!result.dispatch_id.is_empty());
     }
 
-    // -----------------------------------------------------------------------
-    // After-action JSONL tests
-    // -----------------------------------------------------------------------
+    // ── After-action JSONL tests ──
 
     #[tokio::test]
     async fn happy_path_writes_valid_jsonl_line() {

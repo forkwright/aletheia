@@ -15,7 +15,6 @@ use super::types::{CiFailureKind, FixKind};
 /// deterministic or cannot benefit from reasoning.
 #[must_use]
 pub fn classify_failure(check_name: &str, log_excerpt: &str) -> CiFailureKind {
-    // Format and clippy failures are always mechanical.
     let lower_name = check_name.to_lowercase();
     let lower_log = log_excerpt.to_lowercase();
 
@@ -25,7 +24,6 @@ pub fn classify_failure(check_name: &str, log_excerpt: &str) -> CiFailureKind {
     if lower_name.contains("clippy") && !lower_log.contains("error[e") {
         return CiFailureKind::Mechanical;
     }
-    // Whitespace and lockfile issues are mechanical.
     if lower_log.contains("trailing whitespace") || lower_log.contains("cargo.lock") {
         return CiFailureKind::Mechanical;
     }
@@ -52,9 +50,7 @@ pub fn fix_kind_category(kind: &FixKind) -> CiFailureKind {
 mod tests {
     use super::*;
 
-    // -----------------------------------------------------------------------
-    // classify_failure tests
-    // -----------------------------------------------------------------------
+    // ── classify_failure tests ──
 
     #[test]
     fn classify_failure_fmt_is_mechanical() {
@@ -122,9 +118,7 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // fix_kind_category tests
-    // -----------------------------------------------------------------------
+    // ── fix_kind_category tests ──
 
     #[test]
     fn fix_kind_category_mechanical_kinds() {

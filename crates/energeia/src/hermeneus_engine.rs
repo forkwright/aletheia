@@ -20,10 +20,6 @@ use crate::engine::{
 };
 use crate::error::{self, Result};
 
-// ---------------------------------------------------------------------------
-// HermeneusEngine
-// ---------------------------------------------------------------------------
-
 /// Dispatch engine backed by hermeneus [`LlmProvider`].
 ///
 /// Supports prompt caching via the [`PromptComponents`](crate::prompt_cache::PromptComponents)
@@ -284,10 +280,6 @@ impl DispatchEngine for HermeneusEngine {
     }
 }
 
-// ---------------------------------------------------------------------------
-// HermeneusSessionHandle
-// ---------------------------------------------------------------------------
-
 /// Session handle for a hermeneus-backed completion.
 ///
 /// Yields a single [`SessionEvent::TextDelta`] with the response text,
@@ -328,10 +320,6 @@ impl SessionHandle for HermeneusSessionHandle {
         Box::pin(async move { Ok(()) })
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::indexing_slicing, reason = "test assertions")]

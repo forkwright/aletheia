@@ -18,11 +18,6 @@ use energeia::types::{
     ResumePolicy, SessionStatus,
 };
 
-// Split: Error + Send/Sync bounds + additional type tests.
-
-// Error is Send + Sync
-// ============================================================================
-
 #[test]
 fn error_is_send_sync() {
     const _: fn() = || {
@@ -31,9 +26,7 @@ fn error_is_send_sync() {
     };
 }
 
-// ============================================================================
-// Send + Sync bounds for other types
-// ============================================================================
+// ── Send + Sync bounds for other types ──
 
 #[test]
 fn cost_ledger_is_send_sync() {
@@ -131,9 +124,7 @@ fn session_event_is_send_sync() {
     };
 }
 
-// ============================================================================
-// Additional type tests
-// ============================================================================
+// ── Additional type tests ──
 
 #[test]
 fn session_status_display() {

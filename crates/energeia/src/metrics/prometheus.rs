@@ -13,9 +13,7 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
+// ── Label sets ──
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct ProjectStatusLabels {
@@ -41,9 +39,7 @@ struct ProjectVerdictLabels {
     verdict: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
+// ── Metric families ──
 
 static DISPATCHES_TOTAL: LazyLock<Family<ProjectStatusLabels, Counter>> =
     LazyLock::new(Family::default);
@@ -74,10 +70,6 @@ static SESSION_DURATION_SECONDS: LazyLock<ProjectHistogramFamily> =
 
 static QA_VERDICTS_TOTAL: LazyLock<Family<ProjectVerdictLabels, Counter>> =
     LazyLock::new(Family::default);
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -112,10 +104,6 @@ pub fn register(registry: &mut Registry) {
         QA_VERDICTS_TOTAL.clone(),
     );
 }
-
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
 
 /// Record a completed dispatch run.
 ///
@@ -199,10 +187,6 @@ pub fn record_qa_verdict(project: &str, verdict: &str) {
         })
         .inc();
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

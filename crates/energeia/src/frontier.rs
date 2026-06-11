@@ -40,7 +40,6 @@ pub fn compute_frontier(dag: &PromptDag) -> Vec<Vec<u32>> {
         .map(|(&num, _)| num)
         .collect();
 
-    // NOTE: Only non-Done prompts are dispatchable.
     let dispatchable: HashSet<u32> = dag
         .nodes
         .iter()

@@ -23,10 +23,6 @@ pub(crate) mod group;
 
 pub use config::OrchestratorConfig;
 
-// ---------------------------------------------------------------------------
-// Orchestrator
-// ---------------------------------------------------------------------------
-
 /// Top-level dispatch orchestrator.
 ///
 /// Builds the pipeline context, runs the 4-stage dispatch pipeline
@@ -219,10 +215,6 @@ impl std::fmt::Debug for Orchestrator {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Dry-run types
-// ---------------------------------------------------------------------------
-
 /// Result of a dry-run: the execution plan without actual dispatch.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -261,10 +253,6 @@ pub struct DryRunPrompt {
     pub depends_on: Vec<u32>,
 }
 
-// ---------------------------------------------------------------------------
-// EngineConfig extension
-// ---------------------------------------------------------------------------
-
 impl EngineConfig {
     /// Set the idle timeout from an `Option<Duration>`, no-op if `None`.
     #[must_use]
@@ -273,10 +261,6 @@ impl EngineConfig {
         self
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod orchestrator_tests;

@@ -8,11 +8,7 @@ use energeia::engine::AgentOptions;
 use energeia::orchestrator::OrchestratorConfig;
 use energeia::types::DispatchSpec;
 
-// Split: DispatchSpec + AgentOptions + OrchestratorConfig + CostLedger.
-
-// ============================================================================
-// DispatchSpec serde round-trips
-// ============================================================================
+// ── DispatchSpec serde round-trips ──
 
 #[test]
 fn dispatch_spec_serde_roundtrip_basic() {
@@ -66,9 +62,7 @@ max_turns: 9
     assert_eq!(spec.max_turns, Some(9));
 }
 
-// ============================================================================
-// AgentOptions builder chaining + serde
-// ============================================================================
+// ── AgentOptions builder chaining + serde ──
 
 #[test]
 fn agent_options_builder_chaining() {
@@ -145,9 +139,7 @@ fn agent_options_builder_method_chaining_order_independent() {
     assert_eq!(opts1.max_turns, opts2.max_turns);
 }
 
-// ============================================================================
-// OrchestratorConfig defaults and builder
-// ============================================================================
+// ── OrchestratorConfig defaults and builder ──
 
 #[test]
 fn orchestrator_config_defaults() {
@@ -223,9 +215,7 @@ fn orchestrator_config_serde_with_null_durations() {
     assert!(config.max_duration.is_none());
 }
 
-// ============================================================================
-// CostLedger record and query semantics
-// ============================================================================
+// ── CostLedger record and query semantics ──
 
 #[test]
 fn cost_ledger_record_and_query_single() {
@@ -387,5 +377,3 @@ fn cost_ledger_cost_by_model_accumulation() {
     assert!((opus_cost - 2.50).abs() < 0.001);
     assert!((sonnet_cost - 1.50).abs() < 0.001);
 }
-
-// ============================================================================

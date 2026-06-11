@@ -27,7 +27,7 @@ use crate::types::{DispatchResult, DispatchSpec, SessionOutcome};
 /// Stages populate fields in execution order.  Downstream stages may assume
 /// that fields written by prior stages are valid.
 pub(crate) struct PipelineContext {
-    // --- Inputs set at construction ---
+    // ── Inputs set at construction ──
     /// The dispatch specification (project, prompt numbers, concurrency cap).
     pub(crate) spec: DispatchSpec,
     /// Full prompt set for this dispatch.
@@ -44,7 +44,7 @@ pub(crate) struct PipelineContext {
     #[cfg(feature = "storage-fjall")]
     pub(crate) store: Option<Arc<crate::store::EnergeiaStore>>,
 
-    // --- Set by preparation stage ---
+    // ── Set by preparation stage ──
     /// Unique identifier for this dispatch run (ULID string).
     // kanon:ignore RUST/primitive-for-domain-id — internal pipeline context field; ULID stored as String by design for logging/serialization compat
     pub(crate) dispatch_id: String,
@@ -72,7 +72,7 @@ pub(crate) struct PipelineContext {
     #[cfg(feature = "storage-fjall")]
     pub(crate) store_dispatch_id: Option<crate::store::records::DispatchId>,
 
-    // --- Accumulated during execution stage ---
+    // ── Accumulated during execution stage ──
     /// Per-prompt outcomes collected across all groups.
     pub(crate) outcomes: Vec<SessionOutcome>,
     /// Parsed structured outputs from successful prompt sessions, keyed by
@@ -85,11 +85,10 @@ pub(crate) struct PipelineContext {
     /// Number of corrective attempts already generated per prompt number.
     pub(crate) corrective_attempt_counts: HashMap<u32, u32>,
 
-    // --- Set by post-processing stage ---
     /// Final aggregate result, set by post-processing.
     pub(crate) result: Option<DispatchResult>,
 
-    // --- Accumulated by all stages ---
+    // ── Accumulated by all stages ──
     /// Wall-clock start time (set by preparation).
     pub(crate) start_ts: jiff::Timestamp,
     /// Per-stage wall-clock latencies in milliseconds.
@@ -100,7 +99,7 @@ pub(crate) struct PipelineContext {
     /// `None` disables after-action record emission.
     pub(crate) after_action_log_dir: Option<PathBuf>,
 
-    // --- Health-check stage configuration ---
+    // ── Health-check stage configuration ──
     /// Primary backend health endpoint URL. `None` uses the engine's
     /// transport-specific readiness probe when one exists.
     ///

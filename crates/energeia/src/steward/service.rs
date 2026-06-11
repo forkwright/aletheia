@@ -61,13 +61,11 @@ pub async fn run(config: &StewardConfig, cancel: CancellationToken) -> Vec<Stewa
             "steward pass starting"
         );
 
-        // NOTE: Single-pass mode exits after one cycle.
         if config.once {
             tracing::info!("single-pass mode, exiting");
             break;
         }
 
-        // NOTE: Sleep respecting cancellation.
         tokio::select! {
             biased;
             () = cancel.cancelled() => {
@@ -150,7 +148,6 @@ mod tests {
             ..StewardConfig::new("acme/repo".to_string())
         };
         let cancel = CancellationToken::new();
-        // Cancel immediately.
         cancel.cancel();
         let results = run(&config, cancel).await;
         assert!(results.is_empty());

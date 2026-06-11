@@ -13,10 +13,6 @@ use crate::engine::{
 };
 use crate::error::{self, Result};
 
-// ---------------------------------------------------------------------------
-// MockEngine
-// ---------------------------------------------------------------------------
-
 /// Test double for [`DispatchEngine`].
 ///
 /// Returns pre-configured outcomes in FIFO order. Thread-safe for use in
@@ -103,10 +99,6 @@ impl DispatchEngine for MockEngine {
     }
 }
 
-// ---------------------------------------------------------------------------
-// MockSessionHandle
-// ---------------------------------------------------------------------------
-
 /// Test double for [`SessionHandle`].
 ///
 /// Yields pre-configured events from a `VecDeque`, then returns `None`.
@@ -156,10 +148,6 @@ impl SessionHandle for MockSessionHandle {
         })
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

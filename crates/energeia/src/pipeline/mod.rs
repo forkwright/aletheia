@@ -3,9 +3,6 @@
 // independently testable unit with a uniform interface. The DispatchPipeline
 // driver wires them in order and surfaces which stage failed when an error
 // occurs.
-//
-// Remaining Wave 4 follow-up stages: QA-gate (#3459), validate (#3460),
-// record (#3461).
 
 use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::PipelineError;
@@ -32,10 +29,6 @@ pub(crate) use post_processing::PostProcessingStage;
 pub(crate) use preparation::PreparationStage;
 pub(crate) use validation::ValidationStage;
 
-// ---------------------------------------------------------------------------
-// PipelineStage trait
-// ---------------------------------------------------------------------------
-
 /// A single named stage in the dispatch pipeline.
 ///
 /// Stages are executed in order by [`DispatchPipeline`].  Each stage reads
@@ -54,10 +47,6 @@ pub(crate) trait PipelineStage: Send + Sync {
         ctx: &mut PipelineContext,
     ) -> impl std::future::Future<Output = Result<(), PipelineError>> + Send;
 }
-
-// ---------------------------------------------------------------------------
-// DispatchPipeline driver
-// ---------------------------------------------------------------------------
 
 /// Ordered sequence of pipeline stages that executes a dispatch.
 ///
@@ -99,10 +88,6 @@ impl DispatchPipeline {
         Ok(())
     }
 }
-
-// ---------------------------------------------------------------------------
-// Object-safe wrapper for PipelineStage
-// ---------------------------------------------------------------------------
 
 // WHY: PipelineStage uses `impl Future` which is not object-safe. We bridge
 // it with a sealed trait that wraps the async fn in a pinned box so we can

@@ -5,8 +5,6 @@ use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval, validate_response};
 use crate::sse;
 
-// ---------------------------------------------------------------------------
-
 /// Send technical description → verify fact extraction
 pub(super) struct KnowledgeExtractTechnical;
 
@@ -263,5 +261,3 @@ impl Scenario for KnowledgeMetaCategorization {
         )
     }
 }
-
-// ---------------------------------------------------------------------------

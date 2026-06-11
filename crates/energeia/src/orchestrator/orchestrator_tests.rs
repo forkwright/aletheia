@@ -17,10 +17,6 @@ use crate::types::{MechanicalIssue, QaResult, QaVerdict, SessionStatus};
 
 use super::*;
 
-// -----------------------------------------------------------------------
-// Mock QA gate
-// -----------------------------------------------------------------------
-
 struct MockQaGate {
     verdict: QaVerdict,
 }
@@ -64,9 +60,7 @@ impl QaGate for MockQaGate {
     }
 }
 
-// -----------------------------------------------------------------------
-// Test helpers
-// -----------------------------------------------------------------------
+// ── Test helpers ──
 
 fn sample_prompt_spec(number: u32, depends_on: Vec<u32>) -> PromptSpec {
     PromptSpec {
@@ -127,9 +121,7 @@ fn sample_dispatch_spec(prompt_numbers: Vec<u32>) -> DispatchSpec {
     }
 }
 
-// -----------------------------------------------------------------------
-// dispatch() tests
-// -----------------------------------------------------------------------
+// ── dispatch() tests ──
 
 #[tokio::test]
 async fn dispatch_single_prompt_success() {
@@ -340,9 +332,7 @@ async fn dispatch_parallel_independent_prompts() {
     );
 }
 
-// -----------------------------------------------------------------------
-// dry_run() tests
-// -----------------------------------------------------------------------
+// ── dry_run() tests ──
 
 #[test]
 fn dry_run_returns_execution_plan() {
@@ -412,9 +402,7 @@ fn dry_run_roundtrip_serialization() {
     assert_eq!(back.groups.len(), 2);
 }
 
-// -----------------------------------------------------------------------
-// Helper function tests (mark_dependents_blocked tested in pipeline/execution.rs)
-// -----------------------------------------------------------------------
+// ── Helper function tests (mark_dependents_blocked tested in pipeline/execution.rs) ──
 
 #[test]
 fn prompt_dag_blocked_propagation_via_dispatch() {

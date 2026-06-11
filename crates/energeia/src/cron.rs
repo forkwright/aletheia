@@ -45,10 +45,6 @@ pub enum OverlapPolicy {
     SkipIfInFlight,
 }
 
-// ---------------------------------------------------------------------------
-// CronTask
-// ---------------------------------------------------------------------------
-
 /// A single recurring dispatch task.
 #[derive(Debug, Clone)]
 pub struct CronTask {
@@ -88,10 +84,6 @@ impl CronTask {
         })
     }
 }
-
-// ---------------------------------------------------------------------------
-// CronLockStore
-// ---------------------------------------------------------------------------
 
 /// Partition name for cron lock records.
 const LOCK_PARTITION: &str = "cron_locks";
@@ -187,10 +179,6 @@ impl CronLockStore {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// CronScheduler
-// ---------------------------------------------------------------------------
 
 /// Scheduler that manages a set of [`CronTask`]s with fjall-backed locking.
 pub struct CronScheduler {
@@ -369,10 +357,6 @@ impl CronScheduler {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn store_err(context: &str, e: impl std::fmt::Display) -> error::Error {
     error::StoreSnafu {
         message: format!("{context}: {e}"),
@@ -392,10 +376,6 @@ fn apply_jitter(base: Zoned, jitter: Duration) -> Zoned {
     base.checked_add(SignedDuration::from_secs(offset_secs))
         .unwrap_or(base)
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

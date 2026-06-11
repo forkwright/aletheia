@@ -10,10 +10,6 @@
 
 use std::path::Path;
 
-// ---------------------------------------------------------------------------
-// PromptComponents
-// ---------------------------------------------------------------------------
-
 /// Split prompt for cache-aware dispatch.
 ///
 /// The [`static_prefix`](Self::static_prefix) contains content identical
@@ -105,10 +101,6 @@ impl PromptComponents {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn build_static_prefix(
     role: Option<&str>,
     standards_dir: Option<&Path>,
@@ -118,7 +110,6 @@ fn build_static_prefix(
 
     let mut parts: Vec<String> = Vec::new();
 
-    // Role definition.
     if let Some(role_text) = role {
         let role_def = if Path::new(role_text).exists() {
             std::fs::read_to_string(role_text).unwrap_or_else(|e| {
@@ -133,7 +124,6 @@ fn build_static_prefix(
         }
     }
 
-    // Selected standards.
     if let Some(dir) = standards_dir {
         for name in standards {
             let path = dir.join(format!("{name}.md"));
@@ -150,7 +140,6 @@ fn build_static_prefix(
         }
     }
 
-    // Validation gate.
     parts.push(VALIDATION_GATE.to_owned());
 
     parts.join("\n\n---\n\n")
@@ -171,10 +160,6 @@ fn build_dynamic_suffix(project: &str, scope: Option<&str>, prompt_body: &str) -
 
     parts.join("\n\n")
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

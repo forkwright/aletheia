@@ -1,20 +1,13 @@
 // WHY: Per-blast-radius cost attribution ledger. Tracks cumulative cost, turns,
 // and session counts by blast radius to answer "how much did this feature cost?"
 //
-// Uses Arc<parking_lot::Mutex<HashMap>> for thread-safe accumulation. parking_lot
-// is the workspace-recommended replacement for std::sync::Mutex in sync code:
-// no poison handling, faster, no fairness overhead. The ledger API is entirely
-// synchronous (no .await held while a guard is live), so a tokio::sync::Mutex
-// would be wrong here.
+// WHY: parking_lot::Mutex (not tokio::sync::Mutex) — the ledger API is entirely
+// synchronous; no guard is ever held across an .await.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-
-// ---------------------------------------------------------------------------
-// BlastRadiusCost
-// ---------------------------------------------------------------------------
 
 /// Cost attribution for a single blast radius.
 #[derive(Debug, Clone)]
@@ -54,10 +47,6 @@ impl BlastRadiusCost {
         *self.cost_by_model.entry(model.to_owned()).or_insert(0.0) += cost_usd;
     }
 }
-
-// ---------------------------------------------------------------------------
-// CostLedger
-// ---------------------------------------------------------------------------
 
 /// Thread-safe per-blast-radius cost accumulator.
 ///
@@ -162,7 +151,6 @@ impl CostLedger {
         let guard = self.inner.lock();
         let mut results: Vec<(String, BlastRadiusCost)> =
             guard.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        // Sort by blast radius for deterministic output
         results.sort_by(|a, b| a.0.cmp(&b.0));
         results
     }
@@ -206,10 +194,6 @@ impl CostLedger {
         guard.clear();
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

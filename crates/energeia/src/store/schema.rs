@@ -28,10 +28,6 @@ const PREFIX_CI_VALIDATION: &str = "ci_validation:";
 /// Key prefix for QA verdict records.
 const PREFIX_QA_VERDICT: &str = "qa_verdict:";
 
-// ---------------------------------------------------------------------------
-// Dispatch keys
-// ---------------------------------------------------------------------------
-
 /// Encode a dispatch key: `dispatch:{ulid}`.
 #[must_use]
 pub(crate) fn dispatch_key(id: &DispatchId) -> String {
@@ -52,10 +48,6 @@ pub(crate) fn decode_dispatch_key(key: &[u8]) -> Option<DispatchId> {
     let id_str = s.strip_prefix(PREFIX_DISPATCH)?;
     Some(DispatchId::new(id_str))
 }
-
-// ---------------------------------------------------------------------------
-// Session keys
-// ---------------------------------------------------------------------------
 
 /// Encode a session key: `session:{dispatch_ulid}:{prompt_no:08}`.
 ///
@@ -91,10 +83,6 @@ pub(crate) fn decode_session_key(key: &[u8]) -> Option<(DispatchId, u32)> {
     Some((DispatchId::new(dispatch_str), prompt_number))
 }
 
-// ---------------------------------------------------------------------------
-// Lesson keys
-// ---------------------------------------------------------------------------
-
 /// Encode a lesson key: `lesson:{source}:{timestamp_ms}:{ulid}`.
 ///
 /// The ULID suffix ensures uniqueness when multiple lessons share the same
@@ -116,10 +104,6 @@ pub(crate) fn lesson_prefix() -> &'static str {
     PREFIX_LESSON
 }
 
-// ---------------------------------------------------------------------------
-// Observation keys
-// ---------------------------------------------------------------------------
-
 /// Encode an observation key: `observation:{timestamp_ms}:{ulid}`.
 #[must_use]
 pub(crate) fn observation_key(timestamp_ms: i64, ulid: &str) -> String {
@@ -131,10 +115,6 @@ pub(crate) fn observation_key(timestamp_ms: i64, ulid: &str) -> String {
 pub(crate) fn observation_prefix() -> &'static str {
     PREFIX_OBSERVATION
 }
-
-// ---------------------------------------------------------------------------
-// CI validation keys
-// ---------------------------------------------------------------------------
 
 /// Encode a CI validation key: `ci_validation:{session_id}:{check_name}`.
 #[must_use]

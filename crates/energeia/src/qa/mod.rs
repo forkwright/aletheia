@@ -37,10 +37,6 @@ pub mod semantic;
 /// Verdict determination from mechanical issues and criterion results.
 pub mod verdict;
 
-// ---------------------------------------------------------------------------
-// QaGate trait
-// ---------------------------------------------------------------------------
-
 /// Abstraction over quality assurance evaluation.
 ///
 /// Implementations use hermeneus for LLM-based semantic evaluation and
@@ -64,10 +60,6 @@ pub trait QaGate: Send + Sync {
     fn mechanical_check(&self, diff: &str, prompt: &PromptSpec) -> Vec<MechanicalIssue>;
 }
 
-// ---------------------------------------------------------------------------
-// DiffProvider trait
-// ---------------------------------------------------------------------------
-
 /// Abstraction over PR diff fetching.
 ///
 /// Implementations fetch the unified diff for a pull request from a forge
@@ -79,10 +71,6 @@ pub trait DiffProvider: Send + Sync {
         pr_url: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>>;
 }
-
-// ---------------------------------------------------------------------------
-// Supporting types
-// ---------------------------------------------------------------------------
 
 /// Specification of a prompt for QA evaluation.
 ///
@@ -137,10 +125,6 @@ impl PromptSpec {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Orchestrator
-// ---------------------------------------------------------------------------
-
 /// Run a full QA evaluation on a PR diff.
 ///
 /// Orchestrates the complete flow: mechanical pre-screening, criteria
@@ -175,17 +159,14 @@ pub async fn run_qa(
         "starting QA evaluation"
     );
 
-    // NOTE: Step 1 — run mechanical pre-screening.
     let mechanical_issues = mechanical::mechanical_check(diff, prompt);
 
     if !mechanical_issues.is_empty() {
         tracing::warn!(count = mechanical_issues.len(), "mechanical issues found");
     }
 
-    // NOTE: Step 2 — classify acceptance criteria.
     let classified = semantic::classify_criteria(&prompt.acceptance_criteria);
 
-    // NOTE: Step 3 — auto-pass mechanical criteria if no issues found.
     let no_mechanical_issues = mechanical_issues.is_empty();
 
     let mechanical_results: Vec<CriterionResult> = classified
@@ -203,7 +184,6 @@ pub async fn run_qa(
         })
         .collect();
 
-    // NOTE: Step 4 — evaluate semantic criteria.
     // WHY: Skip LLM evaluation if there are critical mechanical issues (save cost).
     let semantic_criteria: Vec<(String, CriterionType)> = classified
         .iter()
@@ -220,7 +200,6 @@ pub async fn run_qa(
     )
     .await;
 
-    // NOTE: Step 5 — combine results and determine verdict.
     let mut all_results = mechanical_results;
     all_results.extend(semantic_results);
 
@@ -292,7 +271,6 @@ async fn evaluate_semantic_criteria(
         return (results, 0.0, false);
     };
 
-    // NOTE: Build the QA prompt and send it to the LLM via hermeneus.
     let qa_prompt_text = semantic::build_qa_prompt(description, criteria, diff);
 
     let request = CompletionRequest {

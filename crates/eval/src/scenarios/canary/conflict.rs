@@ -5,8 +5,6 @@ use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, validate_response};
 use crate::sse;
 
-// ---------------------------------------------------------------------------
-
 /// Present two valid approaches → verify balanced analysis
 pub(super) struct ConflictBalancedAnalysis;
 

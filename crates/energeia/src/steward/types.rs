@@ -394,10 +394,6 @@ pub struct PrFile {
     pub filename: String,
 }
 
-// ---------------------------------------------------------------------------
-// Fix types
-// ---------------------------------------------------------------------------
-
 /// Result of a fix attempt on a single PR.
 ///
 /// NOTE: Does not include `training_records` -- that is a kanon-specific

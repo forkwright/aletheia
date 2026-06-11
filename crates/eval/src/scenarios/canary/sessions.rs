@@ -5,8 +5,6 @@ use crate::client::{EvalClient, MessageRole, SessionStatus};
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval, validate_response};
 use crate::sse;
 
-// ---------------------------------------------------------------------------
-
 /// Create session → send message → get history → verify consistency
 pub(super) struct SessionCreateSendHistory;
 
@@ -293,5 +291,3 @@ impl Scenario for SessionLargeContextDistillation {
         )
     }
 }
-
-// ---------------------------------------------------------------------------

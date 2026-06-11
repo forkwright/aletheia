@@ -24,10 +24,6 @@ pub(crate) fn deserialize_value<T: serde::de::DeserializeOwned>(value: &[u8]) ->
     })
 }
 
-// ---------------------------------------------------------------------------
-// Generic prefix scan
-// ---------------------------------------------------------------------------
-
 /// Scan a fjall keyspace by prefix, deserializing each value and collecting
 /// results that pass an optional filter.
 ///
@@ -64,10 +60,6 @@ fn prefix_scan<T: serde::de::DeserializeOwned>(
     }
     Ok(results)
 }
-
-// ---------------------------------------------------------------------------
-// Query functions
-// ---------------------------------------------------------------------------
 
 /// Collect all sessions for a given dispatch via prefix scan.
 #[cfg(feature = "storage-fjall")]

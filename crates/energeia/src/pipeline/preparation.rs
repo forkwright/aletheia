@@ -29,8 +29,6 @@ impl PipelineStage for PreparationStage {
     async fn run(&self, ctx: &mut PipelineContext) -> Result<(), PipelineError> {
         let t0 = std::time::Instant::now();
 
-        // --- Validate inputs ---
-
         if ctx.prompts.is_empty() {
             return PreflightSnafu {
                 reason: "no prompts to dispatch",
@@ -39,13 +37,9 @@ impl PipelineStage for PreparationStage {
             .context(StageSnafu { stage: self.name() });
         }
 
-        // --- Assign dispatch ID and record start time ---
-
         ctx.dispatch_id = koina::ulid::Ulid::new().to_string();
         ctx.start = std::time::Instant::now();
         ctx.start_ts = jiff::Timestamp::now();
-
-        // --- Build DAG and compute frontier ---
 
         let dag =
             crate::prompt::build_dag(&ctx.prompts).context(StageSnafu { stage: self.name() })?;
@@ -67,20 +61,16 @@ impl PipelineStage for PreparationStage {
             "starting dispatch"
         );
 
-        // --- Build prompt lookup ---
-
         ctx.prompt_map = ctx
             .prompts
             .iter()
             .map(|p| (p.number, p.clone()))
             .collect::<HashMap<_, _>>();
 
-        // --- Build prompt cache components ---
-        //
-        // When role or standards are configured, split each prompt into a
-        // static prefix (cacheable across dispatches) and dynamic suffix
-        // (per-dispatch state). This enables prompt cache hits at the LLM
-        // boundary when dispatched through hermeneus.
+        // WHY: When role or standards are configured, each prompt is split into
+        // a static prefix (cacheable across dispatches) and dynamic suffix
+        // (per-dispatch state), enabling prompt cache hits at the LLM boundary
+        // when dispatched through hermeneus.
 
         let cfg = &ctx.config;
         let should_split = cfg.role.is_some()
@@ -100,15 +90,12 @@ impl PipelineStage for PreparationStage {
                 );
                 prompt.prompt_components = Some(components);
             }
-            // Sync prompt_map with updated prompts.
             ctx.prompt_map = ctx
                 .prompts
                 .iter()
                 .map(|p| (p.number, p.clone()))
                 .collect::<HashMap<_, _>>();
         }
-
-        // --- Budget and cancellation ---
 
         ctx.budget = Some(Arc::new(Budget::new(
             cfg.default_budget_usd,
@@ -135,8 +122,6 @@ impl PipelineStage for PreparationStage {
                 .map_or(cfg.max_concurrent, |p| p.min(cfg.max_concurrent)),
         )
         .unwrap_or(usize::MAX);
-
-        // --- Create dispatch record ---
 
         #[cfg(feature = "storage-fjall")]
         {

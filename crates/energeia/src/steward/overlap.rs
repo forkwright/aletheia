@@ -31,7 +31,6 @@ pub fn compute_merge_order(prs: &[ClassifiedPr]) -> Vec<Vec<u64>> {
         return Vec::new();
     }
 
-    // NOTE: Step 1 -- build the conflict graph as an adjacency list.
     let pr_numbers: Vec<u64> = prs.iter().map(|p| p.pr.number).collect();
     let mut conflicts: HashMap<u64, HashSet<u64>> = HashMap::new();
 
@@ -53,8 +52,8 @@ pub fn compute_merge_order(prs: &[ClassifiedPr]) -> Vec<Vec<u64>> {
         }
     }
 
-    // NOTE: Step 2 -- greedy graph coloring. PRs with fewer conflicts first
-    // (least overlap first) to minimize the number of groups.
+    // WHY: Greedy coloring visits least-conflicted PRs first to minimize
+    // the number of groups.
     let mut sorted_prs: Vec<u64> = pr_numbers;
     sorted_prs.sort_by_key(|n| {
         let conflict_count = conflicts.get(n).map_or(0, HashSet::len);
@@ -68,7 +67,6 @@ pub fn compute_merge_order(prs: &[ClassifiedPr]) -> Vec<Vec<u64>> {
     let mut num_groups: usize = 0;
 
     for &pr_num in &sorted_prs {
-        // NOTE: Find the smallest color not used by any neighbor.
         let neighbor_colors: HashSet<usize> = conflicts
             .get(&pr_num)
             .map(|neighbors| {
@@ -91,7 +89,6 @@ pub fn compute_merge_order(prs: &[ClassifiedPr]) -> Vec<Vec<u64>> {
         }
     }
 
-    // NOTE: Step 3 -- collect PR numbers into groups by color.
     let mut groups: Vec<Vec<u64>> = vec![Vec::new(); num_groups];
     for &pr_num in &sorted_prs {
         if let Some(&color) = colors.get(&pr_num)
@@ -101,12 +98,10 @@ pub fn compute_merge_order(prs: &[ClassifiedPr]) -> Vec<Vec<u64>> {
         }
     }
 
-    // NOTE: Sort within each group for deterministic output.
     for group in &mut groups {
         group.sort_unstable();
     }
 
-    // NOTE: Remove empty groups (shouldn't happen, but defensive).
     groups.retain(|g| !g.is_empty());
 
     groups
@@ -123,7 +118,6 @@ pub fn file_overlap(a: &ClassifiedPr, b: &ClassifiedPr) -> Vec<String> {
         .map(|s| (*s).to_string())
         .collect();
 
-    // NOTE: Sort for deterministic output.
     overlap.sort();
 
     overlap
@@ -230,7 +224,6 @@ mod tests {
 
         // WHY: All PRs overlap, so each must be in its own group.
         assert_eq!(groups.len(), 3);
-        // NOTE: Each group should contain exactly one PR.
         let total: usize = groups.iter().map(std::vec::Vec::len).sum();
         assert_eq!(total, 3);
     }
@@ -250,12 +243,10 @@ mod tests {
         // NOTE: PR 3 can go with either 1 or 2 (no overlap), but 1 and 2 must be separate.
         assert!(groups.len() >= 2);
 
-        // NOTE: Verify that 1 and 2 are never in the same group.
         for group in &groups {
             assert!(!(group.contains(&1) && group.contains(&2)));
         }
 
-        // NOTE: Verify all PRs are present.
         let all_prs: Vec<u64> = groups.iter().flat_map(|g| g.iter().copied()).collect();
         assert!(all_prs.contains(&1));
         assert!(all_prs.contains(&2));

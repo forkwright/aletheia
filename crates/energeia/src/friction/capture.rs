@@ -55,10 +55,6 @@ pub fn parse_pr_body(text: &str) -> Vec<Observation> {
         .collect()
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
 /// Locate the `## Observations` section and return its body
 /// (everything after the heading up to the next `## ` heading or EOF).
 fn extract_observations_section(text: &str) -> Option<String> {
@@ -144,11 +140,9 @@ fn parse_observation_block(block: &str) -> Option<Observation> {
         }
     }
 
-    // Trim trailing blank lines from body.
     while body_lines.last().is_some_and(|l| l.trim().is_empty()) {
         body_lines.pop();
     }
-    // Trim leading blank lines from body.
     while body_lines.first().is_some_and(|l| l.trim().is_empty()) {
         body_lines.remove(0);
     }
@@ -173,10 +167,6 @@ fn parse_files(text: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .collect()
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::indexing_slicing, reason = "test assertions over fixture data")]

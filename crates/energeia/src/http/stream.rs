@@ -12,10 +12,6 @@ use tokio::process::ChildStdout;
 
 use crate::engine::SessionEvent;
 
-// ---------------------------------------------------------------------------
-// Wire protocol types (NDJSON from claude CLI)
-// ---------------------------------------------------------------------------
-
 /// Top-level NDJSON message from `claude --output-format stream-json`.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
@@ -123,10 +119,6 @@ pub(crate) struct ResultMessage {
     #[serde(default)]
     pub(crate) duration_ms: u64,
 }
-
-// ---------------------------------------------------------------------------
-// Event stream
-// ---------------------------------------------------------------------------
 
 /// Parsed NDJSON stream that yields [`SessionEvent`] values.
 ///
@@ -259,10 +251,6 @@ impl EventStream {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(
@@ -580,7 +568,7 @@ mod tests {
         assert!(e3.is_none());
     }
 
-    // -- helpers --
+    // ── helpers ──
 
     /// Create an empty `ChildStdout` for synchronous tests that only exercise
     /// `map_content_blocks` (never actually read from the stream).

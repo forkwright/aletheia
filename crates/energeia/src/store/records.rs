@@ -9,10 +9,6 @@ use koina::newtype_id;
 
 use crate::types::{QaVerdict, SessionStatus};
 
-// ---------------------------------------------------------------------------
-// Domain IDs
-// ---------------------------------------------------------------------------
-
 newtype_id!(
     /// Unique identifier for a dispatch run (ULID, time-sortable).
     pub struct DispatchId(String)
@@ -22,10 +18,6 @@ newtype_id!(
     /// Unique identifier for a session within a dispatch (ULID, time-sortable).
     pub struct SessionId(String)
 );
-
-// ---------------------------------------------------------------------------
-// Dispatch
-// ---------------------------------------------------------------------------
 
 /// Persistent state of a dispatch lifecycle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,10 +61,6 @@ impl std::fmt::Display for DispatchStatus {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Session
-// ---------------------------------------------------------------------------
 
 /// Persistent state of a single session within a dispatch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,10 +110,6 @@ pub struct SessionUpdate {
     pub error: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// Lesson
-// ---------------------------------------------------------------------------
-
 /// A lesson learned from dispatch execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LessonRecord {
@@ -162,10 +146,6 @@ pub struct NewLesson {
     pub prompt_number: Option<u32>,
 }
 
-// ---------------------------------------------------------------------------
-// Observation
-// ---------------------------------------------------------------------------
-
 /// An observation captured during dispatch execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservationRecord {
@@ -201,10 +181,6 @@ pub struct NewObservation {
     pub session_id: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// CI Validation
-// ---------------------------------------------------------------------------
-
 /// Result of a CI validation check against a session's PR.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CiValidationRecord {
@@ -232,10 +208,6 @@ pub enum CiValidationStatus {
     Fail,
 }
 
-// ---------------------------------------------------------------------------
-// QA Verdict
-// ---------------------------------------------------------------------------
-
 /// Persisted QA verdict emitted during dispatch post-processing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QaVerdictRecord {
@@ -257,10 +229,6 @@ impl std::fmt::Display for CiValidationStatus {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Training data
-// ---------------------------------------------------------------------------
 
 /// Outcome summary for training data extraction from a session.
 #[derive(Debug, Clone, Serialize, Deserialize)]

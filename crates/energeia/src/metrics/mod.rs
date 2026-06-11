@@ -42,10 +42,6 @@ pub use cost::{CostReport, DailyVelocity, ProjectCost};
 pub use health::{HealthMetric, HealthReport, HealthStatus};
 pub use status::{ProjectSummary, RecentOutcome, StatusDashboard};
 
-// ---------------------------------------------------------------------------
-// MetricsService
-// ---------------------------------------------------------------------------
-
 /// Entry point for energeia metrics reporting.
 ///
 /// Wraps an `Arc<EnergeiaStore>` and provides read-only access to health
@@ -106,10 +102,6 @@ impl std::fmt::Debug for MetricsService {
         f.debug_struct("MetricsService").finish_non_exhaustive()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[cfg(feature = "storage-fjall")]

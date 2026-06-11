@@ -78,7 +78,6 @@ pub fn fdr_correct(p_values: &[f64], method: FdrMethod) -> Result<Vec<f64>, Erro
         }
     };
 
-    // Sort (original_index, p_value) ascending by p-value
     let mut indexed: Vec<(usize, f64)> = p_values.iter().copied().enumerate().collect();
     indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 

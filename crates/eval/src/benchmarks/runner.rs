@@ -152,7 +152,6 @@ impl BenchmarkRunner {
 
         let score = score_answer(&answer, &question.expected_answers);
 
-        // Optional LLM-as-judge evaluation.
         let judge_score = if let Some(ref config) = self.config.judge {
             let judge = judge::LlmJudge::new(config.clone());
             let expected = question.expected_answers.first().map_or("", String::as_str);
@@ -167,7 +166,6 @@ impl BenchmarkRunner {
             None
         };
 
-        // Optional retrieval metrics.
         let (retrieved_facts, recall_at_k, ndcg_at_k) = if let Some(k) = self.config.retrieval_k {
             match self
                 .client
@@ -212,14 +210,12 @@ impl BenchmarkRunner {
         question: &BenchmarkQuestion,
         session_key: &str,
     ) -> Result<String> {
-        // Create a fresh session for this question.
         let session = self
             .client
             .create_session(&self.config.nous_id, session_key)
             .await?;
         let session_id = session.id;
 
-        // Ingest every user turn from every haystack session as a message.
         // WHY: we only replay user turns — the assistant's historical responses
         // would contaminate the answer signal. The memory pipeline sees the
         // user facts and extracts them.
@@ -231,23 +227,20 @@ impl BenchmarkRunner {
                 if content.trim().is_empty() {
                     continue;
                 }
-                // Ignore per-turn errors — the assistant may refuse or hit
-                // rate limits; we still want to ask the question at the end.
+                // WHY: Per-turn errors are best-effort ignored — the assistant may
+                // refuse or hit rate limits; the final question must still be asked.
                 // kanon:ignore RUST/no-silent-result-swallow — per-turn ingestion errors are intentionally best-effort
                 let _ = self.client.send_message(&session_id, content).await;
             }
         }
 
-        // Ask the question.
         let events = self
             .client
             .send_message(&session_id, &question.question)
             .await?;
 
-        // Extract the concatenated text response.
         let answer = crate::sse::extract_text(&events);
 
-        // Optionally close the session to reset for the next question.
         if self.config.close_between_questions {
             // kanon:ignore RUST/no-silent-result-swallow — session close is best-effort cleanup between benchmark questions
             let _ = self.client.close_session(&session_id).await;
@@ -300,7 +293,7 @@ mod tests {
 
     #[test]
     fn role_is_user_accepts_locomo_speaker_labels() {
-        // LoCoMo uses speaker labels instead of roles
+        // NOTE: LoCoMo uses speaker labels instead of roles.
         assert!(role_is_user("Alice"));
         assert!(role_is_user("Bob"));
         assert!(role_is_user("Charlie"));
@@ -324,7 +317,7 @@ mod tests {
             max_questions: Some(3),
             ..Default::default()
         };
-        // Simulate the `.take(limit)` pattern the runner uses
+        // NOTE: Simulates the `.take(limit)` pattern the runner uses.
         let items: Vec<i32> = (0..10).collect();
         let taken: Vec<_> = items
             .iter()

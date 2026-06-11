@@ -9,10 +9,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::engine::{SessionEvent, SessionHandle};
 
-// ---------------------------------------------------------------------------
-// EventAccumulator
-// ---------------------------------------------------------------------------
-
 /// Accumulated metrics from processing a session's event stream.
 #[derive(Debug, Clone)]
 pub(crate) struct EventAccumulator {
@@ -34,10 +30,6 @@ impl EventAccumulator {
     }
 }
 
-// ---------------------------------------------------------------------------
-// StreamOutcome — how the event stream terminated
-// ---------------------------------------------------------------------------
-
 /// How the session's event stream terminated.
 #[derive(Debug)]
 pub(crate) enum StreamOutcome {
@@ -56,10 +48,6 @@ pub(crate) enum StreamOutcome {
     /// Dispatch cancellation was requested.
     Cancelled { accumulator: EventAccumulator },
 }
-
-// ---------------------------------------------------------------------------
-// process_events
-// ---------------------------------------------------------------------------
 
 /// Drain the event stream from a session handle, accumulating metrics.
 ///
@@ -131,7 +119,6 @@ pub(crate) async fn process_events(
         };
 
         let Some(event) = event else {
-            // Stream exhausted — session complete.
             return StreamOutcome::Complete(acc);
         };
 
@@ -158,10 +145,6 @@ pub(crate) async fn process_events(
     }
 }
 
-// ---------------------------------------------------------------------------
-// PR URL extraction
-// ---------------------------------------------------------------------------
-
 /// Extract a `GitHub` pull request URL from text.
 ///
 /// Matches `https://github.com/{owner}/{repo}/pull/{number}` patterns.
@@ -177,14 +160,12 @@ pub fn extract_pr_url(text: &str) -> Option<&str> {
         let abs_start = search_from + start;
         let rest = text.get(abs_start..)?;
 
-        // NOTE: Find the end of the URL (whitespace, quote, paren, or end of string).
         let end = rest
             .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ')' | '>' | ']'))
             .unwrap_or(rest.len());
 
         let candidate = rest.get(..end)?;
 
-        // NOTE: Validate it contains /pull/ followed by digits.
         if let Some(pull_pos) = candidate.find("/pull/") {
             let after_pull = candidate.get(pull_pos + "/pull/".len()..)?;
             if !after_pull.is_empty() && after_pull.chars().all(|c| c.is_ascii_digit()) {
@@ -206,8 +187,6 @@ pub fn extract_pr_url(text: &str) -> Option<&str> {
 ///
 /// NOTE: Will be consumed by the session manager once `SessionEvent` gains a
 /// rate-limit variant (pending Agent SDK integration).
-// NOTE: Will be consumed by the session manager once `SessionEvent` gains a
-// rate-limit variant (pending Agent SDK integration). Used in tests only for now.
 #[cfg_attr(
     not(test),
     expect(
@@ -217,10 +196,6 @@ pub fn extract_pr_url(text: &str) -> Option<&str> {
 )]
 pub(crate) const RATE_LIMIT_ABORT_THRESHOLD: f64 = 0.98;
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
@@ -229,7 +204,7 @@ mod tests {
     use crate::engine::{AgentOptions, SessionResult, SessionSpec};
     use crate::http::mock::{MockEngine, MockOutcome};
 
-    // ---- PR URL extraction ----
+    // ── PR URL extraction ──
 
     #[test]
     fn extract_pr_url_from_text() {
@@ -293,14 +268,12 @@ mod tests {
         );
     }
 
-    // ---- Rate limit threshold ----
-
     #[test]
     fn rate_limit_threshold_value() {
         assert!((RATE_LIMIT_ABORT_THRESHOLD - 0.98).abs() < f64::EPSILON);
     }
 
-    // ---- Event processing ----
+    // ── Event processing ──
 
     fn make_result(session_id: &str, success: bool) -> SessionResult {
         SessionResult {

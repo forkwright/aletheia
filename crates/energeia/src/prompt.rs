@@ -135,7 +135,6 @@ fn parse_prompt_str(raw: &str, path: &Path) -> Result<PromptSpec> {
         .fail();
     };
 
-    // NOTE: Find the closing `---` delimiter.
     let Some(close_pos) = after_open.find("\n---\n") else {
         return FrontmatterParseSnafu {
             path: path.to_owned(),
@@ -235,8 +234,7 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
             }
             .fail();
         }
-        // NOTE: Duplicate numbers in the prompt set are not expected; treat as
-        // a configuration error.
+        // WHY: Duplicate numbers in the prompt set are a configuration error.
         dag.add_node_with_context_policy(
             spec.number,
             spec.depends_on.clone(),
@@ -276,7 +274,8 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
         .build(),
     })?;
 
-    // NOTE: Set initial statuses: prompts with no in-queue deps are Ready.
+    // WHY: Deps outside the queue count as satisfied -- only in-queue deps
+    // block readiness.
     let all_numbers: std::collections::HashSet<u32> = prompts.iter().map(|s| s.number).collect();
     for spec in prompts {
         let initial = if spec.depends_on.is_empty()
@@ -286,7 +285,6 @@ pub fn build_dag(prompts: &[PromptSpec]) -> Result<PromptDag> {
         } else {
             PromptStatus::Blocked
         };
-        // NOTE: All nodes were just added above; set_status cannot fail here.
         // kanon:ignore RUST/no-silent-result-swallow — all nodes were just added above; set_status on a known-existing node is infallible
         let _ = dag.set_status(spec.number, initial);
     }
@@ -336,9 +334,7 @@ blast_radius:
 # Full task body
 ";
 
-    // -------------------------------------------------------------------------
-    // load_prompt tests
-    // -------------------------------------------------------------------------
+    // ── load_prompt tests ──
 
     #[test]
     fn load_minimal_prompt() {
@@ -491,9 +487,7 @@ body
         assert!(matches!(err, Error::Io { .. }));
     }
 
-    // -------------------------------------------------------------------------
-    // load_queue tests
-    // -------------------------------------------------------------------------
+    // ── load_queue tests ──
 
     #[test]
     fn load_queue_returns_sorted_by_number() {
@@ -528,9 +522,7 @@ body
         assert!(specs.is_empty());
     }
 
-    // -------------------------------------------------------------------------
-    // build_dag tests
-    // -------------------------------------------------------------------------
+    // ── build_dag tests ──
 
     fn spec(number: u32, depends_on: Vec<u32>) -> PromptSpec {
         PromptSpec {

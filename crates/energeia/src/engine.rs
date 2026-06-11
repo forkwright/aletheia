@@ -12,10 +12,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 
-// ---------------------------------------------------------------------------
-// DispatchEngine trait
-// ---------------------------------------------------------------------------
-
 /// Core abstraction over session execution backends.
 ///
 /// Targets the Anthropic Agent SDK HTTP/SSE API. Production implementations
@@ -52,10 +48,6 @@ pub trait DispatchEngine: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<Box<dyn SessionHandle>>> + Send + 'a>>;
 }
 
-// ---------------------------------------------------------------------------
-// SessionHandle trait
-// ---------------------------------------------------------------------------
-
 /// Handle to a running or completed agent session.
 ///
 /// Provides an event stream for observing session progress, plus control
@@ -78,9 +70,7 @@ pub trait SessionHandle: Send {
     fn abort<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 }
 
-// ---------------------------------------------------------------------------
-// Session types
-// ---------------------------------------------------------------------------
+// ── Session types ──
 
 /// Specification for spawning a new agent session.
 #[derive(Debug, Clone, Serialize, Deserialize)]

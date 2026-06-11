@@ -15,10 +15,6 @@ use crate::pipeline::PipelineStage;
 use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::{PipelineError, StageSnafu};
 
-// ---------------------------------------------------------------------------
-// HealthCheckStage
-// ---------------------------------------------------------------------------
-
 /// Health-check stage: probe the target LLM backend before execution.
 ///
 /// Runs between preparation and execution. If `ctx.health_endpoint` is `None`,
@@ -87,7 +83,6 @@ impl PipelineStage for HealthCheckStage {
                     "health_check: primary probe failed (transient), trying fallback"
                 );
 
-                // Try fallback if configured.
                 let Some(ref fallback) = ctx.fallback_health_endpoint.clone() else {
                     let err = EngineSnafu {
                         detail: format!(
@@ -136,10 +131,6 @@ impl PipelineStage for HealthCheckStage {
         result
     }
 }
-
-// ---------------------------------------------------------------------------
-// Internal probe helpers
-// ---------------------------------------------------------------------------
 
 /// Outcome of a single HTTP probe.
 enum ProbeOutcome {
@@ -192,10 +183,6 @@ async fn probe(client: &reqwest::Client, url: &str) -> ProbeOutcome {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
@@ -220,9 +207,7 @@ mod tests {
 
     use super::HealthCheckStage;
 
-    // ---------------------------------------------------------------------------
-    // Test helpers
-    // ---------------------------------------------------------------------------
+    // ── Test helpers ──
 
     struct AlwaysPassQa;
 
@@ -372,20 +357,12 @@ mod tests {
         )
     }
 
-    // ---------------------------------------------------------------------------
-    // Shared TLS provider initialiser
-    // ---------------------------------------------------------------------------
-
     fn init_tls() {
         // WHY: reqwest uses rustls-no-provider; tests must install a crypto
         // provider before the first HTTPS request. Ignoring the error is safe —
         // it means the provider was already installed (e.g. by a parallel test).
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
-
-    // ---------------------------------------------------------------------------
-    // Happy-path probe succeeds
-    // ---------------------------------------------------------------------------
 
     #[tokio::test]
     async fn probe_success_records_latency() {
@@ -414,10 +391,6 @@ mod tests {
             "latency should be recorded on success"
         );
     }
-
-    // ---------------------------------------------------------------------------
-    // 5xx retries once, falls over to fallback
-    // ---------------------------------------------------------------------------
 
     #[tokio::test]
     async fn transient_5xx_retries_fallback() {
@@ -455,10 +428,6 @@ mod tests {
         assert!(ctx.health_probe_latency_ms.is_some());
     }
 
-    // ---------------------------------------------------------------------------
-    // Timeout fails if no fallback configured
-    // ---------------------------------------------------------------------------
-
     #[tokio::test]
     async fn timeout_fails_without_fallback() {
         init_tls();
@@ -484,10 +453,6 @@ mod tests {
             "stage name in error: {err}"
         );
     }
-
-    // ---------------------------------------------------------------------------
-    // Timeout succeeds with fallback
-    // ---------------------------------------------------------------------------
 
     #[tokio::test]
     async fn timeout_succeeds_with_fallback() {
@@ -522,10 +487,6 @@ mod tests {
         assert!(ctx.health_probe_latency_ms.is_some());
     }
 
-    // ---------------------------------------------------------------------------
-    // 4xx fails immediately (no retry)
-    // ---------------------------------------------------------------------------
-
     #[tokio::test]
     async fn permanent_4xx_fails_immediately() {
         init_tls();
@@ -559,10 +520,6 @@ mod tests {
         // Verify wiremock received exactly 1 request (no retry).
         server.verify().await;
     }
-
-    // ---------------------------------------------------------------------------
-    // Skips gracefully when no endpoint configured
-    // ---------------------------------------------------------------------------
 
     #[tokio::test]
     async fn skips_when_no_endpoint_configured() {

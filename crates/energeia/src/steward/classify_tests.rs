@@ -191,9 +191,7 @@ fn extract_prompt_number_from_text_variants() {
     assert_eq!(extract_prompt_number_from_text("no number here"), None);
 }
 
-// -----------------------------------------------------------------------
-// Gate trailer CI override tests
-// -----------------------------------------------------------------------
+// ── Gate trailer CI override tests ──
 
 #[test]
 fn gate_trailer_overrides_unknown() {
@@ -259,9 +257,7 @@ fn no_trailer_preserves_ci_status() {
     );
 }
 
-// -----------------------------------------------------------------------
-// Structural suppression detection tests
-// -----------------------------------------------------------------------
+// ── Structural suppression detection tests ──
 
 #[test]
 fn suppression_detects_allow_attribute() {
@@ -408,9 +404,7 @@ fn suppression_handles_single_quotes_in_reason() {
     );
 }
 
-// -----------------------------------------------------------------------
-// cfg_attr detection tests
-// -----------------------------------------------------------------------
+// ── cfg_attr detection tests ──
 
 #[test]
 fn suppression_detects_cfg_attr_allow() {
@@ -453,9 +447,7 @@ fn suppression_detects_cfg_attr_clippy() {
     );
 }
 
-// -----------------------------------------------------------------------
-// lint-ignore file detection tests
-// -----------------------------------------------------------------------
+// ── lint-ignore file detection tests ──
 
 #[test]
 fn suppression_detects_lint_ignore_file_addition() {
@@ -498,9 +490,7 @@ fn suppression_ignores_comments_in_lint_ignore() {
     );
 }
 
-// -----------------------------------------------------------------------
-// lint-ignore inline comment detection tests
-// -----------------------------------------------------------------------
+// ── lint-ignore inline comment detection tests ──
 
 #[test]
 fn suppression_detects_lint_ignore_inline() {
@@ -519,9 +509,7 @@ fn suppression_detects_lint_ignore_inline() {
     assert_eq!(findings.first().cloned().unwrap().file, "src/lib.rs");
 }
 
-// -----------------------------------------------------------------------
-// SAFETY/INVARIANT comment bypass detection tests
-// -----------------------------------------------------------------------
+// ── SAFETY/INVARIANT comment bypass detection tests ──
 
 #[test]
 fn suppression_detects_safety_comment() {
@@ -576,9 +564,7 @@ fn suppression_skips_safety_in_test_files() {
     assert!(findings.is_empty());
 }
 
-// -----------------------------------------------------------------------
-// Combined pattern detection tests
-// -----------------------------------------------------------------------
+// ── Combined pattern detection tests ──
 
 #[test]
 fn suppression_detects_all_patterns_in_single_diff() {
@@ -619,9 +605,7 @@ fn suppression_detects_all_patterns_in_single_diff() {
     );
 }
 
-// -----------------------------------------------------------------------
-// QA verdict extraction tests
-// -----------------------------------------------------------------------
+// ── QA verdict extraction tests ──
 
 #[test]
 fn extract_qa_verdict_machine_readable_pass() {
@@ -679,9 +663,7 @@ fn extract_qa_verdict_none_when_body_is_none() {
     assert_eq!(extract_qa_verdict_from_body(None), None);
 }
 
-// -----------------------------------------------------------------------
-// Hunk header parsing tests
-// -----------------------------------------------------------------------
+// ── Hunk header parsing tests ──
 
 #[test]
 fn parse_hunk_new_start_normal() {
