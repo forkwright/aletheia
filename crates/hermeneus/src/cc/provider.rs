@@ -54,7 +54,7 @@ impl Default for CcProviderConfig {
     fn default() -> Self {
         Self {
             cc_binary: None,
-            default_model: "claude-opus-4-6".to_owned(),
+            default_model: crate::models::names::OPUS.to_owned(),
             timeout: Duration::from_mins(5),
         }
     }
@@ -463,7 +463,7 @@ mod tests {
     fn cc_provider_reports_cloud_deployment_target() {
         let provider = CcProvider {
             cc_binary: PathBuf::from("claude"),
-            default_model: "claude-opus-4-6".to_owned(),
+            default_model: crate::models::names::OPUS.to_owned(),
             timeout: Duration::from_secs(1),
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
@@ -473,7 +473,7 @@ mod tests {
     fn seat_bridged_fields() {
         let provider = CcProvider {
             cc_binary: PathBuf::from("/usr/local/bin/claude"),
-            default_model: "claude-opus-4-6".to_owned(),
+            default_model: crate::models::names::OPUS.to_owned(),
             timeout: Duration::from_mins(5),
         };
         assert_eq!(

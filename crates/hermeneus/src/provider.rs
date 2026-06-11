@@ -274,21 +274,22 @@ impl std::fmt::Debug for ProviderConfig {
 
 impl Default for ProviderConfig {
     fn default() -> Self {
-        // NOTE: Built-in pricing for first-party Anthropic models (USD per million tokens);
-        // operator configs merge on top, so these act as fallbacks.
+        // NOTE: Built-in pricing for all first-party Anthropic models (USD per million tokens).
+        // Operator configs are merged on top, so these act as sensible fallbacks.
+        // Prices last verified against https://www.anthropic.com/pricing (2026-06-11).
         let pricing = HashMap::from([
             (
                 "claude-opus-4-6".to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 15.0,
-                    output_cost_per_mtok: 75.0,
+                    input_cost_per_mtok: 5.0,
+                    output_cost_per_mtok: 25.0,
                 },
             ),
             (
                 "claude-opus-4-20250514".to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 15.0,
-                    output_cost_per_mtok: 75.0,
+                    input_cost_per_mtok: 5.0,
+                    output_cost_per_mtok: 25.0,
                 },
             ),
             (
@@ -308,15 +309,15 @@ impl Default for ProviderConfig {
             (
                 "claude-haiku-4-5".to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 0.8,
-                    output_cost_per_mtok: 4.0,
+                    input_cost_per_mtok: 1.0,
+                    output_cost_per_mtok: 5.0,
                 },
             ),
             (
                 "claude-haiku-4-5-20251001".to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 0.8,
-                    output_cost_per_mtok: 4.0,
+                    input_cost_per_mtok: 1.0,
+                    output_cost_per_mtok: 5.0,
                 },
             ),
         ]);
@@ -324,13 +325,16 @@ impl Default for ProviderConfig {
             provider_type: "anthropic".to_owned(),
             api_key: None,
             base_url: None,
-            default_model: Some("claude-opus-4-20250514".to_owned()),
+            default_model: Some(crate::models::names::OPUS.to_owned()),
             max_retries: Some(3),
             pricing,
             cc_mimicry: None,
             prompt_cache_mode: PromptCacheMode::Disabled,
-            // WHY(#3404, #3413): Anthropic is cloud-only here, so only `Public`
-            // facts may be sent unless the operator overrides the boundary.
+            // WHY (#3404, #3413): Anthropic is a cloud provider — only
+            // `Public`-classified facts may be sent. Operators running a
+            // self-hosted proxy or embedded model MUST override this in
+            // `aletheia.toml` so the recall filter lets `Internal` /
+            // `Confidential` facts through to the non-cloud boundary.
             deployment_target: DeploymentTarget::Cloud,
             name: None,
             models: Vec::new(),
@@ -404,9 +408,18 @@ impl ProviderRegistry {
     ///
     /// # Selection contract
     ///
-    /// WHY: specificity beats registration order so overlapping providers route
-    /// deterministically; exact matches win over broad family matches, and ties
-    /// fall back to first-registered wins.
+    /// WHY: a first-match linear scan over registration order is
+    /// non-deterministic when multiple providers claim overlapping model IDs
+    /// (e.g. `CcProvider` accepts all `claude-*` via a broad family pattern,
+    /// while `AnthropicProvider` lists exact model IDs). Registration order is
+    /// an incidental artifact of startup sequencing, not an intentful
+    /// contract. Specificity-based selection makes routing deterministic and
+    /// intent-driven: a provider that names the model explicitly
+    /// (`MatchKind::Exact`) always wins over one that matches by a broad
+    /// family pattern (`MatchKind::CatchAll`), regardless of which was
+    /// registered first. When multiple providers share the same specificity
+    /// level the tie is broken by registration order (first registered wins),
+    /// which is a stable, auditable contract.
     ///
     /// # Complexity
     ///
@@ -559,7 +572,7 @@ mod tests {
 
     #[test]
     fn provider_config_deployment_target_defaults_to_cloud() {
-        // WHY(#3404, #3413): the safe default — any unconfigured provider
+        // WHY (#3404, #3413): the safe default — any unconfigured provider
         // is treated as a cloud target so the sovereignty filter only
         // admits `Public` facts until the operator explicitly opts in to a
         // lower-trust boundary.
@@ -589,7 +602,7 @@ mod tests {
         assert_eq!(config.provider_type, "anthropic");
         assert_eq!(
             config.default_model.as_deref(),
-            Some("claude-opus-4-20250514")
+            Some(crate::models::names::OPUS)
         );
         // WHY: Default pricing must cover the models used by background tasks.
         assert!(
@@ -602,11 +615,11 @@ mod tests {
         );
         let haiku = &config.pricing["claude-haiku-4-5-20251001"];
         assert!(
-            (haiku.input_cost_per_mtok - 0.8).abs() < f64::EPSILON,
+            (haiku.input_cost_per_mtok - 1.0).abs() < f64::EPSILON,
             "unexpected haiku input price"
         );
         assert!(
-            (haiku.output_cost_per_mtok - 4.0).abs() < f64::EPSILON,
+            (haiku.output_cost_per_mtok - 5.0).abs() < f64::EPSILON,
             "unexpected haiku output price"
         );
     }
@@ -709,6 +722,8 @@ mod tests {
             "unknown provider must remain absent from health lookup"
         );
     }
+
+    // --- Specificity-based routing tests ---
 
     #[test]
     fn match_kind_ordering() {

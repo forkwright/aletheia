@@ -490,14 +490,14 @@ fn estimate_cost_haiku_family_resolution() {
     pricing.insert(
         "claude-haiku-4-5".to_owned(),
         ModelPricing {
-            input_cost_per_mtok: 0.8,
-            output_cost_per_mtok: 4.0,
+            input_cost_per_mtok: 1.0,
+            output_cost_per_mtok: 5.0,
         },
     );
     let cost = estimate_cost(&pricing, "claude-haiku-4-5-20251001", 0, 1_000_000);
     assert!(
-        (cost - 4.0).abs() < 0.0001,
-        "expected ~$4.00 via family resolution, got {cost}"
+        (cost - 5.0).abs() < 0.0001,
+        "expected ~$5.00 via family resolution, got {cost}"
     );
 }
 
@@ -510,8 +510,8 @@ fn estimate_cost_default_pricing_resolves_haiku() {
 
     let cost = estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1_000_000, 1_000_000);
     assert!(
-        (cost - 4.8).abs() < 0.0001,
-        "expected ~$4.80 for haiku from default pricing, got {cost}"
+        (cost - 6.0).abs() < 0.0001,
+        "expected ~$6.00 for haiku from default pricing, got {cost}"
     );
 
     for model in SUPPORTED_MODELS {
@@ -591,12 +591,12 @@ fn merge_pricing_fills_defaults_for_unconfigured_models() {
         .get("claude-haiku-4-5-20251001")
         .expect("haiku pricing must be present from defaults");
     assert!(
-        (haiku.input_cost_per_mtok - 0.8).abs() < f64::EPSILON,
-        "haiku input price should be $0.80/MTok"
+        (haiku.input_cost_per_mtok - 1.0).abs() < f64::EPSILON,
+        "haiku input price should be $1.00/MTok"
     );
     assert!(
-        (haiku.output_cost_per_mtok - 4.0).abs() < f64::EPSILON,
-        "haiku output price should be $4.00/MTok"
+        (haiku.output_cost_per_mtok - 5.0).abs() < f64::EPSILON,
+        "haiku output price should be $5.00/MTok"
     );
 }
 
