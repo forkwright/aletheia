@@ -2,7 +2,17 @@
 
 Operator-side MCP servers that extend an agent's capabilities without modifying the aletheia binary. Aletheia is a 48-crate Rust workspace plus the excluded desktop shell. Coding agents (Claude Code, Cursor, etc.) that only have grep and file reads burn tokens re-discovering structure that a Language Server could answer in one request. The servers below close that gap.
 
-These servers run as **operator-side tooling**, not as part of the aletheia binary. They are registered in the agent's client config (e.g. `~/.claude.json`, `.mcp.json`, or Cursor's `mcp.json`). No aletheia crate depends on them, and they are not wired into the `diaporeia` tool bus. See [Why external, not vendored](#why-external-not-vendored) below.
+These servers run as **operator-side tooling**, not as part of the aletheia binary. They are registered in the agent's client config (e.g. `~/.claude.json`, `.mcp.json`, or Cursor's `mcp.json`). No aletheia crate depends on them, and they are not registered into `organon::registry::ToolRegistry` or served by `DiaporeiaServer`. See [Why external, not vendored](#why-external-not-vendored) below.
+
+## MCP tool planes
+
+| Plane | Who configures it | Hosting process | Owning crate/module |
+|-------|-------------------|-----------------|---------------------|
+| Operator-side MCP servers | The operator configures the agent client (Claude Code, Cursor, Windsurf, etc.) to load servers such as Serena or kanon. | The operator's agent CLI and the external MCP server process; outside the aletheia runtime. | None in aletheia. These tools are not registered into `organon::registry::ToolRegistry` and are not hosted by `DiaporeiaServer`. |
+| Runtime-bridged MCP tools | The deployment configures `[tools]` entries in `aletheia.toml`; MCP entries require the `mcp` feature. | The aletheia runtime connects as an MCP client to configured external MCP servers, discovers `tools/list`, registers discovered tools into `organon::registry::ToolRegistry`, and calls back through MCP `tools/call`. | `crates/aletheia/src/external_tools.rs` owns the bridge; `crates/diaporeia/src/client` provides the MCP client types; `organon` owns in-process dispatch through `ToolRegistry`. |
+| DiaporeiaServer-exposed MCP tools | The deployment configures Aletheia's MCP/gateway settings and external clients connect to Aletheia. | The aletheia process hosts `DiaporeiaServer` over stdio (`aletheia mcp`) or streamable HTTP at `/mcp`. | `crates/diaporeia` owns the exposed server surface through `DiaporeiaServer` and its `rmcp::ToolRouter<Self>`; these tools are intentionally separate from `organon::registry::ToolRegistry`. |
+
+Any new MCP integration must state which plane it lives on before claiming tool availability in the `nous` loop, the Diaporeia server surface, or operator-local agent tooling.
 
 ## Index
 
@@ -111,7 +121,7 @@ An earlier draft of the integrating issue (#3355) proposed wiring Serena into th
 
 - **Lower blast radius.** Zero aletheia crate changes, zero new dependencies in `Cargo.toml`. The server lives outside the Rust workspace.
 - **Upstream stays upstream.** Serena releases often; vendoring would mean tracking their schema and prompts in-tree. Operators get upstream changes via `uv tool upgrade serena-agent` with no aletheia release required.
-- **Agents already have an MCP client.** Claude Code, Cursor, and Windsurf all speak MCP natively. Aletheia's internal `diaporeia` bus is for tools inside the aletheia process (e.g. things the `nous` pipeline calls), not for operator-side coding helpers.
+- **Agents already have an MCP client.** Claude Code, Cursor, and Windsurf all speak MCP natively. Aletheia's internal tool loop uses `organon::registry::ToolRegistry` for tools the `nous` pipeline calls, not for operator-side coding helpers.
 - **Sovereignty path preserved.** If the upstream trajectory diverges from our needs, a Rust-native MCP server wrapping `rust-analyzer` directly can be added under `crates/` later. This is tracked as a follow-up (see PR body for #3355).
 
 ## See also

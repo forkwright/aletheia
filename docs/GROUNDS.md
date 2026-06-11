@@ -83,8 +83,8 @@ An abstraction with only one creation path is a mesh with a single root. If that
 2. **Thesauros domain packs** - `crates/aletheia/src/runtime/mod.rs:358`
    `thesauros::tools::register_pack_tools` validates pack manifest tool definitions and registers them into the same `ToolRegistry`.
 
-3. **External tools config** - `crates/aletheia/src/runtime/mod.rs:366`
-   `external_tools::register_external_tools` reads `config/tools/*.toml` and registers HTTP-proxy tools into the same `ToolRegistry`.
+3. **External tools config** - `crates/aletheia/src/runtime/mod.rs:312`
+   `external_tools::register_external_tools` reads the `[tools]` section from `aletheia.toml` and registers configured HTTP tools, plus MCP tools when the binary is built with MCP support, into the same `ToolRegistry`.
 
 ### Non-equivalent ground
 
@@ -146,6 +146,6 @@ The following abstractions are worth extending because they have exactly one *wo
 1. **Sessions** - add a programmatic creation helper for tests and a `aletheia session-create` CLI subcommand.
 2. **Plans** - wire plan generation into the research output pipeline and add a `Plan::from_template` constructor for iterative planning.
 3. **Agents** - re-implement the fjall-backed agent import/export pipeline (#3446) and add a `POST /api/v1/nous` endpoint.
-4. **Tools (diaporeia)** - decide whether diaporeia MCP tools should be bridged into `organon::ToolRegistry` or documented as an intentionally separate tool plane.
+4. **Tools (diaporeia)** - Diaporeia MCP tools are an intentionally separate tool plane. This preserves the psyche boundary: psyche content remains local-only and does not transit the MCP tool plane.
 
 Follow-up issues have been filed for the three highest-priority single-grounded abstractions.
