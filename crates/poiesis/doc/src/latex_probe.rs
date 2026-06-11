@@ -6,9 +6,13 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use crate::pandoc::PdfEngine;
+use crate::process::{CommandOutputError, output_with_timeout};
 use snafu::Snafu;
+
+const LATEX_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Probe result for a system `LaTeX` engine.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +31,13 @@ pub enum LatexProbe {
         /// Candidate paths that were searched.
         searched: Vec<PathBuf>,
     },
+    /// A candidate engine exceeded its probe deadline.
+    TimedOut {
+        /// Candidate path that timed out.
+        path: PathBuf,
+        /// Timeout in seconds.
+        timeout_secs: u64,
+    },
 }
 
 impl LatexProbe {
@@ -44,6 +55,9 @@ impl LatexProbe {
         match self {
             Self::Present { engine, .. } => Ok(engine),
             Self::Missing { searched } => Err(LatexProbeError::NotInstalled { searched }),
+            Self::TimedOut { path, timeout_secs } => {
+                Err(LatexProbeError::Timeout { path, timeout_secs })
+            }
         }
     }
 
@@ -56,15 +70,19 @@ impl LatexProbe {
     pub(crate) fn check_with<Search, Version>(search: Search, version_source: Version) -> Self
     where
         Search: FnOnce() -> Vec<(PdfEngine, PathBuf)>,
-        Version: Fn(&Path) -> Result<String, String>,
+        Version: Fn(&Path) -> Result<String, ProbeCommandError>,
     {
         let mut searched = Vec::new();
 
         for (engine, path) in search() {
             searched.push(path.clone());
 
-            let Ok(output) = version_source(&path) else {
-                continue;
+            let output = match version_source(&path) {
+                Ok(output) => output,
+                Err(ProbeCommandError::Failed(_detail)) => continue,
+                Err(ProbeCommandError::TimedOut { timeout_secs }) => {
+                    return Self::TimedOut { path, timeout_secs };
+                }
             };
 
             let version = output.lines().next().unwrap_or_default().trim().to_owned();
@@ -96,6 +114,24 @@ pub enum LatexProbeError {
         /// Candidate paths that were searched.
         searched: Vec<PathBuf>,
     },
+
+    /// A candidate `LaTeX` engine probe timed out.
+    #[snafu(display(
+        "latex engine at {} timed out after {timeout_secs}s while probing --version",
+        path.display()
+    ))]
+    Timeout {
+        /// Candidate path that timed out.
+        path: PathBuf,
+        /// Timeout in seconds.
+        timeout_secs: u64,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) enum ProbeCommandError {
+    Failed(String),
+    TimedOut { timeout_secs: u64 },
 }
 
 fn search_latex_candidates() -> Vec<(PdfEngine, PathBuf)> {
@@ -120,14 +156,23 @@ fn search_latex_candidates() -> Vec<(PdfEngine, PathBuf)> {
     candidates
 }
 
-fn real_version_source(path: &Path) -> Result<String, String> {
-    let output = Command::new(path)
-        .arg("--version")
-        .output()
-        .map_err(|e| e.to_string())?;
+fn real_version_source(path: &Path) -> Result<String, ProbeCommandError> {
+    let mut cmd = Command::new(path);
+    cmd.arg("--version");
+    let output = output_with_timeout(&mut cmd, LATEX_PROBE_TIMEOUT).map_err(|err| match err {
+        CommandOutputError::Timeout { timeout, .. } => ProbeCommandError::TimedOut {
+            timeout_secs: timeout.as_secs(),
+        },
+        CommandOutputError::Spawn { source }
+        | CommandOutputError::TempFile { source }
+        | CommandOutputError::Wait { source } => ProbeCommandError::Failed(source.to_string()),
+    })?;
 
     if !output.status.success() {
-        return Err(format!("exit status {}", output.status));
+        return Err(ProbeCommandError::Failed(format!(
+            "exit status {}",
+            output.status
+        )));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
@@ -180,7 +225,7 @@ mod tests {
             },
             |path| {
                 if path == Path::new("/tmp/xelatex") {
-                    Err("broken xelatex".to_owned())
+                    Err(ProbeCommandError::Failed("broken xelatex".to_owned()))
                 } else {
                     Ok("LuaHBTeX, Version 1.18.0 (TeX Live 2023)\n".to_owned())
                 }
@@ -193,6 +238,22 @@ mod tests {
                 engine: PdfEngine::LuaLaTeX,
                 path: PathBuf::from("/tmp/lualatex"),
                 version: "LuaHBTeX, Version 1.18.0 (TeX Live 2023)".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn check_with_returns_timeout_for_hung_version_source() {
+        let probe = LatexProbe::check_with(
+            || vec![(PdfEngine::XeLaTeX, PathBuf::from("/tmp/xelatex"))],
+            |_| Err(ProbeCommandError::TimedOut { timeout_secs: 5 }),
+        );
+
+        assert_eq!(
+            probe,
+            LatexProbe::TimedOut {
+                path: PathBuf::from("/tmp/xelatex"),
+                timeout_secs: 5,
             }
         );
     }

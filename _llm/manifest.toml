@@ -158,7 +158,7 @@ l3_token_estimate = 12375
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "9fd052cef6e161204ff8952d7c8c44215e451a8ba7d2da4889d584f4bbdac3bf"
+source_hash = "3f676cdc0432fce914ab41bcf439f7776c5f53c838cdb4e1129b27679e8bf4e7"
 l3_token_estimate = 11818
 
 [[crates]]
@@ -194,8 +194,8 @@ l3_token_estimate = 446
 [[crates]]
 name = "poiesis-doc"
 path = "crates/poiesis/doc"
-source_hash = "a99e3abbf3dd1fde68be970f2ce28b1ac3d5428fe76c3a22518cbcb0fca1c37c"
-l3_token_estimate = 3417
+source_hash = "677b25fb18c2026b939f8f2b2a99e25189aeca481293c9691301912fd4311a05"
+l3_token_estimate = 3945
 
 [[crates]]
 name = "poiesis-inspect"
@@ -218,8 +218,8 @@ l3_token_estimate = 976
 [[crates]]
 name = "poiesis-printer-chromium"
 path = "crates/poiesis/printer-chromium"
-source_hash = "a88d3d6903f18a19f2f4ae0763014527cf13bfdf863191011bcc9def99c573d9"
-l3_token_estimate = 459
+source_hash = "fa06aa3e9d9cfef4b45af7e4626aaa86484fc54e5522c71eff7fac74f98709f6"
+l3_token_estimate = 631
 
 [[crates]]
 name = "poiesis-scaffold"
@@ -254,8 +254,8 @@ l3_token_estimate = 5254
 [[crates]]
 name = "poiesis-typst"
 path = "crates/poiesis/typst"
-source_hash = "74474a50b19b3b9fd46b46466a9622baab377d4b365b0aa950765b485e189016"
-l3_token_estimate = 398
+source_hash = "bf03aef22aab8f45a90e221ebb5725eb76f370881c99bd92ce87edc19fe1b211"
+l3_token_estimate = 505
 
 [[crates]]
 name = "poiesis-verify"

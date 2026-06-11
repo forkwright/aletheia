@@ -1,6 +1,7 @@
 -- NOTE: apx-figure.lua swaps chart figures to SVG or PNG assets per writer.
 
 local figures_cache = nil
+local svg_counter = 0
 
 local function load_figures()
   if figures_cache ~= nil then
@@ -47,7 +48,10 @@ local function figure_id(img)
 end
 
 local function ensure_svg_file(figure_id_value, svg)
-  local path = os.tmpname() .. "-" .. figure_id_value .. ".svg"
+  svg_counter = svg_counter + 1
+  local tmpdir = os.getenv("APX_TMPDIR") or os.getenv("TMPDIR") or "."
+  local sep = package.config:sub(1, 1)
+  local path = tmpdir .. sep .. figure_id_value .. "-" .. tostring(svg_counter) .. ".svg"
   local handle = assert(io.open(path, "w"))
   handle:write(svg)
   handle:close()

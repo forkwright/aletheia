@@ -137,6 +137,31 @@ async fn render_typst_report_inline_source_returns_document_block() {
     }
 }
 
+#[test]
+fn render_typst_report_schema_matches_executor_inputs() {
+    let def = render_typst_report_def();
+    let schema = def.input_schema.to_json_schema();
+
+    assert_eq!(schema["properties"]["data"]["type"], "object");
+    assert!(
+        schema["properties"]["data"]["description"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("JSON string"),
+        "data schema must document stringified JSON leniency"
+    );
+
+    let enum_values = schema["properties"]["template"]["enum"]
+        .as_array()
+        .expect("template enum values");
+    for slug in poiesis_typst::templates::SLUGS {
+        assert!(
+            enum_values.iter().any(|value| value.as_str() == Some(slug)),
+            "template schema must include {slug}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn render_typst_report_default_template_with_data() {
     let dir = tempfile::tempdir().expect("tmpdir");

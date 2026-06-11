@@ -6,6 +6,7 @@ use std::pin::Pin;
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
+use crate::builtins::poiesis::json_data_property;
 use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -165,19 +166,15 @@ fn render_graph_audit_def() -> ToolDef {
             properties: IndexMap::from([
                 (
                     "data".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "JSON architecture fact audit data (summary + facts array). \
-                             Mutually exclusive with auto_load=true."
-                            .to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
+                    json_data_property(
+                        "JSON architecture fact audit data object (summary + facts array). \
+                         Mutually exclusive with auto_load=true.",
+                    ),
                 ),
                 (
                     "auto_load".to_owned(),
                     PropertyDef {
-                        property_type: PropertyType::String,
+                        property_type: PropertyType::Boolean,
                         description:
                             "If true, automatically load facts from the default fact store path. \
                              Mutually exclusive with providing data."
@@ -217,6 +214,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test schema assertions")]
 mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, RwLock};
@@ -247,6 +245,21 @@ mod tests {
                 "out_path": out_path,
             }),
         }
+    }
+
+    #[test]
+    fn schema_matches_executor_input_types() {
+        let schema = render_graph_audit_def().input_schema.to_json_schema();
+
+        assert_eq!(schema["properties"]["data"]["type"], "object");
+        assert_eq!(schema["properties"]["auto_load"]["type"], "boolean");
+        assert!(
+            schema["properties"]["data"]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("JSON string"),
+            "data schema must document stringified JSON leniency"
+        );
     }
 
     #[tokio::test]

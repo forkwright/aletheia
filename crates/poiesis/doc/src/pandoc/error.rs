@@ -64,6 +64,28 @@ pub enum PandocError {
         source: std::io::Error,
     },
 
+    /// Pandoc subprocess exceeded its deadline.
+    #[snafu(display("pandoc {operation} timed out after {timeout_secs}s"))]
+    Timeout {
+        /// Operation being performed.
+        operation: String,
+        /// Timeout in seconds.
+        timeout_secs: u64,
+        /// Child-process kill error, when cleanup failed.
+        kill_error: Option<String>,
+        /// Child-process wait error, when cleanup failed.
+        wait_error: Option<String>,
+    },
+
+    /// Pandoc subprocess I/O failed after spawning.
+    #[snafu(display("pandoc {operation} I/O failed: {source}"))]
+    SubprocessIo {
+        /// Operation being performed.
+        operation: String,
+        /// Underlying I/O error.
+        source: std::io::Error,
+    },
+
     /// Failed to write the AST temp file.
     #[snafu(display("failed to write pandoc AST temp file: {source}"))]
     TempFile {
@@ -96,6 +118,12 @@ impl From<crate::latex_probe::LatexProbeError> for PandocError {
             crate::latex_probe::LatexProbeError::NotInstalled { searched } => {
                 Self::LatexEngineNotInstalled { searched }
             }
+            crate::latex_probe::LatexProbeError::Timeout { path, timeout_secs } => Self::Timeout {
+                operation: format!("latex probe {}", path.display()),
+                timeout_secs,
+                kill_error: None,
+                wait_error: None,
+            },
         }
     }
 }

@@ -6,6 +6,7 @@ use std::pin::Pin;
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
+use crate::builtins::poiesis::json_data_property;
 use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -106,13 +107,9 @@ fn render_eval_report_def() -> ToolDef {
             properties: IndexMap::from([
                 (
                     "data".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "JSON evaluation report data (summary + benchmarks array)."
-                            .to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
+                    json_data_property(
+                        "JSON evaluation report data object (summary + benchmarks array).",
+                    ),
                 ),
                 (
                     "out_path".to_owned(),
@@ -145,6 +142,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test schema assertions")]
 mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, RwLock};
@@ -175,6 +173,20 @@ mod tests {
                 "out_path": out_path,
             }),
         }
+    }
+
+    #[test]
+    fn schema_declares_data_object_with_string_leniency() {
+        let schema = render_eval_report_def().input_schema.to_json_schema();
+
+        assert_eq!(schema["properties"]["data"]["type"], "object");
+        assert!(
+            schema["properties"]["data"]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("JSON string"),
+            "data schema must document stringified JSON leniency"
+        );
     }
 
     #[tokio::test]

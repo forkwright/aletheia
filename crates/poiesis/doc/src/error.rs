@@ -46,7 +46,7 @@ pub enum Error {
     #[snafu(display("pdf LaTeX engine unavailable: {source}"))]
     PdfLatexEngineUnavailable {
         /// Detailed probing error from the Pandoc `LaTeX` route.
-        source: crate::pandoc::PandocError,
+        source: Box<crate::pandoc::PandocError>,
     },
 
     /// ODT rendering via the clean-room backend failed.
@@ -57,11 +57,18 @@ pub enum Error {
     },
 
     /// A Pandoc-backed format could not be rendered.
-    #[snafu(display(
-        "{format} output requires Pandoc; install pandoc >= 3.0 or use pdf/xlsx for now"
-    ))]
+    #[snafu(display("{format} output requires Pandoc; install pandoc >= 3.0"))]
     PandocRequired {
         /// The requested format name (e.g. "docx").
         format: String,
+    },
+
+    /// A Pandoc-backed format failed after Pandoc was found.
+    #[snafu(display("{format} output failed: {source}"))]
+    PandocFailed {
+        /// The requested format name (e.g. "docx").
+        format: String,
+        /// Detailed Pandoc subprocess error.
+        source: Box<crate::pandoc::PandocError>,
     },
 }

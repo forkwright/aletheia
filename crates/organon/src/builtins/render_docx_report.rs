@@ -7,7 +7,7 @@ use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 use poiesis_theme::{sinks::emit_reference_docx, summus};
 
-use crate::builtins::poiesis::{extract_zip_entry, rewrite_zip};
+use crate::builtins::poiesis::{extract_zip_entry, json_data_property, rewrite_zip};
 use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -132,14 +132,9 @@ fn render_docx_report_def() -> ToolDef {
             properties: IndexMap::from([
                 (
                     "data".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description:
-                            "Inline JSON data blob describing the document (title + paragraphs)."
-                                .to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
+                    json_data_property(
+                        "JSON data object describing the document (title + paragraphs).",
+                    ),
                 ),
                 (
                     "out_path".to_owned(),
@@ -168,4 +163,24 @@ fn render_docx_report_def() -> ToolDef {
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(render_docx_report_def(), Box::new(RenderDocxReportExecutor))?;
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "test schema assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_declares_data_object_with_string_leniency() {
+        let schema = render_docx_report_def().input_schema.to_json_schema();
+
+        assert_eq!(schema["properties"]["data"]["type"], "object");
+        assert!(
+            schema["properties"]["data"]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("JSON string"),
+            "data schema must document stringified JSON leniency"
+        );
+    }
 }

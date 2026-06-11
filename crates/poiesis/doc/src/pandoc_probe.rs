@@ -6,11 +6,14 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
+use crate::process::{CommandOutputError, output_with_timeout};
 use snafu::Snafu;
 
 /// Minimum Pandoc version required by `poiesis-doc`.
 pub const REQUIRED_PANDOC_VERSION: PandocVersion = (3, 0, 0);
+const PANDOC_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Semantic version triple used by the probe.
 pub type PandocVersion = (u32, u32, u32);
@@ -39,6 +42,13 @@ pub enum PandocProbe {
         /// Minimum version required by the crate.
         required: PandocVersion,
     },
+    /// `pandoc --version` exceeded its probe deadline.
+    TimedOut {
+        /// Absolute path to the binary that timed out.
+        path: PathBuf,
+        /// Timeout in seconds.
+        timeout_secs: u64,
+    },
 }
 
 impl PandocProbe {
@@ -66,6 +76,9 @@ impl PandocProbe {
                 found,
                 required,
             }),
+            Self::TimedOut { path, timeout_secs } => {
+                Err(PandocProbeError::Timeout { path, timeout_secs })
+            }
         }
     }
 
@@ -78,7 +91,7 @@ impl PandocProbe {
     pub(crate) fn check_with<Search, Version>(search: Search, version_source: Version) -> Self
     where
         Search: FnOnce() -> Result<PathBuf, Vec<PathBuf>>,
-        Version: Fn(&Path) -> Result<String, String>,
+        Version: Fn(&Path) -> Result<String, ProbeCommandError>,
     {
         let path = match search() {
             Ok(path) => path,
@@ -87,10 +100,13 @@ impl PandocProbe {
 
         let output = match version_source(&path) {
             Ok(output) => output,
-            Err(_detail) => {
+            Err(ProbeCommandError::Failed(_detail)) => {
                 return Self::Missing {
                     searched: vec![path],
                 };
+            }
+            Err(ProbeCommandError::TimedOut { timeout_secs }) => {
+                return Self::TimedOut { path, timeout_secs };
             }
         };
 
@@ -148,6 +164,24 @@ pub enum PandocProbeError {
         /// Minimum version required.
         required: PandocVersion,
     },
+
+    /// The `pandoc --version` probe timed out.
+    #[snafu(display(
+        "pandoc at {} timed out after {timeout_secs}s while probing --version",
+        path.display()
+    ))]
+    Timeout {
+        /// Path to the binary that timed out.
+        path: PathBuf,
+        /// Timeout in seconds.
+        timeout_secs: u64,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) enum ProbeCommandError {
+    Failed(String),
+    TimedOut { timeout_secs: u64 },
 }
 
 fn find_pandoc_binary() -> Result<PathBuf, Vec<PathBuf>> {
@@ -169,14 +203,23 @@ fn searched_pandoc_candidates() -> Vec<PathBuf> {
         .collect()
 }
 
-fn real_version_source(path: &Path) -> Result<String, String> {
-    let output = Command::new(path)
-        .arg("--version")
-        .output()
-        .map_err(|e| e.to_string())?;
+fn real_version_source(path: &Path) -> Result<String, ProbeCommandError> {
+    let mut cmd = Command::new(path);
+    cmd.arg("--version");
+    let output = output_with_timeout(&mut cmd, PANDOC_PROBE_TIMEOUT).map_err(|err| match err {
+        CommandOutputError::Timeout { timeout, .. } => ProbeCommandError::TimedOut {
+            timeout_secs: timeout.as_secs(),
+        },
+        CommandOutputError::Spawn { source }
+        | CommandOutputError::TempFile { source }
+        | CommandOutputError::Wait { source } => ProbeCommandError::Failed(source.to_string()),
+    })?;
 
     if !output.status.success() {
-        return Err(format!("exit status {}", output.status));
+        return Err(ProbeCommandError::Failed(format!(
+            "exit status {}",
+            output.status
+        )));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
@@ -247,6 +290,22 @@ mod tests {
                 path: PathBuf::from("/tmp/fake-pandoc"),
                 found: (2, 19, 2),
                 required: REQUIRED_PANDOC_VERSION,
+            }
+        );
+    }
+
+    #[test]
+    fn probe_check_returns_timeout_for_hung_version_source() {
+        let probe = PandocProbe::check_with(
+            || Ok(PathBuf::from("/tmp/fake-pandoc")),
+            |_| Err(ProbeCommandError::TimedOut { timeout_secs: 5 }),
+        );
+
+        assert_eq!(
+            probe,
+            PandocProbe::TimedOut {
+                path: PathBuf::from("/tmp/fake-pandoc"),
+                timeout_secs: 5,
             }
         );
     }

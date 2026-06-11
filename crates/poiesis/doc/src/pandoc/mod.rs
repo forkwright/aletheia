@@ -21,12 +21,20 @@ pub(crate) mod figure;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
+use crate::process::{CommandOutputError, output_with_timeout};
 use crate::raster;
 use poiesis_core::Document;
 use tracing::instrument;
 
 pub use error::PandocError;
+
+const PANDOC_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+const PANDOC_RENDER_TIMEOUT: Duration = Duration::from_secs(120);
+const APX_CITE_LUA: &str = include_str!("../../../filters/apx-cite.lua");
+const APX_THEME_LUA: &str = include_str!("../../../filters/apx-theme.lua");
+const APX_FIGURE_LUA: &str = include_str!("../../../filters/apx-figure.lua");
 
 /// Supported export output formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -201,24 +209,30 @@ impl PandocRunner {
             if !candidate.exists() {
                 continue;
             }
-            if let Ok(output) = Command::new(candidate).arg("--version").output()
-                && output.status.success()
-            {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                if let Some(ver) = parse_pandoc_version(&stdout) {
-                    if ver.0 >= 3 {
-                        return Ok(PandocRunner {
-                            bin: candidate.clone(),
-                            version: ver,
+            let mut cmd = Command::new(candidate);
+            cmd.arg("--version");
+            match output_with_timeout(&mut cmd, PANDOC_PROBE_TIMEOUT) {
+                Ok(output) if output.status.success() => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if let Some(ver) = parse_pandoc_version(&stdout) {
+                        if ver.0 >= 3 {
+                            return Ok(PandocRunner {
+                                bin: candidate.clone(),
+                                version: ver,
+                            });
+                        }
+                        return Err(PandocError::VersionTooOld {
+                            path: candidate.clone(),
+                            found_major: ver.0,
+                            found_minor: ver.1,
+                            found_patch: ver.2,
                         });
                     }
-                    return Err(PandocError::VersionTooOld {
-                        path: candidate.clone(),
-                        found_major: ver.0,
-                        found_minor: ver.1,
-                        found_patch: ver.2,
-                    });
                 }
+                Err(error @ CommandOutputError::Timeout { .. }) => {
+                    return Err(pandoc_process_error(error, "probe"));
+                }
+                Ok(_) | Err(_) => {}
             }
         }
 
@@ -292,7 +306,8 @@ impl PandocRunner {
 
         cmd.arg(tmp_path);
 
-        let output = cmd.output().map_err(|e| PandocError::Spawn { source: e })?;
+        let output = output_with_timeout(&mut cmd, PANDOC_RENDER_TIMEOUT)
+            .map_err(|e| pandoc_process_error(e, "render"))?;
 
         if output.status.success() {
             Ok(output.stdout)
@@ -345,7 +360,10 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
     if let Some(engine) = pdf_engine {
         render_opts.pdf_engine = Some(engine);
     }
-    render_opts.lua_filters.extend(default_lua_filters());
+    let render_tmp = tempfile::tempdir().map_err(|source| PandocError::TempFile { source })?;
+    render_opts
+        .lua_filters
+        .extend(materialize_default_lua_filters(render_tmp.path())?);
     let facts_sidecar = write_apx_facts_sidecar(doc)?;
     let figures_sidecar = write_apx_figures_sidecar(doc)?;
     let extra_env = vec![
@@ -356,6 +374,10 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
         (
             "APX_FIGURES".to_owned(),
             figures_sidecar.sidecar.path().display().to_string(),
+        ),
+        (
+            "APX_TMPDIR".to_owned(),
+            render_tmp.path().display().to_string(),
         ),
     ];
     runner.render(&ast_json, &render_opts, &extra_env)
@@ -397,13 +419,43 @@ struct ApxFactSidecarEntry {
     source_footnote: Option<String>,
 }
 
-fn default_lua_filters() -> Vec<PathBuf> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../filters");
-    vec![
-        root.join("apx-cite.lua"),
-        root.join("apx-theme.lua"),
-        root.join("apx-figure.lua"),
-    ]
+fn pandoc_process_error(error: CommandOutputError, operation: &str) -> PandocError {
+    match error {
+        CommandOutputError::Spawn { source } => PandocError::Spawn { source },
+        CommandOutputError::TempFile { source } | CommandOutputError::Wait { source } => {
+            PandocError::SubprocessIo {
+                operation: operation.to_owned(),
+                source,
+            }
+        }
+        CommandOutputError::Timeout {
+            timeout,
+            kill_error,
+            wait_error,
+        } => PandocError::Timeout {
+            operation: operation.to_owned(),
+            timeout_secs: timeout.as_secs(),
+            kill_error,
+            wait_error,
+        },
+    }
+}
+
+fn materialize_default_lua_filters(dir: &Path) -> Result<Vec<PathBuf>, PandocError> {
+    let filters = [
+        ("apx-cite.lua", APX_CITE_LUA),
+        ("apx-theme.lua", APX_THEME_LUA),
+        ("apx-figure.lua", APX_FIGURE_LUA),
+    ];
+
+    let mut paths = Vec::with_capacity(filters.len());
+    for (name, source) in filters {
+        let path = dir.join(name);
+        std::fs::write(&path, source).map_err(|source| PandocError::TempFile { source })?;
+        paths.push(path);
+    }
+
+    Ok(paths)
 }
 
 struct FigureSidecarArtifacts {
@@ -743,6 +795,18 @@ mod tests {
         which::which("pandoc").is_ok()
     }
 
+    #[cfg(unix)]
+    fn write_executable_script(dir: &tempfile::TempDir, name: &str, script: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let path = dir.path().join(name);
+        std::fs::write(&path, script).expect("write script");
+        let mut perms = std::fs::metadata(&path).expect("metadata").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).expect("chmod script");
+        path
+    }
+
     #[test]
     fn default_pdf_routes_to_typst() {
         let doc = simple_doc();
@@ -775,6 +839,59 @@ mod tests {
         assert_eq!(OutputFormat::Latex.pandoc_flag(), "latex");
         assert_eq!(OutputFormat::Html.pandoc_flag(), "html5");
         assert_eq!(OutputFormat::Epub.pandoc_flag(), "epub3");
+    }
+
+    #[test]
+    fn embedded_lua_filters_materialize_for_each_render() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let filters = materialize_default_lua_filters(dir.path()).expect("filters");
+
+        assert_eq!(filters.len(), 3);
+        for filter in &filters {
+            assert!(
+                filter.exists(),
+                "materialized filter must exist: {}",
+                filter.display()
+            );
+            assert_eq!(
+                filter.parent(),
+                Some(dir.path()),
+                "filter must live under the render tempdir"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writer_failure_preserves_stderr() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let fake_pandoc = write_executable_script(
+            &dir,
+            "pandoc",
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "pandoc 3.1.1"
+  exit 0
+fi
+echo "writer exploded" >&2
+exit 23
+"#,
+        );
+
+        let runner = PandocRunner::probe(Some(&fake_pandoc)).expect("probe");
+        let err = runner
+            .render(b"{}", &DocOpts::markdown(), &[])
+            .expect_err("render must fail");
+
+        match err {
+            PandocError::WriterFailed { stderr, .. } => {
+                assert!(
+                    stderr.contains("writer exploded"),
+                    "stderr must be preserved: {stderr}"
+                );
+            }
+            other => panic!("expected WriterFailed, got {other:?}"),
+        }
     }
 
     #[test]

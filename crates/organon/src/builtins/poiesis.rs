@@ -63,6 +63,22 @@ const TYPST_CHART_APPENDIX: &str = r#"
 ]
 "#;
 
+pub(crate) fn json_data_property(description: &str) -> PropertyDef {
+    PropertyDef {
+        property_type: PropertyType::Object,
+        description: format!("{description} Also accepts a JSON string for legacy callers."),
+        enum_values: None,
+        default: None,
+    }
+}
+
+fn typst_template_enum_values() -> Vec<String> {
+    poiesis_typst::templates::SLUGS
+        .iter()
+        .map(|slug| (*slug).to_owned())
+        .collect()
+}
+
 fn render_chart_svg(data: &serde_json::Value) -> std::result::Result<Option<String>, String> {
     let Some(chart_value) = data.get("chart") else {
         return Ok(None);
@@ -749,20 +765,13 @@ fn render_typst_report_def() -> ToolDef {
                     PropertyDef {
                         property_type: PropertyType::String,
                         description: "Built-in template slug (e.g. `default`).".to_owned(),
-                        enum_values: Some(vec!["default".to_owned()]),
+                        enum_values: Some(typst_template_enum_values()),
                         default: None,
                     },
                 ),
                 (
                     "data".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description:
-                            "Inline JSON data blob exposed to the template as `data.json`."
-                                .to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
+                    json_data_property("JSON object exposed to the template as `data.json`."),
                 ),
                 (
                     "out_path".to_owned(),

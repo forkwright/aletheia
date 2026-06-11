@@ -6,6 +6,7 @@ use std::pin::Pin;
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
+use crate::builtins::poiesis::json_data_property;
 use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -114,12 +115,7 @@ fn render_xlsx_report_def() -> ToolDef {
             properties: IndexMap::from([
                 (
                     "data".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Inline JSON workbook descriptor.".to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
+                    json_data_property("JSON workbook descriptor object."),
                 ),
                 (
                     "out_path".to_owned(),
@@ -148,4 +144,24 @@ fn render_xlsx_report_def() -> ToolDef {
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(render_xlsx_report_def(), Box::new(RenderXlsxReportExecutor))?;
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "test schema assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_declares_data_object_with_string_leniency() {
+        let schema = render_xlsx_report_def().input_schema.to_json_schema();
+
+        assert_eq!(schema["properties"]["data"]["type"], "object");
+        assert!(
+            schema["properties"]["data"]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("JSON string"),
+            "data schema must document stringified JSON leniency"
+        );
+    }
 }
