@@ -152,6 +152,7 @@ HTTP gateway serving the API.
 | `port` | u16 | `18789` | Listen port |
 | `bind` | string | `"localhost"` | Bind mode: `"localhost"` (loopback only), `"lan"` (all interfaces), or a custom address |
 | `auth.mode` | string | `"token"` | Auth mode: `"token"` (bearer) or `"none"` |
+| `auth.none_role` | string | `"admin"` | Role assigned to anonymous requests when `auth.mode = "none"`; valid values are `"readonly"`, `"agent"`, `"operator"`, and `"admin"` |
 
 ### gateway.tls
 
@@ -602,18 +603,28 @@ Filesystem sandbox applied to tool execution. When enabled, tools are restricted
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether sandbox restrictions are applied |
-| `enforcement` | string | `"enforcing"` | `"enforcing"` blocks violations; `"permissive"` logs them without blocking |
+| `enforcement` | string | `"permissive"` | `"enforcing"` blocks violations; `"permissive"` logs them without blocking |
 | `extra_read_paths` | string[] | `[]` | Additional filesystem paths granted read access to all tools |
 | `extra_write_paths` | string[] | `[]` | Additional filesystem paths granted read+write access to all tools |
 | `extra_exec_paths` | string[] | `[]` | Additional filesystem paths granted execute access. Values may begin with `~`, which expands to `$HOME` at policy-build time. |
+| `egress` | string | `"allow"` | Child-process network policy: `"allow"` permits outbound network, `"deny"` blocks it, and `"allowlist"` permits only listed destinations |
+| `egress_allowlist` | string[] | `[]` | Addresses or CIDR ranges permitted when `egress = "allowlist"`; loopback entries are enforceable without root privileges |
+| `nproc_limit` | u32 | `256` | Maximum process count (`RLIMIT_NPROC`) applied to exec child processes |
+
+Defaults are defined in `crates/taxis/src/config/maintenance.rs` and mirrored by the execution policy in `crates/organon/src/sandbox/config.rs`; `gateway.auth.none_role` is defined in `crates/taxis/src/config/gateway.rs`.
+
+Combined default posture: a fresh config binds the gateway to localhost and uses bearer-token auth, but rate limiting is disabled, sandbox violations are logged rather than blocked, exec child processes keep outbound network egress, and switching `gateway.auth.mode` to `"none"` without changing `gateway.auth.none_role` grants anonymous callers the `admin` role. For production-like deployments, set the restrictive values explicitly.
 
 ```toml
 [sandbox]
 enabled = true
-enforcement = "enforcing"
+enforcement = "permissive"
 extra_read_paths = ["/usr/share/doc"]
 extra_write_paths = []
 extra_exec_paths = ["~/.cargo/bin"]
+egress = "allow"
+egress_allowlist = []
+nproc_limit = 256
 ```
 
 ---

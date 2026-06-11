@@ -54,13 +54,25 @@ jobs:
           - crate: aletheia
             feature: cc-provider
           - crate: aletheia
+            feature: codex-provider
+          - crate: aletheia
+            feature: kimi-provider
+          - crate: aletheia
             feature: energeia
           # organon features
-          - crate: aletheia-organon
+          - crate: organon
             feature: computer-use
+          - crate: organon
+            feature: bookkeeper
+          - crate: organon
+            feature: energeia
+          - crate: organon
+            feature: z3
           # hermeneus features
-          - crate: aletheia-hermeneus
-            feature: local-llm
+          - crate: hermeneus
+            feature: codex-provider
+          - crate: hermeneus
+            feature: kimi-provider
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -80,6 +92,54 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           key: feature-${{ matrix.feature }}
+      - name: Validate feature references
+        env:
+          CRATE: ${{ matrix.crate }}
+          FEATURE: ${{ matrix.feature }}
+        run: |
+          cargo metadata --format-version 1 --no-deps > metadata.json
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          crate = os.environ["CRATE"]
+          feature = os.environ["FEATURE"]
+          import pathlib
+          import re
+
+          packages = json.load(open("metadata.json", encoding="utf-8"))["packages"]
+          feature_map = {pkg["name"]: set(pkg["features"]) for pkg in packages}
+          package = next((pkg for pkg in packages if pkg["name"] == crate), None)
+          if package is None:
+              sys.exit(f"unknown package in release feature matrix: {crate}")
+          if feature not in package["features"]:
+              sys.exit(f"unknown feature in release feature matrix: {crate}/{feature}")
+
+          docs = [pathlib.Path("README.md"), *pathlib.Path("docs").rglob("*.md")]
+          feature_docs = [
+              pathlib.Path("README.md"),
+              pathlib.Path("docs/FEATURE-FLAGS.md"),
+              pathlib.Path("docs/test-tiers.md"),
+          ]
+          feature_ref = re.compile(r"`([a-z0-9_-]+)/([a-z0-9_.-]+)`")
+          removed_feature = "local" + "-llm"
+          for path in docs:
+              text = path.read_text(encoding="utf-8")
+              if removed_feature in text:
+                  sys.exit(
+                      f"removed feature reference found in {path}: "
+                      f"{removed_feature}"
+                  )
+          for path in feature_docs:
+              text = path.read_text(encoding="utf-8")
+              for doc_crate, doc_feature in feature_ref.findall(text):
+                  if doc_crate in feature_map and doc_feature not in feature_map[doc_crate]:
+                      sys.exit(
+                          f"unknown documented feature in {path}: "
+                          f"{doc_crate}/{doc_feature}"
+                      )
+          PY
       - name: Check feature ${{ matrix.feature }}
         env:
           CRATE: ${{ matrix.crate }}
@@ -87,7 +147,7 @@ jobs:
         run: cargo check -p "$CRATE" --features "$FEATURE"
 
   build:
-    needs: [test]
+    needs: [test, feature-check]
     permissions:
       contents: write
       attestations: write
@@ -273,7 +333,7 @@ jobs:
             --clobber
 
   sbom:
-    needs: [test]
+    needs: [test, feature-check]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

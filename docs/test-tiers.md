@@ -10,10 +10,15 @@ coverage against build time and resource requirements.
 | **default** | *(none)* | Pure-logic unit tests, config validation, type invariants | ~5,400 |
 | **test-core** | `--features test-core` | Storage engine tests (Datalog, HNSW, fjall, knowledge store CRUD) | ~5,435 |
 | **test-full** | `--features test-full` | ML embedding tests (candle model loading, vector generation) - includes `online-tests` | ~5,435 |
-| **all** | `--all-features` | + local-llm, computer-use, other optional features | ~5,475 |
+| **all** | `--all-features` | Provider subprocess adapters, computer-use, bookkeeper, z3, other optional features | ~5,475 |
 
 Each tier is a strict superset of the previous: `test-full` implies `test-core`,
 which adds to the default set.
+
+Feature scope matters. `cargo test --workspace --all-features` enables every
+workspace member's feature set. `cargo test -p aletheia --all-features` enables
+only the `aletheia` package features, plus dependency features wired through
+its passthroughs.
 
 ### Online-only tests
 
