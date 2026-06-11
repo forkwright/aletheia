@@ -156,6 +156,7 @@ impl TestHarness {
 
         // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         std::fs::create_dir_all(root.join("nous").join(TEST_NOUS_ID)).expect("mkdir nous");
+        std::fs::create_dir_all(root.join("nous").join("workspace")).expect("mkdir workspace");
         // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
         // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
@@ -218,6 +219,7 @@ impl TestHarness {
             with_knowledge_store.then(|| -> Arc<dyn EmbeddingProvider> {
                 Arc::new(TestEmbeddingProvider::new(TEST_EMBEDDING_DIM))
             });
+        let workspace_root = pylon::state::resolve_workspace_root(&oikos);
 
         #[cfg(feature = "knowledge-store")]
         let knowledge_stores = knowledge_store
@@ -276,6 +278,7 @@ impl TestHarness {
             provider_registry,
             tool_registry,
             oikos,
+            workspace_root,
             jwt_manager: Arc::clone(&jwt_manager),
             auth_facade: Arc::new(
                 // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal

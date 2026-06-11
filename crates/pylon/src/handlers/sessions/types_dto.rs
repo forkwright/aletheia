@@ -44,6 +44,10 @@ pub struct StreamTurnRequest {
 pub struct ListSessionsParams {
     /// Filter sessions by agent ID.
     pub nous_id: Option<String>,
+    /// Case-insensitive search across session id, key, status, and display name.
+    pub search: Option<String>,
+    /// Filter sessions by lifecycle status (`active`, `archived`, `distilled`).
+    pub status: Option<String>,
     /// Maximum number of sessions to return (default 50, max 1000).
     pub limit: Option<u32>,
     /// Cursor token from a previous response's `next_cursor` field.

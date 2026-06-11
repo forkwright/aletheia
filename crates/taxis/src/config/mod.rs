@@ -2,6 +2,7 @@
 
 mod agents;
 mod behavior;
+mod feature_flags;
 mod gateway;
 mod maintenance;
 mod resolved;
@@ -17,6 +18,7 @@ pub use behavior::{
     MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig,
     ProviderKind, RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
+pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,
     PerUserRateLimitConfig, RateLimitConfig, TlsConfig,
@@ -71,6 +73,10 @@ pub struct AletheiaConfig {
     pub channels: ChannelsConfig,
     /// Routes mapping channel sources to nous agents.
     pub bindings: Vec<ChannelBinding>,
+    /// Operator-controlled feature toggles surfaced through the config API.
+    #[serde(rename = "feature_flags")]
+    #[serde(default)]
+    pub feature_flags: Vec<FeatureFlagConfig>,
     /// Embedding provider configuration for the recall pipeline.
     pub embedding: EmbeddingSettings,
     /// External domain pack paths (directories containing pack.toml).

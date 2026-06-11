@@ -76,6 +76,16 @@ impl Oikos {
         &self.root
     }
 
+    /// Shared workspace directory for desktop file-browsing surfaces.
+    ///
+    /// The desktop app uses this as the default workspace root when the
+    /// instance provides one. Callers must still validate the path exists
+    /// before dereferencing it.
+    #[must_use]
+    pub fn workspace_root(&self) -> PathBuf {
+        self.root.join("nous").join("workspace")
+    }
+
     /// The theke directory (human + nous collaborative space).
     #[must_use]
     pub fn theke(&self) -> PathBuf {

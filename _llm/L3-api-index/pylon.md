@@ -238,6 +238,7 @@ pub enum ConfigSectionPayload {
         Gateway(Value),
         Channels(Value),
         Bindings(Value),
+        FeatureFlags(Value),
         Embedding(Value),
         Data(Value),
         Packs(Value),
@@ -298,6 +299,15 @@ pub struct ConfigReloadResponse {
     pub restart_required: Vec<String>,
     /// All changed field paths (both hot and cold).
     pub changed: Vec<String>,
+}
+```
+
+```rust
+pub struct FeatureFlagConfig {
+    pub key: String,
+    pub description: String,
+    #[serde(default)]
+    pub enabled: bool,
 }
 ```
 
@@ -586,19 +596,118 @@ pub struct EntitiesQuery {
     /// Offset for pagination.
     #[serde(default)]
     pub offset: usize,
+    /// Search text filter.
+    #[serde(default)]
+    pub q: Option<String>,
+    /// Sort field.
+    #[serde(default = "default_entity_sort")]
+    pub sort: String,
+    /// Sort order.
+    #[serde(default = "default_entity_order")]
+    pub order: String,
+    /// Entity type filter.
+    #[serde(default)]
+    pub entity_type: Vec<String>,
+    /// Minimum confidence threshold.
+    #[serde(default)]
+    pub min_confidence: Option<f64>,
+    /// Agent filter.
+    #[serde(default)]
+    pub agent: Vec<String>,
 }
 ```
 
 ```rust
 pub struct EntitiesResponse {
-    pub entities: Vec<mneme::knowledge::Entity>,
+    pub entities: Vec<EntityListItem>,
     pub total: usize,
 }
 ```
 
 ```rust
+pub struct EntityListItem {
+    pub id: String,
+    pub name: String,
+    pub entity_type: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub confidence: f64,
+    pub page_rank: f64,
+    pub memory_count: u32,
+    pub relationship_count: u32,
+}
+```
+
+```rust
 pub struct RelationshipsResponse {
-    pub relationships: Vec<mneme::knowledge::Relationship>,
+    pub relationships: Vec<EntityRelationship>,
+}
+```
+
+```rust
+pub enum RelationshipDirection {
+    /// The relationship points away from the viewed entity.
+    Outgoing,
+    /// The relationship points toward the viewed entity.
+    Incoming,
+}
+```
+
+```rust
+pub struct EntityRelationship {
+    pub id: String,
+    pub entity_id: String,
+    pub entity_name: String,
+    pub relationship_type: String,
+    pub direction: RelationshipDirection,
+    pub confidence: f64,
+}
+```
+
+```rust
+pub struct EntityMemory {
+    pub id: String,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    pub confidence: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+}
+```
+
+```rust
+pub struct MergeRequest {
+    /// Canonical entity ID to keep.
+    #[serde(alias = "primary_id")]
+    pub canonical_id: String,
+    /// Entity ID to merge and remove.
+    #[serde(alias = "secondary_id")]
+    pub merged_id: String,
+}
+```
+
+```rust
+pub enum FlagSeverity {
+    /// Low-priority review.
+    Low,
+    /// Medium-priority review.
+    Medium,
+    /// High-priority review.
+    High,
+}
+```
+
+```rust
+pub struct FlagRequest {
+    /// Human-readable reason for the flag.
+    pub reason: String,
+    /// Review severity.
+    pub severity: FlagSeverity,
 }
 ```
 
@@ -710,6 +819,47 @@ pub struct GraphCheckReport {
     /// Overall health: `"healthy"` or `"issues_found"`.
     pub status: &'static str,
 }
+```
+
+## `src/handlers/knowledge/entity.rs`
+
+```rust
+pub async fn get_entity (
+    State(state): State<KnowledgeState>,
+    Path(id): Path<String>,
+) -> Result<Json<mneme::knowledge::Entity>, ApiError>
+```
+
+```rust
+pub async fn entity_memories (
+    State(state): State<KnowledgeState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<EntityMemory>>, ApiError>
+```
+
+```rust
+pub async fn merge_entities (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Json(body): Json<MergeRequest>,
+) -> Result<StatusCode, ApiError>
+```
+
+```rust
+pub async fn flag_entity (
+    State(_state): State<KnowledgeState>,
+    claims: Claims,
+    Path(_id): Path<String>,
+    Json(_body): Json<FlagRequest>,
+) -> Result<StatusCode, ApiError>
+```
+
+```rust
+pub async fn delete_entity (
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError>
 ```
 
 ## `src/handlers/knowledge/ingest.rs`
@@ -958,6 +1108,24 @@ pub async fn tools (
 ```
 
 ```rust
+pub async fn update_enabled (
+    State(state): State<NousState>,
+    claims: Claims,
+    Path(id): Path<String>,
+    Json(body): Json<NousToggleRequest>,
+) -> Result<Json<NousSummary>, ApiError>
+```
+
+```rust
+pub async fn update_tool (
+    State(state): State<NousState>,
+    claims: Claims,
+    Path(id): Path<String>,
+    Json(body): Json<ToolToggleRequest>,
+) -> Result<Json<ToolsResponse>, ApiError>
+```
+
+```rust
 pub async fn recover (
     State(state): State<NousState>,
     claims: Claims,
@@ -1023,10 +1191,14 @@ pub struct NousSummary {
     pub id: String,
     /// Human-readable display name (falls back to `id`).
     pub name: String,
+    /// Whether the agent is enabled in the operator surface.
+    pub enabled: bool,
     /// LLM model assigned to this agent.
     pub model: String,
     /// Lifecycle status (e.g. `"active"`).
     pub status: String,
+    /// Tool toggle summaries for the agent.
+    pub tools: Vec<ToolSummary>,
 }
 ```
 
@@ -1062,6 +1234,8 @@ pub struct ToolsResponse {
 pub struct ToolSummary {
     /// Tool name as sent to the LLM.
     pub name: String,
+    /// Whether the tool is enabled for this agent.
+    pub enabled: bool,
     /// Human-readable description.
     pub description: String,
     /// Tool category (e.g. `"Builtin"`, `"Pack"`).
@@ -1071,6 +1245,66 @@ pub struct ToolSummary {
     /// When `false` the tool is lazy and must be activated via `enable_tool`
     /// before the agent can use it.
     pub auto_activate: bool,
+}
+```
+
+```rust
+pub struct NousToggleRequest {
+    /// Whether the agent should be enabled.
+    pub enabled: bool,
+}
+```
+
+```rust
+pub struct ToolToggleRequest {
+    /// Tool name to toggle.
+    pub tool: String,
+    /// Whether the tool should be enabled.
+    pub enabled: bool,
+}
+```
+
+## `src/handlers/ops.rs`
+
+```rust
+pub async fn tools (
+    State(state): State<OpsState>,
+    claims: Claims,
+) -> Result<Json<OpsToolsResponse>, ApiError>
+```
+
+## `src/handlers/ops_dto.rs`
+
+```rust
+pub struct ActiveTool {
+    /// Tool display name.
+    pub name: String,
+    /// Tool identifier used by the registry.
+    pub id: String,
+}
+```
+
+```rust
+pub struct ToolHistoryEntry {
+    /// Tool name.
+    pub name: String,
+    /// Whether the call ended in an error outcome.
+    pub is_error: bool,
+    /// Call duration in milliseconds.
+    pub duration_ms: u64,
+}
+```
+
+```rust
+pub struct OpsToolsResponse {
+    /// Currently active tool registry entries.
+    pub active_tools: Vec<ActiveTool>,
+    /// Historical tool calls, if the runtime has a history source.
+    pub tool_history: Vec<ToolHistoryEntry>,
+    /// Total recorded tool calls from organon metrics.
+    pub total_calls: u64,
+    /// Total recorded error calls from organon metrics.
+    pub total_errors: u64,
 }
 ```
 
@@ -1255,6 +1489,10 @@ pub struct StreamTurnRequest {
 pub struct ListSessionsParams {
     /// Filter sessions by agent ID.
     pub nous_id: Option<String>,
+    /// Case-insensitive search across session id, key, status, and display name.
+    pub search: Option<String>,
+    /// Filter sessions by lifecycle status (`active`, `archived`, `distilled`).
+    pub status: Option<String>,
     /// Maximum number of sessions to return (default 50, max 1000).
     pub limit: Option<u32>,
     /// Cursor token from a previous response's `next_cursor` field.
@@ -1349,6 +1587,109 @@ pub struct HistoryMessage {
     pub tool_name: Option<String>,
     /// ISO 8601 creation timestamp.
     pub created_at: String,
+}
+```
+
+## `src/handlers/workspace.rs`
+
+```rust
+pub async fn list_files (
+    State(state): State<WorkspaceState>,
+    Query(query): Query<FilesQuery>,
+) -> Result<Json<Vec<FileEntry>>, ApiError>
+```
+
+```rust
+pub async fn git_status (
+    State(state): State<WorkspaceState>,
+) -> Result<Json<Vec<GitStatusEntry>>, ApiError>
+```
+
+```rust
+pub async fn file_content (
+    State(state): State<WorkspaceState>,
+    Query(query): Query<ContentQuery>,
+) -> Result<Response, ApiError>
+```
+
+```rust
+pub async fn file_diff (
+    State(state): State<WorkspaceState>,
+    Query(query): Query<DiffQuery>,
+) -> Result<Response, ApiError>
+```
+
+```rust
+pub async fn search (
+    State(state): State<WorkspaceState>,
+    Query(mut query): Query<SearchQuery>,
+) -> Result<Json<Vec<SearchResult>>, ApiError>
+```
+
+## `src/handlers/workspace_dto.rs`
+
+```rust
+pub struct FilesQuery {
+    /// Directory path relative to the workspace root.
+    #[serde(default)]
+    pub path: Option<String>,
+}
+```
+
+```rust
+pub struct FileEntry {
+    /// Basename for the entry.
+    pub name: String,
+    /// Workspace-relative path using forward slashes.
+    pub path: String,
+    /// Whether this entry is a directory.
+    pub is_dir: bool,
+    /// File size in bytes, or `0` for directories.
+    pub size: u64,
+}
+```
+
+```rust
+pub struct GitStatusEntry {
+    /// Workspace-relative path using forward slashes.
+    pub path: String,
+    /// Status code normalized for the desktop file tree (`M`, `A`, `D`, `?`).
+    pub status: String,
+}
+```
+
+```rust
+pub struct ContentQuery {
+    /// Workspace-relative file path.
+    pub path: String,
+}
+```
+
+```rust
+pub struct DiffQuery {
+    /// Workspace-relative path passed to `git diff -- <path>`.
+    pub path: String,
+}
+```
+
+```rust
+pub struct SearchQuery {
+    /// Case-insensitive filename/content query.
+    pub q: String,
+    /// Maximum number of results to return.
+    #[serde(default = "default_search_limit")]
+    pub limit: usize,
+}
+```
+
+```rust
+pub struct SearchResult {
+    /// Workspace-relative path using forward slashes.
+    pub path: String,
+    /// 1-based line number when the match came from file contents.
+    pub line: usize,
+    /// Match snippet or filename preview.
+    pub snippet: String,
 }
 ```
 
@@ -1849,6 +2190,8 @@ pub struct AppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
+    /// Resolved workspace root used by the desktop file browser.
+    pub workspace_root: PathBuf,
     /// JWT token creation and validation.
     pub jwt_manager: Arc<JwtManager>,
     /// Revocation-aware authentication facade.
@@ -1907,6 +2250,17 @@ impl AppState {
 ```
 
 ```rust
+pub fn resolve_workspace_root (oikos: &Oikos) -> PathBuf
+```
+
+```rust
+pub struct WorkspaceState {
+    /// Resolved workspace root used for path validation and file access.
+    pub workspace_root: PathBuf,
+}
+```
+
+```rust
 pub struct HealthState {
     /// Persistent session and message storage.
     pub session_store: Arc<Mutex<SessionStore>>,
@@ -1937,11 +2291,22 @@ pub struct MetricsState {
 ```
 
 ```rust
+pub struct OpsState {
+    /// Registry of tools available to nous agents.
+    pub tool_registry: Arc<ToolRegistry>,
+}
+```
+
+```rust
 pub struct NousState {
     /// Manages nous actor lifecycles and provides handles.
     pub nous_manager: Arc<NousManager>,
     /// Registry of tools available to nous agents.
     pub tool_registry: Arc<ToolRegistry>,
+    /// Runtime configuration used for persisted nous toggle intent.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// Broadcast channel for config change notifications.
+    pub config_tx: tokio::sync::watch::Sender<AletheiaConfig>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
 }

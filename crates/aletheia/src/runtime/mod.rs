@@ -813,12 +813,14 @@ impl RuntimeBuilder {
             }
             .instrument(tracing::info_span!("config_reload_actor_sync")),
         );
+        let workspace_root = pylon::state::resolve_workspace_root(&self.oikos);
         let state = Arc::new(AppState {
             session_store,
             nous_manager: Arc::clone(&nous_manager),
             provider_registry,
             tool_registry,
             oikos: self.oikos,
+            workspace_root,
             jwt_manager: Arc::new(jwt_manager),
             auth_facade: Arc::new(auth_facade),
             start_time: Instant::now(),

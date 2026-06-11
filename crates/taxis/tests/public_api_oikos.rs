@@ -193,6 +193,7 @@ fn validate_startup_rejects_agent_with_nonexistent_workspace() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let err = validate_startup(&config, &oikos).unwrap_err();
@@ -223,6 +224,7 @@ fn validate_startup_accepts_agent_with_real_workspace_directory() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
     assert!(validate_startup(&config, &oikos).is_ok());
 }

@@ -2,9 +2,10 @@
 //! Knowledge endpoint request and response wire shapes.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Query parameters for listing facts.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct FactsQuery {
     /// Filter by nous agent ID.
     #[serde(default)]
@@ -43,6 +44,14 @@ pub(crate) fn default_order() -> String {
     "desc".to_string()
 }
 
+pub(crate) fn default_entity_sort() -> String {
+    "page_rank".to_string()
+}
+
+pub(crate) fn default_entity_order() -> String {
+    "desc".to_string()
+}
+
 pub(crate) fn default_limit() -> usize {
     100
 }
@@ -59,7 +68,7 @@ pub struct FactsResponse {
 }
 
 /// Query parameters for listing entities.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct EntitiesQuery {
     /// Maximum results to return (default: 100, max: 1000).
     #[serde(default = "default_limit")]
@@ -67,27 +76,139 @@ pub struct EntitiesQuery {
     /// Offset for pagination.
     #[serde(default)]
     pub offset: usize,
+    /// Search text filter.
+    #[serde(default)]
+    pub q: Option<String>,
+    /// Sort field.
+    #[serde(default = "default_entity_sort")]
+    pub sort: String,
+    /// Sort order.
+    #[serde(default = "default_entity_order")]
+    pub order: String,
+    /// Entity type filter.
+    #[serde(default)]
+    pub entity_type: Vec<String>,
+    /// Minimum confidence threshold.
+    #[serde(default)]
+    pub min_confidence: Option<f64>,
+    /// Agent filter.
+    #[serde(default)]
+    pub agent: Vec<String>,
 }
 
 /// Response wrapper for entity listing.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
 )]
 pub struct EntitiesResponse {
-    pub entities: Vec<mneme::knowledge::Entity>,
+    pub entities: Vec<EntityListItem>,
     pub total: usize,
 }
 
+/// Entity row returned by the list endpoint.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct EntityListItem {
+    pub id: String,
+    pub name: String,
+    pub entity_type: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub confidence: f64,
+    pub page_rank: f64,
+    pub memory_count: u32,
+    pub relationship_count: u32,
+}
+
 /// Response wrapper for relationships.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
 )]
 pub struct RelationshipsResponse {
-    pub relationships: Vec<mneme::knowledge::Relationship>,
+    pub relationships: Vec<EntityRelationship>,
+}
+
+/// Direction of a relationship relative to the current entity.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+pub enum RelationshipDirection {
+    /// The relationship points away from the viewed entity.
+    Outgoing,
+    /// The relationship points toward the viewed entity.
+    Incoming,
+}
+
+/// Entity relationship row returned by the detail view.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct EntityRelationship {
+    pub id: String,
+    pub entity_id: String,
+    pub entity_name: String,
+    pub relationship_type: String,
+    pub direction: RelationshipDirection,
+    pub confidence: f64,
+}
+
+/// Memory record linked to an entity.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct EntityMemory {
+    pub id: String,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    pub confidence: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+}
+
+/// Request body for entity merge operations.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct MergeRequest {
+    /// Canonical entity ID to keep.
+    #[serde(alias = "primary_id")]
+    pub canonical_id: String,
+    /// Entity ID to merge and remove.
+    #[serde(alias = "secondary_id")]
+    pub merged_id: String,
+}
+
+/// Entity flagging severity.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum FlagSeverity {
+    /// Low-priority review.
+    Low,
+    /// Medium-priority review.
+    Medium,
+    /// High-priority review.
+    High,
+}
+
+/// Request body for entity review flags.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct FlagRequest {
+    /// Human-readable reason for the flag.
+    pub reason: String,
+    /// Review severity.
+    pub severity: FlagSeverity,
 }
 
 /// Body for forget/restore actions.

@@ -357,6 +357,7 @@ mod tests {
             recall: None,
             recall_profile: None,
             behavior: None,
+            ..Default::default()
         });
 
         let err = validate_agent_workspaces(&config, &oikos).unwrap_err();
@@ -396,6 +397,7 @@ mod tests {
             recall: None,
             recall_profile: None,
             behavior: None,
+            ..Default::default()
         });
 
         let err = validate_agent_workspaces(&config, &oikos).unwrap_err();
@@ -439,6 +441,7 @@ mod tests {
             recall: None,
             recall_profile: None,
             behavior: None,
+            ..Default::default()
         });
 
         assert!(

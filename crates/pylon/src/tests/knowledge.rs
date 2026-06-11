@@ -47,6 +47,8 @@ async fn knowledge_read_routes_reject_missing_bearer_token_in_token_mode() {
         "/api/v1/knowledge/facts",
         "/api/v1/knowledge/facts/nonexistent-fact-id",
         "/api/v1/knowledge/entities",
+        "/api/v1/knowledge/entities/some-id",
+        "/api/v1/knowledge/entities/some-id/memories",
         "/api/v1/knowledge/entities/some-id/relationships",
         "/api/v1/knowledge/search?q=memory",
         "/api/v1/knowledge/timeline",
@@ -61,6 +63,22 @@ async fn knowledge_read_routes_reject_missing_bearer_token_in_token_mode() {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "{route}");
     }
+}
+
+#[tokio::test]
+async fn knowledge_entity_merge_route_is_not_shadowed_by_entity_catch_all() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/knowledge/entities/merge",
+        Some(serde_json::json!({
+            "primary_id": "entity-a",
+            "secondary_id": "entity-b",
+        })),
+    );
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]

@@ -18,7 +18,7 @@ use koina::http::{API_HEALTH, API_V1};
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{
-    config, events, health, insights, knowledge, metrics, nous, planning, sessions,
+    config, events, health, insights, knowledge, metrics, nous, ops, planning, sessions, workspace,
 };
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
@@ -81,13 +81,31 @@ pub fn build_router_with(
             axum::routing::put(knowledge::update_sensitivity),
         )
         .route("/entities", get(knowledge::list_entities))
+        .route("/entities/merge", post(knowledge::merge_entities))
+        .route(
+            "/entities/{id}",
+            get(knowledge::get_entity).delete(knowledge::delete_entity),
+        )
+        .route("/entities/{id}/memories", get(knowledge::entity_memories))
         .route(
             "/entities/{id}/relationships",
             get(knowledge::entity_relationships),
         )
+        .route("/entities/{id}/flag", post(knowledge::flag_entity))
         .route("/search", get(knowledge::search))
         .route("/timeline", get(knowledge::timeline))
         .route("/check", get(knowledge::check_graph_health))
+        .route_layer(axum::middleware::from_fn_with_state(
+            Arc::clone(&state),
+            require_bearer_auth,
+        ));
+
+    let workspace_routes = Router::new()
+        .route("/files", get(workspace::list_files))
+        .route("/git-status", get(workspace::git_status))
+        .route("/files/content", get(workspace::file_content))
+        .route("/diff", get(workspace::file_diff))
+        .route("/search", get(workspace::search))
         .route_layer(axum::middleware::from_fn_with_state(
             Arc::clone(&state),
             require_bearer_auth,
@@ -122,9 +140,16 @@ pub fn build_router_with(
         .route("/events", get(sessions::events))
         .route("/events/subscribe", get(events::subscribe))
         .route("/events/discovery", get(events::discovery))
+        .route("/ops/tools", get(ops::tools))
         .route("/nous", get(nous::list).post(nous::create))
-        .route("/nous/{id}", get(nous::get_status))
-        .route("/nous/{id}/tools", get(nous::tools))
+        .route(
+            "/nous/{id}",
+            get(nous::get_status).patch(nous::update_enabled),
+        )
+        .route(
+            "/nous/{id}/tools",
+            get(nous::tools).patch(nous::update_tool),
+        )
         .route("/nous/{id}/recover", post(nous::recover))
         .route("/config", get(config::get_config))
         .route("/config/reload", post(config::reload_config))
@@ -132,6 +157,7 @@ pub fn build_router_with(
             "/config/{section}",
             get(config::get_section).put(config::update_section),
         )
+        .nest("/workspace", workspace_routes)
         .nest("/knowledge", knowledge_routes)
         .route("/metrics/agents", get(insights::get_agent_perf))
         .route("/metrics/agents/{id}", get(insights::get_agent_perf_one))

@@ -38,6 +38,8 @@ pub struct AppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
+    /// Resolved workspace root used by the desktop file browser.
+    pub workspace_root: PathBuf,
     /// JWT token creation and validation.
     pub jwt_manager: Arc<JwtManager>,
     /// Revocation-aware authentication facade.
@@ -99,6 +101,43 @@ impl AppState {
     }
 }
 
+/// Resolve the workspace root used by the desktop file browser.
+///
+/// WHY: the desktop app expects a stable workspace tree under `nous/workspace`.
+/// When that directory is present and canonicalizes inside the instance root,
+/// we use it directly. Otherwise we fall back to the instance root so the
+/// gateway still serves a usable file browser even when the shared workspace
+/// directory has not been created yet.
+#[must_use]
+pub fn resolve_workspace_root(oikos: &Oikos) -> PathBuf {
+    let instance_root = std::fs::canonicalize(oikos.root()).unwrap_or_else(|_| oikos.root().into());
+    let workspace_root = oikos.workspace_root();
+
+    if workspace_root.exists()
+        && let Ok(canonical_workspace_root) = std::fs::canonicalize(&workspace_root)
+        && canonical_workspace_root.starts_with(&instance_root)
+    {
+        return canonical_workspace_root;
+    }
+
+    instance_root
+}
+
+/// State slice for workspace file-browser handlers.
+#[derive(Clone)]
+pub struct WorkspaceState {
+    /// Resolved workspace root used for path validation and file access.
+    pub workspace_root: PathBuf,
+}
+
+impl FromRef<Arc<AppState>> for WorkspaceState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        Self {
+            workspace_root: state.workspace_root.clone(),
+        }
+    }
+}
+
 /// State slice for health-check handlers.
 #[derive(Clone)]
 pub struct HealthState {
@@ -153,6 +192,21 @@ impl FromRef<Arc<AppState>> for MetricsState {
     }
 }
 
+/// State slice for ops/registry introspection handlers.
+#[derive(Clone)]
+pub struct OpsState {
+    /// Registry of tools available to nous agents.
+    pub tool_registry: Arc<ToolRegistry>,
+}
+
+impl FromRef<Arc<AppState>> for OpsState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        Self {
+            tool_registry: Arc::clone(&state.tool_registry),
+        }
+    }
+}
+
 /// State slice for nous agent handlers.
 #[derive(Clone)]
 pub struct NousState {
@@ -160,6 +214,10 @@ pub struct NousState {
     pub nous_manager: Arc<NousManager>,
     /// Registry of tools available to nous agents.
     pub tool_registry: Arc<ToolRegistry>,
+    /// Runtime configuration used for persisted nous toggle intent.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// Broadcast channel for config change notifications.
+    pub config_tx: tokio::sync::watch::Sender<AletheiaConfig>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
 }
@@ -169,6 +227,8 @@ impl FromRef<Arc<AppState>> for NousState {
         Self {
             nous_manager: Arc::clone(&state.nous_manager),
             tool_registry: Arc::clone(&state.tool_registry),
+            config: Arc::clone(&state.config),
+            config_tx: state.config_tx.clone(),
             oikos: Arc::clone(&state.oikos),
         }
     }

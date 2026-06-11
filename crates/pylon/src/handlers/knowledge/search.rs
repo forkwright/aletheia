@@ -9,8 +9,8 @@ use crate::state::KnowledgeState;
 #[cfg(feature = "knowledge-store")]
 use super::SimilarFact;
 use super::{
-    FactsQuery, SearchQuery, SearchResponse, SearchResult, TimelineEvent, TimelineQuery,
-    TimelineResponse, default_order, default_sort,
+    EntityRelationship, FactsQuery, SearchQuery, SearchResponse, SearchResult, TimelineEvent,
+    TimelineQuery, TimelineResponse, default_order, default_sort,
 };
 
 /// GET /api/v1/knowledge/search
@@ -249,58 +249,54 @@ pub(super) fn get_fact_relationships(
 pub(super) fn get_entity_relationships(
     state: &KnowledgeState,
     entity_id: &str,
-) -> Result<Vec<mneme::knowledge::Relationship>, ApiError> {
+) -> Result<Vec<EntityRelationship>, ApiError> {
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
-        use std::collections::BTreeMap;
+        use std::collections::HashMap;
 
-        use mneme::engine::DataValue;
-
-        let script = r"
-            ?[src, dst, relation, weight, created_at] :=
-                *relationships{src, dst, relation, weight, created_at},
-                src == $entity_id
-            ?[src, dst, relation, weight, created_at] :=
-                *relationships{src, dst, relation, weight, created_at},
-                dst == $entity_id
-        ";
-        let mut params = BTreeMap::new();
-        params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
-        let result = store
-            .run_query(script, params)
+        let entities = store.list_entities().map_err(|e| ApiError::Internal {
+            message: e.to_string(),
+            location: snafu::location!(),
+        })?;
+        let entity_names: HashMap<String, String> = entities
+            .into_iter()
+            .map(|entity| (entity.id.as_str().to_owned(), entity.name))
+            .collect();
+        let relationships = store
+            .list_all_relationships()
             .map_err(|e| ApiError::Internal {
                 message: e.to_string(),
                 location: snafu::location!(),
             })?;
-        let mut relationships = Vec::with_capacity(result.row_count());
-        for i in 0..result.row_count() {
-            let src_str = result.get_string(i, "src").unwrap_or_default();
-            let dst_str = result.get_string(i, "dst").unwrap_or_default();
-            let relation = result.get_string(i, "relation").unwrap_or_default();
-            let weight = result.get_f64(i, "weight").unwrap_or(1.0);
-            let created_at = mneme::knowledge::parse_timestamp(
-                &result.get_string(i, "created_at").unwrap_or_default(),
-            )
-            .unwrap_or_else(jiff::Timestamp::now);
 
-            let src = mneme::id::EntityId::new(&src_str).map_err(|e| ApiError::Internal {
-                message: format!("invalid relationship src id in store: {e}"),
-                location: snafu::location!(),
-            })?;
-            let dst = mneme::id::EntityId::new(&dst_str).map_err(|e| ApiError::Internal {
-                message: format!("invalid relationship dst id in store: {e}"),
-                location: snafu::location!(),
-            })?;
-
-            relationships.push(mneme::knowledge::Relationship {
-                src,
-                dst,
-                relation,
-                weight,
-                created_at,
+        let mut views = Vec::new();
+        for relationship in relationships {
+            let src = relationship.src.as_str();
+            let dst = relationship.dst.as_str();
+            let (entity_id, direction) = if src == entity_id {
+                (dst.to_owned(), super::RelationshipDirection::Outgoing)
+            } else if dst == entity_id {
+                (src.to_owned(), super::RelationshipDirection::Incoming)
+            } else {
+                continue;
+            };
+            let entity_name = entity_names
+                .get(&entity_id)
+                .cloned()
+                .unwrap_or_else(|| entity_id.clone());
+            views.push(EntityRelationship {
+                id: format!(
+                    "{src}:{dst}:{}:{}",
+                    relationship.relation, relationship.created_at
+                ),
+                entity_id,
+                entity_name,
+                relationship_type: relationship.relation,
+                direction,
+                confidence: relationship.weight,
             });
         }
-        return Ok(relationships);
+        return Ok(views);
     }
 
     #[cfg(not(feature = "knowledge-store"))]

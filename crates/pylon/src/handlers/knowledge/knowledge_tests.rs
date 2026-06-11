@@ -131,9 +131,19 @@ fn facts_query_default_values() {
     assert!(!q.include_forgotten);
 }
 
+#[test]
+fn entities_query_default_values() {
+    let q: EntitiesQuery = serde_json::from_str("{}").unwrap();
+    assert_eq!(q.sort, "page_rank");
+    assert_eq!(q.order, "desc");
+    assert!(q.entity_type.is_empty());
+    assert!(q.agent.is_empty());
+    assert!(q.min_confidence.is_none());
+}
+
 #[cfg(feature = "knowledge-store")]
 #[test]
-fn entity_relationships_queries_store_for_inbound_and_outbound_edges() {
+fn entity_relationships_projects_view_fields() {
     use std::sync::Arc;
 
     use mneme::id::EntityId;
@@ -202,16 +212,149 @@ fn entity_relationships_queries_store_for_inbound_and_outbound_edges() {
 
     let relationships = get_entity_relationships(&state, "entity-a").unwrap();
     assert_eq!(relationships.len(), 2);
-    assert!(
-        relationships
-            .iter()
-            .any(|r| r.src.as_str() == "entity-a" && r.relation == "depends_on")
+    assert!(relationships.iter().any(|r| {
+        r.entity_id == "entity-b"
+            && r.entity_name == "B"
+            && r.relationship_type == "depends_on"
+            && r.direction == RelationshipDirection::Outgoing
+            && (r.confidence - 0.8).abs() < f64::EPSILON
+    }));
+    assert!(relationships.iter().any(|r| {
+        r.entity_id == "entity-c"
+            && r.entity_name == "C"
+            && r.relationship_type == "supports"
+            && r.direction == RelationshipDirection::Incoming
+            && (r.confidence - 0.6).abs() < f64::EPSILON
+    }));
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn list_entities_honors_filters_and_relationship_counts() {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use axum::extract::{Query, State};
+    use mneme::engine::DataValue;
+    use mneme::id::EntityId;
+    use mneme::knowledge::{Entity, Relationship};
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let now = jiff::Timestamp::UNIX_EPOCH;
+    let entity_a = EntityId::new("entity-a").unwrap();
+    let entity_b = EntityId::new("entity-b").unwrap();
+
+    for entity in [
+        Entity {
+            id: entity_a.clone(),
+            name: "Alice".to_owned(),
+            entity_type: "person".to_owned(),
+            aliases: vec!["A".to_owned()],
+            created_at: now,
+            updated_at: now,
+        },
+        Entity {
+            id: entity_b.clone(),
+            name: "Widget".to_owned(),
+            entity_type: "tool".to_owned(),
+            aliases: vec!["Gizmo".to_owned()],
+            created_at: now,
+            updated_at: now,
+        },
+    ] {
+        store.insert_entity(&entity).unwrap();
+    }
+
+    store
+        .insert_relationship(&Relationship {
+            src: entity_a.clone(),
+            dst: entity_b,
+            relation: "uses".to_owned(),
+            weight: 0.9,
+            created_at: now,
+        })
+        .unwrap();
+
+    let fact = make_fact("fact-alice", "Alice manages the workspace", 0.95);
+    store.insert_fact(&fact).unwrap();
+    let mut params = BTreeMap::new();
+    params.insert(
+        "fact_id".to_owned(),
+        DataValue::Str("fact-alice".to_owned().into()),
     );
-    assert!(
-        relationships
-            .iter()
-            .any(|r| r.dst.as_str() == "entity-a" && r.relation == "supports")
+    params.insert(
+        "entity_id".to_owned(),
+        DataValue::Str("entity-a".to_owned().into()),
     );
+    params.insert(
+        "created_at".to_owned(),
+        DataValue::Str(now.to_string().into()),
+    );
+    store
+        .run_mut_query(
+            r"
+                ?[fact_id, entity_id, created_at] <- [[ $fact_id, $entity_id, $created_at ]]
+                :put fact_entities { fact_id, entity_id => created_at }
+            ",
+            params,
+        )
+        .unwrap();
+
+    let config = taxis::config::AletheiaConfig::default();
+    let state = KnowledgeState {
+        knowledge_store: Some(store),
+        config: Arc::new(tokio::sync::RwLock::new(config)),
+        event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
+    };
+
+    let query = EntitiesQuery {
+        limit: 50,
+        offset: 0,
+        q: Some("ali".to_owned()),
+        sort: "name".to_owned(),
+        order: "asc".to_owned(),
+        entity_type: vec!["person".to_owned()],
+        min_confidence: Some(0.8),
+        agent: vec!["test-nous".to_owned()],
+    };
+
+    let response = match list_entities(State(state), Query(query)).await {
+        Ok(response) => response,
+        Err(err) => panic!("list entities: {err:?}"),
+    };
+    assert_eq!(response.0.total, 1);
+    assert_eq!(response.0.entities.len(), 1);
+    let entity = &response.0.entities[0];
+    assert_eq!(entity.id, "entity-a");
+    assert_eq!(entity.name, "Alice");
+    assert_eq!(entity.relationship_count, 1);
+    assert!(entity.confidence >= 0.8);
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn get_entity_missing_returns_404() {
+    use std::sync::Arc;
+
+    use axum::extract::{Path, State};
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let config = taxis::config::AletheiaConfig::default();
+    let state = KnowledgeState {
+        knowledge_store: Some(store),
+        config: Arc::new(tokio::sync::RwLock::new(config)),
+        event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
+    };
+
+    let Err(err) = get_entity(State(state), Path("missing-entity".to_owned())).await else {
+        panic!("missing entity should return an error");
+    };
+    match err {
+        ApiError::NotFound { path, .. } => {
+            assert_eq!(path, "entity/missing-entity");
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
 }
 
 #[test]

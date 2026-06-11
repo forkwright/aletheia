@@ -236,6 +236,77 @@ async fn list_sessions_filter_by_nous_id() {
 }
 
 #[tokio::test]
+async fn list_sessions_search_and_status_filters() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let active_req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "alpha-session"
+        })),
+    );
+    let active_resp = router.clone().oneshot(active_req).await.unwrap();
+    assert_eq!(active_resp.status(), StatusCode::CREATED);
+
+    let archived_req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "beta-session"
+        })),
+    );
+    let archived_resp = router.clone().oneshot(archived_req).await.unwrap();
+    assert_eq!(archived_resp.status(), StatusCode::CREATED);
+    let archived = body_json(archived_resp).await;
+    let archived_id = archived["id"].as_str().unwrap().to_owned();
+
+    let close_resp = router
+        .clone()
+        .oneshot(authed_delete(&format!("/api/v1/sessions/{archived_id}")))
+        .await
+        .unwrap();
+    assert_eq!(close_resp.status(), StatusCode::NO_CONTENT);
+
+    let search_resp = router
+        .clone()
+        .oneshot(authed_get("/api/v1/sessions?search=alpha"))
+        .await
+        .unwrap();
+    assert_eq!(search_resp.status(), StatusCode::OK);
+    let search_body = body_json(search_resp).await;
+    let search_items = search_body["items"].as_array().unwrap();
+    assert_eq!(search_items.len(), 1);
+    assert_eq!(search_items[0]["session_key"], "alpha-session");
+
+    let status_resp = router
+        .clone()
+        .oneshot(authed_get("/api/v1/sessions?status=archived"))
+        .await
+        .unwrap();
+    assert_eq!(status_resp.status(), StatusCode::OK);
+    let status_body = body_json(status_resp).await;
+    let status_items = status_body["items"].as_array().unwrap();
+    assert_eq!(status_items.len(), 1);
+    assert_eq!(status_items[0]["session_key"], "beta-session");
+    assert_eq!(status_items[0]["status"], "archived");
+
+    let combined_resp = router
+        .clone()
+        .oneshot(authed_get("/api/v1/sessions?search=beta&status=archived"))
+        .await
+        .unwrap();
+    assert_eq!(combined_resp.status(), StatusCode::OK);
+    let combined_body = body_json(combined_resp).await;
+    let combined_items = combined_body["items"].as_array().unwrap();
+    assert_eq!(combined_items.len(), 1);
+    assert_eq!(combined_items[0]["session_key"], "beta-session");
+}
+
+#[tokio::test]
 async fn list_sessions_limit_param_returns_n_sessions() {
     // NOTE: GET /api/v1/sessions?limit=N must return exactly N sessions (#1254).
     let (state, _dir) = test_state().await;

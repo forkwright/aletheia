@@ -1,6 +1,8 @@
 // kanon:ignore RUST/file-too-long — config section validators are discrete functions naturally colocated with their dispatch table
 //! Config section validation: rejects invalid values before persisting.
 
+use std::collections::HashSet;
+
 use serde_json::Value;
 use snafu::Snafu;
 
@@ -146,6 +148,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "embedding" => validate_embedding(value, &mut errors),
         "channels" => validate_channels(value, &mut errors),
         "bindings" => validate_bindings(value, &mut errors),
+        "feature_flags" => validate_feature_flags(value, &mut errors),
         "credential" => validate_credential(value, &mut errors),
         "timeouts" => validate_timeouts(value, &mut errors),
         "capacity" => validate_capacity(value, &mut errors),
@@ -489,6 +492,44 @@ fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
                 "bindings[{i}].channel '{channel}' is not a known channel type (expected one of: {})",
                 KNOWN_CHANNEL_TYPES.join(", ")
             ));
+        }
+    }
+}
+
+fn validate_feature_flags(value: &Value, errors: &mut Vec<String>) {
+    let Some(flags) = value.as_array() else {
+        errors.push("feature_flags must be an array".to_owned());
+        return;
+    };
+
+    let mut seen_keys = HashSet::new();
+    for (i, flag) in flags.iter().enumerate() {
+        let Some(flag) = flag.as_object() else {
+            errors.push(format!("feature_flags[{i}] must be an object"));
+            continue;
+        };
+
+        match flag.get("key").and_then(Value::as_str) {
+            None | Some("") => errors.push(format!("feature_flags[{i}].key must not be empty")),
+            Some(key) => {
+                if !seen_keys.insert(key.to_owned()) {
+                    errors.push(format!("feature_flags[{i}].key '{key}' is duplicated"));
+                }
+            }
+        }
+
+        if flag
+            .get("description")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        {
+            errors.push(format!("feature_flags[{i}].description must not be empty"));
+        }
+
+        if let Some(enabled) = flag.get("enabled")
+            && !enabled.is_boolean()
+        {
+            errors.push(format!("feature_flags[{i}].enabled must be a boolean"));
         }
     }
 }

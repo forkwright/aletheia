@@ -480,6 +480,45 @@ fn accepts_matrix_binding() {
 }
 
 #[test]
+fn accepts_feature_flags() {
+    let section = json!([
+        { "key": "new_ui", "description": "Enable the new UI", "enabled": true }
+    ]);
+    assert!(
+        validate_section("feature_flags", &section).is_ok(),
+        "feature flag config should be accepted"
+    );
+}
+
+#[test]
+fn rejects_invalid_feature_flags() {
+    let section = json!([
+        { "key": "", "description": "" },
+        { "key": "new_ui", "description": "Enable the new UI" },
+        { "key": "new_ui", "description": "Duplicate key" }
+    ]);
+    let result = validate_section("feature_flags", &section);
+    assert!(result.is_err(), "invalid feature flags should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors
+            .iter()
+            .any(|e| e.contains("feature_flags[0].key")),
+        "empty feature flag key should be reported"
+    );
+    assert!(
+        err.errors
+            .iter()
+            .any(|e| e.contains("feature_flags[0].description")),
+        "empty feature flag description should be reported"
+    );
+    assert!(
+        err.errors.iter().any(|e| e.contains("duplicated")),
+        "duplicate feature flag keys should be reported"
+    );
+}
+
+#[test]
 fn rejects_invalid_credential_source() {
     let section = json!({ "source": "magic" });
     let result = validate_section("credential", &section);
@@ -921,6 +960,7 @@ fn validate_startup_rejects_agent_workspace_missing_soul() {
         recall: None,
         recall_profile: None,
         behavior: None,
+        ..Default::default()
     });
 
     let err = validate_startup(&config, &oikos).unwrap_err();

@@ -40,6 +40,29 @@ async fn update_section_bindings_happy_path() {
 }
 
 #[tokio::test]
+async fn update_section_feature_flags_happy_path() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/config/feature_flags",
+        Some(serde_json::json!([
+            {
+                "key": "new_ui",
+                "description": "Enable the new desktop UI",
+                "enabled": true
+            }
+        ])),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["section"], "feature_flags");
+    assert!(body["config"].is_array());
+    assert_eq!(body["config"][0]["key"], "new_ui");
+    assert_eq!(body["config"][0]["enabled"], true);
+}
+
+#[tokio::test]
 async fn update_section_packs_happy_path() {
     let (app, _dir) = app().await;
     let req = authed_request(
@@ -52,6 +75,16 @@ async fn update_section_packs_happy_path() {
     let body = body_json(resp).await;
     assert_eq!(body["section"], "packs");
     assert!(body["config"].is_array());
+}
+
+#[tokio::test]
+async fn get_config_includes_feature_flags() {
+    let (app, _dir) = app().await;
+    let resp = app.oneshot(authed_get("/api/v1/config")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["feature_flags"].is_array());
 }
 
 #[tokio::test]
@@ -147,5 +180,9 @@ async fn openapi_spec_contains_config_section_schemas() {
     assert!(
         schemas.contains_key("EmbeddingSettings"),
         "OpenAPI spec must include EmbeddingSettings schema"
+    );
+    assert!(
+        schemas.contains_key("FeatureFlagConfig"),
+        "OpenAPI spec must include FeatureFlagConfig schema"
     );
 }

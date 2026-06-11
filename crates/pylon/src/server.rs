@@ -148,6 +148,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let knowledge_store = nous_manager.knowledge_store().cloned();
 
     let (config_tx, _config_rx) = tokio::sync::watch::channel(aletheia_config.clone());
+    let workspace_root = crate::state::resolve_workspace_root(&oikos);
 
     // WHY: pylon's standalone server only registers its own metric families.
     // The aletheia binary uses `register_all_metrics` to register every
@@ -161,6 +162,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         provider_registry,
         tool_registry,
         oikos,
+        workspace_root,
         jwt_manager,
         auth_facade,
         start_time: Instant::now(),
