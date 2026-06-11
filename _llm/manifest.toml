@@ -74,8 +74,8 @@ l3_token_estimate = 8198
 [[crates]]
 name = "eidos"
 path = "crates/eidos"
-source_hash = "1404454c2879c915436790243e3ee6c7e3214024ae3c8db84cc12ee62b2755b7"
-l3_token_estimate = 13450
+source_hash = "87c77416bf821e6107ed73a027c6092149b193d760ac3743c3443226c32ac225"
+l3_token_estimate = 13338
 
 [[crates]]
 name = "energeia"
@@ -104,7 +104,7 @@ l3_token_estimate = 5222
 [[crates]]
 name = "hermeneus"
 path = "crates/hermeneus"
-source_hash = "6438ff4c4173ef4fa0b9ee5bd431ea74874cba2c1da356d908a824e63e5e97a0"
+source_hash = "bdba659c1bdd132e71e64523aa37a0f67d94d8eea249dcd33751d8aa1ca36743"
 l3_token_estimate = 13698
 
 [[crates]]
@@ -116,13 +116,13 @@ l3_token_estimate = 1170
 [[crates]]
 name = "koilon"
 path = "crates/theatron/koilon"
-source_hash = "528a797c5de07a6a61d33394bc56ccd46b2732347aa8ad7a1e65876c8c3371ee"
+source_hash = "839b2e40206cabe71c9e630202e9adc8f781545ba8f13965927b5a00f0336f34"
 l3_token_estimate = 11570
 
 [[crates]]
 name = "koina"
 path = "crates/koina"
-source_hash = "f2d971d8fb72f6ecbef58b8b250ab47f43c7f5f9da6d216f075ce4af8f1b6aef"
+source_hash = "e6416dbe6ad7469b3458cf056c039eb544c2710c64ad89b71b9c0943527f6ee9"
 l3_token_estimate = 7453
 
 [[crates]]
@@ -272,8 +272,8 @@ l3_token_estimate = 17595
 [[crates]]
 name = "skene"
 path = "crates/theatron/skene"
-source_hash = "a3478196ebfd4e26413c74677c2a1f4ee0acf5fa9664c300a15077f4abb271bc"
-l3_token_estimate = 4825
+source_hash = "01828596c76ceeb8c3e0ab6dad0328597bb6963625c47d880e5373d7236906eb"
+l3_token_estimate = 4844
 
 [[crates]]
 name = "symbolon"
@@ -290,8 +290,8 @@ l3_token_estimate = 23335
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "2cdd85dc1bdf10fbb78b47566436e8564bd132bfdb6c12d8330ba9f291e13480"
-l3_token_estimate = 22042
+source_hash = "edcb665b38a944a6bbedd01ba988eb253445398394ecbf6f514545cf149ead5d"
+l3_token_estimate = 22061
 
 [[crates]]
 name = "thesauros"
