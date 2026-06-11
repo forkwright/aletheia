@@ -18,7 +18,12 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **aletheia** | `keyring` | no | Keyring integration | `symbolon/keyring` |
 | **aletheia** | `tui` | no | `dep:koilon` | - |
 | **aletheia** | `cc-provider` | no | Claude Code subprocess provider | `hermeneus/cc-provider` |
+| **aletheia** | `codex-provider` | no | Codex subprocess provider | `hermeneus/codex-provider` |
+| **aletheia** | `kimi-provider` | no | Kimi subprocess provider | `hermeneus/kimi-provider` |
 | **aletheia** | `energeia` | no | Dispatch orchestration plus service-backed Energeia agent tools in the runtime registry | `dep:energeia`, `energeia/storage-fjall`, `organon/energeia` |
+| **aletheia** | `bookkeeper` | no | Bookkeeper maintenance tools | `organon/bookkeeper` |
+| **aletheia** | `computer-use` | no | Computer-use tools | `organon/computer-use` |
+| **aletheia** | `z3` | no | Z3 SMT solver tool | `organon/z3` |
 | **aletheia** | `test-core` | no | - | `mneme/test-core`, `nous/test-core`, `pylon/test-core` |
 | **aletheia** | `test-full` | no | - | `test-core`, `mneme/test-full` |
 | **daemon** (oikonomos) | `default` | **yes** | *(empty)* | - |
@@ -52,6 +57,8 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **graphe** | `test-core` | no | - | - |
 | **graphe** | `test-full` | no | - | - |
 | **hermeneus** | `cc-provider` | no | Claude Code subprocess provider | - |
+| **hermeneus** | `codex-provider` | no | Codex subprocess provider | - |
+| **hermeneus** | `kimi-provider` | no | Kimi subprocess provider | - |
 | **hermeneus** | `test-utils` | no | Legacy mock LLM provider alias | - |
 | **hermeneus** | `test-support` | no | Mock LLM provider for tests | `test-utils` |
 | **hermeneus** | `test-core` | no | - | - |
@@ -88,6 +95,8 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **nous** | `test-full` | no | - | `test-core` |
 | **organon** | `computer-use` | no | Screen capture, Landlock sandbox (Linux 5.13+) | - |
 | **organon** | `energeia` | no | Energeia capability tools | `dep:energeia` (pre-enabled with `storage-fjall`) |
+| **organon** | `bookkeeper` | no | Bookkeeper maintenance tools | - |
+| **organon** | `z3` | no | Z3 SMT solver tool | `dep:z3` |
 | **organon** | `test-support` | no | `MockToolExecutor`, `ToolExecutorSpec`, etc. | `hermeneus/test-support`, `dep:rustls` |
 | **organon** | `test-core` | no | - | - |
 | **organon** | `test-full` | no | - | - |
@@ -165,12 +174,19 @@ aletheia/embed-candle
 | `aletheia/keyring` | `symbolon/keyring` (`dep:keyring`) |
 | `aletheia/tui` | `dep:koilon` |
 | `aletheia/cc-provider` | `hermeneus/cc-provider` |
+| `aletheia/codex-provider` | `hermeneus/codex-provider` |
+| `aletheia/kimi-provider` | `hermeneus/kimi-provider` |
 | `aletheia/energeia` | `dep:energeia`, `energeia/storage-fjall`, `organon/energeia` |
+| `aletheia/bookkeeper` | `organon/bookkeeper` |
+| `aletheia/computer-use` | `organon/computer-use` |
+| `aletheia/z3` | `organon/z3` |
 | `organon/energeia` | `dep:energeia` (with `storage-fjall` pre-enabled) |
 | `daemon/knowledge-store` | `episteme/mneme-engine` |
 | `diaporeia/knowledge-store` | `nous/knowledge-store` |
 
 ## Test feature tiers
+
+Feature scope matters. `cargo test --workspace --all-features` activates every feature on every workspace member. `cargo test -p aletheia --all-features` activates only the `aletheia` package features, plus dependency features reached through its passthroughs. Use dependency features such as `organon/computer-use` directly only when building or testing that dependency crate.
 
 Every workspace crate declares `test-core` and `test-full`. Most crates leave them empty; crates with storage- or ML-dependent tests wire them to the relevant engine features.
 
@@ -179,7 +195,7 @@ Every workspace crate declares `test-core` and `test-full`. Most crates leave th
 | **default** | *(none)* | ~5,400 | Pure-logic unit tests, config validation, type invariants |
 | **test-core** | `--features test-core` | ~5,435 | Storage engine tests (Datalog, HNSW, fjall, knowledge store CRUD) |
 | **test-full** | `--features test-full` | ~5,435 | ML embedding tests (candle model loading, vector generation) |
-| **all** | `--all-features` | ~5,475 | + local-llm, computer-use, other optional features |
+| **all** | `--all-features` | ~5,475 | provider subprocess adapters, computer-use, bookkeeper, z3, other optional features |
 
 ### Notable tier wiring
 
