@@ -104,49 +104,6 @@ impl<'de> Deserialize<'de> for SecretString {
     }
 }
 
-#[expect(
-    dead_code,
-    reason = "serde helper for config fields with optional secrets"
-)]
-/// Deserialize an `Option<SecretString>` that treats empty strings as `None`.
-///
-/// Useful for config fields where an empty value means "not set."
-pub(crate) fn deserialize_option_secret_non_empty<'de, D>(
-    deserializer: D,
-) -> Result<Option<SecretString>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let opt: Option<String> = Option::deserialize(deserializer)?;
-    Ok(opt.filter(|s| !s.is_empty()).map(SecretString::from))
-}
-
-/// Serialize an `Option<SecretString>` that uses the default serde behavior
-/// (serialize the field as `[REDACTED]` if Some, skip if None when combined
-/// with `#[serde(skip_serializing_if = "Option::is_none")]`).
-///
-#[expect(
-    dead_code,
-    reason = "serde helper for config fields with optional secrets"
-)]
-#[expect(
-    clippy::ref_option,
-    reason = "serde serialize_with requires &Option<T> signature"
-)]
-/// This exists for symmetry with [`deserialize_option_secret_non_empty`].
-pub(crate) fn serialize_option_secret_redacted<S>(
-    value: &Option<SecretString>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    match value {
-        Some(_) => serializer.serialize_str(REDACTED),
-        None => serializer.serialize_none(),
-    }
-}
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {

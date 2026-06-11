@@ -2254,6 +2254,29 @@ pub fn check_preconditions (
 pub fn redact (config: &AletheiaConfig) -> Value
 ```
 
+> Restore redacted secret leaves from the current in-memory config.
+> 
+> Call this after serializing `AletheiaConfig` through serde for mutation,
+> before deserializing the value back into typed config.
+```rust
+pub fn preserve_secret_leaves (root: &mut Value, current: &AletheiaConfig)
+```
+
+> Return `staged` with any redacted secret leaves restored from `current`.
+> 
+> This is for config paths that must serialize through `serde_json::Value`
+> before producing a live `AletheiaConfig`.
+> 
+> # Errors
+> 
+> Returns an error if the restored JSON cannot deserialize into config.
+```rust
+pub fn preserve_config_secret_leaves (
+    staged: &AletheiaConfig,
+    current: &AletheiaConfig,
+) -> Result<AletheiaConfig, serde_json::Error>
+```
+
 ## `src/registry.rs`
 
 ```rust
