@@ -74,6 +74,9 @@
   --scrollbar-thumb: #2e2b27;
   --scrollbar-thumb-hover: #3d3832;
 
+  /* Progress veil — elapsed-region tint over status-colored blocks */
+  --progress-veil: rgb(255 255 255 / 0.06);
+
   /* Focus ring */
   --focus-ring: rgb(154 123 79 / 0.5);
 
@@ -138,7 +141,7 @@
 
   /* Status — same palette, lighter values */
   --status-success: #4A6A3A;
-  --status-warning: #9A7A2E;
+  --status-warning: #7A6020; /* WHY: darkened from #9A7A2E (3.46:1) for WCAG AA (≥4.5:1) on warning-bg/bg/surface */
   --status-error: #8A3030;
   --status-info: #4A6A7A;
 
@@ -175,6 +178,9 @@
   --scrollbar-thumb: #D4CFC7;
   --scrollbar-thumb-hover: #C0BAB0;
 
+  /* Progress veil — elapsed-region tint over status-colored blocks */
+  --progress-veil: rgb(44 36 24 / 0.08);
+
   /* Focus ring */
   --focus-ring: rgb(154 123 79 / 0.4);
 
@@ -201,4 +207,25 @@
 
   --natural: #8B5A2B;
   --natural-bg: #ECE0D0;
+}
+
+/* ===================================================================== */
+/* Root lift for light theme                                             */
+/* WHY: ThemeProvider sets [data-theme] on an inner display:contents     */
+/* div, so html/body sit outside it and keep dark :root tokens — any     */
+/* region not painted by an inner element (overscroll, transparent       */
+/* panels) rendered near-black on parchment. This rule lifts the tokens  */
+/* consumed at/above the provider div to the root when light is active.  */
+/* Kept as a separate rule so an engine without :has() degrades to the   */
+/* previous behavior instead of dropping the whole light block.          */
+/* ===================================================================== */
+
+:root:has([data-theme="light"]) {
+  --bg: #F7F3E8;
+  --text-primary: #2C2418;
+  --scrollbar-track: #EDE8E0;
+  --scrollbar-thumb: #D4CFC7;
+  --scrollbar-thumb-hover: #C0BAB0;
+  --selection-bg: rgb(154 123 79 / 0.25);
+  --selection-fg: #2C2418;
 }

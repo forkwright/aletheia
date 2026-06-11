@@ -39,10 +39,16 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
         let agent_count = store.read().all().len();
         return rsx! {
             div {
-                class: "agent-roster-rail",
-                span { class: "agent-roster-rail-label", "NOUS" }
+                style: "display: flex; flex-direction: column; align-items: center; padding: var(--space-2) 0;",
+                span {
+                    style: "font-size: var(--text-xs); color: var(--text-muted); writing-mode: vertical-rl; text-orientation: mixed;",
+                    "NOUS"
+                }
                 if agent_count > 0 {
-                    span { class: "agent-roster-rail-count", "● {agent_count}" }
+                    span {
+                        style: "font-size: var(--text-xs); color: var(--status-success); margin-top: var(--space-1);",
+                        "● {agent_count}"
+                    }
                 }
             }
         };

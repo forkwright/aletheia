@@ -43,7 +43,7 @@ const TH_STYLE: &str = "\
 
 const TD_STYLE: &str = "\
     padding: var(--space-1) var(--space-2); \
-    border-bottom: 1px solid #1e1e38; \
+    border-bottom: 1px solid var(--border-separator); \
     color: var(--text-primary);\
 ";
 
@@ -85,8 +85,8 @@ const PAGE_BTN: &str = "\
 
 const PAGE_BTN_DISABLED: &str = "\
     background: var(--bg-surface); \
-    color: var(--border); \
-    border: 1px solid #2a2a2a; \
+    color: var(--text-muted); \
+    border: 1px solid var(--border-separator); \
     border-radius: var(--radius-sm); \
     padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \

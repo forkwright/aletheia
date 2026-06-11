@@ -400,7 +400,7 @@ pub(crate) fn Sessions() -> Element {
             div {
                 style: "{HEADER_STYLE}",
                 h2 {
-                    style: "font-size: var(--text-lg); margin: 0; color: var(--text-primary, var(--text-primary));",
+                    style: "font-size: var(--text-lg); margin: 0; color: var(--text-primary);",
                     "Sessions"
                 }
                 button {

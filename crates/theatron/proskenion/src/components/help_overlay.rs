@@ -11,7 +11,7 @@ const OVERLAY_BACKDROP: &str = "\
     left: 0; \
     right: 0; \
     bottom: 0; \
-    background: rgba(0, 0, 0, 0.6); \
+    background: var(--bg-overlay); \
     display: flex; \
     align-items: center; \
     justify-content: center; \
@@ -58,7 +58,7 @@ const KEY_STYLE: &str = "\
     font-family: var(--font-mono, monospace); \
     font-size: var(--text-xs); \
     color: var(--text-secondary); \
-    background: var(--bg-hover, var(--bg)); \
+    background: var(--bg-surface-bright); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
     padding: var(--space-1) var(--space-2); \
@@ -75,7 +75,7 @@ const FOOTER_STYLE: &str = "\
     padding-top: var(--space-3); \
     border-top: 1px solid var(--border); \
     font-size: var(--text-xs); \
-    color: var(--text-muted, var(--text-secondary)); \
+    color: var(--text-muted); \
     text-align: center;\
 ";
 
@@ -92,7 +92,7 @@ const NAV_SHORTCUTS: &[ShortcutEntry] = &[
     },
     ShortcutEntry {
         keys: "Ctrl+2 / Ctrl+Shift+F",
-        description: "Files",
+        description: "Theke",
     },
     ShortcutEntry {
         keys: "Ctrl+3",

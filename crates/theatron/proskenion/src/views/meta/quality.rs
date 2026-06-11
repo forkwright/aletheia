@@ -3,7 +3,9 @@
 use dioxus::prelude::*;
 
 use crate::state::meta::QualityStore;
-use crate::views::meta::{CARD_LABEL, CARD_STYLE, GRID_STYLE, LineChart, MUTED_TEXT};
+use crate::views::meta::{CARD_STYLE, ChartCard, ChartKind, GRID_STYLE, MUTED_TEXT};
+
+const GRID_CARD_STYLE: &str = "flex: 1; min-width: 280px;";
 
 const HISTOGRAM_BAR_STYLE: &str = "\
     display: flex; \
@@ -41,52 +43,44 @@ pub(super) fn ConversationQualitySection(store: QualityStore) -> Element {
         if store.charts_endpoint_available {
             div {
                 style: "{GRID_STYLE}",
-                div {
-                    style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                    div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Avg Turn Length" }
-                    LineChart {
-                        data: store.avg_turn_length.clone(),
-                        width: 300.0,
-                        height: 150.0,
-                        color: "#4a9aff",
-                        show_labels: true,
-                    }
+                ChartCard {
+                    title: "Avg Turn Length",
+                    kind: ChartKind::Line,
+                    data: store.avg_turn_length.clone(),
+                    color: "var(--status-info)",
+                    width: 460.0,
+                    height: 220.0,
+                    card_style: GRID_CARD_STYLE,
                 }
-                div {
-                    style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                    div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Response-to-Question Ratio" }
-                    LineChart {
-                        data: store.response_to_question_ratio.clone(),
-                        width: 300.0,
-                        height: 150.0,
-                        color: "var(--status-success)",
-                        show_labels: true,
-                    }
+                ChartCard {
+                    title: "Response-to-Question Ratio",
+                    kind: ChartKind::Line,
+                    data: store.response_to_question_ratio.clone(),
+                    color: "var(--status-success)",
+                    width: 460.0,
+                    height: 220.0,
+                    card_style: GRID_CARD_STYLE,
                 }
             }
             div {
                 style: "{GRID_STYLE} margin-top: var(--space-3);",
-                div {
-                    style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                    div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Tool Call Density" }
-                    LineChart {
-                        data: store.tool_call_density.clone(),
-                        width: 300.0,
-                        height: 150.0,
-                        color: "var(--status-warning)",
-                        show_labels: true,
-                    }
+                ChartCard {
+                    title: "Tool Call Density",
+                    kind: ChartKind::Line,
+                    data: store.tool_call_density.clone(),
+                    color: "var(--status-warning)",
+                    width: 460.0,
+                    height: 220.0,
+                    card_style: GRID_CARD_STYLE,
                 }
-                div {
-                    style: "{CARD_STYLE} flex: 1; min-width: 280px;",
-                    div { style: "{CARD_LABEL} margin-bottom: var(--space-2);", "Thinking Time Ratio" }
-                    LineChart {
-                        data: store.thinking_time_ratio.clone(),
-                        width: 300.0,
-                        height: 150.0,
-                        color: "#8b5cf6",
-                        show_labels: true,
-                    }
+                ChartCard {
+                    title: "Thinking Time Ratio",
+                    kind: ChartKind::Line,
+                    data: store.thinking_time_ratio.clone(),
+                    color: "var(--thanatochromia)",
+                    width: 460.0,
+                    height: 220.0,
+                    card_style: GRID_CARD_STYLE,
                 }
             }
         } else {
@@ -133,7 +127,7 @@ fn DepthHistogram(short: u32, medium: u32, long: u32) -> Element {
     let max_val = short.max(medium).max(long).max(1);
 
     let buckets: Vec<(&str, u32, &str)> = vec![
-        ("Short (<10)", short, "#4a9aff"),
+        ("Short (<10)", short, "var(--status-info)"),
         ("Medium (10-50)", medium, "var(--status-success)"),
         ("Long (50+)", long, "var(--status-warning)"),
     ];

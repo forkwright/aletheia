@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use crate::state::tools::{PlanCardState, PlanStatus, StepStatus};
 
 const CARD_STYLE: &str = "\
-    background: #1a1a30; \
+    background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-md); \
     padding: var(--space-3); \
@@ -14,8 +14,8 @@ const CARD_STYLE: &str = "\
 ";
 
 const CARD_COMPLETE_STYLE: &str = "\
-    background: #1a2a1a; \
-    border: 1px solid #2a4a2a; \
+    background: var(--status-success-bg); \
+    border: 1px solid var(--status-success); \
     border-radius: var(--radius-md); \
     padding: var(--space-3); \
     margin-top: var(--space-1); \
@@ -24,7 +24,7 @@ const CARD_COMPLETE_STYLE: &str = "\
 
 const TITLE_STYLE: &str = "\
     font-weight: var(--weight-semibold); \
-    color: #c0c0e0; \
+    color: var(--text-primary); \
     font-size: var(--text-base); \
     margin-bottom: var(--space-2);\
 ";
@@ -161,11 +161,13 @@ fn render_step_icon(status: StepStatus) -> Element {
 fn step_label_style(status: StepStatus) -> String {
     match status {
         StepStatus::Pending => "color: var(--text-muted);".to_string(),
-        StepStatus::InProgress => "color: #c0c0e0; font-weight: var(--weight-medium);".to_string(),
+        StepStatus::InProgress => {
+            "color: var(--text-primary); font-weight: var(--weight-medium);".to_string()
+        }
         StepStatus::Complete => {
             "color: var(--text-secondary); text-decoration: line-through;".to_string()
         }
-        StepStatus::Failed => "color: #f87171;".to_string(),
+        StepStatus::Failed => "color: var(--status-error);".to_string(),
     }
 }
 

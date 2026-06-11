@@ -188,10 +188,15 @@ pub(crate) fn Costs() -> Element {
 }
 
 fn loaded_costs_view(
-    data: CostMetricsResponse,
+    mut data: CostMetricsResponse,
     mut budget: Signal<BudgetConfig>,
     mut budget_input: Signal<String>,
 ) -> Element {
+    // WHY: the comparison must reflect only agents that actually spent in
+    // the current or previous period — zero rows are noise, not data.
+    data.agents
+        .retain(|a| a.total_cost > 0.0 || a.prev_period_cost > 0.0);
+
     let today_d = compute_delta_f64(data.today_cost, data.prev_today_cost);
     let week_d = compute_delta_f64(data.week_cost, data.prev_week_cost);
     let month_d = compute_delta_f64(data.month_cost, data.prev_month_cost);

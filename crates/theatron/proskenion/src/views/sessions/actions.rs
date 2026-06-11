@@ -50,17 +50,18 @@ const DIALOG_OVERLAY_STYLE: &str = "\
     left: 0; \
     right: 0; \
     bottom: 0; \
-    background: rgba(0, 0, 0, 0.6); \
+    background: var(--bg-overlay); \
     display: flex; \
     align-items: center; \
     justify-content: center; \
-    z-index: 100;\
+    z-index: var(--z-modal);\
 ";
 
 const DIALOG_STYLE: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-lg); \
+    box-shadow: var(--shadow-modal); \
     padding: var(--space-6); \
     max-width: 400px; \
     width: 100%;\
@@ -101,7 +102,7 @@ const DIALOG_CANCEL_BTN: &str = "\
 
 const DIALOG_CONFIRM_BTN: &str = "\
     background: var(--accent); \
-    color: white; \
+    color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
     padding: var(--space-2) var(--space-4); \

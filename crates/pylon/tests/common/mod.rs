@@ -157,7 +157,7 @@ impl TestEnvBuilder {
         }
 
         let (jwt_manager, auth_facade) = test_auth_state(self.jwt_access_ttl);
-        let workspace_root = pylon::state::resolve_workspace_root(&oikos);
+        let workspace_root = pylon::state::resolve_workspace_root(&oikos, None);
 
         let default_config = AletheiaConfig::default();
         let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());

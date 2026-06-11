@@ -18,7 +18,7 @@ use crate::state::metrics::MetricsTab;
 const TAB_BAR_STYLE: &str = "\
     display: flex; \
     gap: var(--space-1); \
-    border-bottom: 1px solid #2a2724; \
+    border-bottom: 1px solid var(--border); \
     padding: 0 var(--space-4); \
     margin-bottom: var(--space-4);\
 ";
@@ -26,10 +26,10 @@ const TAB_BAR_STYLE: &str = "\
 const TAB_ACTIVE_STYLE: &str = "\
     padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    color: #e8e6e3; \
+    color: var(--text-primary); \
     background: transparent; \
     border: none; \
-    border-bottom: 2px solid #5b6af0; \
+    border-bottom: 2px solid var(--accent); \
     cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
     font-family: var(--font-mono);\
 ";
@@ -37,7 +37,7 @@ const TAB_ACTIVE_STYLE: &str = "\
 const TAB_INACTIVE_STYLE: &str = "\
     padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
-    color: #706c66; \
+    color: var(--text-muted); \
     background: transparent; \
     border: none; \
     border-bottom: 2px solid transparent; \

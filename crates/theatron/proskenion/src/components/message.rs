@@ -55,7 +55,7 @@ pub(crate) fn MessageBubble(
             padding: var(--space-3) var(--space-4); \
             max-width: min(75%, 720px); \
             color: var(--text-primary); \
-            box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04); \
+            box-shadow: var(--shadow-inner-highlight); \
             animation: message-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); \
         "
     } else if is_system {
@@ -79,7 +79,7 @@ pub(crate) fn MessageBubble(
             padding: var(--space-3) var(--space-4); \
             max-width: min(85%, 720px); \
             color: var(--text-primary); \
-            box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04); \
+            box-shadow: var(--shadow-inner-highlight); \
             animation: message-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); \
         "
     };

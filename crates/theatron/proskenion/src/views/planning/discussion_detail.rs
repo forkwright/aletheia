@@ -85,7 +85,7 @@ pub(crate) fn DiscussionDetailView(
                             style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: var(--space-3) 0 var(--space-2);",
                             "Current Answer"
                         }
-                        div { style: "font-size: var(--text-base); color: var(--status-success); padding: var(--space-2) var(--space-3); background: #0f1a0f; border: 1px solid #1a3a1a; border-radius: var(--radius-md);", "{summary}" }
+                        div { style: "font-size: var(--text-base); color: var(--status-success); padding: var(--space-2) var(--space-3); background: var(--status-success-bg); border: 1px solid var(--status-success); border-radius: var(--radius-md);", "{summary}" }
                     }
                 }
 
@@ -111,7 +111,7 @@ pub(crate) fn DiscussionDetailView(
                             key: "{i}",
                             style: "display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-left: 2px solid var(--border); margin-bottom: var(--space-1);",
                             div {
-                                span { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: #c0c0e0;", "{entry.action}" }
+                                span { style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--text-primary);", "{entry.action}" }
                                 span { style: "font-size: var(--text-xs); color: var(--text-muted);", " by {entry.actor} at {entry.timestamp}" }
                                 if !entry.detail.is_empty() {
                                     div { style: "font-size: var(--text-xs); color: var(--text-secondary); font-style: italic;", "\"{entry.detail}\"" }

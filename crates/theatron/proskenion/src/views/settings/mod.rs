@@ -40,25 +40,13 @@ pub(crate) fn Settings() -> Element {
             style: "display: flex; flex-direction: column; height: 100%; overflow: hidden;",
 
             div {
-                style: "display: flex; gap: 0; padding: 0 var(--space-5); border-bottom: 1px solid var(--border); background: var(--bg-surface);",
+                style: "display: flex; gap: var(--space-2); padding: 0 var(--space-5); border-bottom: 1px solid var(--border); background: var(--bg-surface);",
                 for tab in [SettingsTab::Servers, SettingsTab::Appearance, SettingsTab::Keybindings, SettingsTab::Notifications] {
-                    {
-                        let is_active = active_tab() == tab;
-                        let border = if is_active { "2px solid var(--accent)" } else { "2px solid transparent" };
-                        let color = if is_active { "var(--text-primary)" } else { "var(--text-secondary)" };
-                        let style = format!(
-                            "padding: var(--space-3) 18px; background: none; border: none; border-bottom: {border}; \
-                             color: {color}; font-size: var(--text-sm); cursor: pointer; \
-                             transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);"
-                        );
-                        rsx! {
-                            button {
-                                key: "{tab:?}",
-                                style: "{style}",
-                                onclick: move |_| active_tab.set(tab),
-                                "{tab.label()}"
-                            }
-                        }
+                    SettingsTabButton {
+                        key: "{tab:?}",
+                        label: tab.label(),
+                        is_active: active_tab() == tab,
+                        on_select: move |_| active_tab.set(tab),
                     }
                 }
             }
@@ -72,6 +60,46 @@ pub(crate) fn Settings() -> Element {
                     SettingsTab::Notifications => rsx! { NotificationSettings {} },
                 } }
             }
+        }
+    }
+}
+
+/// Single settings tab: mono-uppercase label with active underline and hover state.
+#[component]
+fn SettingsTabButton(label: &'static str, is_active: bool, on_select: EventHandler<()>) -> Element {
+    let mut hovered = use_signal(|| false);
+
+    let underline = if is_active {
+        "var(--accent)"
+    } else {
+        "transparent"
+    };
+    let color = if is_active || hovered() {
+        "var(--text-primary)"
+    } else {
+        "var(--text-secondary)"
+    };
+    let bg = if hovered() && !is_active {
+        "var(--bg-surface-bright)"
+    } else {
+        "transparent"
+    };
+    let style = format!(
+        "padding: var(--space-3) var(--space-4); background: {bg}; border: none; \
+         border-bottom: 2px solid {underline}; border-radius: var(--radius-sm) var(--radius-sm) 0 0; \
+         color: {color}; font-family: var(--font-mono); font-size: var(--text-xs); \
+         font-weight: var(--weight-medium); text-transform: uppercase; letter-spacing: var(--tracking-wide); \
+         cursor: pointer; transition: background-color var(--transition-quick), \
+         color var(--transition-quick), border-color var(--transition-quick);"
+    );
+
+    rsx! {
+        button {
+            style: "{style}",
+            onmouseenter: move |_| hovered.set(true),
+            onmouseleave: move |_| hovered.set(false),
+            onclick: move |_| on_select.call(()),
+            "{label}"
         }
     }
 }

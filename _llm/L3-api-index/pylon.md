@@ -2250,7 +2250,7 @@ impl AppState {
 ```
 
 ```rust
-pub fn resolve_workspace_root (oikos: &Oikos) -> PathBuf
+pub fn resolve_workspace_root (oikos: &Oikos, configured_root: Option<&Path>) -> PathBuf
 ```
 
 ```rust

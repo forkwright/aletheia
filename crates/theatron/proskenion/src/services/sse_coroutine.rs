@@ -25,9 +25,10 @@ use crate::state::toasts::{ToastSeverity, ToastStore};
 /// and `Signal<DndState>` to already be in context (provided by `ConnectedApp`).
 ///
 /// The coroutine automatically reconnects when the SSE stream drops
-/// (handled internally by `SseConnection`). Toast notifications are
-/// emitted on disconnect/reconnect transitions. Desktop notifications are
-/// dispatched via [`NotificationDispatch`].
+/// (handled internally by `SseConnection`, which reports only confirmed
+/// losses). Toast notifications fire only on sustained loss/recovery
+/// transitions — transient blips and clean reconnects stay silent.
+/// Desktop notifications are dispatched via [`NotificationDispatch`].
 pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
     let mut event_state = use_context_provider(|| Signal::new(EventState::new()));
     let mut sse_connection_state =
@@ -49,6 +50,7 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
         let mut sse = SseConnection::connect(client, &base_url, cancel);
         let mut router = SseEventRouter::new();
         let mut dispatch = NotificationDispatch::new();
+        let mut loss_announced = false;
 
         while let Some(event) = sse.next().await {
             let prev_connected = router.state().connection.is_connected();
@@ -63,10 +65,17 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
                 // so the connection indicator can subscribe to just this.
                 sse_connection_state.set(new_state.connection.clone());
 
-                // WHY: Emit toasts on connection transitions so the user
-                // has visibility into SSE health without watching the indicator.
+                // WHY: Toast only on sustained transitions: the connection
+                // task already debounces losses, and `connection_toast`
+                // pairs them — one lost toast per episode, one restored
+                // toast after, nothing on startup or silent reconnects.
                 let now_connected = new_state.connection.is_connected();
-                emit_connection_toasts(prev_connected, now_connected);
+                let toast = connection_toast(prev_connected, now_connected, &mut loss_announced);
+                if let Some((severity, message)) = toast
+                    && let Some(mut store) = try_consume_context::<Signal<ToastStore>>()
+                {
+                    store.write().push(severity, message);
+                }
             }
 
             // NOTE: Window focus state defaults to false (always notify).
@@ -90,24 +99,65 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
     });
 }
 
-/// Emit toast notifications on SSE connection state transitions.
-fn emit_connection_toasts(was_connected: bool, is_connected: bool) {
+/// Decide whether a connection transition warrants a toast.
+///
+/// `loss_announced` pairs the toasts across calls: a restored toast fires
+/// only after a lost toast, so the initial connect and silently-recovered
+/// blips never produce notifications.
+fn connection_toast(
+    was_connected: bool,
+    is_connected: bool,
+    loss_announced: &mut bool,
+) -> Option<(ToastSeverity, &'static str)> {
     match (was_connected, is_connected) {
         (true, false) => {
-            // NOTE: We need a mutable signal write, access via context.
-            if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
-                store
-                    .write()
-                    .push(ToastSeverity::Warning, "Server connection lost");
-            }
+            *loss_announced = true;
+            Some((ToastSeverity::Warning, "Server connection lost"))
         }
-        (false, true) => {
-            if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
-                store
-                    .write()
-                    .push(ToastSeverity::Success, "Server connection restored");
-            }
+        (false, true) if *loss_announced => {
+            *loss_announced = false;
+            Some((ToastSeverity::Success, "Server connection restored"))
         }
-        _ => {} // NOTE: other SSE event types require no UI-level handling
+        _ => None, // NOTE: steady states and the initial connect stay quiet
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initial_connect_is_silent() {
+        let mut announced = false;
+        assert!(connection_toast(false, true, &mut announced).is_none());
+        assert!(!announced);
+    }
+
+    #[test]
+    fn sustained_loss_then_recovery_toasts_once_each() {
+        let mut announced = false;
+
+        let lost = connection_toast(true, false, &mut announced);
+        assert_eq!(
+            lost,
+            Some((ToastSeverity::Warning, "Server connection lost"))
+        );
+        assert!(announced);
+
+        // Repeated reconnect attempts while down: no further toasts.
+        assert!(connection_toast(false, false, &mut announced).is_none());
+
+        let restored = connection_toast(false, true, &mut announced);
+        assert_eq!(
+            restored,
+            Some((ToastSeverity::Success, "Server connection restored"))
+        );
+        assert!(!announced);
+    }
+
+    #[test]
+    fn steady_connected_is_silent() {
+        let mut announced = false;
+        assert!(connection_toast(true, true, &mut announced).is_none());
     }
 }

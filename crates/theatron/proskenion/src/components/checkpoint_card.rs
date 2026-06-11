@@ -55,7 +55,7 @@ const SECTION_LABEL: &str = "\
 
 const CONTEXT_STYLE: &str = "\
     font-size: var(--text-sm); \
-    color: #c0c0e0; \
+    color: var(--text-primary); \
     background: var(--bg-surface-dim); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
@@ -137,7 +137,7 @@ const OVERRIDE_BTN: &str = "\
 
 const SUBMIT_BTN_ACTIVE: &str = "\
     background: var(--accent); \
-    color: white; \
+    color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
     padding: var(--space-2) var(--space-4); \
@@ -323,7 +323,7 @@ pub(crate) fn CheckpointCard(
                             style: if req.met { "color: var(--status-success); width: 18px;" } else { "color: var(--status-error); width: 18px;" },
                             if req.met { "[v]" } else { "[x]" }
                         }
-                        span { style: "color: #c0c0e0;", "{req.title}" }
+                        span { style: "color: var(--text-primary);", "{req.title}" }
                     }
                 }
             }
@@ -335,7 +335,7 @@ pub(crate) fn CheckpointCard(
                         key: "{i}",
                         style: "{ARTIFACT_ROW}",
                         span { style: "color: var(--text-muted);", "{artifact.label}:" }
-                        span { style: "color: #c0c0e0; font-family: var(--font-mono);", "{artifact.value}" }
+                        span { style: "color: var(--text-primary); font-family: var(--font-mono);", "{artifact.value}" }
                     }
                 }
             }
@@ -423,19 +423,19 @@ pub(crate) fn CheckpointCard(
 fn card_container_style(status: CheckpointStatus) -> String {
     let (bg, border) = match status {
         CheckpointStatus::Pending => ("var(--bg-surface)", "var(--accent)"),
-        CheckpointStatus::Approved => ("#0f1f0f", "var(--status-success)"),
-        CheckpointStatus::Skipped => ("#1e1a10", "var(--status-warning)"),
-        CheckpointStatus::Overridden => ("#1e0f0f", "var(--status-error)"),
+        CheckpointStatus::Approved => ("var(--status-success-bg)", "var(--status-success)"),
+        CheckpointStatus::Skipped => ("var(--status-warning-bg)", "var(--status-warning)"),
+        CheckpointStatus::Overridden => ("var(--status-error-bg)", "var(--status-error)"),
     };
     format!("{CARD_BASE} background: {bg}; border-color: {border};")
 }
 
 fn status_badge_style(status: CheckpointStatus) -> String {
     let (bg, color) = match status {
-        CheckpointStatus::Pending => ("#1e1e5a", "#8080ff"),
-        CheckpointStatus::Approved => ("#0f2a0f", "var(--status-success)"),
-        CheckpointStatus::Skipped => ("#2a1f05", "var(--status-warning)"),
-        CheckpointStatus::Overridden => ("#2a0f0f", "var(--status-error)"),
+        CheckpointStatus::Pending => ("var(--status-info-bg)", "var(--status-info)"),
+        CheckpointStatus::Approved => ("var(--status-success-bg)", "var(--status-success)"),
+        CheckpointStatus::Skipped => ("var(--status-warning-bg)", "var(--status-warning)"),
+        CheckpointStatus::Overridden => ("var(--status-error-bg)", "var(--status-error)"),
     };
     format!("{BADGE_BASE} background: {bg}; color: {color};")
 }

@@ -135,6 +135,18 @@ impl Default for ChatState {
 }
 
 impl ChatState {
+    /// Whether the most recent history entry is a user message with `text`.
+    ///
+    /// WHY: When a turn fails and the operator retries, the original user
+    /// bubble is still the last history entry. The retry path uses this to
+    /// re-send in place instead of appending a visual duplicate.
+    #[must_use]
+    pub(crate) fn last_is_user_message(&self, text: &str) -> bool {
+        self.messages
+            .last()
+            .is_some_and(|m| m.role == MessageRole::User && m.content == text)
+    }
+
     /// Project legacy messages into the render-ready `ChatMessage` model.
     ///
     /// WHY(#3323): Centralizes the legacy-to-render projection so it is

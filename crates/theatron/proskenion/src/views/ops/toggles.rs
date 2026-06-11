@@ -37,7 +37,7 @@ const ROW_STYLE: &str = "\
     align-items: center; \
     justify-content: space-between; \
     padding: var(--space-2) 0; \
-    border-bottom: 1px solid #222;\
+    border-bottom: 1px solid var(--border-separator);\
 ";
 
 const TOGGLE_LABEL: &str = "\
@@ -82,7 +82,7 @@ const EMPTY_STATE: &str = "\
 const CONFIRM_OVERLAY: &str = "\
     position: fixed; \
     top: 0; left: 0; right: 0; bottom: 0; \
-    background: rgba(0, 0, 0, 0.5); \
+    background: var(--bg-overlay); \
     display: flex; \
     align-items: center; \
     justify-content: center; \
@@ -376,7 +376,7 @@ fn ConfirmDisableDialog(
                 }
                 div {
                     button {
-                        style: "{CONFIRM_BTN} background: #3a1a1a; color: var(--status-error);",
+                        style: "{CONFIRM_BTN} background: var(--status-error-bg); color: var(--status-error);",
                         onclick: {
                             let id = agent_id.clone();
                             move |_| {

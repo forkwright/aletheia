@@ -7,8 +7,25 @@ use crate::views::meta::{CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, GRID_STYL
 
 const DAY_LABELS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-const CELL_SIZE: f64 = 18.0;
+const CELL_SIZE: f64 = 20.0;
 const CELL_GAP: f64 = 2.0;
+
+/// Legend swatches mirroring the `heatmap_color` intensity scale, low to high.
+const HEATMAP_LEGEND_COLORS: [&str; 5] = [
+    "var(--bg-surface-dim)",
+    "var(--bg-surface)",
+    "var(--accent-muted)",
+    "var(--status-info)",
+    "var(--status-success)",
+];
+
+const JOURNAL_FILTERS: [(&str, Option<JournalEventType>); 5] = [
+    ("All", None),
+    ("Errors", Some(JournalEventType::Error)),
+    ("Distillation", Some(JournalEventType::Distillation)),
+    ("Config", Some(JournalEventType::ConfigChange)),
+    ("Memory", Some(JournalEventType::MemoryMerge)),
+];
 
 const JOURNAL_ROW_STYLE: &str = "\
     display: flex; \
@@ -27,9 +44,9 @@ const BADGE_STYLE: &str = "\
 ";
 
 const FILTER_BTN_STYLE: &str = "\
-    background: var(--border); \
+    background: var(--bg-surface); \
     color: var(--text-secondary); \
-    border: 1px solid var(--border); \
+    border: 1px solid var(--input-border); \
     border-radius: var(--radius-sm); \
     padding: var(--space-1) var(--space-2); \
     font-size: var(--text-xs); \
@@ -37,6 +54,12 @@ const FILTER_BTN_STYLE: &str = "\
     transition: background-color var(--transition-quick), \
                 color var(--transition-quick), \
                 border-color var(--transition-quick);\
+";
+
+const FILTER_BTN_ACTIVE: &str = " \
+    background: var(--accent-muted); \
+    color: var(--text-primary); \
+    border-color: var(--accent);\
 ";
 
 #[component]
@@ -114,7 +137,7 @@ fn OverviewCard(value: String, label: &'static str) -> Element {
     }
 }
 
-// ── Activity heatmap ──
+// -- Activity heatmap ---------------------------------------------------------
 
 #[component]
 fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
@@ -200,9 +223,10 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
                 style: "display: flex; align-items: center; gap: var(--space-1); margin-top: var(--space-2); \
                         font-size: var(--text-xs); color: var(--text-muted);",
                 span { "Less" }
-                for color in &["var(--bg-surface)", "#1a2a3e", "#2a4a6a", "#4a9aff", "var(--status-success)"] {
+                for color in HEATMAP_LEGEND_COLORS {
                     div {
                         style: "width: 12px; height: 12px; background: {color}; \
+                                border: 1px solid var(--border); \
                                 border-radius: var(--radius-sm);",
                     }
                 }
@@ -212,7 +236,7 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
     }
 }
 
-// ── Efficiency panel ──
+// -- Efficiency panel ---------------------------------------------------------
 
 #[component]
 fn EfficiencyPanel(
@@ -255,7 +279,7 @@ fn EfficiencyPanel(
     }
 }
 
-// ── System journal ──
+// -- System journal -----------------------------------------------------------
 
 #[component]
 fn SystemJournal(events: Vec<JournalEvent>) -> Element {
@@ -271,30 +295,21 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
             style: "{CARD_STYLE}",
             div {
                 style: "display: flex; gap: var(--space-2); margin-bottom: var(--space-3);",
-                button {
-                    style: "{FILTER_BTN_STYLE}",
-                    onclick: move |_| filter.set(None),
-                    "All"
-                }
-                button {
-                    style: "{FILTER_BTN_STYLE}",
-                    onclick: move |_| filter.set(Some(JournalEventType::Error)),
-                    "Errors"
-                }
-                button {
-                    style: "{FILTER_BTN_STYLE}",
-                    onclick: move |_| filter.set(Some(JournalEventType::Distillation)),
-                    "Distillation"
-                }
-                button {
-                    style: "{FILTER_BTN_STYLE}",
-                    onclick: move |_| filter.set(Some(JournalEventType::ConfigChange)),
-                    "Config"
-                }
-                button {
-                    style: "{FILTER_BTN_STYLE}",
-                    onclick: move |_| filter.set(Some(JournalEventType::MemoryMerge)),
-                    "Memory"
+                for (label , value) in JOURNAL_FILTERS {
+                    {
+                        let active_style = if *filter.read() == value {
+                            FILTER_BTN_ACTIVE
+                        } else {
+                            ""
+                        };
+                        rsx! {
+                            button {
+                                style: "{FILTER_BTN_STYLE}{active_style}",
+                                onclick: move |_| filter.set(value),
+                                "{label}"
+                            }
+                        }
+                    }
                 }
             }
 
@@ -308,7 +323,8 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
                     style: "max-height: 300px; overflow-y: auto;",
                     for event in &filtered {
                         {
-                            let badge_bg = event.event_type.color();
+                            let badge_fg = event.event_type.color();
+                            let badge_bg = journal_badge_bg(event.event_type);
                             let label = event.event_type.label();
                             rsx! {
                                 div {
@@ -318,7 +334,7 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
                                         "{event.timestamp}"
                                     }
                                     span {
-                                        style: "{BADGE_STYLE} background: {badge_bg}20; color: {badge_bg};",
+                                        style: "{BADGE_STYLE} background: {badge_bg}; color: {badge_fg};",
                                         "{label}"
                                     }
                                     span {
@@ -335,7 +351,20 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
     }
 }
 
-// ── Formatters ──
+/// Background token paired with `JournalEventType::color()` foregrounds.
+///
+/// WHY: The theme's `--status-*-bg` tokens are tuned per theme; deriving a
+/// translucent bg by suffixing alpha onto a `var()` string is invalid CSS.
+fn journal_badge_bg(event_type: JournalEventType) -> &'static str {
+    match event_type {
+        JournalEventType::Error => "var(--status-error-bg)",
+        JournalEventType::Distillation => "var(--status-info-bg)",
+        JournalEventType::ConfigChange => "var(--status-warning-bg)",
+        JournalEventType::MemoryMerge => "var(--status-success-bg)",
+    }
+}
+
+// -- Formatters ---------------------------------------------------------------
 
 fn format_uptime(seconds: u64) -> String {
     let days = seconds / 86400;

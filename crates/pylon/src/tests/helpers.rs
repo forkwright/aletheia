@@ -117,7 +117,7 @@ async fn test_state_with_provider_private_and_auth_mode(
         std::fs::create_dir_all(root.join("nous/hidden")).expect("mkdir nous/hidden");
     }
     std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
-    std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
+    std::fs::create_dir_all(root.join("theke/src")).expect("mkdir theke/src");
     std::fs::create_dir_all(root.join("data")).expect("mkdir data");
     std::fs::create_dir_all(root.join("config")).expect("mkdir config");
 
@@ -157,17 +157,14 @@ bind = "localhost"
         clippy::disallowed_methods,
         reason = "pylon test helpers write workspace fixtures to temp directories; synchronous I/O is required in test setup"
     )]
-    std::fs::write(
-        root.join("nous/workspace/README.md"),
-        "Workspace root fixture.\n",
-    )
-    .expect("write workspace README");
+    std::fs::write(root.join("theke/README.md"), "Workspace root fixture.\n")
+        .expect("write workspace README");
     #[expect(
         clippy::disallowed_methods,
         reason = "pylon test helpers write workspace fixtures to temp directories; synchronous I/O is required in test setup"
     )]
     std::fs::write(
-        root.join("nous/workspace/src/main.rs"),
+        root.join("theke/src/main.rs"),
         "fn main() {\n    println!(\"hello from workspace\");\n}\n",
     )
     .expect("write workspace source");
@@ -241,7 +238,7 @@ bind = "localhost"
 
     let jwt_manager = test_jwt_manager();
     let auth_facade = test_auth_facade();
-    let workspace_root = crate::state::resolve_workspace_root(&oikos);
+    let workspace_root = crate::state::resolve_workspace_root(&oikos, None);
 
     let mut default_config = taxis::config::AletheiaConfig::default();
     default_config.gateway.sse_heartbeat_interval_secs = 1;

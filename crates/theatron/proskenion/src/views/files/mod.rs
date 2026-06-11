@@ -1,4 +1,4 @@
-//! Two-panel workspace file browser: tree explorer (left) + viewer (right).
+//! Two-panel theke file browser: tree explorer (left) + viewer (right).
 
 pub(crate) mod diff;
 mod search;
@@ -145,7 +145,7 @@ pub(crate) fn Files() -> Element {
                         style: "{HEADER_STYLE}",
                         h2 {
                             style: "font-size: var(--text-lg); margin: 0; color: var(--text-primary, var(--text-primary));",
-                            "Files"
+                            "Theke"
                         }
                         button {
                             style: "{COLLAPSE_BTN_STYLE}",

@@ -13,9 +13,11 @@
 //!                              │       │
 //!                              │   Connected ──► periodic health check (30s)
 //!                              │                        │
-//!                              │                   failure detected
+//!                              │              sustained loss confirmed
+//!                              │              (2+ failures spanning 15s;
+//!                              │               single blips stay silent)
 //!                              │                        │
-//!                              │                  Reconnecting(1)
+//!                              │                  Reconnecting(n)
 //!                              │                        │
 //!                              │                  backoff → retry
 //!                              │                        │
@@ -26,7 +28,7 @@
 //!
 //! This module includes a minimal HTTP client for server communication.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use snafu::{ResultExt, Snafu};
@@ -36,6 +38,12 @@ use tokio_util::sync::CancellationToken;
 use crate::state::connection::{
     ConnectionConfig, ConnectionState, HEALTH_CHECK_INTERVAL, backoff_duration,
 };
+
+/// Consecutive health-check failures required before the loss is reported.
+const LOSS_CONFIRM_FAILURES: u32 = 2;
+
+/// Minimum elapsed time since the first failure before the loss is reported.
+const LOSS_CONFIRM_WINDOW: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
@@ -289,9 +297,12 @@ impl ConnectionService {
 
     /// Periodically verify the connection is still alive.
     ///
-    /// On failure, attempts reconnection with exponential backoff.
+    /// On failure, attempts reconnection with exponential backoff. A loss is
+    /// reported to the UI only once confirmed ([`LOSS_CONFIRM_FAILURES`]
+    /// consecutive failures spanning [`LOSS_CONFIRM_WINDOW`]); single blips
+    /// recover silently without flipping connection state.
     async fn health_check_loop(&self, client: &PylonClient) {
-        let mut consecutive_failures: u32 = 0;
+        let mut loss = LossTracker::default();
 
         loop {
             tokio::select! {
@@ -303,19 +314,15 @@ impl ConnectionService {
 
             match client.health().await {
                 Ok(()) => {
-                    if consecutive_failures > 0 {
-                        tracing::info!(
-                            "connection restored after {} failures",
-                            consecutive_failures
-                        );
-                        self.emit(ConnectionState::Connected);
-                        consecutive_failures = 0;
+                    if loss.failures > 0 {
+                        tracing::info!("connection restored after {} failures", loss.failures);
+                        self.emit_recovery(&mut loss);
                     }
                 }
                 Err(e) => {
-                    consecutive_failures = consecutive_failures.saturating_add(1);
+                    loss.record_failure();
                     tracing::warn!(
-                        attempt = consecutive_failures,
+                        attempt = loss.failures,
                         error = %e,
                         "health check failed"
                     );
@@ -327,12 +334,10 @@ impl ConnectionService {
                         return;
                     }
 
-                    self.emit(ConnectionState::Reconnecting {
-                        attempt: consecutive_failures,
-                    });
+                    self.report_loss_if_confirmed(&mut loss);
 
                     // Attempt reconnection with backoff.
-                    if !self.try_reconnect(client, &mut consecutive_failures).await {
+                    if !self.try_reconnect(client, &mut loss).await {
                         return;
                     }
                 }
@@ -343,9 +348,9 @@ impl ConnectionService {
     /// Attempt reconnection with exponential backoff.
     ///
     /// Returns `true` if reconnected or should keep trying, `false` if cancelled.
-    async fn try_reconnect(&self, client: &PylonClient, consecutive_failures: &mut u32) -> bool {
+    async fn try_reconnect(&self, client: &PylonClient, loss: &mut LossTracker) -> bool {
         for _ in 0..5 {
-            let delay = backoff_duration(*consecutive_failures);
+            let delay = backoff_duration(loss.failures);
             tokio::select! {
                 biased;
                 _ = self.cancel.cancelled() => return false,
@@ -356,25 +361,74 @@ impl ConnectionService {
             match client.health().await {
                 Ok(()) => {
                     tracing::info!("reconnected to pylon");
-                    self.emit(ConnectionState::Connected);
-                    *consecutive_failures = 0;
+                    self.emit_recovery(loss);
                     return true;
                 }
                 Err(e) => {
-                    *consecutive_failures = consecutive_failures.saturating_add(1);
+                    loss.record_failure();
                     tracing::warn!(
-                        attempt = *consecutive_failures,
+                        attempt = loss.failures,
                         error = %e,
                         "reconnection attempt failed"
                     );
-                    self.emit(ConnectionState::Reconnecting {
-                        attempt: *consecutive_failures,
-                    });
+                    self.report_loss_if_confirmed(loss);
                 }
             }
         }
 
         true
+    }
+
+    /// Emit `Reconnecting` only once the loss is confirmed.
+    ///
+    /// WHY: `Reconnecting` unmounts the connected UI (`needs_connect_view`),
+    /// so a single health-check blip must never reach the signal — only a
+    /// sustained loss (consecutive failures spanning the confirm window).
+    fn report_loss_if_confirmed(&self, loss: &mut LossTracker) {
+        if loss.confirmed() {
+            loss.reported = true;
+            self.emit(ConnectionState::Reconnecting {
+                attempt: loss.failures,
+            });
+        }
+    }
+
+    /// Reset loss tracking; emit `Connected` only if a loss was reported.
+    ///
+    /// A silently-recovered blip leaves the signal untouched (still
+    /// `Connected`), so no state flip or notification fires.
+    fn emit_recovery(&self, loss: &mut LossTracker) {
+        if loss.reported {
+            self.emit(ConnectionState::Connected);
+        }
+        *loss = LossTracker::default();
+    }
+}
+
+/// Tracks an in-progress connection loss for confirm-before-report.
+#[derive(Default)]
+struct LossTracker {
+    /// Consecutive health-check failures (0 = healthy).
+    failures: u32,
+    /// When the first failure of the current run occurred.
+    first_failure_at: Option<Instant>,
+    /// Whether `Reconnecting` has been emitted for this run.
+    reported: bool,
+}
+
+impl LossTracker {
+    fn record_failure(&mut self) {
+        self.failures = self.failures.saturating_add(1);
+        self.first_failure_at.get_or_insert_with(Instant::now);
+    }
+
+    /// Both gates must hold: enough consecutive failures AND enough elapsed
+    /// time since the run began.
+    fn confirmed(&self) -> bool {
+        self.failures >= LOSS_CONFIRM_FAILURES
+            && self
+                .first_failure_at
+                .is_some_and(|t| t.elapsed() >= LOSS_CONFIRM_WINDOW)
     }
 }
 
@@ -594,6 +648,94 @@ mod tests {
         let _ = handle.await;
         assert!(saw_connecting, "must transition through Connecting");
         assert!(saw_connected, "must reach Connected against healthy server");
+    }
+
+    #[test]
+    fn loss_tracker_not_confirmed_on_single_failure() {
+        let mut loss = LossTracker::default();
+        loss.record_failure();
+        assert!(!loss.confirmed(), "one blip must not confirm a loss");
+    }
+
+    #[test]
+    fn loss_tracker_not_confirmed_within_window() {
+        let mut loss = LossTracker::default();
+        loss.record_failure();
+        loss.record_failure();
+        // Two failures, but the confirm window has not elapsed.
+        assert!(!loss.confirmed());
+    }
+
+    #[test]
+    fn loss_tracker_confirmed_past_both_gates() {
+        let mut loss = LossTracker::default();
+        loss.record_failure();
+        loss.record_failure();
+        loss.first_failure_at = Instant::now().checked_sub(LOSS_CONFIRM_WINDOW);
+        if loss.first_failure_at.is_some() {
+            assert!(loss.confirmed());
+        }
+    }
+
+    #[tokio::test]
+    async fn unconfirmed_loss_emits_nothing() {
+        install_crypto();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let svc = ConnectionService::new(ConnectionConfig::default(), CancellationToken::new(), tx);
+
+        let mut loss = LossTracker::default();
+        loss.record_failure();
+        svc.report_loss_if_confirmed(&mut loss);
+
+        assert!(!loss.reported);
+        assert!(
+            rx.try_recv().is_err(),
+            "no state must be emitted for a blip"
+        );
+    }
+
+    #[tokio::test]
+    async fn confirmed_loss_emits_reconnecting_and_recovery_emits_connected() {
+        install_crypto();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let svc = ConnectionService::new(ConnectionConfig::default(), CancellationToken::new(), tx);
+
+        let mut loss = LossTracker::default();
+        loss.record_failure();
+        loss.record_failure();
+        loss.first_failure_at = Instant::now().checked_sub(LOSS_CONFIRM_WINDOW);
+        if loss.first_failure_at.is_none() {
+            return; // NOTE: process younger than the window; skip rather than flake.
+        }
+
+        svc.report_loss_if_confirmed(&mut loss);
+        assert!(loss.reported);
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            ConnectionState::Reconnecting { attempt: 2 }
+        ));
+
+        svc.emit_recovery(&mut loss);
+        assert!(matches!(rx.try_recv().unwrap(), ConnectionState::Connected));
+        assert_eq!(loss.failures, 0);
+        assert!(!loss.reported);
+    }
+
+    #[tokio::test]
+    async fn silent_recovery_emits_nothing() {
+        install_crypto();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let svc = ConnectionService::new(ConnectionConfig::default(), CancellationToken::new(), tx);
+
+        let mut loss = LossTracker::default();
+        loss.record_failure();
+        svc.emit_recovery(&mut loss);
+
+        assert!(
+            rx.try_recv().is_err(),
+            "recovery from an unreported blip must stay silent"
+        );
+        assert_eq!(loss.failures, 0);
     }
 
     #[tokio::test]

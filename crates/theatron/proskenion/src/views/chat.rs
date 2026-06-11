@@ -167,7 +167,7 @@ pub(crate) fn Chat() -> Element {
         })
         .collect();
 
-    let mut on_submit = move |text: String| {
+    let mut send_message = move |text: String, is_retry: bool| {
         if text.is_empty() || is_streaming {
             return;
         }
@@ -177,7 +177,7 @@ pub(crate) fn Chat() -> Element {
             if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
                 toast_store.write().push(
                     ToastSeverity::Warning,
-                    "Select an agent first \u{2014} click a pill in the top bar",
+                    "Select an agent first \u{2014} pick one in the sidebar",
                 );
             }
             return;
@@ -212,17 +212,23 @@ pub(crate) fn Chat() -> Element {
         stream_start_time.set(Some(Instant::now()));
         elapsed_tick.set(0);
 
-        legacy_state.write().messages.push(LegacyChatMessage {
-            role: MessageRole::User,
-            content: text.clone(),
-            model: None,
-            tool_calls: 0,
-            input_tokens: 0,
-            output_tokens: 0,
-            thinking: None,
-            tool_call_details: Vec::new(),
-            plans: Vec::new(),
-        });
+        // WHY: A retry re-sends the failed turn in place. The original user
+        // bubble is already the last history entry, so appending again would
+        // render the same message twice (or more on repeated retries).
+        let already_last = is_retry && legacy_state.read().last_is_user_message(&text);
+        if !already_last {
+            legacy_state.write().messages.push(LegacyChatMessage {
+                role: MessageRole::User,
+                content: text.clone(),
+                model: None,
+                tool_calls: 0,
+                input_tokens: 0,
+                output_tokens: 0,
+                thinking: None,
+                tool_call_details: Vec::new(),
+                plans: Vec::new(),
+            });
+        }
 
         if let Some(ref agent_id) = agent_store.read().active_id {
             let bar = tab_bar.read();
@@ -384,18 +390,21 @@ pub(crate) fn Chat() -> Element {
         });
     };
 
+    let on_submit = move |text: String| send_message(text, false);
+
     let on_abort = move |()| {
         cancel_token.read().cancel();
     };
 
-    // WHY: Retry re-sends the last user message after clearing the error.
-    // This is a separate closure so it can be used in the error banner
-    // without interfering with the InputBar's on_submit prop.
+    // WHY: Retry re-sends the last user message in place after clearing the
+    // error -- `is_retry` suppresses the duplicate user bubble. This is a
+    // separate closure so it can be used in the error banner without
+    // interfering with the InputBar's on_submit prop.
     let on_retry = move |_| {
         let msg = last_user_message.read().clone();
         if !msg.is_empty() {
             legacy_state.write().streaming.error = None;
-            on_submit(msg);
+            send_message(msg, true);
         }
     };
 
@@ -568,12 +577,30 @@ pub(crate) fn Chat() -> Element {
                                                 // re-renders, then compute actual elapsed
                                                 // from the Instant for accuracy.
                                                 std::hint::black_box(elapsed_tick());
+                                                // WHY: Surface the live pipeline phase instead
+                                                // of a bare "thinking" so the operator can see
+                                                // what the turn is actually doing.
+                                                let phase = match routing_signal.read().as_ref().map(|r| r.stage.clone()) {
+                                                    Some(PipelineStage::Bootstrap) => "assembling context\u{2026}".to_string(),
+                                                    Some(PipelineStage::Recalling) => "recalling memories\u{2026}".to_string(),
+                                                    Some(PipelineStage::Executing { tool_name }) => {
+                                                        format!("using {tool_name}\u{2026}")
+                                                    }
+                                                    Some(PipelineStage::Thinking) => {
+                                                        if legacy_state.read().streaming.thinking.is_empty() {
+                                                            "writing\u{2026}".to_string()
+                                                        } else {
+                                                            "thinking\u{2026}".to_string()
+                                                        }
+                                                    }
+                                                    _ => "thinking\u{2026}".to_string(),
+                                                };
                                                 match stream_start_time.read().as_ref() {
                                                     Some(start) => {
                                                         let secs = start.elapsed().as_secs();
-                                                        format!("Thinking... ({secs}s)")
+                                                        format!("{phase} ({secs}s)")
                                                     }
-                                                    None => "Thinking...".to_string(),
+                                                    None => phase,
                                                 }
                                             }
                                         }

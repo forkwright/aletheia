@@ -1,7 +1,9 @@
 //! Server connections management panel.
 //!
 //! Displays saved server entries with health indicators. Supports add, edit,
-//! remove, test-connection, and switch-to-server actions.
+//! remove, test-connection, and switch-to-server actions. When the live
+//! connection URL drifts from the active entry's saved URL, the entry offers
+//! a one-click "Update to current".
 
 use std::collections::{HashMap, HashSet};
 
@@ -51,7 +53,9 @@ pub(crate) fn ServersPanel() -> Element {
     let appearance = use_context::<Signal<crate::state::settings::AppearanceSettings>>();
     let keybindings = use_context::<Signal<crate::state::settings::KeybindingStore>>();
 
-    let mut health_map: Signal<HashMap<String, ServerHealth>> = use_signal(HashMap::new);
+    // WHY: Health results carry the URL they probed so a stale result is
+    // attributable ("Unreachable — <url>") instead of an anonymous failure.
+    let mut health_map: Signal<HashMap<String, (ServerHealth, String)>> = use_signal(HashMap::new);
     let mut testing_ids: Signal<HashSet<String>> = use_signal(HashSet::new);
     let mut show_add = use_signal(|| false);
 
@@ -69,6 +73,15 @@ pub(crate) fn ServersPanel() -> Element {
                 is_active: store.active_id.as_deref() == Some(e.id.as_str()),
             })
             .collect()
+    };
+
+    // Live connection URL, present only while actually connected. Drives the
+    // "Update to current" offer when the active entry's saved URL has drifted.
+    let connected_url: Option<String> = if matches!(connection_state(), ConnectionState::Connected)
+    {
+        Some(connection_config.read().server_url.clone())
+    } else {
+        None
     };
 
     rsx! {
@@ -107,10 +120,24 @@ pub(crate) fn ServersPanel() -> Element {
                     let sid_test = sid.clone();
                     let sid_switch = sid.clone();
                     let sid_remove = sid.clone();
+                    let sid_update = sid.clone();
+                    let sid_saved = sid.clone();
                     let surl = snap.url.clone();
                     let stoken = snap.auth_token.clone();
-                    let health = *health_map.read().get(&snap.id).unwrap_or(&ServerHealth::Unchecked);
+                    let (health, tested_url) = health_map
+                        .read()
+                        .get(&snap.id)
+                        .map(|(h, u)| (*h, Some(u.clone())))
+                        .unwrap_or((ServerHealth::Unchecked, None));
                     let is_testing = testing_ids.read().contains(&snap.id);
+                    // Offer the live URL only on the active entry; other saved
+                    // entries are intentionally different servers.
+                    let update_url = connected_url
+                        .clone()
+                        .filter(|u| snap.is_active && *u != snap.url);
+                    let update_url_apply = update_url.clone();
+                    let name_update = snap.name.clone();
+                    let token_update = snap.auth_token.clone();
 
                     rsx! {
                         ServerCard {
@@ -121,6 +148,8 @@ pub(crate) fn ServersPanel() -> Element {
                             auth_token: stoken.clone(),
                             is_active: snap.is_active,
                             health,
+                            tested_url,
+                            update_url,
                             is_testing,
                             on_test: move |_| {
                                 let url = surl.clone();
@@ -131,8 +160,28 @@ pub(crate) fn ServersPanel() -> Element {
                                 spawn(async move {
                                     let result = probe_health(&url, token.as_deref()).await;
                                     testing_ids.write().remove(&id);
-                                    health_map.write().insert(id, result);
+                                    health_map.write().insert(id, (result, url));
                                 });
+                            },
+                            on_update_url: move |_| {
+                                if let Some(u) = update_url_apply.clone() {
+                                    server_store.write().update(
+                                        &sid_update,
+                                        name_update.clone(),
+                                        u,
+                                        token_update.clone(),
+                                    );
+                                    health_map.write().remove(&sid_update);
+                                    let store = server_store.read();
+                                    let app = appearance.read();
+                                    let keys = keybindings.read();
+                                    settings_config::save_state(&store, &app, &keys);
+                                }
+                            },
+                            on_saved: move |_| {
+                                // WHY: A health result probed against the pre-edit URL
+                                // must not linger next to the new one.
+                                health_map.write().remove(&sid_saved);
                             },
                             on_switch: move |_| {
                                 {
@@ -177,8 +226,12 @@ fn ServerCard(
     auth_token: Option<String>,
     is_active: bool,
     health: ServerHealth,
+    tested_url: Option<String>,
+    update_url: Option<String>,
     is_testing: bool,
     on_test: EventHandler<()>,
+    on_update_url: EventHandler<()>,
+    on_saved: EventHandler<()>,
     on_switch: EventHandler<()>,
     on_remove: EventHandler<()>,
 ) -> Element {
@@ -192,7 +245,18 @@ fn ServerCard(
     let keybindings = use_context::<Signal<crate::state::settings::KeybindingStore>>();
 
     let health_color = health.color();
-    let health_label = health.label();
+    let status_text = if is_testing {
+        "Testing…".to_string()
+    } else if health == ServerHealth::Unreachable {
+        // WHY: Name the URL the probe actually hit so a stale saved URL is
+        // self-diagnosing instead of an anonymous "Unreachable".
+        match tested_url.as_deref() {
+            Some(tried) => format!("Unreachable — {tried}"),
+            None => health.label().to_string(),
+        }
+    } else {
+        health.label().to_string()
+    };
     let card_border = if is_active {
         "1px solid var(--accent)"
     } else {
@@ -249,7 +313,7 @@ fn ServerCard(
                         }
                         button {
                             style: "padding: var(--space-2) var(--space-4); background: var(--accent); border: none; \
-                                    border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                    border-radius: var(--radius-sm); color: var(--text-inverse); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             onclick: move |_| {
                                 let new_name = edit_name();
                                 let new_url = edit_url();
@@ -263,6 +327,7 @@ fn ServerCard(
                                     settings_config::save_state(&store, &app, &keys);
                                 }
                                 editing.set(false);
+                                on_saved.call(());
                             },
                             "Save"
                         }
@@ -298,8 +363,24 @@ fn ServerCard(
                                 style: "width: 7px; height: 7px; border-radius: 50%; background: {health_color};",
                             }
                             span {
-                                style: "font-size: var(--text-xs); color: {health_color};",
-                                if is_testing { "Testing…" } else { "{health_label}" }
+                                style: "font-size: var(--text-xs); color: {health_color}; word-break: break-all;",
+                                "{status_text}"
+                            }
+                        }
+                        if let Some(live_url) = update_url.clone() {
+                            div {
+                                style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); flex-wrap: wrap;",
+                                span {
+                                    style: "font-size: var(--text-xs); color: var(--status-warning); word-break: break-all;",
+                                    "Connected to {live_url}"
+                                }
+                                button {
+                                    style: "padding: var(--space-1) var(--space-3); background: var(--border); border: 1px solid var(--accent); \
+                                            border-radius: var(--radius-sm); color: var(--accent-hover); font-size: var(--text-xs); cursor: pointer; \
+                                            transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                    onclick: move |_| on_update_url.call(()),
+                                    "Update to current"
+                                }
                             }
                         }
                     }
@@ -397,7 +478,7 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
                     style: "display: flex; justify-content: flex-end;",
                     button {
                         style: "padding: var(--space-2) var(--space-4); background: var(--accent); border: none; \
-                                border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                border-radius: var(--radius-md); color: var(--text-inverse); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                         onclick: move |_| {
                             let n = name();
                             let u = url();

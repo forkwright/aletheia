@@ -219,7 +219,7 @@ impl TestHarness {
             with_knowledge_store.then(|| -> Arc<dyn EmbeddingProvider> {
                 Arc::new(TestEmbeddingProvider::new(TEST_EMBEDDING_DIM))
             });
-        let workspace_root = pylon::state::resolve_workspace_root(&oikos);
+        let workspace_root = pylon::state::resolve_workspace_root(&oikos, None);
 
         #[cfg(feature = "knowledge-store")]
         let knowledge_stores = knowledge_store

@@ -7,7 +7,7 @@ use crate::state::connection::ConnectionConfig;
 use crate::state::planning::{CategoryProposal, ProposalAction, ProposalActionRequest};
 
 const CARD_STYLE: &str = "\
-    background: #1e1e3a; \
+    background: var(--bg-surface); \
     border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
     padding: var(--space-3) var(--space-4); \
@@ -30,7 +30,7 @@ const BADGE: &str = "\
 ";
 
 const ACCEPT_BTN: &str = "\
-    background: #1a3a1a; \
+    background: var(--status-success-bg); \
     color: var(--status-success); \
     border: 1px solid var(--status-success); \
     border-radius: var(--radius-md); \
@@ -43,7 +43,7 @@ const ACCEPT_BTN: &str = "\
 ";
 
 const REJECT_BTN: &str = "\
-    background: #3a1a1a; \
+    background: var(--status-error-bg); \
     color: var(--status-error); \
     border: 1px solid var(--status-error); \
     border-radius: var(--radius-md); \

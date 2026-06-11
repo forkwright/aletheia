@@ -30,7 +30,7 @@ const ROW_STYLE: &str = "\
     justify-content: space-between; \
     align-items: center; \
     padding: var(--space-2) 0; \
-    border-bottom: 1px solid #222;\
+    border-bottom: 1px solid var(--border-separator);\
 ";
 
 const LABEL_STYLE: &str = "\
@@ -39,9 +39,9 @@ const LABEL_STYLE: &str = "\
 ";
 
 const TOGGLE_ON: &str = "\
-    background: #4f46e5; \
-    color: var(--text-primary); \
-    border: 1px solid #6366f1; \
+    background: var(--accent); \
+    color: var(--text-inverse); \
+    border: 1px solid var(--accent); \
     border-radius: var(--radius-md); \
     padding: var(--space-2) var(--space-4); \
     font-size: var(--text-sm); \
@@ -138,7 +138,7 @@ pub(crate) fn NotificationSettings() -> Element {
             }
 
             div {
-                style: if !tool_approval { ROW_STYLE } else { ROW_STYLE },
+                style: "{ROW_STYLE}",
                 span {
                     style: "{LABEL_STYLE}",
                     "Tool approval requests"
@@ -224,7 +224,7 @@ pub(crate) fn NotificationSettings() -> Element {
                     style: "{LABEL_STYLE}",
                     "Do Not Disturb"
                     if dnd_active {
-                        div { style: "color: #4f46e5; font-size: var(--text-xs); margin-top: var(--space-1);", "Active" }
+                        div { style: "color: var(--accent-hover); font-size: var(--text-xs); margin-top: var(--space-1);", "Active" }
                     }
                 }
                 div {

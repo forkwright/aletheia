@@ -4,9 +4,7 @@ use dioxus::prelude::*;
 use skene::id::SessionId;
 
 use crate::state::fetch::FetchState;
-use crate::state::sessions::{
-    SessionDetailStore, format_relative_time, session_display_status, status_color,
-};
+use crate::state::sessions::{SessionDetailStore, format_relative_time, session_display_status};
 
 const DETAIL_CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -42,8 +40,8 @@ const AGENT_BADGE_STYLE: &str = "\
     padding: var(--space-1) var(--space-2); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs); \
-    background: var(--border); \
-    color: #7a7aff;\
+    background: var(--natural-bg); \
+    color: var(--natural);\
 ";
 
 const STATS_GRID_STYLE: &str = "\
@@ -80,7 +78,7 @@ const STAT_SUB_STYLE: &str = "\
 const TOKEN_BAR_BG_STYLE: &str = "\
     width: 100%; \
     height: 6px; \
-    background: #222; \
+    background: var(--bg-surface-dim); \
     border-radius: var(--radius-sm); \
     margin-top: var(--space-2); \
     overflow: hidden;\
@@ -117,7 +115,7 @@ const MSG_PREVIEW_STYLE: &str = "\
     display: flex; \
     gap: var(--space-2); \
     padding: var(--space-2) 0; \
-    border-bottom: 1px solid var(--bg-surface); \
+    border-bottom: 1px solid var(--border-separator); \
     font-size: var(--text-sm);\
 ";
 
@@ -125,7 +123,7 @@ const ROLE_BADGE_USER: &str = "\
     flex-shrink: 0; \
     width: 60px; \
     font-size: var(--text-xs); \
-    color: #4a9aff; \
+    color: var(--role-user); \
     font-weight: var(--weight-bold);\
 ";
 
@@ -133,13 +131,13 @@ const ROLE_BADGE_ASSISTANT: &str = "\
     flex-shrink: 0; \
     width: 60px; \
     font-size: var(--text-xs); \
-    color: var(--status-success); \
+    color: var(--role-assistant); \
     font-weight: var(--weight-bold);\
 ";
 
 const OPEN_CHAT_BTN: &str = "\
     background: var(--accent); \
-    color: white; \
+    color: var(--text-inverse); \
     border: none; \
     border-radius: var(--radius-md); \
     padding: var(--space-2) var(--space-4); \
@@ -216,12 +214,12 @@ pub(crate) fn SessionDetail(
                     Some(session) => {
                         let session_id = session.id.clone();
                         let status = session_display_status(session);
-                        let status_bg = match status {
-                            "active" => "background: #1a3a1a;",
-                            "archived" => "background: var(--border);",
-                            _ => "background: #2a2a1a;",
+                        // NOTE: archived pairs with the thanatochromia dye token (archived semantics).
+                        let (status_bg, status_fg) = match status {
+                            "active" => ("var(--status-success-bg)", "var(--status-success)"),
+                            "archived" => ("var(--thanatochromia-bg)", "var(--thanatochromia)"),
+                            _ => ("var(--status-warning-bg)", "var(--status-warning)"),
                         };
-                        let s_color = status_color(status);
                         let is_archived = session.is_archived();
 
                         let id_for_chat = session_id.clone();
@@ -238,7 +236,7 @@ pub(crate) fn SessionDetail(
                                             style: "display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-1);",
                                             span { style: "{AGENT_BADGE_STYLE}", "{session.nous_id}" }
                                             span {
-                                                style: "{STATUS_BADGE_STYLE} {status_bg} color: {s_color};",
+                                                style: "{STATUS_BADGE_STYLE} background: {status_bg}; color: {status_fg};",
                                                 "{status}"
                                             }
                                             if let Some(ref updated) = session.updated_at {
@@ -302,7 +300,7 @@ pub(crate) fn SessionDetail(
                                             div {
                                                 style: "{TOKEN_BAR_BG_STYLE}",
                                                 div {
-                                                    style: "height: 100%; background: #4a9aff; border-radius: var(--radius-sm); width: {token_input_pct(detail)}%;",
+                                                    style: "height: 100%; background: var(--accent); border-radius: var(--radius-sm); width: {token_input_pct(detail)}%;",
                                                 }
                                             }
                                         }

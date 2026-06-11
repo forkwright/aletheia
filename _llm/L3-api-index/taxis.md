@@ -1579,11 +1579,28 @@ pub struct ObservabilitySettings {
 ```
 
 ```rust
+pub struct WorkspaceSettings {
+    /// Root directory served by the workspace file API.
+    ///
+    /// Relative paths resolve against the instance root. When unset, the
+    /// gateway serves the instance theke directory if present, then the
+    /// shared agent workspace, then the instance root.
+    pub root: Option<PathBuf>,
+}
+```
+
+```rust
 pub struct AletheiaConfig {
     /// Agent definitions and shared defaults.
     pub agents: AgentsConfig,
     /// HTTP gateway settings (port, bind address, auth, TLS, CORS).
     pub gateway: GatewayConfig,
+    /// Workspace file-API root override.
+    ///
+    /// WHY configurable: the desktop Theke view browses one directory tree;
+    /// deployments choose which tree the gateway exposes (theke vault, agent
+    /// workspace, ...) without code changes.
+    pub workspace: WorkspaceSettings,
     /// Messaging transport configuration (Signal, etc.).
     pub channels: ChannelsConfig,
     /// Routes mapping channel sources to nous agents.

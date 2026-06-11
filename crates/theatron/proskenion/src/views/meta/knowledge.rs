@@ -4,8 +4,10 @@ use dioxus::prelude::*;
 
 use crate::state::meta::KnowledgeGrowthStore;
 use crate::views::meta::{
-    BarChart, CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, GRID_STYLE, LineChart,
+    CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, ChartCard, ChartKind, GRID_STYLE,
 };
+
+const STACKED_CARD_STYLE: &str = "margin-top: var(--space-3);";
 
 #[component]
 pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
@@ -45,51 +47,37 @@ pub(super) fn KnowledgeGrowthSection(store: KnowledgeGrowthStore) -> Element {
         }
 
         // NOTE: Cumulative entity growth.
-        h3 {
-            style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
-            "Total Entities Over Time"
-        }
-        div {
-            style: "{CARD_STYLE}",
-            LineChart {
-                data: store.total_entities.clone(),
-                width: 600.0,
-                height: 200.0,
-                color: "#4a9aff",
-                show_labels: true,
-            }
+        ChartCard {
+            title: "Total Entities Over Time",
+            kind: ChartKind::Line,
+            data: store.total_entities.clone(),
+            color: "var(--natural)",
+            width: 960.0,
+            height: 280.0,
+            card_style: STACKED_CARD_STYLE,
         }
 
         // NOTE: New entities per period.
-        h3 {
-            style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
-            "New Entities Per Period"
-        }
-        div {
-            style: "{CARD_STYLE}",
-            BarChart {
-                data: store.new_entities_per_period.clone(),
-                width: 600.0,
-                height: 180.0,
-                color: "var(--status-success)",
-            }
+        ChartCard {
+            title: "New Entities Per Period",
+            kind: ChartKind::Bar,
+            data: store.new_entities_per_period.clone(),
+            color: "var(--status-success)",
+            width: 960.0,
+            height: 260.0,
+            card_style: STACKED_CARD_STYLE,
         }
 
         // NOTE: Knowledge density.
         if !store.density_over_time.is_empty() {
-            h3 {
-                style: "font-size: var(--text-base); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-3) 0;",
-                "Knowledge Density (Relationships / Entity)"
-            }
-            div {
-                style: "{CARD_STYLE}",
-                LineChart {
-                    data: store.density_over_time.clone(),
-                    width: 600.0,
-                    height: 150.0,
-                    color: "var(--status-warning)",
-                    show_labels: true,
-                }
+            ChartCard {
+                title: "Knowledge Density (Relationships / Entity)",
+                kind: ChartKind::Line,
+                data: store.density_over_time.clone(),
+                color: "var(--status-warning)",
+                width: 960.0,
+                height: 220.0,
+                card_style: STACKED_CARD_STYLE,
             }
         }
 

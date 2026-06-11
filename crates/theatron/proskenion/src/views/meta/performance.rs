@@ -3,11 +3,11 @@
 use dioxus::prelude::*;
 
 use crate::state::meta::{AgentPerformanceStore, AgentScorecard, Anomaly};
-use crate::views::meta::{GRID_STYLE, MUTED_TEXT};
+use crate::views::meta::{GRID_STYLE, META_SERIES_COLORS, MUTED_TEXT};
 
-const RADAR_SIZE: f64 = 250.0;
+const RADAR_SIZE: f64 = 300.0;
 const RADAR_CENTER: f64 = RADAR_SIZE / 2.0;
-const RADAR_RADIUS: f64 = 90.0;
+const RADAR_RADIUS: f64 = 110.0;
 
 const RADAR_AXIS_LABELS: [&str; 5] = [
     "Quality",
@@ -15,14 +15,6 @@ const RADAR_AXIS_LABELS: [&str; 5] = [
     "Context",
     "Productivity",
     "Reliability",
-];
-
-const RADAR_COLORS: &[&str] = &[
-    "#4a9aff",
-    "var(--status-success)",
-    "var(--status-warning)",
-    "var(--status-error)",
-    "#8b5cf6",
 ];
 
 const SCORECARD_STYLE: &str = "\
@@ -35,12 +27,12 @@ const SCORECARD_STYLE: &str = "\
 ";
 
 const ALERT_STYLE: &str = "\
-    background: #2a1a1a; \
-    border: 1px solid #4a2a2a; \
+    background: var(--status-error-bg); \
+    border: 1px solid var(--status-error); \
     border-radius: var(--radius-md); \
     padding: var(--space-3) var(--space-4); \
     font-size: var(--text-sm); \
-    color: #f87171;\
+    color: var(--status-error);\
 ";
 
 #[component]
@@ -256,7 +248,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                                 x: "{x:.1}",
                                 y: "{y:.1}",
                                 fill: "var(--text-secondary)",
-                                font_size: "10",
+                                font_size: "11",
                                 text_anchor: "middle",
                                 dominant_baseline: "middle",
                                 "{label}"
@@ -280,7 +272,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                             })
                             .collect::<Vec<_>>()
                             .join(" ");
-                        let color = RADAR_COLORS[idx % RADAR_COLORS.len()];
+                        let color = META_SERIES_COLORS[idx % META_SERIES_COLORS.len()];
                         rsx! {
                             polygon {
                                 points: "{points}",
@@ -299,7 +291,7 @@ fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {
                 style: "display: flex; flex-direction: column; gap: var(--space-2);",
                 for (idx , card) in scorecards.iter().enumerate() {
                     {
-                        let color = RADAR_COLORS[idx % RADAR_COLORS.len()];
+                        let color = META_SERIES_COLORS[idx % META_SERIES_COLORS.len()];
                         rsx! {
                             div {
                                 style: "display: flex; align-items: center; gap: var(--space-2);",

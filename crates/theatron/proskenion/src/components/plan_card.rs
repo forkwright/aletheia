@@ -56,12 +56,12 @@ const STEP_ICON_STYLE: &str = "\
     font-size: var(--text-xs);\
 ";
 
-const STEP_DESC: &str = "color: #c0c0e0;";
+const STEP_DESC: &str = "color: var(--text-primary);";
 
 const DETAIL_BOX: &str = "\
     margin-top: var(--space-1); \
     padding: var(--space-2) var(--space-2); \
-    background: #151525; \
+    background: var(--bg); \
     border: 1px solid var(--border); \
     border-radius: var(--radius-sm); \
     font-size: var(--text-xs);\
@@ -79,7 +79,7 @@ const TIME_ROW: &str = "\
 const EXPAND_BTN: &str = "\
     background: transparent; \
     border: none; \
-    color: #4a9aff; \
+    color: var(--accent); \
     font-size: var(--text-xs); \
     cursor: pointer; \
     padding: 0; \
@@ -205,7 +205,7 @@ pub(crate) fn step_icon(status: StepStatus) -> &'static str {
 pub(crate) fn step_color(status: StepStatus) -> &'static str {
     match status {
         StepStatus::Pending => "var(--text-muted)",
-        StepStatus::Running => "#4a9aff",
+        StepStatus::Running => "var(--status-info)",
         StepStatus::Complete => "var(--status-success)",
         StepStatus::Failed => "var(--status-error)",
         StepStatus::Skipped => "var(--text-secondary)",

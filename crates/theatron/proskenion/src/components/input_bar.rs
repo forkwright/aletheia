@@ -66,10 +66,13 @@ const SEND_BTN_DISABLED: &str = "\
     color: var(--text-muted); \
     border: none; \
     border-radius: var(--radius-md); \
-    padding: var(--space-3) var(--space-5); \
-    font-size: var(--text-base); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-semibold); \
     cursor: not-allowed; \
-    white-space: nowrap;\
+    white-space: nowrap; \
+    flex-shrink: 0; \
+    min-width: 70px;\
 ";
 
 const ABORT_BTN_STYLE: &str = "\
@@ -102,8 +105,8 @@ pub(crate) struct InputBarProps {
 
 /// Rich chat input bar with multiline textarea and history navigation.
 ///
-/// - Submit: Ctrl+Enter (Linux)
-/// - Newline: Shift+Enter or Enter
+/// - Submit: Enter (Ctrl+Enter also works)
+/// - Newline: Shift+Enter
 /// - History: Up/Down arrows when cursor is at start/end
 /// - Disabled with "Streaming..." placeholder during active stream
 #[component]
@@ -130,7 +133,7 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
             style: "{INPUT_BAR_STYLE}",
             textarea {
                 style: if is_streaming { "{TEXTAREA_DISABLED_STYLE}" } else { "{TEXTAREA_STYLE}" },
-                placeholder: if is_streaming { "Streaming..." } else { "Type a message... (Ctrl+Enter to send)" },
+                placeholder: if is_streaming { "Streaming..." } else { "Type a message... (Enter to send, Shift+Enter for newline)" },
                 disabled: is_streaming,
                 rows: "1",
                 value: "{input.read().text}",
@@ -141,22 +144,19 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
                     let key = evt.key();
                     let modifiers = evt.modifiers();
 
-                    if key == Key::Enter && modifiers.contains(Modifiers::CONTROL) {
-                        evt.prevent_default();
-                        do_submit();
-                        return;
-                    }
-
                     // Shift+Enter: newline (default textarea behavior, no prevention)
                     if key == Key::Enter && modifiers.contains(Modifiers::SHIFT) {
                         return;
                     }
 
-                    // Plain Enter: also newline in a multiline textarea
+                    // Enter (plain or Ctrl): submit
                     if key == Key::Enter {
+                        evt.prevent_default();
+                        do_submit();
                         return;
                     }
 
+                    // Up arrow: navigate to previous history entry
                     if key == Key::ArrowUp && !is_streaming {
                         if input.write().history_prev() {
                             evt.prevent_default();
@@ -164,6 +164,7 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
                         return;
                     }
 
+                    // Down arrow: navigate to next history entry
                     if key == Key::ArrowDown && !is_streaming && input.write().history_next() {
                         evt.prevent_default();
                     }

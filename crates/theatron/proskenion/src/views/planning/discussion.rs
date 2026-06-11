@@ -139,8 +139,8 @@ const ANSWER_SUMMARY: &str = "\
     font-size: var(--text-sm); \
     color: var(--status-success); \
     padding: var(--space-2) var(--space-3); \
-    background: #0f1a0f; \
-    border: 1px solid #1a3a1a; \
+    background: var(--status-success-bg); \
+    border: 1px solid var(--status-success); \
     border-radius: var(--radius-sm); \
     margin-top: var(--space-2);\
 ";
@@ -479,11 +479,11 @@ fn discussion_card_colors(
     status: DiscussionStatus,
 ) -> (&'static str, &'static str) {
     if status == DiscussionStatus::Answered {
-        return ("#0f1a0f", "#2a4a2a");
+        return ("var(--status-success-bg)", "var(--status-success)");
     }
     match priority {
-        DiscussionPriority::Blocking => ("#1e0f0f", "var(--status-error)"),
-        DiscussionPriority::Important => ("#1e1a10", "var(--status-warning)"),
+        DiscussionPriority::Blocking => ("var(--status-error-bg)", "var(--status-error)"),
+        DiscussionPriority::Important => ("var(--status-warning-bg)", "var(--status-warning)"),
         DiscussionPriority::NiceToHave => ("var(--bg-surface)", "var(--border)"),
     }
 }
@@ -507,8 +507,8 @@ fn status_label(status: DiscussionStatus) -> &'static str {
 
 fn priority_badge_style(priority: DiscussionPriority) -> String {
     let (bg, color) = match priority {
-        DiscussionPriority::Blocking => ("#3a0f0f", "var(--status-error)"),
-        DiscussionPriority::Important => ("#2a1f05", "var(--status-warning)"),
+        DiscussionPriority::Blocking => ("var(--status-error-bg)", "var(--status-error)"),
+        DiscussionPriority::Important => ("var(--status-warning-bg)", "var(--status-warning)"),
         DiscussionPriority::NiceToHave => ("var(--border)", "var(--text-secondary)"),
     };
     format!("{BADGE_BASE} background: {bg}; color: {color};")
@@ -541,7 +541,7 @@ mod tests {
         let (_, border) =
             discussion_card_colors(DiscussionPriority::Blocking, DiscussionStatus::Answered);
         assert_eq!(
-            border, "#2a4a2a",
+            border, "var(--status-success)",
             "answered status should override blocking priority color"
         );
     }

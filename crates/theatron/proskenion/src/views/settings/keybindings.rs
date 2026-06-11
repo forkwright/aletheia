@@ -44,7 +44,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
 
             if recording_id.read().is_some() {
                 div {
-                    style: "position: fixed; inset: 0; background: rgba(0,0,0,0.6); \
+                    style: "position: fixed; inset: 0; background: var(--bg-overlay); \
                             display: flex; align-items: center; justify-content: center; z-index: 100;",
                     tabindex: "0",
                     autofocus: true,
@@ -82,8 +82,8 @@ pub(crate) fn KeybindingsPanel() -> Element {
                         }
                     },
                     div {
-                        style: "background: var(--bg-surface); border: 1px solid #5b6af0; border-radius: var(--radius-lg); \
-                                padding: var(--space-8) 48px; text-align: center; color: var(--text-primary);",
+                        style: "background: var(--bg-surface); border: 1px solid var(--accent); border-radius: var(--radius-lg); \
+                                padding: var(--space-8) var(--space-12); text-align: center; color: var(--text-primary);",
                         div {
                             style: "font-size: var(--text-md); margin-bottom: var(--space-2);",
                             "Press a key combination"
@@ -110,7 +110,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
 
                     rsx! {
                         div {
-                            style: "position: fixed; inset: 0; background: rgba(0,0,0,0.6); \
+                            style: "position: fixed; inset: 0; background: var(--bg-overlay); \
                                     display: flex; align-items: center; justify-content: center; z-index: 110;",
                             div {
                                 style: "background: var(--bg-surface); border: 1px solid var(--status-warning); border-radius: var(--radius-lg); \
@@ -133,7 +133,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                     }
                                     button {
                                         style: "padding: var(--space-2) var(--space-4); background: var(--status-warning); border: none; \
-                                                border-radius: var(--radius-sm); color: #000; font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                                border-radius: var(--radius-sm); color: var(--text-inverse); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                         onclick: move |_| {
                                             keybindings.write().reset(&conflict_clone);
                                             keybindings.write().set(&target_clone, combo_clone.clone());
@@ -168,7 +168,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
 
                             div {
                                 style: "display: flex; justify-content: space-between; align-items: center; \
-                                        padding: var(--space-3) var(--space-4); background: #161626; border-bottom: 1px solid var(--border);",
+                                        padding: var(--space-3) var(--space-4); background: var(--bg-surface-dim); border-bottom: 1px solid var(--border);",
                                 span {
                                     style: "font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--text-muted); \
                                             text-transform: uppercase; letter-spacing: 0.6px;",
@@ -194,12 +194,12 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                     let action_id = action.id;
                                     let combo_str = keybindings.read().effective(action).display();
                                     let is_recording = recording_id.read().as_deref() == Some(action_id);
-                                    let row_bg = if is_recording { "#1e1e3a" } else { "transparent" };
+                                    let row_bg = if is_recording { "var(--selection-bg)" } else { "transparent" };
                                     let combo_style = if is_recording {
-                                        "padding: var(--space-1) var(--space-3); background: #5b6af0; border: none; \
-                                         border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); min-width: 90px;"
+                                        "padding: var(--space-1) var(--space-3); background: var(--accent); border: none; \
+                                         border-radius: var(--radius-sm); color: var(--text-inverse); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); min-width: 90px;"
                                     } else {
-                                        "padding: var(--space-1) var(--space-3); background: #0d0d1a; border: 1px solid var(--border); \
+                                        "padding: var(--space-1) var(--space-3); background: var(--bg-surface-dim); border: 1px solid var(--border); \
                                          border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); min-width: 90px; \
                                          font-family: var(--font-mono);"
                                     };
@@ -209,7 +209,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                         div {
                                             key: "{action_id}",
                                             style: "display: flex; justify-content: space-between; align-items: center; \
-                                                    padding: var(--space-2) var(--space-4); background: {row_bg}; border-bottom: 1px solid #222;",
+                                                    padding: var(--space-2) var(--space-4); background: {row_bg}; border-bottom: 1px solid var(--border-separator);",
                                             span {
                                                 style: "font-size: var(--text-sm); color: var(--text-primary);",
                                                 "{action.label}"
