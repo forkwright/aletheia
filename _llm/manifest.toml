@@ -128,8 +128,8 @@ l3_token_estimate = 7453
 [[crates]]
 name = "krites"
 path = "crates/krites"
-source_hash = "ac7b7eb91438b96f844ae3582abf774ee6961f13ababdd84000ee5e9457c8d9c"
-l3_token_estimate = 10102
+source_hash = "da3f0705126016dbaede3ce7648934689e637ae88e3d82a4a00635b88f3101a1"
+l3_token_estimate = 10335
 
 [[crates]]
 name = "melete"

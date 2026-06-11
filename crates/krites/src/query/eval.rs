@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use itertools::Itertools;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use crate::data::aggr::Aggregation;
 use crate::data::program::{MagicSymbol, NoEntryError};
@@ -85,6 +85,7 @@ impl<'a> SessionTx<'a> {
         store_lifetimes: BTreeMap<MagicSymbol, usize>,
         total_num_to_take: Option<usize>,
         num_to_skip: Option<usize>,
+        max_epochs: u32,
         poison: Poison,
     ) -> Result<(EpochStore, bool)> {
         let mut stores: BTreeMap<MagicSymbol, EpochStore> = BTreeMap::new();
@@ -118,6 +119,8 @@ impl<'a> SessionTx<'a> {
                 &mut stores,
                 total_num_to_take,
                 num_to_skip,
+                max_epochs,
+                stratum,
                 poison.clone(),
             )?;
         }
@@ -340,6 +343,8 @@ impl<'a> SessionTx<'a> {
         stores: &mut BTreeMap<MagicSymbol, EpochStore>,
         total_num_to_take: Option<usize>,
         num_to_skip: Option<usize>,
+        max_epochs: u32,
+        stratum: usize,
         poison: Poison,
     ) -> Result<bool> {
         let limiter = QueryLimiter {
@@ -349,7 +354,7 @@ impl<'a> SessionTx<'a> {
         };
         let used_limiter: AtomicBool = false.into();
 
-        for epoch in 0u32.. {
+        for epoch in 0..max_epochs {
             debug!("epoch {}", epoch);
             let borrowed_stores = stores as &BTreeMap<_, _>;
             let to_merge = if epoch == 0 {
@@ -386,10 +391,24 @@ impl<'a> SessionTx<'a> {
                 changed |= old_store.has_delta();
             }
             if !changed {
-                break;
+                return Ok(used_limiter.load(Ordering::Acquire));
             }
         }
-        Ok(used_limiter.load(Ordering::Acquire))
+        let rule_context = prog.keys().map(ToString::to_string).join(", ");
+        warn!(
+            epoch_count = max_epochs,
+            max_epochs,
+            stratum,
+            rule_context = %rule_context,
+            "semi-naive evaluation exceeded epoch limit"
+        );
+        EpochLimitExceededSnafu {
+            epoch_count: max_epochs,
+            max_epochs,
+            stratum,
+            rule_context,
+        }
+        .fail()?
     }
     /// Returns `true` if early return is activated.
     ///

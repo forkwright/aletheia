@@ -39,6 +39,35 @@ use crate::runtime::relation::RelationId;
 use crate::storage::Storage;
 use crate::storage::temp::TempStorage;
 
+/// Default maximum semi-naive evaluation epochs for one stratum.
+pub const DEFAULT_MAX_EVALUATION_EPOCHS: u32 = 10_000;
+
+/// Runtime limits for a database instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct DbConfig {
+    /// Maximum semi-naive evaluation epochs per stratum.
+    pub max_evaluation_epochs: u32,
+}
+
+impl Default for DbConfig {
+    fn default() -> Self {
+        Self {
+            max_evaluation_epochs: DEFAULT_MAX_EVALUATION_EPOCHS,
+        }
+    }
+}
+
+impl DbConfig {
+    /// Create runtime limits with the given semi-naive epoch cap.
+    #[must_use]
+    pub fn new(max_evaluation_epochs: u32) -> Self {
+        Self {
+            max_evaluation_epochs,
+        }
+    }
+}
+
 pub(crate) struct RunningQueryHandle {
     pub(crate) started_at: f64,
     pub(crate) poison: Poison,
@@ -78,6 +107,7 @@ pub enum ScriptMutability {
 #[derive(Clone)]
 pub struct Db<S> {
     pub(crate) db: S,
+    pub(crate) config: DbConfig,
     pub(crate) temp_db: TempStorage,
     pub(crate) relation_store_id: Arc<AtomicU64>,
     pub(crate) queries_count: Arc<AtomicU64>,
@@ -311,6 +341,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     pub fn new(storage: S) -> Result<Self> {
         let ret = Self {
             db: storage,
+            config: DbConfig::default(),
             temp_db: Default::default(),
             relation_store_id: Default::default(),
             queries_count: Default::default(),

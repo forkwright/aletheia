@@ -33,6 +33,19 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Semi-naive query evaluation exceeded the configured epoch limit.
+    #[snafu(display(
+        "evaluation exceeded epoch limit: epoch_count={epoch_count}, max_epochs={max_epochs}, stratum={stratum}, rules={rule_context}"
+    ))]
+    EpochLimitExceeded {
+        epoch_count: u32,
+        max_epochs: u32,
+        stratum: usize,
+        rule_context: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// A parse error (query syntax).
     #[snafu(display("parse error: {source}"))]
     Parse {

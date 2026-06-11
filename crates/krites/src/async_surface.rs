@@ -29,7 +29,9 @@ use tracing::instrument;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::runtime::callback::CallbackOp;
-use crate::{DataValue, Db, FixedRule, NamedRows, QueryCache, QueryCacheStats, ScriptMutability};
+use crate::{
+    DataValue, Db, DbConfig, FixedRule, NamedRows, QueryCache, QueryCacheStats, ScriptMutability,
+};
 
 /// Tokio-native async wrapper over the blocking [`Db`] core.
 ///
@@ -87,6 +89,22 @@ impl AsyncDb {
             },
         };
         db.cache = Some(Arc::new(QueryCache::new(capacity)));
+        Self {
+            inner: Arc::new(db),
+        }
+    }
+
+    /// Replace runtime limits for this database.
+    #[must_use]
+    pub fn with_config(self, config: DbConfig) -> Self {
+        let db = match Arc::try_unwrap(self.inner) {
+            Ok(db) => db,
+            Err(arc) => Db {
+                inner: arc.clone_inner(),
+                cache: None,
+            },
+        }
+        .with_config(config);
         Self {
             inner: Arc::new(db),
         }

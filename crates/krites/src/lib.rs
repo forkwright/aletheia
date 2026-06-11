@@ -33,7 +33,9 @@ pub use async_surface::AsyncDb;
 pub use crate::data::value::{DataValue, ValidityTs, Vector};
 pub use crate::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
 pub use crate::runtime::callback::CallbackOp;
-pub use crate::runtime::db::{NamedRows, ScriptMutability, TransactionPayload};
+pub use crate::runtime::db::{
+    DEFAULT_MAX_EVALUATION_EPOCHS, DbConfig, NamedRows, ScriptMutability, TransactionPayload,
+};
 #[cfg(feature = "storage-fjall")]
 pub use crate::storage::fjall_backend::FjallStorage;
 pub use crate::storage::mem::MemStorage;
@@ -73,6 +75,22 @@ fn convert_internal(e: crate::error::InternalError) -> Error {
         InternalError::Runtime {
             source: crate::runtime::error::RuntimeError::QueryKilled { .. },
         } => error::QueryKilledSnafu.build(),
+        InternalError::Query {
+            source:
+                crate::query::error::QueryError::EpochLimitExceeded {
+                    epoch_count,
+                    max_epochs,
+                    stratum,
+                    rule_context,
+                    ..
+                },
+        } => error::EpochLimitExceededSnafu {
+            epoch_count,
+            max_epochs,
+            stratum,
+            rule_context,
+        }
+        .build(),
         InternalError::Parse { source } => error::ParseSnafu.into_error(source),
         InternalError::Storage { source } => error::StorageSnafu.into_error(source),
         other => error::EngineSnafu {
@@ -92,6 +110,14 @@ enum DbInner {
 }
 
 impl DbInner {
+    fn set_config(&mut self, config: DbConfig) {
+        match self {
+            DbInner::Mem(db) => db.config = config,
+            #[cfg(feature = "storage-fjall")]
+            DbInner::Fjall(db) => db.config = config,
+        }
+    }
+
     fn run_multi_transaction_inner(
         self,
         write: bool,
@@ -157,6 +183,13 @@ impl Db {
     #[must_use]
     pub fn with_cache(mut self, capacity: NonZeroUsize) -> Self {
         self.cache = Some(Arc::new(QueryCache::new(capacity)));
+        self
+    }
+
+    /// Replace runtime limits for this database.
+    #[must_use]
+    pub fn with_config(mut self, config: DbConfig) -> Self {
+        self.inner.set_config(config);
         self
     }
 

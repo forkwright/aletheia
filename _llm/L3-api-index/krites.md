@@ -18,6 +18,7 @@ impl AsyncDb {
     pub async fn open_mem () -> crate::Result<Self>;
     pub async fn open_fjall (path: impl AsRef<Path> + Send + 'static) -> crate::Result<Self>;
     pub fn with_cache (self, capacity: NonZeroUsize) -> Self;
+    pub fn with_config (self, config: DbConfig) -> Self;
     pub async fn cache_stats (&self) -> Option<QueryCacheStats>;
     pub async fn run (
         &self,
@@ -448,6 +449,19 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Semi-naive query evaluation exceeded the configured epoch limit.
+    #[snafu(display(
+        "evaluation exceeded epoch limit: epoch_count={epoch_count}, max_epochs={max_epochs}, stratum={stratum}, rules={rule_context}"
+    ))]
+    EpochLimitExceeded {
+        epoch_count: u32,
+        max_epochs: u32,
+        stratum: usize,
+        rule_context: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// A parse error (query syntax).
     #[snafu(display("parse error: {source}"))]
     Parse {
@@ -724,6 +738,7 @@ impl Db {
     pub fn open_mem () -> crate::Result<Self>;
     pub fn open_fjall (path: impl AsRef<Path>) -> crate::Result<Self>;
     pub fn with_cache (mut self, capacity: NonZeroUsize) -> Self;
+    pub fn with_config (mut self, config: DbConfig) -> Self;
     pub fn with_rule_store (
         mut self,
         store: Arc<arc_swap::ArcSwap<crate::hot_reload::RuleSet>>,
@@ -1128,6 +1143,24 @@ pub struct CallbackDeclaration {
 
 ## `src/runtime/db.rs`
 
+> Default maximum semi-naive evaluation epochs for one stratum.
+```rust
+pub const DEFAULT_MAX_EVALUATION_EPOCHS: u32 = 10_000;
+```
+
+```rust
+pub struct DbConfig {
+    /// Maximum semi-naive evaluation epochs per stratum.
+    pub max_evaluation_epochs: u32,
+}
+```
+
+```rust
+impl DbConfig {
+    pub fn new (max_evaluation_epochs: u32) -> Self;
+}
+```
+
 ```rust
 pub enum ScriptMutability {
     /// The script is mutable.
@@ -1140,6 +1173,7 @@ pub enum ScriptMutability {
 ```rust
 pub struct Db<S> {
     pub(crate) db: S,
+    pub(crate) config: DbConfig,
     pub(crate) temp_db: TempStorage,
     pub(crate) relation_store_id: Arc<AtomicU64>,
     pub(crate) queries_count: Arc<AtomicU64>,
