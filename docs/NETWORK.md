@@ -20,7 +20,7 @@ Sorted by criticality (highest sovereignty impact first).
 | Configurable OAuth provider (PKCE / device code) | HTTPS | Outbound | Authorization codes, device codes, access tokens | `aletheia credential login` (PKCE) or `aletheia credential device-code` | `crates/symbolon/src/credential/pkce.rs:361` (authorization URL build); `crates/symbolon/src/credential/pkce.rs:612` (code→token exchange); `crates/symbolon/src/credential/device_code.rs:220` (device authorization POST); `crates/symbolon/src/credential/device_code.rs:285` (token polling POST) |
 | HuggingFace Hub (`hf-hub` internal endpoint) | HTTPS (via `ureq`) | Outbound | Model files: `config.json`, `tokenizer.json`, `model.safetensors` | First initialization of the `candle` embedding provider | `crates/episteme/src/embedding.rs:165` (hub API init); `crates/episteme/src/embedding.rs:173` (`config.json` download); `crates/episteme/src/embedding.rs:179` (`tokenizer.json` download); `crates/episteme/src/embedding.rs:185` (`model.safetensors` download) |
 | `api.github.com` | HTTPS | Outbound | Public issue metadata (title, state, labels, milestone) | Agent uses `issue_scan` or `issue_triage` built-in tool | `crates/organon/src/builtins/triage/mod.rs:359` (URL template); `crates/organon/src/builtins/triage/mod.rs:369` (HTTP GET) |
-| Arbitrary URLs (`web_fetch` tool) | HTTPS/HTTP | Outbound | Arbitrary web page body (HTML, markdown, etc.) | Agent uses `web_fetch` built-in tool | `crates/organon/src/builtins/research.rs:118` (protocol guard); `crates/organon/src/builtins/research.rs:156` (HTTP GET execution) |
+| Arbitrary URLs (`web_fetch` tool) | HTTPS/HTTP | Outbound | Arbitrary web page body (HTML, markdown, etc.) | Agent uses `web_fetch` built-in tool | `crates/organon/src/builtins/research.rs:130` (protocol guard); `crates/organon/src/builtins/research.rs:77` (HTTP GET execution); `crates/organon/src/builtins/research.rs:141` (automatic redirects disabled) |
 | Operator-configured external tool endpoints | HTTPS/HTTP (config-driven) | Outbound | JSON tool body (`tool`, `kind`, `arguments`) | Agent invokes an external tool registered in `aletheia.toml` | `crates/aletheia/src/external_tools.rs:30` (config types); `crates/aletheia/src/external_tools.rs:330` (HTTP POST executor) |
 | Qdrant (migration only) | HTTPS/gRPC (configurable, default `localhost:6333`) | Outbound | Vector memory records (scroll points, payloads) | One-time `aletheia agent-io migrate-memory` CLI command | `crates/aletheia/src/migrate_memory.rs:68` (client build); `crates/aletheia/src/commands/agent_io.rs:106` (CLI `--qdrant-url` arg) |
 | signal-cli daemon (`localhost:8080` by default) | HTTP (JSON-RPC) | Outbound | Signal message text, recipient IDs, JSON-RPC envelopes | Sending or receiving Signal messages when Signal channel is enabled | `crates/taxis/src/config/mod.rs:268` (default host); `crates/agora/src/semeion/client.rs:88` (URL construction); `crates/agora/src/semeion/client.rs:144` (`send` RPC); `crates/agora/src/semeion/mod.rs:170` (receive poll loop) |
@@ -57,13 +57,21 @@ Sorted by criticality (highest sovereignty impact first).
 | Configurable OAuth PKCE / device code | Partial (URLs are configurable per provider) | Do not run login commands; use static API key |
 | HuggingFace Hub | Partial (model repo is configurable) | Use a pre-cached model directory (`HF_HOME`), or air-gap the host |
 | `api.github.com` | No (host is hard-coded) | Do not enable or invoke `issue_scan` / `issue_triage` |
-| Arbitrary URLs (`web_fetch`) | No (arbitrary by design) | Do not invoke `web_fetch`; SSRF guards block internal ranges |
+| Arbitrary URLs (`web_fetch`) | No (arbitrary by design) | Do not invoke `web_fetch`; SSRF guards reject blocked hostnames and URLs that resolve to internal ranges |
 | External tool endpoints | Yes (operator must explicitly declare them in `aletheia.toml`) | Remove the tool from config |
 | Qdrant | Yes (`--qdrant-url` or `QDRANT_URL` env) | Do not run `migrate-memory`; feature is off by default |
 | signal-cli daemon | Yes (`channels.signal.accounts.*.http_host`, `http_port`) | Disable Signal channel or set `enabled = false` |
 | Tailscale local status query | No | Do not install `tailscale` binary; discovery gracefully degrades to `localhost` |
 
 ---
+
+## Arbitrary URL SSRF guard
+
+`web_fetch` and `http_request` validate the initial URL before sending a request. They reject blocked hostnames such as `localhost` and `metadata.google.internal`, and they reject hosts whose DNS resolution returns private, loopback, link-local, or cloud metadata addresses.
+
+Both tools disable reqwest automatic redirects. They follow redirects manually, revalidate every `Location` target with the same hostname and DNS policy before the next request, and refuse the sixth redirect in a chain. Relative redirect targets are resolved against the current URL before validation.
+
+Known limitation: DNS can change after validation and before the subsequent TCP connection. The guard reduces SSRF exposure by validating each URL the process chooses to request, but it does not pin the validated address through connect time.
 
 ## Inbound connections
 

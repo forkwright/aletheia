@@ -8,12 +8,15 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::future::Future;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::pin::Pin;
 
 use indexmap::IndexMap;
-use reqwest::{Method, redirect};
+use reqwest::{Method, StatusCode, redirect};
 
+use koina::http::{
+    HostResolver, TokioHostResolver, validate_url_not_internal,
+    validate_url_not_internal_with_resolver,
+};
 use koina::id::ToolName;
 
 use crate::error::Result;
@@ -25,13 +28,6 @@ use crate::types::{
 
 use super::workspace::{extract_opt_str, extract_opt_u64, extract_str};
 
-/// Cloud-metadata / loopback hostnames rejected outright.
-///
-/// WHY: duplicated with `research.rs` rather than shared, because each tool's
-/// allowlist is an independent security boundary; a future widening of one
-/// should not silently widen the other. Kept in sync by convention.
-const BLOCKED_HOSTNAMES: &[&str] = &["localhost", "metadata.google.internal"];
-
 /// Headers that must never be forwarded from LLM input.
 ///
 /// WHY: Host/Content-Length are computed by reqwest; the LLM setting them
@@ -42,59 +38,7 @@ const FORBIDDEN_REQUEST_HEADERS: &[&str] = &["host", "content-length"];
 /// Upper bound on response body size forwarded to the LLM.
 const MAX_RESPONSE_BYTES: usize = 1_000_000;
 
-fn is_private_ip(ip: &IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            v4.is_loopback()
-                || v4.is_private()
-                || v4.is_link_local()
-                || v4.octets().first() == Some(&0)
-                || *v4 == Ipv4Addr::new(169, 254, 169, 254)
-                || *v4 == Ipv4Addr::new(169, 254, 169, 123)
-        }
-        IpAddr::V6(v6) => {
-            *v6 == Ipv6Addr::LOCALHOST
-                || (v6.segments().first().unwrap_or(&0) & 0xfe00) == 0xfc00
-                || (v6.segments().first().unwrap_or(&0) & 0xffc0) == 0xfe80
-                || v6.to_ipv4_mapped().is_some_and(|v4| {
-                    v4.is_loopback()
-                        || v4.is_private()
-                        || v4.is_link_local()
-                        || v4.octets().first() == Some(&0)
-                })
-        }
-    }
-}
-
-async fn validate_url_not_internal(url_str: &str) -> std::result::Result<(), String> {
-    let parsed: reqwest::Url = url_str.parse().map_err(|e| format!("invalid URL: {e}"))?;
-
-    let host = parsed.host_str().ok_or("URL has no host")?;
-    let host_lower = host.to_lowercase();
-    for blocked in BLOCKED_HOSTNAMES {
-        if host_lower == *blocked {
-            return Err(format!("blocked hostname: {host}"));
-        }
-    }
-
-    let port = parsed.port_or_known_default().unwrap_or(80);
-    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host(format!("{host}:{port}"))
-        .await
-        .map_err(|e| format!("DNS resolution failed for {host}: {e}"))?
-        .collect();
-
-    if addrs.is_empty() {
-        return Err(format!("DNS resolution returned no addresses for {host}"));
-    }
-
-    for addr in &addrs {
-        if is_private_ip(&addr.ip()) {
-            return Err("URL resolves to a private/internal IP address".to_owned());
-        }
-    }
-
-    Ok(())
-}
+const MAX_REDIRECTS: usize = 5;
 
 fn parse_method(raw: &str) -> std::result::Result<Method, String> {
     match raw.to_ascii_uppercase().as_str() {
@@ -131,21 +75,116 @@ fn extract_headers(
     Ok(out)
 }
 
+async fn validated_redirect_target<R>(
+    current_url: &reqwest::Url,
+    location: &str,
+    redirects_followed: usize,
+    resolver: &R,
+) -> std::result::Result<reqwest::Url, String>
+where
+    R: HostResolver + ?Sized,
+{
+    if redirects_followed >= MAX_REDIRECTS {
+        return Err(format!("redirect limit exceeded: max {MAX_REDIRECTS}"));
+    }
+
+    let next_url = current_url
+        .join(location)
+        .map_err(|e| format!("invalid redirect Location: {e}"))?;
+
+    // WARNING: DNS may change after validation and before reqwest connects.
+    // The guard revalidates every URL before following it, but it cannot pin
+    // the resolved address for the subsequent connection.
+    validate_url_not_internal_with_resolver(next_url.as_str(), resolver).await?;
+
+    Ok(next_url)
+}
+
+fn redirect_method(method: &Method, status: StatusCode) -> Method {
+    if status == StatusCode::SEE_OTHER
+        || ((status == StatusCode::MOVED_PERMANENTLY || status == StatusCode::FOUND)
+            && *method != Method::GET
+            && *method != Method::HEAD)
+    {
+        Method::GET
+    } else {
+        method.clone()
+    }
+}
+
+async fn send_with_safe_redirects<R>(
+    client: &reqwest::Client,
+    method: Method,
+    url: &str,
+    headers: &HashMap<String, String>,
+    body: Option<&str>,
+    resolver: &R,
+) -> std::result::Result<reqwest::Response, String>
+where
+    R: HostResolver + ?Sized,
+{
+    let mut current_url: reqwest::Url = url.parse().map_err(|e| format!("invalid URL: {e}"))?;
+    let mut current_method = method;
+    let mut include_body = body.is_some();
+    let mut redirects_followed = 0;
+
+    loop {
+        let mut req = client
+            .request(current_method.clone(), current_url.clone())
+            .header(
+                "User-Agent",
+                concat!(
+                    "aletheia/",
+                    env!("CARGO_PKG_VERSION"),
+                    " (organon http_request)"
+                ),
+            );
+        for (k, v) in headers {
+            req = req.header(k, v);
+        }
+        if include_body && let Some(b) = body {
+            req = req.body(b.to_owned());
+        }
+
+        let response = req
+            .send()
+            .await
+            .map_err(|e| format!("request failed: {e}"))?;
+
+        if !response.status().is_redirection() {
+            return Ok(response);
+        }
+
+        let status = response.status();
+        let Some(location) = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+        else {
+            return Ok(response);
+        };
+
+        current_url =
+            validated_redirect_target(&current_url, location, redirects_followed, resolver).await?;
+        let next_method = redirect_method(&current_method, status);
+        include_body = include_body
+            && next_method == current_method
+            && (status == StatusCode::TEMPORARY_REDIRECT
+                || status == StatusCode::PERMANENT_REDIRECT);
+        current_method = next_method;
+        redirects_followed += 1;
+    }
+}
+
 struct HttpRequestExecutor;
 
 impl ToolExecutor for HttpRequestExecutor {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "single HTTP lifecycle — validate URL, build client, send, render response; splitting would fragment one cohesive I/O operation"
-    )]
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        ctx: &'a ToolContext,
+        _ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
-            let _ = ctx; // unused: no service dependencies
-
             let url = extract_str(&input.arguments, "url", &input.name)?;
             let method_str = extract_opt_str(&input.arguments, "method").unwrap_or("GET");
             let body = extract_opt_str(&input.arguments, "body");
@@ -173,27 +212,7 @@ impl ToolExecutor for HttpRequestExecutor {
             }
 
             let client = match reqwest::Client::builder()
-                .redirect(redirect::Policy::custom(|attempt| {
-                    let url = attempt.url();
-                    let host = match url.host_str() {
-                        Some(h) => h.to_lowercase(),
-                        None => return attempt.stop(),
-                    };
-                    for blocked in BLOCKED_HOSTNAMES {
-                        if host == *blocked {
-                            return attempt.stop();
-                        }
-                    }
-                    if let Some(addr) = url.host_str().and_then(|h| h.parse::<IpAddr>().ok())
-                        && is_private_ip(&addr)
-                    {
-                        return attempt.stop();
-                    }
-                    if attempt.previous().len() >= 5 {
-                        return attempt.stop();
-                    }
-                    attempt.follow()
-                }))
+                .redirect(redirect::Policy::none())
                 .timeout(std::time::Duration::from_secs(timeout_secs))
                 .build()
             {
@@ -201,24 +220,18 @@ impl ToolExecutor for HttpRequestExecutor {
                 Err(e) => return Ok(ToolResult::error(format!("client build failed: {e}"))),
             };
 
-            let mut req = client.request(method.clone(), url).header(
-                "User-Agent",
-                concat!(
-                    "aletheia/",
-                    env!("CARGO_PKG_VERSION"),
-                    " (organon http_request)"
-                ),
-            );
-            for (k, v) in &headers {
-                req = req.header(k, v);
-            }
-            if let Some(b) = body {
-                req = req.body(b.to_owned());
-            }
-
-            let response = match req.send().await {
+            let response = match send_with_safe_redirects(
+                &client,
+                method.clone(),
+                url,
+                &headers,
+                body,
+                &TokioHostResolver,
+            )
+            .await
+            {
                 Ok(r) => r,
-                Err(e) => return Ok(ToolResult::error(format!("request failed: {e}"))),
+                Err(e) => return Ok(ToolResult::error(e)),
             };
 
             let status = response.status();
@@ -361,7 +374,34 @@ fn http_request_def() -> ToolDef {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+
+    use koina::http::ResolveHostFuture;
+
     use super::*;
+
+    #[derive(Default)]
+    struct MockResolver {
+        addrs_by_host: HashMap<String, Vec<SocketAddr>>,
+    }
+
+    impl HostResolver for MockResolver {
+        fn resolve_host<'a>(&'a self, host: &'a str, _port: u16) -> ResolveHostFuture<'a> {
+            Box::pin(async move {
+                self.addrs_by_host
+                    .get(host)
+                    .cloned()
+                    .ok_or_else(|| format!("missing mock host: {host}"))
+            })
+        }
+    }
+
+    fn public_base_url() -> reqwest::Url {
+        "https://public.example/start"
+            .parse()
+            .expect("test URL should parse")
+    }
 
     #[test]
     fn parse_method_accepts_standard_methods() {
@@ -402,26 +442,77 @@ mod tests {
     }
 
     #[test]
-    fn is_private_ip_flags_loopback_v4() {
-        assert!(is_private_ip(&IpAddr::V4(Ipv4Addr::LOCALHOST)));
-    }
-
-    #[test]
-    fn is_private_ip_flags_aws_metadata() {
-        assert!(is_private_ip(&IpAddr::V4(Ipv4Addr::new(
-            169, 254, 169, 254
-        ))));
-    }
-
-    #[test]
-    fn is_private_ip_allows_public_v4() {
-        assert!(!is_private_ip(&IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))));
-    }
-
-    #[test]
     fn http_request_def_is_lazy() {
         let def = http_request_def();
         assert!(!def.auto_activate);
         assert_eq!(def.category, ToolCategory::Research);
+    }
+
+    #[tokio::test]
+    async fn redirect_to_private_ip_literal_is_blocked() {
+        let mut resolver = MockResolver::default();
+        resolver.addrs_by_host.insert(
+            "169.254.169.254".to_owned(),
+            vec![SocketAddr::from(([169, 254, 169, 254], 443))],
+        );
+
+        let err = validated_redirect_target(
+            &public_base_url(),
+            "https://169.254.169.254/latest",
+            0,
+            &resolver,
+        )
+        .await
+        .expect_err("private redirect target must be rejected");
+
+        assert!(err.contains("private/internal"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn redirect_to_blocked_hostname_is_blocked() {
+        let err = validated_redirect_target(
+            &public_base_url(),
+            "https://localhost/admin",
+            0,
+            &MockResolver::default(),
+        )
+        .await
+        .expect_err("blocked hostname must be rejected");
+
+        assert!(err.contains("blocked hostname"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn redirect_to_hostname_resolving_private_is_blocked() {
+        let mut resolver = MockResolver::default();
+        resolver.addrs_by_host.insert(
+            "rebind.example".to_owned(),
+            vec![SocketAddr::from(([10, 0, 0, 7], 443))],
+        );
+
+        let err = validated_redirect_target(
+            &public_base_url(),
+            "https://rebind.example/metadata",
+            0,
+            &resolver,
+        )
+        .await
+        .expect_err("private DNS redirect target must be rejected");
+
+        assert!(err.contains("private/internal"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn sixth_redirect_is_refused() {
+        let err = validated_redirect_target(
+            &public_base_url(),
+            "https://public.example/six",
+            5,
+            &MockResolver::default(),
+        )
+        .await
+        .expect_err("sixth redirect must be rejected");
+
+        assert!(err.contains("redirect limit"), "unexpected error: {err}");
     }
 }

@@ -5180,6 +5180,7 @@ dependencies = [
  "proptest",
  "rand 0.10.1",
  "regex",
+ "reqwest 0.13.2",
  "rustix 1.1.4",
  "serde",
  "serde_json",

@@ -32,6 +32,7 @@ tracing-subscriber = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 prometheus-client = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
