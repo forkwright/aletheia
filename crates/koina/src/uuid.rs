@@ -1,15 +1,7 @@
 //! Clean-room UUID implementation covering v4 generation and v1 construction.
 //!
-//! WHY: The `uuid` crate is 8,574 LOC (~50-100KB) we don't need. UUID v4 is
-//! just 16 random bytes with 6 bits fixed for version/variant. UUID v1 is a
-//! timestamp + clock-seq + node packed per RFC 4122 §4.1. We use `rand` which
-//! we already depend on for other purposes.
-//!
-//! This module now covers all UUID operations required by krites (formerly
-//! delegated to the `uuid` crate): v4 generation, v1 construction, field
-//! decomposition (`as_fields`/`from_fields`), byte-array access, nil check,
-//! and v1 timestamp extraction. The `uuid` crate has been removed from the
-//! workspace.
+//! WHY: keep UUID handling local instead of depending on the external `uuid`
+//! crate; this module covers the v4/v1 operations krites actually needs.
 
 use std::fmt;
 
@@ -17,11 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// A UUID (128-bit identifier), supporting v4 and v1 variants.
 ///
-/// WHY: Internal implementation eliminates the `uuid` crate dependency.
-/// Supports all operations needed by the Datalog engine in krites:
-/// v4 generation, v1 construction, RFC 4122 field decomposition, binary
-/// serialization, and v1 timestamp extraction.
-///
+/// WHY: this internal type covers the v4/v1 operations krites needs.
 /// The underlying storage is always big-endian byte order per RFC 4122 §4.1.2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -57,7 +45,6 @@ impl Uuid {
     /// # Errors
     /// Returns an error if the string is not a valid UUID format.
     pub fn parse_str(s: &str) -> Result<Self, UuidParseError> {
-        // Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars)
         if s.len() != 36 {
             return Err(UuidParseError);
         }

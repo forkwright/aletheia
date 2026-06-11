@@ -1,8 +1,5 @@
-// WHY: the `OpenAI` brand name and related proper nouns (llama.cpp,
-// ollama, vllm) pervade the docs of this module. clippy::doc_markdown
-// flags bare CamelCase as missing backticks. Backticks would visually
-// muddle the rustdoc-rendered prose and are not appropriate for a
-// brand, so the lint is opted out at the module root only.
+// WHY: `clippy::doc_markdown` would flag brand names in the rustdoc prose;
+// the module-level allow keeps the docs readable without noisy backticks.
 #![allow(clippy::doc_markdown)]
 
 //! OpenAI LLM provider.

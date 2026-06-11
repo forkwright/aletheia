@@ -160,7 +160,7 @@ fn decode_inner(
 ) -> Result<Vec<u8>, DecodeError> {
     let bytes = input.as_bytes();
 
-    // Locate the end of actual data (before any trailing '=').
+    // WHY: split data from trailing '=' padding before decoding.
     let data_end = bytes.iter().rposition(|&b| b != b'=').map_or(0, |i| i + 1);
     let padding_len = bytes.len().saturating_sub(data_end);
 
@@ -175,7 +175,7 @@ fn decode_inner(
             return InvalidPaddingSnafu.fail();
         }
     } else if data_end % 4 == 1 {
-        // No-pad mode: 1 mod 4 can never represent a valid number of bytes.
+        // WHY: a no-pad input with length ≡ 1 (mod 4) cannot be valid base64.
         return InvalidLengthSnafu { length: data_end }.fail();
     }
 
@@ -199,7 +199,7 @@ fn decode_inner(
         }
     }
 
-    // Validate that any leftover bits in the final sextet are zero.
+    // INVARIANT: leftover bits in the final sextet must be zero.
     if bits > 0 {
         let mask = (1u32 << bits) - 1;
         if (buf & mask) != 0 {
@@ -228,8 +228,6 @@ fn char_to_sextet(b: u8, allow_url_safe: bool) -> Option<u8> {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
-
-    // ── RFC 4648 test vectors (section 10) ─────────────────────────────
 
     #[test]
     fn rfc4648_empty() {
@@ -272,8 +270,6 @@ mod tests {
         assert_eq!(encode(b"foobar"), "Zm9vYmFy");
         assert_eq!(decode("Zm9vYmFy").unwrap(), b"foobar");
     }
-
-    // ── URL-safe no-pad vectors ───────────────────────────────────────
 
     #[test]
     fn url_safe_empty() {
@@ -349,8 +345,6 @@ mod tests {
         assert_eq!(decoded, br#"{"alg":"HS256","typ":"JWT"}"#);
     }
 
-    // ── Error cases ───────────────────────────────────────────────────
-
     #[test]
     fn decode_invalid_char() {
         // Valid length (8), invalid character in the middle.
@@ -411,8 +405,6 @@ mod tests {
             Err(DecodeError::InvalidPadding { .. })
         ));
     }
-
-    // ── Roundtrip property test (proptest) ────────────────────────────
 
     #[test]
     fn roundtrip_standard() {

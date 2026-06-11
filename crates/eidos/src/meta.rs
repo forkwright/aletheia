@@ -45,8 +45,6 @@ use crate::knowledge::{
     finding::Finding, format_timestamp,
 };
 
-// ── Stamped trait ─────────────────────────────────────────────────────────────
-
 /// Every persistable artefact carries provenance metadata.
 ///
 /// Implement this trait on your artefact struct and call `.stamp()` in the
@@ -56,8 +54,6 @@ pub trait Stamped {
     /// Returns the artefact's stamp at the moment of persistence.
     fn stamp(&self) -> ArtefactMeta;
 }
-
-// ── Provenance ────────────────────────────────────────────────────────────────
 
 /// Canonical provenance projection for eidos public knowledge shapes.
 ///
@@ -158,16 +154,12 @@ impl Provenance {
     }
 }
 
-// ── ArtefactMeta ──────────────────────────────────────────────────────────────
-
 /// Uniform provenance envelope attached to every persistable fleet artefact.
 ///
 /// # Stability
 ///
-/// `#[non_exhaustive]` ensures downstream `match` on field subsets or struct
-/// literals do not break when new fields are appended. Per kanon #108 lesson:
-/// a simple field addition to a widely-used struct broke 90 sites without this
-/// guard.
+/// WHY(#108): `#[non_exhaustive]` keeps downstream matches and struct literals
+/// from breaking when new fields are appended.
 ///
 /// # Field conventions
 ///
@@ -201,7 +193,6 @@ pub struct ArtefactMeta {
     /// Named row/item counts for the primary collections in this artefact.
     pub row_counts: BTreeMap<String, u64>,
 
-    // ── Mnemosyne-aligned optional fields ─────────────────────────────────────
     /// Unified actor identity. Maps to mnemosyne `Annotation::agent_id` and
     /// episteme `Fact::nous_id`. Use `"<crate>@<version>"` for automated
     /// producers; use the agent ID string for nous-authored artefacts.
@@ -475,14 +466,10 @@ where
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
-
-    // ── Helper ───────────────────────────────────────────────────────────────
 
     /// Assert two `ArtefactMeta` values are equal field-by-field. We do not
     /// derive `Eq` because `f32` doesn't implement `Eq`; we use approximate
@@ -502,8 +489,6 @@ mod tests {
         // f32 comparison: must be identical bit-for-bit after serde round-trip.
         assert_eq!(a.confidence, b.confidence, "confidence");
     }
-
-    // ── Existing tests (backward-compat) ─────────────────────────────────────
 
     #[test]
     fn artefact_meta_new_round_trip_serde() {
@@ -569,8 +554,6 @@ mod tests {
         assert!(back.row_counts.is_empty(), "row_counts should be empty");
     }
 
-    // ── Backward-compat: old JSON with no optional fields deserializes ─────────
-
     #[test]
     fn artefact_meta_legacy_json_deserializes_cleanly() {
         // Simulates JSON produced before the mnemosyne-aligned fields were added.
@@ -601,8 +584,6 @@ mod tests {
             "evidence_refs defaults to empty"
         );
     }
-
-    // ── New builder tests ─────────────────────────────────────────────────────
 
     #[test]
     fn artefact_meta_with_actor_sets_fields() {
@@ -648,8 +629,6 @@ mod tests {
         );
     }
 
-    // ── Optional fields round-trip ─────────────────────────────────────────────
-
     #[test]
     fn artefact_meta_full_optional_fields_round_trip_serde() {
         let meta = ArtefactMeta::new("mneme@0.21.1", 1, "2026-04-22T00:00:00Z")
@@ -662,8 +641,6 @@ mod tests {
         let back: ArtefactMeta = serde_json::from_str(&json).expect("deserialize");
         assert_meta_eq(&meta, &back);
     }
-
-    // ── Optional-none fields are absent in JSON (skip_serializing_if) ─────────
 
     #[test]
     fn artefact_meta_minimal_serializes_without_optional_keys() {

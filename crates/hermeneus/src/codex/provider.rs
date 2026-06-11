@@ -403,9 +403,8 @@ mod tests {
         assert!(prompt.contains("User: And 3+3?"));
     }
 
-    // WHY(#3980): regression — ToolUse blocks were silently dropped by the
-    // wildcard arm of extract_text_content, causing entire assistant turns to
-    // vanish from the Codex prompt when a conversation included tool calls.
+    // WHY(#3980): ToolUse blocks must be rendered so assistant turns with tool
+    // calls do not disappear from the Codex prompt.
     #[test]
     fn extract_text_content_renders_tool_use_blocks() {
         let content = Content::Blocks(vec![
@@ -434,11 +433,8 @@ mod tests {
         );
     }
 
-    // WHY(#3980): a conversation with a tool-use assistant turn followed by a
-    // tool-result user turn must round-trip through format_prompt without
-    // losing the tool-call context. Before the fix, the assistant turn was
-    // entirely skipped (extract_text_content returned ""), so Codex received
-    // a tool result with no corresponding call visible in context.
+    // WHY(#3980): tool-use assistant turns must round-trip through format_prompt
+    // so a later tool-result still has matching call context.
     #[test]
     fn format_prompt_preserves_tool_use_turns() {
         let request = CompletionRequest {

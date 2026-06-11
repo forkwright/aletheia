@@ -25,11 +25,9 @@ use parking_lot::Mutex;
 use tokio::sync::Notify;
 use tower::{Layer, Service};
 
-/// Stored in `ConcurrencyPermit.outcome` as a `u8` without any `as` cast.
+// Encoded request outcomes stored in `ConcurrencyPermit::outcome` as `u8`.
 const OUTCOME_NEUTRAL: u8 = 0;
-/// Stored in `ConcurrencyPermit.outcome` as a `u8` without any `as` cast.
 const OUTCOME_SUCCESS: u8 = 1;
-/// Stored in `ConcurrencyPermit.outcome` as a `u8` without any `as` cast.
 const OUTCOME_OVERLOAD: u8 = 2;
 
 /// Default EWMA smoothing factor (higher = more weight on history).
@@ -190,8 +188,8 @@ impl AdaptiveConcurrencyLimiter {
     #[tracing::instrument(skip_all)]
     pub async fn acquire(self: &Arc<Self>) -> ConcurrencyPermit {
         loop {
-            // Create the notified future *before* inspecting state to avoid
-            // missing a notification between the check and the await.
+            // WHY: create the notified future before the limit check so a wakeup
+            // cannot land between the check and the await.
             let notified = self.notify.notified();
 
             {
@@ -231,8 +229,7 @@ impl AdaptiveConcurrencyLimiter {
                 });
             }
 
-            // WHY: If EWMA latency exceeds threshold, treat success as overload
-            // to trigger back-off.
+            // WHY: treat high EWMA latency as overload so successes back off.
             let effective_outcome = match outcome {
                 RequestOutcome::Success => {
                     if let Some(ewma) = inner.latency_ewma {
@@ -254,8 +251,8 @@ impl AdaptiveConcurrencyLimiter {
                         (inner.limit + self.config.increase_step).min(self.config.max_limit);
                 }
                 RequestOutcome::Overload => {
-                    // SAFETY: f64::from(u32) is lossless; all u32 values fit in
-                    // f64 mantissa.
+                    // INVARIANT: f64::from(u32) is lossless; all u32 values fit in
+                    // the f64 mantissa.
                     let limit_f64 = f64::from(inner.limit);
                     let decreased_f64 = (limit_f64 * self.config.decrease_factor).floor();
                     #[expect(
@@ -348,10 +345,6 @@ impl Drop for ConcurrencyPermit {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tower Layer / Service
-// ---------------------------------------------------------------------------
 
 /// Tower `Layer` that wraps an inner service with adaptive concurrency limiting.
 ///
@@ -590,10 +583,6 @@ mod tests {
         assert_send_sync::<ConcurrencyPermit>();
     }
 
-    // -----------------------------------------------------------------------
-    // Latency EWMA tests
-    // -----------------------------------------------------------------------
-
     #[tokio::test]
     async fn latency_ewma_initialized_on_first_sample() {
         let l = limiter_with_threshold(10, 5.0);
@@ -673,10 +662,6 @@ mod tests {
         assert_eq!(l.limit(), 5, "explicit overload must decrease limit");
     }
 
-    // -----------------------------------------------------------------------
-    // Tower Layer / Service tests
-    // -----------------------------------------------------------------------
-
     /// Minimal tower service for testing.
     #[derive(Clone)]
     struct EchoService;
@@ -753,10 +738,6 @@ mod tests {
         fn assert_clone_send<T: Clone + Send>() {}
         assert_clone_send::<ConcurrencyLayer>();
     }
-
-    // -----------------------------------------------------------------------
-    // Mutex-poisoning resilience
-    // -----------------------------------------------------------------------
 
     #[test]
     fn limiter_survives_panic_during_unwind() {

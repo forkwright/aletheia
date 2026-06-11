@@ -14,8 +14,6 @@
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-// --- ID newtypes ---
-
 mod ids {
     use eidos::id::{CausalEdgeId, EmbeddingId, EntityId, FactId, IdValidationError};
 
@@ -142,8 +140,6 @@ mod ids {
     }
 }
 
-// --- EpistemicTier ---
-
 mod epistemic_tier {
     use eidos::knowledge::EpistemicTier;
 
@@ -206,8 +202,6 @@ mod epistemic_tier {
         assert_eq!(back, tier);
     }
 }
-
-// --- KnowledgeStage ---
 
 mod knowledge_stage {
     use std::str::FromStr;
@@ -293,8 +287,6 @@ mod knowledge_stage {
     }
 }
 
-// --- FactType ---
-
 mod fact_type {
     use eidos::knowledge::FactType;
 
@@ -350,7 +342,6 @@ mod fact_type {
         // must always yield a classification, not panic.
         assert_eq!(
             FactType::classify("The sky was grey today morning"),
-            // "today" matches event
             FactType::Event
         );
         assert_eq!(
@@ -370,8 +361,6 @@ mod fact_type {
         assert_eq!(FactType::from_str_lossy("preference"), FactType::Preference);
     }
 }
-
-// --- MemoryScope and ScopeAccessPolicy ---
 
 mod memory_scope {
     use std::str::FromStr;
@@ -437,7 +426,6 @@ mod memory_scope {
             let s = scope.as_str();
             let parsed = MemoryScope::from_str(s).expect("round trip");
             assert_eq!(parsed, scope);
-            // from_str_opt is the infallible sibling used at API boundaries
             assert_eq!(MemoryScope::from_str_opt(s), Some(scope));
         }
     }
@@ -448,8 +436,6 @@ mod memory_scope {
         assert_eq!(MemoryScope::from_str_opt("global"), None);
     }
 }
-
-// --- CausalRelationType, TemporalOrdering ---
 
 mod causal {
     use std::str::FromStr;
@@ -489,8 +475,6 @@ mod causal {
         }
     }
 }
-
-// --- ForgetReason, VerificationSource, VerificationStatus ---
 
 mod audit_classifiers {
     use std::str::FromStr;
@@ -553,8 +537,6 @@ mod audit_classifiers {
     }
 }
 
-// --- Path validation layers and error mapping ---
-
 mod path_validation {
     use std::path::PathBuf;
 
@@ -566,11 +548,9 @@ mod path_validation {
     #[test]
     fn all_layers_contains_every_variant() {
         // WHY: PATH_VALIDATION_FS_LAYERS counts I/O-requiring layers; ALL
-        // contains every layer in application order. Dropping one would
-        // silently disable a class of defense.
+        // contains every layer in enum order.
         assert_eq!(PathValidationLayer::ALL.len(), 8);
         assert_eq!(PATH_VALIDATION_FS_LAYERS, 7);
-        // Four non-I/O layers + scope containment + the three I/O layers = 8
         let io_count = PathValidationLayer::ALL
             .iter()
             .filter(|l| l.requires_io())
@@ -669,8 +649,6 @@ mod path_validation {
     }
 }
 
-// --- validate_memory_path end-to-end ---
-
 mod validate_memory_path {
     use std::path::PathBuf;
 
@@ -720,8 +698,6 @@ mod validate_memory_path {
         assert_eq!(validated.scope(), MemoryScope::Project);
     }
 }
-
-// --- TrainingConfig ---
 
 mod training_config {
     use eidos::training::TrainingConfig;
@@ -773,8 +749,6 @@ mod training_config {
         assert!((back.author_classifier_threshold - cfg.author_classifier_threshold).abs() < 1e-6);
     }
 }
-
-// --- Provenance ---
 
 mod provenance {
     use eidos::id::{CausalEdgeId, FactId};
