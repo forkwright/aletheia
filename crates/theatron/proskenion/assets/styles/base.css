@@ -336,9 +336,11 @@ textarea:focus-visible {
 }
 
 .nav-link-collapsed {
+  /* WHY: layered on .nav-link, so it keeps the same --text-primary color and
+     hover/active rules — only the geometry differs. Collapsed icons must read
+     at the same contrast as expanded rows in both themes (no dimmer state). */
   justify-content: center;
   padding: var(--space-2) var(--space-3);
-  color: var(--text-secondary);
   font-size: var(--text-md);
 }
 
@@ -368,7 +370,7 @@ textarea:focus-visible {
 .agent-roster {
   background: var(--elevation-sunken);
   border: 1px solid var(--border-separator);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   margin: var(--space-4) var(--space-3) var(--space-2);
   padding: var(--space-2);
 }
@@ -395,33 +397,85 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-.agent-row {
+/* Nous pill — one row per agent: status dot, name, status label.
+   Rendered on a raised surface so each pill reads as a discrete chip
+   against the sunken roster panel, not a bullet in a flat list. */
+.nous-pill {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2);
-  border-left: 3px solid transparent;
-  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  /* WHY: transparent border reserves the active-edge width so activation
+     does not shift pill content sideways. */
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--elevation-raised);
   cursor: pointer;
   color: var(--text-primary);
   font-size: var(--text-sm);
   transition: background-color var(--transition-quick),
-              color var(--transition-quick),
               border-color var(--transition-quick);
 }
 
-.agent-row:hover {
-  background: var(--bg-surface-bright);
+.nous-pill:hover {
+  background: var(--elevation-float);
+  border-color: var(--border-separator);
 }
 
-.agent-row.active {
-  background: var(--bg-surface-bright);
-  border-left-color: var(--accent);
+.nous-pill.active {
+  background: var(--elevation-float);
+  border-color: var(--accent-muted);
 }
 
-.agent-dot {
-  font-size: var(--text-xs);
+.nous-pill-dot {
+  width: 7px;
+  height: 7px;
   flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+}
+
+.nous-pill.is-active .nous-pill-dot {
+  background: var(--status-success);
+}
+
+.nous-pill.is-error .nous-pill-dot {
+  background: var(--status-error);
+}
+
+.nous-pill-emoji {
+  font-size: var(--text-base);
+  flex-shrink: 0;
+}
+
+.nous-pill-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Status label — small, tracked, tinted per status; sits flush-right. */
+.nous-pill-status {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.nous-pill.is-active .nous-pill-status {
+  color: var(--status-success);
+  background: var(--status-success-bg);
+}
+
+.nous-pill.is-error .nous-pill-status {
+  color: var(--status-error);
+  background: var(--status-error-bg);
 }
 
 /* Collapsed sidebar: vertical rail stub for the roster */
@@ -468,16 +522,55 @@ textarea:focus-visible {
 }
 
 /* ===================================================================== */
-/* Button micro-interactions — lift on hover, snap on press              */
+/* Button micro-interactions — non-reflowing hover/press affordance        */
+/* WHY: a translateY lift on hover shifts box geometry every frame the     */
+/* pointer crosses a button. In dense control clusters (settings, session  */
+/* rows) that reads as jank/glitch, and it has no transition so it snaps.   */
+/* `filter: brightness` is a compositor-only effect: no reflow, no layout   */
+/* shift, smooth under the existing colour transition. Matches the          */
+/* instant/decoration-free motion posture established for theme switch      */
+/* (#2411).                                                                  */
 /* ===================================================================== */
 
+button:not([disabled]):not([role="tab"]):not([role="option"]) {
+  transition: background-color var(--transition-quick),
+              color var(--transition-quick),
+              border-color var(--transition-quick),
+              filter var(--transition-quick);
+}
+
 button:not([disabled]):not([role="tab"]):not([role="option"]):hover {
-  transform: translateY(-1px);
+  filter: brightness(1.12);
 }
 
 button:not([disabled]):active {
-  transform: translateY(0);
+  filter: brightness(0.94);
   transition-duration: var(--duration-fast);
+}
+
+/* ===================================================================== */
+/* Session row — CSS-driven hover (no per-frame re-render)                */
+/* WHY: the row hover was a Dioxus signal toggling the whole inline style  */
+/* string, which re-rendered the row subtree on every pointer enter/leave  */
+/* (visible jank). A plain :hover changing only background reflows nothing  */
+/* and never re-renders. The border-bottom is reserved at rest so the      */
+/* hover state does not alter box geometry.                                 */
+/* ===================================================================== */
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-separator);
+  cursor: pointer;
+  transition: background-color var(--transition-quick),
+              color var(--transition-quick),
+              border-color var(--transition-quick);
+}
+
+.session-row:hover {
+  background: var(--bg-surface);
 }
 
 /* ===================================================================== */

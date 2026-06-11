@@ -290,7 +290,7 @@ l3_token_estimate = 23335
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "b4230d43c8feed3145a4ad2cc5e9cb0ef303a1ef61f18ead8a125d8bd8ad92d1"
+source_hash = "88694ed44ad910a2a2c7abe105f6f27caf1bf96aba4cee4c7dd1ff608d9c701f"
 l3_token_estimate = 22061
 
 [[crates]]

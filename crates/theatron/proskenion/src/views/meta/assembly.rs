@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 
 use super::{
-    AgentEntry, AgentPerformanceApiResponse, AgentPerformanceStore, EntityEntry, FactEntry,
-    HealthApiResponse, JournalEventEntry, KnowledgeGrowthStore, MemoryHealthStore, MetaData,
-    MetricsApiResponse, QualityMetricsApiResponse, QualityStore, SessionEntry,
-    SystemReflectionStore, TimeSeriesPointEntry, TimelineEntry,
+    AgentEntry, AgentPerformanceApiResponse, AgentPerformanceStore, CostMetricsApiResponse,
+    EntityEntry, FactEntry, HealthApiResponse, JournalEventEntry, KnowledgeGrowthStore,
+    MemoryHealthStore, MetaData, QualityMetricsApiResponse, QualityStore, SessionEntry,
+    SystemReflectionStore, TimeSeriesPointEntry, TimelineEntry, TokenMetricsApiResponse,
 };
 
 /// Assemble all fetched data into the composite `MetaData` structure.
@@ -16,7 +16,8 @@ use super::{
 )]
 pub(super) fn assemble_meta_data(
     health: HealthApiResponse,
-    metrics: MetricsApiResponse,
+    tokens: TokenMetricsApiResponse,
+    costs: CostMetricsApiResponse,
     facts: Vec<FactEntry>,
     entities: Vec<EntityEntry>,
     timeline: Vec<TimelineEntry>,
@@ -228,8 +229,8 @@ pub(super) fn assemble_meta_data(
         count_to_f64(orphan_count) / count_to_f64(entities.len())
     };
 
-    // WHY: Approximate staleness from facts with empty updated_at or old dates.
-    let stale_count = facts.iter().filter(|f| f.updated_at.is_empty()).count();
+    // WHY: Approximate staleness from facts with no recorded timestamp.
+    let stale_count = facts.iter().filter(|f| f.recorded_at.is_empty()).count();
     let staleness_ratio = if facts.is_empty() {
         0.0
     } else {
@@ -281,22 +282,27 @@ pub(super) fn assemble_meta_data(
     };
 
     // ── Reflection ──
-    let total_tokens = metrics.total_input_tokens + metrics.total_output_tokens;
+    // WHY: the metrics API splits into separate token + cost endpoints; totals
+    // are derived from each series rather than a single combined response.
+    let total_tokens: u64 = tokens
+        .series
+        .iter()
+        .map(|b| b.input_tokens + b.output_tokens)
+        .sum();
+    let total_sessions: u64 = tokens.agents.iter().map(|a| a.session_count).sum();
+    let total_cost_usd: f64 = costs.series.iter().map(|b| b.cost_usd).sum();
     let overview = crate::state::meta::SystemOverview {
         uptime_seconds: health.uptime_seconds,
-        total_sessions: metrics.total_sessions,
+        total_sessions,
         total_tokens,
         total_entities: total_entity_count,
-        total_cost_usd: metrics.total_cost_usd,
+        total_cost_usd,
     };
 
     let efficiency = crate::state::meta::EfficiencyMetrics {
-        cost_per_entity: crate::state::meta::cost_per_entity(
-            metrics.total_cost_usd,
-            total_entity_count,
-        ),
-        cost_per_session: if metrics.total_sessions > 0 {
-            metrics.total_cost_usd / u64_to_f64(metrics.total_sessions)
+        cost_per_entity: crate::state::meta::cost_per_entity(total_cost_usd, total_entity_count),
+        cost_per_session: if total_sessions > 0 {
+            total_cost_usd / u64_to_f64(total_sessions)
         } else {
             0.0
         },
@@ -308,7 +314,7 @@ pub(super) fn assemble_meta_data(
     // Parse "YYYY-MM-DDTHH:MM:SS" -> (day_of_week, hour).
     let timestamps: Vec<(u8, u8)> = sessions
         .iter()
-        .filter_map(|s| parse_timestamp_to_day_hour(&s.created_at))
+        .filter_map(|s| parse_timestamp_to_day_hour(s.activity_timestamp()))
         .collect();
     let heatmap = crate::state::meta::build_heatmap(&timestamps);
 

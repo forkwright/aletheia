@@ -322,7 +322,10 @@ fn loaded_tokens_view(
                 }
             }
 
-            if !data.models.is_empty() {
+            // WHY: gate on used models only — a model appears in the period
+            // summary solely because it was used, never declared. Filtering here
+            // keeps the section header from rendering for zero-usage-only data.
+            if data.models.iter().any(|m| m.total() > 0) {
                 div {
                     style: "{SECTION_STYLE}",
                     div { style: "{SECTION_TITLE_STYLE}", "By Model" }

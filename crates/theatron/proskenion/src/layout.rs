@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::app::Route;
+use crate::components::agent_sidebar::AgentSidebarView;
 use crate::components::help_overlay::HelpOverlay;
 use crate::components::topbar::TopBar;
 use crate::state::navigation::NavAction;
@@ -54,33 +55,6 @@ const BRAND_STYLE: &str = "\
     padding: var(--space-2) var(--space-4); \
     margin-bottom: var(--space-2); \
     color: var(--text-primary);\
-";
-
-const NAV_LINK_STYLE: &str = "\
-    display: flex; \
-    align-items: center; \
-    gap: var(--space-2); \
-    padding: var(--space-2) var(--space-4); \
-    border-radius: var(--radius-md); \
-    color: var(--text-primary); \
-    text-decoration: none; \
-    font-size: var(--text-sm); \
-    white-space: nowrap; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick);\
-";
-
-const NAV_LINK_ICON_ONLY_STYLE: &str = "\
-    display: flex; \
-    align-items: center; \
-    justify-content: center; \
-    padding: var(--space-2) var(--space-3); \
-    border-radius: var(--radius-md); \
-    color: var(--text-secondary); \
-    text-decoration: none; \
-    font-size: var(--text-md); \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick);\
 ";
 
 /// Layout shell rendered around all routes.
@@ -144,41 +118,39 @@ pub(crate) fn Layout() -> Element {
                 }
                 // ── Workspace section ──
                 if !*sidebar_collapsed.read() {
-                    div {
-                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-1);",
-                        "Workspace"
-                    }
+                    div { class: "sidebar-section-label", "Workspace" }
                 }
                 NavItem { to: Route::Chat {}, icon: "💬", label: "Chat", shortcut: "Ctrl+1", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Files {}, icon: "📁", label: "Files", shortcut: "Ctrl+2", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Planning {}, icon: "📋", label: "Planning", shortcut: "Ctrl+3", collapsed: *sidebar_collapsed.read() }
 
-                div { style: "height: 1px; background: var(--border-separator); margin: var(--space-2) var(--space-3);" }
-
                 // ── Knowledge section ──
-                if !*sidebar_collapsed.read() {
-                    div {
-                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-1);",
-                        "Knowledge"
-                    }
+                // WHY: the section label carries its own top-rule (.sidebar-section-label),
+                // so no explicit divider is needed — the ruled label is the separator.
+                // When collapsed (no labels) the divider provides the section break.
+                if *sidebar_collapsed.read() {
+                    div { class: "sidebar-divider" }
+                } else {
+                    div { class: "sidebar-section-label", "Knowledge" }
                 }
                 NavItem { to: Route::Memory {}, icon: "🧠", label: "Memory", shortcut: "Ctrl+4", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Metrics {}, icon: "📊", label: "Metrics", shortcut: "Ctrl+5", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Sessions {}, icon: "📑", label: "Sessions", shortcut: "Ctrl+7", collapsed: *sidebar_collapsed.read() }
 
-                div { style: "height: 1px; background: var(--border-separator); margin: var(--space-2) var(--space-3);" }
-
                 // ── System section ──
-                if !*sidebar_collapsed.read() {
-                    div {
-                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-1);",
-                        "System"
-                    }
+                if *sidebar_collapsed.read() {
+                    div { class: "sidebar-divider" }
+                } else {
+                    div { class: "sidebar-section-label", "System" }
                 }
                 NavItem { to: Route::Ops {}, icon: "⚙\u{fe0f}", label: "Ops", shortcut: "Ctrl+6", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Meta {}, icon: "💡", label: "Insights", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Settings {}, icon: "🔧", label: "Settings", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::ComponentLibrary {}, icon: "◫", label: "Components", shortcut: "", collapsed: *sidebar_collapsed.read() }
+
+                // WHY: agent presence persists across route changes; the roster
+                // sits below nav so it reads as a distinct shaded panel.
+                AgentSidebarView { collapsed: *sidebar_collapsed.read() }
             }
             div {
                 style: "flex: 1; display: flex; flex-direction: column; overflow: hidden;",
@@ -209,15 +181,19 @@ fn NavItem(
     } else {
         format!("{label} ({shortcut})")
     };
-    let style = if collapsed {
-        NAV_LINK_ICON_ONLY_STYLE
+    // WHY: .nav-link reserves a transparent 3px active edge so activation does
+    // not shift the row sideways (no reflow); .nav-link-collapsed layers the
+    // centered icon-only overrides on top. Active state comes from the
+    // Link-emitted aria-current="page" matched by the .nav-link CSS rule.
+    let class = if collapsed {
+        "nav-link nav-link-collapsed"
     } else {
-        NAV_LINK_STYLE
+        "nav-link"
     };
     rsx! {
         Link {
             to,
-            style: "{style}",
+            class: "{class}",
             "aria-label": "{title}",
             title: "{title}",
             span { "aria-hidden": "true", "{icon}" }
