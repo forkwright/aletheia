@@ -30,8 +30,12 @@ Key substrate properties as of the 2026-05-08 refresh:
 - **Tool receipt integrity:** `organon` emits HMAC-SHA256 receipts and an
   in-memory receipt ledger so the pipeline can detect hallucinated tool
   results.
-- **External tool plane:** `diaporeia` can bridge external MCP servers into the
-  `organon` registry while preserving RBAC claims and shared-state boundaries.
+- **Runtime-bridged MCP tools:** `crates/aletheia/src/external_tools.rs` can
+  bridge configured external MCP servers into `organon::registry::ToolRegistry`
+  when the binary is built with MCP support.
+- **DiaporeiaServer-exposed MCP tools:** `diaporeia` exposes Aletheia's own MCP
+  server surface over stdio or `/mcp` using an `rmcp` tool router; those tools
+  are intentionally separate from the in-process `organon::registry::ToolRegistry`.
 - **Auth facade:** `symbolon::AuthFacade` is the admin-token verification and
   revocation boundary shared by `pylon` and `diaporeia`.
 - **Bounded stages:** `nous` carries per-stage timeout configuration for LLM
@@ -59,7 +63,7 @@ aletheia
 ├── nous           -  agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia        -  planning / project orchestration
 ├── pylon          -  Axum HTTP gateway, SSE streaming, auth enforcement
-├── diaporeia      -  MCP server interface and external tool-plane bridge
+├── diaporeia      -  MCP server interface exposed over stdio and streamable HTTP
 ├── symbolon       -  JWT auth, admin facade, sessions, RBAC
 ├── agora          -  channel registry + ChannelProvider trait
 │   └── semeion    -  Signal (signal-cli subprocess)

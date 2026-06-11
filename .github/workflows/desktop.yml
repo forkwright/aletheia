@@ -1,0 +1,83 @@
+# WHY: proskenion is workspace-excluded; this job compiles, lints, and tests it when desktop paths change.
+name: Desktop
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/theatron/proskenion/**"
+      - "crates/theatron/skene/**"
+      - "scripts/*proskenion*"
+      - ".github/workflows/desktop.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/theatron/proskenion/**"
+      - "crates/theatron/skene/**"
+      - "scripts/*proskenion*"
+      - ".github/workflows/desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  proskenion:
+    name: proskenion
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: "1.94.0"
+          components: rustfmt, clippy
+
+      - name: Install GTK/WebKit system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev librsvg2-dev
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: proskenion-${{ hashFiles('crates/theatron/proskenion/Cargo.toml') }}
+          workspaces: "crates/theatron/proskenion"
+
+      - name: Configure git credentials for private fleet deps
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
+            exit 1
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
+        with:
+          tool: nextest
+
+      - name: Check proskenion theatron pins
+        run: scripts/check-proskenion-pins.py
+
+      - name: cargo fmt --check
+        run: cargo fmt --manifest-path crates/theatron/proskenion/Cargo.toml --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --manifest-path crates/theatron/proskenion/Cargo.toml --all-targets -- -D warnings
+
+      - name: cargo nextest run
+        run: cargo nextest run --manifest-path crates/theatron/proskenion/Cargo.toml --no-tests=pass

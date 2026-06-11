@@ -52,8 +52,8 @@ members = [
     "crates/aletheia-sessions-migrate",
 ]
 # WHY: proskenion requires GTK3/webkit2gtk system libraries (via Dioxus
-# desktop/webview) which are not available in CI. Excluded from workspace to
-# avoid cargo-deny advisory failures on GTK deps and build failures on CI.
+# desktop/webview) and carries desktop-only GTK advisory noise. Keep it outside
+# root workspace gates; the dedicated desktop CI job compiles and lints it.
 # Build/install flow and system deps: docs/DESKTOP.md
 # Build standalone: `cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml`
 exclude = [
