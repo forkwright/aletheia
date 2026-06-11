@@ -1,24 +1,29 @@
-//! Memory explorer: list-detail entity browser with search, filtering, and actions.
+//! Memory explorer: a readable list of what the agent remembers (facts) as the
+//! default surface, with the entity knowledge graph demoted to an opt-in lens.
 
 pub(crate) mod actions;
+pub(crate) mod curation;
 pub(crate) mod detail;
-pub(crate) mod facts;
+pub(crate) mod fact_filters;
+pub(crate) mod fact_list;
+pub(crate) mod health_strip;
 pub(crate) mod list;
 pub(crate) mod search;
 
 use dioxus::prelude::*;
 
 use crate::api::client::authenticated_client;
-use crate::state::agents::AgentStore;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::memory::{
-    Entity, EntityDetailStore, EntityListStore, EntityMemory, EntityNavigationHistory,
-    EntityProperty, EntitySort, EntityType, Relationship,
+    Entity, EntityDetailStore, EntityListStore, EntityMemory, EntityNavigationHistory, EntitySort,
+    Fact, FactListStore, FactSort, Relationship,
 };
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::memory::detail::EntityDetail;
-use crate::views::memory::facts::{FACTS_FETCH_LIMIT, FactsPanel, FactsSnapshot};
+use crate::views::memory::fact_filters::FactFilters;
+use crate::views::memory::fact_list::FactList;
+use crate::views::memory::health_strip::HealthStrip;
 use crate::views::memory::list::EntityList;
 use crate::views::memory::search::EntitySearchBar;
 
@@ -75,6 +80,38 @@ const REFRESH_BTN: &str = "\
                 border-color var(--transition-quick);\
 ";
 
+const TABS_STYLE: &str = "\
+    display: flex; \
+    gap: var(--space-1); \
+    background: var(--bg-surface-dim); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: 2px;\
+";
+
+const TAB_BTN_STYLE: &str = "\
+    background: none; \
+    border: none; \
+    border-radius: var(--radius-sm); \
+    color: var(--text-secondary); \
+    font-size: var(--text-sm); \
+    padding: var(--space-1) var(--space-3); \
+    cursor: pointer; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick);\
+";
+
+const TAB_BTN_ACTIVE_STYLE: &str = "\
+    background: var(--bg-surface); \
+    border: none; \
+    border-radius: var(--radius-sm); \
+    color: var(--text-primary); \
+    font-size: var(--text-sm); \
+    font-weight: var(--weight-medium); \
+    padding: var(--space-1) var(--space-3); \
+    cursor: pointer;\
+";
+
 const BREADCRUMB_STYLE: &str = "\
     display: flex; \
     align-items: center; \
@@ -126,322 +163,310 @@ const EMPTY_DETAIL_STYLE: &str = "\
     font-size: var(--text-base);\
 ";
 
-const NOUS_PILL_ROW_STYLE: &str = "\
+const GRAPH_EMPTY_STYLE: &str = "\
     display: flex; \
+    flex-direction: column; \
     align-items: center; \
+    justify-content: center; \
     gap: var(--space-2); \
-    flex-wrap: wrap; \
-    padding-bottom: var(--space-2);\
-";
-
-const NOUS_PILL_STYLE: &str = "\
-    display: flex; \
-    align-items: center; \
-    gap: var(--space-2); \
-    padding: var(--space-1) var(--space-3); \
-    border-radius: var(--radius-full); \
-    border: 1px solid var(--border); \
-    background: var(--bg-surface); \
-    color: var(--text-secondary); \
-    font-size: var(--text-sm); \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
-const NOUS_PILL_ACTIVE_STYLE: &str = "\
-    display: flex; \
-    align-items: center; \
-    gap: var(--space-2); \
-    padding: var(--space-1) var(--space-3); \
-    border-radius: var(--radius-full); \
-    border: 1px solid var(--border-selected); \
-    background: var(--border); \
-    color: var(--text-primary); \
-    font-size: var(--text-sm); \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    flex: 1; \
+    color: var(--text-muted); \
+    font-size: var(--text-base); \
+    text-align: center; \
+    padding: var(--space-6);\
 ";
 
 const DEFAULT_LIST_WIDTH: f64 = 480.0;
 const MIN_LIST_WIDTH: f64 = 280.0;
 const MAX_LIST_WIDTH: f64 = 800.0;
 
+/// Active surface within the memory view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemoryTab {
+    /// Facts list — the default front door.
+    Facts,
+    /// Entity knowledge graph — opt-in advanced lens.
+    Graph,
+}
+
 /// Top-level memory explorer component.
 #[component]
 pub(crate) fn Memory() -> Element {
     let config: Signal<ConnectionConfig> = use_context();
-    let agent_store = use_context::<Signal<AgentStore>>();
 
+    let mut tab = use_signal(|| MemoryTab::Facts);
+
+    // ── Fact surface state ──
+    let mut fact_store = use_signal(FactListStore::default);
+
+    // ── Entity (graph) surface state ──
     let mut list_store = use_signal(EntityListStore::new);
     let mut detail_state =
         use_signal(|| FetchState::<EntityDetailStore>::Loaded(EntityDetailStore::default()));
     let mut nav_history = use_signal(EntityNavigationHistory::new);
     let mut selected_entity_id: Signal<Option<String>> = use_signal(|| None);
-    let mut facts_state = use_signal(FactsSnapshot::default);
-    let mut nous_scope: Signal<Option<String>> = use_signal(|| None);
 
     let mut list_width = use_signal(|| DEFAULT_LIST_WIDTH);
     let mut is_resizing = use_signal(|| false);
     let mut resize_start_x = use_signal(|| 0.0f64);
     let mut resize_start_width = use_signal(|| 0.0f64);
 
-    // WHY: Restore preserved scroll and search state on mount (#2411).
+    // WHY: Restore preserved search state on mount (#2411).
     let mut preservation = use_context::<Signal<ViewPreservationStore>>();
     use_hook(|| {
-        if let Some(saved) = preservation.write().restore(&ViewKey::Memory) {
-            // Restore search query from the preserved input text.
-            if !saved.input_text.is_empty() {
-                list_store.write().search_query = saved.input_text;
-            }
+        if let Some(saved) = preservation.write().restore(&ViewKey::Memory)
+            && !saved.input_text.is_empty()
+        {
+            fact_store.write().search_query = saved.input_text;
         }
     });
 
-    // Save state on unmount.
     use_drop(move || {
         preservation.write().save(
             ViewKey::Memory,
             PreservedViewState {
                 scroll_top: 0.0,
-                input_text: list_store.read().search_query.clone(),
+                input_text: fact_store.read().search_query.clone(),
                 secondary_scroll: 0.0,
             },
         );
     });
 
-    let fetch_entities = {
-        move || {
-            let cfg = config.read().clone();
-            let scope = nous_scope.read().clone();
-            // WHY: peek, not read — the fetch writes list_store on completion,
-            // and a tracked read here would re-trigger the mount effect forever.
-            let store = list_store.peek();
-            let search = store.search_query.clone();
-            let sort = store.sort;
-            let type_filter = store.type_filter.clone();
-            let min_confidence = store.min_confidence;
-            let agent_filter = store.agent_filter.clone();
-            let page = store.page;
-            drop(store);
+    let fetch_facts = move || {
+        let cfg = config.read().clone();
+        let store = fact_store.read();
+        let search = store.search_query.clone();
+        let sort = store.sort;
+        let type_filter = store.type_filter.clone();
+        let tier_filter = store.tier_filter.clone();
+        drop(store);
 
-            spawn(async move {
-                let client = authenticated_client(&cfg);
-                let base = cfg.server_url.trim_end_matches('/');
+        spawn(async move {
+            let client = authenticated_client(&cfg);
+            let base = cfg.server_url.trim_end_matches('/');
 
-                let mut url = format!(
-                    "{base}/api/v1/knowledge/entities?limit={}",
-                    EntityListStore::PAGE_SIZE
-                );
+            let mut url = format!(
+                "{base}/api/v1/knowledge/facts?limit={}&sort={}&order=desc",
+                FactListStore::FETCH_LIMIT,
+                sort.wire()
+            );
 
-                if page > 0 {
-                    url.push_str(&format!("&offset={}", page * EntityListStore::PAGE_SIZE));
-                }
+            if !search.is_empty() {
+                let encoded: String = form_urlencoded::byte_serialize(search.as_bytes()).collect();
+                url.push_str(&format!("&filter={encoded}"));
+            }
 
-                if !search.is_empty() {
-                    let encoded: String =
-                        form_urlencoded::byte_serialize(search.as_bytes()).collect();
-                    url.push_str(&format!("&q={encoded}"));
-                }
+            // NOTE: the route accepts a single fact_type / tier; when the
+            // operator multi-selects, send the first as a server hint and the
+            // store still narrows the rest client-side via the visible() set.
+            if let Some(ft) = type_filter.first() {
+                let encoded: String =
+                    form_urlencoded::byte_serialize(ft.wire().as_bytes()).collect();
+                url.push_str(&format!("&fact_type={encoded}"));
+            }
+            if let Some(tier) = tier_filter.first() {
+                url.push_str(&format!("&tier={}", tier.wire()));
+            }
 
-                let sort_param = match sort {
-                    EntitySort::PageRank => "page_rank",
-                    EntitySort::Confidence => "confidence",
-                    EntitySort::MemoryCount => "memory_count",
-                    EntitySort::LastUpdated => "updated_at",
-                    EntitySort::Alphabetical => "name",
-                };
-                url.push_str(&format!("&sort={sort_param}&order=desc"));
-
-                if sort == EntitySort::Alphabetical {
-                    // NOTE: alphabetical sorts ascending.
-                    url.truncate(url.len() - 4);
-                    url.push_str("asc");
-                }
-
-                for et in &type_filter {
-                    let encoded: String =
-                        form_urlencoded::byte_serialize(et.label().as_bytes()).collect();
-                    url.push_str(&format!("&entity_type={encoded}"));
-                }
-
-                if min_confidence > 0.0 {
-                    url.push_str(&format!("&min_confidence={min_confidence}"));
-                }
-
-                for agent in &agent_filter {
-                    let encoded: String =
-                        form_urlencoded::byte_serialize(agent.as_bytes()).collect();
-                    url.push_str(&format!("&agent={encoded}"));
-                }
-
-                if let Some(ref nous) = scope {
-                    let encoded: String =
-                        form_urlencoded::byte_serialize(nous.as_bytes()).collect();
-                    url.push_str(&format!("&agent={encoded}"));
-                }
-
-                match client.get(&url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
-                        let text = match resp.text().await {
-                            Ok(t) => t,
-                            Err(e) => {
-                                tracing::warn!("failed to read entities response: {e}");
-                                return;
-                            }
-                        };
-
-                        // WHY: deserialize through EntityWire — the server sends
-                        // entity_type as a free-form string ("person"), which the
-                        // EntityType enum's derived Deserialize rejects, killing
-                        // the whole response parse and blanking the explorer.
-                        let wires: Vec<EntityWire> = if let Ok(wrapper) =
-                            serde_json::from_str::<EntitiesResponse>(&text)
-                        {
-                            wrapper.entities
-                        } else if let Ok(list) = serde_json::from_str::<Vec<EntityWire>>(&text) {
-                            list
-                        } else {
-                            tracing::warn!("failed to parse entities response");
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    let text = match resp.text().await {
+                        Ok(t) => t,
+                        Err(e) => {
+                            tracing::warn!("failed to read facts response: {e}");
                             return;
-                        };
-                        let entities: Vec<Entity> = wires.into_iter().map(Entity::from).collect();
-
-                        let has_more = entities.len() >= EntityListStore::PAGE_SIZE;
-
-                        let mut store = list_store.write();
-                        if page == 0 {
-                            store.load(entities, has_more);
-                        } else {
-                            store.append(entities, has_more);
                         }
-                        store.sort_entities();
-                    }
-                    Ok(resp) => {
-                        tracing::warn!(status = %resp.status(), "entities request failed");
-                    }
-                    Err(e) => {
-                        tracing::warn!("entities connection error: {e}");
-                    }
+                    };
+                    let (facts, total) = parse_facts_response(&text);
+                    // WHY: apply any additional client-side type/tier narrowing
+                    // beyond the single server hint so multi-select reads true.
+                    let filtered: Vec<Fact> = facts
+                        .into_iter()
+                        .filter(|f| type_filter.is_empty() || type_filter.contains(&f.fact_type))
+                        .filter(|f| tier_filter.is_empty() || tier_filter.contains(&f.tier))
+                        .collect();
+                    let shown = filtered.len();
+                    fact_store.write().load(filtered, total.max(shown));
                 }
-            });
-        }
+                Ok(resp) => {
+                    tracing::warn!(status = %resp.status(), "facts request failed");
+                }
+                Err(e) => {
+                    tracing::warn!("facts connection error: {e}");
+                }
+            }
+        });
     };
 
-    let fetch_facts = {
-        move || {
-            let cfg = config.read().clone();
-            let scope = nous_scope.read().clone();
+    let fetch_entities = move || {
+        let cfg = config.read().clone();
+        let store = list_store.read();
+        let search = store.search_query.clone();
+        let sort = store.sort;
+        let type_filter = store.type_filter.clone();
+        let min_confidence = store.min_confidence;
+        let agent_filter = store.agent_filter.clone();
+        let page = store.page;
+        drop(store);
 
-            spawn(async move {
-                let client = authenticated_client(&cfg);
-                let base = cfg.server_url.trim_end_matches('/');
+        spawn(async move {
+            let client = authenticated_client(&cfg);
+            let base = cfg.server_url.trim_end_matches('/');
 
-                let mut url = format!(
-                    "{base}/api/v1/knowledge/facts?limit={FACTS_FETCH_LIMIT}&sort=recency&order=desc"
-                );
-                if let Some(ref nous) = scope {
-                    let encoded: String =
-                        form_urlencoded::byte_serialize(nous.as_bytes()).collect();
-                    url.push_str(&format!("&nous_id={encoded}"));
-                }
+            let mut url = format!(
+                "{base}/api/v1/knowledge/entities?limit={}",
+                EntityListStore::PAGE_SIZE
+            );
 
-                match client.get(&url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
-                        match resp.json::<FactsSnapshot>().await {
-                            Ok(mut snapshot) => {
-                                snapshot.loaded = true;
-                                facts_state.set(snapshot);
-                            }
-                            Err(e) => tracing::warn!("failed to parse facts response: {e}"),
+            if page > 0 {
+                url.push_str(&format!("&offset={}", page * EntityListStore::PAGE_SIZE));
+            }
+
+            if !search.is_empty() {
+                let encoded: String = form_urlencoded::byte_serialize(search.as_bytes()).collect();
+                url.push_str(&format!("&q={encoded}"));
+            }
+
+            let sort_param = match sort {
+                EntitySort::PageRank => "page_rank",
+                EntitySort::Confidence => "confidence",
+                EntitySort::MemoryCount => "memory_count",
+                EntitySort::LastUpdated => "updated_at",
+                EntitySort::Alphabetical => "name",
+            };
+            url.push_str(&format!("&sort={sort_param}&order=desc"));
+
+            if sort == EntitySort::Alphabetical {
+                url.truncate(url.len() - 4);
+                url.push_str("asc");
+            }
+
+            for et in &type_filter {
+                let encoded: String =
+                    form_urlencoded::byte_serialize(et.label().as_bytes()).collect();
+                url.push_str(&format!("&entity_type={encoded}"));
+            }
+
+            if min_confidence > 0.0 {
+                url.push_str(&format!("&min_confidence={min_confidence}"));
+            }
+
+            for agent in &agent_filter {
+                let encoded: String = form_urlencoded::byte_serialize(agent.as_bytes()).collect();
+                url.push_str(&format!("&agent={encoded}"));
+            }
+
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    let text = match resp.text().await {
+                        Ok(t) => t,
+                        Err(e) => {
+                            tracing::warn!("failed to read entities response: {e}");
+                            return;
                         }
+                    };
+
+                    let entities: Vec<Entity> = if let Ok(list) =
+                        serde_json::from_str::<Vec<Entity>>(&text)
+                    {
+                        list
+                    } else if let Ok(wrapper) = serde_json::from_str::<EntitiesResponse>(&text) {
+                        wrapper.entities
+                    } else {
+                        tracing::warn!("failed to parse entities response");
+                        return;
+                    };
+
+                    let has_more = entities.len() >= EntityListStore::PAGE_SIZE;
+
+                    let mut store = list_store.write();
+                    if page == 0 {
+                        store.load(entities, has_more);
+                    } else {
+                        store.append(entities, has_more);
                     }
-                    Ok(resp) => {
-                        tracing::warn!(status = %resp.status(), "facts request failed");
-                    }
-                    Err(e) => {
-                        tracing::warn!("facts connection error: {e}");
-                    }
+                    store.sort_entities();
                 }
-            });
-        }
+                Ok(resp) => {
+                    tracing::warn!(status = %resp.status(), "entities request failed");
+                }
+                Err(e) => {
+                    tracing::warn!("entities connection error: {e}");
+                }
+            }
+        });
     };
 
+    // WHY: the graph is an opt-in lens; fetch its entities lazily the first
+    // time its tab is shown, then never again on tab switches.
+    let mut graph_loaded = use_signal(|| false);
+
+    // WHY: load the active surface. Reads only `tab` + `graph_loaded` in the
+    // effect body, so a fetch's own store mutation never re-triggers it.
     use_effect(move || {
-        fetch_entities();
-        fetch_facts();
+        if *tab.read() == MemoryTab::Facts {
+            fetch_facts();
+        } else if !*graph_loaded.read() {
+            graph_loaded.set(true);
+            fetch_entities();
+        }
     });
 
-    let fetch_detail = {
-        move |entity_id: String| {
-            let cfg = config.read().clone();
-            let id = entity_id.clone();
-            detail_state.set(FetchState::Loading);
+    let fetch_detail = move |entity_id: String| {
+        let cfg = config.read().clone();
+        let id = entity_id.clone();
+        detail_state.set(FetchState::Loading);
 
-            spawn(async move {
-                let client = authenticated_client(&cfg);
-                let base = cfg.server_url.trim_end_matches('/');
-                let encoded: String = form_urlencoded::byte_serialize(id.as_bytes()).collect();
+        spawn(async move {
+            let client = authenticated_client(&cfg);
+            let base = cfg.server_url.trim_end_matches('/');
+            let encoded: String = form_urlencoded::byte_serialize(id.as_bytes()).collect();
 
-                // Fetch entity detail, relationships, and memories in parallel.
-                let entity_url = format!("{base}/api/v1/knowledge/entities/{encoded}");
-                let rels_url = format!("{base}/api/v1/knowledge/entities/{encoded}/relationships");
-                let mems_url = format!("{base}/api/v1/knowledge/entities/{encoded}/memories");
+            let entity_url = format!("{base}/api/v1/knowledge/entities/{encoded}");
+            let rels_url = format!("{base}/api/v1/knowledge/entities/{encoded}/relationships");
+            let mems_url = format!("{base}/api/v1/knowledge/entities/{encoded}/memories");
 
-                let entity_fut = client.get(&entity_url).send();
-                let rels_fut = client.get(&rels_url).send();
-                let mems_fut = client.get(&mems_url).send();
+            let entity_fut = client.get(&entity_url).send();
+            let rels_fut = client.get(&rels_url).send();
+            let mems_fut = client.get(&mems_url).send();
 
-                let (entity_res, rels_res, mems_res) = tokio::join!(entity_fut, rels_fut, mems_fut);
+            let (entity_res, rels_res, mems_res) = tokio::join!(entity_fut, rels_fut, mems_fut);
 
-                // WHY: response bodies stream in after send() resolves; they
-                // must be awaited fully — a single poll yields no data.
-                let mut entity: Option<Entity> = match entity_res {
-                    Ok(r) if r.status().is_success() => {
-                        r.json::<EntityWire>().await.ok().map(Entity::from)
+            let entity: Option<Entity> = match entity_res {
+                Ok(resp) if resp.status().is_success() => resp.json::<Entity>().await.ok(),
+                _ => None,
+            };
+
+            let relationships: Vec<Relationship> = match rels_res {
+                Ok(resp) if resp.status().is_success() => match resp.text().await {
+                    Ok(text) => parse_relationships_response(&text),
+                    Err(e) => {
+                        tracing::warn!("failed to read relationships response: {e}");
+                        Vec::new()
                     }
-                    _ => None,
-                };
-                if entity.is_none() {
-                    // WHY: detail endpoint may be unavailable (knowledge store
-                    // disabled); fall back to the already-fetched list row.
-                    entity = list_store
-                        .peek()
-                        .entities
-                        .iter()
-                        .find(|e| e.id == id)
-                        .cloned();
-                }
+                },
+                _ => Vec::new(),
+            };
 
-                let relationships: Vec<Relationship> = match rels_res {
-                    Ok(r) if r.status().is_success() => match r.text().await {
-                        Ok(text) => serde_json::from_str::<RelationshipsResponse>(&text)
-                            .map(|w| w.relationships)
-                            .or_else(|_| serde_json::from_str::<Vec<Relationship>>(&text))
-                            .unwrap_or_default(),
-                        Err(_) => Vec::new(),
-                    },
-                    _ => Vec::new(),
-                };
-
-                let memories: Vec<EntityMemory> = match mems_res {
-                    Ok(r) if r.status().is_success() => {
-                        r.json::<Vec<EntityMemory>>().await.unwrap_or_default()
+            let memories: Vec<EntityMemory> = match mems_res {
+                Ok(resp) if resp.status().is_success() => match resp.text().await {
+                    Ok(text) => parse_entity_memories_response(&text),
+                    Err(e) => {
+                        tracing::warn!("failed to read entity memories response: {e}");
+                        Vec::new()
                     }
-                    _ => Vec::new(),
-                };
+                },
+                _ => Vec::new(),
+            };
 
-                let detail = EntityDetailStore {
-                    entity,
-                    relationships,
-                    memories,
-                };
+            let detail = EntityDetailStore {
+                entity,
+                relationships,
+                memories,
+            };
 
-                detail_state.set(FetchState::Loaded(detail));
-            });
-        }
+            detail_state.set(FetchState::Loaded(detail));
+        });
     };
 
     let navigate_to_entity = {
@@ -453,258 +478,234 @@ pub(crate) fn Memory() -> Element {
         }
     };
 
+    let active_tab = *tab.read();
     let width = *list_width.read();
     let can_back = nav_history.read().can_go_back();
     let can_forward = nav_history.read().can_go_forward();
     let breadcrumbs: Vec<String> = nav_history.read().breadcrumbs().to_vec();
-
-    // Nous scope pills: (id, label) per known agent, mirroring the sidebar roster.
-    let nous_pills: Vec<(String, String)> = agent_store
-        .read()
-        .all()
-        .iter()
-        .map(|rec| {
-            let emoji = rec.agent.emoji.clone().unwrap_or_default();
-            let label = if emoji.is_empty() {
-                rec.display_name().to_string()
-            } else {
-                format!("{emoji} {}", rec.display_name())
-            };
-            (rec.agent.id.to_string(), label)
-        })
-        .collect();
-    let active_scope = nous_scope.read().clone();
-    let scope_label: Option<String> = active_scope.as_deref().and_then(|scope_id| {
-        nous_pills
-            .iter()
-            .find(|(id, _)| id == scope_id)
-            .map(|(_, label)| label.clone())
-    });
-
-    // WHY: an entity-empty store with no filters is the correct-empty case
-    // (facts exist but the graph has not linked them yet) — show facts, not
-    // a blank pane. Filtered-empty keeps the normal list's "No entities found".
-    let show_facts_fallback =
-        list_store.read().entities.is_empty() && !list_store.read().has_active_filters();
+    let fact_count = fact_store.read().total;
+    let health = fact_store.read().health();
 
     rsx! {
         div {
             style: "{MEMORY_LAYOUT_STYLE}",
-            // Header
             div {
                 style: "{HEADER_STYLE}",
-                h2 {
-                    style: "font-size: var(--text-lg); margin: 0; color: var(--text-primary);",
-                    "Memory Explorer"
+                div {
+                    style: "display: flex; align-items: center; gap: var(--space-3);",
+                    h2 {
+                        style: "font-size: var(--text-lg); margin: 0; color: var(--text-primary);",
+                        "Memory"
+                    }
+                    div {
+                        style: "{TABS_STYLE}",
+                        button {
+                            style: if active_tab == MemoryTab::Facts { "{TAB_BTN_ACTIVE_STYLE}" } else { "{TAB_BTN_STYLE}" },
+                            onclick: move |_| tab.set(MemoryTab::Facts),
+                            "Facts"
+                        }
+                        button {
+                            style: if active_tab == MemoryTab::Graph { "{TAB_BTN_ACTIVE_STYLE}" } else { "{TAB_BTN_STYLE}" },
+                            onclick: move |_| tab.set(MemoryTab::Graph),
+                            "Graph / advanced"
+                        }
+                    }
                 }
                 div {
                     style: "display: flex; gap: var(--space-2); align-items: center;",
-                    // Back/forward navigation
-                    button {
-                        style: if can_back { "{NAV_BTN_STYLE}" } else { "{NAV_BTN_DISABLED_STYLE}" },
-                        disabled: !can_back,
-                        onclick: {
-                            let mut fetch_detail = fetch_detail;
-                            move |_| {
-                                let id = nav_history.write().back().map(String::from);
-                                if let Some(id) = id {
-                                    selected_entity_id.set(Some(id.clone()));
-                                    fetch_detail(id);
+                    if active_tab == MemoryTab::Graph {
+                        button {
+                            style: if can_back { "{NAV_BTN_STYLE}" } else { "{NAV_BTN_DISABLED_STYLE}" },
+                            disabled: !can_back,
+                            onclick: {
+                                let mut fetch_detail = fetch_detail;
+                                move |_| {
+                                    let id = nav_history.write().back().map(String::from);
+                                    if let Some(id) = id {
+                                        selected_entity_id.set(Some(id.clone()));
+                                        fetch_detail(id);
+                                    }
                                 }
-                            }
-                        },
-                        "←"
-                    }
-                    button {
-                        style: if can_forward { "{NAV_BTN_STYLE}" } else { "{NAV_BTN_DISABLED_STYLE}" },
-                        disabled: !can_forward,
-                        onclick: {
-                            let mut fetch_detail = fetch_detail;
-                            move |_| {
-                                let id = nav_history.write().forward().map(String::from);
-                                if let Some(id) = id {
-                                    selected_entity_id.set(Some(id.clone()));
-                                    fetch_detail(id);
+                            },
+                            "←"
+                        }
+                        button {
+                            style: if can_forward { "{NAV_BTN_STYLE}" } else { "{NAV_BTN_DISABLED_STYLE}" },
+                            disabled: !can_forward,
+                            onclick: {
+                                let mut fetch_detail = fetch_detail;
+                                move |_| {
+                                    let id = nav_history.write().forward().map(String::from);
+                                    if let Some(id) = id {
+                                        selected_entity_id.set(Some(id.clone()));
+                                        fetch_detail(id);
+                                    }
                                 }
-                            }
-                        },
-                        "→"
+                            },
+                            "→"
+                        }
                     }
                     button {
                         style: "{REFRESH_BTN}",
                         onclick: move |_| {
-                            list_store.write().page = 0;
-                            fetch_entities();
-                            fetch_facts();
+                            if active_tab == MemoryTab::Facts {
+                                fetch_facts();
+                            } else {
+                                list_store.write().page = 0;
+                                fetch_entities();
+                            }
                         },
                         "Refresh"
                     }
                 }
             }
 
-            // Nous scope pills
-            if !nous_pills.is_empty() {
-                div {
-                    style: "{NOUS_PILL_ROW_STYLE}",
-                    button {
-                        style: if active_scope.is_none() { "{NOUS_PILL_ACTIVE_STYLE}" } else { "{NOUS_PILL_STYLE}" },
-                        onclick: move |_| {
-                            if nous_scope.peek().is_some() {
-                                list_store.write().page = 0;
-                                nous_scope.set(None);
-                            }
-                        },
-                        "All"
-                    }
-                    for (id , label) in nous_pills.iter() {
-                        {
-                            let is_active = active_scope.as_deref() == Some(id.as_str());
-                            let id_for_click = id.clone();
-                            rsx! {
-                                button {
-                                    key: "nous-{id}",
-                                    style: if is_active { "{NOUS_PILL_ACTIVE_STYLE}" } else { "{NOUS_PILL_STYLE}" },
-                                    onclick: move |_| {
-                                        let next = if nous_scope.peek().as_deref() == Some(id_for_click.as_str()) {
-                                            None
-                                        } else {
-                                            Some(id_for_click.clone())
-                                        };
-                                        list_store.write().page = 0;
-                                        nous_scope.set(next);
-                                    },
-                                    "{label}"
-                                }
-                            }
-                        }
-                    }
+            if active_tab == MemoryTab::Facts {
+                // ── Facts surface: health strip + filters + list ──
+                HealthStrip { health }
+                FactFilters {
+                    list_store: fact_store,
+                    on_search_change: move |_query: String| {
+                        fetch_facts();
+                    },
+                    on_filter_change: move |_| {
+                        fetch_facts();
+                    },
+                    on_clear_all: move |_| {
+                        fact_store.write().clear_filters();
+                        fetch_facts();
+                    },
                 }
-            }
-
-            // Breadcrumbs
-            if breadcrumbs.len() > 1 {
-                div {
-                    style: "{BREADCRUMB_STYLE}",
-                    span { "Memory" }
-                    for (i, crumb) in breadcrumbs.iter().enumerate() {
-                        span { " › " }
-                        if i < breadcrumbs.len() - 1 {
-                            span {
-                                style: "{BREADCRUMB_LINK_STYLE}",
-                                onclick: {
-                                    let entity_id = crumb.clone();
-                                    let mut fetch_detail = fetch_detail;
-                                    move |_| {
-                                        let entity_id = entity_id.clone();
-                                        selected_entity_id.set(Some(entity_id.clone()));
-                                        fetch_detail(entity_id);
-                                    }
-                                },
-                                "{crumb}"
-                            }
-                        } else {
-                            span {
-                                style: "color: var(--text-primary);",
-                                "{crumb}"
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Search bar
-            EntitySearchBar {
-                list_store,
-                on_search_change: move |_query: String| {
-                    list_store.write().page = 0;
-                    fetch_entities();
-                },
-                on_filter_change: move |_| {
-                    list_store.write().page = 0;
-                    fetch_entities();
-                },
-                on_clear_all: move |_| {
-                    list_store.write().clear_filters();
-                    fetch_entities();
-                },
-            }
-
-            // Facts fallback (correct-empty graph) or the two-panel explorer
-            if show_facts_fallback {
-                FactsPanel {
-                    snapshot: facts_state.read().clone(),
-                    scope_label,
+                FactList {
+                    list_store: fact_store,
+                    on_sort_change: move |sort: FactSort| {
+                        fact_store.write().sort = sort;
+                        fetch_facts();
+                    },
+                    on_mutated: move |_| {
+                        fetch_facts();
+                    },
                 }
             } else {
-                div {
-                    style: "{PANELS_STYLE}",
-                    onmousemove: move |evt: Event<MouseData>| {
-                        if *is_resizing.read() {
-                            let delta = evt.client_coordinates().x - *resize_start_x.read();
-                            let new_width = (*resize_start_width.read() + delta)
-                                .clamp(MIN_LIST_WIDTH, MAX_LIST_WIDTH);
-                            list_width.set(new_width);
-                        }
-                    },
-                    onmouseup: move |_| {
-                        is_resizing.set(false);
-                    },
-                    // List panel
+                // ── Graph surface (opt-in advanced lens) ──
+                if breadcrumbs.len() > 1 {
                     div {
-                        style: "{LIST_PANEL_STYLE} width: {width}px;",
-                        EntityList {
-                            list_store,
-                            selected_id: selected_entity_id.read().clone(),
-                            on_select_entity: {
-                                let mut navigate = navigate_to_entity;
-                                move |id: String| {
-                                    navigate(id);
+                        style: "{BREADCRUMB_STYLE}",
+                        span { "Memory" }
+                        for (i, crumb) in breadcrumbs.iter().enumerate() {
+                            span { " › " }
+                            if i < breadcrumbs.len() - 1 {
+                                span {
+                                    style: "{BREADCRUMB_LINK_STYLE}",
+                                    onclick: {
+                                        let entity_id = crumb.clone();
+                                        let mut fetch_detail = fetch_detail;
+                                        move |_| {
+                                            let entity_id = entity_id.clone();
+                                            selected_entity_id.set(Some(entity_id.clone()));
+                                            fetch_detail(entity_id);
+                                        }
+                                    },
+                                    "{crumb}"
                                 }
-                            },
-                            on_sort_change: move |sort: EntitySort| {
-                                let mut store = list_store.write();
-                                store.sort = sort;
-                                store.sort_entities();
-                            },
-                            on_load_more: move |_| {
-                                list_store.write().page += 1;
-                                fetch_entities();
-                            },
+                            } else {
+                                span {
+                                    style: "color: var(--text-primary);",
+                                    "{crumb}"
+                                }
+                            }
                         }
                     }
-                    // Resize handle
+                }
+
+                EntitySearchBar {
+                    list_store,
+                    on_search_change: move |_query: String| {
+                        list_store.write().page = 0;
+                        fetch_entities();
+                    },
+                    on_filter_change: move |_| {
+                        list_store.write().page = 0;
+                        fetch_entities();
+                    },
+                    on_clear_all: move |_| {
+                        list_store.write().clear_filters();
+                        fetch_entities();
+                    },
+                }
+
+                if list_store.read().entities.is_empty() {
                     div {
-                        style: "{RESIZE_HANDLE_STYLE}",
-                        onmousedown: move |evt: Event<MouseData>| {
-                            is_resizing.set(true);
-                            resize_start_x.set(evt.client_coordinates().x);
-                            resize_start_width.set(*list_width.read());
-                        },
+                        style: "{GRAPH_EMPTY_STYLE}",
+                        div { style: "font-weight: var(--weight-medium); color: var(--text-secondary);", "No entity graph yet" }
+                        div { "{fact_count} facts are in your memory list — switch to the Facts tab to browse them." }
                     }
-                    // Detail panel
+                } else {
                     div {
-                        style: "{DETAIL_PANEL_STYLE}",
-                        if selected_entity_id.read().is_some() {
-                            EntityDetail {
-                                detail_state,
+                        style: "{PANELS_STYLE}",
+                        onmousemove: move |evt: Event<MouseData>| {
+                            if *is_resizing.read() {
+                                let delta = evt.client_coordinates().x - *resize_start_x.read();
+                                let new_width = (*resize_start_width.read() + delta)
+                                    .clamp(MIN_LIST_WIDTH, MAX_LIST_WIDTH);
+                                list_width.set(new_width);
+                            }
+                        },
+                        onmouseup: move |_| {
+                            is_resizing.set(false);
+                        },
+                        div {
+                            style: "{LIST_PANEL_STYLE} width: {width}px;",
+                            EntityList {
                                 list_store,
-                                on_navigate_entity: {
+                                selected_id: selected_entity_id.read().clone(),
+                                on_select_entity: {
                                     let mut navigate = navigate_to_entity;
                                     move |id: String| {
                                         navigate(id);
                                     }
                                 },
-                                on_entity_changed: move |_| {
-                                    // WHY: Refresh list after merge/delete/flag to reflect changes.
-                                    list_store.write().page = 0;
+                                on_sort_change: move |sort: EntitySort| {
+                                    let mut store = list_store.write();
+                                    store.sort = sort;
+                                    store.sort_entities();
+                                },
+                                on_load_more: move |_| {
+                                    list_store.write().page += 1;
                                     fetch_entities();
-                                    fetch_facts();
                                 },
                             }
-                        } else {
-                            div {
-                                style: "{EMPTY_DETAIL_STYLE}",
-                                "Select an entity to view details"
+                        }
+                        div {
+                            style: "{RESIZE_HANDLE_STYLE}",
+                            onmousedown: move |evt: Event<MouseData>| {
+                                is_resizing.set(true);
+                                resize_start_x.set(evt.client_coordinates().x);
+                                resize_start_width.set(*list_width.read());
+                            },
+                        }
+                        div {
+                            style: "{DETAIL_PANEL_STYLE}",
+                            if selected_entity_id.read().is_some() {
+                                EntityDetail {
+                                    detail_state,
+                                    list_store,
+                                    on_navigate_entity: {
+                                        let mut navigate = navigate_to_entity;
+                                        move |id: String| {
+                                            navigate(id);
+                                        }
+                                    },
+                                    on_entity_changed: move |_| {
+                                        list_store.write().page = 0;
+                                        fetch_entities();
+                                    },
+                                }
+                            } else {
+                                div {
+                                    style: "{EMPTY_DETAIL_STYLE}",
+                                    "Select an entity to view details"
+                                }
                             }
                         }
                     }
@@ -714,73 +715,95 @@ pub(crate) fn Memory() -> Element {
     }
 }
 
-/// Response wrapper for the entity list endpoint.
+/// Response wrapper for the facts endpoint.
+#[derive(Debug, serde::Deserialize)]
+struct FactsResponse {
+    #[serde(default)]
+    facts: Vec<Fact>,
+    #[serde(default)]
+    total: usize,
+}
+
+/// Parse the `{facts, total}` envelope, falling back to a bare array.
+fn parse_facts_response(text: &str) -> (Vec<Fact>, usize) {
+    match serde_json::from_str::<FactsResponse>(text) {
+        Ok(resp) => {
+            let total = if resp.total == 0 {
+                resp.facts.len()
+            } else {
+                resp.total
+            };
+            (resp.facts, total)
+        }
+        Err(wrapped_err) => match serde_json::from_str::<Vec<Fact>>(text) {
+            Ok(list) => {
+                let total = list.len();
+                (list, total)
+            }
+            Err(array_err) => {
+                tracing::warn!(
+                    wrapped_error = %wrapped_err,
+                    array_error = %array_err,
+                    "failed to parse facts response"
+                );
+                (Vec::new(), 0)
+            }
+        },
+    }
+}
+
+/// Response wrapper for entity list endpoint.
 #[derive(Debug, serde::Deserialize)]
 struct EntitiesResponse {
-    entities: Vec<EntityWire>,
+    entities: Vec<Entity>,
 }
 
 /// Response wrapper for the entity relationships endpoint.
 #[derive(Debug, serde::Deserialize)]
 struct RelationshipsResponse {
+    #[serde(default)]
     relationships: Vec<Relationship>,
 }
 
-/// Wire shape for one entity row; `entity_type` arrives as a free-form string.
+/// Response wrapper for the entity memories endpoint.
 #[derive(Debug, serde::Deserialize)]
-struct EntityWire {
-    // kanon:ignore RUST/primitive-for-domain-id — mirrors server-side string IDs from the knowledge API
-    id: String,
-    name: String,
+struct EntityMemoriesResponse {
     #[serde(default)]
-    entity_type: String,
-    #[serde(default)]
-    confidence: f64,
-    #[serde(default)]
-    page_rank: f64,
-    #[serde(default)]
-    memory_count: u32,
-    #[serde(default)]
-    relationship_count: u32,
-    #[serde(default)]
-    properties: Vec<EntityProperty>,
-    #[serde(default)]
-    updated_at: Option<String>,
-    #[serde(default)]
-    created_by: Option<String>,
-    #[serde(default)]
-    created_at: Option<String>,
-    #[serde(default)]
-    flagged: bool,
+    memories: Vec<EntityMemory>,
 }
 
-impl From<EntityWire> for Entity {
-    fn from(wire: EntityWire) -> Self {
-        Self {
-            id: wire.id,
-            name: wire.name,
-            entity_type: parse_entity_type(&wire.entity_type),
-            confidence: wire.confidence,
-            page_rank: wire.page_rank,
-            memory_count: wire.memory_count,
-            relationship_count: wire.relationship_count,
-            properties: wire.properties,
-            updated_at: wire.updated_at,
-            created_by: wire.created_by,
-            created_at: wire.created_at,
-            flagged: wire.flagged,
-        }
+/// Parse the `{relationships: [...]}` envelope, falling back to a bare array.
+fn parse_relationships_response(text: &str) -> Vec<Relationship> {
+    match serde_json::from_str::<RelationshipsResponse>(text) {
+        Ok(wrapper) => wrapper.relationships,
+        Err(wrapped_err) => match serde_json::from_str::<Vec<Relationship>>(text) {
+            Ok(list) => list,
+            Err(array_err) => {
+                tracing::warn!(
+                    wrapped_error = %wrapped_err,
+                    array_error = %array_err,
+                    "failed to parse relationships response"
+                );
+                Vec::new()
+            }
+        },
     }
 }
 
-/// Map a server entity-type string onto the fixed display set, case-insensitively.
-fn parse_entity_type(raw: &str) -> EntityType {
-    if raw.is_empty() {
-        return EntityType::Other("Unknown".to_string());
+/// Parse the `{memories: [...]}` envelope, falling back to a bare array.
+fn parse_entity_memories_response(text: &str) -> Vec<EntityMemory> {
+    match serde_json::from_str::<EntityMemoriesResponse>(text) {
+        Ok(wrapper) => wrapper.memories,
+        Err(wrapped_err) => match serde_json::from_str::<Vec<EntityMemory>>(text) {
+            Ok(list) => list,
+            Err(array_err) => {
+                tracing::warn!(
+                    wrapped_error = %wrapped_err,
+                    array_error = %array_err,
+                    "failed to parse entity memories response"
+                );
+                Vec::new()
+            }
+        },
     }
-    EntityType::FIXED
-        .iter()
-        .find(|et| et.label().eq_ignore_ascii_case(raw))
-        .cloned()
-        .unwrap_or_else(|| EntityType::Other(raw.to_string()))
 }

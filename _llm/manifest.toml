@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-06-08T17:46:24Z"
+generated_at = "2026-06-11T22:18:23Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -266,8 +266,8 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "9789c2d0e619396b0339dbd947f424fd6200d4d433fcfeeb6655fa2c0b008ed4"
-l3_token_estimate = 17603
+source_hash = "fcc13484f101d0ad0b1dfec9fa63671e3605aacfe0bde4c169b1eb1c8f34d8dc"
+l3_token_estimate = 17977
 
 [[crates]]
 name = "skene"
@@ -290,7 +290,7 @@ l3_token_estimate = 23677
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "917a8eaad3c168004a13b5305ed8ea4bfb6f777be0b85da277ea62a31080c38d"
+source_hash = "6b8e37e3f852d9def53fc56420d24e7d56b20d2e358627faf4d7a11bc6a5e864"
 l3_token_estimate = 22061
 
 [[crates]]

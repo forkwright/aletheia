@@ -119,7 +119,7 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
             button {
                 style: "{BACK_BTN}",
                 onclick: move |_| on_back.call(()),
-                "← Back to Files"
+                "← Back to Theke"
             }
             // Path header
             div { style: "{PATH_STYLE}", "{path}" }

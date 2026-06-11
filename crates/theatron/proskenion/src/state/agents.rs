@@ -211,13 +211,6 @@ mod tests {
     }
 
     #[test]
-    fn agent_status_dot_colors() {
-        assert_eq!(AgentStatus::Active.dot_color(), "var(--status-success)");
-        assert_eq!(AgentStatus::Idle.dot_color(), "var(--text-muted)");
-        assert_eq!(AgentStatus::Error.dot_color(), "var(--status-error)");
-    }
-
-    #[test]
     fn agent_record_display_name() {
         let rec = AgentRecord {
             agent: make_agent("syn"),

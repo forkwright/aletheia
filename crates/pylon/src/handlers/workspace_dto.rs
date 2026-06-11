@@ -68,6 +68,48 @@ pub struct SearchResult {
     pub snippet: String,
 }
 
+/// Request body for writing file content back to the workspace vault.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct WriteContentRequest {
+    /// Workspace-relative file path to write.
+    pub path: String,
+    /// New file content, UTF-8 text.
+    pub content: String,
+    /// Optional optimistic-concurrency guard: the last-known mtime in
+    /// milliseconds since the Unix epoch. When present and the on-disk mtime
+    /// differs, the write is rejected with 409 so a concurrent edit is not
+    /// clobbered.
+    #[serde(default)]
+    pub if_match_mtime_ms: Option<i64>,
+}
+
+/// Response returned after a successful workspace file write.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WriteContentResponse {
+    /// Workspace-relative path that was written, using forward slashes.
+    pub path: String,
+    /// New file size in bytes after the write.
+    pub size: u64,
+    /// New file mtime in milliseconds since the Unix epoch.
+    pub mtime_ms: i64,
+}
+
+/// Request body for opening a workspace file in the system default app.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct OpenRequest {
+    /// Workspace-relative file path to open.
+    pub path: String,
+}
+
+/// Response returned after dispatching a workspace file to the default app.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenResponse {
+    /// Whether the open request was dispatched to the system handler.
+    pub ok: bool,
+    /// Workspace-relative path that was opened, using forward slashes.
+    pub path: String,
+}
+
 pub(crate) fn default_search_limit() -> usize {
     50
 }

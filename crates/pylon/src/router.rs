@@ -103,7 +103,11 @@ pub fn build_router_with(
     let workspace_routes = Router::new()
         .route("/files", get(workspace::list_files))
         .route("/git-status", get(workspace::git_status))
-        .route("/files/content", get(workspace::file_content))
+        .route(
+            "/files/content",
+            get(workspace::file_content).put(workspace::write_file_content),
+        )
+        .route("/open", post(workspace::open_file))
         .route("/diff", get(workspace::file_diff))
         .route("/search", get(workspace::search))
         .route_layer(axum::middleware::from_fn_with_state(

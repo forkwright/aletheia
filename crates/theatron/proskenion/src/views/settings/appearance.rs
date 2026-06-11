@@ -120,14 +120,14 @@ pub(crate) fn AppearancePanel() -> Element {
                         // WHY: oninput applies only in-range values so partial typing
                         // ("1" en route to "16") does not snap to the clamp floor.
                         oninput: move |e| {
-                            if let Ok(v) = e.value().parse::<u8>() {
-                                if (12..=20).contains(&v) {
-                                    appearance.write().set_font_size(v);
-                                    let store = server_store.read();
-                                    let app = appearance.read();
-                                    let keys = keybindings.read();
-                                    settings_config::save_state(&store, &app, &keys);
-                                }
+                            if let Ok(v) = e.value().parse::<u8>()
+                                && (12..=20).contains(&v)
+                            {
+                                appearance.write().set_font_size(v);
+                                let store = server_store.read();
+                                let app = appearance.read();
+                                let keys = keybindings.read();
+                                settings_config::save_state(&store, &app, &keys);
                             }
                         },
                         // WHY: onchange (blur/Enter) clamps out-of-range final values to [12, 20].

@@ -64,6 +64,9 @@ sha2 = { workspace = true }
 http-body-util = "0.1"
 mime_guess = "2"
 
+# Open workspace files in the system default app (xdg-open under the hood)
+opener = "0.8"
+
 # Internal crates
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
