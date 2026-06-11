@@ -10,8 +10,13 @@
 //!
 //! **Override binary path:** set the `CHROMIUM_PATH` environment variable.
 
+use std::time::Duration;
+
 pub mod error;
 pub use error::PrinterError;
+
+/// Default deadline for an HTML-to-PDF print operation.
+pub const DEFAULT_PRINT_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// PDF print options controlling paper size and margins.
 #[derive(Debug, Clone)]
@@ -30,6 +35,10 @@ pub struct PrintOptions {
     pub margin_right_mm: f64,
     /// Page scale factor (1.0 = 100%).
     pub scale: f64,
+    /// Overall deadline for browser launch, page setup, and PDF generation.
+    pub timeout: Duration,
+    /// Explicitly disable the Chromium sandbox.
+    pub disable_sandbox: bool,
 }
 
 impl Default for PrintOptions {
@@ -50,6 +59,8 @@ impl PrintOptions {
             margin_left_mm: 0.0,
             margin_right_mm: 0.0,
             scale: 1.0,
+            timeout: DEFAULT_PRINT_TIMEOUT,
+            disable_sandbox: false,
         }
     }
 
@@ -64,6 +75,8 @@ impl PrintOptions {
             margin_left_mm: 0.0,
             margin_right_mm: 0.0,
             scale: 1.0,
+            timeout: DEFAULT_PRINT_TIMEOUT,
+            disable_sandbox: false,
         }
     }
 
@@ -92,4 +105,17 @@ mod chromium_impl;
 #[cfg(feature = "chromium")]
 pub async fn print_to_pdf(html: &str, opts: &PrintOptions) -> Result<Vec<u8>, PrinterError> {
     chromium_impl::print_to_pdf_inner(html, opts).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn print_options_default_keeps_sandbox_enabled() {
+        let opts = PrintOptions::default();
+
+        assert!(!opts.disable_sandbox);
+        assert_eq!(opts.timeout, DEFAULT_PRINT_TIMEOUT);
+    }
 }

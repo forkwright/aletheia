@@ -26,10 +26,25 @@ pub enum PrinterError {
         #[snafu(source(from(Box<dyn std::error::Error + Send + Sync>, |e| e)))]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+    #[snafu(display("{operation} timed out after {timeout_secs}s"))]
+    Timeout {
+        operation: &'static str,
+        timeout_secs: u64,
+    },
+    #[snafu(display("Browser cleanup failed: {source}"))]
+    Cleanup {
+        #[snafu(source(from(Box<dyn std::error::Error + Send + Sync>, |e| e)))]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 ```
 
 ## `src/lib.rs`
+
+> Default deadline for an HTML-to-PDF print operation.
+```rust
+pub const DEFAULT_PRINT_TIMEOUT: Duration = Duration::from_secs(60);
+```
 
 ```rust
 pub struct PrintOptions {
@@ -47,6 +62,10 @@ pub struct PrintOptions {
     pub margin_right_mm: f64,
     /// Page scale factor (1.0 = 100%).
     pub scale: f64,
+    /// Overall deadline for browser launch, page setup, and PDF generation.
+    pub timeout: Duration,
+    /// Explicitly disable the Chromium sandbox.
+    pub disable_sandbox: bool,
 }
 ```
 

@@ -6,7 +6,7 @@
 //! (which [`crate::render_typst`] populates automatically).
 
 /// Slug for the default one-page report template.
-pub(crate) const DEFAULT: &str = "default";
+pub const DEFAULT: &str = "default";
 
 /// Source for the [`DEFAULT`] template.
 ///
@@ -14,7 +14,7 @@ pub(crate) const DEFAULT: &str = "default";
 pub(crate) const DEFAULT_SOURCE: &str = include_str!("../templates/default.typ");
 
 /// Slug for the eval-report template.
-pub(crate) const EVAL_REPORT: &str = "eval-report";
+pub const EVAL_REPORT: &str = "eval-report";
 
 /// Source for the [`EVAL_REPORT`] template.
 ///
@@ -22,7 +22,7 @@ pub(crate) const EVAL_REPORT: &str = "eval-report";
 pub(crate) const EVAL_REPORT_SOURCE: &str = include_str!("../templates/eval-report.typ");
 
 /// Slug for the graph-audit template.
-pub(crate) const GRAPH_AUDIT: &str = "graph-audit";
+pub const GRAPH_AUDIT: &str = "graph-audit";
 
 /// Source for the [`GRAPH_AUDIT`] template.
 ///
@@ -30,7 +30,7 @@ pub(crate) const GRAPH_AUDIT: &str = "graph-audit";
 pub(crate) const GRAPH_AUDIT_SOURCE: &str = include_str!("../templates/graph-audit.typ");
 
 /// List of all known template slugs.
-pub(crate) const SLUGS: &[&str] = &[DEFAULT, EVAL_REPORT, GRAPH_AUDIT];
+pub const SLUGS: &[&str] = &[DEFAULT, EVAL_REPORT, GRAPH_AUDIT];
 
 /// Resolve a slug to its Typst source, or `None` if unknown.
 #[must_use]

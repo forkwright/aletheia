@@ -38,6 +38,7 @@
 mod error;
 mod latex_probe;
 mod pandoc_probe;
+mod process;
 mod raster;
 
 /// Pandoc subprocess wrapper, AST serialization, and format dispatch (B-012).
@@ -216,7 +217,7 @@ pub fn render_pdf_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
         Ok(bytes) => Ok(bytes),
         Err(pandoc::PandocError::LatexEngineNotInstalled { searched }) => {
             Err(Error::PdfLatexEngineUnavailable {
-                source: pandoc::PandocError::LatexEngineNotInstalled { searched },
+                source: Box::new(pandoc::PandocError::LatexEngineNotInstalled { searched }),
             })
         }
         Err(e) => Err(Error::PdfRenderFailed {
@@ -276,8 +277,16 @@ fn render_pandoc_from_doc(
     format: &str,
     opts: &pandoc::DocOpts,
 ) -> Result<Vec<u8>> {
-    pandoc::render_doc(doc, opts).map_err(|_e| Error::PandocRequired {
-        format: format.to_owned(),
+    pandoc::render_doc(doc, opts).map_err(|e| match e {
+        pandoc::PandocError::NotInstalled { .. } | pandoc::PandocError::VersionTooOld { .. } => {
+            Error::PandocRequired {
+                format: format.to_owned(),
+            }
+        }
+        source => Error::PandocFailed {
+            format: format.to_owned(),
+            source: Box::new(source),
+        },
     })
 }
 

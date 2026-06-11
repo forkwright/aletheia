@@ -48,7 +48,7 @@ pub enum Error {
     #[snafu(display("pdf LaTeX engine unavailable: {source}"))]
     PdfLatexEngineUnavailable {
         /// Detailed probing error from the Pandoc `LaTeX` route.
-        source: crate::pandoc::PandocError,
+        source: Box<crate::pandoc::PandocError>,
     },
 
     /// ODT rendering via the clean-room backend failed.
@@ -59,12 +59,19 @@ pub enum Error {
     },
 
     /// A Pandoc-backed format could not be rendered.
-    #[snafu(display(
-        "{format} output requires Pandoc; install pandoc >= 3.0 or use pdf/xlsx for now"
-    ))]
+    #[snafu(display("{format} output requires Pandoc; install pandoc >= 3.0"))]
     PandocRequired {
         /// The requested format name (e.g. "docx").
         format: String,
+    },
+
+    /// A Pandoc-backed format failed after Pandoc was found.
+    #[snafu(display("{format} output failed: {source}"))]
+    PandocFailed {
+        /// The requested format name (e.g. "docx").
+        format: String,
+        /// Detailed Pandoc subprocess error.
+        source: Box<crate::pandoc::PandocError>,
     },
 }
 ```
@@ -87,6 +94,13 @@ pub enum LatexProbe {
         /// Candidate paths that were searched.
         searched: Vec<PathBuf>,
     },
+    /// A candidate engine exceeded its probe deadline.
+    TimedOut {
+        /// Candidate path that timed out.
+        path: PathBuf,
+        /// Timeout in seconds.
+        timeout_secs: u64,
+    },
 }
 ```
 
@@ -107,6 +121,18 @@ pub enum LatexProbeError {
     NotInstalled {
         /// Candidate paths that were searched.
         searched: Vec<PathBuf>,
+    },
+
+    /// A candidate `LaTeX` engine probe timed out.
+    #[snafu(display(
+        "latex engine at {} timed out after {timeout_secs}s while probing --version",
+        path.display()
+    ))]
+    Timeout {
+        /// Candidate path that timed out.
+        path: PathBuf,
+        /// Timeout in seconds.
+        timeout_secs: u64,
     },
 }
 ```
@@ -244,6 +270,28 @@ pub enum PandocError {
     /// Pandoc process could not be spawned (I/O error).
     #[snafu(display("failed to spawn pandoc: {source}"))]
     Spawn {
+        /// Underlying I/O error.
+        source: std::io::Error,
+    },
+
+    /// Pandoc subprocess exceeded its deadline.
+    #[snafu(display("pandoc {operation} timed out after {timeout_secs}s"))]
+    Timeout {
+        /// Operation being performed.
+        operation: String,
+        /// Timeout in seconds.
+        timeout_secs: u64,
+        /// Child-process kill error, when cleanup failed.
+        kill_error: Option<String>,
+        /// Child-process wait error, when cleanup failed.
+        wait_error: Option<String>,
+    },
+
+    /// Pandoc subprocess I/O failed after spawning.
+    #[snafu(display("pandoc {operation} I/O failed: {source}"))]
+    SubprocessIo {
+        /// Operation being performed.
+        operation: String,
         /// Underlying I/O error.
         source: std::io::Error,
     },
@@ -426,6 +474,13 @@ pub enum PandocProbe {
         /// Minimum version required by the crate.
         required: PandocVersion,
     },
+    /// `pandoc --version` exceeded its probe deadline.
+    TimedOut {
+        /// Absolute path to the binary that timed out.
+        path: PathBuf,
+        /// Timeout in seconds.
+        timeout_secs: u64,
+    },
 }
 ```
 
@@ -466,6 +521,18 @@ pub enum PandocProbeError {
         found: PandocVersion,
         /// Minimum version required.
         required: PandocVersion,
+    },
+
+    /// The `pandoc --version` probe timed out.
+    #[snafu(display(
+        "pandoc at {} timed out after {timeout_secs}s while probing --version",
+        path.display()
+    ))]
+    Timeout {
+        /// Path to the binary that timed out.
+        path: PathBuf,
+        /// Timeout in seconds.
+        timeout_secs: u64,
     },
 }
 ```

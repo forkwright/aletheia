@@ -63,6 +63,22 @@ const TYPST_CHART_APPENDIX: &str = r#"
 ]
 "#;
 
+pub(crate) fn json_data_property(description: &str) -> PropertyDef {
+    PropertyDef {
+        property_type: PropertyType::Object,
+        description: format!("{description} Also accepts a JSON string for legacy callers."),
+        enum_values: None,
+        default: None,
+    }
+}
+
+fn typst_template_enum_values() -> Vec<String> {
+    poiesis_typst::templates::SLUGS
+        .iter()
+        .map(|slug| (*slug).to_owned())
+        .collect()
+}
+
 fn render_chart_svg(data: &serde_json::Value) -> std::result::Result<Option<String>, String> {
     let Some(chart_value) = data.get("chart") else {
         return Ok(None);
@@ -193,60 +209,36 @@ impl ToolExecutor for GenerateDocumentExecutor {
             };
 
             let format = format.to_lowercase();
-            let bytes = match format.as_str() {
-                "xlsx" => {
-                    let renderer = poiesis_sheet::XlsxRenderer::new();
-                    match renderer.render(&doc) {
-                        Ok(b) => b,
-                        Err(e) => {
-                            return Ok(ToolResult::error(format!("XLSX render failed: {e}")));
-                        }
-                    }
-                }
-                "pdf" => match poiesis_doc::render_pdf_from_doc(&doc) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("PDF render failed: {e}")));
-                    }
-                },
-                "odt" => match poiesis_doc::render_odt_from_doc(&doc) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("ODT render failed: {e}")));
-                    }
-                },
-                "docx" => match poiesis_doc::render_docx_from_doc(&doc) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("DOCX render failed: {e}")));
-                    }
-                },
-                "html" => match poiesis_doc::render_html_from_doc(&doc) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("HTML render failed: {e}")));
-                    }
-                },
-                "md" => match poiesis_doc::render_md_from_doc(&doc) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("MD render failed: {e}")));
-                    }
-                },
-                "latex" => match poiesis_doc::render_latex_from_doc(&doc) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("LATEX render failed: {e}")));
-                    }
-                },
-                "epub" => match poiesis_doc::render_epub_from_doc(&doc) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("EPUB render failed: {e}")));
-                    }
-                },
-                other => {
-                    return Ok(ToolResult::error(format!("unsupported format: {other}")));
+            // WHY: every renderer below blocks (pandoc/typst subprocesses,
+            // file IO); run on the blocking pool so a slow render occupies a
+            // blocking thread instead of pinning a tokio runtime worker.
+            let render_format = format.clone();
+            let render_result = tokio::task::spawn_blocking(move || match render_format.as_str() {
+                "xlsx" => poiesis_sheet::XlsxRenderer::new()
+                    .render(&doc)
+                    .map_err(|e| format!("XLSX render failed: {e}")),
+                "pdf" => poiesis_doc::render_pdf_from_doc(&doc)
+                    .map_err(|e| format!("PDF render failed: {e}")),
+                "odt" => poiesis_doc::render_odt_from_doc(&doc)
+                    .map_err(|e| format!("ODT render failed: {e}")),
+                "docx" => poiesis_doc::render_docx_from_doc(&doc)
+                    .map_err(|e| format!("DOCX render failed: {e}")),
+                "html" => poiesis_doc::render_html_from_doc(&doc)
+                    .map_err(|e| format!("HTML render failed: {e}")),
+                "md" => poiesis_doc::render_md_from_doc(&doc)
+                    .map_err(|e| format!("MD render failed: {e}")),
+                "latex" => poiesis_doc::render_latex_from_doc(&doc)
+                    .map_err(|e| format!("LATEX render failed: {e}")),
+                "epub" => poiesis_doc::render_epub_from_doc(&doc)
+                    .map_err(|e| format!("EPUB render failed: {e}")),
+                other => Err(format!("unsupported format: {other}")),
+            })
+            .await;
+            let bytes = match render_result {
+                Ok(Ok(b)) => b,
+                Ok(Err(msg)) => return Ok(ToolResult::error(msg)),
+                Err(e) => {
+                    return Ok(ToolResult::error(format!("render task failed: {e}")));
                 }
             };
 
@@ -749,20 +741,13 @@ fn render_typst_report_def() -> ToolDef {
                     PropertyDef {
                         property_type: PropertyType::String,
                         description: "Built-in template slug (e.g. `default`).".to_owned(),
-                        enum_values: Some(vec!["default".to_owned()]),
+                        enum_values: Some(typst_template_enum_values()),
                         default: None,
                     },
                 ),
                 (
                     "data".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description:
-                            "Inline JSON data blob exposed to the template as `data.json`."
-                                .to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
+                    json_data_property("JSON object exposed to the template as `data.json`."),
                 ),
                 (
                     "out_path".to_owned(),

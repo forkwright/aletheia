@@ -55,3 +55,25 @@ pub fn render_typst (source: &str, data: &serde_json::Value) -> Result<Vec<u8>>
 ```rust
 pub fn render_template (slug: &str, data: &serde_json::Value) -> Result<Vec<u8>>
 ```
+
+## `src/templates.rs`
+
+> Slug for the default one-page report template.
+```rust
+pub const DEFAULT: &str = "default";
+```
+
+> Slug for the eval-report template.
+```rust
+pub const EVAL_REPORT: &str = "eval-report";
+```
+
+> Slug for the graph-audit template.
+```rust
+pub const GRAPH_AUDIT: &str = "graph-audit";
+```
+
+> List of all known template slugs.
+```rust
+pub const SLUGS: &[&str] = &[DEFAULT, EVAL_REPORT, GRAPH_AUDIT];
+```

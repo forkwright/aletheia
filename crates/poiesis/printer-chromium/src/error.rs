@@ -20,4 +20,14 @@ pub enum PrinterError {
         #[snafu(source(from(Box<dyn std::error::Error + Send + Sync>, |e| e)))]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+    #[snafu(display("{operation} timed out after {timeout_secs}s"))]
+    Timeout {
+        operation: &'static str,
+        timeout_secs: u64,
+    },
+    #[snafu(display("Browser cleanup failed: {source}"))]
+    Cleanup {
+        #[snafu(source(from(Box<dyn std::error::Error + Send + Sync>, |e| e)))]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
