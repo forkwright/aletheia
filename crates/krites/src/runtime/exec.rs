@@ -508,6 +508,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             store_lifetimes,
             total_num_to_take,
             num_to_skip,
+            self.config.max_evaluation_epochs,
             poison,
         )?;
 

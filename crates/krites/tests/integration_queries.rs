@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use krites::{DataValue, Db, ScriptMutability};
+use krites::{DataValue, Db, DbConfig, Error, ScriptMutability};
 
 // ── Database lifecycle ──────────────────────────────────────────────────────
 
@@ -42,6 +42,38 @@ fn db_multiple_independent_queries() {
             .expect("query should succeed");
         assert_eq!(result.rows[0][0], DataValue::from(i));
     }
+}
+
+#[test]
+fn non_converging_recursive_query_exceeds_epoch_limit() {
+    let db = Db::open_mem()
+        .expect("in-memory db creation should succeed")
+        .with_config(DbConfig::new(3));
+
+    let err = db
+        .run_read_only(
+            r"
+            looped[id] := id = rand_uuid_v4()
+            looped[id] := looped[prev], id = rand_uuid_v4(), prev != id
+            ?[id] := looped[id]
+            ",
+            BTreeMap::new(),
+        )
+        .expect_err("non-converging recursive query should hit the epoch limit");
+
+    assert!(
+        matches!(
+            err,
+            Error::EpochLimitExceeded {
+                epoch_count: 3,
+                max_epochs: 3,
+                stratum: 0,
+                ref rule_context,
+                ..
+            } if rule_context.contains("looped")
+        ),
+        "expected epoch limit error with looped rule context, got {err:?}"
+    );
 }
 
 // ── Relation create/insert/query pipeline ───────────────────────────────────

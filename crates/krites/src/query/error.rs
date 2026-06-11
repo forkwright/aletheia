@@ -58,6 +58,19 @@ pub(crate) enum QueryError {
         location: snafu::Location,
     },
 
+    /// Semi-naive evaluation exceeded the configured epoch limit before reaching a fixpoint.
+    #[snafu(display(
+        "evaluation exceeded epoch limit: epoch_count={epoch_count}, max_epochs={max_epochs}, stratum={stratum}, rules={rule_context}"
+    ))]
+    EpochLimitExceeded {
+        epoch_count: u32,
+        max_epochs: u32,
+        stratum: usize,
+        rule_context: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Arity mismatch between rule/relation and its application.
     #[snafu(display("arity mismatch: {message}"))]
     ArityMismatch {
