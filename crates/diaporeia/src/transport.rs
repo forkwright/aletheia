@@ -42,10 +42,10 @@ pub fn streamable_http_router_with_config(
     state: Arc<DiaporeiaState>,
     config: rmcp::transport::streamable_http_server::StreamableHttpServerConfig,
 ) -> axum::Router {
-    // Snapshot the rate-limit config (and bind) ONCE at setup using try_read,
-    // so the per-session factory below stays sync. The same snapshot is reused
-    // for every session in this transport's lifetime; config-reload between
-    // sessions is rare and acceptable to miss until the next transport startup.
+    // WHY: snapshot the rate-limit config (and bind) ONCE at setup using
+    // try_read so the per-session factory below stays sync. The snapshot is
+    // reused for every session in this transport's lifetime; a config reload
+    // between sessions is rare and acceptable to miss until the next startup.
     let (bind, rate_cfg) = state.config.try_read().map_or_else(
         |_| {
             (
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn streamable_http_router_signature_is_correct() {
-        // Compile-time verification that the function has the expected signature.
+        // NOTE: compile-time verification of the function signature.
         let _: fn(std::sync::Arc<crate::state::DiaporeiaState>) -> axum::Router =
             streamable_http_router;
     }

@@ -3,8 +3,6 @@
 //! Tests for `EnvCredentialProvider` and its interaction with OAuth JWT expiry
 //! semantics. Includes the chain fall-through case that exercises expired-env
 //! behavior against a file fallback.
-//!
-//! Split from `credential_tests.rs` to satisfy `RUST/file-too-long`.
 
 use koina::credential::{CredentialProvider, CredentialSource};
 use koina::secret::SecretString;

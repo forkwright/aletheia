@@ -121,7 +121,7 @@ pub(crate) fn prepare_key_file(
 ///
 /// WHY: prevents temp file leaks if the caller panics between
 /// `prepare_key_file` and `commit_key_file`. Call [`defuse`](Self::defuse)
-/// after the commit succeeds to prevent deletion. Closes #2745.
+/// after the commit succeeds to prevent deletion.
 pub(crate) struct TempFileGuard {
     path: Option<PathBuf>,
 }
@@ -192,7 +192,7 @@ pub(crate) fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<
         .encrypt(&nonce, plaintext)
         .map_err(|_ignored| std::io::Error::other("AES-256-GCM: encryption failed"))?;
 
-    // Prepend nonce so the decryptor can recover it.
+    // WHY: the nonce is prepended so the decryptor can recover it.
     let mut combined = Vec::with_capacity(NONCE_LEN + ciphertext_with_tag.len());
     combined.extend_from_slice(&nonce);
     combined.extend_from_slice(&ciphertext_with_tag);

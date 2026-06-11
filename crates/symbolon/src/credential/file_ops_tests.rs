@@ -1,10 +1,9 @@
 #![expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 //! Tests for `CredentialFile::needs_refresh` and `CredentialFileLock`.
 //!
-//! WHY: `cargo mutants` flagged 8 missed mutants in this file (issue #3712):
-//! `needs_refresh` returned a constant and the `<` threshold comparison was
-//! unchecked; `CredentialFileLock::shared`/`exclusive`/`lock` were never
-//! asserted on, so `Ok(Default::default())` replacements survived.
+//! WHY: pins `needs_refresh`'s `<` threshold comparison and asserts on
+//! `CredentialFileLock::shared`/`exclusive`/`lock` so constant-return and
+//! `Ok(Default::default())` mutants are caught.
 
 use std::sync::mpsc;
 use std::thread;
@@ -15,9 +14,7 @@ use koina::secret::SecretString;
 use super::*;
 use crate::credential::{REFRESH_THRESHOLD_SECS, unix_epoch_ms};
 
-// --------------------------------------------------------------------
-// needs_refresh
-// --------------------------------------------------------------------
+// ── needs_refresh ──
 
 /// Build a `CredentialFile` whose `expires_at` is exactly `offset_secs` seconds
 /// from `now`. Negative offsets produce an expired credential.
@@ -111,9 +108,7 @@ fn needs_refresh_boundary_just_outside_window_is_false() {
     );
 }
 
-// --------------------------------------------------------------------
-// CredentialFileLock
-// --------------------------------------------------------------------
+// ── CredentialFileLock ──
 
 /// Poll-with-timeout helper: spawn `work` on a background thread and wait up
 /// to `timeout` for it to finish. Returns `Some(result)` if it finished,

@@ -179,7 +179,7 @@ impl CredentialFile {
 
         // INVARIANT: Phase 1 — write all temp files and fsync.
         // WHY: TempFileGuard ensures cleanup if the caller panics between
-        // prepare and commit. Defuse after successful commit. Closes #2745.
+        // prepare and commit. Defuse after successful commit.
         let mut key_guard = if key_needs_persist {
             Some(prepare_key_file(path, &key)?)
         } else {
@@ -197,13 +197,15 @@ impl CredentialFile {
         if let Some(ref guard) = key_guard
             && let Err(e) = commit_key_file(path, guard.path())
         {
-            // Guard's drop will clean up key tmp; manually clean cred tmp.
+            // NOTE: the guard's drop cleans up the key tmp; the cred tmp is
+            // cleaned manually.
             // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of temp credential file on commit failure
             let _ = std::fs::remove_file(&cred_tmp);
             return Err(e);
         }
 
-        // Key committed successfully — defuse the guard so Drop doesn't delete
+        // WHY: the key is committed, so defuse the guard or Drop would delete
+        // the live key file.
         if let Some(ref mut guard) = key_guard {
             guard.defuse();
         }

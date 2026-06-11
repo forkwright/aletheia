@@ -21,11 +21,7 @@ use agora::types::{
 use taxis::config::ChannelBinding;
 use tokio_util::sync::CancellationToken;
 
-// Split: core public types (ChannelCapabilities, SendParams, SendResult, ProbeResult, InboundMessage, ChannelProvider).
-
-// ---------------------------------------------------------------------------
-// ChannelCapabilities
-// ---------------------------------------------------------------------------
+// ── ChannelCapabilities ──
 
 #[test]
 fn channel_capabilities_default_values() {
@@ -74,9 +70,7 @@ fn channel_capabilities_serde_roundtrip() {
     assert_eq!(restored.max_text_length, original.max_text_length);
 }
 
-// ---------------------------------------------------------------------------
-// SendParams
-// ---------------------------------------------------------------------------
+// ── SendParams ──
 
 #[test]
 fn send_params_construction_and_field_access() {
@@ -133,9 +127,7 @@ fn send_params_serde_roundtrip() {
     assert_eq!(restored.attachments, original.attachments);
 }
 
-// ---------------------------------------------------------------------------
-// SendResult
-// ---------------------------------------------------------------------------
+// ── SendResult ──
 
 #[test]
 fn send_result_ok_factory() {
@@ -175,9 +167,7 @@ fn send_result_serde_roundtrip() {
     assert_eq!(err_restored.error.as_deref(), Some("failed"));
 }
 
-// ---------------------------------------------------------------------------
-// ProbeResult
-// ---------------------------------------------------------------------------
+// ── ProbeResult ──
 
 #[test]
 fn probe_result_success() {
@@ -227,9 +217,7 @@ fn probe_result_serde_roundtrip() {
     assert_eq!(restored.latency_ms, original.latency_ms);
 }
 
-// ---------------------------------------------------------------------------
-// InboundMessage
-// ---------------------------------------------------------------------------
+// ── InboundMessage ──
 
 #[test]
 fn inbound_message_construction() {
@@ -280,9 +268,7 @@ fn inbound_message_serde_roundtrip() {
     assert_eq!(restored.raw, original.raw);
 }
 
-// ---------------------------------------------------------------------------
-// ChannelProvider trait object safety
-// ---------------------------------------------------------------------------
+// ── ChannelProvider trait object safety ──
 
 /// Compile-time test: `ChannelProvider` trait is object-safe.
 #[test]

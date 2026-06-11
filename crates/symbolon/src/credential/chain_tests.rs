@@ -1,8 +1,6 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 //! Tests for `FileCredentialProvider` and `CredentialChain` fallback semantics.
-//!
-//! Split from `credential_tests.rs` to satisfy `RUST/file-too-long`.
 
 use std::path::PathBuf;
 use std::time::Instant;

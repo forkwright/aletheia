@@ -283,8 +283,9 @@ fn auth_mode_none_policy_env_gate() {
         "error should mention the env-var opt-in: {err:?}"
     );
 
-    // Structural validation alone is permissive: a config PUT must call BOTH
-    // validate_section AND validate_auth_mode_policy to preserve the gate.
+    // WARNING: structural validation alone is permissive — a config PUT must
+    // call BOTH validate_section AND validate_auth_mode_policy to preserve
+    // the gate.
     let structural = validate_section("gateway", &section);
     assert!(
         structural.is_ok(),
@@ -656,7 +657,7 @@ fn validate_config_rejects_invalid_tool_iterations() {
     );
 }
 
-// --- Wave 5: behavioral section validators ---
+// ── Behavioral section validators ──
 
 #[test]
 fn rejects_invalid_nous_behavior() {
@@ -921,11 +922,9 @@ fn validate_startup_passes_with_complete_layout() {
     let mut config = AletheiaConfig::default();
     config.agents.list.clear();
 
-    // WHY: agents.list is empty, but that's also an error — push a
-    // dummy agent. We skip the agent check by verifying ONLY the
-    // subdirectory check passes when agents.list is empty and we remove
-    // that check below. Since agents.list is empty, that check still
-    // fires, so let's just verify no subdir error is in the output.
+    // WHY: an empty agents.list still fails validation, so assert only that
+    // no missing-subdirectory error appears — the directory checks are the
+    // subject of this test.
     let err = validate_startup(&config, &oikos).unwrap_err();
     assert!(
         err.errors

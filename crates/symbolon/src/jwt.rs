@@ -82,11 +82,8 @@ impl Default for JwtConfig {
 impl JwtConfig {
     /// Returns `true` if the signing key is the insecure placeholder.
     ///
-    /// Uses constant-time comparison to prevent timing side-channels
-    /// that could leak information about the key contents.
-    ///
-    /// // SAFETY: Constant-time comparison via `subtle::ConstantTimeEq` prevents
-    /// // timing attacks that could leak the key through comparison timing differences.
+    /// Uses constant-time comparison (`subtle::ConstantTimeEq`) to prevent
+    /// timing side-channels that could leak information about the key contents.
     #[must_use]
     pub(crate) fn has_insecure_key(&self) -> bool {
         let key_bytes = self.signing_key.expose_secret().as_bytes();
@@ -169,10 +166,6 @@ impl JwtManager {
     /// applying the configured clock-skew leeway). Returns an error if the
     /// token is malformed, has an invalid signature, or fails any other
     /// JWT validation check.
-    ///
-    /// // WHY: Signature is verified BEFORE parsing claims to reject tampered
-    /// // tokens early. This ordering prevents attackers from triggering JSON
-    /// // parsing errors with malformed payloads that would log noise.
     #[must_use = "validated claims must be checked before granting access"]
     pub fn validate(&self, token: &str) -> Result<Claims> {
         let (header_payload, signature) = token.rsplit_once('.').ok_or_else(|| {
@@ -182,7 +175,9 @@ impl JwtManager {
             .build()
         })?;
 
-        // WHY: verify signature before parsing claims to reject tampered tokens early
+        // WHY: verify the signature BEFORE parsing claims so tampered tokens
+        // are rejected early and attackers cannot trigger noisy JSON parse
+        // errors with malformed payloads.
         let sig_bytes = base64url_decode(signature).ok_or_else(|| {
             error::TokenDecodeSnafu {
                 message: "invalid base64url in signature".to_owned(),
@@ -225,7 +220,8 @@ impl JwtManager {
             .build()
         })?;
 
-        // Validate required claims after signature verification succeeded.
+        // INVARIANT: claim validation runs only after signature verification
+        // succeeded.
         if claims.iss != self.config.issuer {
             return Err(error::TokenDecodeSnafu {
                 message: format!(
@@ -247,7 +243,7 @@ impl JwtManager {
         // issuer and validator do not immediately invalidate fresh tokens.
         // A token is still accepted if `now` is within `leeway` seconds past
         // `exp`. Saturates to i64 to tolerate pathological leeway values
-        // configured through TOML without overflow. Fixes #3379.
+        // configured through TOML without overflow.
         let leeway = i64::try_from(self.config.clock_skew_leeway_secs).unwrap_or(i64::MAX);
         let now = now_unix();
         if claims.exp.saturating_add(leeway) <= now {
@@ -258,10 +254,6 @@ impl JwtManager {
     }
 
     /// Refresh a token pair: validate the refresh token, issue a new access + refresh pair.
-    ///
-    /// // WHY: Refresh tokens are single-use (rotated on each refresh). This
-    /// // prevents replay attacks where a stolen refresh token could be used
-    /// // indefinitely. Both new tokens have independent expiration.
     #[cfg_attr(
         not(test),
         expect(
@@ -280,6 +272,9 @@ impl JwtManager {
             .build());
         }
 
+        // WHY: refresh tokens are single-use (rotated on each refresh) so a
+        // stolen refresh token cannot be replayed indefinitely; both new
+        // tokens get independent expirations.
         let access = self.issue_access(&claims.sub, claims.role, claims.nous_id.as_deref())?;
         let refresh = self.issue_refresh(&claims.sub, claims.role)?;
 
@@ -647,7 +642,7 @@ mod tests {
     }
 
     /// Regression: `issue` must compute `exp` as `iat + ttl`. Catches the
-    /// mutant that flips the `+` to `-` on line 336.
+    /// mutant that flips the `+` to `-` in `issue`'s exp computation.
     #[test]
     fn issue_computes_exp_as_iat_plus_ttl() {
         let mgr = hmac_manager();

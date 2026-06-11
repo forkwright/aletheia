@@ -216,8 +216,7 @@ pub struct SandboxSettings {
     /// Defaults to `~` (HOME). Operators can set this to a stricter path.
     /// The `~` prefix is expanded to the HOME environment variable at runtime.
     ///
-    /// WHY: without a home-directory default, agents cannot read user files:
-    /// closes #1823.
+    /// WHY: without a home-directory default, agents cannot read user files.
     pub allowed_root: PathBuf,
     /// Additional filesystem paths granted read access.
     pub extra_read_paths: Vec<PathBuf>,
@@ -235,7 +234,7 @@ pub struct SandboxSettings {
     /// Maximum number of processes (`RLIMIT_NPROC`) for exec child processes.
     ///
     /// WHY: `RLIMIT_NPROC` counts ALL processes for the user, not just sandbox
-    /// children. Default: 256. Closes #1984.
+    /// children. Default: 256.
     pub nproc_limit: u32,
 }
 

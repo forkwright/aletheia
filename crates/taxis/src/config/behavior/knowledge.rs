@@ -3,36 +3,26 @@
 use serde::{Deserialize, Serialize};
 
 /// Episteme knowledge conflict resolution, decay, and extraction parameters.
-///
-/// All defaults match the current hardcoded constants in the `episteme` crate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct KnowledgeConfig {
     /// Maximum LLM calls per fact during conflict resolution. Default: 3.
-    /// Mirrors `episteme::conflict::MAX_LLM_CALLS_PER_FACT`.
     pub conflict_max_llm_calls_per_fact: usize,
     /// Similarity threshold above which intra-batch candidates are merged. Default: 0.95.
-    /// Mirrors `episteme::conflict::INTRA_BATCH_DEDUP_THRESHOLD`.
     pub conflict_intra_batch_dedup_threshold: f64,
     /// Maximum vector distance for a fact to be a conflict candidate. Default: 0.28.
-    /// Mirrors `episteme::conflict::CANDIDATE_DISTANCE_THRESHOLD`.
     pub conflict_candidate_distance_threshold: f64,
     /// Maximum conflict candidates evaluated per fact. Default: 5.
-    /// Mirrors `episteme::conflict::MAX_CANDIDATES`.
     pub conflict_max_candidates: usize,
     /// Confidence boost per reinforcement event. Default: 0.02.
-    /// Mirrors `episteme::decay::REINFORCEMENT_BOOST`.
     pub decay_reinforcement_boost: f64,
     /// Maximum cumulative reinforcement bonus. Default: 1.0.
-    /// Mirrors `episteme::decay::MAX_REINFORCEMENT_BONUS`.
     pub decay_max_reinforcement_bonus: f64,
     /// Confidence bonus per additional corroborating agent. Default: 0.15.
-    /// Mirrors `episteme::decay::CROSS_AGENT_BONUS_PER_AGENT`.
     pub decay_cross_agent_bonus_per_agent: f64,
     /// Cap on total cross-agent multiplier. Default: 1.75.
-    /// Mirrors `episteme::decay::MAX_CROSS_AGENT_MULTIPLIER`.
     pub decay_max_cross_agent_multiplier: f64,
     /// Minimum confidence for a fact to pass extraction filtering. Default: 0.3.
     pub extraction_confidence_threshold: f64,
@@ -43,13 +33,10 @@ pub struct KnowledgeConfig {
     /// Provider selection for the extraction bookkeeping pass.
     pub extraction: ExtractionConfig,
     /// Minimum tool calls before operational instinct scoring fires. Default: 5.
-    /// Mirrors `episteme::ops_facts::MIN_TOOL_CALLS`.
     pub instinct_min_tool_calls: u64,
     /// Maximum length for parameter values before truncation. Default: 200.
-    /// Mirrors `episteme::instinct::MAX_PARAM_VALUE_LEN`.
     pub instinct_max_param_value_len: usize,
     /// Maximum length for context summaries. Default: 100.
-    /// Mirrors `episteme::instinct::MAX_CONTEXT_SUMMARY_LEN`.
     pub instinct_max_context_summary_len: usize,
     /// Maximum byte length for fact content strings. Default: 102400 (100 KiB).
     /// Mirrors `eidos::knowledge::fact::MAX_CONTENT_LENGTH`.

@@ -314,12 +314,14 @@ fn resolve_workspace_deps(
             continue;
         }
         if in_deps {
-            // Naive: key = ...
+            // NOTE: naive `key = value` parse; quoted keys and inline tables
+            // are out of scope for dependency-name extraction.
             if let Some(eq) = trimmed.find('=')
                 && let Some(key_slice) = trimmed.get(..eq)
             {
                 let key = key_slice.trim();
-                // Only include workspace-local deps (path = ...)
+                // WHY: a `path` key marks a workspace-local dependency; registry
+                // deps are excluded.
                 if trimmed.contains("path") {
                     deps.push(key.to_owned());
                 }
@@ -420,7 +422,7 @@ fn compress(source: &str) -> String {
                     prev_was_blank = true;
                 }
             } else if output.ends_with('\n') || output.is_empty() {
-                // skip leading whitespace on a line
+                // NOTE: intentionally drop leading whitespace on a line.
             } else {
                 output.push(' ');
             }
@@ -433,7 +435,6 @@ fn compress(source: &str) -> String {
         i += 1;
     }
 
-    // Trim trailing blank lines.
     while output.ends_with("\n\n") {
         output.pop();
     }

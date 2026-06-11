@@ -1,10 +1,7 @@
 //! Integration tests for `JwtManager` and `JwtConfig` public API.
 //!
-//! WHY: symbolon had zero `crates/symbolon/tests/` integration tests prior
-//! to this. The crate is security-critical (auth tokens, credentials, JWT
-//! signing) and needs end-to-end coverage that exercises only the
-//! published API surface, the same way pylon and the auth middleware
-//! consume it.
+//! Exercises only the published API surface, the same way pylon and the
+//! auth middleware consume it.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(

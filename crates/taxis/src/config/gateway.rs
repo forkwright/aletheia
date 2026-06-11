@@ -60,7 +60,7 @@ pub struct GatewayAuthConfig {
     /// JWT signing key. If `None`, falls back to `ALETHEIA_JWT_SECRET` env var.
     /// Startup fails when auth mode requires JWT and this is still the default placeholder.
     ///
-    /// WHY: `SecretString` prevents accidental logging of the key value. Closes #1631.
+    /// WHY: `SecretString` prevents accidental logging of the key value.
     pub signing_key: Option<SecretString>,
 }
 

@@ -21,10 +21,7 @@ use agora::types::{
 use taxis::config::ChannelBinding;
 use tokio_util::sync::CancellationToken;
 
-// Split: MessageRouter + helpers.
-
-// MessageRouter
-// ---------------------------------------------------------------------------
+// ── MessageRouter ──
 
 fn make_binding(channel: &str, source: &str, nous_id: &str) -> ChannelBinding {
     ChannelBinding {
@@ -255,5 +252,3 @@ fn match_reason_variants_distinct() {
     assert_ne!(r2, r4);
     assert_ne!(r3, r4);
 }
-
-// ---------------------------------------------------------------------------

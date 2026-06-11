@@ -38,11 +38,6 @@ use taxis::oikos::Oikos;
 mod common;
 use common::{StateBuilder, issue_token};
 
-// Split: Repomix MCP tool end-to-end tests.
-
-// Section 6: Repomix MCP tools — end-to-end via socket
-// -------------------------------------------------------------------
-
 /// Build a test router in stateless+json mode.
 fn test_router(state: &Arc<DiaporeiaState>) -> axum::Router {
     let rate_cfg = state.config.try_read().unwrap().mcp.rate_limit.clone();

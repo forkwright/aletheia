@@ -10,14 +10,12 @@ use super::*;
 #[test]
 fn test_pkce_pair_generation() {
     let pair = PkcePair::generate().unwrap();
-    // Verifier should be base64url encoded
     assert!(!pair.verifier.expose_secret().is_empty());
     assert!(!pair.challenge.is_empty());
 
-    // Challenge should be base64url-encoded SHA256 hash (43 chars)
+    // NOTE: 43 chars = unpadded base64url of a 32-byte SHA-256 digest.
     assert_eq!(pair.challenge.len(), 43);
 
-    // Verify challenge is correct
     let mut hasher = Sha256::new();
     hasher.update(pair.verifier.expose_secret().as_bytes());
     let expected = base64url_encode(&hasher.finalize());
@@ -29,10 +27,8 @@ fn test_generate_state() {
     let state1 = generate_state().unwrap();
     let state2 = generate_state().unwrap();
 
-    // States should be unique
     assert_ne!(state1, state2);
 
-    // Should be non-empty
     assert!(!state1.is_empty());
     assert!(!state2.is_empty());
 }
@@ -112,22 +108,17 @@ fn test_build_form_body() {
 
     let body = build_form_body(&params);
 
-    // HashMap iteration order is not guaranteed, so check for presence of each param
+    // WHY: HashMap iteration order is not guaranteed, so check presence per param.
     assert!(body.contains("grant_type=authorization_code"));
     assert!(body.contains("code=abc123"));
     assert!(body.contains("client_id=my%20client"));
     assert_eq!(body.matches('&').count(), 2);
 }
 
-// ---------------------------------------------------------------------------
-// Callback-handler tests (kill pkce.rs:528 mutant)
-// ---------------------------------------------------------------------------
-// The missed mutant replaces the body of `handle_callback_connection` with
-// `Ok(Default::default())` — an empty `CallbackData` whose `code` and `state`
-// fields are `None`. These tests bind a real loopback listener, run the
-// production handler on a worker thread, drive it with a real TCP HTTP
-// request, and assert on the parsed fields. The mutant fails the `Some(...)`
-// equality checks and is caught.
+// ── handle_callback_connection mutant kills ──
+// WHY: kills the mutant that replaces `handle_callback_connection`'s body with
+// `Ok(Default::default())` — these tests drive the real handler over loopback
+// TCP and assert on parsed fields an empty `CallbackData` cannot satisfy.
 
 /// Bind a loopback listener and run `handle_callback_connection` on a helper
 /// thread. Returns the bound port + a join handle yielding the parsed result.
@@ -160,15 +151,13 @@ fn test_handle_callback_connection_extracts_code_and_state() {
     let (port, handle) = spawn_callback_handler("state-xyz");
     let response = send_callback_request(port, "code=AUTH_CODE_42&state=state-xyz");
 
-    // Successful flow returns HTTP 200 to the browser.
     assert!(
         response.starts_with("HTTP/1.1 200 OK"),
         "expected 200 OK, got: {response}"
     );
 
     let data = handle.join().unwrap().unwrap();
-    // Mutant `Ok(Default::default())` would leave these as None; real
-    // handler returns the parsed values.
+    // WHY: the `Ok(Default::default())` mutant leaves code/state as `None`.
     assert_eq!(data.code.as_deref(), Some("AUTH_CODE_42"));
     assert_eq!(data.state.as_deref(), Some("state-xyz"));
     assert!(data.error.is_none());
@@ -218,19 +207,10 @@ fn test_handle_callback_connection_surfaces_authorization_error() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// `pkce_login_and_save` wrapper test (kill pkce.rs:758 mutant)
-// ---------------------------------------------------------------------------
-// The missed mutant replaces the wrapper body with `Ok(Default::default())`,
-// which (a) skips the `pkce_login` call entirely, and (b) skips the
-// `.save(path)` call — so no file is ever written. The real wrapper either
-// errors from the inner call or writes the file. This test runs the wrapper
-// against an unreachable IdP, cancels it via outer timeout, and asserts that
-// no credential file was created. Under the mutant, the outer timeout would
-// never fire because the mutant returns immediately with `Ok(default)`, but
-// the returned credential has an empty token and no file is written.
-// The assertion `result.is_err() OR (result.is_ok() AND token.is_empty())`
-// plus `!path.exists()` pins the contract.
+// ── pkce_login_and_save mutant kill ──
+// WHY: kills the mutant that replaces `pkce_login_and_save`'s body with
+// `Ok(Default::default())`, skipping both the `pkce_login` call and the
+// `.save(path)` write.
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_pkce_login_and_save_does_not_silently_succeed() {
@@ -242,26 +222,14 @@ async fn test_pkce_login_and_save_does_not_silently_succeed() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("out.json");
 
-    // Outer timeout: pkce_login waits up to 5 minutes for a callback; we cut
-    // it off at 150ms. The REAL wrapper will not have completed either step
-    // by then — no file written, task still running.
+    // WHY: pkce_login waits up to 5 minutes for a callback, so the real
+    // wrapper cannot complete within the 150ms outer timeout.
     let fut = pkce_login_and_save(&provider, &path);
     let result = tokio::time::timeout(Duration::from_millis(150), fut).await;
 
-    // Under the `Ok(Default::default())` mutant, `pkce_login_and_save`
-    // returns immediately with an empty CredentialFile and NEVER writes the
-    // file. Under the real code, the inner `pkce_login` is still waiting on
-    // the callback server, so the outer timeout fires. Either way, the
-    // credential file MUST NOT exist — asserting that condition kills the
-    // mutant because the mutant also leaves the file absent... wait, both
-    // paths leave the file absent on early termination.
-    //
-    // To distinguish: the mutant returns `Ok(_)` *immediately*, while the
-    // real code only returns Ok after writing the file. Under a 150ms
-    // outer timeout, the real code cannot produce Ok. Assert:
-    //   * either outer timeout elapsed (real code path), or
-    //   * the call errored (network/bind failure), but
-    //   * NEVER returned Ok within 150ms (would be the mutant).
+    // WHY: only the mutant can return `Ok` within 150ms — the real wrapper is
+    // still waiting on the callback server (timeout elapses) or errors; it
+    // returns `Ok` only after writing the file, so `Ok` + no file = mutant.
     assert!(
         !path.exists(),
         "credential file must not be written when login has not completed"
@@ -280,19 +248,14 @@ async fn test_pkce_login_and_save_does_not_silently_succeed() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// `pkce_login` arithmetic test (supports pkce.rs:730 mutant coverage)
-// ---------------------------------------------------------------------------
-// The missed mutants mutate `unix_epoch_ms() + secs * 1000` — the computation
-// that builds `expires_at` (ms since epoch) from the OAuth-returned
-// `expires_in` (seconds). We can't drive `pkce_login` to success without
-// access to the internal state parameter, so we pin the arithmetic contract
-// at the identical expression level here; any refactor of the production
-// expression that silently diverges must also update this test.
+// ── expires_at arithmetic mutant kills ──
+// WHY: `pkce_login` cannot be driven to success without its internal state
+// parameter, so the `unix_epoch_ms() + secs * 1000` expires_at computation is
+// pinned here at the expression level; keep in sync with `pkce_login`.
 
 #[test]
 fn test_expires_at_arithmetic_contract() {
-    // Reference expression: mirror of pkce_login line 730.
+    // Reference expression: mirror of pkce_login's expires_at computation.
     let secs: u64 = 3600;
     let now_ms = super::super::unix_epoch_ms();
     let expires_at = now_ms + secs * 1000;

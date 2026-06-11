@@ -72,9 +72,9 @@ fn default_expires_in() -> u64 {
 
 /// Clamp `expires_in` to [`MIN_EXPIRES_IN_SECS`, `MAX_EXPIRES_IN_SECS`].
 ///
-/// // WHY: A zero or negative value from a buggy OAuth server causes infinite
-/// // refresh loops (immediate re-trigger). An absurdly large value delays
-/// // legitimate re-auth after revocation. Clamping bounds the behavior.
+/// A zero `expires_in` from a buggy OAuth server causes infinite refresh
+/// loops (immediate re-trigger); an absurdly large value delays legitimate
+/// re-auth after revocation. Clamping bounds both.
 pub(super) fn clamp_expires_in(raw: u64) -> u64 {
     let clamped = raw.clamp(MIN_EXPIRES_IN_SECS, MAX_EXPIRES_IN_SECS);
     if clamped != raw {
@@ -101,9 +101,9 @@ pub(super) struct RefreshState {
 /// regardless of whether the drop occurs during normal execution, early
 /// error return, or panic unwind.
 ///
-/// // WHY: `RwLock` allows concurrent readers (`get_credential` calls) with a
-/// // single writer (the background refresh task). This avoids blocking
-/// // LLM requests during token refresh, which may take 100-500ms.
+/// The `RwLock` allows concurrent readers (`get_credential` calls) with a
+/// single writer (the background refresh task), so LLM requests are not
+/// blocked during a token refresh, which may take 100-500ms.
 pub struct RefreshingCredentialProvider {
     /// Current OAuth token and refresh metadata. `None` after a fatal
     /// refresh failure. Writers: the background refresh task (exclusive).
@@ -394,9 +394,9 @@ async fn refresh_loop(
             () = tokio::time::sleep(check_interval) => {}
         }
 
-        // When circuit is open, poll file for external credential updates.
-        // This allows manual credential fixes (e.g., `aletheia auth login`)
-        // to take effect without restarting the refresh loop.
+        // WHY: while the circuit is open, poll the file for external updates so
+        // manual credential fixes (e.g. `aletheia auth login`) take effect
+        // without restarting the refresh loop.
         if !circuit_breaker.check_allowed() {
             if mtime_tracker.has_changed(&path) {
                 try_reload_from_file(&state, &path, &circuit_breaker);
@@ -491,8 +491,8 @@ pub(super) async fn do_refresh(client: &reqwest::Client, refresh_token: &str) ->
             String::new()
         });
 
-        // `invalid_grant` means the refresh token is revoked, expired, or
-        // otherwise permanently invalid. Retrying will never succeed — the user
+        // WHY: `invalid_grant` means the refresh token is revoked, expired, or
+        // otherwise permanently invalid; retrying will never succeed — the user
         // must re-authenticate to obtain a new refresh token.
         if let Ok(err_resp) = serde_json::from_str::<OAuthErrorResponse>(&body_text)
             && err_resp.error == "invalid_grant"

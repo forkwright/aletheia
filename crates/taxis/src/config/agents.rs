@@ -365,11 +365,6 @@ fn default_agent_enabled() -> bool {
 /// Per-agent behavioral parameters: safety, hooks, distillation, competence,
 /// drift, uncertainty, skills, planning, knowledge tuning, fact lifecycle,
 /// similarity, tool behavior, and correction limits.
-///
-/// All defaults match the current hardcoded constants spread across `nous`,
-/// `episteme`, `dianoia`, `melete`, `eidos`, and `organon`. Wave 0 adds the
-/// schema; waves 1-4 will replace the individual `const` declarations with
-/// reads from the resolved config.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -405,70 +400,50 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
 
     // --- Distillation ---
     /// Context token count that triggers automatic distillation. Default: 120000.
-    /// Mirrors `nous::distillation::CONTEXT_TOKEN_TRIGGER`.
     pub distillation_context_token_trigger: u64,
     /// Message count that triggers distillation. Default: 150.
-    /// Mirrors `nous::distillation::MESSAGE_COUNT_TRIGGER`.
     pub distillation_message_count_trigger: u64,
     /// Days idle before a session is considered stale for distillation. Default: 7.
-    /// Mirrors `nous::distillation::STALE_SESSION_DAYS`.
     pub distillation_stale_session_days: u64,
     /// Minimum messages required for stale-session distillation. Default: 20.
-    /// Mirrors `nous::distillation::STALE_SESSION_MIN_MESSAGES`.
     pub distillation_stale_min_messages: u64,
     /// Message count trigger for sessions never distilled. Default: 30.
-    /// Mirrors `nous::distillation::NEVER_DISTILLED_MESSAGE_TRIGGER`.
     pub distillation_never_distilled_trigger: u64,
     /// Minimum messages for legacy distillation threshold. Default: 10.
-    /// Mirrors `nous::distillation::LEGACY_THRESHOLD_MIN_MESSAGES`.
     pub distillation_legacy_min_messages: u64,
     /// Maximum backoff turns before distillation is forced. Default: 8.
-    /// Mirrors `melete::distill::MAX_BACKOFF_TURNS`.
     pub distillation_max_backoff_turns: u32,
 
     // --- Competence scoring ---
     /// Competence score penalty per correction. Default: 0.05.
-    /// Mirrors `nous::competence::CORRECTION_PENALTY`.
     pub competence_correction_penalty: f64,
     /// Competence score bonus per successful turn. Default: 0.02.
-    /// Mirrors `nous::competence::SUCCESS_BONUS`.
     pub competence_success_bonus: f64,
     /// Competence score penalty per user disagreement. Default: 0.01.
-    /// Mirrors `nous::competence::DISAGREEMENT_PENALTY`.
     pub competence_disagreement_penalty: f64,
     /// Competence score floor. Default: 0.1.
-    /// Mirrors `nous::competence::MIN_SCORE`.
     pub competence_min_score: f64,
     /// Competence score ceiling. Default: 0.95.
-    /// Mirrors `nous::competence::MAX_SCORE`.
     pub competence_max_score: f64,
     /// Initial competence score for a new agent. Default: 0.5.
-    /// Mirrors `nous::competence::DEFAULT_SCORE`.
     pub competence_default_score: f64,
     /// Competence score below which escalation fires. Default: 0.30.
-    /// Mirrors `nous::competence::ESCALATION_FAILURE_THRESHOLD`.
     pub competence_escalation_failure_threshold: f64,
     /// Minimum samples before escalation threshold is evaluated. Default: 5.
-    /// Mirrors `nous::competence::ESCALATION_MIN_SAMPLES`.
     pub competence_escalation_min_samples: u32,
 
     // --- Drift detection ---
     /// Sliding window size for response-quality drift detection. Default: 20.
-    /// Mirrors `nous::drift::DEFAULT_WINDOW_SIZE`.
     pub drift_window_size: usize,
     /// Comparison window for recent vs. historical drift. Default: 5.
-    /// Mirrors `nous::drift::DEFAULT_RECENT_SIZE`.
     pub drift_recent_size: usize,
     /// Standard deviations required to flag drift. Default: 2.0.
-    /// Mirrors `nous::drift::DEFAULT_DEVIATION_THRESHOLD`.
     pub drift_deviation_threshold: f64,
     /// Minimum samples before drift detection activates. Default: 8.
-    /// Mirrors `nous::drift::MIN_SAMPLES`.
     pub drift_min_samples: usize,
 
     // --- Uncertainty calibration ---
     /// Maximum calibration data points retained for the uncertainty model. Default: 1000.
-    /// Mirrors `nous::uncertainty::MAX_CALIBRATION_POINTS`.
     pub uncertainty_max_calibration_points: usize,
 
     // --- Manifest ---
@@ -480,14 +455,12 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
     /// Maximum number of skills loadable per agent. Default: 5.
     pub skills_max_skills: usize,
     /// Maximum chars from context used when matching skills. Default: 200.
-    /// Mirrors `nous::skills::MAX_CONTEXT_CHARS`.
     pub skills_max_context_chars: usize,
 
     // --- Working state ---
     /// Working-state TTL in seconds before expiry. Default: 604800 (7 days).
     pub working_state_ttl_secs: u64,
     /// Maximum task stack depth before oldest entries are evicted. Default: 10.
-    /// Mirrors `nous::working_state::MAX_TASK_STACK`.
     pub working_state_max_task_stack: usize,
 
     // --- Planning ---
@@ -495,22 +468,16 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
     /// Mirrors `dianoia::plan::DEFAULT_MAX_ITERATIONS`.
     pub planning_max_iterations: u32,
     /// History turns inspected for stuck-detection. Default: 20.
-    /// Mirrors `dianoia::stuck::DEFAULT_HISTORY_WINDOW`.
     pub planning_stuck_history_window: u32,
     /// Repeated errors before agent is flagged stuck. Default: 3.
-    /// Mirrors `dianoia::stuck::DEFAULT_REPEATED_ERROR_THRESHOLD`.
     pub planning_stuck_repeated_error_threshold: u32,
     /// Identical-argument tool calls before stuck detection fires. Default: 3.
-    /// Mirrors `dianoia::stuck::DEFAULT_SAME_ARGS_THRESHOLD`.
     pub planning_stuck_same_args_threshold: u32,
     /// Alternating tool-call pairs before stuck detection fires. Default: 3.
-    /// Mirrors `dianoia::stuck::DEFAULT_ALTERNATING_THRESHOLD`.
     pub planning_stuck_alternating_threshold: u32,
     /// Escalating retry pattern depth before stuck detection fires. Default: 3.
-    /// Mirrors `dianoia::stuck::DEFAULT_ESCALATING_RETRY_THRESHOLD`.
     pub planning_stuck_escalating_retry_threshold: u32,
     /// Seconds of timestamp difference treated as "in sync" during reconciliation. Default: 5.
-    /// Mirrors `dianoia::reconciler::TIMESTAMP_TOLERANCE_SECS`.
     pub planning_reconciler_timestamp_tolerance_secs: i64,
 
     // --- Knowledge tuning (instinct / surprise / rules / dedup) ---
@@ -524,31 +491,22 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
     /// Mirrors `episteme::surprise::DEFAULT_THRESHOLD`.
     pub knowledge_surprise_threshold: f64,
     /// EMA alpha for surprise baseline. Default: 0.3.
-    /// Mirrors `episteme::surprise::EMA_ALPHA`.
     pub knowledge_surprise_ema_alpha: f64,
     /// Minimum observations before a rule proposal is eligible. Default: 5.
-    /// Mirrors `episteme::rule_proposals::MIN_OBSERVATIONS`.
     pub knowledge_rule_min_observations: u32,
     /// Minimum confidence for a rule proposal to surface. Default: 0.60.
-    /// Mirrors `episteme::rule_proposals::MIN_CONFIDENCE`.
     pub knowledge_rule_min_confidence: f64,
     /// Weight of name similarity in dedup scoring. Default: 0.4.
-    /// Mirrors `episteme::dedup::WEIGHT_NAME`.
     pub knowledge_dedup_weight_name: f64,
     /// Weight of embedding similarity in dedup scoring. Default: 0.3.
-    /// Mirrors `episteme::dedup::WEIGHT_EMBED`.
     pub knowledge_dedup_weight_embed: f64,
     /// Weight of fact-type match in dedup scoring. Default: 0.2.
-    /// Mirrors `episteme::dedup::WEIGHT_TYPE`.
     pub knowledge_dedup_weight_type: f64,
     /// Weight of alias similarity in dedup scoring. Default: 0.1.
-    /// Mirrors `episteme::dedup::WEIGHT_ALIAS`.
     pub knowledge_dedup_weight_alias: f64,
     /// Jaro-Winkler score above which strings are considered similar. Default: 0.85.
-    /// Mirrors `episteme::dedup::JW_THRESHOLD`.
     pub knowledge_dedup_jw_threshold: f64,
     /// Cosine similarity above which embeddings are considered similar. Default: 0.80.
-    /// Mirrors `episteme::dedup::EMBED_THRESHOLD`.
     pub knowledge_dedup_embed_threshold: f64,
     /// Bookkeeping provider selected for extraction. Default: `llm`.
     pub knowledge_extraction_provider: BookkeepingProviderKind,
@@ -558,25 +516,20 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
 
     // --- Fact lifecycle ---
     /// Confidence above which a fact is considered Active. Default: 0.7.
-    /// Mirrors `eidos::knowledge::fact::STAGE_ACTIVE_THRESHOLD`.
     pub fact_active_threshold: f64,
     /// Confidence below which a fact is considered Fading. Default: 0.3.
-    /// Mirrors `eidos::knowledge::fact::STAGE_FADING_THRESHOLD`.
     pub fact_fading_threshold: f64,
     /// Confidence below which a fact is considered Dormant. Default: 0.1.
-    /// Mirrors `eidos::knowledge::fact::STAGE_DORMANT_THRESHOLD`.
     pub fact_dormant_threshold: f64,
 
     // --- Similarity ---
     /// Similarity score threshold for recall deduplication. Default: 0.85.
     pub similarity_threshold: f64,
     /// Minimum token length to include in Jaccard similarity comparison. Default: 3.
-    /// Mirrors `melete::similarity::MIN_TOKEN_LEN`.
     pub similarity_min_token_len: usize,
 
     // --- Distillation prompt ---
     /// Maximum character length for truncated tool results in distillation prompts. Default: 500.
-    /// Mirrors `melete::prompt::MAX_TOOL_RESULT_LEN`.
     pub distillation_max_tool_result_len: usize,
 
     // --- Auto-dream consolidation ---
@@ -587,7 +540,6 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
     /// Mirrors `melete::dream::DEFAULT_MIN_SESSIONS`.
     pub dream_min_sessions: usize,
     /// Session scan throttle interval in seconds. Default: 600.
-    /// Mirrors `melete::dream::SCAN_THROTTLE_SECS`.
     pub dream_scan_throttle_secs: i64,
     /// Stale lock threshold in seconds for auto-dream. Default: 3600.
     /// Mirrors `melete::dream::DEFAULT_STALE_THRESHOLD_SECS`.
@@ -613,12 +565,10 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
     // --- Bootstrap ---
     /// Minimum token budget remaining before attempting section truncation.
     /// Below this threshold the section is dropped rather than truncated. Default: 200.
-    /// Mirrors `nous::bootstrap::MIN_TRUNCATION_BUDGET`.
     pub bootstrap_min_truncation_budget: u64,
 
     // --- Corrections ---
     /// Maximum correction entries stored per agent. Default: 50.
-    /// Mirrors `nous::hooks::builtins::correction::MAX_CORRECTIONS`.
     pub corrections_max_corrections: usize,
 
     // --- Self-tuning ---

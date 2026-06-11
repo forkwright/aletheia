@@ -2,16 +2,10 @@
 
 //! Unit tests for `credential/refresh.rs`.
 //!
-//! # WHY
-//!
-//! The 2026-04 cargo-mutants baseline (forkwright/aletheia#3708, depends on
-//! #3509) flagged 35 missed mutants in this file. The existing
-//! `credential_tests.rs` suite exercised construction and shutdown but never
-//! asserted the observable side-effects of the private helpers
+//! WHY: pins the observable side-effects of the private helpers
 //! (`FileMtimeTracker::has_changed`, `plan_refresh`, `resolve_post_refresh_state`,
-//! `persist_refresh_success`, `try_reload_from_file`, and the
-//! `get_credential` fallback branch). These tests target those call sites
-//! directly so any arithmetic flip, boolean flip, stubbed-body, or
+//! `persist_refresh_success`, `try_reload_from_file`, and the `get_credential`
+//! fallback branch) so any arithmetic flip, boolean flip, stubbed-body, or
 //! replaced-return mutant is caught.
 
 use std::path::Path;
@@ -55,14 +49,7 @@ fn write_cred(path: &Path, token: &str, refresh: &str, expires_at_ms: u64) {
         .expect("save credential for test");
 }
 
-// -----------------------------------------------------------------------------
-// FileMtimeTracker::has_changed (line 238-245)
-//
-// Targeted mutants:
-//   - `has_changed -> true`  (constant-true replacement)
-//   - `has_changed -> false` (constant-false replacement)
-//   - `current == self.last_mtime` → `!=`
-// -----------------------------------------------------------------------------
+// ── FileMtimeTracker::has_changed mutant kills ──
 
 #[test]
 fn file_mtime_tracker_unchanged_returns_false() {
@@ -130,15 +117,7 @@ fn file_mtime_tracker_missing_file_then_appearing_is_change() {
     );
 }
 
-// -----------------------------------------------------------------------------
-// plan_refresh (line 356)
-//
-// Targeted mutants:
-//   - return None (when refresh IS due → must be Some)
-//   - return Some(("", None, 0)), Some(("xyzzy", ..)) — fixed-value returns
-//   - (expires - now) / 1000: `-` → `+`/`/`, `/` → `*`/`%`
-//   - `remaining >= threshold` → `<`
-// -----------------------------------------------------------------------------
+// ── plan_refresh mutant kills ──
 
 fn wrap_state(state: RefreshState) -> Arc<RwLock<Option<RefreshState>>> {
     Arc::new(RwLock::new(Some(state)))
@@ -245,13 +224,7 @@ fn plan_refresh_no_state_returns_none() {
     assert!(plan_refresh(&state).is_none());
 }
 
-// -----------------------------------------------------------------------------
-// resolve_post_refresh_state (line 275)
-//
-// Targeted mutants:
-//   - `on_disk.expires_at > new_expires_at_ms` → `<`, `==`, `>=`
-//   - Stubbing of the whole function
-// -----------------------------------------------------------------------------
+// ── resolve_post_refresh_state mutant kills ──
 
 #[test]
 fn resolve_post_refresh_state_adopts_on_disk_when_newer() {
@@ -379,14 +352,7 @@ fn resolve_post_refresh_state_no_disk_file_uses_network() {
     assert_eq!(final_state.subscription_type.as_deref(), Some("pro"));
 }
 
-// -----------------------------------------------------------------------------
-// persist_refresh_success (line 306-349)
-//
-// Targeted mutants:
-//   - `unix_epoch_ms() + expires_in * 1000`:
-//     `+` → `-`/`*`, `*` → `+`/`/`
-//   - Whole-function stub to `()` — no state written, no file written
-// -----------------------------------------------------------------------------
+// ── persist_refresh_success mutant kills ──
 
 #[test]
 fn persist_refresh_success_writes_file_and_updates_state() {
@@ -517,12 +483,7 @@ fn persist_refresh_success_records_circuit_breaker_success() {
     );
 }
 
-// -----------------------------------------------------------------------------
-// try_reload_from_file (line 249)
-//
-// Targeted mutants:
-//   - Whole-function stub to `()` — state not updated, breaker not reset
-// -----------------------------------------------------------------------------
+// ── try_reload_from_file mutant kills ──
 
 #[test]
 fn try_reload_from_file_updates_state_and_resets_circuit() {
@@ -612,21 +573,14 @@ fn try_reload_from_file_missing_file_is_noop() {
     );
 }
 
-// -----------------------------------------------------------------------------
-// RefreshingCredentialProvider::get_credential (line 201)
-//
-// Targeted mutants:
-//   - `!s.current_token.expose_secret().is_empty()` → `is_empty()` removed
-//     (negation dropped). With the `!` removed, an empty token would be
-//     returned as-is and the file fallback would be skipped.
-// -----------------------------------------------------------------------------
+// ── RefreshingCredentialProvider::get_credential mutant kills ──
 
 #[tokio::test]
 async fn get_credential_falls_back_to_file_provider_when_in_memory_is_empty() {
-    // WHY: kills the "remove !" mutant on line 204. With the negation
-    // removed, the in-memory empty token would be returned directly; with
-    // the negation intact (correct behaviour), the provider falls through
-    // to the file provider and returns the file's token.
+    // WHY: kills the removed-negation mutant on get_credential's empty-token
+    // check. With the negation removed, the in-memory empty token would be
+    // returned directly; with it intact, the provider falls through to the
+    // file provider and returns the file's token.
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join(".credentials.json");
 
@@ -662,17 +616,7 @@ async fn get_credential_falls_back_to_file_provider_when_in_memory_is_empty() {
     assert_eq!(from_file.secret.expose_secret(), "sk-ant-oat-file-fallback");
 }
 
-// -----------------------------------------------------------------------------
-// RefreshingCredentialProvider lifecycle smoke
-//
-// Targeted mutants:
-//   - refresh_loop body stubbed to `()` — at minimum, the shutdown signal
-//     must terminate the loop. A stubbed body returns immediately, so the
-//     join handle would already be finished before shutdown is called.
-//     Harder to distinguish, but we also verify that while the loop is live
-//     it holds state and serves credentials — catching some get_credential
-//     regressions on the happy path.
-// -----------------------------------------------------------------------------
+// ── RefreshingCredentialProvider lifecycle smoke ──
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn refresh_loop_honours_shutdown_signal() {

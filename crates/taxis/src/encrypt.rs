@@ -85,8 +85,8 @@ fn parse_hex_key(hex: &str, path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
 
     let mut key = [0u8; KEY_LEN];
     for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
-        // chunks(2) on a string of even length always yields 2-element slices;
-        // i is bounded by KEY_LEN because hex.len() == KEY_LEN * 2
+        // INVARIANT: chunks(2) on an even-length string always yields 2-element
+        // slices; i is bounded by KEY_LEN because hex.len() == KEY_LEN * 2.
         let hi = hex_digit(chunk.first().copied().unwrap_or_default()).ok_or_else(|| {
             error::InvalidPrimaryKeySnafu {
                 path: path.to_path_buf(),
@@ -125,7 +125,8 @@ fn hex_digit(b: u8) -> Option<u8> {
 fn to_hex(bytes: &[u8]) -> String {
     let mut s = String::with_capacity(bytes.len() * 2);
     for &b in bytes {
-        // b >> 4 is 0..=15 and b & 0x0f is 0..=15; the array has exactly 16 elements
+        // INVARIANT: b >> 4 and b & 0x0f are each 0..=15; the array has exactly
+        // 16 elements.
         #[expect(
             clippy::indexing_slicing,
             reason = "nibble value 0..=15 always indexes into 16-element array"
@@ -597,9 +598,8 @@ mod tests {
 
     #[test]
     fn encrypt_covers_auth_token_refresh_token_session_secret() {
-        // REGRESSION (#4254): these were redacted on display but left in
-        // plaintext at rest. After unifying on substring matching, they
-        // must all be encrypted.
+        // WHY(#4254): regression — these were redacted on display but left in
+        // plaintext at rest; substring matching must encrypt them all.
         let key = fixture_key();
         let toml_str = r#"
             [providers.openai]

@@ -209,9 +209,8 @@ mod tests {
 
     #[test]
     fn port_check_passes_on_unoccupied_port() {
-        // Bind an ephemeral port to find one that's free, then release it
-        // and check that port again.  There is a TOCTOU race, but in tests
-        // it is acceptable.
+        // NOTE: bind an ephemeral port to find a free one, release it, then
+        // check that port again. There is a TOCTOU race, acceptable in tests.
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
@@ -296,7 +295,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
 
-        // Skip when running as root: root bypasses permission checks.
+        // WHY: skip when running as root — root bypasses permission checks.
         let probe = dir.path().join(".root-check");
         #[expect(
             clippy::disallowed_methods,

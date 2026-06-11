@@ -38,11 +38,6 @@ use taxis::oikos::Oikos;
 mod common;
 use common::{StateBuilder, issue_token};
 
-// Split: streamable_http_router + mcp_auth middleware.
-
-// Section 5: streamable_http_router + mcp_auth middleware behaviour
-// -------------------------------------------------------------------
-
 #[tokio::test(flavor = "multi_thread")]
 async fn router_rejects_missing_authorization_header_in_token_mode() {
     let (state, _jwt, _tmp) = StateBuilder::new().auth_mode("token").build();
@@ -460,5 +455,3 @@ async fn router_in_none_mode_ignores_authorization_header_when_present() {
          MCP service (which returns 400 for GET without Accept: text/event-stream)"
     );
 }
-
-// -------------------------------------------------------------------

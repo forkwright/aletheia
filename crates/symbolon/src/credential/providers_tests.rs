@@ -1,12 +1,11 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 //! Mutation-hardening tests for `EnvCredentialProvider`, `FileCredentialProvider`,
-//! and `CredentialChain` covering the 16 missed mutants tracked in #3710.
+//! and `CredentialChain`.
 //!
-//! WHY: existing tests in `../../credential_tests.rs` exercise happy paths and a
-//! subset of edge cases, but cargo-mutants still kills mutants in the constructor
-//! bodies, arithmetic (`/ 1000`), the mtime-cache freshness comparison (`<`), and
-//! the `name()` accessors. These tests pin those specific behaviours.
+//! WHY: pins constructor bodies, the `/ 1000` now-seconds arithmetic, the
+//! mtime-cache freshness comparison (`<`), and the `name()` accessors against
+//! stubbed-body, arithmetic-flip, and replaced-return mutants.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -20,7 +19,7 @@ use super::{CredentialChain, EnvCredentialProvider, FileCredentialProvider};
 
 // ---- EnvCredentialProvider ---------------------------------------------------
 
-// WHY: kills the `with_source` → `Default::default()` mutant (line 40). If the
+// WHY: kills the `with_source` → `Default::default()` mutant. If the
 // constructor body is replaced with `Default::default()`, `var_name` becomes
 // empty, so `name()` no longer reflects the caller-supplied variable name.
 #[test]
@@ -33,7 +32,7 @@ fn env_provider_with_source_preserves_var_name() {
     );
 }
 
-// WHY: kills the `get_credential` → `None` mutant at line 49 by asserting that a
+// WHY: kills the `get_credential` → `None` mutant by asserting that a
 // populated env var returns `Some` with the *exact* secret and the
 // Environment source (not OAuth). Also pins the prefix-detection path.
 #[test]
@@ -60,7 +59,7 @@ fn env_provider_returns_exact_secret_and_environment_source() {
     unsafe { std::env::remove_var(var) };
 }
 
-// WHY: kills the `"" → None` mutant at line 49 separately from a missing env var.
+// WHY: kills the `"" → None` mutant in `get_credential` separately from a missing env var.
 // Empty string must still yield `None`.
 #[test]
 #[expect(unsafe_code, reason = "test-only env var manipulation")]
@@ -76,7 +75,7 @@ fn env_provider_empty_string_returns_none() {
     unsafe { std::env::remove_var(var) };
 }
 
-// WHY: kills mutants on `unix_epoch_ms() / 1000` at line 59. Replacing `/` with
+// WHY: kills mutants on `get_credential`'s `unix_epoch_ms() / 1000`. Replacing `/` with
 // `*` or `%` would scale the "now" comparison wildly wrong. With an OAuth token
 // whose exp is set to `(unix_epoch_ms() / 1000) + 1 hour`, the real division
 // accepts it (exp_secs > now_secs). A `*` mutation computes a "now" ~1e15s in
@@ -108,8 +107,8 @@ fn env_provider_now_seconds_division_is_correct() {
 
 // ---- FileCredentialProvider --------------------------------------------------
 
-// WHY: kills the `get_credential` → `None` mutant at line 150 and the
-// `name` → `"xyzzy"`/`""` mutants at line 190. The provider must return the
+// WHY: kills the `get_credential` → `None` and `name` → `"xyzzy"`/`""`
+// mutants. The provider must return the
 // exact token + File source, and its `.name()` must be the literal "file".
 #[test]
 fn file_provider_returns_exact_credential_and_file_source() {
@@ -145,7 +144,7 @@ fn file_provider_returns_exact_credential_and_file_source() {
     );
 }
 
-// WHY: kills the `reload` → `None` mutant at line 130. After first load, the
+// WHY: kills the `reload` → `None` mutant. After first load, the
 // cache is populated. Reading a second time without cache invalidation must
 // still return the token (hitting the fast path), and a forced reload (by
 // clearing the cache) must also re-populate from disk. If `reload` returned
@@ -187,7 +186,7 @@ fn file_provider_reload_populates_cache_from_disk() {
     );
 }
 
-// WHY: kills the `<` → `==`/`>`/`<=` mutants at line 153 by exercising both
+// WHY: kills the `<` → `==`/`>`/`<=` mutants in `get_credential` by exercising both
 // sides of the `elapsed < FILE_MTIME_CHECK_INTERVAL` boundary. If the comparison
 // is flipped, a very recent `checked_at` (elapsed ~0) would take the *slow*
 // path, and a stale `checked_at` would take the *fast* path. We observe this
@@ -319,7 +318,7 @@ impl CredentialProvider for CountingProvider {
     }
 }
 
-// WHY: kills the `get_credential` → `None` mutant at line 213 by asserting the
+// WHY: kills the chain `get_credential` → `None` mutant by asserting the
 // chain returns the *exact* credential from the first successful provider and
 // short-circuits (does not call subsequent providers).
 #[test]
@@ -360,7 +359,7 @@ fn chain_returns_exact_credential_from_first_successful_provider() {
     );
 }
 
-// WHY: kills the `get_credential` → `None` mutant at line 213 for the fallback
+// WHY: kills the chain `get_credential` → `None` mutant for the fallback
 // case: the chain must skip providers that return None and return the next
 // successful one's credential.
 #[test]
@@ -388,7 +387,7 @@ fn chain_skips_none_and_returns_fallback_credential() {
     );
 }
 
-// WHY: kills the `name` → `""` mutant at line 229. The chain's name must be the
+// WHY: kills the chain `name` → `""` mutant. The chain's name must be the
 // literal "chain" before any provider has resolved a credential.
 #[test]
 fn chain_default_name_is_literal_chain() {

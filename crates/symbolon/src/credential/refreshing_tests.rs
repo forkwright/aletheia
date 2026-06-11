@@ -2,8 +2,6 @@
 
 //! Tests for time helpers (`unix_epoch_ms`, `seconds_remaining`) and the
 //! `RefreshingCredentialProvider` happy path / shutdown / write-back semantics.
-//!
-//! Split from `credential_tests.rs` to satisfy `RUST/file-too-long`.
 
 use koina::credential::{CredentialProvider, CredentialSource};
 use koina::secret::SecretString;
