@@ -3,16 +3,42 @@
 use serde_json::Value;
 use tracing::debug;
 
+use koina::secret::SecretString;
+
 use crate::config::AletheiaConfig;
 use crate::sensitive::key_is_sensitive;
 
 const REDACTED: &str = "***";
+const SECRET_REDACTED: &str = "[REDACTED]";
+
+type SecretAccessor = for<'a> fn(&'a AletheiaConfig) -> Option<&'a SecretString>;
+
+#[derive(Clone, Copy)]
+enum SensitiveLeafValue {
+    Secret(SecretAccessor),
+    RedactOnly,
+}
+
+#[derive(Clone, Copy)]
+struct SensitiveLeaf {
+    path: &'static [&'static str],
+    value: SensitiveLeafValue,
+}
 
 /// Paths whose leaf values are replaced with `"***"` in redacted output.
-const SENSITIVE_LEAVES: &[&[&str]] = &[
-    &["gateway", "auth", "signingKey"],
-    &["gateway", "tls", "keyPath"],
-    &["gateway", "tls", "certPath"],
+const SENSITIVE_LEAVES: &[SensitiveLeaf] = &[
+    SensitiveLeaf {
+        path: &["gateway", "auth", "signingKey"],
+        value: SensitiveLeafValue::Secret(gateway_auth_signing_key),
+    },
+    SensitiveLeaf {
+        path: &["gateway", "tls", "keyPath"],
+        value: SensitiveLeafValue::RedactOnly,
+    },
+    SensitiveLeaf {
+        path: &["gateway", "tls", "certPath"],
+        value: SensitiveLeafValue::RedactOnly,
+    },
 ];
 
 /// Serialize config to JSON, then redact sensitive fields.
@@ -28,14 +54,97 @@ pub fn redact(config: &AletheiaConfig) -> Value {
 }
 
 fn redact_sensitive_leaves(root: &mut Value) {
-    for path in SENSITIVE_LEAVES {
-        let json_pointer = format!("/{}", path.join("/"));
+    for leaf in SENSITIVE_LEAVES {
+        let json_pointer = format!("/{}", leaf.path.join("/"));
         if let Some(val) = root.pointer_mut(&json_pointer)
             && (val.is_string() || val.is_null())
         {
             *val = Value::String(REDACTED.to_owned());
         }
     }
+}
+
+/// Restore redacted secret leaves from the current in-memory config.
+///
+/// Call this after serializing `AletheiaConfig` through serde for mutation,
+/// before deserializing the value back into typed config.
+pub fn preserve_secret_leaves(root: &mut Value, current: &AletheiaConfig) {
+    for leaf in SENSITIVE_LEAVES {
+        let SensitiveLeafValue::Secret(accessor) = leaf.value else {
+            continue;
+        };
+        let Some(secret) = accessor(current) else {
+            continue;
+        };
+        let Some(slot) = json_path_mut(root, leaf.path) else {
+            continue;
+        };
+        if is_redaction_marker(slot) {
+            *slot = Value::String(secret.expose_secret().to_owned());
+        }
+    }
+}
+
+/// Return `staged` with any redacted secret leaves restored from `current`.
+///
+/// This is for config paths that must serialize through `serde_json::Value`
+/// before producing a live `AletheiaConfig`.
+///
+/// # Errors
+///
+/// Returns an error if the restored JSON cannot deserialize into config.
+pub fn preserve_config_secret_leaves(
+    staged: &AletheiaConfig,
+    current: &AletheiaConfig,
+) -> Result<AletheiaConfig, serde_json::Error> {
+    let mut value = serde_json::to_value(staged)?;
+    preserve_secret_leaves(&mut value, current);
+    serde_json::from_value(value)
+}
+
+pub(crate) fn expose_secret_leaves_for_toml(root: &mut toml::Value, current: &AletheiaConfig) {
+    for leaf in SENSITIVE_LEAVES {
+        let SensitiveLeafValue::Secret(accessor) = leaf.value else {
+            continue;
+        };
+        let Some(secret) = accessor(current) else {
+            continue;
+        };
+        let Some(slot) = toml_path_mut(root, leaf.path) else {
+            continue;
+        };
+        if slot.as_str().is_some_and(is_redaction_marker_str) {
+            *slot = toml::Value::String(secret.expose_secret().to_owned());
+        }
+    }
+}
+
+fn gateway_auth_signing_key(config: &AletheiaConfig) -> Option<&SecretString> {
+    config.gateway.auth.signing_key.as_ref()
+}
+
+fn is_redaction_marker(value: &Value) -> bool {
+    value.as_str().is_some_and(is_redaction_marker_str)
+}
+
+fn is_redaction_marker_str(value: &str) -> bool {
+    value == REDACTED || value == SECRET_REDACTED
+}
+
+fn json_path_mut<'a>(root: &'a mut Value, path: &[&str]) -> Option<&'a mut Value> {
+    let mut cursor = root;
+    for segment in path {
+        cursor = cursor.as_object_mut()?.get_mut(*segment)?;
+    }
+    Some(cursor)
+}
+
+fn toml_path_mut<'a>(root: &'a mut toml::Value, path: &[&str]) -> Option<&'a mut toml::Value> {
+    let mut cursor = root;
+    for segment in path {
+        cursor = cursor.as_table_mut()?.get_mut(*segment)?;
+    }
+    Some(cursor)
 }
 
 /// Test-only re-export of the recursive redaction pass so the cross-module

@@ -455,6 +455,7 @@ pub async fn update_section(
             .or_insert_with(|| Value::Object(serde_json::Map::default()));
         deep_merge(existing, body_value);
     }
+    taxis::redact::preserve_secret_leaves(&mut config_value, &config);
 
     // WHY: Deserialize back to verify structural validity.
     // Log serde details internally; the error message exposed to the client must not
@@ -472,11 +473,6 @@ pub async fn update_section(
             }
         })?;
 
-    taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| ApiError::Internal {
-        message: format!("failed to write config: {e}"),
-        location: snafu::location!(),
-    })?;
-
     let diff = taxis::reload::diff_configs(&config, &new_config);
     let restart_required: Vec<String> = diff
         .cold_changes()
@@ -489,6 +485,18 @@ pub async fn update_section(
             message: format!("failed to preserve cold config values: {e}"),
             location: snafu::location!(),
         })?;
+    let live_config =
+        taxis::redact::preserve_config_secret_leaves(&live_config, &config).map_err(|e| {
+            ApiError::Internal {
+                message: format!("failed to preserve secret config values: {e}"),
+                location: snafu::location!(),
+            }
+        })?;
+
+    taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| ApiError::Internal {
+        message: format!("failed to write config: {e}"),
+        location: snafu::location!(),
+    })?;
 
     *config = live_config.clone();
     let redacted = taxis::redact::redact(&config);

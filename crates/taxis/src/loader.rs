@@ -390,20 +390,28 @@ pub(crate) fn write_config_checked(
         }
     }
 
-    let toml = toml::to_string(config).map_err(|e| {
+    let config_dir = oikos.config();
+    let target = config_dir.join("aletheia.toml");
+    let tmp = config_dir.join("aletheia.toml.tmp");
+
+    let mut toml_value = toml::Value::try_from(config).map_err(|e| {
+        SerializeTomlSnafu {
+            reason: e.to_string(),
+        }
+        .build()
+    })?;
+    crate::redact::expose_secret_leaves_for_toml(&mut toml_value, config);
+
+    let toml = toml::to_string(&toml_value).map_err(|e| {
         SerializeTomlSnafu {
             reason: e.to_string(),
         }
         .build()
     })?;
 
-    let config_dir = oikos.config();
     std::fs::create_dir_all(&config_dir).context(WriteConfigSnafu {
         path: config_dir.clone(),
     })?;
-
-    let target = config_dir.join("aletheia.toml");
-    let tmp = config_dir.join("aletheia.toml.tmp");
 
     // WHY: mode 0600 ensures config file (which may contain secrets) is
     // readable only by the owning user.
@@ -429,6 +437,7 @@ pub(crate) fn write_config_checked(
     reason = "test harness: seeding fixtures must panic loudly on setup failure"
 )]
 mod tests {
+    use koina::secret::SecretString;
     use koina::system::TestSystem;
 
     use super::*;
@@ -530,6 +539,42 @@ mod tests {
         assert_eq!(
             loaded.agents.defaults.model_defaults.context_tokens, 200_000,
             "default context tokens should survive roundtrip"
+        );
+    }
+
+    #[test]
+    fn write_config_persists_secret_string_values_unredacted() {
+        let jail = EnvJail::new();
+        std::fs::create_dir_all(jail.directory().join("config")).expect("create config dir");
+
+        let oikos = Oikos::from_root(jail.directory());
+        let mut config = AletheiaConfig::default();
+        let signing_key = "synthetic-signing-key-survives-write";
+        config.gateway.auth.signing_key = Some(SecretString::from(signing_key));
+
+        write_config(&oikos, &config).unwrap_or_else(|e| panic!("write: {e}"));
+
+        let persisted =
+            std::fs::read_to_string(oikos.config().join("aletheia.toml")).expect("read config");
+        assert!(
+            persisted.contains(signing_key),
+            "persisted config should contain the raw signing key"
+        );
+        assert!(
+            !persisted.contains("[REDACTED]"),
+            "persisted config should not contain the redaction marker"
+        );
+
+        let loaded = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
+        assert_eq!(
+            loaded
+                .gateway
+                .auth
+                .signing_key
+                .as_ref()
+                .map(SecretString::expose_secret),
+            Some(signing_key),
+            "signing key should survive write/load roundtrip"
         );
     }
 
