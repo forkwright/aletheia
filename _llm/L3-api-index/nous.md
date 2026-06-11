@@ -30,9 +30,9 @@ pub struct NousActor {
     runtime: ActorRuntime,
     /// Per-session quality drift detectors keyed by session key.
     ///
-    /// // WHY: Drift is tracked per-session, not globally, because different
-    /// // sessions may have different quality baselines. A coding session
-    /// // naturally has different tool-error patterns than a research session.
+    /// Drift is tracked per-session, not globally, because different
+    /// sessions may have different quality baselines. A coding session
+    /// naturally has different tool-error patterns than a research session.
     drift_detectors: HashMap<String, DriftDetector>,
     /// Deployment-level behavioral configuration (panic thresholds, timeouts).
     pub(crate) nous_behavior: taxis::config::NousBehaviorConfig,
@@ -280,10 +280,10 @@ impl PromptAuditLog {
 
 > Default TTL for bootstrap file cache entries when no operator override is set.
 > 
-> // WHY: 60s balances freshness (operator edits to SOUL.md/USER.md should
-> // surface within about a minute) against the cost of re-reading every
-> // workspace file on every turn. mtime-based invalidation catches edits
-> // sooner when they happen.
+> 60s balances freshness (operator edits to SOUL.md/USER.md should
+> surface within about a minute) against the cost of re-reading every
+> workspace file on every turn. mtime-based invalidation catches edits
+> sooner when they happen.
 ```rust
 pub const DEFAULT_BOOTSTRAP_CACHE_TTL_SECS: u64 = 60;
 ```
@@ -961,7 +961,7 @@ pub struct NousLimits {
     /// before producing any reasoning, wasting tokens and obscuring intent.
     /// When the limit is hit, a system message is injected asking the agent
     /// to explain its reasoning before making more tool calls. Set to `0` to
-    /// disable. Default: 3. Closes #1980.
+    /// disable. Default: 3.
     pub max_consecutive_tool_only_iterations: u32,
     /// Consecutive no-progress turn limit before the mistake brake fires.
     ///
@@ -971,7 +971,7 @@ pub struct NousLimits {
     /// resets on the next user message.
     ///
     /// Operator-tunable via `KOINA_CONSECUTIVE_MISTAKE_LIMIT` environment
-    /// variable. Default: 5. Closes #187.
+    /// variable. Default: 5.
     pub consecutive_mistake_limit: u32,
 }
 ```
@@ -1060,8 +1060,7 @@ pub struct NousConfig {
     /// Resolved per-agent behavioral parameters (distillation, competence, drift, etc.).
     ///
     /// Populated at startup from taxis config cascade and passed through the
-    /// pipeline for all behavioral threshold reads. Defaults match the
-    /// constants they replace so behaviour is identical when unconfigured.
+    /// pipeline for all behavioral threshold reads.
     #[serde(default)]
     pub behavior: AgentBehaviorDefaults,
 }
@@ -1413,14 +1412,8 @@ pub fn is_transient_llm_error (err: &error::Error) -> bool
 > Either way the original error is logged at `warn` level so it remains visible
 > in traces without being surfaced to the caller as a hard error.
 > 
-> # Parameters
-> 
-> - `nous_id`  -  agent identifier used for log context.
-> - `session_id`  -  session identifier used for log context.
-> - `original_error`  -  the transient error that triggered degradation.
-> - `recent_distillation`  -  most recent distillation summary for this session,
->   if any. Callers should pass `None` when no store is available or when the
->   session has never been distilled.
+> Callers should pass `recent_distillation = None` when no store is available
+> or when the session has never been distilled.
 ```rust
 pub fn build_degraded_response (
     nous_id: &str,

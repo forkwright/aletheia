@@ -740,7 +740,7 @@ pub struct SandboxConfig {
     /// prevent agents from reading files outside a specific directory.
     ///
     /// WHY: without a home-directory default, agents cannot read user files
-    /// (dotfiles, project repos, etc.) even in permissive mode: closes #1823.
+    /// (dotfiles, project repos, etc.) even in permissive mode.
     pub allowed_root: PathBuf,
     /// Additional filesystem paths granted read access.
     pub extra_read_paths: Vec<PathBuf>,
@@ -765,7 +765,6 @@ pub struct SandboxConfig {
     /// WHY: `RLIMIT_NPROC` counts ALL processes for the user, not just sandbox
     /// children. The previous default of 64 caused EAGAIN failures on systems
     /// running dispatch agents or other background processes. Default: 256.
-    /// Closes #1984.
     pub nproc_limit: u32,
 }
 ```
