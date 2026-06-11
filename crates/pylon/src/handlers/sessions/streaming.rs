@@ -1100,13 +1100,17 @@ async fn record_turn_event(buf: &TurnBufferHandle, event: &PylonTurnStreamEvent)
 ///
 /// Cancel-safe. Axum handler; cancellation drops the future with no
 /// side effects beyond not returning a response.
-#[instrument(skip(state, _claims, headers))]
+#[instrument(skip(state, claims, headers))]
 pub async fn reconnect_turn(
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     headers: axum::http::HeaderMap,
     axum::extract::Path((session_id, turn_id)): axum::extract::Path<(String, String)>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    let session = find_session(&state, &session_id).await?;
+    require_role(&claims, Role::Operator)?;
+    require_nous_access(&claims, &session.nous_id)?;
+
     // WHY: Parse Last-Event-ID from the standard SSE reconnection header.
     let last_event_id: u64 = headers
         .get("last-event-id")

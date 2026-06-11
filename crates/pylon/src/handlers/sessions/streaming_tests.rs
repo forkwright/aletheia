@@ -1,11 +1,83 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use axum::http::HeaderMap;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 use super::*;
 
 /// Default max key length for tests (matches `ApiLimitsConfig::default()`).
 const TEST_MAX_KEY_LEN: usize = 64;
+
+fn claims(role: Role, nous_id: Option<&str>) -> Claims {
+    Claims {
+        sub: "alice".to_owned(),
+        role,
+        nous_id: nous_id.map(str::to_owned),
+    }
+}
+
+fn reconnect_path() -> axum::extract::Path<(String, String)> {
+    axum::extract::Path(("ses-a".to_owned(), "turn-a".to_owned()))
+}
+
+async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
+    let tmp = tempfile::TempDir::new().expect("tmpdir");
+    let session_store = Arc::new(Mutex::new(
+        mneme::store::SessionStore::open_in_memory().expect("in-memory store"),
+    ));
+    let provider_registry = Arc::new(hermeneus::provider::ProviderRegistry::new());
+    let tool_registry = Arc::new(organon::registry::ToolRegistry::new());
+    let oikos = Arc::new(taxis::oikos::Oikos::from_root(tmp.path()));
+    let nous_manager = nous::manager::NousManager::new(
+        Arc::clone(&provider_registry),
+        tool_registry,
+        oikos,
+        None,
+        None,
+        Some(Arc::clone(&session_store)),
+        #[cfg(feature = "knowledge-store")]
+        None,
+        Arc::new(vec![]),
+        None,
+        None,
+        taxis::config::NousBehaviorConfig::default(),
+    );
+    let config = taxis::config::AletheiaConfig::default();
+
+    let state = SessionsState {
+        session_store,
+        nous_manager: Arc::new(nous_manager),
+        provider_registry,
+        shutdown: CancellationToken::new(),
+        idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::new()),
+        config: Arc::new(tokio::sync::RwLock::new(config)),
+        turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
+        event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
+        approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),
+    };
+
+    state
+        .session_store
+        .lock()
+        .await
+        .create_session("ses-a", "nous-a", "main", None, None)
+        .expect("create session");
+    let buffer = state
+        .turn_buffer_registry
+        .get_or_create("ses-a", "turn-a")
+        .await;
+    let handle = TurnBufferHandle::new(buffer);
+    handle
+        .record("text_delta", r#"{"type":"text_delta","text":"secret"}"#)
+        .await;
+    handle.mark_completed().await;
+
+    (state, tmp)
+}
 
 // ── extract_idempotency_key ──
 
@@ -390,4 +462,42 @@ fn sse_event_message_complete_serializes_correctly() {
     };
     let result = sse_event_to_axum_with_id((3, event)).expect("infallible");
     drop(result);
+}
+
+#[tokio::test]
+async fn reconnect_turn_rejects_cross_nous_scoped_caller() {
+    let (state, _tmp) = reconnect_test_state().await;
+
+    let blocked = reconnect_turn(
+        axum::extract::State(state.clone()),
+        claims(Role::Agent, Some("nous-b")),
+        HeaderMap::new(),
+        reconnect_path(),
+    )
+    .await;
+    let Err(err) = blocked else {
+        panic!("cross-nous agent reconnect must be rejected");
+    };
+    assert_eq!(err.into_response().status(), StatusCode::FORBIDDEN);
+
+    let blocked = reconnect_turn(
+        axum::extract::State(state.clone()),
+        claims(Role::Operator, Some("nous-b")),
+        HeaderMap::new(),
+        reconnect_path(),
+    )
+    .await;
+    let Err(err) = blocked else {
+        panic!("cross-nous reconnect must be rejected");
+    };
+    assert_eq!(err.into_response().status(), StatusCode::FORBIDDEN);
+
+    let allowed = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path(),
+    )
+    .await;
+    assert!(allowed.is_ok(), "operator reconnect should succeed");
 }
