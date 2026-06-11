@@ -11,18 +11,10 @@ use zip::write::SimpleFileOptions;
 use crate::error::ThemeError;
 use crate::resolved::ResolvedTheme;
 
-// ------------------------------------------------------------------
-// OOXML namespace identifiers
-//
-// These are the fixed, W3C/OOXML-registered URI *identifiers* that every
-// PPTX package must embed verbatim in its XML parts and relationships.
-// They are not endpoints the renderer fetches — substituting HTTPS
-// equivalents produces a corrupt package that Office/LibreOffice reject.
-//
-// See ECMA-376 Part 1 "Fundamentals and Markup Language Reference"
-// §11 (package) and §19 (presentation). Copied verbatim from
-// `crates/poiesis/slides/src/pptx.rs`.
-// ------------------------------------------------------------------
+// WHY: the constants below are the fixed ECMA-376 OOXML URI *identifiers*
+// every PPTX package must embed verbatim — not endpoints; substituting HTTPS
+// equivalents produces a corrupt package. Each sits on one line so its EOL
+// `// WHY:` marker hits `SECURITY/insecure-transport`'s skip-pattern.
 
 /// OOXML content-types namespace.
 const NS_PKG_CT: &str = "http://schemas.openxmlformats.org/package/2006/content-types"; // WHY: standardised OOXML identifier URI, not an endpoint
@@ -92,7 +84,6 @@ pub fn emit_base_pptx(theme: &ResolvedTheme) -> Result<Vec<u8>, ThemeError> {
         SLIDE_MASTER_RELS.as_bytes(),
     )?;
 
-    // Dynamic theme — generated from the ResolvedTheme.
     let theme_xml = crate::sinks::ooxml::emit_theme_xml(theme)?;
     pack_entry(&mut zip, "ppt/theme/theme1.xml", theme_xml.as_bytes())?;
 
@@ -129,9 +120,7 @@ fn pack_entry(
     })
 }
 
-// ------------------------------------------------------------------
-// Static OOXML templates
-// ------------------------------------------------------------------
+// ── Static OOXML templates ──
 
 static CONTENT_TYPES: LazyLock<String> = LazyLock::new(|| {
     format!(

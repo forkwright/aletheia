@@ -147,7 +147,6 @@ fn render_one_sheet(
         message: e.to_string(),
     })?;
 
-    // Header row
     for (col_idx, col_val) in columns.iter().enumerate() {
         let header = col_val
             .get("header")
@@ -177,7 +176,6 @@ fn render_one_sheet(
         }
     }
 
-    // Data rows
     for (row_idx, row_val) in rows.iter().enumerate() {
         let cells = row_val.as_array().ok_or_else(|| Error::InvalidSchema {
             detail: format!("sheet {sheet_idx}, row {row_idx}: each row must be an array"),
@@ -317,7 +315,6 @@ mod json_api_tests {
 
         let bytes = render_xlsx(&data).expect("render must succeed"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
 
-        // Round-trip through calamine
         let cursor = std::io::Cursor::new(&bytes);
         let mut workbook = calamine::Xlsx::new(cursor).expect("calamine must open xlsx"); // kanon:ignore RUST/expect — test asserts invariant; panic is the failure signal
         let sheet_names = workbook.sheet_names();

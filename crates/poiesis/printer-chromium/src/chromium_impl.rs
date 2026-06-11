@@ -45,7 +45,7 @@ pub(crate) async fn print_to_pdf_inner(
             source: Box::from(e),
         })?;
 
-    // Convert mm to inches for CDP (1 in = 25.4 mm)
+    // WHY: CDP PrintToPdf takes inches; layout options are mm (1 in = 25.4 mm).
     let mm_to_in = |mm: f64| mm / 25.4;
 
     let pdf_params = chromiumoxide::cdp::browser_protocol::page::PrintToPdfParams::builder()

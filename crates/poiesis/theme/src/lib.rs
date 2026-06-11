@@ -20,23 +20,6 @@
 //! [`THEME/raw-font-literal`](lint::RAW_FONT_LITERAL_RULE_ID), and
 //! [`THEME/unknown-token`](lint::UNKNOWN_TOKEN_RULE_ID) rules mechanically
 //! enforce that constraint at the spec boundary.
-//!
-//! ## Status
-//!
-//! This crate ships the locked surface from `planning/poiesis-evolution/B-002`:
-//! [`ThemeId`], the [`Theme`] TOML shape, [`ResolvedTheme`], a discoverable
-//! [`Registry`], the seed `summus` brand, the CSS sink, the OOXML `theme1.xml`
-//! emitter, the doc-vars emitter, the `LaTeX` sink, the base PPTX sink, the
-//! `reference.docx` sink, the Typst sink, and the three `THEME/*` lint rule
-//! shapes.
-//! Per-crate downstream wiring (a packed `<name>-base.pptx` for B-004, the
-//! [B-001] `Renderer` parameter, the [B-008] lint-engine registration, and the
-//! `theme` CLI verbs from [B-010]) is the next phase; the per-sink modules
-//! document the explicit follow-up surface.
-//!
-//! [B-001]: https://github.com/forkwright/aletheia
-//! [B-008]: https://github.com/forkwright/aletheia
-//! [B-010]: https://github.com/forkwright/aletheia
 
 /// Typed error surface for parse, registry, resolution, and sink failures.
 pub mod error;

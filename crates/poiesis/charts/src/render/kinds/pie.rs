@@ -56,7 +56,6 @@ pub fn emit(
     emit_svg_open(&mut out, chart, canvas);
 
     if total <= 0.0 {
-        // Empty pie: emit a background circle and close.
         let _ = write!(
             out,
             "<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\" fill=\"#e5e5e5\"/>",
@@ -80,7 +79,8 @@ pub fn emit(
         let fill = theme.fill_for(&ToneRef::Indexed(j), mode, j)?;
 
         let path_d = if (sweep - 2.0 * std::f64::consts::PI).abs() < 1e-12 {
-            // Degenerate single-slice full circle: split into two 180° arcs.
+            // WHY: a single slice spans the full circle, and an SVG arc with
+            // coincident endpoints renders nothing — emit two 180° arcs.
             let (x0, y0) = polar_to_xy(cx, cy, r, 0.0);
             let (xm, ym) = polar_to_xy(cx, cy, r, std::f64::consts::PI);
             let mut d = String::new();

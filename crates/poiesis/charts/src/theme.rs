@@ -2,9 +2,9 @@
 //!
 //! The chart subsystem owns no tone palette; every tone reference in a
 //! [`Chart`](crate::model::Chart) resolves against a [`ResolvedTheme`]
-//! supplied by the caller. The caller is the `poiesis-theme` crate
-//! (`B-002`), which is not yet on `main`. The seam here exists so this
-//! crate compiles and tests today without a theme-crate dependency edge.
+//! supplied by the caller. The `poiesis-theme` bridge is feature-gated
+//! (`theme-bridge`), so this crate compiles and tests without a hard
+//! theme-crate dependency edge.
 //!
 //! # Color modes
 //!
@@ -96,9 +96,7 @@ impl ResolvedTheme {
     /// Minimal `summus` theme stand-in.
     ///
     /// This mirrors the offsite-deck palette so the slide-3 golden can be
-    /// exercised in unit tests before `poiesis-theme` lands. When B-002
-    /// ships, this constructor is deleted in favour of
-    /// `poiesis_theme::summus().resolve()`.
+    /// exercised in unit tests without enabling the `theme-bridge` feature.
     ///
     /// Acceptance gate hook: the navy + teal pair below are the same colors
     /// the B-005 acceptance contract names (`#232E54`, `#318891`).

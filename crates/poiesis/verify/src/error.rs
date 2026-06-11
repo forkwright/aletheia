@@ -1,4 +1,4 @@
-// Error types for poiesis-verify.
+//! Error types for poiesis-verify.
 
 use snafu::Snafu;
 

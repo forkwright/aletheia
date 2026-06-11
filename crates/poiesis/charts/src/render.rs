@@ -8,23 +8,10 @@
 //!    [`crate::Error::VegaRequired`] if the spec needs the fallback.
 //! 2. Dispatches on `chart.kind` to the matching emitter arm.
 //!
-//! # Per-kind emitter status
-//!
-//! | Kind     | Status                          | Owner       |
-//! |----------|---------------------------------|-------------|
-//! | bar      | implemented / wired             | this PR     |
-//! | column   | implemented / wired             | this PR     |
-//! | line     | implemented / wired             | this PR     |
-//! | area     | implemented / wired             | this PR     |
-//! | combo    | implemented / wired             | B-005 gate  |
-//! | scatter  | implemented / wired             | this PR     |
-//! | pie      | implemented / wired             | this PR     |
-//! | doughnut | implemented / wired             | this PR     |
-//! | stat     | implemented / wired             | this PR     |
-//!
-//! The pure-Rust emitter now covers `bar`, `column`, `line`, `area`,
-//! `combo`, `scatter`, `pie`, `doughnut`, and `stat`. The remaining chart
-//! kinds route to Vega-Lite behind the `charts-vega` feature.
+//! The pure-Rust emitter covers `bar`, `column`, `line`, `area`, `combo`,
+//! `scatter`, `pie`, `doughnut`, and `stat`; the remaining kinds (`heatmap`,
+//! `boxplot`, `sankey`, `candlestick`) route to Vega-Lite behind the
+//! `charts-vega` feature.
 
 mod canvas;
 mod kinds;

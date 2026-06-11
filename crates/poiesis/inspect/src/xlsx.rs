@@ -42,9 +42,7 @@ fn extract_text_from_worksheet(xml_data: &str, shared_strings: &[String]) -> Str
             in_row = true;
         }
         for cell_chunk in chunk.split("<c") {
-            // Determine if this is a shared-string cell
             let is_shared = cell_chunk.contains("t=\"s\"");
-            // Find value tags
             for value_chunk in cell_chunk.split("<v>") {
                 if let Some(end) = value_chunk.find("</v>")
                     && let Some(value) = value_chunk.get(..end)
@@ -75,7 +73,6 @@ pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
     let mut archive =
         ZipArchive::new(cursor).map_err(|e| crate::InspectError::ZipError { source: e })?;
 
-    // Read shared strings if present
     let shared_strings = if let Ok(mut file) = archive.by_name("xl/sharedStrings.xml") {
         let mut content = String::new();
         std::io::Read::read_to_string(&mut file, &mut content)
@@ -87,7 +84,6 @@ pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
 
     let mut sheets: IndexMap<String, String> = IndexMap::new();
 
-    // Read workbook.xml to get sheet names in workbook order
     let workbook_xml = {
         let mut file = archive
             .by_name("xl/workbook.xml")
@@ -98,8 +94,7 @@ pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
         content
     };
 
-    // Extract sheet names from workbook.xml, preserving order.
-    // rust_xlsxwriter emits compact XML, so multiple sheet tags may share a line.
+    // NOTE: rust_xlsxwriter emits compact XML — multiple sheet tags may share a line.
     let mut sheet_names = Vec::new();
     for sheet_xml in workbook_xml.split("<sheet").skip(1) {
         let Some(start) = sheet_xml.find("name=\"") else {
@@ -118,7 +113,6 @@ pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
         sheet_names.push(sheet_name.to_string());
     }
 
-    // Read worksheet files
     for (idx, sheet_name) in sheet_names.into_iter().enumerate() {
         let worksheet_path = format!("xl/worksheets/sheet{}.xml", idx + 1);
         if let Ok(mut file) = archive.by_name(&worksheet_path) {

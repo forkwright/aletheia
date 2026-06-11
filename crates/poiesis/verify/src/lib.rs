@@ -5,8 +5,6 @@
 //! (arithmetic formula) and `Ref` (cross-claim reference) sources.
 //! SQL sources are stored in the manifest schema for auditability but are not
 //! executed by this crate — execution requires an external tool.
-//!
-//! Ported from the `ergon_tools` sdr verify.
 
 /// Recursive-descent arithmetic formula evaluator.
 pub mod arithmetic;
@@ -22,8 +20,6 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 use snafu::ResultExt;
-
-// ── Public entry point ───────────────────────────────────────────────────────
 
 /// Stateless claim verifier.
 pub struct Verifier;
@@ -236,8 +232,6 @@ fn determine_outcome(
         }
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 #[expect(

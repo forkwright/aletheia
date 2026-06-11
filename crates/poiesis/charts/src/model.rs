@@ -184,10 +184,7 @@ pub enum CiteOrText {
     Text(String),
 }
 
-/// Inline text fragments for captions.
-///
-/// Kept as an opaque vector here; B-001 will fold this into the shared
-/// `RichText`-style inline span model once the Document side lands.
+/// Inline text fragments for captions, kept as an opaque vector.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Inlines(pub Vec<String>);

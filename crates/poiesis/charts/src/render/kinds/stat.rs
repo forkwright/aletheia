@@ -104,7 +104,6 @@ pub fn emit(
 
     out.push_str("<g class=\"stat\">");
 
-    // a. Series name label (only if non-empty)
     if !series_name.is_empty() {
         let _ = write!(
             out,
@@ -117,7 +116,6 @@ pub fn emit(
         );
     }
 
-    // b. Big number
     let _ = write!(
         out,
         "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-size=\"96\" font-weight=\"bold\" font-family=\"{font}\" fill=\"{fill}\">{label}</text>",
@@ -128,7 +126,6 @@ pub fn emit(
         label = escape_xml(&number_text),
     );
 
-    // c. Chart title (only if chart.title is Some)
     if let Some(title) = &chart.title {
         let title_text = match title {
             CiteOrText::Text(t) => t.clone(),

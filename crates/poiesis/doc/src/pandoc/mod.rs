@@ -11,11 +11,6 @@
 //!
 //! `pandoc` is invoked as a subprocess only. This crate must not add the
 //! `pandoc` Rust crate as a dependency. See B-006 § GPL-clean boundary.
-//!
-//! # B-001 upgrade note
-//!
-//! The current entry point accepts `poiesis_core::Document`. When B-001
-//! lands (`DeliverableSpec`), the signature will be upgraded. See ESCALATION.md.
 
 /// AST serialization: `Document` → Pandoc JSON AST.
 pub mod ast;
@@ -248,7 +243,7 @@ impl PandocRunner {
     ) -> Result<Vec<u8>, PandocError> {
         use std::io::Write;
 
-        // Write AST to a temp file (more reliable than large stdin pipes).
+        // WHY: a temp file is more reliable than piping a large AST through stdin.
         let mut tmp = tempfile::Builder::new()
             .suffix(".json")
             .tempfile()
@@ -269,17 +264,14 @@ impl PandocRunner {
             cmd.env(key, value);
         }
 
-        // Lua filters
         for filter in &opts.lua_filters {
             cmd.arg("--lua-filter").arg(filter);
         }
 
-        // Reference doc theming
         if let Some(ref_doc) = &opts.reference_doc {
             cmd.arg("--reference-doc").arg(ref_doc);
         }
 
-        // Standalone flag for html/latex/epub
         match opts.format {
             OutputFormat::Html | OutputFormat::Latex | OutputFormat::Epub => {
                 cmd.arg("--standalone");
@@ -347,7 +339,6 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
         return render_doc_via_typst(doc);
     }
 
-    // Pandoc path — probe for binary.
     let runner = PandocRunner::probe(None)?;
     let ast_json = ast::document_to_pandoc_json(doc);
     let mut render_opts = opts.clone();

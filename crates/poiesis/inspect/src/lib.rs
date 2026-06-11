@@ -84,7 +84,6 @@ mod tests {
     fn test_inspect_pdf_handles_invalid_input() {
         let malformed = b"not a pdf";
         let result = inspect_pdf(malformed);
-        // Should error gracefully
         assert!(result.is_err());
     }
 

@@ -121,7 +121,6 @@ fn emit_axes(
 ) {
     out.push_str("<g class=\"axes\">");
 
-    // y-tick labels
     for tick in scale::ticks(lo, hi, 5) {
         let y = y_scale.map(tick);
         let label = escape_xml(&format_number(tick, chart.axes.y_left.format, Unit::Number));
@@ -134,7 +133,6 @@ fn emit_axes(
         );
     }
 
-    // x-category labels (use first series)
     if let Some(series) = chart.series.first() {
         for (j, point) in series.points.iter().enumerate() {
             let cx = plot.x0 + band_w * idx_to_f64(j) + band_w * 0.5;

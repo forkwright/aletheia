@@ -89,8 +89,7 @@ pub enum Source {
 ///
 /// Kept intentionally narrow at the v1.0.0 boundary: addition, subtraction,
 /// multiplication, division, sum, mean. Sufficient for the offsite deck
-/// claims and the workbook total rows; not a calculator. The QA gate
-/// extends the surface in [[B-008]].
+/// claims and the workbook total rows; not a calculator.
 // kanon:ignore RUST/non-exhaustive-enum — additive evolution is the intended
 // migration path; keeping exhaustive matches keeps the gate honest.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
