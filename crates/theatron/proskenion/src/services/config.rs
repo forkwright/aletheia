@@ -333,7 +333,11 @@ mod tests {
     fn desktop_config_defaults() {
         let toml_str = "";
         let desktop: DesktopConfig = toml::from_str(toml_str).unwrap();
-        assert_eq!(desktop.connection.server_url, "http://localhost:3000");
+        let port = skene::discovery::DiscoveryConfig::default().port;
+        assert_eq!(
+            desktop.connection.server_url,
+            format!("http://localhost:{port}")
+        );
         assert!(desktop.connection.auth_token.is_none());
         assert!(desktop.connection.auto_reconnect);
     }

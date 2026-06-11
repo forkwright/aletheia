@@ -89,9 +89,9 @@ const STATUS_STYLE: &str = "\
 /// Connect view component.
 ///
 /// Reads connection state from context and provides a form for the user to
-/// configure and initiate a server connection. When the current URL is the
-/// compiled default, auto-discovery runs in the background and pre-fills
-/// the URL if a server is found on the LAN.
+/// configure and initiate a server connection. Auto-discovery always runs in
+/// the background when the view mounts and pre-fills the URL with the first
+/// live server found; a value the user has typed takes precedence.
 #[component]
 pub(crate) fn ConnectView(
     connection_state: Signal<ConnectionState>,
@@ -107,20 +107,38 @@ pub(crate) fn ConnectView(
     });
     // WHY: Hold the cancel token so the user can abort a connection attempt.
     let mut active_cancel = use_signal(|| None::<CancellationToken>);
+    // WHY: Discovery must never clobber a URL the user typed; this flips on the
+    // first edit and wins at both discovery checkpoints below.
+    let mut user_edited_url = use_signal(|| false);
 
-    // WHY: Run auto-discovery once on first render when the URL is the compiled
-    // default. If a server is found, update the URL input so the user does not
-    // have to type it. `use_resource` runs once and caches the result.
+    let default_url = ConnectionConfig::default().server_url;
+    // WHY: A persisted custom URL joins the probe list so a live custom server
+    // survives discovery, while a dead one no longer strands the user.
+    let persisted_url = {
+        let url = url_input.peek().clone();
+        (url != default_url).then_some(url)
+    };
+
+    // WHY: Always run discovery when this view mounts -- it only shows while
+    // disconnected, so pre-filling the first live server found beats trusting
+    // a possibly-stale persisted URL. `peek` keeps typing from re-triggering.
     let _discovery = use_resource(move || {
-        let current_url = url_input.read().clone();
+        let persisted_url = persisted_url.clone();
         async move {
-            let default_url = ConnectionConfig::default().server_url;
-            if current_url != default_url {
-                return; // User already configured a custom URL
+            if *user_edited_url.peek() {
+                return;
             }
-            if let Some(discovered) = skene::discovery::discover_server().await {
-                tracing::info!(url = %discovered, "auto-discovered server, updating connect form");
-                url_input.set(discovered);
+            let discovery_config =
+                skene::discovery::DiscoveryConfig::default().with_base_urls(persisted_url);
+            let discovered = skene::discovery::discover_server_with_config(&discovery_config).await;
+            // NOTE: Re-checked after the await -- the user may have typed while
+            // the probe was in flight, and their value wins.
+            if *user_edited_url.peek() {
+                return;
+            }
+            if let Some(url) = discovered {
+                tracing::info!(url = %url, "auto-discovered server, updating connect form");
+                url_input.set(url);
             }
         }
     });
@@ -219,10 +237,11 @@ pub(crate) fn ConnectView(
                     input {
                         style: "{INPUT_STYLE}",
                         r#type: "text",
-                        placeholder: "http://localhost:3000", // kanon:ignore SECURITY/hardcoded-loopback-url -- UI placeholder text shown in input field; not a live URL
+                        placeholder: "{default_url}",
                         value: "{url_input}",
                         disabled: is_connecting,
                         oninput: move |evt: Event<FormData>| {
+                            user_edited_url.set(true);
                             url_input.set(evt.value().clone());
                         },
                     }

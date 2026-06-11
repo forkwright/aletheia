@@ -396,7 +396,8 @@ mod tests {
         install_crypto();
         let config = ConnectionConfig::default();
         let client = PylonClient::new(&config).unwrap();
-        assert_eq!(client.base_url(), "http://localhost:3000");
+        let port = skene::discovery::DiscoveryConfig::default().port;
+        assert_eq!(client.base_url(), format!("http://localhost:{port}"));
     }
 
     #[test]
@@ -492,7 +493,8 @@ mod tests {
             ..ConnectionConfig::default()
         };
         let client = PylonClient::new(&config).unwrap();
-        assert_eq!(client.base_url(), "http://localhost:3000");
+        let port = skene::discovery::DiscoveryConfig::default().port;
+        assert_eq!(client.base_url(), format!("http://localhost:{port}"));
     }
 
     /// Spawns a minimal HTTP server on an ephemeral port that responds with

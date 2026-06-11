@@ -444,6 +444,19 @@ mod tests {
         }
     }
 
+    // WHY: message_complete is the turn terminator; an unparseable outcome
+    // (model: null from the gateway) silently dropped it and hung the spinner.
+    #[test]
+    fn parse_message_complete_null_model_valid() {
+        let data = r#"{"type":"message_complete","outcome":{"text":"done","nous_id":"syn","session_id":"s1","model":null,"tool_calls":0,"input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"cache_write_tokens":0}}"#;
+        let result = parse_stream_event("message_complete", data);
+        if let Some(StreamEvent::TurnComplete { outcome }) = result {
+            assert!(outcome.model.is_none());
+        } else {
+            panic!("expected TurnComplete");
+        }
+    }
+
     #[test]
     fn parse_tool_result_valid() {
         let data = r#"{"toolName":"exec","toolId":"t1","isError":false,"durationMs":150}"#;

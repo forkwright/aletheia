@@ -6,7 +6,7 @@ pub(crate) mod list;
 pub(crate) mod search;
 
 use dioxus::prelude::*;
-use skene::api::types::{HistoryResponse, Session, SessionsResponse};
+use skene::api::types::{HistoryResponse, Session};
 use skene::id::SessionId;
 
 use crate::api::client::authenticated_client;
@@ -90,6 +90,9 @@ pub(crate) fn Sessions() -> Element {
     let mut chat_selection: Signal<Option<ChatSelection>> = use_context();
 
     let mut list_store = use_signal(SessionListStore::new);
+    // WHY: the sessions endpoint pages by opaque cursor (`after`), not offset;
+    // the cursor from the last response is the only way to fetch the next page.
+    let mut next_cursor: Signal<Option<String>> = use_signal(|| None);
     let selection_store = use_signal(SessionSelectionStore::new);
     let detail_state =
         use_signal(|| FetchState::<SessionDetailStore>::Loaded(SessionDetailStore::default()));
@@ -130,6 +133,11 @@ pub(crate) fn Sessions() -> Element {
             let agent_filter = store.agent_filter.clone();
             let page = store.page;
             drop(store);
+            let cursor = if page > 0 {
+                next_cursor.read().clone()
+            } else {
+                None
+            };
 
             spawn(async move {
                 let client = authenticated_client(&cfg);
@@ -140,8 +148,10 @@ pub(crate) fn Sessions() -> Element {
                     SessionListStore::PAGE_SIZE
                 );
 
-                if page > 0 {
-                    url.push_str(&format!("&offset={}", page * SessionListStore::PAGE_SIZE));
+                if let Some(cursor) = &cursor {
+                    let encoded: String =
+                        form_urlencoded::byte_serialize(cursor.as_bytes()).collect();
+                    url.push_str(&format!("&after={encoded}"));
                 }
 
                 if !search.is_empty() {
@@ -165,7 +175,8 @@ pub(crate) fn Sessions() -> Element {
 
                 match client.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
-                        // WHY: API may return {sessions: [...]} or bare [...].
+                        // WHY: API may return the paginated {items, has_more,
+                        // next_cursor} envelope, {sessions: [...]}, or bare [...].
                         let text = match resp.text().await {
                             Ok(t) => t,
                             Err(e) => {
@@ -174,17 +185,21 @@ pub(crate) fn Sessions() -> Element {
                             }
                         };
 
-                        let sessions: Vec<Session> =
-                            if let Ok(wrapper) = serde_json::from_str::<SessionsResponse>(&text) {
-                                wrapper.sessions
+                        let (sessions, has_more, new_cursor) =
+                            if let Ok(envelope) = serde_json::from_str::<SessionsPage>(&text) {
+                                // WHY: has_more without a cursor cannot be continued.
+                                let more = envelope.has_more && envelope.next_cursor.is_some();
+                                (envelope.items, more, envelope.next_cursor)
                             } else if let Ok(list) = serde_json::from_str::<Vec<Session>>(&text) {
-                                list
+                                // NOTE: a bare array carries no cursor, so no
+                                // further pages can be requested.
+                                (list, false, None)
                             } else {
                                 tracing::warn!("failed to parse sessions response");
                                 return;
                             };
 
-                        let has_more = sessions.len() >= SessionListStore::PAGE_SIZE;
+                        next_cursor.set(new_cursor);
 
                         let mut store = list_store.write();
                         if page == 0 {
@@ -547,6 +562,17 @@ pub(crate) fn Sessions() -> Element {
             }
         }
     }
+}
+
+/// Paginated envelope for the sessions list endpoint.
+#[derive(Debug, serde::Deserialize)]
+struct SessionsPage {
+    #[serde(alias = "sessions")]
+    items: Vec<Session>,
+    #[serde(default)]
+    has_more: bool,
+    #[serde(default)]
+    next_cursor: Option<String>,
 }
 
 #[cfg(test)]

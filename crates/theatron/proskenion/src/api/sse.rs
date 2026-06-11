@@ -1,9 +1,10 @@
-//! Global SSE connection to `GET /api/v1/events`.
+//! Global SSE connection to `GET /api/v1/events/subscribe`.
 //!
-//! Provides cross-session awareness: agent status changes, session lifecycle,
-//! and memory distillation progress. The connection auto-reconnects with
-//! exponential backoff (1s to 30s) and treats 45s of silence as a stale
-//! connection.
+//! Provides cross-session awareness: turn completion and session lifecycle.
+//! The connection subscribes to pylon's domain-event topics (dot-separated,
+//! e.g. `turn.complete`) and maps each onto the UI-level [`SseEvent`]. It
+//! auto-reconnects with exponential backoff (1s to 30s) and treats 45s of
+//! byte silence as a stale connection.
 //!
 //! # Dioxus integration
 //!
@@ -23,6 +24,9 @@
 //! The `SseConnection` struct is intentionally framework-agnostic so it
 //! works with both the TUI event loop and Dioxus coroutines.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use futures_util::StreamExt;
 use reqwest::Client;
 use skene::sse::SseStream;
@@ -31,11 +35,15 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
 use skene::api::types::SseEvent;
-use skene::id::{NousId, SessionId, TurnId};
+use skene::id::{NousId, SessionId};
 
-/// If no SSE event (including pings) arrives within this window, the
-/// connection is treated as stale. The server sends heartbeats every 30s,
-/// so 45s gives 50% margin before triggering reconnect.
+/// If no bytes arrive from the server within this window, the connection
+/// is treated as stale. The server emits a keepalive every 30s
+/// (`gateway.sse_heartbeat_interval_secs` default), so 45s gives 50% margin.
+///
+/// NOTE: keepalives are SSE comment lines, which the parser consumes
+/// without yielding an event — staleness is therefore measured on raw
+/// byte activity, not on parsed events.
 const HEARTBEAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// Initial backoff delay after a connection failure.
@@ -44,7 +52,29 @@ const INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
 /// Maximum backoff delay: caps exponential growth.
 const MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Manages the global SSE connection to `/api/v1/events`.
+/// Topics requested from `GET /api/v1/events/subscribe`.
+///
+/// NOTE: mirrors the server's topic registry (`GET /api/v1/events/discovery`).
+/// Only `turn.complete` and `fact.created` have live publish sites today;
+/// the session lifecycle topics are declared by the server and subscribed
+/// here so they light up without a client change.
+const SUBSCRIBE_TOPICS: &[&str] = &[
+    "turn.complete",
+    "fact.created",
+    "session.started",
+    "session.ended",
+];
+
+/// Build the topic-filtered subscribe URL for `base_url`.
+fn subscribe_url(base_url: &str) -> String {
+    format!(
+        "{}/api/v1/events/subscribe?topics={}",
+        base_url.trim_end_matches('/'),
+        SUBSCRIBE_TOPICS.join(",")
+    )
+}
+
+/// Manages the global SSE connection to `/api/v1/events/subscribe`.
 ///
 /// Runs in a background tokio task. Parsed events flow through an mpsc
 /// channel. The connection automatically reconnects with exponential
@@ -67,7 +97,7 @@ impl SseConnection {
     #[tracing::instrument(skip_all)]
     pub(crate) fn connect(client: Client, base_url: &str, cancel: CancellationToken) -> Self {
         let (tx, rx) = mpsc::channel(256);
-        let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
+        let url = subscribe_url(base_url);
         let child = cancel.child_token();
 
         let span = tracing::info_span!("sse_connection");
@@ -152,7 +182,16 @@ async fn run_sse_connection(
         }
         tracing::info!("SSE connected");
         backoff = INITIAL_BACKOFF;
-        let mut es = SseStream::new(resp.bytes_stream());
+
+        // WHY: server keepalives are comment-only and the parser drops
+        // comments without yielding, so byte arrival is the only liveness
+        // signal on an idle stream. Track it on the raw byte stream.
+        let connected_at = std::time::Instant::now();
+        let last_rx_ms = Arc::new(AtomicU64::new(0));
+        let byte_activity = Arc::clone(&last_rx_ms);
+        let mut es = SseStream::new(resp.bytes_stream().inspect(move |_chunk| {
+            byte_activity.store(elapsed_ms(connected_at), Ordering::Relaxed);
+        }));
 
         loop {
             let maybe_event = tokio::select! {
@@ -165,6 +204,13 @@ async fn run_sse_connection(
                 Ok(Some(event)) => event,
                 Ok(None) => break,
                 Err(_elapsed) => {
+                    let idle_ms =
+                        elapsed_ms(connected_at).saturating_sub(last_rx_ms.load(Ordering::Relaxed));
+                    if std::time::Duration::from_millis(idle_ms) < HEARTBEAT_TIMEOUT {
+                        // NOTE: no parsed event, but bytes (keepalives)
+                        // arrived recently — the link is alive.
+                        continue;
+                    }
                     tracing::warn!(
                         timeout_secs = HEARTBEAT_TIMEOUT.as_secs(),
                         "SSE heartbeat timeout — treating as disconnect"
@@ -200,6 +246,11 @@ fn advance_backoff(current: std::time::Duration) -> std::time::Duration {
     (current * 2).min(MAX_BACKOFF)
 }
 
+/// Milliseconds elapsed since `since`, saturating at `u64::MAX`.
+fn elapsed_ms(since: std::time::Instant) -> u64 {
+    u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
 /// Extract a human-readable error message from an HTTP error response body.
 fn extract_error_message(body: &str, status_code: u16, reason: &str) -> String {
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
@@ -220,6 +271,13 @@ fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> 
     })
 }
 
+/// Map a pylon domain event (`event: <topic>` + JSON payload) onto the
+/// UI-level [`SseEvent`].
+///
+/// Payload keys are snake_case (the event-bus convention). Topics without
+/// a UI mapping are dropped at debug level — the subscription is
+/// topic-filtered server-side, so anything unexpected here is contract
+/// drift, not an error.
 fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
     let json: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
@@ -230,61 +288,26 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
     };
 
     match event_type {
-        "init" => {
-            let active_turns = json
-                .get("activeTurns")
-                .and_then(|v| serde_json::from_value(v.clone()).ok())
-                .or_else(|| {
-                    tracing::warn!("SSE init: missing or invalid activeTurns");
-                    None
-                })?;
-            Some(SseEvent::Init { active_turns })
+        // NOTE: the server publishes turn completion only; there is no
+        // turn-start topic, so `TurnBefore` is never produced here.
+        "turn.complete" => Some(SseEvent::TurnAfter {
+            nous_id: NousId::from(str_field(&json, "nous_id", event_type)?.to_string()),
+            session_id: SessionId::from(str_field(&json, "session_id", event_type)?.to_string()),
+        }),
+        "session.started" => Some(SseEvent::SessionCreated {
+            nous_id: NousId::from(str_field(&json, "nous_id", event_type)?.to_string()),
+            session_id: SessionId::from(str_field(&json, "session_id", event_type)?.to_string()),
+        }),
+        "session.ended" => Some(SseEvent::SessionArchived {
+            nous_id: NousId::from(str_field(&json, "nous_id", event_type)?.to_string()),
+            session_id: SessionId::from(str_field(&json, "session_id", event_type)?.to_string()),
+        }),
+        "fact.created" => {
+            // NOTE: no SseEvent variant models fact ingestion yet; the
+            // topic is subscribed for forward-compat and dropped here.
+            tracing::debug!(event_type, "no UI mapping for topic; dropping");
+            None
         }
-        "turn:before" => Some(SseEvent::TurnBefore {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
-            turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
-        }),
-        "turn:after" => Some(SseEvent::TurnAfter {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
-        }),
-        "tool:called" => Some(SseEvent::ToolCalled {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
-        }),
-        "tool:failed" => Some(SseEvent::ToolFailed {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
-            error: json
-                .get("error")
-                .and_then(|e| e.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-        }),
-        "status:update" => Some(SseEvent::StatusUpdate {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            status: str_field(&json, "status", event_type)?.to_string(),
-        }),
-        "session:created" => Some(SseEvent::SessionCreated {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
-        }),
-        "session:archived" => Some(SseEvent::SessionArchived {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
-        }),
-        "distill:before" => Some(SseEvent::DistillBefore {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-        }),
-        "distill:stage" => Some(SseEvent::DistillStage {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            stage: str_field(&json, "stage", event_type)?.to_string(),
-        }),
-        "distill:after" => Some(SseEvent::DistillAfter {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-        }),
-        "ping" => Some(SseEvent::Ping),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
             None
@@ -297,107 +320,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_turn_before_valid() {
-        let data = r#"{"nousId":"syn","sessionId":"sess-1","turnId":"turn-1"}"#;
-        let result = parse_sse_event("turn:before", data);
-        assert!(result.is_some());
-        if let Some(SseEvent::TurnBefore {
+    fn subscribe_url_trims_trailing_slash() {
+        assert_eq!(
+            subscribe_url("http://192.168.1.100:18789/"),
+            "http://192.168.1.100:18789/api/v1/events/subscribe\
+             ?topics=turn.complete,fact.created,session.started,session.ended"
+        );
+    }
+
+    #[test]
+    fn subscribe_url_without_trailing_slash() {
+        let url = subscribe_url("http://192.168.1.100:18789");
+        assert!(url.starts_with("http://192.168.1.100:18789/api/v1/events/subscribe?topics="));
+    }
+
+    #[test]
+    fn parse_turn_complete_valid() {
+        // NOTE: mirrors the real publish payload (sessions/streaming.rs):
+        // extra token-count fields must be tolerated.
+        let data = r#"{"session_id":"sess-1","nous_id":"syn","turn_id":"turn-1","input_tokens":10,"output_tokens":20}"#;
+        let result = parse_sse_event("turn.complete", data);
+        if let Some(SseEvent::TurnAfter {
             nous_id,
             session_id,
-            turn_id,
         }) = result
         {
             assert_eq!(&*nous_id, "syn");
             assert_eq!(&*session_id, "sess-1");
-            assert_eq!(&*turn_id, "turn-1");
         } else {
-            panic!("expected TurnBefore");
+            panic!("expected TurnAfter");
         }
     }
 
     #[test]
     fn parse_invalid_json_returns_none() {
-        let result = parse_sse_event("turn:before", "not json");
+        let result = parse_sse_event("turn.complete", "not json");
         assert!(result.is_none());
     }
 
     #[test]
     fn parse_missing_field_returns_none() {
-        let data = r#"{"nousId":"syn"}"#;
-        let result = parse_sse_event("turn:before", data);
+        let data = r#"{"nous_id":"syn"}"#;
+        let result = parse_sse_event("turn.complete", data);
         assert!(result.is_none());
     }
 
     #[test]
-    fn parse_unknown_event_returns_none() {
-        let data = r#"{"foo":"bar"}"#;
-        let result = parse_sse_event("custom:unknown", data);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn parse_init_with_active_turns() {
-        let data = r#"{"activeTurns":[{"nousId":"syn","sessionId":"s1","turnId":"t1"}]}"#;
-        let result = parse_sse_event("init", data);
-        assert!(result.is_some());
-        if let Some(SseEvent::Init { active_turns }) = result {
-            assert_eq!(active_turns.len(), 1);
-            assert_eq!(&*active_turns[0].nous_id, "syn");
-        } else {
-            panic!("expected Init");
-        }
-    }
-
-    #[test]
-    fn parse_ping() {
-        let data = r#"{}"#;
-        let result = parse_sse_event("ping", data);
-        assert!(matches!(result, Some(SseEvent::Ping)));
-    }
-
-    #[test]
-    fn parse_tool_called() {
-        let data = r#"{"nousId":"syn","toolName":"read_file"}"#;
-        let result = parse_sse_event("tool:called", data);
-        if let Some(SseEvent::ToolCalled { nous_id, tool_name }) = result {
-            assert_eq!(&*nous_id, "syn");
-            assert_eq!(tool_name, "read_file");
-        } else {
-            panic!("expected ToolCalled");
-        }
-    }
-
-    #[test]
-    fn parse_tool_failed_with_default_error() {
-        let data = r#"{"nousId":"syn","toolName":"exec"}"#;
-        let result = parse_sse_event("tool:failed", data);
-        if let Some(SseEvent::ToolFailed {
-            error, tool_name, ..
-        }) = result
-        {
-            assert_eq!(tool_name, "exec");
-            assert_eq!(error, "unknown");
-        } else {
-            panic!("expected ToolFailed");
-        }
-    }
-
-    #[test]
-    fn parse_distill_stage() {
-        let data = r#"{"nousId":"syn","stage":"extracting"}"#;
-        let result = parse_sse_event("distill:stage", data);
-        if let Some(SseEvent::DistillStage { nous_id, stage }) = result {
-            assert_eq!(&*nous_id, "syn");
-            assert_eq!(stage, "extracting");
-        } else {
-            panic!("expected DistillStage");
-        }
-    }
-
-    #[test]
-    fn parse_session_created() {
-        let data = r#"{"nousId":"syn","sessionId":"s-new"}"#;
-        let result = parse_sse_event("session:created", data);
+    fn parse_session_started() {
+        let data = r#"{"nous_id":"syn","session_id":"s-new"}"#;
+        let result = parse_sse_event("session.started", data);
         if let Some(SseEvent::SessionCreated {
             nous_id,
             session_id,
@@ -408,6 +379,42 @@ mod tests {
         } else {
             panic!("expected SessionCreated");
         }
+    }
+
+    #[test]
+    fn parse_session_ended() {
+        let data = r#"{"nous_id":"syn","session_id":"s-old"}"#;
+        let result = parse_sse_event("session.ended", data);
+        if let Some(SseEvent::SessionArchived {
+            nous_id,
+            session_id,
+        }) = result
+        {
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*session_id, "s-old");
+        } else {
+            panic!("expected SessionArchived");
+        }
+    }
+
+    #[test]
+    fn parse_fact_created_dropped_gracefully() {
+        let data = r#"{"fact_id":"f-1","nous_id":"syn","content_preview":"alice"}"#;
+        assert!(parse_sse_event("fact.created", data).is_none());
+    }
+
+    #[test]
+    fn parse_legacy_colon_name_returns_none() {
+        // NOTE: regression guard — pre-rewrite colon names are not topics.
+        let data = r#"{"nousId":"syn","sessionId":"s1","turnId":"t1"}"#;
+        assert!(parse_sse_event("turn:before", data).is_none());
+    }
+
+    #[test]
+    fn parse_unknown_event_returns_none() {
+        let data = r#"{"foo":"bar"}"#;
+        let result = parse_sse_event("custom.unknown", data);
+        assert!(result.is_none());
     }
 
     #[test]

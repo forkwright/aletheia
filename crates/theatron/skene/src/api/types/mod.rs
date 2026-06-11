@@ -132,8 +132,9 @@ pub struct TurnOutcome {
     /// Session this turn belongs to.
     #[serde(rename = "sessionId", alias = "session_id")]
     pub session_id: SessionId,
-    /// Model used for this turn.
-    pub model: String,
+    /// Model used for this turn; `None` when the gateway could not resolve it.
+    #[serde(default)]
+    pub model: Option<String>,
     /// Number of tool calls made.
     #[serde(rename = "toolCalls", alias = "tool_calls", default)]
     pub tool_calls: u32,
@@ -536,6 +537,7 @@ mod tests {
         }"#;
         let outcome: TurnOutcome = serde_json::from_str(json).unwrap();
         assert_eq!(outcome.text, "response");
+        assert_eq!(outcome.model.as_deref(), Some("claude-opus-4-6"));
         assert_eq!(outcome.tool_calls, 3);
         assert_eq!(outcome.input_tokens, 100);
     }
@@ -552,6 +554,19 @@ mod tests {
         assert_eq!(outcome.tool_calls, 0);
         assert_eq!(outcome.input_tokens, 0);
         assert_eq!(outcome.cache_read_tokens, 0);
+    }
+
+    // WHY: the gateway serializes an unresolved model as JSON null; a required
+    // field here failed deserialization and dropped the terminal turn event.
+    #[test]
+    fn turn_outcome_model_null_or_missing() {
+        let null_model = r#"{"text": "r", "nousId": "n", "sessionId": "s", "model": null}"#;
+        let outcome: TurnOutcome = serde_json::from_str(null_model).unwrap();
+        assert!(outcome.model.is_none());
+
+        let missing_model = r#"{"text": "r", "nousId": "n", "sessionId": "s"}"#;
+        let outcome: TurnOutcome = serde_json::from_str(missing_model).unwrap();
+        assert!(outcome.model.is_none());
     }
 
     #[test]

@@ -9,50 +9,6 @@ use skene::id::NousId;
 use crate::state::agents::{AgentStatus, AgentStore};
 use crate::state::events::EventState;
 
-const SIDEBAR_SECTION_STYLE: &str = "\
-    display: flex; \
-    flex-direction: column; \
-    gap: 2px; \
-    margin-bottom: var(--space-2);\
-";
-
-const SECTION_LABEL_STYLE: &str = "\
-    font-size: var(--text-xs); \
-    text-transform: uppercase; \
-    letter-spacing: 0.08em; \
-    color: var(--text-muted); \
-    padding: var(--space-1) var(--space-3) 2px;\
-";
-
-const AGENT_ROW_STYLE: &str = "\
-    display: flex; \
-    align-items: center; \
-    gap: var(--space-2); \
-    padding: var(--space-2) var(--space-3); \
-    border-radius: var(--radius-md); \
-    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
-    color: var(--text-primary); \
-    font-size: var(--text-sm);\
-";
-
-const AGENT_ROW_ACTIVE_STYLE: &str = "\
-    display: flex; \
-    align-items: center; \
-    gap: var(--space-2); \
-    padding: var(--space-2) var(--space-3); \
-    border-radius: var(--radius-md); \
-    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); \
-    color: var(--text-primary); \
-    font-size: var(--text-sm); \
-    background: var(--border);\
-";
-
-const EMPTY_AGENTS_STYLE: &str = "\
-    padding: var(--space-2) var(--space-3); \
-    font-size: var(--text-xs); \
-    color: var(--text-muted);\
-";
-
 /// Derives the display status for an agent from the current `EventState`.
 ///
 /// Active turns take priority over the status string in `agent_statuses`.
@@ -84,16 +40,10 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
         let agent_count = store.read().all().len();
         return rsx! {
             div {
-                style: "display: flex; flex-direction: column; align-items: center; padding: var(--space-2) 0;",
-                span {
-                    style: "font-size: var(--text-xs); color: var(--text-muted); writing-mode: vertical-rl; text-orientation: mixed;",
-                    "NOUS"
-                }
+                class: "agent-roster-rail",
+                span { class: "agent-roster-rail-label", "NOUS" }
                 if agent_count > 0 {
-                    span {
-                        style: "font-size: var(--text-xs); color: var(--status-success); margin-top: var(--space-1);",
-                        "● {agent_count}"
-                    }
+                    span { class: "agent-roster-rail-count", "● {agent_count}" }
                 }
             }
         };
@@ -120,31 +70,33 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
 
     rsx! {
         div {
-            style: "{SIDEBAR_SECTION_STYLE}",
-            div { style: "{SECTION_LABEL_STYLE}", "NOUS" }
+            class: "agent-roster-section",
+            h2 { class: "agent-roster-label", "Nous" }
             if agents.is_empty() {
-                div { style: "{EMPTY_AGENTS_STYLE}", "No nous" }
+                div { class: "agent-roster-empty", "No nous" }
             } else {
                 for (id , name , emoji , status , is_active) in agents {
                     {
                         let id_clone = id.clone();
                         let color = status.dot_color();
-                        let row_style = if is_active {
-                            AGENT_ROW_ACTIVE_STYLE
+                        let row_class = if is_active { "agent-row active" } else { "agent-row" };
+                        let dot_class = if matches!(status, AgentStatus::Active) {
+                            "agent-dot status-dot-active"
                         } else {
-                            AGENT_ROW_STYLE
+                            "agent-dot"
                         };
                         let status_label = status.label();
                         rsx! {
                             div {
                                 key: "{id}",
-                                style: "{row_style}",
+                                class: "{row_class}",
                                 title: "Status: {status_label}",
                                 onclick: move |_| {
                                     store.write().set_active(&id_clone);
                                 },
                                 span {
-                                    style: "color: {color}; font-size: var(--text-xs); flex-shrink: 0;",
+                                    class: "{dot_class}",
+                                    style: "color: {color};",
                                     "●"
                                 }
                                 if !emoji.is_empty() {

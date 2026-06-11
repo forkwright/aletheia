@@ -297,33 +297,36 @@ pub(crate) fn Memory() -> Element {
 
                 let (entity_res, rels_res, mems_res) = tokio::join!(entity_fut, rels_fut, mems_fut);
 
-                let entity: Option<Entity> = entity_res
-                    .ok()
-                    .filter(|r| r.status().is_success())
-                    .and_then(|r| futures_util::FutureExt::now_or_never(r.json::<Entity>()))
-                    .and_then(|r| r.ok());
+                let entity: Option<Entity> = match entity_res {
+                    Ok(resp) if resp.status().is_success() => resp.json::<Entity>().await.ok(),
+                    _ => None,
+                };
 
                 // WHY: If the entity fetch failed, still try to show what we can.
                 // Fall back to finding the entity in the list store if the detail
                 // endpoint returned an error.
 
-                let relationships: Vec<Relationship> = rels_res
-                    .ok()
-                    .filter(|r| r.status().is_success())
-                    .and_then(|r| {
-                        futures_util::FutureExt::now_or_never(r.json::<Vec<Relationship>>())
-                    })
-                    .and_then(|r| r.ok())
-                    .unwrap_or_default();
+                let relationships: Vec<Relationship> = match rels_res {
+                    Ok(resp) if resp.status().is_success() => match resp.text().await {
+                        Ok(text) => parse_relationships_response(&text),
+                        Err(e) => {
+                            tracing::warn!("failed to read relationships response: {e}");
+                            Vec::new()
+                        }
+                    },
+                    _ => Vec::new(),
+                };
 
-                let memories: Vec<EntityMemory> = mems_res
-                    .ok()
-                    .filter(|r| r.status().is_success())
-                    .and_then(|r| {
-                        futures_util::FutureExt::now_or_never(r.json::<Vec<EntityMemory>>())
-                    })
-                    .and_then(|r| r.ok())
-                    .unwrap_or_default();
+                let memories: Vec<EntityMemory> = match mems_res {
+                    Ok(resp) if resp.status().is_success() => match resp.text().await {
+                        Ok(text) => parse_entity_memories_response(&text),
+                        Err(e) => {
+                            tracing::warn!("failed to read entity memories response: {e}");
+                            Vec::new()
+                        }
+                    },
+                    _ => Vec::new(),
+                };
 
                 let detail = EntityDetailStore {
                     entity,
@@ -533,4 +536,54 @@ pub(crate) fn Memory() -> Element {
 #[derive(Debug, serde::Deserialize)]
 struct EntitiesResponse {
     entities: Vec<Entity>,
+}
+
+/// Response wrapper for the entity relationships endpoint.
+#[derive(Debug, serde::Deserialize)]
+struct RelationshipsResponse {
+    #[serde(default)]
+    relationships: Vec<Relationship>,
+}
+
+/// Response wrapper for the entity memories endpoint.
+#[derive(Debug, serde::Deserialize)]
+struct EntityMemoriesResponse {
+    #[serde(default)]
+    memories: Vec<EntityMemory>,
+}
+
+/// Parse the `{relationships: [...]}` envelope, falling back to a bare array.
+fn parse_relationships_response(text: &str) -> Vec<Relationship> {
+    match serde_json::from_str::<RelationshipsResponse>(text) {
+        Ok(wrapper) => wrapper.relationships,
+        Err(wrapped_err) => match serde_json::from_str::<Vec<Relationship>>(text) {
+            Ok(list) => list,
+            Err(array_err) => {
+                tracing::warn!(
+                    wrapped_error = %wrapped_err,
+                    array_error = %array_err,
+                    "failed to parse relationships response"
+                );
+                Vec::new()
+            }
+        },
+    }
+}
+
+/// Parse the `{memories: [...]}` envelope, falling back to a bare array.
+fn parse_entity_memories_response(text: &str) -> Vec<EntityMemory> {
+    match serde_json::from_str::<EntityMemoriesResponse>(text) {
+        Ok(wrapper) => wrapper.memories,
+        Err(wrapped_err) => match serde_json::from_str::<Vec<EntityMemory>>(text) {
+            Ok(list) => list,
+            Err(array_err) => {
+                tracing::warn!(
+                    wrapped_error = %wrapped_err,
+                    array_error = %array_err,
+                    "failed to parse entity memories response"
+                );
+                Vec::new()
+            }
+        },
+    }
 }

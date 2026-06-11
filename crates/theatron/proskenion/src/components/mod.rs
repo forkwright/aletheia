@@ -1,5 +1,7 @@
 //! Dioxus components for the streaming chat interface.
 
+/// Agent roster panel for the left sidebar (soft shaded box, distinct from nav).
+pub(crate) mod agent_sidebar;
 /// SVG chart primitives: horizontal bars, stacked bars, line charts, percentile bars.
 pub(crate) mod chart;
 pub mod chat;

@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 
 use super::{
-    AgentEntry, AgentPerformanceApiResponse, AgentPerformanceStore, EntityEntry, FactEntry,
-    HealthApiResponse, JournalEventEntry, KnowledgeGrowthStore, MemoryHealthStore, MetaData,
-    MetricsApiResponse, QualityMetricsApiResponse, QualityStore, SessionEntry,
-    SystemReflectionStore, TimeSeriesPointEntry, TimelineEntry,
+    AgentEntry, AgentPerformanceApiResponse, AgentPerformanceStore, CostMetricsApiResponse,
+    EntityEntry, FactEntry, HealthApiResponse, JournalEventEntry, KnowledgeGrowthStore,
+    MemoryHealthStore, MetaData, QualityMetricsApiResponse, QualityStore, SessionEntry,
+    SystemReflectionStore, TimeSeriesPointEntry, TimelineEntry, TokenMetricsApiResponse,
 };
 
 /// Assemble all fetched data into the composite `MetaData` structure.
@@ -16,7 +16,8 @@ use super::{
 )]
 pub(super) fn assemble_meta_data(
     health: HealthApiResponse,
-    metrics: MetricsApiResponse,
+    tokens: TokenMetricsApiResponse,
+    costs: CostMetricsApiResponse,
     facts: Vec<FactEntry>,
     entities: Vec<EntityEntry>,
     timeline: Vec<TimelineEntry>,
@@ -228,8 +229,8 @@ pub(super) fn assemble_meta_data(
         count_to_f64(orphan_count) / count_to_f64(entities.len())
     };
 
-    // WHY: Approximate staleness from facts with empty updated_at or old dates.
-    let stale_count = facts.iter().filter(|f| f.updated_at.is_empty()).count();
+    // WHY: Approximate staleness from facts with no recorded_at timestamp.
+    let stale_count = facts.iter().filter(|f| f.recorded_at.is_empty()).count();
     let staleness_ratio = if facts.is_empty() {
         0.0
     } else {
@@ -281,22 +282,34 @@ pub(super) fn assemble_meta_data(
     };
 
     // -- Reflection --
-    let total_tokens = metrics.total_input_tokens + metrics.total_output_tokens;
+    // WHY: All-time totals are derived from the token/cost insights series
+    // (no range filter applied), since no JSON summary endpoint exists.
+    let total_tokens = tokens.series.iter().fold(0u64, |acc, point| {
+        acc.saturating_add(point.input_tokens)
+            .saturating_add(point.output_tokens)
+    });
+    let total_sessions = tokens
+        .agents
+        .iter()
+        .fold(0u64, |acc, agent| acc.saturating_add(agent.session_count));
+    let total_cost_usd = if costs.series.is_empty() {
+        costs.month_cost
+    } else {
+        costs.series.iter().map(|point| point.cost_usd).sum()
+    };
+
     let overview = crate::state::meta::SystemOverview {
         uptime_seconds: health.uptime_seconds,
-        total_sessions: metrics.total_sessions,
+        total_sessions,
         total_tokens,
         total_entities: total_entity_count,
-        total_cost_usd: metrics.total_cost_usd,
+        total_cost_usd,
     };
 
     let efficiency = crate::state::meta::EfficiencyMetrics {
-        cost_per_entity: crate::state::meta::cost_per_entity(
-            metrics.total_cost_usd,
-            total_entity_count,
-        ),
-        cost_per_session: if metrics.total_sessions > 0 {
-            metrics.total_cost_usd / u64_to_f64(metrics.total_sessions)
+        cost_per_entity: crate::state::meta::cost_per_entity(total_cost_usd, total_entity_count),
+        cost_per_session: if total_sessions > 0 {
+            total_cost_usd / u64_to_f64(total_sessions)
         } else {
             0.0
         },
@@ -304,11 +317,11 @@ pub(super) fn assemble_meta_data(
         cost_per_entity_trend: crate::state::meta::TrendDirection::Flat,
     };
 
-    // WHY: Build heatmap from session created_at timestamps.
+    // WHY: Build heatmap from session activity timestamps.
     // Parse "YYYY-MM-DDTHH:MM:SS" -> (day_of_week, hour).
     let timestamps: Vec<(u8, u8)> = sessions
         .iter()
-        .filter_map(|s| parse_timestamp_to_day_hour(&s.created_at))
+        .filter_map(|s| parse_timestamp_to_day_hour(s.activity_timestamp()))
         .collect();
     let heatmap = crate::state::meta::build_heatmap(&timestamps);
 
@@ -368,7 +381,7 @@ fn compute_sessions_per_day(sessions: &[&SessionEntry]) -> f64 {
     }
     let mut unique_dates = std::collections::HashSet::new();
     for s in sessions {
-        if let Some(date) = s.created_at.get(..10) {
+        if let Some(date) = s.activity_timestamp().get(..10) {
             unique_dates.insert(date.to_string());
         }
     }

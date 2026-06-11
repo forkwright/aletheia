@@ -43,21 +43,39 @@ struct HealthApiResponse {
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
-struct MetricsApiResponse {
+struct TokenMetricsApiResponse {
     #[serde(default)]
-    total_sessions: u64,
-    #[expect(dead_code, reason = "deserialized from API for future use")]
+    series: Vec<TokenBucketEntry>,
     #[serde(default)]
-    active_sessions: u64,
-    #[expect(dead_code, reason = "deserialized from API for future use")]
+    agents: Vec<AgentTokenRowEntry>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct TokenBucketEntry {
     #[serde(default)]
-    total_turns: u64,
+    input_tokens: u64,
     #[serde(default)]
-    total_input_tokens: u64,
+    output_tokens: u64,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct AgentTokenRowEntry {
     #[serde(default)]
-    total_output_tokens: u64,
+    session_count: u64,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct CostMetricsApiResponse {
     #[serde(default)]
-    total_cost_usd: f64,
+    series: Vec<CostBucketEntry>,
+    #[serde(default)]
+    month_cost: f64,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct CostBucketEntry {
+    #[serde(default)]
+    cost_usd: f64,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -70,8 +88,9 @@ struct KnowledgeFactsResponse {
 struct FactEntry {
     #[serde(default)]
     confidence: f64,
+    // NOTE: facts carry `recorded_at` (system recording time), not `updated_at`.
     #[serde(default)]
-    updated_at: String,
+    recorded_at: String,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -110,12 +129,22 @@ struct SessionEntry {
     status: String,
     #[serde(default)]
     created_at: String,
-    #[expect(
-        dead_code,
-        reason = "deserialized; used when last-updated sorting is added"
-    )]
     #[serde(default)]
     updated_at: String,
+}
+
+impl SessionEntry {
+    /// Best-available activity timestamp for day/hour bucketing.
+    ///
+    /// NOTE: the paginated session list carries only `updated_at`;
+    /// `created_at` is preferred when a future shape provides it.
+    fn activity_timestamp(&self) -> &str {
+        if self.created_at.is_empty() {
+            &self.updated_at
+        } else {
+            &self.created_at
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -128,8 +157,27 @@ struct AgentEntry {
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct SessionsApiResponse {
-    #[serde(default)]
+    // NOTE: the paginated endpoint wraps the list as `items`.
+    #[serde(default, alias = "items")]
     sessions: Vec<SessionEntry>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct KnowledgeEntitiesResponse {
+    #[serde(default)]
+    entities: Vec<EntityEntry>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct TimelineEventsResponse {
+    #[serde(default)]
+    events: Vec<TimelineEventApiEntry>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct TimelineEventApiEntry {
+    #[serde(default)]
+    timestamp: String,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -491,7 +539,10 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let base = cfg.server_url.trim_end_matches('/');
 
     let health_url = format!("{base}/api/health");
-    let metrics_url = format!("{base}/metrics");
+    // WHY: /metrics serves Prometheus text; system totals come from the
+    // JSON token/cost insights endpoints instead.
+    let tokens_url = format!("{base}/api/v1/metrics/tokens");
+    let costs_url = format!("{base}/api/v1/metrics/costs");
     let facts_url = format!("{base}/api/v1/knowledge/facts?limit=1000");
     let entities_url = format!("{base}/api/v1/knowledge/entities");
     let timeline_url = format!("{base}/api/v1/knowledge/timeline");
@@ -504,7 +555,8 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     // WHY: Fetch all endpoints in parallel to minimize latency.
     let (
         health_res,
-        metrics_res,
+        tokens_res,
+        costs_res,
         facts_res,
         entities_res,
         timeline_res,
@@ -515,7 +567,8 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         journal_res,
     ) = tokio::join!(
         client.get(&health_url).send(),
-        client.get(&metrics_url).send(),
+        client.get(&tokens_url).send(),
+        client.get(&costs_url).send(),
         client.get(&facts_url).send(),
         client.get(&entities_url).send(),
         client.get(&timeline_url).send(),
@@ -536,9 +589,14 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         }
     };
 
-    let metrics: MetricsApiResponse = match metrics_res {
-        Ok(resp) if resp.status().is_success() => optional_json(resp, "metrics").await,
-        _ => MetricsApiResponse::default(),
+    let tokens: TokenMetricsApiResponse = match tokens_res {
+        Ok(resp) if resp.status().is_success() => optional_json(resp, "token metrics").await,
+        _ => TokenMetricsApiResponse::default(),
+    };
+
+    let costs: CostMetricsApiResponse = match costs_res {
+        Ok(resp) if resp.status().is_success() => optional_json(resp, "cost metrics").await,
+        _ => CostMetricsApiResponse::default(),
     };
 
     let facts: Vec<FactEntry> = match facts_res {
@@ -553,12 +611,18 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     };
 
     let entities: Vec<EntityEntry> = match entities_res {
-        Ok(resp) if resp.status().is_success() => optional_json(resp, "entities").await,
+        Ok(resp) if resp.status().is_success() => match optional_text(resp, "entities").await {
+            Some(text) => parse_entities_response(&text),
+            None => Vec::new(),
+        },
         _ => Vec::new(),
     };
 
     let timeline: Vec<TimelineEntry> = match timeline_res {
-        Ok(resp) if resp.status().is_success() => optional_json(resp, "timeline").await,
+        Ok(resp) if resp.status().is_success() => match optional_text(resp, "timeline").await {
+            Some(text) => parse_timeline_response(&text),
+            None => Vec::new(),
+        },
         _ => Vec::new(),
     };
 
@@ -594,7 +658,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     };
 
     let data = assemble_meta_data(
-        health, metrics, facts, entities, timeline, sessions, agents, perf, quality, journal,
+        health, tokens, costs, facts, entities, timeline, sessions, agents, perf, quality, journal,
     );
     FetchState::Loaded(data)
 }
@@ -637,6 +701,57 @@ fn parse_facts_response(text: &str) -> Vec<FactEntry> {
             }
         },
     }
+}
+
+fn parse_entities_response(text: &str) -> Vec<EntityEntry> {
+    match serde_json::from_str::<Vec<EntityEntry>>(text) {
+        Ok(entities) => entities,
+        Err(array_err) => match serde_json::from_str::<KnowledgeEntitiesResponse>(text) {
+            Ok(response) => response.entities,
+            Err(wrapped_err) => {
+                tracing::warn!(
+                    array_error = %array_err,
+                    wrapped_error = %wrapped_err,
+                    "failed to parse entities response"
+                );
+                Vec::new()
+            }
+        },
+    }
+}
+
+fn parse_timeline_response(text: &str) -> Vec<TimelineEntry> {
+    // WHY: the endpoint returns per-fact events `{events: [...], total}`;
+    // bucket timestamps into per-date counts client-side. A bare
+    // `[{date, count}]` array is accepted as a pre-bucketed fallback.
+    match serde_json::from_str::<TimelineEventsResponse>(text) {
+        Ok(response) => bucket_timeline_events(&response.events),
+        Err(wrapped_err) => match serde_json::from_str::<Vec<TimelineEntry>>(text) {
+            Ok(timeline) => timeline,
+            Err(array_err) => {
+                tracing::warn!(
+                    wrapped_error = %wrapped_err,
+                    array_error = %array_err,
+                    "failed to parse timeline response"
+                );
+                Vec::new()
+            }
+        },
+    }
+}
+
+fn bucket_timeline_events(events: &[TimelineEventApiEntry]) -> Vec<TimelineEntry> {
+    let mut counts: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+    for event in events {
+        if let Some(date) = event.timestamp.get(..10) {
+            let bucket = counts.entry(date.to_string()).or_default();
+            *bucket = bucket.saturating_add(1);
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(date, count)| TimelineEntry { date, count })
+        .collect()
 }
 
 fn parse_sessions_response(text: &str) -> Vec<SessionEntry> {

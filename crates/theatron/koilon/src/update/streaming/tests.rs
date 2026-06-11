@@ -323,7 +323,7 @@ fn make_outcome() -> TurnOutcome {
         text: String::new(),
         nous_id: "syn".into(),
         session_id: "s1".into(),
-        model: "claude".to_string(),
+        model: Some("claude".to_string()),
         tool_calls: 0,
         input_tokens: 0,
         output_tokens: 0,
