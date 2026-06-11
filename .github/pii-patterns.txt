@@ -34,6 +34,24 @@ Acme Workshop LLC
 \b192\.168\.0\.(?:1[6-9]|2[0-9]|3[0-9]|[4-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\b
 
 # ---------------------------------------------------------------------------
+# Operator-private fleet topology and local paths
+# ---------------------------------------------------------------------------
+
+# Fleet hostnames and operator-local repository paths must not appear in this
+# public repository. Use neutral examples such as `host-a`, `local-provider`,
+# `/path/to/...`, or in-repo/public documentation paths instead.
+\b(?:menos|metis|verda|nomos)\b
+menos-ops
+~/dev/kanon
+/home/ck
+~/menos-ops
+~/dev/ergon
+ergon_tools
+/nas/docker/backups/menos
+\$HOME/menos-ops/secrets
+restic-password
+
+# ---------------------------------------------------------------------------
 # Contact identifiers
 # ---------------------------------------------------------------------------
 
