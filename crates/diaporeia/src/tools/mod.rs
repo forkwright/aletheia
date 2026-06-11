@@ -77,7 +77,7 @@ async fn extract_role(
         return jwt.validate(token).ok().map(|claims| claims.role);
     }
 
-    // Fallback: decode-only when no jwt_manager (should not happen when
+    // NOTE: decode-only fallback when no jwt_manager (should not happen when
     // auth_mode != "none", but handle gracefully).
     parse_role_from_token(token)
 }
@@ -478,8 +478,9 @@ impl DiaporeiaServer {
         let (stream_tx, mut stream_rx) =
             tokio::sync::mpsc::channel::<nous::stream::TurnStreamEvent>(64);
 
-        // Drain stream events in background so the channel doesn't back-pressure
-        // the actor. MCP doesn't support server-push, so events are discarded.
+        // WHY: drain stream events in the background so the channel doesn't
+        // back-pressure the actor; MCP has no server-push, so events are
+        // discarded.
         let drain = tokio::spawn(
             async move { while stream_rx.recv().await.is_some() {} }
                 .instrument(tracing::info_span!("diaporeia.mcp.stream_drain")),
@@ -496,7 +497,7 @@ impl DiaporeiaServer {
             })
             .map_err(rmcp::ErrorData::from)?;
 
-        // Wait for drain to finish (fast — channel closes when actor completes)
+        // NOTE: fast — the channel closes when the actor completes.
         let _ = drain.await;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(

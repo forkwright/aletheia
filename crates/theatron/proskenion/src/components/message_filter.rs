@@ -72,14 +72,12 @@ pub(crate) fn MessageFilterBar(
             role: "search",
             aria_label: "Filter messages",
 
-            // Search icon
             span {
                 style: "color: var(--text-muted); font-size: var(--text-sm); flex-shrink: 0;",
                 aria_hidden: "true",
                 "\u{1f50d}"
             }
 
-            // Filter input
             input {
                 style: "{INPUT_STYLE}",
                 r#type: "text",
@@ -90,14 +88,12 @@ pub(crate) fn MessageFilterBar(
                 autofocus: true,
             }
 
-            // Match count
             span {
                 style: "{MATCH_COUNT_STYLE}",
                 aria_live: "polite",
                 "{match_count} of {total_count}"
             }
 
-            // Close button
             button {
                 style: "{CLOSE_BTN_STYLE}",
                 aria_label: "Close search",

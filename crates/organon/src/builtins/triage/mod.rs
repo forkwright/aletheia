@@ -90,10 +90,6 @@ fn require_services(
         .ok_or_else(|| ToolResult::error("tool services not configured"))
 }
 
-// ---------------------------------------------------------------------------
-// `issue_scan` tool
-// ---------------------------------------------------------------------------
-
 struct IssueScanExecutor;
 
 impl ToolExecutor for IssueScanExecutor {
@@ -132,10 +128,6 @@ impl ToolExecutor for IssueScanExecutor {
     }
 }
 
-// ---------------------------------------------------------------------------
-// `issue_triage` tool
-// ---------------------------------------------------------------------------
-
 struct IssueTriageExecutor;
 
 impl ToolExecutor for IssueTriageExecutor {
@@ -159,7 +151,6 @@ impl ToolExecutor for IssueTriageExecutor {
                 extract_opt_str(&input.arguments, "context_keywords").unwrap_or("");
             let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(30);
 
-            // 1. Fetch issues
             let issues = match fetch_issues(
                 &services.http_client,
                 repo,
@@ -177,7 +168,6 @@ impl ToolExecutor for IssueTriageExecutor {
                 return Ok(ToolResult::text("No open issues found matching filters."));
             }
 
-            // 2. Score relevance and filter by threshold
             let keywords: Vec<&str> = context_keywords
                 .split(',')
                 .map(str::trim)
@@ -203,14 +193,12 @@ impl ToolExecutor for IssueTriageExecutor {
                 )));
             }
 
-            // 3. Compute priority scores and sort descending
             scored.sort_by(|a, b| {
                 let pa = compute_priority_score(a);
                 let pb = compute_priority_score(b);
                 pb.partial_cmp(&pa).unwrap_or(std::cmp::Ordering::Equal)
             });
 
-            // 4. Generate prompts and write to staging
             let staging = std::path::Path::new(staging_dir);
             if let Err(e) = tokio::fs::create_dir_all(staging).await {
                 return Ok(ToolResult::error(format!(
@@ -261,10 +249,6 @@ impl ToolExecutor for IssueTriageExecutor {
     }
 }
 
-// ---------------------------------------------------------------------------
-// `issue_approve` tool
-// ---------------------------------------------------------------------------
-
 struct IssueApproveExecutor;
 
 impl ToolExecutor for IssueApproveExecutor {
@@ -281,13 +265,11 @@ impl ToolExecutor for IssueApproveExecutor {
             let staging = std::path::Path::new(staging_dir);
             let queue = std::path::Path::new(queue_dir);
 
-            // Find the prompt file in staging
             let source = match find_staged_prompt(staging, prompt_id).await {
                 Ok(p) => p,
                 Err(msg) => return Ok(ToolResult::error(msg)),
             };
 
-            // Ensure queue directory exists
             if let Err(e) = tokio::fs::create_dir_all(queue).await {
                 return Ok(ToolResult::error(format!(
                     "failed to create queue directory: {e}"
@@ -300,9 +282,8 @@ impl ToolExecutor for IssueApproveExecutor {
             );
             let dest = queue.join(&filename);
 
-            // Move file from staging to queue
             if let Err(e) = tokio::fs::rename(&source, &dest).await {
-                // Fallback: copy + remove (cross-device moves)
+                // WHY: rename fails across devices; fall back to copy + remove.
                 if let Err(copy_err) = tokio::fs::copy(&source, &dest).await {
                     return Ok(ToolResult::error(format!(
                         "failed to move prompt to queue: rename={e}, copy={copy_err}"
@@ -343,9 +324,7 @@ impl ToolExecutor for IssueApproveExecutor {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
+// ── Helper functions ──
 
 /// Fetch open issues from GitHub API.
 ///
@@ -398,7 +377,7 @@ async fn fetch_issues(
 
     let mut issues = Vec::new();
     for item in items {
-        // Skip pull requests (GitHub issues API includes PRs)
+        // WHY: the GitHub issues API includes PRs; skip them.
         if item.get("pull_request").is_some() {
             continue;
         }
@@ -481,7 +460,6 @@ async fn find_staged_prompt(
         .map_err(|e| format!("failed to read staging entry: {e}"))?
     {
         let name = entry.file_name().to_string_lossy().into_owned();
-        // Match by exact filename or by issue number prefix
         let dash_prefix = format!("{prompt_id}-");
         let dot_prefix = format!("{prompt_id}.");
         if name == prompt_id || name.starts_with(&dash_prefix) || name.starts_with(&dot_prefix) {
@@ -491,7 +469,7 @@ async fn find_staged_prompt(
 
     match candidates.len() {
         0 => Err(format!("no staged prompt found matching '{prompt_id}'")),
-        // SAFETY: len() == 1 guarantees next() returns Some
+        // INVARIANT: len() == 1 guarantees next() returns Some.
         1 => Ok(candidates.into_iter().next().unwrap_or_default()),
         n => Err(format!(
             "ambiguous prompt_id '{prompt_id}': matched {n} files"
@@ -506,7 +484,6 @@ fn slugify(title: &str) -> String {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    // Collapse multiple hyphens and trim
     let mut result = String::new();
     let mut last_was_hyphen = false;
     for c in slug.chars() {
@@ -520,7 +497,6 @@ fn slugify(title: &str) -> String {
             last_was_hyphen = false;
         }
     }
-    // Trim trailing hyphen and limit length
     let trimmed = result.trim_end_matches('-');
     let max_len = 50;
     if trimmed.len() > max_len {
@@ -592,9 +568,7 @@ fn format_triage_summary(staged: &[StagedPrompt], scored: &[RelevanceResult]) ->
     out
 }
 
-// ---------------------------------------------------------------------------
-// Tool definitions
-// ---------------------------------------------------------------------------
+// ── Tool definitions ──
 
 fn issue_scan_def() -> ToolDef {
     ToolDef {

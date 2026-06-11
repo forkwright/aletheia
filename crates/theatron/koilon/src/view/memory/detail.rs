@@ -1,4 +1,4 @@
-// Detail rendering for fact and entity views.
+//! Detail rendering for fact and entity views.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;

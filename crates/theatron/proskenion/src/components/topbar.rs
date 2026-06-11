@@ -1,7 +1,7 @@
-//! Top bar with agent status pills and connection/theme controls.
+//! Top bar with brand, agent status pills, and connection/theme controls.
 //!
 //! Sits above the main content area, providing at-a-glance agent status
-//! and quick theme switching. The sidebar owns the single brand mark.
+//! and quick theme switching. Mirrors the Svelte webui's TopBar pattern.
 
 use dioxus::prelude::*;
 use skene::id::NousId;
@@ -20,6 +20,15 @@ const TOPBAR_STYLE: &str = "\
     gap: var(--space-4);\
 ";
 
+const BRAND_STYLE: &str = "\
+    font-family: var(--font-display); \
+    font-size: var(--text-lg); \
+    font-weight: var(--weight-semibold); \
+    color: var(--accent); \
+    flex-shrink: 0; \
+    letter-spacing: 0.02em;\
+";
+
 const PILLS_CONTAINER_STYLE: &str = "\
     display: flex; \
     align-items: center; \
@@ -32,7 +41,7 @@ const PILLS_CONTAINER_STYLE: &str = "\
 const PILL_STYLE: &str = "\
     display: inline-flex; \
     align-items: center; \
-    gap: var(--space-2); \
+    gap: var(--space-1); \
     padding: 6px var(--space-3); \
     border-radius: var(--radius-full); \
     border: 1px solid var(--border); \
@@ -48,7 +57,7 @@ const PILL_STYLE: &str = "\
 const PILL_ACTIVE_STYLE: &str = "\
     display: inline-flex; \
     align-items: center; \
-    gap: var(--space-2); \
+    gap: var(--space-1); \
     padding: 6px var(--space-3); \
     border-radius: var(--radius-full); \
     border: 1px solid var(--accent); \
@@ -60,19 +69,7 @@ const PILL_ACTIVE_STYLE: &str = "\
     transition: background-color var(--transition-quick), \
                 color var(--transition-quick), \
                 border-color var(--transition-quick); \
-    box-shadow: var(--shadow-glow);\
-";
-
-const STATUS_PILL_STYLE: &str = "\
-    display: inline-flex; \
-    align-items: center; \
-    gap: var(--space-1); \
-    padding: 0 var(--space-2); \
-    border-radius: var(--radius-full); \
-    font-size: var(--text-xs); \
-    line-height: var(--leading-normal); \
-    white-space: nowrap; \
-    flex-shrink: 0;\
+    box-shadow: 0 0 0 3px rgb(154 123 79 / 0.2);\
 ";
 
 const CONTROLS_STYLE: &str = "\
@@ -97,16 +94,7 @@ fn derive_status(nous_id: &NousId, event_state: &EventState) -> AgentStatus {
     }
 }
 
-/// Tinted background token for a status pill, paired with [`AgentStatus::dot_color`].
-fn status_pill_bg(status: &AgentStatus) -> &'static str {
-    match status {
-        AgentStatus::Active => "var(--status-success-bg)",
-        AgentStatus::Idle => "var(--status-warning-bg)",
-        AgentStatus::Error => "var(--status-error-bg)",
-    }
-}
-
-/// Top bar with agent pills and controls.
+/// Top bar with brand, agent pills, and controls.
 #[component]
 pub(crate) fn TopBar() -> Element {
     let mut store = use_context::<Signal<AgentStore>>();
@@ -137,7 +125,8 @@ pub(crate) fn TopBar() -> Element {
             role: "banner",
             "aria-label": "Top bar",
 
-            // Agent pills
+            span { style: "{BRAND_STYLE}", "Aletheia" }
+
             div {
                 style: "{PILLS_CONTAINER_STYLE}",
                 "aria-label": "Agent status",
@@ -151,14 +140,10 @@ pub(crate) fn TopBar() -> Element {
                             PILL_STYLE
                         };
                         let status_label = status.label();
-                        let status_pill_style = format!(
-                            "{STATUS_PILL_STYLE} background: {}; color: {color};",
-                            status_pill_bg(&status),
-                        );
                         let dot_style = if matches!(status, AgentStatus::Active) {
-                            format!("width: var(--space-2); height: var(--space-2); border-radius: var(--radius-full); background: {color}; flex-shrink: 0; animation: status-pulse 2s ease-in-out infinite;")
+                            format!("width: 10px; height: 10px; border-radius: 50%; background: {color}; flex-shrink: 0; animation: status-pulse 2s ease-in-out infinite;")
                         } else {
-                            format!("width: var(--space-2); height: var(--space-2); border-radius: var(--radius-full); background: {color}; flex-shrink: 0;")
+                            format!("width: 10px; height: 10px; border-radius: 50%; background: {color}; flex-shrink: 0;")
                         };
                         rsx! {
                             button {
@@ -170,16 +155,16 @@ pub(crate) fn TopBar() -> Element {
                                 onclick: move |_| {
                                     store.write().set_active(&id_clone);
                                 },
+                                span {
+                                    style: "{dot_style}",
+                                    aria_hidden: "true",
+                                }
                                 if !emoji.is_empty() {
                                     span { style: "font-size: var(--text-base);", "{emoji}" }
                                 }
-                                span { "{name}" }
+                                span { "{name} " }
                                 span {
-                                    style: "{status_pill_style}",
-                                    span {
-                                        style: "{dot_style}",
-                                        aria_hidden: "true",
-                                    }
+                                    style: "font-size: var(--text-xs); color: var(--text-muted);",
                                     "{status_label}"
                                 }
                             }
@@ -188,7 +173,6 @@ pub(crate) fn TopBar() -> Element {
                 }
             }
 
-            // Controls
             div {
                 style: "{CONTROLS_STYLE}",
                 crate::components::theme_toggle::ThemeToggle {}

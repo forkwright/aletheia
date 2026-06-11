@@ -1,5 +1,5 @@
-// Manifest schema for poiesis-verify.
-//
+//! Manifest schema for poiesis-verify.
+
 // WHY: the manifest is the source-of-truth for what was claimed and what was
 // queried. Keeping deserialization in one place makes the schema easy to evolve.
 

@@ -27,10 +27,6 @@ use crate::types::{DispatchSpec, SessionOutcome, SessionStatus};
 /// Partition name for energeia state within the shared fjall database.
 const PARTITION_NAME: &str = "energeia";
 
-// ---------------------------------------------------------------------------
-// Error helpers — keep .map_err() calls terse
-// ---------------------------------------------------------------------------
-
 fn store_err(context: &str, e: impl std::fmt::Display) -> error::Error {
     error::StoreSnafu {
         message: format!("{context}: {e}"),
@@ -58,6 +54,8 @@ pub struct EnergeiaStore {
     keyspace: Arc<fjall::Keyspace>,
 }
 
+// NOTE: Storage methods stay `pub` for external tooling: steward workflows,
+// metrics test fixtures, and the mneme training-data pipeline.
 impl EnergeiaStore {
     /// Create a new store backed by a dedicated partition in the given database.
     ///
@@ -76,23 +74,18 @@ impl EnergeiaStore {
     /// Create a store from an already-opened keyspace.
     ///
     /// Use this when the caller manages partition lifecycle (e.g., in tests).
-    // PUBLIC: storage-layer constructor; kept `pub` for external callers that
-    // manage keyspace lifecycle themselves.
     #[must_use]
     pub fn from_keyspace(keyspace: Arc<fjall::Keyspace>) -> Self {
         Self { keyspace }
     }
 
     /// The underlying keyspace name.
-    // PUBLIC: exposes the storage partition identifier for external tooling.
     #[must_use]
     pub fn partition_name() -> &'static str {
         PARTITION_NAME
     }
 
-    // -----------------------------------------------------------------------
-    // Dispatch CRUD
-    // -----------------------------------------------------------------------
+    // ── Dispatch CRUD ──
 
     /// Create a new dispatch record. Returns the generated `DispatchId`.
     ///
@@ -178,17 +171,13 @@ impl EnergeiaStore {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Session CRUD
-    // -----------------------------------------------------------------------
+    // ── Session CRUD ──
 
     /// Create a new session record within a dispatch.
     ///
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
-    // PUBLIC: session-level storage API; used by external dispatch callers and
-    // internal metrics test fixtures.
     pub fn create_session(
         &self,
         dispatch_id: &DispatchId,
@@ -227,7 +216,6 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::NotFound` if the session does not exist.
-    // PUBLIC: session-update storage API; used externally and in metrics tests.
     pub fn update_session(&self, id: &SessionId, update: SessionUpdate) -> Result<()> {
         // WHY: session keys are indexed by (dispatch_id, prompt_number), so we
         // need to scan to find the record by SessionId. For the expected
@@ -278,9 +266,7 @@ impl EnergeiaStore {
         queries::list_sessions_for_dispatch(&self.keyspace, dispatch_id)
     }
 
-    // -----------------------------------------------------------------------
-    // Lesson CRUD
-    // -----------------------------------------------------------------------
+    // ── Lesson CRUD ──
 
     /// Add a new lesson record.
     ///
@@ -325,9 +311,7 @@ impl EnergeiaStore {
         queries::query_lessons(&self.keyspace, source, category, project, limit)
     }
 
-    // -----------------------------------------------------------------------
-    // Observation CRUD
-    // -----------------------------------------------------------------------
+    // ── Observation CRUD ──
 
     /// Add a new observation record.
     ///
@@ -372,16 +356,13 @@ impl EnergeiaStore {
         queries::query_observations(&self.keyspace, project, days, limit)
     }
 
-    // -----------------------------------------------------------------------
-    // CI Validation
-    // -----------------------------------------------------------------------
+    // ── CI Validation ──
 
     /// Record a CI validation result for a session.
     ///
     /// # Errors
     ///
     /// Returns `Error::Store` on write failure.
-    // PUBLIC: CI validation storage API; used by steward workflows and tests.
     pub fn add_ci_validation(
         &self,
         session_id: &SessionId,
@@ -439,9 +420,7 @@ impl EnergeiaStore {
         Ok(())
     }
 
-    // -----------------------------------------------------------------------
-    // Training data integration
-    // -----------------------------------------------------------------------
+    // ── Training data integration ──
 
     /// Extract training signal from a completed session and produce a mneme
     /// `Fact` with the `Training` epistemic tier.
@@ -453,7 +432,6 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Serialization` if the outcome cannot be encoded.
-    // PUBLIC: training-data export API consumed externally by mneme pipeline.
     pub fn record_training_data(
         &self,
         session: &SessionRecord,
@@ -517,9 +495,7 @@ impl EnergeiaStore {
         Ok(fact)
     }
 
-    // -----------------------------------------------------------------------
-    // Bulk scan (metrics / reporting)
-    // -----------------------------------------------------------------------
+    // ── Bulk scan (metrics / reporting) ──
 
     /// List all dispatch records ordered by ULID (time-ascending), up to `limit`.
     ///
@@ -584,7 +560,6 @@ impl EnergeiaStore {
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    // PUBLIC: per-session CI lookup API exposed for external steward tooling.
     pub fn list_ci_validations_for_session(
         &self,
         session_id: &SessionId,
@@ -592,9 +567,7 @@ impl EnergeiaStore {
         queries::list_ci_validations_for_session(&self.keyspace, session_id)
     }
 
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
+    // ── Internal helpers ──
 
     /// Find a session record by its `SessionId` via prefix scan over all sessions.
     fn find_session_by_id(&self, id: &SessionId) -> Result<(String, SessionRecord)> {

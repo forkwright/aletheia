@@ -19,8 +19,6 @@ use crate::types::insights::{
     QualityMetricsResponse, QualitySeries, TimeSeriesPoint, TokenMetricsResponse, TokenSeriesPoint,
 };
 
-// -- Safe numeric conversions ------------------------------------------------
-
 /// Convert `i64` to `f64` losslessly for values that fit in `i32`.
 ///
 /// # Panics
@@ -38,8 +36,6 @@ fn i64_to_f64(n: i64) -> f64 {
 fn usize_to_f64(n: usize) -> f64 {
     f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
-
-// -- GET /api/v1/metrics/agents ----------------------------------------------
 
 /// GET /api/v1/metrics/agents: list performance metrics for all agents.
 #[utoipa::path(
@@ -112,8 +108,6 @@ pub async fn get_agent_perf(
     })
 }
 
-// -- GET /api/v1/metrics/agents/{id} -----------------------------------------
-
 /// GET /api/v1/metrics/agents/{id}: performance metrics for a single agent.
 #[utoipa::path(
     get,
@@ -158,8 +152,6 @@ pub async fn get_agent_perf_one(
     )))
 }
 
-// -- GET /api/v1/metrics/quality ---------------------------------------------
-
 /// GET /api/v1/metrics/quality: conversation quality time series.
 #[utoipa::path(
     get,
@@ -203,8 +195,6 @@ pub async fn get_quality_metrics(
     Json(QualityMetricsResponse { series })
 }
 
-// -- Metrics query validation ------------------------------------------------
-
 /// Granularity values accepted by the metrics endpoints.
 ///
 /// Anything else would otherwise fall through `bucket_date`'s `_` arm and be
@@ -214,10 +204,11 @@ const VALID_GRANULARITIES: [&str; 3] = ["daily", "weekly", "monthly"];
 /// Reject metrics query parameters that would otherwise be silently ignored.
 ///
 /// `date_in_range` compares dates lexicographically and `bucket_date` defaults
-/// unknown granularities to `daily`, so malformed input previously produced a
-/// misleading empty/`daily` `200` response instead of an error. Validating here
-/// turns those silent wrong-answers into an honest `400`. Absent (`None`) and
-/// empty values keep their existing meaning (no filter / default granularity).
+/// unknown granularities to `daily`, so unvalidated malformed input would
+/// produce a misleading empty/`daily` `200` response instead of an error.
+/// Validating here turns those silent wrong-answers into an honest `400`.
+/// Absent (`None`) and empty values keep their meaning (no filter / default
+/// granularity).
 fn validate_metrics_query(query: &MetricsQuery) -> Result<(), ApiError> {
     if let Some(granularity) = query.granularity.as_deref()
         && !granularity.is_empty()
@@ -249,8 +240,6 @@ fn validate_optional_date(field: &str, value: Option<&str>) -> Result<(), ApiErr
     Ok(())
 }
 
-// -- GET /api/v1/metrics/tokens ----------------------------------------------
-
 /// GET /api/v1/metrics/tokens: token usage envelope consumed by desktop metrics.
 #[utoipa::path(
     get,
@@ -271,8 +260,6 @@ pub async fn get_token_metrics(
     validate_metrics_query(&query)?;
     Ok(Json(load_token_metrics(state, query).await))
 }
-
-// -- GET /api/v1/metrics/costs -----------------------------------------------
 
 /// GET /api/v1/metrics/costs: cost metrics envelope consumed by desktop metrics.
 #[utoipa::path(
@@ -295,8 +282,6 @@ pub async fn get_cost_metrics(
     let tokens = load_token_metrics(state, query).await;
     Ok(Json(costs_from_tokens(&tokens)))
 }
-
-// -- GET /api/v1/journal -----------------------------------------------------
 
 /// GET /api/v1/journal: queryable system event log.
 #[utoipa::path(
@@ -323,7 +308,7 @@ pub async fn get_journal(
     Json(Vec::new())
 }
 
-// -- Computation helpers -----------------------------------------------------
+// ── Computation helpers ──
 
 /// Compute per-agent performance from a slice of sessions.
 fn compute_agent_performance(

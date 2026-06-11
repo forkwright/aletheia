@@ -1,4 +1,4 @@
-//! Test 1 from the deliverable: tiny synthetic source — 1 session, 5
+//! Tiny synthetic source — 1 session, 5
 //! messages, 1 distillation. After migrating, the resulting fjall
 //! directory must be openable via graphe's `SessionStore` and every row
 //! must be queryable through the public API.

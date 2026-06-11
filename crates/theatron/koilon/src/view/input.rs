@@ -40,7 +40,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let content_width = usize::from(area.width.max(1));
     let visible_rows = usize::from(area.height.saturating_sub(1));
 
-    // Reserve rows for image attachment thumbnails
     let attachment_rows = if app.interaction.input.image_attachments.is_empty() {
         0
     } else {
@@ -69,7 +68,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     let mut ratatui_lines: Vec<Line<'static>> = Vec::with_capacity(total_rows + attachment_rows);
 
-    // Image attachment summaries
     for (i, img) in app.interaction.input.image_attachments.iter().enumerate() {
         let size_kb = img.data.len() / 1024;
         ratatui_lines.push(Line::from(vec![Span::styled(

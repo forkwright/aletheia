@@ -1,4 +1,4 @@
-// Error types for poiesis-lint.
+//! Error types for poiesis-lint.
 
 use snafu::Snafu;
 

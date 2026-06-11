@@ -1,6 +1,6 @@
 //! B-001 acceptance tests.
 //!
-//! Mirrors the five acceptance criteria from the planning entry:
+//! Five acceptance criteria:
 //!
 //! 1. Round-trip a valid spec.
 //! 2. Reject planted-bad specs with precise (JSON-pointer) errors.
@@ -28,9 +28,7 @@ use poiesis_core::{
 };
 use serde_json::json;
 
-// =========================================================================
-// Acceptance #1 — round-trip a valid spec for each body kind.
-// =========================================================================
+// ── Acceptance #1 — round-trip a valid spec for each body kind ──
 
 #[test]
 fn acceptance_round_trip_deck_spec() {
@@ -98,9 +96,7 @@ fn acceptance_round_trip_document_spec() {
     assert_eq!(back, spec);
 }
 
-// =========================================================================
-// Acceptance #2 — reject planted-bad specs with precise errors.
-// =========================================================================
+// ── Acceptance #2 — reject planted-bad specs with precise errors ──
 
 #[test]
 fn acceptance_reject_missing_required_meta_field() {
@@ -263,9 +259,7 @@ fn acceptance_reject_unsourced_claim() {
     ));
 }
 
-// =========================================================================
-// Acceptance #3 — drop-a-pack works.
-// =========================================================================
+// ── Acceptance #3 — drop-a-pack works ──
 
 #[test]
 fn acceptance_drop_a_pack_discovers_validates_and_lists() {
@@ -311,9 +305,7 @@ fn acceptance_drop_a_pack_discovers_validates_and_lists() {
     ));
 }
 
-// =========================================================================
-// Acceptance #4 — factbase resolves, with cycle detection.
-// =========================================================================
+// ── Acceptance #4 — factbase resolves, with cycle detection ──
 
 #[test]
 fn acceptance_factbase_resolves_in_declaration_order() {
@@ -438,13 +430,11 @@ fn acceptance_factbase_skips_sql_when_no_adapter_configured() {
     assert_eq!(resolved.len(), 1);
 }
 
-// =========================================================================
-// Acceptance #5 — legacy organon → Document → Renderer path still works.
-// =========================================================================
+// ── Acceptance #5 — legacy organon → Document → Renderer path still works ──
 
 /// A stand-in for organon's render path: take a `Document`, produce bytes
 /// via a `Renderer`. This compiles iff the pre-envelope surface remains
-/// unchanged, which is the contract we promised.
+/// unchanged.
 struct PlaintextRenderer;
 
 impl Renderer for PlaintextRenderer {
@@ -510,16 +500,12 @@ fn acceptance_legacy_renderer_path_compiles_and_runs() {
 
 #[test]
 fn acceptance_legacy_document_round_trips_through_envelope() {
-    // Wrap a legacy Document inside the new envelope's Body::Document arm
-    // (via DocumentBody). The Document itself is preserved verbatim.
     let doc = Document::new("Hello");
     let body = DocumentBody::new(doc);
     assert_eq!(body.document.metadata.title, "Hello");
 }
 
-// =========================================================================
-// Helpers.
-// =========================================================================
+// ── Helpers ──
 
 fn empty_factbase() -> Factbase {
     Factbase::new()

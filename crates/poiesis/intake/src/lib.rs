@@ -246,8 +246,6 @@ fn generic_template(description: &str, requirements: &[String]) -> String {
     out
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {

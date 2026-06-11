@@ -38,11 +38,6 @@ use oikonomos::triggers::TriggerRouter;
 mod common;
 use common::{make_runner, write_fixture};
 
-// Split: Probe / ProbeSet / ProbeResult / ProbeAuditSummary aggregation.
-
-// Section 5: Probes
-// ---------------------------------------------------------------------------
-
 #[test]
 fn probe_audit_config_default_enabled_with_all_categories() {
     let cfg = ProbeAuditConfig::default();
@@ -288,5 +283,3 @@ fn probe_result_serde_roundtrips_through_json() {
     assert!((back.confidence - original.confidence).abs() < f32::EPSILON);
     assert_eq!(back.violations, original.violations);
 }
-
-// ---------------------------------------------------------------------------

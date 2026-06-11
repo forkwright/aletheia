@@ -51,8 +51,8 @@ where
     let mut tracker = mneme::evidence_gap::EvidenceGapTracker::new(query);
     let sub_questions: Vec<String> = tracker.query().sub_questions.clone();
 
-    // Pre-tokenize candidates once (token set + source_id) to avoid re-tokenizing
-    // per sub-question.
+    // PERF: pre-tokenize candidates once (token set + source_id) to avoid
+    // re-tokenizing per sub-question.
     let tokenized: Vec<(HashSet<String>, &str)> = candidates
         .into_iter()
         .map(|(content, source_id)| (content_tokens(content).into_iter().collect(), source_id))

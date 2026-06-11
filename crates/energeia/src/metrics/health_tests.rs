@@ -1,7 +1,5 @@
 use super::*;
 
-// --- health status display (always compiled) ---
-
 #[test]
 fn health_status_display() {
     assert_eq!(HealthStatus::Ok.to_string(), "ok");
@@ -9,8 +7,6 @@ fn health_status_display() {
     assert_eq!(HealthStatus::Crit.to_string(), "crit");
     assert_eq!(HealthStatus::Unavailable.to_string(), "unavailable");
 }
-
-// --- storage-dependent tests ---
 
 #[cfg(feature = "storage-fjall")]
 #[expect(clippy::float_cmp, reason = "test assertions on exact float values")]
@@ -60,7 +56,7 @@ mod storage_tests {
         }
     }
 
-    // --- classify helpers ---
+    // ── classify helpers ──
 
     #[test]
     fn classify_lower_ok() {
@@ -120,7 +116,7 @@ mod storage_tests {
         );
     }
 
-    // --- corrective rate ---
+    // ── corrective rate ──
 
     #[test]
     fn corrective_rate_all_clean() {
@@ -175,7 +171,7 @@ mod storage_tests {
         assert!(!metric.is_proxied);
     }
 
-    // --- stuck rate ---
+    // ── stuck rate ──
 
     #[test]
     fn stuck_rate_zero() {
@@ -217,7 +213,7 @@ mod storage_tests {
         assert_eq!(metric.status, HealthStatus::Unavailable);
     }
 
-    // --- cycle time ---
+    // ── cycle time ──
 
     #[test]
     fn cycle_time_under_4h_ok() {
@@ -278,7 +274,7 @@ mod storage_tests {
         assert_eq!(metric.status, HealthStatus::Unavailable);
     }
 
-    // --- batch parallelism ---
+    // ── batch parallelism ──
 
     #[test]
     fn batch_parallelism_four_sessions_ok() {
@@ -311,8 +307,6 @@ mod storage_tests {
         let metric = batch_parallelism(&[], &[]);
         assert_eq!(metric.status, HealthStatus::Unavailable);
     }
-
-    // --- observation to issue rate ---
 
     #[test]
     fn observation_to_issue_rate_always_unavailable() {

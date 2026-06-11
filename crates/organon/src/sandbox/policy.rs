@@ -432,7 +432,6 @@ pub fn apply_sandbox(
 
     if !policy.enabled {
         // WHY: Log when sandbox is completely disabled so operators see it clearly.
-        // Closes #1718.
         tracing::warn!("sandbox disabled: tool execution runs without any restrictions");
         return Ok(());
     }
@@ -460,9 +459,9 @@ pub fn apply_sandbox(
                  Set enforcement=permissive to run without sandboxing.",
             ));
         }
-        // WHY: Log ONCE when Landlock is available but enforcement is permissive so
-        // operators know syscall violations are only logged, not blocked. Closes #1718.
-        // Changed from per-call warn to once-per-process to avoid log spam (#3102).
+        // WHY: Warn ONCE per process (not per call, which spams the log) when
+        // Landlock is available but enforcement is permissive, so operators know
+        // syscall violations are only logged, not blocked.
         (Some(_), SandboxEnforcement::Permissive) => {
             use std::sync::atomic::{AtomicBool, Ordering};
             static WARNED: AtomicBool = AtomicBool::new(false);

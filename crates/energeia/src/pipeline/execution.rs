@@ -64,8 +64,6 @@ impl PipelineStage for ExecutionStage {
                 continue;
             }
 
-            // Collect prompts for this group, skipping those whose dependencies
-            // failed or are blocked.
             let mut group_prompts: Vec<PromptSpec> = Vec::new();
             for &n in group_numbers {
                 let Some(prompt) = ctx.prompt_map.get(&n).cloned() else {
@@ -97,7 +95,6 @@ impl PipelineStage for ExecutionStage {
                 }
             }
 
-            // Drain correctives from the previous group into this execution.
             let correctives = std::mem::take(&mut ctx.correctives);
             group_prompts.extend(correctives);
             group_prompts = group_prompts
@@ -111,7 +108,6 @@ impl PipelineStage for ExecutionStage {
                 continue;
             }
 
-            // Mark prompts as InProgress before execution.
             for p in &group_prompts {
                 // kanon:ignore RUST/no-silent-result-swallow — prompt was just added to the group from prompt_map; set_status is infallible here
                 let _ = ctx.dag_mut().set_status(p.number, PromptStatus::InProgress);
@@ -135,8 +131,6 @@ impl PipelineStage for ExecutionStage {
             )
             .await;
 
-            // Stamp each outcome with the number of corrective attempts already
-            // made for its prompt number before this execution.
             for outcome in &mut outcomes {
                 outcome.corrective_attempts = ctx
                     .corrective_attempt_counts
@@ -145,9 +139,8 @@ impl PipelineStage for ExecutionStage {
                     .unwrap_or(0);
             }
 
-            // Process outcomes: update DAG, record cost, handle QA and
-            // correctives. Post-processing handles metrics and store; this
-            // stage only updates the DAG and correctives list.
+            // NOTE: Post-processing handles metrics and store; this stage only
+            // updates the DAG and the correctives list.
             for outcome in &outcomes {
                 let cost_ledger = std::sync::Arc::clone(ctx.cost_ledger());
                 let model = outcome.model.as_deref().unwrap_or("unknown");
@@ -236,10 +229,6 @@ impl PipelineStage for ExecutionStage {
         Ok(())
     }
 }
-
-// ---------------------------------------------------------------------------
-// Helpers (replicated from orchestrator/mod.rs, scoped here for the stage)
-// ---------------------------------------------------------------------------
 
 fn attach_structured_upstream_outputs(
     mut prompt: PromptSpec,

@@ -492,7 +492,6 @@ mod tests {
     #[test]
     fn expired_intent_not_active() {
         let (_dir, store) = make_store();
-        // expires_at in the past
         let past = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_secs(1))
             .unwrap();
@@ -503,7 +502,8 @@ mod tests {
             Some(past),
         )
         .unwrap();
-        // Force past expiry — new() uses now() so we patch after construction
+        // WHY: new() stamps expires_at from now(), so patch it after
+        // construction to force a past expiry.
         intent.expires_at = Some(past);
         store.add_intent(intent).unwrap();
 
@@ -675,7 +675,6 @@ mod tests {
                 .add_intent(operator_directive("persist across restarts"))
                 .unwrap();
         }
-        // Re-open a new IntentStore pointing at the same directory
         let store2 = IntentStore::new(dir.path());
         let intents = store2.list_intents().unwrap();
         assert_eq!(intents.len(), 1);

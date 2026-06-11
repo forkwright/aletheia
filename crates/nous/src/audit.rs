@@ -365,7 +365,7 @@ pub(crate) fn build_audit_record(
         fact_ids_included,
         fact_ids_filtered,
         tool_names,
-        // TODO(#3384 follow-up): thread request_id from pylon middleware
+        // TODO(#3384): thread request_id from pylon middleware
         // through PipelineInput once the extraction path reaches nous.
         request_id: None,
     }

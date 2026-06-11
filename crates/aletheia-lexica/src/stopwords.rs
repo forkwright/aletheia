@@ -3,7 +3,7 @@
 /// English stopwords for terminology discovery and text filtering.
 ///
 /// Covers prepositions, pronouns, auxiliary verbs, determiners, and common
-/// conjunctions. Sourced from `nous/src/recall/reranking.rs`.
+/// conjunctions.
 pub const ENGLISH_STOPWORDS: &[&str] = &[
     "a",
     "an",
@@ -135,8 +135,7 @@ pub const ENGLISH_STOPWORDS: &[&str] = &[
 
 /// Smaller stopword list for probe token-overlap comparison.
 ///
-/// Focused on high-frequency function words. Sourced from
-/// `melete/src/probe.rs`.
+/// Focused on high-frequency function words.
 pub const ENGLISH_PROBE_STOP_WORDS: &[&str] = &[
     "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one",
     "our", "out", "has", "his", "how", "its", "may", "new", "now", "old", "see", "way", "who",

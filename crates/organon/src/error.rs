@@ -84,7 +84,7 @@ pub type Result<T> = std::result::Result<T, Error>; // kanon:ignore RUST/pub-vis
 ///
 /// WHY: Structured variants preserve failure mode (not-found vs conflict vs I/O)
 /// so callers can pattern-match on specific failures without string-parsing.
-/// Decoupled from backend types to avoid circular dependencies. Closes #3286.
+/// Decoupled from backend types to avoid circular dependencies.
 ///
 /// Variant names are prefixed with `Store` to avoid snafu context-selector
 /// collisions with `PlanningAdapterError` variants in the same module.

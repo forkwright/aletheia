@@ -3,9 +3,8 @@
 // means the EmpiricalRouter can depend on StaticRouter as its fallback without
 // introducing a cross-module cycle.
 //
-// Types that are shared with the interactive path (nous) have been hoisted to
-// the `aletheia-routing` crate. This module re-exports them under the original
-// paths so existing energeia call-sites remain unchanged.
+// Types shared with the interactive path (nous) live in the `aletheia-routing`
+// crate; this module re-exports them under the original paths.
 
 /// After-action record read-side aggregation and rolling statistics.
 ///
@@ -18,9 +17,8 @@ pub(crate) mod empirical;
 
 /// Persona-aware router: model-tier + role selection on top of empirical routing.
 ///
-/// Recovers the persona dispatch capability from the phronesis migration
-/// (issue #3453). The classifier (commit 2, `persona_classifier.rs`) supplies
-/// a `(ModelTier, PersonaRole)` hint; the router carries it in `PersonaDecision`.
+/// The classifier (`persona_classifier.rs`) supplies a `(ModelTier, PersonaRole)`
+/// hint; the router carries it in `PersonaDecision`.
 pub(crate) mod persona;
 
 /// AST-style prompt classifier for persona-based routing.
@@ -37,19 +35,10 @@ pub(crate) mod persona_classifier;
 /// Extends [`PersonaRouter`](persona::PersonaRouter) with a four-dimension
 /// weighted affinity score (category match 40%, consistency 30%, breadth 20%,
 /// recency 10%) that acts as a tiebreaker when the empirical confidence gap is
-/// narrow. Restores the session×TaskCategory affinity tracking from the
-/// phronesis migration (issue #3456).
+/// narrow.
 pub(crate) mod affinity;
 
-// ---------------------------------------------------------------------------
-// Re-exports from aletheia-routing (shared types)
-// ---------------------------------------------------------------------------
-
 pub(crate) use aletheia_routing::types::{ProviderId, TaskCategory};
-
-// ---------------------------------------------------------------------------
-// StaticRouter
-// ---------------------------------------------------------------------------
 
 /// Static provider router: always returns the configured default provider.
 ///
@@ -74,10 +63,6 @@ impl StaticRouter {
     }
 }
 
-// ---------------------------------------------------------------------------
-// RoutingMode
-// ---------------------------------------------------------------------------
-
 /// Dispatch routing mode configured by the operator.
 ///
 /// Set via `[dispatch.routing] mode = "..."` in `taxis` configuration.
@@ -91,10 +76,6 @@ pub(crate) enum RoutingMode {
     /// Use historical success rates to pick providers when data is sufficient.
     Empirical,
 }
-
-// ---------------------------------------------------------------------------
-// DispatchRoutingConfig
-// ---------------------------------------------------------------------------
 
 /// Operator-facing routing configuration for the dispatch engine.
 ///
@@ -129,10 +110,6 @@ impl Default for DispatchRoutingConfig {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

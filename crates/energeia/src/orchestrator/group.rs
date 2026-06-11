@@ -56,7 +56,7 @@ pub(crate) async fn execute_group(
         let prompt = prompt.clone();
 
         join_set.spawn(async move {
-            // NOTE: Check cancellation before acquiring the semaphore to avoid
+            // WHY: Cancellation is checked before acquiring the semaphore to avoid
             // starting work that will immediately be discarded.
             if token.is_cancelled() {
                 return skipped_outcome(&prompt, "dispatch cancelled");
@@ -93,8 +93,8 @@ pub(crate) async fn execute_group(
                 },
             };
 
-            // NOTE: Check budget after execution. If exceeded, signal cancellation
-            // so remaining prompts in this group (and future groups) are skipped.
+            // WHY: Budget is checked after execution; on exceed, cancellation is
+            // signalled so remaining prompts in this and future groups are skipped.
             if let BudgetStatus::Exceeded(reason) = budget.check() {
                 tracing::warn!(
                     prompt_number = prompt.number,
@@ -108,8 +108,8 @@ pub(crate) async fn execute_group(
         });
     }
 
-    // NOTE: Collect results as tasks complete. JoinSet returns in completion
-    // order; we sort by prompt number afterward for deterministic output.
+    // WHY: JoinSet returns in completion order; results are sorted by prompt
+    // number afterward for deterministic output.
     let mut outcomes: Vec<SessionOutcome> = Vec::with_capacity(prompts.len());
 
     while let Some(result) = join_set.join_next().await {
@@ -250,7 +250,6 @@ mod tests {
 
         assert_eq!(outcomes.len(), 3);
         assert!(outcomes.iter().all(|o| o.status == SessionStatus::Success));
-        // NOTE: Results sorted by prompt number.
         assert_eq!(outcomes[0].prompt_number, 1);
         assert_eq!(outcomes[1].prompt_number, 2);
         assert_eq!(outcomes[2].prompt_number, 3);

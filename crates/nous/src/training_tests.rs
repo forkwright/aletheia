@@ -124,7 +124,6 @@ fn training_capture_appends() {
     let lines: Vec<&str> = content.lines().collect();
     assert_eq!(lines.len(), 3);
 
-    // Manifest should reflect 3 records
     assert_eq!(capture.manifest().total_records, 3);
     assert_eq!(capture.manifest().shards.len(), 1);
     assert_eq!(capture.manifest().shards[0].record_count, 3);
@@ -135,11 +134,10 @@ fn training_capture_appends() {
 #[test]
 fn shard_rotation_on_size_limit() {
     let dir = tempfile::tempdir().expect("tempdir");
-    // Tiny limit to force rotation after ~1 record
+    // WHY: tiny limit forces rotation after ~1 record
     let config = test_config_no_pii("training", 100);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    // Write enough records to trigger rotation
     for i in 0..5 {
         let record = TrainingRecord {
             schema_version: TRAINING_RECORD_SCHEMA_VERSION,
@@ -161,7 +159,6 @@ fn shard_rotation_on_size_limit() {
         capture.write_record(&record).expect("write");
     }
 
-    // Should have created multiple shards
     assert!(
         capture.manifest().shards.len() > 1,
         "expected multiple shards, got {}",
@@ -169,7 +166,6 @@ fn shard_rotation_on_size_limit() {
     );
     assert_eq!(capture.manifest().total_records, 5);
 
-    // All shard files should exist
     for shard in &capture.manifest().shards {
         let shard_path = dir.path().join("training").join(&shard.file_name);
         assert!(
@@ -188,7 +184,6 @@ fn legacy_conversations_jsonl_adopted() {
     let training_dir = dir.path().join("training");
     fs::create_dir_all(&training_dir).expect("mkdir");
 
-    // Write a legacy file with 2 records
     let legacy_path = training_dir.join("conversations.jsonl");
     let record_json = r#"{"session_id":"old-1","nous_id":"syn","user_message":"hi","assistant_response":"hello","model":"test","tokens":10,"timestamp":"1970-01-01T00:00:00Z"}"#;
     {
@@ -208,7 +203,6 @@ fn legacy_conversations_jsonl_adopted() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    // Manifest should include the legacy file
     assert!(
         capture
             .manifest()
@@ -232,11 +226,9 @@ fn manifest_persisted_atomically() {
 
     capture.maybe_capture(good_input());
 
-    // Manifest file should exist
     let manifest_path = dir.path().join("training").join("training-manifest.json");
     assert!(manifest_path.exists(), "manifest file should exist");
 
-    // Should be valid JSON
     let content = fs::read_to_string(&manifest_path).expect("read manifest");
     let manifest: TrainingManifest = serde_json::from_str(&content).expect("parse manifest");
     assert_eq!(manifest.total_records, 1);
@@ -342,7 +334,6 @@ fn quality_gate_accepts_tool_use_with_end_turn() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    // Turn that used tools but ended with text (end_turn)
     let captured = capture.maybe_capture(CaptureInput {
         assistant_response: "Based on the file contents, here is the answer.",
         stop_reason: CaptureStopReason::EndTurn,
@@ -408,8 +399,8 @@ fn capture_preserves_episteme_labels() {
         parsed.fact_types,
         Some(vec!["preference".to_owned(), "identity".to_owned()])
     );
-    // quality_score is now computed; a correction turn supplies a
-    // signal (is_correction) so a score must be present.
+    // WHY: a correction turn supplies an is_correction signal, so a
+    // quality score must be present.
     assert!(parsed.quality_score.is_some());
 }
 
@@ -594,7 +585,6 @@ fn pii_filter_disabled_passes_through() {
     let content = std::fs::read_to_string(capture.file_path()).expect("read");
     let parsed: TrainingRecord =
         serde_json::from_str(content.lines().next().expect("line")).expect("parse");
-    // With the filter disabled, content passes through unchanged.
     assert!(parsed.user_message.contains("risky@example.com"));
     assert!(!parsed.pii_redacted);
 }

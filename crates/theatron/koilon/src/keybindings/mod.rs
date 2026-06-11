@@ -207,7 +207,7 @@ mod tests {
         assert!(keys.contains(&":"), "should include : for command palette");
     }
 
-    // --- KeyMap and parse_key_combo tests ---
+    // ── KeyMap and parse_key_combo tests ──
 
     #[test]
     fn parse_key_combo_ctrl_letter() {
@@ -269,13 +269,11 @@ mod tests {
         let mut overrides = HashMap::new();
         overrides.insert("toggle_sidebar".to_string(), "Ctrl+G".to_string());
         let keymap = KeyMap::build(&overrides);
-        // Old binding should be gone
         assert!(
             keymap
                 .lookup(KeyModifiers::CONTROL, KeyCode::Char('f'))
                 .is_none()
         );
-        // New binding should work
         assert_eq!(
             keymap.lookup(KeyModifiers::CONTROL, KeyCode::Char('g')),
             Some(Action::ToggleSidebar)

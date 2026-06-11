@@ -1,10 +1,5 @@
 //! Unit tests for ecological succession: volatility computation, adaptive stability,
 //! domain profiling, and integration with the recall scoring pipeline.
-//!
-//! NOTE: The prompt's Context section describes the volatility multiplier as
-//! `1.0 / (1.0 + 0.1 * supersession_count)`, which bounds output to (0.0, 1.0].
-//! The actual implementation uses `1.5 - volatility`, which ranges [0.5, 1.5].
-//! Tests reflect the actual implementation. The discrepancy is noted in the PR body.
 
 use crate::graph_intelligence::{GraphContext, score_access_with_evolution};
 use crate::knowledge::{EpistemicTier, FactType};
@@ -84,10 +79,8 @@ fn compute_volatility_fractional_supersession_rate() {
     assert!((v - expected).abs() < 1e-10, "expected {expected}, got {v}");
 }
 
-// NOTE: The actual formula is `1.5 - volatility`, not `1.0 / (1.0 + 0.1 * count)`.
-// The implementation intentionally gives a boost (1.5×) for stable domains
-// and a penalty (0.5×) for volatile ones. The range is [0.5, 1.5].
-// The prompt's Context section describes a different formula: see PR observations.
+// WHY: `volatility_multiplier` intentionally boosts stable domains (1.5×) and
+// penalizes volatile ones (0.5×); its range is [0.5, 1.5], not (0.0, 1.0].
 
 #[test]
 fn volatility_multiplier_zero_volatility_returns_one_point_five() {
@@ -447,11 +440,6 @@ mod proptests {
     use super::*;
     proptest! {
         /// Requirement 24: for any volatility input, multiplier is in (0.0, 1.5].
-        ///
-        /// NOTE: The prompt's Context section specifies the multiplier formula as
-        /// `1.0 / (1.0 + 0.1 * supersession_count)`, bounding output to (0.0, 1.0].
-        /// The actual implementation `1.5 - volatility` produces range [0.5, 1.5].
-        /// This test asserts the actual implementation's range. See PR observations.
         #[test]
         fn volatility_multiplier_range_is_half_to_one_point_five(
             v in 0.0_f64..=1.0,

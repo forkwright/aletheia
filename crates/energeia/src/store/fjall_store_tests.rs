@@ -26,9 +26,7 @@ fn sample_dispatch_spec() -> DispatchSpec {
     }
 }
 
-// -----------------------------------------------------------------------
-// Dispatch tests
-// -----------------------------------------------------------------------
+// ── Dispatch tests ──
 
 #[test]
 fn create_and_get_dispatch() {
@@ -102,9 +100,7 @@ fn finish_nonexistent_dispatch_returns_not_found() {
     assert!(result.is_err());
 }
 
-// -----------------------------------------------------------------------
-// Session tests
-// -----------------------------------------------------------------------
+// ── Session tests ──
 
 #[test]
 fn create_and_list_sessions() {
@@ -177,9 +173,7 @@ fn update_nonexistent_session_returns_not_found() {
     assert!(result.is_err());
 }
 
-// -----------------------------------------------------------------------
-// Lesson tests
-// -----------------------------------------------------------------------
+// ── Lesson tests ──
 
 #[test]
 fn add_and_query_lessons() {
@@ -242,9 +236,7 @@ fn query_lessons_respects_limit() {
     assert_eq!(results.len(), 3);
 }
 
-// -----------------------------------------------------------------------
-// Observation tests
-// -----------------------------------------------------------------------
+// ── Observation tests ──
 
 #[test]
 fn add_and_query_observations() {
@@ -296,9 +288,7 @@ fn query_observations_respects_limit() {
     assert_eq!(results.len(), 3);
 }
 
-// -----------------------------------------------------------------------
-// CI Validation tests
-// -----------------------------------------------------------------------
+// ── CI Validation tests ──
 
 #[test]
 fn add_and_list_ci_validations() {
@@ -326,9 +316,7 @@ fn add_and_list_ci_validations() {
     assert_eq!(validations.len(), 2);
 }
 
-// -----------------------------------------------------------------------
-// Training data tests
-// -----------------------------------------------------------------------
+// ── Training data tests ──
 
 #[test]
 fn record_training_data_produces_fact() {
@@ -374,9 +362,7 @@ fn record_training_data_produces_fact() {
     assert_eq!(data.cost_usd, 0.42);
 }
 
-// -----------------------------------------------------------------------
-// Store construction tests
-// -----------------------------------------------------------------------
+// ── Store construction tests ──
 
 #[test]
 fn from_keyspace_works() {

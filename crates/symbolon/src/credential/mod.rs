@@ -23,7 +23,6 @@ pub use refresh::{
     claude_code_provider_with_config, force_refresh,
 };
 
-// Re-export OAuth provider configuration from pkce module
 pub use pkce::OAuthProvider;
 
 /// Caller-rendered action emitted by interactive OAuth credential flows.

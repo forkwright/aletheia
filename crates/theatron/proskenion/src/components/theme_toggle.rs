@@ -21,11 +21,8 @@ pub(crate) fn ThemeToggle() -> Element {
     rsx! {
         CoreThemeToggle {
             on_change: move |next: ThemeMode| {
-                // Migrated 2026-05-08 to themelion::ThemeMode::slug
-                // (theatron v1.2.0). Pre-migration code conflated the
-                // human-facing label with the storage wire format by
-                // doing label().to_lowercase(); slug() is the dedicated
-                // lowercase storage form ("dark"/"light"/"system").
+                // WHY: slug() is the storage wire format ("dark"/"light"/
+                // "system"); label() is display-only.
                 appearance.write().theme = next.slug().to_string();
                 crate::services::settings_config::save_state(
                     &server_store.read(),

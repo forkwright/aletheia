@@ -1,6 +1,6 @@
 //! Fjall knowledge store backup: periodic file-level copy to timestamped directory.
 //!
-//! WHY (#3381): the fjall knowledge store has no built-in backup mechanism.
+//! WHY(#3381): the fjall knowledge store has no built-in backup mechanism.
 //! If the fjall DB files are corrupted or the machine dies, all session and
 //! knowledge data is lost. This module implements periodic file-level backups
 //! with configurable retention.
@@ -162,7 +162,6 @@ impl FjallBackup {
             });
         }
 
-        // Sort newest first.
         entries.sort_by_key(|e| std::cmp::Reverse(e.created));
         Ok(entries)
     }
@@ -172,7 +171,6 @@ impl FjallBackup {
         let entries = self.list_backups()?;
         let mut pruned = 0u32;
 
-        // Keep the newest `retention_count` entries, remove the rest.
         for entry in entries.into_iter().skip(self.config.retention_count) {
             if let Err(e) = fs::remove_dir_all(&entry.path) {
                 warn!(

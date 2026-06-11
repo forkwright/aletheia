@@ -20,23 +20,10 @@ use snafu::Snafu;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
-// ------------------------------------------------------------------
-// OOXML namespace identifiers
-//
-// These are the fixed, W3C/OOXML-registered URI *identifiers* that every
-// PPTX package must embed verbatim in its XML parts and relationships.
-// They are not endpoints the renderer fetches — substituting HTTPS
-// equivalents produces a corrupt package that Office/LibreOffice reject.
-//
-// See ECMA-376 Part 1 "Fundamentals and Markup Language Reference"
-// §11 (package) and §19 (presentation). The constants live on dedicated
-// lines so `SECURITY/insecure-transport` can skip them via the shared
-// `// WHY:` skip-pattern (standardised identifier, not a credential path).
-// ------------------------------------------------------------------
-
-// Each constant sits on a single line so the `// WHY:` marker is co-located
-// with the literal, letting `SECURITY/insecure-transport`'s skip-pattern
-// bypass the standardised OOXML identifier URIs without an ad-hoc ignore.
+// WHY: the constants below are the fixed ECMA-376 OOXML URI *identifiers*
+// every PPTX package must embed verbatim — not endpoints; substituting HTTPS
+// equivalents produces a corrupt package. Each sits on one line so its EOL
+// `// WHY:` marker hits `SECURITY/insecure-transport`'s skip-pattern.
 
 /// OOXML content-types namespace.
 const NS_PKG_CT: &str = "http://schemas.openxmlformats.org/package/2006/content-types"; // WHY: standardised OOXML identifier URI, not an endpoint
@@ -106,13 +93,11 @@ impl Renderer for PptxRenderer {
     fn render(&self, doc: &Document) -> Result<Vec<u8>, Self::Error> {
         let mut slides: Vec<SlideContent> = Vec::new();
 
-        // Start with a title slide using the document metadata.
         let mut current_slide = SlideContent::new(&doc.metadata.title);
 
         for block in &doc.content {
             match block {
                 Block::Heading { level: _, text } => {
-                    // Flush the current slide (if it has any content) and start a new one.
                     slides.push(current_slide);
                     current_slide = SlideContent::new(&text.plain_text());
                 }
@@ -143,7 +128,6 @@ impl Renderer for PptxRenderer {
                     }
                 }
                 Block::Table(table) => {
-                    // Summarize table as header bullet + one bullet per row.
                     let header = table.headers.join(" | ");
                     current_slide = current_slide.add_bullet(&header);
                     for row in &table.rows {
@@ -156,7 +140,6 @@ impl Renderer for PptxRenderer {
                 }
                 Block::PageBreak => {
                     slides.push(current_slide);
-                    // New untitled slide — title is empty string until next Heading.
                     current_slide = SlideContent::new("");
                 }
             }
@@ -164,7 +147,7 @@ impl Renderer for PptxRenderer {
 
         slides.push(current_slide);
 
-        // At least one slide is required.
+        // WHY: a valid PPTX needs at least one slide.
         if slides.is_empty() {
             slides.push(SlideContent::new(&doc.metadata.title));
         }
@@ -216,7 +199,6 @@ fn create_pptx_with_content(_title: &str, slides: &[SlideContent]) -> Result<Vec
         &build_presentation_rels(slides),
     )?;
 
-    // Static template files.
     write_entry(
         &mut zip,
         "ppt/slideLayouts/slideLayout1.xml",
@@ -239,7 +221,6 @@ fn create_pptx_with_content(_title: &str, slides: &[SlideContent]) -> Result<Vec
     )?;
     write_entry(&mut zip, "ppt/theme/theme1.xml", THEME.as_str())?;
 
-    // Dynamic slide files.
     for (i, slide) in slides.iter().enumerate() {
         let slide_num = i + 1;
         write_entry(
@@ -361,7 +342,8 @@ fn build_slide(slide: &SlideContent) -> String {
            </a:p>\n",
         );
     }
-    // Emit an empty paragraph when there are no bullets so the text body is valid.
+    // WHY: an empty <p:txBody> is invalid OOXML — emit one empty paragraph
+    // when there are no bullets.
     if bullets_xml.is_empty() {
         bullets_xml.push_str(
             "          <a:p>\n\
@@ -446,13 +428,9 @@ fn build_slide(slide: &SlideContent) -> String {
     )
 }
 
-// ------------------------------------------------------------------
-// Static OOXML template builders
-//
-// Each template is built from the OOXML namespace constants above via
-// `LazyLock<String>` so the URI literals live in exactly one audited
-// place. The callers use `.as_str()` to obtain the computed `&str`.
-// ------------------------------------------------------------------
+// ── Static OOXML template builders ──
+// WHY: each template interpolates the namespace constants above via
+// `LazyLock<String>` so the URI literals live in exactly one audited place.
 
 use std::sync::LazyLock;
 

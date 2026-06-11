@@ -12,10 +12,6 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct SessionLabels {
     nous_id: String,
@@ -27,10 +23,6 @@ struct BackupStatusLabels {
     status: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
-
 static SESSIONS_TOTAL: LazyLock<Family<SessionLabels, Counter>> = LazyLock::new(Family::default);
 
 fn backup_duration_histogram() -> Histogram {
@@ -41,10 +33,6 @@ type BackupDurationFamily = Family<BackupStatusLabels, Histogram, fn() -> Histog
 
 static BACKUP_DURATION_SECONDS: LazyLock<BackupDurationFamily> =
     LazyLock::new(|| Family::new_with_constructor(backup_duration_histogram));
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -59,10 +47,6 @@ pub fn register(registry: &mut Registry) {
         BACKUP_DURATION_SECONDS.clone(),
     );
 }
-
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
 
 /// Record a session creation.
 ///

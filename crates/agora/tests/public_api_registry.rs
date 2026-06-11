@@ -21,11 +21,7 @@ use agora::types::{
 use taxis::config::ChannelBinding;
 use tokio_util::sync::CancellationToken;
 
-// Split: ChannelRegistry tests.
-
-// ---------------------------------------------------------------------------
-// ChannelRegistry
-// ---------------------------------------------------------------------------
+// ── ChannelRegistry ──
 
 /// A minimal mock provider for registry testing.
 struct TestProvider {
@@ -259,5 +255,3 @@ async fn registry_probe_all_collects_results() {
     assert!(results.get("signal").expect("signal result").ok);
     assert!(!results.get("slack").expect("slack result").ok);
 }
-
-// ---------------------------------------------------------------------------

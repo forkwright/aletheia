@@ -61,12 +61,12 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
         .map(|a| a.name_lower.as_str())
         .unwrap_or("assistant");
 
-    // When filter is active, we fall back to iterating all messages (filter changes
-    // the visible set dynamically). For the non-filtered common path, we use the
-    // VirtualScroll prefix-sum index for O(log n) range lookup.
+    // WHY: An active filter changes the visible set dynamically, so that path
+    // iterates all messages; the non-filtered common path uses the VirtualScroll
+    // prefix-sum index for O(log n) range lookup.
 
     let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::raw("")); // top padding
+    lines.push(Line::raw(""));
 
     // PERF: Static buffer for finalized messages. When committed messages haven't
     // changed and the width is the same, reuse the cached rendered lines instead
@@ -130,10 +130,8 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
         ]));
     }
 
-    // Submitted decision fact cards
     render_decision_fact_cards(app, &mut lines, inner_width, theme);
 
-    // Streaming response (in progress)
     if !app.connection.streaming_text.is_empty()
         || !app.connection.streaming_thinking.is_empty()
         || app.connection.active_turn_id.is_some()
@@ -161,7 +159,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
             let mut padded: Vec<Line<'static>> = vec![Line::raw(""); padding];
             padded.append(&mut lines);
             lines = padded;
-            // Shift all paragraph-relative link line indices by the padding.
             for (line_idx, _, _, _) in &mut para_links {
                 *line_idx += padding;
             }
@@ -214,7 +211,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) ->
 
     frame.render_widget(paragraph, area);
 
-    // Resolve para-relative links to absolute screen coordinates.
     resolve_osc_links(
         &para_links,
         &line_widths,
@@ -241,14 +237,12 @@ fn resolve_osc_links(
         return Vec::new();
     }
 
-    // Extract accent RGB: fall back to a sensible default for non-Rgb variants.
     let accent = match theme.colors.accent {
         ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
         _ => (120, 180, 255),
     };
 
-    // Pre-compute the cumulative visual-row offset for each logical line.
-    // visual_row_start[i] = number of visual rows before logical line i.
+    // INVARIANT: visual_row_start[i] = number of visual rows before logical line i.
     let mut visual_row_start: Vec<u32> = Vec::with_capacity(line_widths.len());
     let mut cumulative: u32 = 0;
     for &w in line_widths {
@@ -278,7 +272,7 @@ fn resolve_osc_links(
         // Apply scroll: positive scroll shifts content upward (scroll=0 means show from top).
         let screen_row = vrow - i32::from(scroll);
         if screen_row < 0 || screen_row >= visible_height {
-            continue; // link is outside the visible window
+            continue;
         }
 
         let screen_x =
@@ -316,16 +310,14 @@ fn render_virtual_messages(
     agent_name: &str,
     para_links: &mut Vec<(usize, u16, String, String)>,
 ) {
-    // Ensure the virtual scroll cache is populated and matches current width.
-    // This is a read-only check: cache rebuilds happen in the update layer.
-    // If the cache is stale (width changed or item count mismatch), fall back to
-    // full iteration for this single frame. The next update tick will rebuild.
+    // WHY: Views never mutate state, so this is a read-only staleness check --
+    // cache rebuilds happen in the update layer. A stale cache (width or item
+    // count mismatch) falls back to full iteration for this single frame.
     let needs_fallback = app.viewport.render.virtual_scroll.len() != app.dashboard.messages.len()
         || (app.viewport.render.virtual_scroll.cached_width() != wrap_width
             && !app.dashboard.messages.is_empty());
 
     if needs_fallback {
-        // Fallback: render all messages this frame. The cache will be rebuilt.
         for (idx, msg) in app.dashboard.messages.iter().enumerate() {
             let ctx = MessageCtx {
                 inner_width,
@@ -404,7 +396,6 @@ fn render_message(
 ) {
     let theme = ctx.theme;
 
-    // Dispatch on message kind for distinct rendering per type.
     match msg.kind {
         MessageKind::ToolStatusLine => {
             render_tool_status_line(msg, lines, theme);
@@ -440,7 +431,6 @@ fn render_message(
         None
     };
 
-    // Selection indicator prefix
     let marker = if ctx.selected { "▸" } else { " " };
     let marker_style = if ctx.selected {
         Style::default().fg(theme.borders.selected)
@@ -448,7 +438,6 @@ fn render_message(
         Style::default()
     };
 
-    // Header: selection marker + role name + optional model (dim) + timestamp
     let mut header_spans = vec![
         Span::styled(marker, marker_style),
         Span::styled(format!(" {}", role_label), role_style),
@@ -477,12 +466,10 @@ fn render_message(
     }
     lines.push(header_line);
 
-    // Tool calls as collapsible cards
     if !msg.tool_calls.is_empty() {
         render_tool_cards(app, &msg.tool_calls, lines, ctx.inner_width, theme);
     }
 
-    // Message content: markdown parsed with syntax highlighting
     let (md_lines, md_links) = markdown::render(
         &msg.text,
         ctx.inner_width.saturating_sub(2),
@@ -544,7 +531,6 @@ fn render_message(
         }
     }
 
-    // Breathing room between messages
     lines.push(Line::raw(""));
 }
 
@@ -590,7 +576,6 @@ fn render_tool_cards(
 
         lines.push(Line::from(card_spans));
 
-        // Expanded output
         if is_expanded && let Some(ref output) = tc.output {
             let max_width = inner_width.saturating_sub(6);
             for output_line in output.lines().take(20) {

@@ -6,8 +6,6 @@ use std::num::NonZeroUsize;
 
 use krites::{DataValue, Db, ScriptMutability};
 
-// Split: Import/export, errors, cache, callbacks, scripts, NamedRows, vector distance, listing.
-
 // ── Import/Export roundtrip ─────────────────────────────────────────────────
 
 #[test]
@@ -35,7 +33,6 @@ fn export_import_preserves_data() {
     assert!(exported.contains_key("data"));
     assert_eq!(exported["data"].rows.len(), 3);
 
-    // Import into fresh database
     let db2 = Db::open_mem().expect("db2 creation should succeed");
     db2.run(
         ":create data {key: String => val: Int}",
@@ -132,7 +129,6 @@ fn cache_eviction_at_capacity() {
         .expect("in-memory db creation should succeed")
         .with_cache(NonZeroUsize::new(2).unwrap());
 
-    // Fill cache
     let _ = db.run_read_only("?[x] := x = 1", BTreeMap::new());
     let _ = db.run_read_only("?[x] := x = 2", BTreeMap::new());
 
@@ -141,13 +137,11 @@ fn cache_eviction_at_capacity() {
     assert_eq!(stats.hits, 0);
     assert_eq!(stats.len, 2);
 
-    // Add third query, should evict oldest
     let _ = db.run_read_only("?[x] := x = 3", BTreeMap::new());
     let stats = db.cache_stats().unwrap();
     assert_eq!(stats.misses, 3);
     assert_eq!(stats.len, 2, "cache size should remain at capacity");
 
-    // First query should be evicted, so it's a miss again
     let _ = db.run_read_only("?[x] := x = 1", BTreeMap::new());
     let stats = db.cache_stats().unwrap();
     assert_eq!(stats.misses, 4, "evicted query should miss");
@@ -159,7 +153,6 @@ fn cache_with_mutations_tracks_separately() {
         .expect("in-memory db creation should succeed")
         .with_cache(NonZeroUsize::new(16).unwrap());
 
-    // Run same query in different mutability modes
     let _ = db.run(
         "?[x] := x = 1",
         BTreeMap::new(),
@@ -168,7 +161,7 @@ fn cache_with_mutations_tracks_separately() {
     let _ = db.run("?[x] := x = 1", BTreeMap::new(), ScriptMutability::Mutable);
 
     let stats = db.cache_stats().unwrap();
-    // The cache tracks by normalized query string, not by mutability
+    // NOTE: the cache keys on the normalized query string, not on mutability.
     assert_eq!(stats.hits + stats.misses, 2, "both runs should be tracked");
 }
 
@@ -187,7 +180,6 @@ fn callback_receives_put_and_rm_notifications() {
     )
     .expect("creating relation should succeed");
 
-    // Put
     db.run(
         r#"?[id, val] <- [[1, "first"]] :put cb_test {id => val}"#,
         BTreeMap::new(),
@@ -195,7 +187,6 @@ fn callback_receives_put_and_rm_notifications() {
     )
     .expect("put should succeed");
 
-    // Rm
     db.run(
         "?[id] <- [[1]] :rm cb_test {id}",
         BTreeMap::new(),
@@ -203,7 +194,7 @@ fn callback_receives_put_and_rm_notifications() {
     )
     .expect("rm should succeed");
 
-    // Collect all pending callbacks
+    // WHY: callback delivery is asynchronous; allow time before draining.
     std::thread::sleep(std::time::Duration::from_millis(50));
     let mut callbacks = Vec::new();
     while let Ok(cb) = rx.try_recv() {
@@ -326,7 +317,6 @@ fn vector_ip_distance_identical() {
         )
         .expect("IP distance query should succeed");
 
-    // Just verify it returns a finite number
     let dist = result.rows[0][0].get_float().unwrap();
     assert!(dist.is_finite(), "IP distance should be finite");
 }
@@ -369,7 +359,6 @@ fn ensure_enforces_existing_row() {
     )
     .expect("creating relation should succeed");
 
-    // Ensure on empty relation fails (row doesn't exist)
     let result = db.run(
         r#"?[key, val] <- [["a", 1]] :ensure kv {key => val}"#,
         BTreeMap::new(),
@@ -380,7 +369,6 @@ fn ensure_enforces_existing_row() {
         "ensure should fail when row does not exist"
     );
 
-    // Insert the row first
     db.run(
         r#"?[key, val] <- [["a", 1]] :put kv {key => val}"#,
         BTreeMap::new(),
@@ -388,7 +376,6 @@ fn ensure_enforces_existing_row() {
     )
     .expect("inserting row should succeed");
 
-    // Now ensure should succeed
     db.run(
         r#"?[key, val] <- [["a", 1]] :ensure kv {key => val}"#,
         BTreeMap::new(),

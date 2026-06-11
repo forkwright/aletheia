@@ -1,5 +1,3 @@
-//! (Split from `recall_tests.rs` — see parent mod.)
-
 #![expect(clippy::indexing_slicing, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 

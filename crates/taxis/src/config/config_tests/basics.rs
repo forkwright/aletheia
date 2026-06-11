@@ -1,4 +1,4 @@
-//! (Split from `config_tests.rs` — see parent mod.)
+//! Config defaults, serde round-trips, and per-agent resolution merging.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(

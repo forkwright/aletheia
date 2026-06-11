@@ -102,20 +102,17 @@ pub(super) fn execute_sandboxed_action(
     let before_path = temp_dir.join("aletheia_cu_before.png");
     let after_path = temp_dir.join("aletheia_cu_after.png");
 
-    // Capture pre-action frame.
     capture_screen(&before_path)?;
     let before_bytes = read_frame(&before_path)?;
 
-    // Dispatch the action.
     // NOTE: Actions run in the current process since xdotool needs X11
     // access. The Landlock sandbox is applied to the capture subprocess
     // to restrict filesystem access during frame capture.
     dispatch_action(action)?;
 
-    // Small delay for screen to update after action.
+    // WHY: give the screen time to update after the action.
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    // Capture post-action frame in a sandboxed subprocess.
     let policy = session_config.to_sandbox_policy();
     let mut cmd = capture_command(&after_path);
     crate::sandbox::apply_sandbox(&mut cmd, policy)?;
@@ -132,14 +129,11 @@ pub(super) fn execute_sandboxed_action(
 
     let after_bytes = read_frame(&after_path)?;
 
-    // Compute diff.
     let diff_region = compute_diff_region(&before_bytes, &after_bytes);
     let change_description = describe_change(action, diff_region.as_ref());
 
-    // Encode post-action frame for return.
     let frame_base64 = Some(koina::base64::encode(&after_bytes));
 
-    // Clean up temp files.
     let _ = std::fs::remove_file(&before_path);
     let _ = std::fs::remove_file(&after_path);
 

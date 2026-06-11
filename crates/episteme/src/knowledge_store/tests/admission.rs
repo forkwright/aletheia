@@ -137,7 +137,6 @@ fn concurrent_insert_same_fact_admits_exactly_once() {
 
     let fact2 = fact.clone();
 
-    // Launch two threads that simultaneously insert the same fact.
     let h1 = std::thread::spawn(move || store.insert_fact(&fact));
     let h2 = std::thread::spawn(move || store2.insert_fact(&fact2));
 
@@ -150,22 +149,9 @@ fn concurrent_insert_same_fact_admits_exactly_once() {
         "at least one concurrent insert must succeed"
     );
 
-    // Use a new store reference to verify — query through the original Arc.
-    // NOTE: both threads released their Arc clones; we need a fresh query path.
-    // Re-open via the shared Arc from r1 scope... test uses the module-level store.
-    // Actually both threads moved the store Arcs. We need the count via the
-    // original Arc before cloning. Instead verify via the returned KnowledgeStore
-    // — not accessible post-move. Restructure to keep one Arc.
-    //
-    // The key invariant: upsert semantics mean the fact is stored exactly once.
-    // We cannot query the moved store here, so verify the logical invariant through
-    // the fact that `insert_fact` succeeded at least once and the Datalog `:put`
-    // guarantees idempotency on the (id, valid_from) primary key.
-    //
-    // The real correctness guarantee is the Datalog upsert layer. The `insert_lock`
-    // prevents double-admission-side-effects (logging, counters, etc.) in policies
-    // that have per-call state (not DefaultAdmissionPolicy, but StructuredAdmission
-    // with future rate counters). For this test, verify no panic + at least one Ok.
+    // WHY: the Datalog `:put` upsert is idempotent on the (id, valid_from)
+    // primary key, so concurrent inserts store exactly one row; no panic plus
+    // at least one Ok is the verifiable invariant here.
     let _ = (r1, r2); // both joins completed without panic
 }
 

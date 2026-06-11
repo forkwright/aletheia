@@ -109,7 +109,6 @@ pub(crate) fn PlanCard(plan: ExecutionPlan) -> Element {
         div {
             style: "{CARD_STYLE}",
 
-            // Header: title + agent
             div {
                 style: "{CARD_HEADER}",
                 span { style: "{PLAN_TITLE}", "{plan.title}" }
@@ -124,13 +123,11 @@ pub(crate) fn PlanCard(plan: ExecutionPlan) -> Element {
                 }
             }
 
-            // Progress
             div {
                 style: "{PROGRESS_TEXT}",
                 "{progress_label} — {progress}%"
             }
 
-            // Step list
             for step in &plan.steps {
                 div {
                     key: "{step.id}",
@@ -143,7 +140,6 @@ pub(crate) fn PlanCard(plan: ExecutionPlan) -> Element {
                         style: "flex: 1;",
                         span { style: "{STEP_DESC}", "{step.description}" }
 
-                        // Expanded detail
                         if *expanded.read() {
                             if let Some(ref output) = step.output {
                                 div {
@@ -168,7 +164,6 @@ pub(crate) fn PlanCard(plan: ExecutionPlan) -> Element {
                 }
             }
 
-            // Expand/collapse toggle
             if !plan.steps.is_empty() {
                 button {
                     style: "{EXPAND_BTN}",
@@ -180,7 +175,6 @@ pub(crate) fn PlanCard(plan: ExecutionPlan) -> Element {
                 }
             }
 
-            // Elapsed / remaining time
             if plan.elapsed_secs.is_some() || plan.estimated_remaining_secs.is_some() {
                 div {
                     style: "{TIME_ROW}",

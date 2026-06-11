@@ -101,7 +101,7 @@ fn compute_competence_trajectory(samples: &[MetricSample]) -> Option<f64> {
     let n = samples.len() as f64; // kanon:ignore RUST/as-cast
     let values: Vec<f64> = samples.iter().map(|s| s.value).collect();
 
-    // Simple linear regression: y = a + b*x where x is the sample index.
+    // NOTE: simple linear regression y = a + b*x, where x is the sample index.
     let x_mean = (n - 1.0) / 2.0;
     let y_mean: f64 = values.iter().sum::<f64>() / n;
 

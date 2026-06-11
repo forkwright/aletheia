@@ -177,7 +177,8 @@ pub fn inspect_pptx(bytes: &[u8]) -> Result<PresentationSummary> {
         }
     }
 
-    // Sort by slide number so the order is deterministic.
+    // WHY: ZIP entry order is arbitrary — sort by slide number so the
+    // summary order is deterministic.
     slide_names.sort_by(|a, b| {
         let num_a = extract_slide_number(a).unwrap_or(0);
         let num_b = extract_slide_number(b).unwrap_or(0);
@@ -214,9 +215,7 @@ pub fn inspect_pptx(bytes: &[u8]) -> Result<PresentationSummary> {
     })
 }
 
-// ------------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------------
+// ── Helpers ──
 
 fn plain(s: &str) -> RichText {
     RichText {
@@ -225,7 +224,6 @@ fn plain(s: &str) -> RichText {
 }
 
 fn extract_slide_number(name: &str) -> Option<usize> {
-    // Name format: ppt/slides/slideN.xml
     let stem = name.strip_prefix("ppt/slides/slide")?;
     let num_str = stem.strip_suffix(".xml")?;
     num_str.parse().ok()
@@ -275,10 +273,6 @@ fn extract_text_runs(xml: &str) -> Result<Vec<String>> {
 
     Ok(texts)
 }
-
-// ------------------------------------------------------------------
-// Tests
-// ------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
@@ -354,7 +348,6 @@ mod tests {
 
     #[test]
     fn inspect_pptx_extracts_text() {
-        // Render a known presentation so we have valid bytes.
         let data = serde_json::json!({
             "slides": [
                 {

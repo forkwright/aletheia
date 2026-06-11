@@ -62,8 +62,8 @@ pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>
             })
         })
         .collect();
-    // Stale streaming markdown from the previous session must not bleed through
-    // when history is replaced on session switch.
+    // INVARIANT: Stale streaming markdown from the previous session must not
+    // bleed through when history is replaced on session switch.
     app.viewport.render.markdown_cache.clear();
     app.rebuild_virtual_scroll();
     app.scroll_to_bottom();

@@ -24,7 +24,7 @@ use self::agents::AgentCards;
 use self::health::ServiceHealthPanel;
 use self::toggles::ToggleControlsPanel;
 
-// -- Tab enum -----------------------------------------------------------------
+// ── Tab enum ──
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OpsTab {
@@ -33,7 +33,7 @@ enum OpsTab {
     Credentials,
 }
 
-// -- API response types -------------------------------------------------------
+// ── API response types ──
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct AgentEntry {
@@ -135,7 +135,7 @@ struct FeatureFlagEntry {
     enabled: bool,
 }
 
-// -- Tool stats (preserved from original) -------------------------------------
+// ── Tool stats ──
 
 #[derive(Debug, Clone, Default)]
 struct ToolStats {
@@ -189,7 +189,7 @@ struct OpsToolHistory {
     duration_ms: u64,
 }
 
-// -- Style constants ----------------------------------------------------------
+// ── Style constants ──
 
 const CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -305,7 +305,7 @@ const BOTTOM_ROW: &str = "\
 
 const AUTO_REFRESH_SECS: u64 = 30;
 
-// -- Main component -----------------------------------------------------------
+// ── Main component ──
 
 #[component]
 pub(crate) fn Ops() -> Element {
@@ -313,17 +313,17 @@ pub(crate) fn Ops() -> Element {
     let event_state: Signal<EventState> = use_context();
     let mut active_tab = use_signal(|| OpsTab::Dashboard);
 
-    // -- Dashboard-specific state ---------------------------------------------
+    // ── Dashboard-specific state ──
     let mut agent_store = use_signal(AgentStatusStore::new);
     let mut health_store = use_signal(ServiceHealthStore::new);
     let mut toggle_store = use_signal(ToggleStore::new);
     let mut dash_fetch = use_signal(|| FetchState::<()>::Loading);
 
-    // -- Tools-tab state (preserved from original) ----------------------------
+    // ── Tools-tab state (preserved from original) ──
     let mut stats = use_signal(ToolStats::default);
     let mut tools_fetch = use_signal(|| FetchState::<()>::Loading);
 
-    // -- Dashboard data fetch -------------------------------------------------
+    // ── Dashboard data fetch ──
     let mut refresh_dashboard = move || {
         let cfg = config.read().clone();
         dash_fetch.set(FetchState::Loading);
@@ -403,7 +403,7 @@ pub(crate) fn Ops() -> Element {
                 })
                 .collect();
 
-            // -- Health -------------------------------------------------------
+            // ── Health ──
             let health_data = match health_res {
                 Ok(resp) if resp.status().is_success() => {
                     match resp.json::<HealthApiResponse>().await {
@@ -456,7 +456,7 @@ pub(crate) fn Ops() -> Element {
                 },
             });
 
-            // -- Feature flags ------------------------------------------------
+            // ── Feature flags ──
             let feature_flags: Vec<FeatureFlag> = match config_res {
                 Ok(resp) if resp.status().is_success() => {
                     match resp.json::<ConfigResponse>().await {
@@ -490,7 +490,7 @@ pub(crate) fn Ops() -> Element {
         });
     };
 
-    // -- Tools data fetch (preserved from original) ---------------------------
+    // ── Tools data fetch (preserved from original) ──
     let mut refresh_tools = move || {
         let cfg = config.read().clone();
         tools_fetch.set(FetchState::Loading);
@@ -540,13 +540,13 @@ pub(crate) fn Ops() -> Element {
         });
     };
 
-    // -- Mount fetch ----------------------------------------------------------
+    // ── Mount fetch ──
     use_effect(move || {
         refresh_dashboard();
         refresh_tools();
     });
 
-    // -- Auto-refresh for non-SSE data ----------------------------------------
+    // ── Auto-refresh for non-SSE data ──
     use_effect(move || {
         spawn(async move {
             loop {
@@ -556,7 +556,7 @@ pub(crate) fn Ops() -> Element {
         });
     });
 
-    // -- Wire SSE events into agent store -------------------------------------
+    // ── Wire SSE events into agent store ──
     let events = event_state.read();
     {
         let mut store = agent_store.write();
@@ -573,7 +573,7 @@ pub(crate) fn Ops() -> Element {
         }
     }
 
-    // -- Render ---------------------------------------------------------------
+    // ── Render ──
     let tab = *active_tab.read();
     let current_stats = stats.read();
 
@@ -581,7 +581,7 @@ pub(crate) fn Ops() -> Element {
         div {
             style: "{CONTAINER_STYLE}",
 
-            // -- Header with tabs ---------------------------------------------
+            // ── Header with tabs ──
             div {
                 style: "display: flex; align-items: center; justify-content: space-between;",
                 h2 { style: "font-size: var(--text-xl); margin: 0;", "Operations" }
@@ -616,7 +616,7 @@ pub(crate) fn Ops() -> Element {
                 }
             }
 
-            // -- Tab content --------------------------------------------------
+            // ── Tab content ──
             match tab {
                 OpsTab::Dashboard => rsx! {
                     if let FetchState::Error(err) = &*dash_fetch.read() {

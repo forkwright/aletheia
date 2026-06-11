@@ -38,10 +38,7 @@ use oikonomos::triggers::TriggerRouter;
 mod common;
 use common::{make_runner, write_fixture};
 
-// Split: Real-implementation maintenance tasks (TraceRotator, DriftDetector, DbMonitor).
-
-// Section 3: Real-implementation maintenance tasks
-// ---------------------------------------------------------------------------
+// ── Real-implementation maintenance tasks: TraceRotator, DriftDetector, DbMonitor ──
 
 #[test]
 fn trace_rotator_rotates_old_files_via_public_api() {
@@ -209,5 +206,3 @@ fn db_monitor_classifies_sizes_above_thresholds() {
         "both above-threshold dbs must raise an alert"
     );
 }
-
-// ---------------------------------------------------------------------------

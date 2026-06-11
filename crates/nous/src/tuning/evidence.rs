@@ -52,7 +52,7 @@ pub fn validate_evidence(values: &[f64], significance_threshold: f64) -> Option<
     let delta = mean_after - mean_before;
     let stddev = standard_deviation(values);
 
-    // Zero variance means all values are identical — no signal.
+    // WHY: zero variance means all values are identical — no signal.
     if stddev.abs() < f64::EPSILON {
         return None;
     }

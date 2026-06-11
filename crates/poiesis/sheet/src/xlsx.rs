@@ -61,12 +61,12 @@ impl Renderer for XlsxRenderer {
     fn render(&self, doc: &Document) -> Result<Vec<u8>, Self::Error> {
         let mut workbook = Workbook::new();
 
-        // Ensure at least one worksheet exists.
         let default_sheet_name = sanitize_sheet_name(&doc.metadata.title);
         let mut sheet_index: usize = 0;
         let mut current_row: u32 = 0;
 
-        // Lazy-create the first worksheet when we see the first block.
+        // WHY: created eagerly so an empty document still yields a valid
+        // single-sheet workbook.
         let mut worksheet = workbook.add_worksheet();
         worksheet
             .set_name(&default_sheet_name)
@@ -106,7 +106,6 @@ impl Renderer for XlsxRenderer {
                     current_row += 1;
                 }
                 Block::Table(table) => {
-                    // Header row
                     for (col, header) in table.headers.iter().enumerate() {
                         let col_u16 = u16::try_from(col).map_err(|e| XlsxRendererError::Xlsx {
                             message: format!("column index {col} exceeds u16 max: {e}"),
@@ -117,7 +116,6 @@ impl Renderer for XlsxRenderer {
                     }
                     current_row += 1;
 
-                    // Data rows
                     for row in &table.rows {
                         for (col, cell) in row.iter().enumerate() {
                             let col_u16 =

@@ -1,4 +1,4 @@
-// Split from `config_tests.rs` (1548 lines) to satisfy `RUST/file-too-long`.
+//! `AletheiaConfig` unit tests.
 
 mod agency;
 mod basics;

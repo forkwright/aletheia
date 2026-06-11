@@ -40,7 +40,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use aletheia_classify::Classifier;
-// Re-export types from eidos for convenience
 use jiff::Timestamp;
 pub use mneme::training::{
     RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
@@ -305,9 +304,8 @@ impl CaptureInput<'_> {
             let len = self.assistant_response.chars().count() as f32; // kanon:ignore RUST/as-cast
             let substance = (len / SUBSTANCE_SATURATE_CHARS).min(1.0);
             score += W_SUBSTANCE * substance;
-            // substance alone is not a "signal" — a short response can
-            // still be valid. We intentionally do NOT set
-            // have_any_signal here.
+            // WHY: substance alone is not a "signal" — a short response can
+            // still be valid, so have_any_signal is intentionally NOT set here.
         }
 
         // Stop reason.
@@ -452,7 +450,6 @@ impl TrainingCapture {
         let manifest_path = dir.join("training-manifest.json");
         let legacy_path = dir.join("conversations.jsonl");
 
-        // Load or initialize manifest
         let mut manifest = if manifest_path.exists() {
             // kanon:ignore RUST/no-result-unwrap-or-default — manifest read failure yields empty string; serde handles empty gracefully
             let content = fs::read_to_string(&manifest_path).unwrap_or_default();
@@ -461,7 +458,6 @@ impl TrainingCapture {
             TrainingManifest::new()
         };
 
-        // Backward compat: adopt legacy file as first shard
         if legacy_path.exists()
             && !manifest
                 .shards
@@ -485,17 +481,14 @@ impl TrainingCapture {
                 size_bytes: meta.len(),
             });
             manifest.total_records += record_count;
-            // Legacy records may be schema v0 or v1
+            // WHY: legacy records may be schema v0 or v1
             if record_count > 0 {
                 manifest.schema_version_min = 0;
             }
         }
 
-        // Determine current shard: either the last shard if still under limit,
-        // or allocate a new one.
         let current_shard = Self::resolve_current_shard(&dir, &manifest, config.max_shard_bytes)?;
 
-        // Ensure the new shard is registered in the manifest if it's new
         let shard_name = current_shard
             .file_name()
             .unwrap_or_default()
@@ -509,7 +502,6 @@ impl TrainingCapture {
             });
         }
 
-        // Persist initial manifest state
         manifest.persist(&manifest_path)?;
 
         debug!(path = %dir.display(), shards = manifest.shards.len(), "training capture initialized");
@@ -548,12 +540,11 @@ impl TrainingCapture {
                     return Ok(last_path);
                 }
             } else {
-                // Shard referenced in manifest but missing on disk — create it
+                // NOTE: shard referenced in manifest but missing on disk — recreate it
                 return Ok(last_path);
             }
         }
 
-        // Allocate a new shard
         Ok(dir.join(Self::new_shard_name(dir)))
     }
 
@@ -566,7 +557,6 @@ impl TrainingCapture {
         );
         let date_str = format!("{:04}{:02}{:02}", today.year(), today.month(), today.day());
 
-        // Find the highest sequence number for today's date
         let prefix = format!("training-{date_str}-");
         let mut max_seq: u32 = 0;
 
@@ -613,7 +603,6 @@ impl TrainingCapture {
     /// Returns an error if the file cannot be opened, the record cannot
     /// be serialized, or the write fails.
     pub fn write_record(&mut self, record: &TrainingRecord) -> Result<()> {
-        // Check if rotation is needed before writing
         if self.current_shard.exists() {
             let meta = fs::metadata(&self.current_shard).context(ReadMetadataSnafu {
                 path: &self.current_shard,
@@ -638,10 +627,8 @@ impl TrainingCapture {
             path: &self.current_shard,
         })?;
 
-        // Update manifest
         if let Some(last) = self.manifest.shards.last_mut() {
             last.record_count += 1;
-            // Update size estimate from the line we just wrote
             #[expect(clippy::as_conversions, reason = "usize→u64: line length fits in u64")]
             {
                 last.size_bytes += line.len() as u64; // kanon:ignore RUST/as-cast
@@ -653,7 +640,6 @@ impl TrainingCapture {
         self.manifest.schema_version_min =
             self.manifest.schema_version_min.min(record.schema_version);
 
-        // Persist manifest atomically
         self.manifest.persist(&self.manifest_path)?;
 
         debug!(
@@ -766,10 +752,9 @@ impl TrainingCapture {
         let (user_message, assistant_response, pii_redacted) = if self.pii_filter_enabled {
             let (u, u_changed) = pii::redact(input.user_message);
             let (a, a_changed) = pii::redact(input.assistant_response);
-            // `pii_redacted = true` whenever the policy was applied
-            // AND at least one match was found. Callers reading the
-            // corpus can filter on this flag to find records that had
-            // sensitive content.
+            // NOTE: `pii_redacted = true` only when the policy was applied AND
+            // at least one match was found — corpus readers filter on this flag
+            // to find records that had sensitive content.
             (u, a, u_changed || a_changed)
         } else {
             (

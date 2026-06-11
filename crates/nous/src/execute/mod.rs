@@ -240,7 +240,7 @@ pub async fn execute(
 
         // WHY: Track consecutive iterations that produce tool calls without any
         // reasoning text. When the limit is hit, inject a system message asking
-        // the agent to explain its reasoning before continuing. Closes #1980.
+        // the agent to explain its reasoning before continuing.
         let has_reasoning = extracted
             .text_parts
             .iter()

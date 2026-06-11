@@ -70,7 +70,7 @@ impl Budget {
 
     /// Record cost and turns from a completed session or resume attempt.
     pub fn record(&self, cost_usd: f64, turns: u32) {
-        // NOTE: Convert USD to hundredths of a cent for integer atomics.
+        // WHY: USD is stored as hundredths of a cent for integer atomics.
         // 1 USD = 10_000 hundredths of a cent.
         #[expect(
             clippy::cast_possible_truncation,

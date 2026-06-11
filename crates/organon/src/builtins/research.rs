@@ -40,7 +40,7 @@ const BLOCKED_HOSTNAMES: &[&str] = &["localhost", "metadata.google.internal"];
 /// Check whether an IP address belongs to a private, loopback, or link-local range.
 ///
 /// WHY: Blocks SSRF to internal infrastructure including IPv6 loopback, ULA ranges,
-/// IPv4-mapped loopback (`::ffff:127.x.x.x`), and cloud metadata endpoints. Closes #1715.
+/// IPv4-mapped loopback (`::ffff:127.x.x.x`), and cloud metadata endpoints.
 fn is_private_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
@@ -149,7 +149,7 @@ impl ToolExecutor for WebFetchExecutor {
                     {
                         return attempt.stop();
                     }
-                    // WHY: Limit redirect chain to prevent redirect loops. Closes #1715.
+                    // WHY: Limit redirect chain to prevent redirect loops.
                     if attempt.previous().len() >= 5 {
                         return attempt.stop();
                     }

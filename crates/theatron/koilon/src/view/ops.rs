@@ -51,7 +51,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let inner_width = usize::from(inner.width.saturating_sub(1));
     let mut item_idx: usize = 0;
 
-    // Summary row: total calls, errors, elapsed time.
     if ops.summary.total_calls > 0 || ops.turn_started_at.is_some() {
         render_summary_row(ops, &mut lines, theme);
         lines.push(Line::raw(""));
@@ -280,8 +279,8 @@ fn render_tool_call(
 
     let duration_str = if let Some(ms) = tc.duration_ms {
         if ms >= MS_PER_SECOND {
-            // WHY: integer math avoids u64->f64 lossy cast while preserving the
-            // one-decimal `{:.1}s` format used before refactor.
+            // WHY: integer math avoids a u64->f64 lossy cast while preserving
+            // the one-decimal `{:.1}s` format.
             let secs = ms / MS_PER_SECOND;
             let tenths = (ms % MS_PER_SECOND) / 100;
             Some(format!(" ({secs}.{tenths}s)"))
@@ -490,7 +489,6 @@ fn render_summary_row(
 
     lines.push(Line::from(spans));
 
-    // Per-category rows with tallies and percentiles.
     for cat in CATEGORY_ORDER {
         if let Some(stats) = summary.categories.get(cat) {
             let icon_style = if cat.is_destructive() {

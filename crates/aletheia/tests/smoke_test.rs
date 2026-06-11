@@ -71,7 +71,7 @@ fn top_level_help_lists_all_subcommands() {
     }
 }
 
-// ── Subcommand --help (all 16) ────────────────────────────────────────────────
+// ── Subcommand --help ─────────────────────────────────────────────────────────
 
 macro_rules! help_test {
     ($name:ident, $($arg:expr),+) => {

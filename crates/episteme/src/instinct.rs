@@ -656,9 +656,7 @@ fn aggregate_observations_scoped(
             None => {
                 accum.first_observed = Some(obs.observed_at);
             }
-            _ => {
-                // NOTE: current observation is not earlier, no update needed
-            }
+            _ => {}
         }
 
         match accum.last_observed {
@@ -668,9 +666,7 @@ fn aggregate_observations_scoped(
             None => {
                 accum.last_observed = Some(obs.observed_at);
             }
-            _ => {
-                // NOTE: current observation is not later, no update needed
-            }
+            _ => {}
         }
     }
 

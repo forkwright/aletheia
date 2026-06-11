@@ -61,7 +61,7 @@ impl Oikos {
     /// WHY: delegates to `from_root` so the discovered path is canonicalized
     /// when it exists. This ensures existence checks (e.g. `print_storage` in
     /// `aletheia status`) are cwd-independent and work with non-default paths
-    /// and symlinks: closes #1829.
+    /// and symlinks.
     #[must_use]
     pub fn discover_with(env: &impl Environment) -> Self {
         let root = env

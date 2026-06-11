@@ -12,7 +12,7 @@ use crate::state::credentials::{
 };
 use crate::state::fetch::FetchState;
 
-// --- API types (local until pylon implements the endpoint) ---
+// ── API types (local until pylon implements the endpoint) ──
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct CredentialsListResponse {
@@ -98,7 +98,7 @@ struct AddCredentialRequest {
     role: String,
 }
 
-// --- Styles ---
+// ── Styles ──
 
 const PANEL_STYLE: &str = "\
     display: flex; \
@@ -288,7 +288,7 @@ const ERROR_TEXT: &str = "\
     margin-top: var(--space-1);\
 ";
 
-// --- Components ---
+// ── Components ──
 
 /// Credential management panel.
 #[component]
@@ -657,7 +657,6 @@ fn CredentialCard(
         div {
             style: "{CRED_CARD_STYLE}",
 
-            // Header: provider name + role badge
             div {
                 style: "{CARD_HEADER}",
                 span { style: "{PROVIDER_NAME}", "{entry.provider}" }
@@ -669,7 +668,6 @@ fn CredentialCard(
                 }
             }
 
-            // Masked key + validation status
             div {
                 style: "{META_ROW}",
                 span {
@@ -687,7 +685,6 @@ fn CredentialCard(
                 }
             }
 
-            // Last validated + usage stats
             div {
                 style: "{STATS_ROW}",
                 if let Some(ref ts) = entry.last_validated {
@@ -699,7 +696,6 @@ fn CredentialCard(
                 span { "{entry.tokens_today} tok today" }
             }
 
-            // Action buttons
             div {
                 style: "{ACTIONS_ROW}",
                 if validating {
@@ -742,7 +738,6 @@ fn CredentialCard(
                 }
             }
 
-            // Rotate confirmation
             if show_rotate {
                 div {
                     style: "{CONFIRM_BANNER}",
@@ -764,7 +759,6 @@ fn CredentialCard(
                 }
             }
 
-            // Remove confirmation
             if show_remove {
                 div {
                     style: "{CONFIRM_BANNER}",
@@ -782,7 +776,6 @@ fn CredentialCard(
                 }
             }
 
-            // Per-card error
             if let Some(err) = &*card_error.read() {
                 div { style: "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);", "{err}" }
             }

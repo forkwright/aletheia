@@ -166,7 +166,3 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(inspect_report_def(), Box::new(InspectReportExecutor))?;
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "inspect_report_tests.rs"]
-mod tests;

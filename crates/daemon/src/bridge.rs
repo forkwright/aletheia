@@ -20,7 +20,6 @@ pub trait DaemonBridge: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>>;
 }
 
-// Trait implementations are in a separate module to avoid trait-impl colocation.
 mod bridge_impl;
 
 pub use bridge_impl::NoopBridge;

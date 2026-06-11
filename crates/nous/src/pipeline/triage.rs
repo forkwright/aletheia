@@ -153,13 +153,10 @@ impl TriageStage {
         let input_lower = input.to_lowercase();
         let input_len = input.len();
 
-        // Classify intent
         let intent = Self::classify_intent(&input_lower);
 
-        // Detect sensitivity
         let sensitivity = Self::detect_sensitivity(input);
 
-        // Route tier
         let tier = Self::route_tier(&input_lower, intent);
 
         let result = TriageResult {
@@ -169,7 +166,6 @@ impl TriageStage {
             input_len,
         };
 
-        // Record in the current span
         let span = tracing::Span::current();
         span.record("intent", intent.to_string());
         span.record("sensitivity", sensitivity.as_str());
@@ -180,12 +176,10 @@ impl TriageStage {
 
     /// Classify intent using keyword matching.
     fn classify_intent(input: &str) -> Intent {
-        // Check meta first (system-directed)
         if META_PATTERN.is_match(input) && input.len() < 100 {
             return Intent::Meta;
         }
 
-        // Check code keywords
         let code_hits = keywords::CODING_KEYWORDS
             .iter()
             .filter(|&kw| input.contains(kw))
@@ -194,7 +188,6 @@ impl TriageStage {
             return Intent::CodeWrite;
         }
 
-        // Check research keywords
         let research_hits = keywords::RESEARCH_KEYWORDS
             .iter()
             .filter(|&kw| input.contains(kw))
@@ -203,7 +196,6 @@ impl TriageStage {
             return Intent::Research;
         }
 
-        // Check planning keywords
         let planning_hits = keywords::PLANNING_KEYWORDS
             .iter()
             .filter(|&kw| input.contains(kw))
@@ -212,7 +204,6 @@ impl TriageStage {
             return Intent::Planning;
         }
 
-        // Check conversation keywords (fallback)
         let conversation_hits = keywords::CONVERSATION_KEYWORDS
             .iter()
             .filter(|&kw| input.contains(kw))
@@ -241,16 +232,13 @@ impl TriageStage {
     fn route_tier(input: &str, intent: Intent) -> ModelTier {
         let input_len = input.len();
 
-        // Very short inputs default to cheap tier
         if input_len < 30 {
             return ModelTier::Haiku;
         }
 
-        // Planning, research, and code-write default to mid tier
         match intent {
             Intent::CodeWrite | Intent::Research | Intent::Planning => ModelTier::Sonnet,
             Intent::Meta | Intent::Unclassified => {
-                // Moderate length → mid tier; very long → high tier
                 if input_len > 200 {
                     ModelTier::Sonnet
                 } else {

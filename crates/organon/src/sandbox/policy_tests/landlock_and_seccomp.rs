@@ -1,4 +1,4 @@
-//! (Split from `policy_tests.rs` — see parent mod.)
+//! Landlock file-access, seccomp syscall-filter, and namespace isolation tests.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
@@ -7,9 +7,7 @@ use std::process::Command;
 use super::super::*;
 use super::policy_with_system_paths;
 
-// =================================================================================
-// LANDLOCK FILE ACCESS RESTRICTION TESTS
-// =================================================================================
+// ── Landlock file-access restrictions ──
 
 /// Test that allowed paths can be read successfully.
 #[cfg(target_os = "linux")]
@@ -78,7 +76,6 @@ fn landlock_blocks_read_outside_sandbox() {
     std::fs::write(&secret_file, "secret data").expect("write secret file");
 
     let workspace = tempfile::tempdir().expect("create workspace");
-    // Policy does NOT include outside_dir
     let policy = policy_with_system_paths(workspace.path());
 
     let mut cmd = Command::new("cat");
@@ -88,7 +85,6 @@ fn landlock_blocks_read_outside_sandbox() {
     let output = cmd.output().expect("spawn child");
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Should fail with permission denied
     assert!(
         !output.status.success(),
         "reading outside sandbox should be blocked: {stderr}"
@@ -120,7 +116,6 @@ fn landlock_blocks_write_outside_sandbox() {
     let output = cmd.output().expect("spawn child");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Should fail - either file doesn't exist or exit code is non-zero
     assert!(
         !escape_file.exists() || stdout.contains("ret=1"),
         "writing outside sandbox should be blocked: {stdout}"
@@ -152,7 +147,6 @@ fn landlock_blocks_symlink_escape() {
     let output = cmd.output().expect("spawn child");
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Symlink resolution should be blocked
     assert!(
         !output.status.success() || !String::from_utf8_lossy(&output.stdout).contains("escaped"),
         "symlink escape should be blocked: {stderr}"
@@ -203,12 +197,10 @@ fn landlock_allows_symlink_creation_in_workspace() {
 #[cfg(target_os = "linux")]
 #[test]
 fn landlock_blocks_mount_traverse_escape() {
-    // This test verifies that even if we can see mount points,
-    // we cannot traverse to paths outside the allowed set
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Try to read /root (typically exists but is not in our allowed paths)
+    // WHY: /root typically exists but is not in the allowed paths.
     let mut cmd = Command::new("sh");
     cmd.arg("-c").arg("cat /root/.bashrc 2>&1; echo ret=$?");
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
@@ -223,9 +215,7 @@ fn landlock_blocks_mount_traverse_escape() {
     );
 }
 
-// =================================================================================
-// SECCOMP SYSCALL FILTERING TESTS
-// =================================================================================
+// ── Seccomp syscall filtering ──
 
 /// Test that ptrace is blocked by seccomp.
 #[cfg(target_os = "linux")]
@@ -246,7 +236,6 @@ fn seccomp_blocks_ptrace() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // ptrace should be blocked - accept various failure modes
     assert!(
         combined.contains("Operation not permitted")
             || combined.contains("Permission denied")
@@ -278,7 +267,6 @@ fn seccomp_blocks_mount_syscall() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Mount should fail - either via seccomp EPERM or "must be superuser"
     assert!(
         combined.contains("Operation not permitted")
             || combined.contains("EPERM")
@@ -308,7 +296,6 @@ fn seccomp_blocks_umount() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Should fail - either permission denied or mount not found (both indicate blocking)
     assert!(
         combined.contains("Operation not permitted")
             || combined.contains("EPERM")
@@ -424,7 +411,6 @@ fn seccomp_allows_safe_syscalls() {
     let test_file = workspace.path().join("seccomp_test.txt");
     let policy = policy_with_system_paths(workspace.path());
 
-    // Test a series of safe operations within the workspace
     let cmd_str = format!(
         "echo 'test' > {} && cat {} && rm {}",
         test_file.display(),
@@ -462,7 +448,6 @@ fn seccomp_blocks_module_load() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Should fail - either module not found or permission denied
     assert!(
         combined.contains("Operation not permitted")
             || combined.contains("Permission denied")
@@ -472,9 +457,7 @@ fn seccomp_blocks_module_load() {
     );
 }
 
-// =================================================================================
-// NAMESPACE ISOLATION TESTS
-// =================================================================================
+// ── Namespace isolation ──
 
 /// Test that network namespace isolates network access.
 #[cfg(target_os = "linux")]
@@ -496,7 +479,6 @@ fn namespace_isolates_network() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // Should fail to connect - accept various failure modes
     assert!(
         combined.contains("Network is unreachable")
             || combined.contains("not permitted")
@@ -537,7 +519,8 @@ fn namespace_allows_loopback() {
     let output = cmd.output().expect("spawn child");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // The key test is that the sandbox setup succeeded
+    // NOTE: lo may be down inside the namespace, so the connect may succeed or
+    // fail; assert only that sandbox setup completed.
     assert!(
         stdout.contains("retcode=0") || stdout.contains("retcode=1"),
         "loopback test should complete: {stdout}"

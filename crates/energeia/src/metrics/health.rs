@@ -35,10 +35,6 @@ use crate::store::{
 #[cfg(feature = "storage-fjall")]
 use crate::types::SessionStatus;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 /// Status classification for a health metric.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -134,10 +130,6 @@ impl HealthReport {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
 #[cfg(feature = "storage-fjall")]
 /// Compute all 7 pipeline health metrics from stored dispatch and session data.
 ///
@@ -208,10 +200,6 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
     })
 }
 
-// ---------------------------------------------------------------------------
-// Metric helpers
-// ---------------------------------------------------------------------------
-
 /// Classify a lower-is-better rate value into OK/WARN/CRIT.
 #[cfg(feature = "storage-fjall")]
 fn classify_lower_is_better(value: f64, ok_threshold: f64, warn_threshold: f64) -> HealthStatus {
@@ -262,9 +250,7 @@ fn unavailable(
     }
 }
 
-// ---------------------------------------------------------------------------
-// The 7 metrics
-// ---------------------------------------------------------------------------
+// ── The 7 metrics ──
 
 /// 1. Corrective prompt rate.
 ///
@@ -588,13 +574,11 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
         return unavailable(NAME, DESC, 3.0, 1.5, true, true);
     }
 
-    // Count sessions per dispatch.
     let mut counts: HashMap<&str, u64> = HashMap::new();
     for s in sessions {
         *counts.entry(s.dispatch_id.as_str()).or_insert(0) += 1;
     }
 
-    // Only include dispatches that have at least one session.
     let dispatches_with_sessions: Vec<u64> = dispatches
         .iter()
         .filter_map(|d| counts.get(d.id.as_str()).copied())
@@ -631,10 +615,6 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
         agent_id: DEFAULT_UNKNOWN_LABEL,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[path = "health_tests.rs"]

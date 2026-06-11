@@ -328,7 +328,7 @@ impl<'a> SessionTx<'a> {
         Ok(to_merge)
     }
 
-    /// returns true if early return is activated
+    /// Returns `true` if early return is activated.
     ///
     /// # Complexity
     ///
@@ -391,7 +391,7 @@ impl<'a> SessionTx<'a> {
         }
         Ok(used_limiter.load(Ordering::Acquire))
     }
-    /// returns true is early return is activated
+    /// Returns `true` if early return is activated.
     ///
     /// # Complexity
     ///

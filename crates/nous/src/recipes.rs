@@ -18,9 +18,7 @@ use tracing::{debug, info};
 
 use crate::error::{self, Result};
 
-// ---------------------------------------------------------------------------
-// Data types
-// ---------------------------------------------------------------------------
+// ── Data types ──
 
 /// A single file entry within a recipe.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -364,10 +362,6 @@ impl Default for RecipeRegistry {
         Self::empty()
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]

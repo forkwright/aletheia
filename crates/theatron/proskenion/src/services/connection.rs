@@ -25,8 +25,6 @@
 //! # Minimal API client
 //!
 //! This module includes a minimal HTTP client for server communication.
-//! Once `skene` exposes `ApiClient` (after P601 merges), this
-//! should be replaced by `skene::client::ApiClient`.
 
 use std::time::Duration;
 
@@ -79,8 +77,6 @@ pub enum ConnectionError {
 /// Minimal HTTP client for pylon communication.
 ///
 /// Wraps `reqwest::Client` with pre-configured auth headers and base URL.
-/// This is a temporary implementation: once skene exposes `ApiClient`,
-/// this should be replaced.
 #[derive(Clone)]
 pub struct PylonClient {
     client: reqwest::Client,

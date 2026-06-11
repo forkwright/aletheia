@@ -21,7 +21,7 @@ use super::tool_duration::ToolDurationView;
 use super::tool_frequency::ToolFrequencyView;
 use super::tool_results::ToolResultsView;
 
-// -- Component ----------------------------------------------------------------
+// ── Component ──
 
 #[component]
 pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
@@ -67,14 +67,12 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
         do_fetch();
     });
 
-    // Read selected tool for drill-down routing.
     let selected_tool = store.read().selected_tool.clone();
 
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4); flex: 1;",
 
-            // Date range selector + refresh
             div {
                 style: "display: flex; align-items: center; gap: var(--space-2);",
                 span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "Range:" }
@@ -106,7 +104,6 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
                 }
             }
 
-            // If a tool is selected, show detail view; otherwise show overview.
             if let Some(ref tool_name) = selected_tool {
                 ToolDetailView {
                     tool_name: tool_name.clone(),
@@ -145,11 +142,9 @@ fn render_overview_content(
         FetchState::Loaded(data) => {
             let on_select = move |tool_name: String| on_select_tool(tool_name);
             rsx! {
-                // Summary cards
                 div {
                     style: "display: flex; flex-wrap: wrap; gap: var(--space-3);",
 
-                    // Total invocations (weekly)
                     div {
                         style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
                         div { style: "font-size: var(--text-2xl); font-weight: var(--weight-bold); color: var(--text-primary); margin-bottom: var(--space-1);", "{data.summary.total_invocations_week}" }
@@ -160,7 +155,6 @@ fn render_overview_content(
                         }
                     }
 
-                    // Overall success rate
                     {
                         #[expect(clippy::as_conversions, reason = "rate 0.0–1.0 to percentage for display")]
                         let rate_pct = (data.summary.success_rate * 100.0) as u64;
@@ -176,7 +170,6 @@ fn render_overview_content(
                         }
                     }
 
-                    // Average duration
                     {
                         let dur = format_duration_ms(data.summary.avg_duration_ms);
                         rsx! {
@@ -188,7 +181,6 @@ fn render_overview_content(
                         }
                     }
 
-                    // Most used tool
                     if !data.summary.most_used_tool.is_empty() {
                         div {
                             style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); min-width: 150px; flex: 1;",
@@ -205,7 +197,6 @@ fn render_overview_content(
                     }
                 }
 
-                // Frequency chart
                 div {
                     style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4);",
                     div { style: "font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--text-secondary); margin-bottom: var(--space-3);", "Usage Frequency" }
@@ -215,7 +206,6 @@ fn render_overview_content(
                     }
                 }
 
-                // Success/failure chart
                 div {
                     style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4);",
                     div { style: "font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--text-secondary); margin-bottom: var(--space-3);", "Success / Failure Rates" }
@@ -225,7 +215,6 @@ fn render_overview_content(
                     }
                 }
 
-                // Duration distribution
                 div {
                     style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4);",
                     div { style: "font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--text-secondary); margin-bottom: var(--space-3);", "Duration Distribution" }

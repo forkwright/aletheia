@@ -967,9 +967,7 @@ mod tests {
     use crate::engine::DataValue;
     use crate::knowledge::EpistemicTier;
 
-    // ─────────────────────────────────────────────────────────
-    // compute_tool_overlap — Jaccard similarity on string slices
-    // ─────────────────────────────────────────────────────────
+    // ── compute_tool_overlap — Jaccard similarity on string slices ──────────
 
     #[test]
     fn tool_overlap_identical_sets() {
@@ -1034,9 +1032,7 @@ mod tests {
         );
     }
 
-    // ─────────────────────────────────────────────────────────
-    // compute_name_similarity — LCS ratio
-    // ─────────────────────────────────────────────────────────
+    // ── compute_name_similarity — LCS ratio ─────────────────────────────────
 
     #[test]
     fn name_similarity_identical() {
@@ -1090,9 +1086,7 @@ mod tests {
         );
     }
 
-    // ─────────────────────────────────────────────────────────
-    // lcs_char_length — the DP kernel
-    // ─────────────────────────────────────────────────────────
+    // ── lcs_char_length — the DP kernel ─────────────────────────────────────
 
     #[test]
     fn lcs_exact_match() {
@@ -1141,9 +1135,7 @@ mod tests {
         );
     }
 
-    // ─────────────────────────────────────────────────────────
-    // extract_str / extract_optional_str — DataValue extraction
-    // ─────────────────────────────────────────────────────────
+    // ── extract_str / extract_optional_str — DataValue extraction ───────────
 
     #[test]
     fn extract_str_from_str_value() {
@@ -1187,9 +1179,7 @@ mod tests {
         );
     }
 
-    // ─────────────────────────────────────────────────────────
-    // extract_float / extract_int / extract_bool
-    // ─────────────────────────────────────────────────────────
+    // ── extract_float / extract_int / extract_bool ──────────────────────────
 
     #[test]
     fn extract_float_from_float_value() {
@@ -1243,9 +1233,7 @@ mod tests {
         assert!(result.is_err(), "extract_bool on int should return Err");
     }
 
-    // ─────────────────────────────────────────────────────────
-    // parse_epistemic_tier — string → enum mapping
-    // ─────────────────────────────────────────────────────────
+    // ── parse_epistemic_tier — string → enum mapping ────────────────────────
 
     #[test]
     fn parse_verified_tier() {
@@ -1294,9 +1282,7 @@ mod tests {
         );
     }
 
-    // ─────────────────────────────────────────────────────────
-    // build_hybrid_query — script rendering
-    // ─────────────────────────────────────────────────────────
+    // ── build_hybrid_query — script rendering ───────────────────────────────
 
     #[test]
     fn build_hybrid_query_contains_limits() {
@@ -1320,9 +1306,7 @@ mod tests {
         );
     }
 
-    // ─────────────────────────────────────────────────────────
-    // sanitize_fts_query — FTS query-string hardening (#4156)
-    // ─────────────────────────────────────────────────────────
+    // ── sanitize_fts_query — FTS query-string hardening (#4156) ─────────────
 
     #[test]
     fn build_hybrid_query_omits_fts_when_no_text_terms() {
@@ -1369,8 +1353,8 @@ mod tests {
 
     #[test]
     fn sanitize_fts_query_strips_question_mark() {
-        // The trailing '?' is an FTS-special character that previously caused a
-        // parse error disabling recall on every question (#4156).
+        // WHY (#4156): a trailing '?' is an FTS-special character — unsanitized
+        // it causes a parse error that disables recall on every question.
         assert_eq!(
             sanitize_fts_query("what do you remember about cozo?"),
             "what do you remember about cozo"

@@ -156,7 +156,6 @@ impl TurnHook for CorrectionInjector {
         Box::pin(async move {
             let user_message = context.user_message;
 
-            // Step 1: Detect and persist any new correction in the user message.
             if let Some(correction_text) = extract_correction(user_message) {
                 debug!(
                     nous_id = context.nous_id,
@@ -181,7 +180,6 @@ impl TurnHook for CorrectionInjector {
                 }
             }
 
-            // Step 2: Read all persisted corrections and inject into system prompt.
             let corrections = match load_corrections(&self.workspace).await {
                 Ok(c) => c,
                 Err(e) => {
@@ -198,7 +196,6 @@ impl TurnHook for CorrectionInjector {
                 return HookResult::Continue;
             }
 
-            // Build the corrections section for the system prompt.
             let section = format_corrections_section(&corrections);
             let token_estimate = section.len() / 4; // conservative: ~4 chars per token
 
@@ -220,7 +217,6 @@ impl TurnHook for CorrectionInjector {
                 return HookResult::Continue;
             }
 
-            // Append corrections to the system prompt.
             if let Some(ref mut prompt) = context.pipeline.system_prompt {
                 prompt.push_str("\n\n");
                 prompt.push_str(&section);
@@ -257,7 +253,7 @@ fn extract_correction(message: &str) -> Option<String> {
 
         for prefix in aletheia_lexica::prefixes::CORRECTION_PREFIXES {
             if trimmed.starts_with(prefix) {
-                // Use the original-case sentence as the correction text.
+                // WHY: return the original-case sentence, not the lowercased match.
                 return Some(sentence.trim().to_owned());
             }
         }
@@ -299,7 +295,7 @@ fn split_sentences(text: &str) -> Vec<&str> {
         }
     }
 
-    // Capture trailing text without terminal punctuation.
+    // NOTE: trailing text without terminal punctuation is still a sentence.
     if let Some(remainder) = text.get(start..)
         && !remainder.trim().is_empty()
     {
@@ -318,7 +314,6 @@ fn truncate_source(message: &str) -> String {
         return message.to_owned();
     }
 
-    // Find the last char boundary at or before byte 200.
     let boundary = message
         .char_indices()
         .take_while(|(i, _)| *i <= 200)
@@ -363,7 +358,6 @@ async fn load_corrections(workspace: &Path) -> Result<Vec<Correction>, std::io::
 async fn append_correction(workspace: &Path, correction: Correction) -> Result<(), std::io::Error> {
     let path = corrections_path(workspace);
 
-    // Ensure the workspace directory exists.
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }

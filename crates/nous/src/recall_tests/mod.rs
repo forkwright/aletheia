@@ -2,8 +2,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mneme::embedding::MockEmbeddingProvider;
 
-// Split from monolithic recall_tests.rs to satisfy RUST/file-too-long.
-
 use super::*;
 
 struct MockVectorSearch {

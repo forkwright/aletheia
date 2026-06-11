@@ -1,5 +1,3 @@
-//! (Split from `actor/tests.rs` — see parent mod.)
-
 #![expect(
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"
@@ -14,10 +12,8 @@ use super::*;
 async fn reap_background_tasks_joins_completed_tasks() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
 
-    // Spawn a task that finishes immediately.
     actor.runtime.background_tasks.spawn(async { /* no-op */ });
 
-    // Let it finish.
     tokio::task::yield_now().await;
 
     actor.reap_background_tasks();
@@ -38,7 +34,7 @@ async fn reap_background_tasks_records_background_panic() {
         .background_tasks
         .spawn(async { panic!("background test panic") });
 
-    // Yield until the spawned task panics and is collected.
+    // WHY: multiple yields let the spawned task panic and be collected.
     for _ in 0..10 {
         tokio::task::yield_now().await;
     }
@@ -133,7 +129,6 @@ async fn maybe_spawn_extraction_skips_when_task_limit_reached() {
     };
     let (mut actor, _tx, _dir) = make_test_actor(config);
 
-    // Fill up the task set to the limit with tasks that block indefinitely.
     for _ in 0..MAX_SPAWNED_TASKS {
         actor
             .runtime
@@ -144,7 +139,6 @@ async fn maybe_spawn_extraction_skips_when_task_limit_reached() {
 
     actor.maybe_spawn_extraction("long enough content here", "response text here", &[], "");
 
-    // Limit was already reached; no additional task spawned.
     assert_eq!(
         actor.runtime.background_tasks.len(),
         MAX_SPAWNED_TASKS,
@@ -217,7 +211,6 @@ fn maybe_spawn_skill_analysis_noop_on_empty_tool_calls() {
 
     actor.maybe_spawn_skill_analysis(&[], "my-session");
 
-    // No tasks spawned, no panics.
     assert_eq!(actor.runtime.background_tasks.len(), 0);
 }
 
@@ -226,9 +219,8 @@ fn maybe_spawn_skill_analysis_processes_successful_tool_calls() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
 
     let calls = vec![make_tool_call("bash", false)];
-    // Should not panic; candidate tracker absorbs the call.
     actor.maybe_spawn_skill_analysis(&calls, "my-session");
-    // No task spawned unless the candidate is promoted (first occurrence never promotes).
+    // WHY: no task is spawned unless the candidate is promoted (first occurrence never promotes).
     assert_eq!(actor.runtime.background_tasks.len(), 0);
 }
 
@@ -237,7 +229,7 @@ fn maybe_spawn_skill_analysis_processes_errored_tool_calls() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
 
     let calls = vec![make_tool_call("bash", true)];
-    // Error calls are recorded as ToolCallRecord::errored; must not panic.
+    // NOTE: error calls are recorded as ToolCallRecord::errored.
     actor.maybe_spawn_skill_analysis(&calls, "s");
     assert_eq!(actor.runtime.background_tasks.len(), 0);
 }
@@ -248,7 +240,6 @@ fn maybe_spawn_skill_analysis_processes_errored_tool_calls() {
 async fn maybe_spawn_distillation_skips_when_flag_already_set() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
 
-    // Pre-set the flag so the guard fires immediately.
     actor
         .runtime
         .distillation_in_progress
@@ -256,7 +247,6 @@ async fn maybe_spawn_distillation_skips_when_flag_already_set() {
 
     actor.maybe_spawn_distillation("s").await;
 
-    // Flag should still be true (we didn't touch it) and no task spawned.
     assert!(
         actor
             .runtime
@@ -274,11 +264,9 @@ async fn maybe_spawn_distillation_skips_when_flag_already_set() {
 #[tokio::test]
 async fn maybe_spawn_distillation_clears_flag_when_no_session_store() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
-    // No session store configured: try_spawn_distillation returns false.
 
     actor.maybe_spawn_distillation("s").await;
 
-    // Flag must be cleared (not stuck) when no task was spawned.
     assert!(
         !actor
             .runtime
@@ -293,7 +281,6 @@ async fn maybe_spawn_distillation_clears_flag_when_no_session_store() {
 async fn maybe_spawn_distillation_clears_flag_when_session_not_found() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
 
-    // Attach a session store but no matching session.
     let store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
     actor.stores.session_store = Some(Arc::new(tokio::sync::Mutex::new(store)));
 
@@ -382,20 +369,18 @@ async fn session_id_adoption_prevents_fk_divergence() {
 /// bridge calls `send_turn` with `session_id: None`, so the actor generates a
 /// new ULID — which diverges from the DB's canonical ID.
 ///
-/// Before the fix, `find_or_create_session` would return the existing DB
-/// session silently (ON CONFLICT DO NOTHING), but `finalize` would call
+/// Without session-ID adoption, `find_or_create_session` returns the existing
+/// DB session silently (ON CONFLICT DO NOTHING) while `finalize` calls
 /// `append_message` with the actor's newly generated ID (no DB row) →
-/// FOREIGN KEY constraint failure and silent data loss.
-///
-/// After the fix, the actor adopts the DB session ID returned by
-/// `find_or_create_session`, so finalize uses the correct ID.
+/// FOREIGN KEY constraint failure and silent data loss. The actor must adopt
+/// the DB session ID returned by `find_or_create_session`.
 #[tokio::test]
 async fn prosoche_daemon_adopts_existing_db_session_id() {
     let store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
     // WHY: SessionId requires UUID v4 format
     let existing_db_id = "660e8400-e29b-41d4-a716-446655440001";
 
-    // Simulate an existing DB session for the "daemon:prosoche" key
+    // NOTE: simulate an existing DB session for the "daemon:prosoche" key
     // (as would exist from a previous prosoche cycle).
     store
         .create_session(

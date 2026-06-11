@@ -68,7 +68,6 @@ pub fn diff_presentations(a: &[u8], b: &[u8]) -> Result<Vec<SlideDiff>> {
 mod tests {
     use super::*;
 
-    // Minimal valid XLSX structure (just the raw bytes)
     const MINIMAL_XLSX: &[u8] = b"PK\x03\x04";
 
     #[test]

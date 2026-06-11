@@ -127,7 +127,6 @@ pub(crate) fn Costs() -> Element {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
-            // Controls row
             div {
                 style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
                 div {
@@ -229,14 +228,12 @@ fn loaded_costs_view(
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
-            // Summary cards
             div {
                 style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
                 { cost_card("Today", &format_cost(today_d.value), today_d.delta_pct, today_d.is_up) }
                 { cost_card("This Week", &format_cost(week_d.value), week_d.delta_pct, week_d.is_up) }
                 { cost_card("This Month", &format_cost(month_d.value), month_d.delta_pct, month_d.is_up) }
 
-                // Projected month-end
                 div {
                     style: "{CARD_STYLE}",
                     div { style: "{CARD_LABEL_STYLE}", "Projected Month-End" }
@@ -245,7 +242,6 @@ fn loaded_costs_view(
                 }
             }
 
-            // Cost trend chart
             div {
                 style: "{SECTION_STYLE}",
                 div { style: "{SECTION_TITLE_STYLE}", "Cost Over Time" }
@@ -257,7 +253,6 @@ fn loaded_costs_view(
                 }
             }
 
-            // Budget panel
             div {
                 style: "{SECTION_STYLE}",
                 div { style: "{SECTION_TITLE_STYLE}", "Monthly Budget" }
@@ -272,7 +267,6 @@ fn loaded_costs_view(
                 ) }
             }
 
-            // Agent cost comparison
             if !data.agents.is_empty() {
                 div {
                     style: "{SECTION_STYLE}",

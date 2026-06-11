@@ -2,7 +2,7 @@
 //! poiesis-lint: report prose quality linting.
 //!
 //! Checks banned words, citation coverage, structural patterns, required
-//! sections, and header length. Ported from the `ergon_tools` sdr lint.
+//! sections, and header length.
 
 mod banned_words;
 mod citations;

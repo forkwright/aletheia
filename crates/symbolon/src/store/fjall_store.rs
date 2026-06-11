@@ -236,7 +236,6 @@ impl AuthStore {
         let users = self.partition("users")?;
         let key = format!("user:{username}");
 
-        // Check for duplicates before inserting.
         if self.key_exists(&users, &key)? {
             return Err(error::DuplicateSnafu {
                 entity: "user".to_owned(),
@@ -355,7 +354,8 @@ impl AuthStore {
         let api_keys = self.partition("api_keys")?;
         let hash_key = format!("hash:{key_hash}");
 
-        // Resolve hash → id via secondary index.
+        // NOTE: two-step lookup — the hash key is a secondary index holding
+        // the primary id.
         let Some(id_bytes) = self.get_bytes(&api_keys, &hash_key)? else {
             return Ok(None);
         };
@@ -418,7 +418,8 @@ impl AuthStore {
             records.push(api_key_entry_to_record(entry));
         }
 
-        // Sort descending by created_at to match legacy SQLite behaviour.
+        // WHY: descending created_at order matches the legacy SQLite
+        // behaviour callers still expect.
         records.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(records)
     }
@@ -460,7 +461,8 @@ impl AuthStore {
         let revoked = self.partition("revoked_tokens")?;
         let now = now_iso();
 
-        // "revoked:" prefix; upper bound: "revoked;" (next byte after ':').
+        // WHY: ';' is the next byte after ':', so "revoked:".."revoked;" is an
+        // exclusive upper bound covering exactly the "revoked:" prefix.
         let snap = self.db.read_tx();
         let mut expired_keys: Vec<Vec<u8>> = Vec::new();
         for guard in snap.range(&revoked, "revoked:".."revoked;") {
@@ -472,7 +474,7 @@ impl AuthStore {
                 expired_keys.push(key.to_vec());
             }
         }
-        // Drop the snapshot before acquiring the write lock.
+        // NOTE: the read snapshot is dropped before the write lock is taken.
         drop(snap);
 
         let count = expired_keys.len();
@@ -669,7 +671,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    /// Boundary test for `cleanup_expired_revocations` comparison at line 445.
+    /// Boundary test for `cleanup_expired_revocations`'s expiry comparison.
     ///
     /// WHY: Kills the `<` → `<=` mutant. A token whose `expires_at` is exactly
     /// `now` must *not* be removed; changing `<` to `<=` would incorrectly
@@ -720,7 +722,7 @@ mod tests {
     }
 
     /// Ensures `cleanup_expired_revocations` behaves correctly when nothing is
-    /// expired (count == 0 path at line 453).
+    /// expired (the count == 0 early-exit path).
     #[test]
     fn cleanup_expired_revocations_noop() {
         let store = memory_store();
@@ -736,7 +738,7 @@ mod tests {
         assert!(store.is_token_revoked("future-jti").unwrap());
     }
 
-    /// Round-trip test for `api_key_entry_to_record` (line 470).
+    /// Round-trip test for `api_key_entry_to_record`.
     ///
     /// WHY: Kills the `Default::default()` mutant by asserting every field
     /// survives encoding → storage → decoding. All `Option` fields are set to

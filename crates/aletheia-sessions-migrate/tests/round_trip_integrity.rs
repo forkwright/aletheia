@@ -1,4 +1,4 @@
-//! Test 2 from the deliverable: N sessions × M messages, migrate, then
+//! N sessions × M messages, migrate, then
 //! iterate via `SessionStore` and confirm content is bit-identical.
 
 #![expect(

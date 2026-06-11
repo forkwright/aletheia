@@ -12,7 +12,6 @@ use crate::error::Result;
 fn extract_text_from_slide(xml_data: &str) -> String {
     let mut text_content = String::new();
 
-    // Simple approach: find all <a:t>...</a:t> tags
     for chunk in xml_data.split("<a:t>") {
         if let Some(end) = chunk.find("</a:t>")
             && let Some(text) = chunk.get(..end)
@@ -34,7 +33,6 @@ fn read_presentation(bytes: &[u8]) -> Result<BTreeMap<usize, String>> {
 
     let mut slides: BTreeMap<usize, String> = BTreeMap::new();
 
-    // Read all slide files (ppt/slides/slide1.xml, ppt/slides/slide2.xml, etc.)
     let mut slide_idx = 1;
     loop {
         let slide_path = format!("ppt/slides/slide{slide_idx}.xml");
@@ -67,7 +65,6 @@ pub(crate) fn diff_presentations_impl(a: &[u8], b: &[u8]) -> Result<Vec<SlideDif
 
     let max_slide = presentation_a.len().max(presentation_b.len());
 
-    // Compare all slides
     for slide_idx in 0..max_slide {
         let text_a = presentation_a.get(&slide_idx).cloned();
         let text_b = presentation_b.get(&slide_idx).cloned();

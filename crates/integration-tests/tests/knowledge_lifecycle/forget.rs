@@ -7,7 +7,6 @@ fn supersession_chain() {
     let nous = "test-agent";
     let query_time = "2026-09-01T00:00:00Z";
 
-    // v1: original fact
     let v1 = make_fact(
         "v1",
         nous,
@@ -17,7 +16,6 @@ fn supersession_chain() {
     );
     store.insert_fact(&v1).expect("insert v1");
 
-    // v1 -> v2: first correction
     correct_fact(
         &store,
         "v1",
@@ -27,7 +25,6 @@ fn supersession_chain() {
         "2026-04-01T00:00:00Z",
     );
 
-    // v2 -> v3: second correction
     correct_fact(
         &store,
         "v2",
@@ -37,13 +34,11 @@ fn supersession_chain() {
         "2026-07-01T00:00:00Z",
     );
 
-    // Only v3 visible in query
     let results = store.query_facts(nous, query_time, 10).expect("query");
     assert_eq!(results.len(), 1, "only latest fact should be visible");
     assert_eq!(results[0].id.as_str(), "v3");
     assert_eq!(results[0].content, "Project migrated fully to Rust");
 
-    // Audit shows full chain
     let audit = audit_all_facts(&store, nous);
     assert_eq!(audit.len(), 3, "audit should show all 3 versions");
 
@@ -51,7 +46,6 @@ fn supersession_chain() {
     let a_v2 = audit.iter().find(|r| r.id == "v2").expect("v2 in audit");
     let a_v3 = audit.iter().find(|r| r.id == "v3").expect("v3 in audit");
 
-    // Supersession chain: v1 -> v2 -> v3
     assert_eq!(
         a_v1.superseded_by.as_deref(),
         Some("v2"),
@@ -67,7 +61,6 @@ fn supersession_chain() {
         "v3 is current — not superseded"
     );
 
-    // Temporal validity: each version expired when the next was created
     assert_eq!(
         a_v1.valid_to, "2026-04-01T00:00:00Z",
         "v1 expired at v2 creation"
@@ -98,7 +91,6 @@ fn forget_excludes_from_recall() {
     );
     store.insert_fact(&fact).expect("insert");
 
-    // Visible before forget
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query before forget");
@@ -109,7 +101,6 @@ fn forget_excludes_from_recall() {
         .forget_fact(&fid, ForgetReason::Privacy)
         .expect("forget");
 
-    // Not visible after forget
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after forget");
@@ -191,7 +182,6 @@ async fn unforget_restores_to_search() {
     assert_eq!(results.len(), 1, "should be restored after unforget");
     assert_eq!(results[0].id.as_str(), "f-unforget");
 
-    // Audit should show cleared forget metadata
     let audit = audit_all_facts(&store, nous);
     let row = &audit[0];
     assert!(
@@ -257,7 +247,6 @@ async fn full_forget_lifecycle() {
     let nous = "test-agent";
     let query_time = "2026-07-01T00:00:00Z";
 
-    // 1. Insert
     let fact = make_fact(
         "f-lifecycle",
         nous,
@@ -267,32 +256,26 @@ async fn full_forget_lifecycle() {
     );
     store.insert_fact(&fact).expect("insert");
 
-    // 2. Search: found
     let results = store.query_facts(nous, query_time, 10).expect("query");
     assert_eq!(results.len(), 1);
 
-    // 3. Forget: privacy
     let fid = FactId::new("f-lifecycle").expect("valid test id");
     store
         .forget_fact(&fid, ForgetReason::Privacy)
         .expect("forget");
 
-    // 4. Search: not found
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after forget");
     assert!(results.is_empty());
 
-    // 5. Audit: found with metadata
     let audit = audit_all_facts(&store, nous);
     assert_eq!(audit.len(), 1);
     assert!(audit[0].is_forgotten);
     assert_eq!(audit[0].forget_reason.as_deref(), Some("privacy"));
 
-    // 6. Unforget
     store.unforget_fact_async(fid).await.expect("unforget");
 
-    // 7. Search: found again
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after unforget");

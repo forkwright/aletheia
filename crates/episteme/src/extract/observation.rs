@@ -505,9 +505,7 @@ Some changes
         assert_eq!(count, 1);
     }
 
-    // -------------------------------------------------------------------
-    // ObservationType classification tests
-    // -------------------------------------------------------------------
+    // ── ObservationType classification tests ────────────────────────────────
 
     #[test]
     fn classify_bug_keywords() {

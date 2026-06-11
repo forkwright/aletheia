@@ -18,10 +18,6 @@
     reason = "test assertions on fixed-size vectors"
 )]
 
-// ---------------------------------------------------------------------------
-// OpsFactExtractor
-// ---------------------------------------------------------------------------
-
 mod ops_facts {
     use episteme::knowledge::{EpistemicTier, FactType, MemoryScope};
     use episteme::ops_facts::{OpsFactExtractor, OpsSnapshot};
@@ -219,10 +215,6 @@ mod ops_facts {
     }
 }
 
-// ---------------------------------------------------------------------------
-// ObservationType::classify
-// ---------------------------------------------------------------------------
-
 mod observation_type {
     use episteme::extract::observation::ObservationType;
 
@@ -317,10 +309,6 @@ mod observation_type {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// CausalStore (causal edge graph)
-// ---------------------------------------------------------------------------
 
 mod causal_store {
     use episteme::causal::{CausalError, CausalStore};
@@ -527,10 +515,6 @@ mod causal_store {
         assert!(store.direct_effects(&fact_id("unknown")).is_empty());
     }
 }
-
-// ---------------------------------------------------------------------------
-// skill::parse_skill_md
-// ---------------------------------------------------------------------------
 
 mod parse_skill_md {
     use episteme::skill::{SkillContent, parse_skill_md};

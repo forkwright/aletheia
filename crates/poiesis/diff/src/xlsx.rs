@@ -45,7 +45,6 @@ fn extract_cells_from_worksheet(xml_data: &str, shared_strings: &[String]) -> Sh
     let mut current_row: u32 = 0;
 
     for row_chunk in xml_data.split("<row") {
-        // Extract row number from r="N" attribute
         if let Some(r_start) = row_chunk.find("r=\"")
             && let Some(rest) = row_chunk.get(r_start + 3..)
             && let Some(r_end) = rest.find('"')
@@ -55,17 +54,14 @@ fn extract_cells_from_worksheet(xml_data: &str, shared_strings: &[String]) -> Sh
             current_row = r.saturating_sub(1);
         }
 
-        // Extract cells from this row
         for cell_chunk in row_chunk.split("<c") {
             let is_shared = cell_chunk.contains("t=\"s\"");
 
-            // Extract cell reference and value
             if let Some(r_start) = cell_chunk.find("r=\"")
                 && let Some(rest) = cell_chunk.get(r_start + 3..)
                 && let Some(r_end) = rest.find('"')
                 && let Some(cell_ref) = rest.get(..r_end)
             {
-                // Parse column from cell reference
                 let col_idx = cell_ref
                     .chars()
                     .take_while(|c| c.is_alphabetic())
@@ -74,7 +70,6 @@ fn extract_cells_from_worksheet(xml_data: &str, shared_strings: &[String]) -> Sh
                     })
                     .saturating_sub(1);
 
-                // Extract value from <v>...</v>
                 if let Some(v_start) = cell_chunk.find("<v>")
                     && let Some(rest) = cell_chunk.get(v_start + 3..)
                     && let Some(v_end) = rest.find("</v>")
@@ -105,7 +100,6 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
     let mut archive =
         ZipArchive::new(cursor).map_err(|e| crate::DiffError::ZipError { source: e })?;
 
-    // Read shared strings if present
     let shared_strings = if let Ok(mut file) = archive.by_name("xl/sharedStrings.xml") {
         let mut content = String::new();
         std::io::Read::read_to_string(&mut file, &mut content)
@@ -117,7 +111,6 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
 
     let mut workbook_data: WorkbookData = IndexMap::new();
 
-    // Read workbook.xml to get sheet names in order
     let workbook_xml = {
         let mut file = archive
             .by_name("xl/workbook.xml")
@@ -128,8 +121,7 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
         content
     };
 
-    // Simple extraction of sheet names, preserving order.
-    // rust_xlsxwriter emits compact XML, so multiple sheet tags may share a line.
+    // NOTE: rust_xlsxwriter emits compact XML — multiple sheet tags may share a line.
     let mut sheet_names = Vec::new();
     for sheet_xml in workbook_xml.split("<sheet").skip(1) {
         let Some(start) = sheet_xml.find("name=\"") else {
@@ -148,7 +140,6 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
         workbook_data.insert(sheet_name.to_string(), IndexMap::new());
     }
 
-    // Read worksheet files (xl/worksheets/sheet1.xml, etc.)
     for (sheet_idx, sheet_name) in sheet_names.iter().enumerate() {
         let worksheet_number = sheet_idx + 1;
         let worksheet_path = format!("xl/worksheets/sheet{worksheet_number}.xml");
@@ -171,7 +162,6 @@ pub(crate) fn diff_workbooks_impl(a: &[u8], b: &[u8]) -> Result<Vec<CellDiff>> {
 
     let mut diffs = Vec::new();
 
-    // Compare all sheets
     for (sheet_name, cells_a) in &workbook_a {
         let cells_b = workbook_b.get(sheet_name).cloned().unwrap_or_default();
 

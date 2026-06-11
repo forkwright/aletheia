@@ -131,8 +131,7 @@ fn write_theme_xml(out: &mut String, theme: &ResolvedTheme) -> std::fmt::Result 
 }
 
 // accent3..6: use chart.series[2..] first (the designer's palette order),
-// then fall back to unused roles. Extracted to keep write_theme_xml under the
-// 100-line clippy limit and to separate the accent-assignment logic.
+// then fall back to unused roles.
 //
 // WHY series-first: alphabetical role ordering (from toml BTreeMap) puts
 // background colors (bg, bg_soft) early, which would assign white (#FFF) to
@@ -183,10 +182,10 @@ fn write_color_slot(
     color: Option<&HexColor>,
     default_body: &str,
 ) -> std::fmt::Result {
-    // `dk1` and `lt1` use `<a:sysClr val=... lastClr=.../>` in canonical
-    // theme1 files; consumer parsers accept `<a:srgbClr/>` for all slots and
-    // the rendered result is identical. We use srgbClr for every slot so the
-    // emission is uniform and diffable.
+    // WHY: canonical theme1 files use `<a:sysClr val=... lastClr=.../>` for
+    // `dk1`/`lt1`, but consumer parsers accept `<a:srgbClr/>` for all slots
+    // with an identical rendered result — emitting srgbClr for every slot
+    // keeps the emission uniform and diffable.
     let body = color.map_or(default_body.to_owned(), |c| c.body().to_owned());
     writeln!(out, "      <a:{slot}>")?;
     writeln!(out, r#"        <a:srgbClr val="{body}"/>"#)?;

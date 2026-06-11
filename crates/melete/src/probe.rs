@@ -190,7 +190,7 @@ impl ProbeVerifier {
         let mut failed_facts = Vec::new();
 
         for probe in probes {
-            // SAFETY: probe indices are generated from flush.{decisions,corrections,facts}
+            // INVARIANT: probe indices are generated from flush.{decisions,corrections,facts}
             // by `generate_probes`, which iterates `.iter().enumerate()`, so indices are
             // always in-bounds for the same flush.
             let item = match probe.source_category {
@@ -308,25 +308,20 @@ impl ProbeVerifier {
 fn extract_key_phrases(content: &str) -> Vec<String> {
     let mut phrases = Vec::new();
 
-    // Split into sentences (approximate)
     for sentence in content.split(['.', '!', '?']) {
         let trimmed = sentence.trim();
         if trimmed.is_empty() {
             continue;
         }
 
-        // Extract meaningful chunks: look for capitalized words, technical
-        // terms (snake_case, paths, namespaces)
         let words: Vec<&str> = trimmed.split_whitespace().collect();
         if words.len() < 2 {
             continue;
         }
 
-        // Take the whole sentence as a phrase if it's short enough
         if words.len() <= 10 {
             phrases.push(trimmed.to_owned());
         } else {
-            // For longer sentences, extract the first and last meaningful chunks.
             // WHY `.iter().take(5)`: equivalent to `words[..5]` but avoids the
             // panic-on-out-of-bounds surface; the outer `words.len() > 10`
             // guard makes the 5-prefix always available in practice.
@@ -349,7 +344,6 @@ fn extract_key_phrases(content: &str) -> Vec<String> {
     }
 
     if phrases.is_empty() && !content.trim().is_empty() {
-        // Fallback: use the whole content as a single phrase
         phrases.push(content.trim().to_owned());
     }
 

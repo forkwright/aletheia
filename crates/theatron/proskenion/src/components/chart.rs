@@ -7,7 +7,7 @@
 
 use dioxus::prelude::*;
 
-// -- Shared data types --------------------------------------------------------
+// ── Shared data types ──
 
 /// A labeled numeric entry for bar and donut charts.
 #[derive(Debug, Clone, PartialEq)]
@@ -45,7 +45,7 @@ pub(crate) struct GroupedBarEntry {
     pub previous_color: String,
 }
 
-// -- Style constants ----------------------------------------------------------
+// ── Style constants ──
 
 const CHART_LABEL_STYLE: &str = "\
     font-size: var(--text-xs); \
@@ -73,7 +73,7 @@ const TOOLTIP_STYLE: &str = "\
     z-index: 10;\
 ";
 
-// -- TimeSeriesChart ----------------------------------------------------------
+// ── TimeSeriesChart ──
 
 /// Stacked column chart for time series token/cost data.
 #[component]
@@ -102,7 +102,6 @@ pub(crate) fn TimeSeriesChart(
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
-            // Legend
             div {
                 style: "display: flex; gap: var(--space-3); align-items: center;",
                 div {
@@ -119,7 +118,6 @@ pub(crate) fn TimeSeriesChart(
                 }
             }
 
-            // Bars
             div {
                 style: "display: flex; align-items: flex-end; gap: 2px; height: {height_px}px; padding: 0 var(--space-1);",
                 for col in &columns {
@@ -154,7 +152,6 @@ pub(crate) fn TimeSeriesChart(
                 }
             }
 
-            // X-axis labels
             if columns.len() >= 2 {
                 div {
                     style: "display: flex; justify-content: space-between; padding: 0 var(--space-1);",
@@ -166,7 +163,7 @@ pub(crate) fn TimeSeriesChart(
     }
 }
 
-// -- HorizBarChart ------------------------------------------------------------
+// ── HorizBarChart ──
 
 /// Horizontal bar chart with label, proportional bar, and value label.
 #[component]
@@ -244,7 +241,7 @@ pub(crate) fn HorizBarChart(
     }
 }
 
-// -- DonutChart ---------------------------------------------------------------
+// ── DonutChart ──
 
 /// Donut chart using CSS conic-gradient with legend.
 #[component]
@@ -313,7 +310,7 @@ pub(crate) fn DonutChart(segments: Vec<ChartEntry>, size_px: u32, center_label: 
     }
 }
 
-// -- GroupedBarChart ----------------------------------------------------------
+// ── GroupedBarChart ──
 
 /// Grouped vertical bar chart: current vs previous period per entry.
 #[component]
@@ -398,7 +395,7 @@ pub(crate) fn GroupedBarChart(
     }
 }
 
-// -- Series colors ------------------------------------------------------------
+// ── Series colors ──
 
 /// Palette for multi-series charts (8 visually distinct hues).
 pub(crate) const SERIES_COLORS: &[&str] = &[
@@ -412,7 +409,7 @@ pub(crate) const SERIES_COLORS: &[&str] = &[
     "#ec4899",
 ];
 
-// -- Line chart types ---------------------------------------------------------
+// ── Line chart types ──
 
 /// A single data point in a line series.
 #[derive(Debug, Clone, PartialEq)]
@@ -457,7 +454,6 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
-            // Legend
             div {
                 style: "display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center;",
                 for s in &series {
@@ -475,7 +471,6 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
                 }
             }
 
-            // Chart area: one column per time point, stacked bars per series
             div {
                 style: "display: flex; align-items: flex-end; gap: 1px; height: {height}px; padding: 0 var(--space-1);",
                 for idx in 0..num_points {
@@ -503,7 +498,6 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
                 }
             }
 
-            // X-axis labels (first and last)
             if num_points >= 2 {
                 {
                     let first_label = series.iter()
@@ -525,7 +519,7 @@ pub(crate) fn LineChart(series: Vec<LineSeries>, height: u32) -> Element {
     }
 }
 
-// -- Percentile bar chart -----------------------------------------------------
+// ── Percentile bar chart ──
 
 /// Percentile distribution entry for a single tool.
 #[derive(Debug, Clone, PartialEq)]
@@ -557,7 +551,6 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
-            // Legend
             div {
                 style: "display: flex; gap: var(--space-3); font-size: var(--text-xs); color: var(--text-muted);",
                 span { "min-p25" }
@@ -609,7 +602,7 @@ pub(crate) fn PercentileBarChart(entries: Vec<PercentileEntry>) -> Element {
     }
 }
 
-// -- BarEntry + HorizontalBarChart --------------------------------------------
+// ── BarEntry + HorizontalBarChart ──
 
 /// A bar entry with optional color (defaults assigned by the chart).
 #[derive(Debug, Clone, PartialEq)]
@@ -656,7 +649,7 @@ pub(crate) fn HorizontalBarChart(
     }
 }
 
-// -- Stacked bar chart --------------------------------------------------------
+// ── Stacked bar chart ──
 
 /// A stacked bar entry with success/failure segments.
 #[derive(Debug, Clone, PartialEq)]
@@ -698,7 +691,6 @@ pub(crate) fn StackedBarChart(
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-2);",
 
-            // Legend
             div {
                 style: "display: flex; gap: var(--space-3); align-items: center;",
                 div {
@@ -761,7 +753,7 @@ pub(crate) fn StackedBarChart(
     }
 }
 
-// -- Format helpers -----------------------------------------------------------
+// ── Format helpers ──
 
 /// Format a float value for chart labels (K/M suffix).
 pub(crate) fn format_chart_value(v: f64) -> String {

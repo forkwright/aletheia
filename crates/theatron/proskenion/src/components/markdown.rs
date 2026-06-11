@@ -418,8 +418,8 @@ fn render_block(block: MdBlock, key: usize) -> Element {
             rows,
             alignments,
         } => {
-            // skeue decoupled MdTable from pulldown_cmark
-            // (theatron PR #4) — convert at the boundary.
+            // WHY: skeue's MdTable is decoupled from pulldown_cmark --
+            // convert alignments at the boundary.
             let alignments: Vec<skeue::TableAlignment> =
                 alignments.into_iter().map(Into::into).collect();
             rsx! {

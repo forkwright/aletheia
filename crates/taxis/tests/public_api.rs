@@ -1,10 +1,7 @@
 //! Integration tests for aletheia-taxis's public config-type API.
 //!
-//! WHY: taxis had zero `crates/taxis/tests/` integration tests prior to this
-//! (tracked in aletheia#2814). taxis is the configuration and workspace-layout
-//! layer -- every Aletheia subsystem depends on it. This binary covers the
-//! pure in-memory config surface (defaults, serde, [`resolve_nous`], redaction,
-//! workspace-schema builder).
+//! Covers the pure in-memory config surface (defaults, serde,
+//! [`resolve_nous`], redaction, workspace-schema builder).
 //!
 //! Filesystem tests live in sibling binaries:
 //!   - `public_api_loader.rs` -- TOML loading, env interpolation, roundtrip

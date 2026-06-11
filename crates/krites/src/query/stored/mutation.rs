@@ -1,9 +1,6 @@
 //! Stored relation mutation: put, delete, and index maintenance.
-//! SessionTx methods for stored relation mutation and FTS/HNSW/LSH index maintenance.
-//! Stored relation access operators.
 #![expect(
     clippy::default_trait_access,
-    clippy::doc_markdown,
     clippy::elidable_lifetime_names,
     clippy::explicit_iter_loop,
     clippy::indexing_slicing,

@@ -110,7 +110,6 @@ pub(crate) fn Sessions() -> Element {
         }
     });
 
-    // Save state on unmount.
     use_drop(move || {
         preservation.write().save(
             ViewKey::Sessions,
@@ -122,7 +121,6 @@ pub(crate) fn Sessions() -> Element {
         );
     });
 
-    // Fetch sessions on mount.
     let fetch_sessions = {
         let mut list_store = list_store;
         move || {
@@ -224,7 +222,6 @@ pub(crate) fn Sessions() -> Element {
         fetch_sessions();
     });
 
-    // Fetch detail for a selected session.
     let fetch_detail = {
         let mut detail_state = detail_state;
         move |session_id: SessionId, session: Session| {
@@ -334,7 +331,6 @@ pub(crate) fn Sessions() -> Element {
         }
     };
 
-    // Archive a session.
     let archive_session = {
         move |session_id: SessionId| {
             let cfg = config.read().clone();
@@ -362,7 +358,6 @@ pub(crate) fn Sessions() -> Element {
         }
     };
 
-    // Restore (unarchive) a session.
     let restore_session = {
         move |session_id: SessionId| {
             let cfg = config.read().clone();
@@ -402,7 +397,6 @@ pub(crate) fn Sessions() -> Element {
     rsx! {
         div {
             style: "{SESSIONS_LAYOUT_STYLE}",
-            // Header
             div {
                 style: "{HEADER_STYLE}",
                 h2 {
@@ -419,7 +413,6 @@ pub(crate) fn Sessions() -> Element {
                     "Refresh"
                 }
             }
-            // Search bar
             SessionSearchBar {
                 list_store,
                 agent_names,
@@ -446,7 +439,6 @@ pub(crate) fn Sessions() -> Element {
                     fetch_sessions();
                 },
             }
-            // Two-panel layout
             div {
                 style: "{PANELS_STYLE}",
                 role: "region",
@@ -458,7 +450,6 @@ pub(crate) fn Sessions() -> Element {
                 onmouseup: move |_| {
                     resize.on_up();
                 },
-                // List panel
                 div {
                     style: "{LIST_PANEL_STYLE} width: {width}px;",
                     role: "region",
@@ -489,7 +480,6 @@ pub(crate) fn Sessions() -> Element {
                             fetch_sessions();
                         },
                     }
-                    // Bulk action bar
                     BulkActionBar {
                         selection_store,
                         on_bulk_archive: move |ids: Vec<SessionId>| {
@@ -508,12 +498,10 @@ pub(crate) fn Sessions() -> Element {
                         },
                     }
                 }
-                // Resize handle -- replaces inline div
                 ResizeHandle {
                     dir: ResizeDir::Horizontal,
                     state: resize,
                 }
-                // Detail panel
                 div {
                     style: "{DETAIL_PANEL_STYLE}",
                     role: "region",

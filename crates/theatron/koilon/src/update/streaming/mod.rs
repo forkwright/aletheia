@@ -230,7 +230,6 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
 // model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
     app.connection.stream_phase = crate::state::StreamPhase::Done;
-    // Flush any remaining partial line from the line buffer.
     if !app.connection.streaming_line_buffer.is_empty() {
         let remaining = std::mem::take(&mut app.connection.streaming_line_buffer);
         app.connection.streaming_text.push_str(&remaining);
@@ -399,12 +398,10 @@ pub(crate) async fn handle_cancel_turn(app: &mut App) {
     );
 
     app.connection.stream_phase = crate::state::StreamPhase::Idle;
-    // Flush line buffer into streaming text before committing.
     if !app.connection.streaming_line_buffer.is_empty() {
         let remaining = std::mem::take(&mut app.connection.streaming_line_buffer);
         app.connection.streaming_text.push_str(&remaining);
     }
-    // Commit partial streaming text as an incomplete turn marker.
     let partial = std::mem::take(&mut app.connection.streaming_text);
     let marker = if partial.is_empty() {
         "[interrupted by user]".to_string()

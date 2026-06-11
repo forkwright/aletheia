@@ -16,10 +16,7 @@ use dianoia::research::{FindingStatus, ResearchDomain, ResearchFinding, Research
 use dianoia::state::{ProjectState, Transition};
 use dianoia::workspace::ProjectWorkspace;
 
-// Split: PhaseGate + Workspace + serde roundtrips + Blocker + error variants.
-
-// Workspace Save and Load Roundtrip
-// =============================================================================
+// ── Workspace save and load roundtrip ──
 
 #[test]
 fn workspace_save_and_load_project() {
@@ -33,7 +30,6 @@ fn workspace_save_and_load_project() {
         "tester".into(),
     );
 
-    // Add a phase with plans
     let mut phase = Phase::new("Phase 1".into(), "First phase".into(), 1);
     phase.state = PhaseState::Active;
     project.add_phase(phase);
@@ -61,7 +57,6 @@ fn workspace_save_and_load_with_state_transitions() {
         "tester".into(),
     );
 
-    // Advance through some states
     project
         .advance(Transition::StartQuestioning)
         .expect("advance to questioning");
@@ -80,7 +75,6 @@ fn workspace_open_existing() {
     let temp_dir = tempfile::tempdir().expect("create temp dir");
     let root = temp_dir.path().join("existing-project");
 
-    // Create first
     let ws = ProjectWorkspace::create(&root).expect("create workspace");
     let project = Project::new(
         "Existing".into(),
@@ -90,7 +84,6 @@ fn workspace_open_existing() {
     );
     ws.save_project(&project).expect("save");
 
-    // Then open
     let ws2 = ProjectWorkspace::open(&root).expect("open existing workspace");
     let loaded = ws2.load_project().expect("load project");
     assert_eq!(loaded.name, "Existing");
@@ -116,9 +109,7 @@ fn workspace_open_nonexistent_fails() {
     }
 }
 
-// =============================================================================
-// Serde Roundtrips
-// =============================================================================
+// ── Serde roundtrips ──
 
 #[test]
 fn project_serde_roundtrip() {
@@ -295,9 +286,7 @@ fn project_mode_serde_roundtrip() {
     }
 }
 
-// =============================================================================
-// Blocker Creation and Usage
-// =============================================================================
+// ── Blocker creation and usage ──
 
 #[test]
 fn blocker_creation_and_properties() {
@@ -330,16 +319,13 @@ fn blocker_serde_roundtrip() {
     assert_eq!(loaded.plan_id, blocker.plan_id);
 }
 
-// =============================================================================
-// Error Variants (via operations that trigger them)
-// =============================================================================
+// ── Error variants (via operations that trigger them) ──
 
 #[test]
 fn error_invalid_transition() {
     let result = ProjectState::Complete.transition_gated(Transition::StartQuestioning, None);
     assert!(result.is_err());
 
-    // The error should be InvalidTransition
     match result {
         Err(e) => {
             let err_msg = e.to_string();
@@ -378,7 +364,6 @@ fn error_gate_blocked() {
         vec![GateCondition::TestsPassing, GateCondition::ReviewApproved],
     );
 
-    // Try to transition through a blocking gate
     let result = ProjectState::Planning.transition_gated(Transition::StartExecution, Some(&gate));
     assert!(result.is_err(), "Should be blocked by unsatisfied gate");
 

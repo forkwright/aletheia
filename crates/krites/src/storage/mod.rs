@@ -14,7 +14,7 @@ pub(crate) mod fjall_backend;
 pub(crate) mod mem;
 pub(crate) mod temp;
 
-/// Swappable storage trait for the mneme engine.
+/// Swappable storage trait for the krites engine.
 #[expect(
     dead_code,
     reason = "trait defines the full storage contract — storage_kind and batch_put are required by backends even if unused by current callers"

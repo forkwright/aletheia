@@ -232,7 +232,6 @@ fn mark_surfaced_prevents_reselection() {
     let selector = default_selector();
     let manifest = make_manifest(&[("a", "alpha", 3), ("b", "beta", 2), ("c", "gamma", 1)]);
 
-    // NOTE: mark "a" as surfaced before selection.
     selector.mark_surfaced(&["a".to_owned()]);
 
     let ranker = CapturingRanker::new(vec!["b"]);
@@ -300,13 +299,11 @@ fn second_identical_call_uses_cache() {
     let manifest = make_manifest(&[("a", "alpha", 1)]);
     let ranker = MockRanker::new(vec!["a"]);
 
-    // NOTE: first call — cache miss.
     let r1 = selector
         .select("query", &manifest, &ranker)
         .unwrap_or_else(|_| unreachable!());
     assert!(!r1.from_cache, "first call should not be cached");
 
-    // NOTE: second call — cache hit.
     let r2 = selector
         .select("query", &manifest, &ranker)
         .unwrap_or_else(|_| unreachable!());
@@ -338,12 +335,10 @@ fn cache_evicts_lru_at_capacity() {
     let m3 = make_manifest(&[("c", "gamma", 3)]);
     let ranker = MockRanker::new(vec!["a", "b", "c"]);
 
-    // NOTE: fill the cache with 2 entries.
     let _ = selector.select("q1", &m1, &ranker);
     let _ = selector.select("q2", &m2, &ranker);
     assert_eq!(selector.cache_len(), 2, "cache should have 2 entries");
 
-    // NOTE: third entry evicts the first.
     let _ = selector.select("q3", &m3, &ranker);
     assert_eq!(
         selector.cache_len(),
@@ -351,7 +346,6 @@ fn cache_evicts_lru_at_capacity() {
         "cache should still have 2 entries after eviction"
     );
 
-    // NOTE: q1 should be evicted (LRU), q2 and q3 remain.
     let r1_retry = selector
         .select("q1", &m1, &ranker)
         .unwrap_or_else(|_| unreachable!());

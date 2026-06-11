@@ -12,7 +12,6 @@ use tracing::warn;
 /// WHY: Spawn-class tools delegate to a sub-agent. Co-occurring tools race
 /// with the sub-agent's result, producing undefined hook firing order and
 /// edit conflicts. The guard makes the failure mode loud and recoverable.
-/// Closes #186.
 pub(super) fn enforce_spawn_isolation(
     tool_uses: &mut Vec<(String, String, serde_json::Value)>,
     denied_blocks: &mut Vec<ContentBlock>,

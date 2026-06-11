@@ -2428,7 +2428,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         confidence: Float,
         created_at: String
     }",
-    // Index 10 — published_facts (added in schema v10, R716 Phase 3)
+    // Index 10 — published_facts (added in schema v10)
     r":create published_facts {
         id: String =>
         original_fact_id: String,
@@ -2438,7 +2438,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         contested_by: String,
         contest_reason: String?
     }",
-    // Index 11 — provenance (added in schema v10, R716 Phase 3)
+    // Index 11 — provenance (added in schema v10)
     r":create provenance {
         published_fact_id: String, contributor: String =>
         contribution_type: String,
@@ -3354,7 +3354,7 @@ pub type RerankFuture<'a> =
 
 > Trait for reranking recall candidates.
 > 
-> Implementations receive the top-K candidates from the baseline 6-factor
+> Implementations receive the top-K candidates from the baseline 11-factor
 > ranking and may return them in a refined order.
 ```rust
 pub trait Reranker : Send + Sync {
@@ -3673,7 +3673,7 @@ pub struct SideQueryResult {
 > Side-query selector: pre-filters memories using a lightweight model.
 > 
 > Wraps a [`SideQueryRanker`] with `already_surfaced` tracking and LRU
-> caching. Designed to run as a pre-filter stage before the 6-factor
+> caching. Designed to run as a pre-filter stage before the 11-factor
 > recall scoring in [`RecallEngine`](crate::recall::RecallEngine).
 ```rust
 pub struct SideQuerySelector {
@@ -4444,8 +4444,8 @@ pub fn detect_conflict (
 
 > Default Accept-vote threshold that triggers auto-promotion.
 > 
-> Per R716 Phase 3: when N≥3 distinct nouses cast Accept, the proposal
-> promotes the fact to the proposed tier.
+> When N≥3 distinct nouses cast Accept, the proposal promotes the fact to
+> the proposed tier.
 ```rust
 pub const DEFAULT_VERIFICATION_THRESHOLD: u32 = 3;
 ```

@@ -276,7 +276,6 @@ fn render_project_card(project: &Project) -> Element {
             }
         }
 
-        // Progress bar
         div {
             style: "display: flex; align-items: center; gap: var(--space-2);",
             div {

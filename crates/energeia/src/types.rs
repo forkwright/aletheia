@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 pub use crate::budget::{Budget, BudgetStatus};
 pub use crate::resume::{ResumePolicy, ResumeStage};
 
-// ---------------------------------------------------------------------------
-// Dispatch specification and results
-// ---------------------------------------------------------------------------
+// ── Dispatch specification and results ──
 
 /// What to dispatch: a set of prompt numbers with optional DAG constraints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,9 +111,7 @@ pub struct DispatchResult {
     pub completed_at: Timestamp,
 }
 
-// ---------------------------------------------------------------------------
-// Session outcome
-// ---------------------------------------------------------------------------
+// ── Session outcome ──
 
 /// Result of executing a single prompt in a dispatch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,9 +193,7 @@ impl std::fmt::Display for SessionStatus {
     }
 }
 
-// ---------------------------------------------------------------------------
-// QA types
-// ---------------------------------------------------------------------------
+// ── QA types ──
 
 /// Result of a QA evaluation against a pull request.
 #[derive(Debug, Clone, Serialize, Deserialize)]

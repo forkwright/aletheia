@@ -122,7 +122,6 @@ pub(crate) fn OptionCard(
             style: "{card_style}",
             onclick: move |_| on_select.call(option_id.clone()),
 
-            // Header: title + badges
             div {
                 style: "{HEADER_ROW}",
                 span { style: "{TITLE_STYLE}", "{option.title}" }
@@ -134,17 +133,14 @@ pub(crate) fn OptionCard(
                 }
             }
 
-            // Description
             if !option.description.is_empty() {
                 div { style: "{DESCRIPTION_STYLE}", "{option.description}" }
             }
 
-            // Rationale
             if !option.rationale.is_empty() {
                 div { style: "{RATIONALE_STYLE}", "{option.rationale}" }
             }
 
-            // Trade-offs
             if !option.pros.is_empty() || !option.cons.is_empty() {
                 div {
                     style: "{TRADE_OFF_SECTION}",

@@ -24,7 +24,7 @@ use koina::credential::{CredentialProvider, CredentialSource};
 
 use super::*;
 
-// ---- test-only in-memory backend ---------------------------------------------
+// ── test-only in-memory backend ──
 
 type BackendStore = Mutex<HashMap<(String, String), Vec<u8>>>;
 
@@ -105,8 +105,7 @@ fn provider(service: &str, username: &str) -> KeyringCredentialProvider {
     KeyringCredentialProvider::with_identifiers(service, username)
 }
 
-// ---- constructor mutants (L38 `with_identifiers` -> `Default::default()`,
-//      and `new()` / `Default::default()` must carry the documented constants)
+// ── constructor mutants ──
 
 #[test]
 fn new_uses_documented_default_identifiers() {
@@ -129,7 +128,7 @@ fn default_matches_new() {
 
 #[test]
 fn with_identifiers_stores_custom_service_and_username() {
-    // Kills: L38 `with_identifiers` -> `Default::default()` (would yield the
+    // Kills: `with_identifiers` -> `Default::default()` (would yield the
     // default "aletheia"/"api-token" instead of the caller-supplied values).
     let p = provider("svc-with-identifiers-1", "user-with-identifiers-1");
     assert_eq!(p.service, "svc-with-identifiers-1");
@@ -140,7 +139,7 @@ fn with_identifiers_stores_custom_service_and_username() {
 
 #[test]
 fn with_identifiers_accepts_owned_and_borrowed() {
-    // Kills: a variant of L38 that ignores one of the two `Into<String>` args.
+    // Kills: a `with_identifiers` variant that ignores one of the two `Into<String>` args.
     let svc = String::from("svc-owned-2");
     let user = "user-borrowed-2";
     let p = KeyringCredentialProvider::with_identifiers(svc, user);
@@ -148,13 +147,12 @@ fn with_identifiers_accepts_owned_and_borrowed() {
     assert_eq!(p.username, "user-borrowed-2");
 }
 
-// ---- `entry()` mutant (L45): must hand back a handle bound to the configured
-//      service/username — verified through the full round-trip.
+// ── entry() mutants ──
 
 #[test]
 fn entry_round_trips_password_through_store_and_get() {
-    // Kills: L45 `entry` -> stub returning an Entry that ignores &self, plus
-    // L55 `store` -> `Ok(())` (no-op write would yield NoEntry on read).
+    // Kills: `entry` -> stub returning an Entry that ignores &self, plus
+    // `store` -> `Ok(())` (no-op write would yield NoEntry on read).
     let p = provider("svc-entry-roundtrip-3", "user-entry-roundtrip-3");
     let token = "tok-entry-roundtrip-3";
     p.store(token)
@@ -171,7 +169,7 @@ fn entry_round_trips_password_through_store_and_get() {
 
 #[test]
 fn entry_handles_are_isolated_per_identifier_pair() {
-    // Kills: L45 `entry` -> stub ignoring &self (both providers would then
+    // Kills: `entry` -> stub ignoring &self (both providers would then
     // share one default-backed entry and see each other's writes).
     let a = provider("svc-isolation-A-4", "user-isolation-4");
     let b = provider("svc-isolation-B-4", "user-isolation-4");
@@ -192,11 +190,11 @@ fn entry_handles_are_isolated_per_identifier_pair() {
     a.delete().expect("cleanup A");
 }
 
-// ---- `store` mutant (L55)
+// ── store mutants ──
 
 #[test]
 fn store_overwrites_existing_token() {
-    // Kills: L55 `store` -> `Ok(())` in the update case (a no-op would leave
+    // Kills: `store` -> `Ok(())` in the update case (a no-op would leave
     // the original value in place).
     let p = provider("svc-overwrite-5", "user-overwrite-5");
     p.store("first").expect("initial store");
@@ -206,11 +204,11 @@ fn store_overwrites_existing_token() {
     p.delete().expect("cleanup");
 }
 
-// ---- `delete` mutant (L66)
+// ── delete mutants ──
 
 #[test]
 fn delete_removes_stored_credential() {
-    // Kills: L66 `delete` -> `Ok(())` (would leave the secret, failing the
+    // Kills: `delete` -> `Ok(())` (would leave the secret, failing the
     // post-condition below).
     let p = provider("svc-delete-6", "user-delete-6");
     p.store("will-be-deleted").expect("store before delete");
@@ -223,7 +221,7 @@ fn delete_removes_stored_credential() {
 
 #[test]
 fn delete_on_missing_entry_is_idempotent() {
-    // Kills: a variant of L66 that returns Err on NoEntry instead of mapping
+    // Kills: a `delete` variant that returns Err on NoEntry instead of mapping
     // it to Ok(()). The documented contract promises idempotence.
     let p = provider("svc-delete-missing-7", "user-delete-missing-7");
     // No prior store.
@@ -234,11 +232,11 @@ fn delete_on_missing_entry_is_idempotent() {
         .expect("second delete of missing entry should also be Ok");
 }
 
-// ---- `get_credential` mutants (L81)
+// ── get_credential mutants ──
 
 #[test]
 fn get_credential_returns_exact_stored_bytes_with_keyring_source() {
-    // Kills: L81 stub returning a default/empty Credential (both the secret
+    // Kills: a `get_credential` stub returning a default/empty Credential (both the secret
     // and the source-tag assertions below would fail).
     let p = provider("svc-get-exact-8", "user-get-exact-8");
     let token = "exact-bytes-8-!@#$%^&*()";
@@ -257,7 +255,7 @@ fn get_credential_returns_exact_stored_bytes_with_keyring_source() {
 
 #[test]
 fn get_credential_returns_none_when_no_entry_exists() {
-    // Kills: L81 stub returning Some(Default::default()) (a missing entry
+    // Kills: a `get_credential` stub returning Some(Default::default()) (a missing entry
     // would then look present). Also pins the NoEntry arm of the match.
     let p = provider("svc-get-missing-9", "user-get-missing-9");
     assert!(
@@ -266,11 +264,11 @@ fn get_credential_returns_none_when_no_entry_exists() {
     );
 }
 
-// ---- `token.is_empty()` match-guard mutant (L90)
+// ── token.is_empty() match-guard mutants ──
 
 #[test]
 fn get_credential_rejects_empty_stored_token() {
-    // Kills: L90 guard flipped to `false` (empty token would then be returned
+    // Kills: the `token.is_empty()` guard flipped to `false` (empty token would then be returned
     // as a valid credential, defeating the documented rejection contract).
     let p = provider("svc-empty-token-10", "user-empty-token-10");
     p.store("").expect("store empty string");
@@ -283,7 +281,7 @@ fn get_credential_rejects_empty_stored_token() {
 
 #[test]
 fn get_credential_accepts_nonempty_token() {
-    // Kills: L90 guard flipped to `true` (every token would then be rejected
+    // Kills: the `token.is_empty()` guard flipped to `true` (every token would then be rejected
     // as empty, returning None for perfectly valid credentials).
     let p = provider("svc-nonempty-token-11", "user-nonempty-token-11");
     p.store("x").expect("store shortest nonempty token");
@@ -294,11 +292,11 @@ fn get_credential_accepts_nonempty_token() {
     p.delete().expect("cleanup");
 }
 
-// ---- `name()` mutant (L108 `"keyring"` -> `"xyzzy"` / `""`)
+// ── name() mutants ──
 
 #[test]
 fn name_is_exactly_keyring_literal() {
-    // Kills: L108 replacements with any other literal ("", "xyzzy", ...).
+    // Kills: `name()` replacements with any other literal ("", "xyzzy", ...).
     let p = KeyringCredentialProvider::new();
     assert_eq!(p.name(), "keyring");
     assert!(!p.name().is_empty(), "name must not be the empty string");
@@ -307,7 +305,7 @@ fn name_is_exactly_keyring_literal() {
 
 #[test]
 fn name_is_stable_across_custom_identifiers() {
-    // Kills: a variant of L108 that derives the name from `self.service` /
+    // Kills: a `name()` variant that derives the name from `self.service` /
     // `self.username` instead of the fixed contract string.
     let p = provider("svc-name-12", "user-name-12");
     assert_eq!(p.name(), "keyring");

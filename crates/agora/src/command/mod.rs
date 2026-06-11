@@ -456,8 +456,7 @@ fn format_uptime(secs: u64) -> String {
 mod tests {
     use super::*;
 
-    // Parser tests
-    // -----------------------------------------------------------------------
+    // ── Parser tests ──
 
     #[test]
     fn parse_plain_message_returns_none() {
@@ -595,8 +594,7 @@ mod tests {
         assert_eq!(parse("!AGENTS"), Some(Command::Agents));
     }
 
-    // Dispatch tests
-    // -----------------------------------------------------------------------
+    // ── Dispatch tests ──
 
     fn make_context() -> CommandContext {
         CommandContext {

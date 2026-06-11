@@ -27,19 +27,14 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
 
     let mut prompt = String::new();
 
-    // Frontmatter
     prompt.push_str("---\nmodel: claude-opus-4-6\n---\n\n");
 
-    // Title
     let _ = writeln!(prompt, "# {number}: {}\n", issue.title);
 
-    // Directive
     let _ = writeln!(prompt, "## Directive\n\n{task}\n");
 
-    // Standards
     prompt.push_str("## Standards\n\nRead `standards/RUST.md`.\n\n");
 
-    // Setup
     prompt.push_str("## Setup\n\n```bash\n");
     prompt.push_str("git fetch origin && git log --oneline -3 origin/main\n");
     let _ = writeln!(
@@ -49,10 +44,8 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
     let _ = writeln!(prompt, "cd ../worktrees/{branch}");
     prompt.push_str("```\n\n");
 
-    // Task
     let _ = writeln!(prompt, "## Task\n\n1. **#{number}**: {task}\n");
 
-    // Include original issue body as context if present
     if !issue.body.is_empty() {
         prompt.push_str("### Context from issue\n\n");
         let max_body = 2000;
@@ -66,14 +59,12 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
         }
     }
 
-    // Acceptance Criteria
     prompt.push_str("## Acceptance criteria\n\n");
     for criterion in &acceptance {
         let _ = writeln!(prompt, "- [ ] {criterion}");
     }
     let _ = writeln!(prompt, "- [ ] Closes #{number}\n");
 
-    // Blast Radius
     prompt.push_str("## Blast radius\n\n```\n");
     for path in &blast_radius {
         prompt.push_str(path);
@@ -81,7 +72,6 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
     }
     prompt.push_str("```\n\n");
 
-    // Pre-commit checklist
     prompt.push_str(
         "## Pre-commit checklist\n\n```bash\n\
         cargo fmt --all\n\
@@ -91,7 +81,6 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
         ```\n\n",
     );
 
-    // Validation Gate
     prompt.push_str(
         "## Validation gate\n\n```bash\n\
         cargo fmt --all -- --check\n\
@@ -100,7 +89,6 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
         ```\n\n",
     );
 
-    // Completion
     prompt.push_str(
         "## Completion\n\nAfter all acceptance criteria are met:\n\n\
         1. `git add` changed files (do NOT use `git add -A`)\n\
@@ -113,13 +101,11 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
     );
     prompt.push_str("5. Do NOT merge the PR\n\n");
 
-    // Observations
     prompt.push_str(
         "## Observations\n\n\
          Capture anything out of scope in the PR body under `## Observations`.\n",
     );
 
-    // Source metadata comment
     let _ = write!(
         prompt,
         "\n<!-- Auto-generated from {repo}#{number} by issue_triage -->\n"
@@ -154,21 +140,18 @@ fn infer_domain(issue: &GitHubIssue) -> String {
     let body_lower = issue.body.to_lowercase();
     let labels_lower: Vec<String> = issue.labels.iter().map(|l| l.to_lowercase()).collect();
 
-    // Check labels first
     for name in &crate_names {
         if labels_lower.iter().any(|l| l.contains(name)) {
             return (*name).to_owned();
         }
     }
 
-    // Check title
     for name in &crate_names {
         if title_lower.contains(name) {
             return (*name).to_owned();
         }
     }
 
-    // Check body (first 500 chars)
     let body_prefix = body_lower.get(..500).unwrap_or(&body_lower);
     for name in &crate_names {
         if body_prefix.contains(name) {
@@ -251,7 +234,6 @@ fn infer_slug(title: &str) -> String {
 fn infer_task(issue: &GitHubIssue) -> String {
     let title = issue.title.trim();
 
-    // If already starts with an imperative verb, use as-is
     let imperative_prefixes = [
         "add ",
         "fix ",
@@ -285,7 +267,6 @@ fn infer_task(issue: &GitHubIssue) -> String {
         }
     }
 
-    // Infer verb from labels
     let labels_lower: Vec<String> = issue.labels.iter().map(|l| l.to_lowercase()).collect();
 
     if labels_lower.iter().any(|l| l.contains("bug")) {
@@ -325,7 +306,6 @@ fn lowercase_first(s: &str) -> String {
 fn extract_acceptance_criteria(issue: &GitHubIssue) -> Vec<String> {
     let mut criteria = Vec::new();
 
-    // Extract checkbox items from body
     for line in issue.body.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed
@@ -339,7 +319,6 @@ fn extract_acceptance_criteria(issue: &GitHubIssue) -> Vec<String> {
         }
     }
 
-    // If no checkboxes, look for modal patterns
     if criteria.is_empty() {
         for line in issue.body.lines() {
             let trimmed = line.trim();
@@ -354,7 +333,6 @@ fn extract_acceptance_criteria(issue: &GitHubIssue) -> Vec<String> {
         }
     }
 
-    // Fallback: generate generic criteria from title
     if criteria.is_empty() {
         criteria.push(format!("Implementation addresses #{}", issue.number));
         criteria.push("Unit tests cover new functionality".to_owned());
@@ -368,7 +346,6 @@ fn extract_acceptance_criteria(issue: &GitHubIssue) -> Vec<String> {
 fn infer_blast_radius(issue: &GitHubIssue, domain: &str) -> Vec<String> {
     let mut paths = Vec::new();
 
-    // Extract backtick-quoted paths from body
     let mut in_backtick = false;
     let mut current = String::new();
     for c in issue.body.chars() {
@@ -386,7 +363,6 @@ fn infer_blast_radius(issue: &GitHubIssue, domain: &str) -> Vec<String> {
         }
     }
 
-    // Fallback to domain-based path
     if paths.is_empty() {
         if domain == "general" {
             paths.push("crates/".to_owned());

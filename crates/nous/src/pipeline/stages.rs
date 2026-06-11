@@ -744,9 +744,9 @@ pub(super) async fn run_execute_stage(
                 error_type: "degraded_mode".to_owned(),
             });
 
-            // Fetch the most recent distillation summary for this session, if available.
-            // A None result means the session has never been distilled — the degraded
-            // response will acknowledge that honestly rather than serving stale context.
+            // WHY: a None distillation summary means the session has never been
+            // distilled — the degraded response acknowledges that honestly
+            // rather than serving stale context.
             let recent_distillation = session_store.and_then(|store_mutex| {
                 store_mutex.try_lock().ok().and_then(|store| {
                     store

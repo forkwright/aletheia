@@ -294,7 +294,6 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
         }
     }
     if chars.next().is_some() {
-        // Replace last char with ellipsis indicator.
         result.pop();
         result.push('…');
     }

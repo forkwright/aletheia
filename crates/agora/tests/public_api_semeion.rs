@@ -21,10 +21,7 @@ use agora::types::{
 use taxis::config::ChannelBinding;
 use tokio_util::sync::CancellationToken;
 
-// Split: semeion/Signal surface, Send+Sync bounds, CancellationToken compat.
-
-// SignalTarget and parse_target
-// ---------------------------------------------------------------------------
+// ── SignalTarget and parse_target ──
 
 #[test]
 fn parse_target_phone_number() {
@@ -66,9 +63,7 @@ fn signal_target_equality() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// SignalProvider
-// ---------------------------------------------------------------------------
+// ── SignalProvider ──
 
 #[test]
 fn signal_provider_new_is_empty() {
@@ -103,9 +98,7 @@ fn signal_provider_with_buffer_capacity() {
     assert_eq!(provider.id(), "signal");
 }
 
-// ---------------------------------------------------------------------------
-// SignalClient
-// ---------------------------------------------------------------------------
+// ── SignalClient ──
 
 use organon::testing::install_crypto_provider;
 
@@ -141,9 +134,7 @@ fn signal_client_debug_impl() {
     assert!(debug.contains("rpc_url"));
 }
 
-// ---------------------------------------------------------------------------
-// SignalSendParams
-// ---------------------------------------------------------------------------
+// ── SignalSendParams ──
 
 #[test]
 fn signal_send_params_construction() {
@@ -180,9 +171,7 @@ fn signal_send_params_serde_roundtrip() {
     assert_eq!(restored.attachments, original.attachments);
 }
 
-// ---------------------------------------------------------------------------
-// SignalEnvelope
-// ---------------------------------------------------------------------------
+// ── SignalEnvelope ──
 
 #[test]
 fn signal_envelope_deserialize_full() {
@@ -232,9 +221,7 @@ fn signal_envelope_deserialize_minimal() {
     assert!(envelope.timestamp.is_none());
 }
 
-// ---------------------------------------------------------------------------
-// DataMessage
-// ---------------------------------------------------------------------------
+// ── DataMessage ──
 
 #[test]
 fn data_message_construction() {
@@ -273,9 +260,7 @@ fn data_message_serde_roundtrip() {
     assert_eq!(restored.message, original.message);
 }
 
-// ---------------------------------------------------------------------------
-// GroupInfo
-// ---------------------------------------------------------------------------
+// ── GroupInfo ──
 
 #[test]
 fn group_info_construction() {
@@ -297,9 +282,7 @@ fn group_info_serde_roundtrip() {
     assert_eq!(restored.group_id, original.group_id);
 }
 
-// ---------------------------------------------------------------------------
-// Attachment
-// ---------------------------------------------------------------------------
+// ── Attachment ──
 
 #[test]
 fn attachment_construction() {
@@ -334,9 +317,7 @@ fn attachment_serde_roundtrip() {
     assert_eq!(restored.size, original.size);
 }
 
-// ---------------------------------------------------------------------------
-// ConnectionState
-// ---------------------------------------------------------------------------
+// ── ConnectionState ──
 
 #[test]
 fn connection_state_variants() {
@@ -378,9 +359,7 @@ fn connection_state_debug() {
     assert!(debug.contains("Connected"));
 }
 
-// ---------------------------------------------------------------------------
-// ConnectionHealthReport
-// ---------------------------------------------------------------------------
+// ── ConnectionHealthReport ──
 
 #[test]
 fn connection_health_report_construction() {
@@ -412,9 +391,7 @@ fn connection_health_report_clone() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// SignalError
-// ---------------------------------------------------------------------------
+// ── SignalError ──
 
 #[test]
 fn signal_error_implements_std_error() {
@@ -434,9 +411,7 @@ fn signal_error_debug_impl() {
     assert!(!debug.is_empty());
 }
 
-// ---------------------------------------------------------------------------
-// Send + Sync bounds (as promised in lib.rs)
-// ---------------------------------------------------------------------------
+// ── Send + Sync bounds (as promised in lib.rs) ──
 
 #[allow(dead_code, reason = "compile-time trait bound check")]
 fn assert_send<T: Send>() {}
@@ -495,9 +470,7 @@ fn channel_registry_is_send_sync() {
     assert_send_sync::<ChannelRegistry>();
 }
 
-// ---------------------------------------------------------------------------
-// CancellationToken compatibility
-// ---------------------------------------------------------------------------
+// ── CancellationToken compatibility ──
 
 #[test]
 fn cancellation_token_is_send_sync() {

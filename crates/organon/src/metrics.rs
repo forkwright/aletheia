@@ -12,9 +12,7 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
+// ── Label sets ──
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct ToolInvocationLabels {
@@ -27,9 +25,7 @@ struct ToolLabels {
     tool_name: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
+// ── Metric families ──
 
 static TOOL_INVOCATIONS_TOTAL: LazyLock<Family<ToolInvocationLabels, Counter>> =
     LazyLock::new(Family::default);
@@ -42,10 +38,6 @@ type ToolHistogramFamily = Family<ToolLabels, Histogram, fn() -> Histogram>;
 
 static TOOL_DURATION_SECONDS: LazyLock<ToolHistogramFamily> =
     LazyLock::new(|| Family::new_with_constructor(tool_duration_histogram));
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -61,9 +53,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
+// ── Recording ──
 
 /// Outcome bucket used for tool invocation metrics.
 #[derive(Clone, Copy)]

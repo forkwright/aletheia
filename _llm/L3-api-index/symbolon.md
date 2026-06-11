@@ -572,9 +572,9 @@ impl CredentialChain {
 > regardless of whether the drop occurs during normal execution, early
 > error return, or panic unwind.
 > 
-> // WHY: `RwLock` allows concurrent readers (`get_credential` calls) with a
-> // single writer (the background refresh task). This avoids blocking
-> // LLM requests during token refresh, which may take 100-500ms.
+> The `RwLock` allows concurrent readers (`get_credential` calls) with a
+> single writer (the background refresh task), so LLM requests are not
+> blocked during a token refresh, which may take 100-500ms.
 ```rust
 pub struct RefreshingCredentialProvider {
     /// Current OAuth token and refresh metadata. `None` after a fatal

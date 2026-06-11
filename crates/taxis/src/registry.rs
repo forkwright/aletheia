@@ -134,24 +134,17 @@ pub fn spec_by_key(key: &str) -> Option<&'static ParameterSpec> {
     REGISTRY.iter().find(|s| s.key == key)
 }
 
-// ---------------------------------------------------------------------------
-// Static registry — populated at first access via LazyLock
-// ---------------------------------------------------------------------------
+// ── Static registry — populated at first access via LazyLock ──
 
 static REGISTRY: LazyLock<Vec<ParameterSpec>> = LazyLock::new(build_registry);
 
-// NOTE(#2306): 769 lines: the registry is a single data declaration — one Vec literal
-// of ParameterSpec entries. Splitting it into separate functions would scatter the
-// registry across files without improving readability. The function is pure data.
 #[expect(
     clippy::too_many_lines,
     reason = "static data declaration: one Vec literal of 50+ ParameterSpec entries"
 )]
 fn build_registry() -> Vec<ParameterSpec> {
     vec![
-        // ===================================================================
-        // Distillation
-        // ===================================================================
+        // ── Distillation ──
         ParameterSpec {
             key: "agents.defaults.behavior.distillationContextTokenTrigger",
             section: "agents.defaults.behavior",
@@ -243,9 +236,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Comparison of distillation accuracy at different truncation points",
             direction_hint: TuningDirection::Higher,
         },
-        // ===================================================================
-        // Competence scoring
-        // ===================================================================
+        // ── Competence scoring ──
         ParameterSpec {
             key: "agents.defaults.behavior.competenceCorrectionPenalty",
             section: "agents.defaults.behavior",
@@ -337,9 +328,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "False-positive and false-negative escalation rates",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Knowledge — conflict resolution
-        // ===================================================================
+        // ── Knowledge — conflict resolution ──
         ParameterSpec {
             key: "knowledge.conflictIntraBatchDedupThreshold",
             section: "knowledge",
@@ -418,9 +407,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Multi-agent confidence distribution analysis",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Knowledge — dedup weights
-        // ===================================================================
+        // ── Knowledge — dedup weights ──
         ParameterSpec {
             key: "agents.defaults.behavior.knowledgeDedupWeightName",
             section: "agents.defaults.behavior",
@@ -473,9 +460,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Embedding-match accuracy at different thresholds",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Knowledge — fact lifecycle thresholds
-        // ===================================================================
+        // ── Knowledge — fact lifecycle thresholds ──
         ParameterSpec {
             key: "agents.defaults.behavior.factActiveThreshold",
             section: "agents.defaults.behavior",
@@ -515,9 +500,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Dormant fact recovery rate analysis",
             direction_hint: TuningDirection::Lower,
         },
-        // ===================================================================
-        // Tool limits
-        // ===================================================================
+        // ── Tool limits ──
         ParameterSpec {
             key: "toolLimits.maxPatternLength",
             section: "toolLimits",
@@ -622,9 +605,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Inter-session response time distribution",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // API limits
-        // ===================================================================
+        // ── API limits ──
         ParameterSpec {
             key: "apiLimits.maxSessionNameLen",
             section: "apiLimits",
@@ -755,9 +736,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Idempotency key length distribution",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Timeouts and retry
-        // ===================================================================
+        // ── Timeouts and retry ──
         ParameterSpec {
             key: "timeouts.llmCallSecs",
             section: "timeouts",
@@ -810,9 +789,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Backoff ceiling vs. retry outcome analysis",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Safety
-        // ===================================================================
+        // ── Safety ──
         ParameterSpec {
             key: "agents.defaults.behavior.safetyLoopDetectionThreshold",
             section: "agents.defaults.behavior",
@@ -852,9 +829,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Session token usage distribution",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Compaction
-        // ===================================================================
+        // ── Compaction ──
         ParameterSpec {
             key: "agents.defaults.behavior.compactionStrategy",
             section: "agents.defaults.behavior",
@@ -868,9 +843,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "A/B comparison of decision retention across strategies",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Capacity
-        // ===================================================================
+        // ── Capacity ──
         ParameterSpec {
             key: "capacity.maxToolOutputBytes",
             section: "capacity",
@@ -884,9 +857,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Tool output size distribution",
             direction_hint: TuningDirection::Higher,
         },
-        // ===================================================================
-        // Nous behavior
-        // ===================================================================
+        // ── Nous behavior ──
         ParameterSpec {
             key: "nousBehavior.degradedPanicThreshold",
             section: "nousBehavior",
@@ -1069,9 +1040,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Shutdown duration distribution",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Provider behavior
-        // ===================================================================
+        // ── Provider behavior ──
         ParameterSpec {
             key: "providerBehavior.nonStreamingTimeoutSecs",
             section: "providerBehavior",
@@ -1150,9 +1119,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Quality and cost comparison across routing thresholds",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Messaging
-        // ===================================================================
+        // ── Messaging ──
         ParameterSpec {
             key: "messaging.pollIntervalMs",
             section: "messaging",
@@ -1270,9 +1237,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Handler concurrency and latency analysis",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Daemon behavior
-        // ===================================================================
+        // ── Daemon behavior ──
         ParameterSpec {
             key: "daemonBehavior.prosocheAnomalySampleSize",
             section: "daemonBehavior",
@@ -1338,9 +1303,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Maximum downtime tolerance analysis",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Knowledge — content limits
-        // ===================================================================
+        // ── Knowledge — content limits ──
         ParameterSpec {
             key: "knowledge.maxContentLength",
             section: "knowledge",
@@ -1354,9 +1317,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Fact content length distribution",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Manifest — memory entries
-        // ===================================================================
+        // ── Manifest — memory entries ──
         ParameterSpec {
             key: "agents.defaults.behavior.manifestMaxEntries",
             section: "agents.defaults.behavior",
@@ -1370,9 +1331,7 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Manifest size vs. recall precision analysis",
             direction_hint: TuningDirection::Contextual,
         },
-        // ===================================================================
-        // Credential — refresh threshold
-        // ===================================================================
+        // ── Credential — refresh threshold ──
         ParameterSpec {
             key: "credential.refreshThresholdSecs",
             section: "credential",

@@ -8,10 +8,6 @@ use serde::Deserialize;
 
 use crate::types::{CriterionResult, CriterionType};
 
-// ---------------------------------------------------------------------------
-// Criteria classification
-// ---------------------------------------------------------------------------
-
 /// Keywords indicating a criterion verifiable by mechanical checks.
 const MECHANICAL_KEYWORDS: &[&str] = &[
     "compiles",
@@ -74,13 +70,9 @@ fn classify_single(criterion: &str) -> CriterionType {
         return CriterionType::Semantic;
     }
 
-    // NOTE: Default to semantic — safe fallback since it can handle anything.
+    // WHY: Semantic is the safe default — it can evaluate any criterion.
     CriterionType::Semantic
 }
-
-// ---------------------------------------------------------------------------
-// Evaluation prompt construction
-// ---------------------------------------------------------------------------
 
 /// Few-shot example: passing evaluation.
 const EXAMPLE_PASS_JSON: &str = r#"{
@@ -160,8 +152,8 @@ pub fn build_qa_prompt(
     }
     out.push_str("</criteria>\n\n");
 
-    // NOTE: Truncate large diffs to avoid exceeding context limits.
-    // 100K chars is roughly 25K tokens. Use get() for safe slicing.
+    // WHY: Large diffs are truncated to avoid exceeding context limits.
+    // 100K chars is roughly 25K tokens.
     let truncated_diff = if diff.len() > 100_000 {
         let boundary = (0..=100_000)
             .rev()
@@ -195,10 +187,6 @@ pub fn build_qa_prompt(
     out
 }
 
-// ---------------------------------------------------------------------------
-// Response parsing
-// ---------------------------------------------------------------------------
-
 /// JSON response from the LLM QA evaluator.
 #[derive(Debug, Deserialize)]
 struct QaResponse {
@@ -224,19 +212,16 @@ struct QaCriterionResult {
 /// as failed with explanatory evidence.
 #[must_use]
 pub fn parse_qa_response(raw: &str, criteria: &[(String, CriterionType)]) -> Vec<CriterionResult> {
-    // NOTE: Try direct JSON parse.
     if let Ok(response) = serde_json::from_str::<QaResponse>(raw) {
         return map_json_results(&response, criteria);
     }
 
-    // NOTE: Try extracting JSON from markdown code fence.
     if let Some(json_block) = extract_json_block(raw)
         && let Ok(response) = serde_json::from_str::<QaResponse>(&json_block)
     {
         return map_json_results(&response, criteria);
     }
 
-    // NOTE: Fallback to legacy line-based parsing.
     parse_legacy_format(raw, criteria)
 }
 
@@ -312,7 +297,6 @@ fn parse_legacy_format(
         let trimmed = line.trim().trim_start_matches("- ");
 
         if let Some(criterion_text) = trimmed.strip_prefix("CRITERION:") {
-            // NOTE: Flush previous criterion if any.
             if let Some(idx) = current_criterion_idx {
                 flush_criterion(
                     idx,
@@ -333,7 +317,6 @@ fn parse_legacy_format(
         }
     }
 
-    // NOTE: Flush the last criterion.
     if let Some(idx) = current_criterion_idx {
         flush_criterion(
             idx,
@@ -344,7 +327,6 @@ fn parse_legacy_format(
         );
     }
 
-    // NOTE: Mark uncovered criteria as failed.
     let evaluated: Vec<String> = results.iter().map(|r| r.criterion.clone()).collect();
     for (text, classification) in criteria {
         if !evaluated.iter().any(|ec| ec == text) {
@@ -386,14 +368,12 @@ fn flush_criterion(
 fn find_matching_criterion(text: &str, criteria: &[(String, CriterionType)]) -> Option<usize> {
     let text_lower = text.to_lowercase();
 
-    // NOTE: Try exact match first.
     for (i, (criterion, _)) in criteria.iter().enumerate() {
         if criterion.to_lowercase() == text_lower {
             return Some(i);
         }
     }
 
-    // NOTE: Fall back to substring match.
     for (i, (criterion, _)) in criteria.iter().enumerate() {
         let criterion_lower = criterion.to_lowercase();
         if text_lower.contains(&criterion_lower) || criterion_lower.contains(&text_lower) {
@@ -413,9 +393,7 @@ fn find_matching_criterion(text: &str, criteria: &[(String, CriterionType)]) -> 
 mod tests {
     use super::*;
 
-    // -----------------------------------------------------------------------
-    // classify_criteria
-    // -----------------------------------------------------------------------
+    // ── classify_criteria ──
 
     #[test]
     fn classifies_cargo_build_as_mechanical() {
@@ -475,9 +453,7 @@ mod tests {
         assert_eq!(result[0].1, CriterionType::Mechanical);
     }
 
-    // -----------------------------------------------------------------------
-    // build_qa_prompt
-    // -----------------------------------------------------------------------
+    // ── build_qa_prompt ──
 
     #[test]
     fn build_qa_prompt_has_xml_structure() {
@@ -523,9 +499,7 @@ mod tests {
         assert!(prompt.len() < 200_000);
     }
 
-    // -----------------------------------------------------------------------
-    // parse_qa_response
-    // -----------------------------------------------------------------------
+    // ── parse_qa_response ──
 
     #[test]
     fn parse_valid_json_response() {

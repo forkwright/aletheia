@@ -157,13 +157,11 @@ mod tests {
     #[test]
     fn bucket_refills_over_time() {
         let bucket = TokenBucket::new(60);
-        // Drain all tokens.
         for _ in 0..60 {
             assert!(bucket.try_acquire());
         }
         assert!(!bucket.try_acquire());
 
-        // Manually advance time by adjusting last_refill.
         {
             let mut state = bucket.inner.lock().unwrap_or_else(|p| panic!("{p}"));
             state.last_refill -= std::time::Duration::from_secs(2);

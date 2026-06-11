@@ -149,9 +149,9 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         return registry;
     }
 
-    // #3410: translate taxis PromptCacheMode -> hermeneus PromptCacheMode.
-    // The two enums are intentionally decoupled so taxis does not depend on
-    // hermeneus, but both default to `Disabled` (sovereignty-first).
+    // WHY(#3410): the taxis and hermeneus PromptCacheMode enums are
+    // intentionally decoupled so taxis does not depend on hermeneus; both
+    // default to `Disabled` (sovereignty-first).
     let prompt_cache_mode = match config.anthropic.prompt_cache_mode {
         taxis::config::PromptCacheMode::Ephemeral => {
             hermeneus::provider::PromptCacheMode::Ephemeral

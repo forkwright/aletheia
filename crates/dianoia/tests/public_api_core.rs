@@ -16,11 +16,7 @@ use dianoia::research::{FindingStatus, ResearchDomain, ResearchFinding, Research
 use dianoia::state::{ProjectState, Transition};
 use dianoia::workspace::ProjectWorkspace;
 
-// Split: Project/Phase/Plan/State-transition tests.
-
-// =============================================================================
-// Project Constructors and Basic Properties
-// =============================================================================
+// ── Project constructors and basic properties ──
 
 #[test]
 fn project_new_full_mode() {
@@ -89,9 +85,7 @@ fn project_add_phase_updates_state() {
     assert_eq!(project.phases[0].name, "Phase 1");
 }
 
-// =============================================================================
-// Phase Constructors and State
-// =============================================================================
+// ── Phase constructors and state ──
 
 #[test]
 fn phase_new_defaults() {
@@ -119,9 +113,7 @@ fn phase_state_variants_equality() {
     );
 }
 
-// =============================================================================
-// Plan Constructors and State
-// =============================================================================
+// ── Plan constructors and state ──
 
 #[test]
 fn plan_new_defaults() {
@@ -200,9 +192,7 @@ fn plan_from_template_copies_fields_and_resets_state() {
     assert_ne!(next.id, completed.id);
 }
 
-// =============================================================================
-// Project State Machine Transitions
-// =============================================================================
+// ── Project state machine transitions ──
 
 #[test]
 fn project_state_full_lifecycle() {
@@ -251,19 +241,16 @@ fn project_state_full_lifecycle() {
 
 #[test]
 fn project_state_skip_paths() {
-    // Skip from Created directly to Scoping
     let state = ProjectState::Created
         .transition_gated(Transition::SkipToResearch, None)
         .expect("Created -> Scoping (skip)");
     assert_eq!(state, ProjectState::Scoping);
 
-    // Skip from Questioning to Scoping
     let state = ProjectState::Questioning
         .transition_gated(Transition::SkipResearch, None)
         .expect("Questioning -> Scoping (skip)");
     assert_eq!(state, ProjectState::Scoping);
 
-    // Skip from Planning to Executing
     let state = ProjectState::Planning
         .transition_gated(Transition::StartExecution, None)
         .expect("Planning -> Executing (skip discussion)");
@@ -365,9 +352,7 @@ fn project_state_revert_from_verifying() {
     assert_eq!(reverted, ProjectState::Scoping);
 }
 
-// =============================================================================
-// PhaseGate and GateCondition
-// =============================================================================
+// ── PhaseGate and GateCondition ──
 
 #[test]
 fn phase_gate_new() {
@@ -423,11 +408,9 @@ fn evaluate_gate_custom_condition() {
         vec![GateCondition::Custom("acceptance_criteria_defined".into())],
     );
 
-    // Not satisfied yet
     let result = evaluate_gate(&gate);
     assert!(!result.is_pass());
 
-    // Mark as satisfied
     gate.mark_satisfied("acceptance_criteria_defined");
     let result = evaluate_gate(&gate);
     assert!(result.is_pass());
@@ -435,7 +418,8 @@ fn evaluate_gate_custom_condition() {
 
 #[test]
 fn gate_condition_standard_keys() {
-    // The gate evaluation uses internal keys - test all standard conditions
+    // NOTE: mark_satisfied takes the internal string key for each standard
+    // GateCondition variant (e.g. "tests_passing" for TestsPassing).
     let mut gate = PhaseGate::new(
         ProjectState::Verifying,
         vec![
@@ -446,7 +430,6 @@ fn gate_condition_standard_keys() {
         ],
     );
 
-    // Satisfy all standard conditions
     gate.mark_satisfied("tests_passing");
     gate.mark_satisfied("lint_clean");
     gate.mark_satisfied("docs_updated");
@@ -458,29 +441,22 @@ fn gate_condition_standard_keys() {
 
 #[test]
 fn default_gate_for_states() {
-    // Planning has a default gate
     let gate = default_gate(&ProjectState::Planning);
     assert!(gate.is_some());
     let gate = gate.expect("planning gate exists");
     assert_eq!(gate.from, ProjectState::Planning);
 
-    // Executing has a default gate
     let gate = default_gate(&ProjectState::Executing);
     assert!(gate.is_some());
     let gate = gate.expect("executing gate exists");
     assert_eq!(gate.from, ProjectState::Executing);
 
-    // Verifying has a default gate
     let gate = default_gate(&ProjectState::Verifying);
     assert!(gate.is_some());
 
-    // Created has no default gate
     let gate = default_gate(&ProjectState::Created);
     assert!(gate.is_none());
 
-    // Complete has no default gate
     let gate = default_gate(&ProjectState::Complete);
     assert!(gate.is_none());
 }
-
-// =============================================================================

@@ -31,10 +31,6 @@ use snafu::{ResultExt, Snafu};
 
 use crate::instinct::ToolObservation;
 
-// ---------------------------------------------------------------------------
-// Thresholds
-// ---------------------------------------------------------------------------
-
 /// Default minimum observations before a pattern can generate a proposal.
 ///
 /// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_rule_min_observations`.
@@ -44,10 +40,6 @@ pub const DEFAULT_MIN_OBSERVATIONS: u32 = 5;
 ///
 /// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::knowledge_rule_min_confidence`.
 pub const DEFAULT_MIN_CONFIDENCE: f64 = 0.60;
-
-// ---------------------------------------------------------------------------
-// Error type
-// ---------------------------------------------------------------------------
 
 /// Errors from the rule proposal pipeline.
 #[derive(Debug, Snafu)]
@@ -88,10 +80,6 @@ pub enum RuleProposalError {
 
 /// Result alias for rule proposal operations.
 pub type Result<T, E = RuleProposalError> = std::result::Result<T, E>;
-
-// ---------------------------------------------------------------------------
-// Core types
-// ---------------------------------------------------------------------------
 
 /// A candidate basanos lint rule derived from observed patterns.
 ///
@@ -134,9 +122,7 @@ pub struct ProposalFile {
     pub proposals: Vec<RuleProposal>,
 }
 
-// ---------------------------------------------------------------------------
-// Analysis
-// ---------------------------------------------------------------------------
+// ── Analysis ────────────────────────────────────────────────────────────────
 
 /// Aggregator for grouping observations by `(tool_name, context_category)`
 /// during proposal generation.
@@ -321,10 +307,6 @@ fn sanitize_tool_name(name: &str) -> String {
         .trim_matches('_')
         .to_owned()
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

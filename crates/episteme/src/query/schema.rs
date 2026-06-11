@@ -191,5 +191,6 @@ pub enum CausalEdgesField {
     CreatedAt,
 }
 
-// Trait implementations are in a separate module to avoid trait-impl colocation.
+// WHY: trait implementations live in a separate module to avoid trait-impl
+// colocation.
 mod field_impl;

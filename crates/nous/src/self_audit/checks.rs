@@ -22,10 +22,7 @@ const TOOL_SUCCESS_WARN_THRESHOLD: f64 = 0.80;
 /// Tool success rate below this triggers a failure.
 const TOOL_SUCCESS_FAIL_THRESHOLD: f64 = 0.50;
 
-// ---------------------------------------------------------------------------
-// Legacy checks: retained for test coverage and manual registration.
-// Not in the default five-check set.
-// ---------------------------------------------------------------------------
+// ── Legacy checks (not in the default five-check set) ──
 
 /// Minimum number of responses required before quality check is meaningful.
 #[cfg(test)]
@@ -239,9 +236,7 @@ impl ProsocheCheck for ResponseQualityCheck {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Check 2: Response coherence (drift detection)
-// ---------------------------------------------------------------------------
+// ── Check 2: response coherence (drift detection) ──
 
 /// Minimum number of responses before coherence drift is meaningful.
 const MIN_RESPONSES_FOR_COHERENCE: usize = 6;
@@ -289,7 +284,7 @@ impl ProsocheCheck for ResponseCoherenceCheck {
         let mean_first = arithmetic_mean(first_half);
         let mean_second = arithmetic_mean(second_half);
 
-        // Guard against division by zero when all early responses are empty.
+        // WHY: guard against division by zero when all early responses are empty.
         if mean_first < f64::EPSILON {
             return CheckResult {
                 status: CheckStatus::Pass,
@@ -298,7 +293,7 @@ impl ProsocheCheck for ResponseCoherenceCheck {
             };
         }
 
-        // Positive drift_ratio means responses are getting shorter.
+        // NOTE: positive drift_ratio means responses are getting shorter.
         let drift_ratio = 1.0 - (mean_second / mean_first);
         let score = (1.0 - drift_ratio.max(0.0)).clamp(0.0, 1.0);
 
@@ -343,9 +338,7 @@ fn arithmetic_mean(values: &[usize]) -> f64 {
     sum as f64 / values.len() as f64 // kanon:ignore RUST/as-cast
 }
 
-// ---------------------------------------------------------------------------
-// Check 3: Correction frequency
-// ---------------------------------------------------------------------------
+// ── Check 3: correction frequency ──
 
 /// Minimum number of turns before correction rate is meaningful.
 const MIN_TURNS_FOR_CORRECTION: usize = 10;
@@ -419,9 +412,7 @@ impl ProsocheCheck for CorrectionFrequencyCheck {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Check 4: Memory utilization
-// ---------------------------------------------------------------------------
+// ── Check 4: memory utilization ──
 
 /// Minimum recall attempts before the check is meaningful.
 const MIN_RECALL_ATTEMPTS: usize = 5;
@@ -494,9 +485,7 @@ impl ProsocheCheck for MemoryUtilizationCheck {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Check 5: Session continuity
-// ---------------------------------------------------------------------------
+// ── Check 5: session continuity ──
 
 /// Minimum turns before session continuity is meaningful.
 const MIN_TURNS_FOR_CONTINUITY: usize = 8;
@@ -574,10 +563,10 @@ impl ProsocheCheck for SessionContinuityCheck {
             CheckStatus::Pass
         };
 
-        // Take the worse of the two signals.
         let status = worse_status(carry_status, restatement_status);
 
-        // Score blends both signals: carry is good (higher=better), restatement is bad.
+        // WHY: the score blends both signals — carry is good (higher=better),
+        // restatement is bad.
         let score = f64::midpoint(carry_rate, 1.0 - restatement_rate).clamp(0.0, 1.0);
 
         let evidence = format!(

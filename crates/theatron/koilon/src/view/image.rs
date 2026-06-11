@@ -160,7 +160,6 @@ pub(crate) fn render_preview_lines(path: &Path, max_width: usize) -> Vec<Line<'s
 fn render_halfblock_cached(path: &Path, max_width: usize) -> Vec<Line<'static>> {
     let key = (path.to_path_buf(), max_width);
 
-    // Check cache
     if let Ok(cache) = IMAGE_CACHE.lock()
         && let Some(lines) = cache.get(&key)
     {
@@ -169,7 +168,6 @@ fn render_halfblock_cached(path: &Path, max_width: usize) -> Vec<Line<'static>> 
 
     let lines = load_and_render_halfblocks(path, max_width);
 
-    // Store in cache
     if let Ok(mut cache) = IMAGE_CACHE.lock() {
         if cache.len() >= MAX_CACHE_ENTRIES {
             cache.clear();
@@ -228,7 +226,6 @@ fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static
 
     let mut lines = Vec::new();
 
-    // Header: filename + original dimensions
     let filename = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -361,7 +358,6 @@ mod tests {
 
     #[test]
     fn strips_punctuation_around_paths() {
-        // Paths wrapped in backticks, parens, or brackets
         let paths = detect_image_paths("`/nonexistent/image.jpg` (/no/file.png)");
         assert!(paths.is_empty()); // Files don't exist, but shouldn't crash
     }

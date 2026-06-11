@@ -71,19 +71,9 @@ pub trait EmbeddingProvider: Send + Sync {
     }
 
     /// The dimensionality of output vectors.
-    ///
-    /// # Complexity
-    ///
-    /// O(1) - returns a stored constant.
     fn dimension(&self) -> usize;
 
     /// The model name/identifier.
-    ///
-    /// # Complexity
-    ///
-    /// O(1) - returns a string reference. Implementations may return either
-    /// a `&'static str` (for built-in providers) or a borrow tied to `self`
-    /// (for runtime-loaded models).
     fn model_name(&self) -> &str;
 }
 
@@ -103,10 +93,6 @@ pub struct MockEmbeddingProvider {
 #[cfg(any(test, feature = "test-support"))]
 impl MockEmbeddingProvider {
     /// Create a mock provider with the given dimension.
-    ///
-    /// # Complexity
-    ///
-    /// O(1) - stores the dimension.
     #[must_use]
     #[instrument]
     pub fn new(dim: usize) -> Self {
@@ -497,8 +483,9 @@ pub fn is_degraded_provider(provider: &dyn EmbeddingProvider) -> bool {
     provider.model_name() == DegradedEmbeddingProvider::MODEL_NAME
 }
 
-// Trait implementations for MockEmbeddingProvider and DegradedEmbeddingProvider
-// are in a separate module to avoid trait-impl colocation.
+// WHY: trait implementations for MockEmbeddingProvider and
+// DegradedEmbeddingProvider live in a separate module to avoid trait-impl
+// colocation.
 mod embedding_impl;
 
 /// Create an embedding provider from configuration.

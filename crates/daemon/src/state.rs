@@ -29,7 +29,7 @@ pub struct TaskState {
 mod fjall_store;
 pub use fjall_store::TaskStateStore;
 
-// -- Workspace config and locking (shared across backends) -------------------
+// ── Workspace config and locking ──
 
 /// Per-workspace daemon configuration parsed from `.aletheia/daemon.toml`.
 ///
@@ -172,13 +172,7 @@ impl DaemonConfig {
 /// `WorkspaceGuard` (and therefore the inner `File`) lives. Drop closes the
 /// file descriptor, which releases the flock automatically.
 ///
-/// # Bug history
-///
-/// Previously this used `fd_lock::RwLock<File>` and probed with `try_write()`,
-/// then immediately dropped the resulting `RwLockWriteGuard`. This was a bug:
-/// `RwLockWriteGuard::drop` calls `flock(fd, LOCK_UN)`, releasing the lock
-/// before the `WorkspaceGuard` was even returned to the caller. Two
-/// `acquire()` calls in the same process would both succeed. Tracked in #3026.
+/// WARNING(#3026): the flock dies with the fd; never probe-and-drop the lock guard.
 pub struct WorkspaceGuard {
     /// The lock file. Holding this open keeps the flock alive on the
     /// associated file descriptor; closing it releases the flock.
@@ -267,7 +261,6 @@ impl Drop for WorkspaceGuard {
             "releasing workspace daemon lock"
         );
         // NOTE: closing `_file` releases the flock automatically.
-        // We also try to clean up the lock file, but failure is not critical.
         // kanon:ignore RUST/no-silent-result-swallow — best-effort lock file cleanup in Drop; failure is harmless (flock released on fd close)
         let _ = std::fs::remove_file(&self.path);
     }

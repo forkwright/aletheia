@@ -26,7 +26,6 @@ pub fn generate_corrective(qa_result: &QaResult, original: &PromptSpec) -> Optio
         return None;
     }
 
-    // NOTE: Build acceptance criteria from only the failed criteria.
     let acceptance_criteria: Vec<String> = if failed_criteria.is_empty() {
         qa_result.reasons.clone()
     } else {
@@ -91,7 +90,6 @@ fn extract_corrective_blast_radius(qa_result: &QaResult, original: &PromptSpec) 
                 .message
                 .strip_prefix("file modified outside blast radius: ")
                 .map(ToOwned::to_owned),
-            // NOTE: Other kinds fall back to "file:line" in details.
             _ => issue
                 .details
                 .as_ref()
@@ -168,9 +166,7 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // generate_corrective
-    // -----------------------------------------------------------------------
+    // ── generate_corrective ──
 
     #[test]
     fn pass_returns_none() {
@@ -228,9 +224,7 @@ mod tests {
         assert_eq!(corrective.blast_radius, vec!["src/lib.rs"]);
     }
 
-    // -----------------------------------------------------------------------
-    // derive_failure_type
-    // -----------------------------------------------------------------------
+    // ── derive_failure_type ──
 
     #[test]
     fn derive_failure_type_semantic() {

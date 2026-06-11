@@ -21,8 +21,6 @@ use pylon::state::AppState;
 mod common;
 use common::{TestEnv, bearer, issue_test_token, permissive_security};
 
-// Split: response headers + body limits + IdempotencyCache + real TCP smoke.
-
 // ── Response headers: security contract ────────────────────────────────────
 
 #[tokio::test]

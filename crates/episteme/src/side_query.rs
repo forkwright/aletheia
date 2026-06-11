@@ -169,7 +169,6 @@ impl RelevanceCache {
         }
 
         let ids = self.entries.get(pos)?.1.selected_ids.clone();
-        // NOTE: move to back (most recently used).
         let pair = self.entries.remove(pos);
         self.entries.push(pair);
         Some(ids)
@@ -177,10 +176,9 @@ impl RelevanceCache {
 
     /// Insert a result, evicting the LRU entry if at capacity.
     pub(crate) fn insert(&mut self, key: u64, selected_ids: Vec<String>) {
-        // NOTE: remove existing entry with same key before inserting.
         self.entries.retain(|(k, _)| *k != key);
         if self.entries.len() >= self.capacity {
-            self.entries.remove(0); // NOTE: evict LRU (front)
+            self.entries.remove(0);
         }
         self.entries.push((
             key,
@@ -200,7 +198,7 @@ impl RelevanceCache {
 /// Side-query selector: pre-filters memories using a lightweight model.
 ///
 /// Wraps a [`SideQueryRanker`] with `already_surfaced` tracking and LRU
-/// caching. Designed to run as a pre-filter stage before the 6-factor
+/// caching. Designed to run as a pre-filter stage before the 11-factor
 /// recall scoring in [`RecallEngine`](crate::recall::RecallEngine).
 pub struct SideQuerySelector {
     config: SideQueryConfig,
@@ -248,7 +246,6 @@ impl SideQuerySelector {
             });
         }
 
-        // NOTE: filter out already-surfaced entries before ranking.
         let filtered = self.filter_surfaced(manifest);
         if filtered.is_empty() {
             debug!("all manifest entries already surfaced");
@@ -261,7 +258,6 @@ impl SideQuerySelector {
         let manifest_text = filtered.format();
         let cache_key = compute_cache_key(query, &manifest_text);
 
-        // NOTE: check cache first.
         {
             let mut cache = self.cache.lock();
             if let Some(ids) = cache.get(cache_key) {
@@ -273,12 +269,10 @@ impl SideQuerySelector {
             }
         }
 
-        // NOTE: cache miss — call the ranker.
         let selected = ranker.rank_memories(query, &manifest_text, self.config.max_results)?;
 
         debug!(count = selected.len(), "side-query selected memories");
 
-        // NOTE: store in cache.
         {
             let mut cache = self.cache.lock();
             cache.insert(cache_key, selected.clone());

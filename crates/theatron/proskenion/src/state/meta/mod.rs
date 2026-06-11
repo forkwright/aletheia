@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-// -- Shared types -------------------------------------------------------------
+// ── Shared types ──
 
 /// A single data point in a time series.
 #[derive(Debug, Clone, PartialEq)]
@@ -41,7 +41,7 @@ impl TrendDirection {
     }
 }
 
-// -- Agent performance --------------------------------------------------------
+// ── Agent performance ──
 
 /// Performance scorecard for a single agent.
 #[derive(Debug, Clone, PartialEq)]
@@ -196,7 +196,7 @@ impl AgentPerformanceStore {
     }
 }
 
-// -- Conversation quality -----------------------------------------------------
+// ── Conversation quality ──
 
 /// Conversation quality time series data.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -303,7 +303,7 @@ pub(crate) fn compute_ratio(numerator: u64, denominator: u64) -> f64 {
     }
 }
 
-// -- Knowledge growth ---------------------------------------------------------
+// ── Knowledge growth ──
 
 /// Knowledge graph growth metrics over time.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -365,7 +365,7 @@ pub(crate) const ENTITY_TYPE_COLORS: &[&str] = &[
     "#f97316", "#6366f1",
 ];
 
-// -- Memory health ------------------------------------------------------------
+// ── Memory health ──
 
 /// Composite memory health data.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -463,7 +463,7 @@ pub(crate) fn generate_recommendations(
     recs
 }
 
-// -- System reflection --------------------------------------------------------
+// ── System reflection ──
 
 /// System overview statistics.
 #[derive(Debug, Clone, Default, PartialEq)]

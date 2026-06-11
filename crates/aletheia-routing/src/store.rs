@@ -31,10 +31,6 @@ use crate::types::{ProviderId, TaskCategory, TurnOutcome};
 const SECS_PER_DAY: u64 = 24 * 60 * 60;
 const DEFAULT_REFRESH_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
 
-// ---------------------------------------------------------------------------
-// AfterActionStoreError
-// ---------------------------------------------------------------------------
-
 /// Errors produced by [`AfterActionStore`] operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -50,10 +46,7 @@ pub enum AfterActionStoreError {
     },
 }
 
-// ---------------------------------------------------------------------------
-// Wire-format structs (subset of AfterActionRecord from post_processing.rs)
-// ---------------------------------------------------------------------------
-
+// ── Wire-format structs (subset of energeia's AfterActionRecord) ──
 /// Parsed subset of an after-action JSONL line relevant to routing stats.
 #[derive(Debug, serde::Deserialize)]
 struct AfterActionLine {
@@ -70,15 +63,11 @@ struct AfterActionSession {
     model: Option<String>,
     /// Terminal status string (e.g. `"success"`, `"failed"`, `"stuck"`).
     status: String,
-    /// Category tag. Absent for records pre-dating this PR; treated as
-    /// `Feature` when missing.
+    /// Category tag. Optional in older records; missing is treated as
+    /// `Feature`.
     #[serde(default)]
     category: Option<String>,
 }
-
-// ---------------------------------------------------------------------------
-// RollingStats
-// ---------------------------------------------------------------------------
 
 /// Aggregated success/failure counts for a (provider, category) bucket.
 #[derive(Debug, Clone, Default)]
@@ -113,10 +102,6 @@ impl RollingStats {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// AfterActionStore
-// ---------------------------------------------------------------------------
 
 /// Shared read/write cache over empirical provider success-rate statistics.
 ///
@@ -423,10 +408,6 @@ pub(crate) fn parse_category(s: &str) -> TaskCategory {
         _ => TaskCategory::Feature,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

@@ -7,7 +7,6 @@ fn full_knowledge_lifecycle() {
     let nous = "test-agent";
     let query_time = "2026-07-01T00:00:00Z";
 
-    // 1. Insert original fact
     let original = make_fact(
         "f-1",
         nous,
@@ -17,14 +16,12 @@ fn full_knowledge_lifecycle() {
     );
     store.insert_fact(&original).expect("insert original");
 
-    // Verify searchable
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after insert");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].content, "Cody's favorite language is Rust");
 
-    // 2. Correct the fact
     correct_fact(
         &store,
         "f-1",
@@ -34,7 +31,6 @@ fn full_knowledge_lifecycle() {
         "2026-06-01T00:00:00Z",
     );
 
-    // 3. Verify correction: only new fact visible
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after correct");
@@ -45,7 +41,6 @@ fn full_knowledge_lifecycle() {
         "Cody's favorite languages are Rust and TypeScript"
     );
 
-    // Audit: both facts visible with supersession metadata
     let audit = audit_all_facts(&store, nous);
     assert_eq!(
         audit.len(),
@@ -80,10 +75,8 @@ fn full_knowledge_lifecycle() {
         "new fact should not be superseded"
     );
 
-    // 4. Retract the corrected fact
     retract_fact(&store, "f-2", "2026-06-15T00:00:00Z");
 
-    // 5. Verify retraction: nothing visible
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after retract");
@@ -92,7 +85,6 @@ fn full_knowledge_lifecycle() {
         "no facts should be visible after retraction"
     );
 
-    // 6. Audit: both facts still present with full temporal metadata
     let audit = audit_all_facts(&store, nous);
     assert_eq!(audit.len(), 2, "audit should still show both facts");
 
@@ -111,7 +103,6 @@ fn correct_preserves_metadata() {
     let store = open_store();
     let nous = "test-agent";
 
-    // Insert fact with specific metadata
     let original = make_fact(
         "f-orig",
         nous,
@@ -121,7 +112,6 @@ fn correct_preserves_metadata() {
     );
     store.insert_fact(&original).expect("insert original");
 
-    // Correct it
     correct_fact(
         &store,
         "f-orig",
@@ -149,7 +139,6 @@ fn correct_preserves_metadata() {
         "original content unchanged"
     );
 
-    // New fact has corrected content and Verified tier
     let new = audit
         .iter()
         .find(|r| r.id == "f-corrected")
@@ -168,7 +157,6 @@ fn retract_excludes_from_recall() {
     let nous = "test-agent";
     let query_time = "2026-07-01T00:00:00Z";
 
-    // Insert 3 facts on different topics
     let facts = [
         make_fact(
             "f-1",
@@ -196,14 +184,11 @@ fn retract_excludes_from_recall() {
         store.insert_fact(f).expect("insert fact");
     }
 
-    // Verify all 3 visible
     let results = store.query_facts(nous, query_time, 10).expect("query all");
     assert_eq!(results.len(), 3);
 
-    // Retract fact #2
     retract_fact(&store, "f-2", "2026-06-01T00:00:00Z");
 
-    // Only facts #1 and #3 visible
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after retract");
@@ -213,7 +198,6 @@ fn retract_excludes_from_recall() {
     assert!(ids.contains(&"f-3"), "fact 3 should still be visible");
     assert!(!ids.contains(&"f-2"), "fact 2 should be retracted");
 
-    // Audit returns all 3 including retracted
     let audit = audit_all_facts(&store, nous);
     assert_eq!(
         audit.len(),
@@ -232,7 +216,6 @@ fn retract_excludes_from_recall() {
 fn audit_filters_by_nous_id() {
     let store = open_store();
 
-    // Insert facts under different nous_ids
     let facts_a = [
         make_fact(
             "fa-1",
@@ -261,7 +244,6 @@ fn audit_filters_by_nous_id() {
         store.insert_fact(f).expect("insert fact");
     }
 
-    // Audit for agent-a
     let audit_a = audit_all_facts(&store, "agent-a");
     assert_eq!(audit_a.len(), 2, "agent-a should have 2 facts");
     assert!(
@@ -269,7 +251,6 @@ fn audit_filters_by_nous_id() {
         "all should be agent-a facts"
     );
 
-    // Audit for agent-b
     let audit_b = audit_all_facts(&store, "agent-b");
     assert_eq!(audit_b.len(), 1, "agent-b should have 1 fact");
     assert_eq!(audit_b[0].id, "fb-1");

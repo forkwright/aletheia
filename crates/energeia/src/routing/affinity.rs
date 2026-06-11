@@ -2,10 +2,9 @@
 // preference score that captures *what kind* of work a provider has historically
 // succeeded at, not just its raw success rate.
 //
-// Phronesis dispatch/persona.rs had session × TaskCategory affinity tracking:
-// if provider X succeeded at 12/15 `Refactor` sessions in the last 7 days,
+// If provider X succeeded at 12/15 `Refactor` sessions in the last 7 days,
 // a new refactor request should prefer X over a provider with a higher global
-// rate but no refactor history. This module restores that capability.
+// rate but no refactor history (phronesis affinity design).
 //
 // Affinity is a secondary signal — it only breaks ties when the empirical
 // success-rate gap is within `confidence_threshold`. The primary selection
@@ -22,11 +21,6 @@
 // WHY these proxies: `TurnOutcome` carries (provider, task_category, success,
 // is_interactive). There is no crate name or file list. The four phronesis
 // dimensions map onto the data we have without extending the wire format.
-//
-// Dependency chain (energeia-trio):
-//   commit 1 (persona.rs): ModelTier + PersonaRole types
-//   commit 2 (persona_classifier.rs): classify_prompt()
-//   commit 3 (this file): AffinityScore + AffinityRouter
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,10 +35,6 @@ use super::persona::PersonaRouter;
 use super::persona::{ModelTier, PersonaRole};
 use super::store::AfterActionStore;
 use super::{ProviderId, TaskCategory};
-
-// ---------------------------------------------------------------------------
-// AffinityScore
-// ---------------------------------------------------------------------------
 
 /// Weighted expertise-affinity score for one (provider, `task_category`) pair.
 ///
@@ -131,10 +121,6 @@ impl AffinityScore {
     }
 }
 
-// ---------------------------------------------------------------------------
-// AffinityRouter
-// ---------------------------------------------------------------------------
-
 /// Affinity-enhanced provider router.
 ///
 /// Wraps [`PersonaRouter`] for empirical + persona selection, then applies
@@ -208,7 +194,6 @@ impl AffinityRouter {
         features: &RequestFeatures,
         persona_hint: Option<(ModelTier, PersonaRole)>,
     ) -> PersonaDecision {
-        // Step 1: get empirical + persona decision from inner layer.
         let persona_decision = self.inner.route_with_persona(features, persona_hint).await;
         let empirical_winner = ProviderId::new(persona_decision.base.provider.clone());
         let category = features.effective_category();
@@ -217,7 +202,6 @@ impl AffinityRouter {
             return persona_decision;
         }
 
-        // Step 2: compute affinity scores for all candidates.
         let mut best_affinity_provider: Option<&ProviderId> = None;
         let mut best_affinity_score: f64 = -1.0;
         let mut empirical_winner_affinity: f64 = 0.0;
@@ -244,7 +228,6 @@ impl AffinityRouter {
             }
         }
 
-        // Step 3: override empirical winner when affinity gap is significant.
         let Some(affinity_winner) = best_affinity_provider else {
             return persona_decision;
         };
@@ -265,7 +248,6 @@ impl AffinityRouter {
                 "affinity router overriding empirical selection"
             );
 
-            // Rebuild the base decision with the affinity-selected provider.
             let new_base = RoutingDecision::new(affinity_winner.0.clone(), None);
             let rationale = format!(
                 "affinity-override: provider={affinity_winner} gap={gap:.3} category={category}",
@@ -388,10 +370,6 @@ impl AffinityRouter {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Router trait impl (delegates to inner PersonaRouter)
-// ---------------------------------------------------------------------------
-
 impl Router for AffinityRouter {
     /// Route using the empirical + persona model.
     ///
@@ -410,10 +388,6 @@ impl Router for AffinityRouter {
         self.inner.after_action(decision, outcome)
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

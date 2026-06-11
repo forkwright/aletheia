@@ -389,14 +389,13 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
 
     debug!("callback request: {}", first_line.trim());
 
-    // Parse the request line: GET /callback?code=...&state=... HTTP/1.1
+    // NOTE: request line shape: GET /callback?code=...&state=... HTTP/1.1
     let mut parts = first_line.split_whitespace();
     let _method = parts.next();
     let Some(path) = parts.next() else {
         return Ok(None);
     };
 
-    // Extract query string
     let query_start = path.find('?');
     // INVARIANT: i is from find('?'), so i+1 is a valid byte boundary
     #[expect(
@@ -406,12 +405,11 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
     // kanon:ignore RUST/indexing-slicing — i from find('?') on the same string, i+1 is a valid UTF-8 boundary
     let query = query_start.map_or("", |i| &path[i + 1..]);
 
-    // Parse query parameters
     let mut data = CallbackData::default();
 
     for pair in query.split('&') {
         if let Some(eq_pos) = pair.find('=') {
-            // SAFETY: eq_pos from find('='), always a valid byte boundary
+            // INVARIANT: eq_pos from find('='), always a valid byte boundary
             #[expect(clippy::string_slice, reason = "eq_pos from find('='), valid boundary")]
             // kanon:ignore RUST/indexing-slicing — eq_pos from find('=') on the same string, valid byte boundary
             let key = &pair[..eq_pos];
@@ -428,12 +426,13 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
                 "state" => data.state = Some(value),
                 "error" => data.error = Some(value),
                 "error_description" => data.error_description = Some(value),
-                _ => {} // Ignore unknown query parameters.
+                _ => {}
             }
         }
     }
 
-    // Read remaining headers (to consume the request)
+    // WHY: drain the remaining headers so the request is fully consumed
+    // before the response is written.
     let mut header_line = String::new();
     loop {
         header_line.clear();
@@ -534,7 +533,8 @@ fn handle_callback_connection(
     listener: &TcpListener,
     expected_state: &str,
 ) -> Result<CallbackData> {
-    // Set blocking mode on the listener so accept() blocks until a connection arrives.
+    // WHY: the listener must be in blocking mode so accept() waits for the
+    // browser redirect instead of returning WouldBlock.
     listener.set_nonblocking(false).context(SetBlockingSnafu)?;
 
     let (stream, addr) = listener.accept().context(AcceptConnectionSnafu)?;
@@ -546,11 +546,10 @@ fn handle_callback_connection(
     let mut stream = stream;
 
     if let Some(data) = callback_data {
-        // Validate state parameter
         match &data.state {
-            Some(state) if state == expected_state => {
-                // State matches
-            }
+            // WHY: state must match the value generated at login start; a
+            // mismatch indicates a possible CSRF attack.
+            Some(state) if state == expected_state => {}
             _ => {
                 // kanon:ignore RUST/no-silent-result-swallow — error response is best-effort after state mismatch; client may have closed connection
                 let _ = send_error_response(
@@ -641,7 +640,8 @@ async fn exchange_code(
     let body_text = response.text().await.context(HttpRequestSnafu)?;
 
     if !status.is_success() {
-        // Try to parse as OAuth error
+        // WHY: prefer the structured OAuth error body when it parses; fall back
+        // to the raw HTTP status + body.
         if let Ok(err) = serde_json::from_str::<TokenErrorResponse>(&body_text) {
             return Err(PkceError::OAuthError {
                 error: err.error,
@@ -709,14 +709,11 @@ pub async fn pkce_login_with_action<F>(
 where
     F: FnMut(OAuthRequiredAction),
 {
-    // Generate PKCE parameters
     let pkce = PkcePair::generate()?;
     let state = generate_state()?;
 
-    // Start callback server
     let (port, callback_rx) = start_callback_server(&state)?;
 
-    // Build and surface authorization URL
     let auth_url = build_authorization_url(provider, &pkce, &state, port);
 
     action_callback(OAuthRequiredAction::BrowserOpenUrl {
@@ -724,7 +721,6 @@ where
     });
     action_callback(OAuthRequiredAction::WaitingForCallback { timeout_secs: 300 });
 
-    // Wait for callback with timeout
     let callback_result = tokio::time::timeout(Duration::from_mins(5), callback_rx).await;
 
     let callback_data = match callback_result {
@@ -749,7 +745,6 @@ where
 
     info!("received authorization code, exchanging for tokens");
 
-    // Exchange code for tokens
     let client = reqwest::Client::new();
     let token_response = exchange_code(&client, provider, &code, &pkce.verifier, port).await?;
 
@@ -757,7 +752,6 @@ where
     info!("successfully obtained access token"); // kanon:ignore SECURITY/credential-logging -- logs success status, not the token
     action_callback(OAuthRequiredAction::AuthorizationSucceeded);
 
-    // Build credential file
     let expires_at = token_response
         .expires_in
         .map(|secs| super::unix_epoch_ms() + secs * 1000);

@@ -1,24 +1,14 @@
 // WHY: AST-style prompt classifier that replaces the keyword heuristic in
-// TaskCategory::from_prompt. Phronesis dispatch/persona.rs analyzed prompt
-// markdown structure (heading hierarchy, verb patterns, blast-radius signals)
-// with heading content weighted higher than body text. This restores that
-// approach on top of the Router trait.
+// TaskCategory::from_prompt: prompt markdown structure (heading hierarchy,
+// verb patterns, blast-radius signals) is scored with heading content weighted
+// higher than body text (phronesis persona design).
 //
 // "AST-style" here means: parse the markdown into structural units (headings
 // vs body), score each unit with domain-specific weights, combine scores. No
 // LLM call — zero I/O on the hot path. The old keyword path is kept as a
 // fallback when classification confidence is below the threshold.
-//
-// Dependency chain (energeia-trio):
-//   commit 1 (persona.rs): ModelTier + PersonaRole types
-//   commit 2 (this file): classify_prompt() → (ModelTier, PersonaRole)
-//   commit 3 (affinity.rs): affinity uses classified category for session matching
 
 use crate::routing::persona::{ModelTier, PersonaRole};
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 /// Result of classifying a prompt body for persona-based routing.
 ///
@@ -105,10 +95,6 @@ pub(crate) fn classify_prompt(text: &str) -> Option<ClassifierOutput> {
     })
 }
 
-// ---------------------------------------------------------------------------
-// Markdown AST parsing
-// ---------------------------------------------------------------------------
-
 /// A structural unit of the prompt document.
 #[derive(Debug, Clone)]
 enum AstNode {
@@ -172,10 +158,6 @@ fn parse_markdown_ast(text: &str) -> Vec<AstNode> {
 
     nodes
 }
-
-// ---------------------------------------------------------------------------
-// Signal tables
-// ---------------------------------------------------------------------------
 
 /// Score weight applied to each match in a heading node.
 const HEADING_WEIGHT: i32 = 4;
@@ -245,10 +227,6 @@ const LOW_COMPLEXITY_SIGNALS: &[&str] = &[
     "tweak",
     "whitespace",
 ];
-
-// ---------------------------------------------------------------------------
-// Scoring
-// ---------------------------------------------------------------------------
 
 /// Accumulated scores from the AST walk.
 #[derive(Debug, Default)]
@@ -320,10 +298,6 @@ fn score_text(text: &str, signals: &mut Vec<String>, arch_count: &mut u32) -> i3
     delta
 }
 
-// ---------------------------------------------------------------------------
-// Tier mapping
-// ---------------------------------------------------------------------------
-
 /// Map normalised composite score + architecture signal flag to tier/role.
 ///
 /// Thresholds (derived from phronesis design):
@@ -343,10 +317,6 @@ fn tier_from_score(composite: f64, has_arch: bool) -> (ModelTier, PersonaRole) {
         (ModelTier::Light, PersonaRole::Mechanic)
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

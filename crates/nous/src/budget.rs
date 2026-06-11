@@ -41,8 +41,7 @@ impl CharEstimator {
 
 impl Default for CharEstimator {
     fn default() -> Self {
-        // WHY: 4 chars per token is the classic heuristic for English text and
-        //      matches the historical hardcoded value: no behaviour change.
+        // WHY: 4 chars per token is the classic heuristic for English text.
         Self { chars_per_token: 4 }
     }
 }

@@ -11,9 +11,7 @@ use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
+// ── Label sets ──
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct PhaseTransitionLabels {
@@ -26,19 +24,13 @@ struct StuckPatternLabels {
     pattern: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
+// ── Metric families ──
 
 static PHASE_TRANSITIONS_TOTAL: LazyLock<Family<PhaseTransitionLabels, Counter>> =
     LazyLock::new(Family::default);
 
 static STUCK_DETECTIONS_TOTAL: LazyLock<Family<StuckPatternLabels, Counter>> =
     LazyLock::new(Family::default);
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -63,9 +55,7 @@ pub fn init() {
     LazyLock::force(&STUCK_DETECTIONS_TOTAL);
 }
 
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
+// ── Recording ──
 
 /// Record a project state transition.
 pub(crate) fn record_phase_transition(from: &str, to: &str) {
@@ -107,7 +97,6 @@ mod tests {
 
     #[test]
     fn init_initializes_metrics() {
-        // Verify init() completes without panic and metrics are accessible
         init();
         record_phase_transition("planning", "executing");
     }

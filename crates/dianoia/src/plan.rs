@@ -220,7 +220,6 @@ impl Plan {
 /// WHY separate function: called from `Plan::set_depends_on` and available for
 /// bulk validation of an entire phase's plan set.
 pub fn detect_cycles(all_plans: &[Plan], updated_plan: &Plan) -> Result<()> {
-    // Build adjacency: plan_id -> list of dependency plan_ids.
     let mut adj: HashMap<Ulid, Vec<Ulid>> = HashMap::new();
     let mut titles: HashMap<Ulid, &str> = HashMap::new();
 
@@ -233,12 +232,12 @@ pub fn detect_cycles(all_plans: &[Plan], updated_plan: &Plan) -> Result<()> {
             titles.insert(plan.id, &plan.title);
         }
     }
-    // If updated_plan isn't in all_plans yet (new plan being added), include it.
+    // WHY: updated_plan may not be in all_plans yet (a new plan being added);
+    // include it so its dependencies participate in cycle detection.
     adj.entry(updated_plan.id)
         .or_insert_with(|| updated_plan.depends_on.clone());
     titles.entry(updated_plan.id).or_insert(&updated_plan.title);
 
-    // DFS cycle detection with path tracking.
     let mut visited = HashSet::new();
     let mut on_stack = HashSet::new();
     let mut path = Vec::new();
@@ -248,7 +247,8 @@ pub fn detect_cycles(all_plans: &[Plan], updated_plan: &Plan) -> Result<()> {
         if !visited.contains(&start)
             && dfs_find_cycle(start, &adj, &mut visited, &mut on_stack, &mut path)
         {
-            // `path` now contains the cycle. Format it with titles.
+            // INVARIANT: `path` contains exactly the cycle when dfs_find_cycle
+            // returns true; format it with titles for the error message.
             let cycle_str = path
                 .iter()
                 .map(|id| titles.get(id).copied().unwrap_or("unknown"))
@@ -280,7 +280,8 @@ fn dfs_find_cycle(
                     return true;
                 }
             } else if on_stack.contains(&dep) {
-                // Found cycle — trim path to start at the cycle entry point.
+                // WHY: trim path to start at the cycle entry point so the
+                // reported cycle excludes the acyclic prefix.
                 if let Some(pos) = path.iter().position(|&id| id == dep) {
                     path.drain(..pos);
                 }

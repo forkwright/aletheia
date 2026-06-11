@@ -248,7 +248,7 @@ fn runner_template() -> RoleTemplate {
     }
 }
 
-// --- System prompts ported from TS roles/prompts/*.ts ---
+// --- Role system prompts ---
 
 const CODER_PROMPT: &str = "\
 You are a coder sub-agent. You write and modify code to complete a specific task.

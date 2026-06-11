@@ -2,7 +2,8 @@
 //!
 //! This module implements the state management logic for a streaming chat
 //! component in Dioxus. It processes `StreamEvent`s into renderable state,
-//! with 100ms debounce for text deltas to avoid excessive re-renders.
+//! with an adaptive 50-100 ms debounce for text deltas to avoid excessive
+//! re-renders.
 //!
 //! # Architecture
 //!
@@ -14,7 +15,7 @@
 //!                                                │
 //!                                    StreamEvent  │
 //!                                                ▼
-//!   ┌─────────────┐   100ms debounce   ┌──────────────┐
+//!   ┌─────────────┐  adaptive debounce ┌──────────────┐
 //!   │   Rendered   │ ◄──────────────── │  ChatState    │
 //!   │   Output     │                   │  (signals)    │
 //!   └─────────────┘                    └──────────────┘
@@ -33,7 +34,8 @@
 //! the signal on every delta causes excessive re-renders. Instead:
 //!
 //! 1. Accumulate deltas into a local buffer.
-//! 2. Flush to the signal when 100ms elapses or a non-delta event arrives.
+//! 2. Flush to the signal when the adaptive debounce (50-100 ms) elapses
+//!    or a non-delta event arrives.
 //! 3. Also flush on newlines (users notice line breaks immediately).
 //!
 //! This mirrors the TUI's 64-byte/newline markdown cache invalidation
@@ -135,10 +137,9 @@ impl Default for ChatState {
 impl ChatState {
     /// Project legacy messages into the render-ready `ChatMessage` model.
     ///
-    /// WHY: Centralizes the legacy-to-render projection so it is defined once
-    /// and shared by all consumers (chat view, command palette export, etc.).
-    /// This eliminates the duplicate projection that was previously inlined
-    /// in each call site (#3323).
+    /// WHY(#3323): Centralizes the legacy-to-render projection so it is
+    /// defined once and shared by all consumers (chat view, command palette
+    /// export, etc.).
     ///
     /// `limit` controls how many of the most recent messages to include.
     /// Pass `None` to include all messages.

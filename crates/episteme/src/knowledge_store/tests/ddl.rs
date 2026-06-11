@@ -35,7 +35,7 @@ fn query_templates_contain_params() {
     let supersede = queries::supersede_fact();
     assert!(supersede.contains("$old_id"));
     assert!(supersede.contains("$new_id"));
-    // $query_text now lives in the BM25 rule injected by build_hybrid_query (#4156);
+    // $query_text lives in the BM25 rule injected by build_hybrid_query (#4156);
     // verify it reaches the rendered query when the message has text terms.
     let rendered = marshal::build_hybrid_query(&HybridQuery {
         text: "cozo".into(),

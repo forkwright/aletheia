@@ -24,8 +24,6 @@ pub const UNFALSIFIABLE_ADJECTIVES: &[&str] = &[
 ## `src/keywords.rs`
 
 > Keywords that suggest a coding or implementation task.
-> 
-> Sourced from `nous/src/bootstrap/mod.rs`.
 ```rust
 pub const CODING_KEYWORDS: &[&str] = &[
     "write",
@@ -49,8 +47,6 @@ pub const CODING_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that suggest a research or investigation task.
-> 
-> Sourced from `nous/src/bootstrap/mod.rs`.
 ```rust
 pub const RESEARCH_KEYWORDS: &[&str] = &[
     "what",
@@ -69,8 +65,6 @@ pub const RESEARCH_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that suggest a planning or design task.
-> 
-> Sourced from `nous/src/bootstrap/mod.rs`.
 ```rust
 pub const PLANNING_KEYWORDS: &[&str] = &[
     "plan",
@@ -88,8 +82,6 @@ pub const PLANNING_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that suggest a casual conversation rather than a task.
-> 
-> Sourced from `nous/src/bootstrap/mod.rs`.
 ```rust
 pub const CONVERSATION_KEYWORDS: &[&str] = &[
     "hello",
@@ -107,8 +99,6 @@ pub const CONVERSATION_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that map to an analysis intake request.
-> 
-> Sourced from `poiesis/intake/src/lib.rs`.
 ```rust
 pub const INTAKE_ANALYSIS_KEYWORDS: &[&str] = &[
     "analyze",
@@ -126,8 +116,6 @@ pub const INTAKE_ANALYSIS_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that map to a report intake request.
-> 
-> Sourced from `poiesis/intake/src/lib.rs`.
 ```rust
 pub const INTAKE_REPORT_KEYWORDS: &[&str] = &[
     "report",
@@ -143,8 +131,6 @@ pub const INTAKE_REPORT_KEYWORDS: &[&str] = &[
 ```
 
 > Keywords that map to a dashboard intake request.
-> 
-> Sourced from `poiesis/intake/src/lib.rs`.
 ```rust
 pub const INTAKE_DASHBOARD_KEYWORDS: &[&str] = &[
     "dashboard",
@@ -165,8 +151,6 @@ pub const INTAKE_DASHBOARD_KEYWORDS: &[&str] = &[
 > Simple keyword matching is intentionally conservative. False negatives
 > (missed corrections) are preferable to false positives (storing random
 > sentences as corrections).
-> 
-> Sourced from `nous/src/hooks/builtins/correction.rs`.
 ```rust
 pub const CORRECTION_PREFIXES: &[&str] = &[
     "don't ",
@@ -195,7 +179,7 @@ pub const CORRECTION_PREFIXES: &[&str] = &[
 > English stopwords for terminology discovery and text filtering.
 > 
 > Covers prepositions, pronouns, auxiliary verbs, determiners, and common
-> conjunctions. Sourced from `nous/src/recall/reranking.rs`.
+> conjunctions.
 ```rust
 pub const ENGLISH_STOPWORDS: &[&str] = &[
     "a",
@@ -329,8 +313,7 @@ pub const ENGLISH_STOPWORDS: &[&str] = &[
 
 > Smaller stopword list for probe token-overlap comparison.
 > 
-> Focused on high-frequency function words. Sourced from
-> `melete/src/probe.rs`.
+> Focused on high-frequency function words.
 ```rust
 pub const ENGLISH_PROBE_STOP_WORDS: &[&str] = &[
     "the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one",

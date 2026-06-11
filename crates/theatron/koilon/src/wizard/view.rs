@@ -34,7 +34,6 @@ fn render_header(state: &WizardState, frame: &mut Frame, area: Rect, theme: &The
     let right = format!(" Step {step_num} / {TOTAL_STEPS} ");
     let title = " ◆ Aletheia Setup Wizard ";
 
-    // Pad title to fill available width, pushing step counter to the right
     let inner_width = usize::from(area.width.saturating_sub(2));
     let pad = inner_width.saturating_sub(title.len() + right.len());
     let full_title = format!("{}{:pad$}{}", title, "", right, pad = pad);
@@ -64,17 +63,14 @@ fn render_progress(state: &WizardState, frame: &mut Frame, area: Rect, theme: &T
 
     for (i, label) in STEP_LABELS.iter().enumerate() {
         let style = if i < state.step {
-            // completed
             Style::default()
                 .fg(theme.status.success)
                 .add_modifier(Modifier::BOLD)
         } else if i == state.step {
-            // current
             Style::default()
                 .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
-            // upcoming
             theme.style_dim()
         };
 
@@ -130,7 +126,6 @@ fn render_body(state: &WizardState, frame: &mut Frame, area: Rect, theme: &Theme
 
     render_fields(step, &mut lines, theme);
 
-    // Ready-step confirmation hint
     if state.step == TOTAL_STEPS - 1 {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
@@ -168,7 +163,6 @@ fn render_fields(step: &StepState, lines: &mut Vec<Line>, theme: &Theme) {
             FieldKind::Text { secret } => {
                 if selected {
                     if let Some(ref edit) = step.editing {
-                        // Active edit mode
                         editing_span(edit, *secret, theme)
                     } else {
                         idle_text_span(&field.value, *secret, theme)
@@ -210,7 +204,6 @@ fn render_fields(step: &StepState, lines: &mut Vec<Line>, theme: &Theme) {
             hint_span,
         ];
 
-        // Append inline cursor character for active text edit
         if selected
             && let Some(ref edit) = step.editing
             && let FieldKind::Text { .. } = field.kind

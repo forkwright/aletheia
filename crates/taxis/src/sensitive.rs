@@ -1,11 +1,8 @@
 //! Single source of truth for the "is this key name sensitive?" predicate.
 //!
-//! Both the redact-on-display path (`redact.rs`) and the encrypt-at-rest path
-//! (`encrypt.rs`) used to maintain their own divergent lists with different
-//! matching strategies. `auth_token`, `refresh_token`, and `session_secret`
-//! were redacted on display but left in plaintext at rest — operators who ran
-//! `config encrypt` reasonably assumed their secrets were protected when they
-//! were not. See aletheia#4254.
+//! WHY(#4254): the redact-on-display path (`redact.rs`) and the
+//! encrypt-at-rest path (`encrypt.rs`) must share one list; divergent lists
+//! let a key be redacted on display yet stored in plaintext at rest.
 //!
 //! Failure-mode bias: substring matching errs on the side of MORE encryption /
 //! MORE redaction, which is the safe direction for both code paths.
@@ -46,8 +43,8 @@ mod tests {
 
     #[test]
     fn matches_prefixed_and_suffixed_variants() {
-        // The whole point of unifying on substring matching: these were
-        // redacted on display but NOT encrypted at rest before #4254.
+        // WHY(#4254): prefixed/suffixed variants were redacted on display but
+        // NOT encrypted at rest; substring matching must catch them.
         assert!(key_is_sensitive("auth_token"));
         assert!(key_is_sensitive("authToken"));
         assert!(key_is_sensitive("refresh_token"));

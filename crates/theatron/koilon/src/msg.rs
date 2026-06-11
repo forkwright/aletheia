@@ -617,7 +617,6 @@ mod tests {
             MessageActionKind::RateResponse,
             MessageActionKind::FlagForReview,
         ];
-        // Verify Debug trait works and variants are distinct
         let debugs: Vec<String> = kinds.iter().map(|k| format!("{:?}", k)).collect();
         for (i, d) in debugs.iter().enumerate() {
             for (j, d2) in debugs.iter().enumerate() {

@@ -332,7 +332,6 @@ data: {\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":100,\"output_tok
     fn malformed_json_event_skipped_parsing_continues() {
         let input = "event: foo\ndata: not-json\n\nevent: text_delta\ndata: {\"text\":\"ok\"}\n\n";
         let events = parse_sse_text(input).expect("parse should succeed");
-        // NOTE: malformed event is skipped; valid subsequent event is preserved
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "text_delta");
     }

@@ -7,10 +7,6 @@ use std::path::Path;
 use crate::qa::PromptSpec;
 use crate::types::{MechanicalIssue, MechanicalIssueKind};
 
-// ---------------------------------------------------------------------------
-// Anti-pattern definitions
-// ---------------------------------------------------------------------------
-
 /// Patterns detected in added diff lines that violate project standards.
 ///
 /// Each entry is `(pattern_string, human_message)`. Checked against every
@@ -34,10 +30,6 @@ const ANTI_PATTERNS: &[(&str, &str)] = &[
     ("todo!()", "todo!() macro left in code"),
     ("unimplemented!()", "unimplemented!() macro left in code"),
 ];
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 /// Run all synchronous mechanical checks on a PR diff.
 ///
@@ -97,7 +89,6 @@ pub async fn format_check(working_dir: &Path) -> Vec<MechanicalIssue> {
         }
     }
 
-    // NOTE: If no specific files were parsed, emit a generic issue.
     if issues.is_empty() {
         issues.push(MechanicalIssue {
             kind: MechanicalIssueKind::FormatViolation,
@@ -169,10 +160,6 @@ pub async fn lint_check(working_dir: &Path) -> Vec<MechanicalIssue> {
     issues
 }
 
-// ---------------------------------------------------------------------------
-// Diff parsing
-// ---------------------------------------------------------------------------
-
 /// Extract changed file paths from a unified diff.
 ///
 /// Parses `+++ b/path` lines which give the destination path and handle
@@ -194,10 +181,6 @@ pub fn parse_changed_files(diff: &str) -> Vec<String> {
 
     files
 }
-
-// ---------------------------------------------------------------------------
-// Blast radius
-// ---------------------------------------------------------------------------
 
 /// Verify all changed files fall within the declared blast radius.
 ///
@@ -258,10 +241,6 @@ fn path_is_under(child: &Path, parent: &Path) -> bool {
         .all(|(p, c)| p == c)
 }
 
-// ---------------------------------------------------------------------------
-// Anti-patterns
-// ---------------------------------------------------------------------------
-
 /// Scan added lines in the diff for known anti-patterns.
 fn check_anti_patterns(diff: &str, issues: &mut Vec<MechanicalIssue>) {
     let mut current_file = String::new();
@@ -282,7 +261,6 @@ fn check_anti_patterns(diff: &str, issues: &mut Vec<MechanicalIssue>) {
             continue;
         }
 
-        // NOTE: Only check added lines (starting with `+` but not `+++`).
         if let Some(added) = line.strip_prefix('+') {
             if !line.starts_with("+++") {
                 let is_test_file = current_file.contains("/tests/")
@@ -306,7 +284,6 @@ fn check_anti_patterns(diff: &str, issues: &mut Vec<MechanicalIssue>) {
 
             line_number += 1;
         } else if !line.starts_with('-') {
-            // NOTE: Context lines advance the line counter.
             line_number += 1;
         }
     }
@@ -348,9 +325,7 @@ fn parse_hunk_new_start(hunk_line: &str) -> Option<u32> {
 mod tests {
     use super::*;
 
-    // -----------------------------------------------------------------------
-    // parse_changed_files
-    // -----------------------------------------------------------------------
+    // ── parse_changed_files ──
 
     #[test]
     fn parse_changed_files_from_diff() {
@@ -379,9 +354,7 @@ diff --git a/src/lib.rs b/src/lib.rs
         assert_eq!(files, vec!["new_file.rs"]);
     }
 
-    // -----------------------------------------------------------------------
-    // Blast radius
-    // -----------------------------------------------------------------------
+    // ── Blast radius ──
 
     #[test]
     fn blast_radius_violation_detected() {
@@ -516,9 +489,7 @@ diff --git a/src/lib.rs b/src/lib.rs
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Anti-patterns
-    // -----------------------------------------------------------------------
+    // ── Anti-patterns ──
 
     #[test]
     fn anti_pattern_unwrap_detected() {
@@ -615,10 +586,6 @@ diff --git a/src/lib.rs b/src/lib.rs
         assert_eq!(parse_hunk_new_start("@@ -1,3 +10,4 @@"), Some(10));
         assert_eq!(parse_hunk_new_start("@@ -0,0 +1,5 @@"), Some(1));
     }
-
-    // -----------------------------------------------------------------------
-    // Helpers
-    // -----------------------------------------------------------------------
 
     fn stub_prompt(blast_radius: Vec<String>) -> PromptSpec {
         PromptSpec {

@@ -134,16 +134,10 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
             }
         }
 
-        // Accumulate lines until the statement ends with a semicolon or is a
-        // self-contained expression. The Datalog engine is the authority on
-        // whether the statement is complete; we send each line as-is and let
-        // the engine emit a parse error if it is incomplete. For ergonomics we
-        // buffer lines until the input ends with `;` OR is non-empty and the
-        // user presses Enter on a blank line.
-        //
-        // WHY: Datalog statements don't require a semicolon terminator, but
-        // multi-line input is common. We use the heuristic: if the accumulated
-        // buffer is non-empty and the user enters a blank line, submit.
+        // WHY: the Datalog engine is the authority on statement completeness —
+        // it requires no semicolon terminator, but multi-line input is common.
+        // Heuristic: buffer lines until the input ends with `;`, or submit
+        // when the buffer is non-empty and the user enters a blank line.
         if !trimmed.is_empty() {
             if !pending.is_empty() {
                 pending.push(' ');
@@ -151,14 +145,12 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
             pending.push_str(trimmed);
         }
 
-        // Submit on blank line continuation or single-line expression.
         let should_submit = trimmed.is_empty()    // blank line flushes buffer
             || trimmed.ends_with(';')             // explicit terminator
             || (!trimmed.contains('\n') && pending == trimmed); // single line
 
         if should_submit && !pending.is_empty() {
             let script = std::mem::take(&mut pending);
-            // Strip trailing semicolon if present (engine does not require it).
             let script = script.trim_end_matches(';').trim().to_owned();
             if !script.is_empty() {
                 run_query_and_print(&store, &script);

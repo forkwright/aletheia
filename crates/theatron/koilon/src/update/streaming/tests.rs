@@ -285,10 +285,8 @@ fn stream_error_clears_tool_calls_and_resets_agent() {
     assert_eq!(app.connection.streaming_text, "partial response");
     // Tool calls cleared so no stale spinners
     assert!(app.connection.streaming_tool_calls.is_empty());
-    // Agent back to idle
     assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
     assert!(app.dashboard.agents[0].active_tool.is_none());
-    // Error toast displayed
     assert!(app.viewport.error_toast.is_some());
 }
 

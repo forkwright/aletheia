@@ -5,8 +5,6 @@ use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, validate_response};
 use crate::sse;
 
-// ---------------------------------------------------------------------------
-
 /// Insert fact → query it back → verify exact match
 pub(super) struct RecallInsertQueryRoundtrip;
 
@@ -278,5 +276,3 @@ impl Scenario for RecallEmptyKnowledgeGraceful {
         )
     }
 }
-
-// ---------------------------------------------------------------------------

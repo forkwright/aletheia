@@ -193,8 +193,8 @@ impl PromptDag {
     }
 
     /// Return prompt numbers currently in [`PromptStatus::Ready`] state.
-    // PUBLIC: external readiness query; production paths use compute_frontier
-    // and dispatch dags directly, but the accessor is exposed.
+    // NOTE: External readiness query; production paths use compute_frontier
+    // and dispatch DAGs directly.
     #[must_use]
     pub fn get_ready(&self) -> Vec<u32> {
         let mut ready: Vec<u32> = self
@@ -293,7 +293,7 @@ impl PromptDag {
             self.nodes.keys().map(|&k| (k, Color::White)).collect();
         let mut path: Vec<u32> = Vec::new();
 
-        // NOTE: Process in sorted order for deterministic cycle reporting.
+        // WHY: Sorted order gives deterministic cycle reporting.
         let mut keys: Vec<u32> = self.nodes.keys().copied().collect();
         keys.sort_unstable();
 
@@ -323,9 +323,7 @@ pub use crate::frontier::compute_frontier;
 mod tests {
     use super::*;
 
-    // -------------------------------------------------------------------------
-    // PromptDag API tests
-    // -------------------------------------------------------------------------
+    // ── PromptDag API tests ──
 
     #[test]
     fn add_node_and_get_status() {
@@ -395,9 +393,7 @@ mod tests {
         assert_eq!(dag.get_ready(), vec![2, 5, 8]);
     }
 
-    // -------------------------------------------------------------------------
-    // Validation tests
-    // -------------------------------------------------------------------------
+    // ── Validation tests ──
 
     #[test]
     fn validate_passes_for_valid_dag() {
@@ -471,10 +467,6 @@ mod tests {
             other => panic!("expected MissingDependencies, got: {other}"),
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Display tests
-    // -------------------------------------------------------------------------
 
     #[test]
     fn prompt_status_display() {

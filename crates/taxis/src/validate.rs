@@ -301,7 +301,6 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     // `mode = "none"` is loaded at startup or inspected by `check-config`.
     // Operators have filesystem-level control of the file; the loud startup
     // warning emitted by [`warn_if_auth_disabled`] handles operator visibility.
-    // (#3383 — original opt-in; #4240 — separated from file-load path)
     if let Some(auth) = value.get("auth")
         && let Some(mode) = auth.get("mode").and_then(Value::as_str)
         && !VALID_AUTH_MODES.contains(&mode)
@@ -865,7 +864,6 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
                         "providers[{i}].providerType '{kind}' is not recognized (expected one of: anthropic, openai, open-ai-compatible, openai-compatible, claude-code, codex_oauth, codex-oauth)"
                     ));
                 }
-                // OpenAI-compatible requires baseUrl.
                 if matches!(kind, "open-ai-compatible" | "openai-compatible")
                     && entry
                         .get("baseUrl")

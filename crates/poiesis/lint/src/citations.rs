@@ -1,5 +1,5 @@
-// Citation presence checker.
-//
+//! Citation presence checker.
+
 // WHY: any table-like construct without a nearby source marker suggests
 // the data was asserted without a traceable reference.
 

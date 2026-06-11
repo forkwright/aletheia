@@ -4,7 +4,7 @@
 //! WHY: Agents working inside a repository need basic Git introspection. The
 //! existing `exec` tool can run git but costs tokens on parsing shell syntax
 //! and does not enforce a deny-list of destructive flags. This module exposes
-//! narrow, read-only operations directly. Closes #3442.
+//! narrow, read-only operations directly.
 //!
 //! Scope decisions:
 //! - No `git commit`, `git push`, `git reset`, `git rebase`, `git merge`:
@@ -189,10 +189,6 @@ fn git_err(out: GitRunOutput) -> ToolResult {
     })
 }
 
-// -------------------------------------------------------------------------
-// git_status
-// -------------------------------------------------------------------------
-
 struct GitStatusExecutor;
 
 impl ToolExecutor for GitStatusExecutor {
@@ -210,10 +206,6 @@ impl ToolExecutor for GitStatusExecutor {
         })
     }
 }
-
-// -------------------------------------------------------------------------
-// git_log
-// -------------------------------------------------------------------------
 
 struct GitLogExecutor;
 
@@ -249,10 +241,6 @@ impl ToolExecutor for GitLogExecutor {
         })
     }
 }
-
-// -------------------------------------------------------------------------
-// git_diff
-// -------------------------------------------------------------------------
 
 struct GitDiffExecutor;
 
@@ -296,10 +284,6 @@ impl ToolExecutor for GitDiffExecutor {
     }
 }
 
-// -------------------------------------------------------------------------
-// git_branch
-// -------------------------------------------------------------------------
-
 struct GitBranchExecutor;
 
 impl ToolExecutor for GitBranchExecutor {
@@ -319,10 +303,6 @@ impl ToolExecutor for GitBranchExecutor {
         })
     }
 }
-
-// -------------------------------------------------------------------------
-// git_checkout
-// -------------------------------------------------------------------------
 
 struct GitCheckoutExecutor;
 
@@ -364,10 +344,6 @@ impl ToolExecutor for GitCheckoutExecutor {
         })
     }
 }
-
-// -------------------------------------------------------------------------
-// Registration
-// -------------------------------------------------------------------------
 
 /// Register the git tool suite.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {

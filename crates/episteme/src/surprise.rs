@@ -9,9 +9,7 @@
 
 use std::collections::HashMap;
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+// ── Constants ───────────────────────────────────────────────────────────────
 
 /// Default surprise threshold (in nats) above which a turn is classified as an
 /// episode boundary. Empirically, bigram KL divergence on conversational text
@@ -37,9 +35,7 @@ const SMOOTHING: f64 = 1e-10;
 /// Used as a const generic (`[u8; NGRAM_SIZE]`), so must remain compile-time.
 const NGRAM_SIZE: usize = 2;
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+// ── Public types ────────────────────────────────────────────────────────────
 
 /// A detected (or non-detected) episode boundary at a specific turn.
 #[derive(Debug, Clone)]
@@ -85,10 +81,6 @@ impl SurpriseCalculator {
     ///
     /// The first call to [`compute_surprise`](Self::compute_surprise) will
     /// return 0.0 because there is no prior to diverge from.
-    ///
-    /// # Complexity
-    ///
-    /// O(1).
     #[must_use]
     pub fn new() -> Self {
         Self::with_alpha(DEFAULT_EMA_ALPHA)
@@ -124,7 +116,6 @@ impl SurpriseCalculator {
             return 0.0;
         }
 
-        // First observation: bootstrap the prior, no surprise.
         if self.prior.is_empty() {
             self.prior = observed;
             self.total_mass = 1.0;
@@ -167,17 +158,14 @@ impl SurpriseCalculator {
     fn update_prior(&mut self, observed: &HashMap<[u8; NGRAM_SIZE], f64>) {
         let retain = 1.0 - self.ema_alpha;
 
-        // Scale down existing entries.
         for v in self.prior.values_mut() {
             *v *= retain;
         }
 
-        // Blend in observed distribution.
         for (&ngram, &freq) in observed {
             *self.prior.entry(ngram).or_insert(0.0) += self.ema_alpha * freq;
         }
 
-        // Re-normalize so the distribution sums to 1.
         let sum: f64 = self.prior.values().sum();
         if sum > 0.0 {
             for v in self.prior.values_mut() {
@@ -188,10 +176,6 @@ impl SurpriseCalculator {
         self.total_mass = 1.0;
     }
 }
-
-// ---------------------------------------------------------------------------
-// Boundary detection
-// ---------------------------------------------------------------------------
 
 /// Scan a sequence of turns and identify episode boundaries where Bayesian
 /// surprise exceeds `threshold`.
@@ -229,10 +213,6 @@ pub fn detect_boundaries(turns: &[&str], threshold: f64) -> Vec<EpisodeBoundary>
 pub fn detect_boundaries_default(turns: &[&str]) -> Vec<EpisodeBoundary> {
     detect_boundaries(turns, DEFAULT_THRESHOLD)
 }
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 /// Extract character bigram frequencies from `text`, normalized to sum to 1.
 fn bigram_frequencies(text: &str) -> HashMap<[u8; NGRAM_SIZE], f64> {
@@ -280,7 +260,6 @@ fn bigram_frequencies(text: &str) -> HashMap<[u8; NGRAM_SIZE], f64> {
 /// Computes `sum_x P(x) * ln(P(x) / Q(x))` over all n-grams present in
 /// either distribution, using [`SMOOTHING`] to avoid log(0).
 fn kl_divergence(p: &HashMap<[u8; NGRAM_SIZE], f64>, q: &HashMap<[u8; NGRAM_SIZE], f64>) -> f64 {
-    // Collect the union of keys.
     let mut all_keys: Vec<&[u8; NGRAM_SIZE]> = p.keys().collect();
     for k in q.keys() {
         if !p.contains_key(k) {
@@ -297,10 +276,6 @@ fn kl_divergence(p: &HashMap<[u8; NGRAM_SIZE], f64>, q: &HashMap<[u8; NGRAM_SIZE
 
     divergence.max(0.0)
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(
@@ -323,7 +298,6 @@ mod tests {
         let s0 = calc.compute_surprise(text);
         assert_eq!(s0, 0.0, "first observation should be zero");
 
-        // Feed the same text several times; surprise should stay near zero.
         for i in 1..=5 {
             let s = calc.compute_surprise(text);
             assert!(
@@ -338,14 +312,12 @@ mod tests {
     fn topic_shift_high_surprise() {
         let mut calc = SurpriseCalculator::new();
 
-        // Establish a prior around cooking.
         for _ in 0..5 {
             calc.compute_surprise(
                 "chop the onions and garlic then saute in olive oil until golden",
             );
         }
 
-        // Shift to astrophysics.
         let surprise = calc.compute_surprise(
             "the schwarzschild radius of a black hole is proportional to its mass",
         );
@@ -365,7 +337,6 @@ mod tests {
         assert_eq!(calc.compute_surprise("a"), 0.0); // < NGRAM_SIZE
         assert_eq!(calc.compute_surprise(""), 0.0);
 
-        // After bootstrapping with real text, empty should still be 0.
         calc.compute_surprise("some real text here");
         assert_eq!(calc.compute_surprise(""), 0.0);
         assert_eq!(calc.compute_surprise("x"), 0.0);
@@ -407,16 +378,13 @@ mod tests {
     fn ema_adaptation() {
         let mut calc = SurpriseCalculator::new();
 
-        // Establish prior.
         for _ in 0..5 {
             calc.compute_surprise("functional programming with immutable data structures");
         }
 
-        // First exposure to new topic: high surprise.
         let first =
             calc.compute_surprise("the mitochondria is the powerhouse of the cell in biology");
 
-        // Repeated new topic: surprise should decrease as prior adapts.
         let mut previous = first;
         for i in 0..5 {
             let s = calc.compute_surprise(
@@ -429,7 +397,6 @@ mod tests {
             previous = s;
         }
 
-        // After adaptation, surprise should be much lower than initial shock.
         assert!(
             previous < first * 0.5,
             "adapted surprise {previous} should be < 50% of initial {first}"
@@ -444,7 +411,6 @@ mod tests {
         // Empty prior -> 0.0, and probing must not bootstrap the prior.
         assert_eq!(calc.surprise_of("the weather is sunny"), 0.0);
 
-        // Establish a prior around cooking.
         for _ in 0..5 {
             calc.compute_surprise("chop the onions and garlic then saute in olive oil");
         }
@@ -489,7 +455,6 @@ mod tests {
         let turns: Vec<&str> = vec!["hello world", "hello world"];
         let boundaries = detect_boundaries_default(&turns);
         assert_eq!(boundaries.len(), 2);
-        // Same text, low surprise, no boundaries at default threshold.
         assert!(!boundaries[0].is_boundary);
         assert!(!boundaries[1].is_boundary);
     }

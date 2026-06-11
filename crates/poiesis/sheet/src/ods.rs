@@ -84,7 +84,6 @@ impl Renderer for OdsRenderer {
                     row += 1;
                 }
                 Block::Table(table) => {
-                    // Header row
                     for (col, header) in table.headers.iter().enumerate() {
                         // WHY: column count is bounded by the document model;
                         // u32 holds up to 4 billion columns which no real table
@@ -94,7 +93,6 @@ impl Renderer for OdsRenderer {
                     }
                     row += 1;
 
-                    // Data rows
                     for data_row in &table.rows {
                         for (col, cell) in data_row.iter().enumerate() {
                             let col_u32 = u32::try_from(col).unwrap_or(u32::MAX);

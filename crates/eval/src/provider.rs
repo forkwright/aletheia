@@ -12,10 +12,6 @@
 
 use crate::scenario::Scenario;
 
-// ---------------------------------------------------------------------------
-// EvalProvider trait
-// ---------------------------------------------------------------------------
-
 /// Source of evaluation scenarios.
 ///
 /// Implementations decide which scenarios to include. The runner calls

@@ -93,7 +93,6 @@ pub fn determine_ci_status(checks: &[CheckRun], required_checks: &[String]) -> C
                             if is_required {
                                 has_failure = true;
                             } else {
-                                // NOTE: Non-required check failed -- log but don't block.
                                 tracing::debug!(
                                     check = %check.name,
                                     conclusion = %conclusion,
@@ -104,9 +103,9 @@ pub fn determine_ci_status(checks: &[CheckRun], required_checks: &[String]) -> C
                     }
                 }
             }
-            // NOTE: All non-completed statuses (including unknown ones) are
-            // treated as pending. This is intentional -- unknown status values
-            // from future API versions should block rather than pass.
+            // WHY: All non-completed statuses (including unknown ones) are
+            // treated as pending -- unknown status values from future API
+            // versions should block rather than pass.
             _ => {
                 if is_required {
                     has_pending = true;
@@ -130,7 +129,6 @@ pub fn determine_ci_status(checks: &[CheckRun], required_checks: &[String]) -> C
 /// in the title, then falls back to the branch name.
 #[must_use]
 pub fn extract_prompt_number(pr: &PullRequest) -> Option<u32> {
-    // NOTE: Try title first, then branch name.
     let title_match = extract_prompt_number_from_text(&pr.title);
     if title_match.is_some() {
         return title_match;
@@ -156,7 +154,7 @@ pub(crate) fn extract_prompt_number_from_text(text: &str) -> Option<u32> {
     ];
 
     for pattern in &patterns {
-        // NOTE: Pattern compilation is cheap for these small patterns,
+        // PERF: Pattern compilation is cheap for these small patterns,
         // and they're only used in classification (not hot path).
         if let Ok(re) = Regex::new(pattern)
             && let Some(caps) = re.captures(text)
@@ -188,14 +186,12 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
     let mut line_number: u32 = 0;
 
     for line in diff.lines() {
-        // NOTE: Track which file we're in.
         if let Some(path) = line.strip_prefix("+++ b/") {
             current_file = path.trim().to_string();
             line_number = 0;
             continue;
         }
 
-        // NOTE: Track line numbers from @@ hunk headers.
         if line.starts_with("@@ ") {
             if let Some(new_start) = parse_hunk_new_start(line) {
                 line_number = new_start;
@@ -203,7 +199,6 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
             continue;
         }
 
-        // NOTE: Only check added lines (starting with `+` but not `+++`).
         if let Some(added) = line.strip_prefix('+') {
             if !line.starts_with("+++") {
                 // NOTE: Additions to lint-ignore files are always flagged
@@ -224,7 +219,7 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
                     }
                 }
 
-                // NOTE: Skip test files -- suppressions are acceptable in tests.
+                // WHY: Test files are skipped -- suppressions are acceptable in tests.
                 let is_test_file = current_file.contains("/tests/")
                     || current_file.contains("_test.rs")
                     || current_file.ends_with("tests.rs");
@@ -243,7 +238,6 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
                         });
                     }
 
-                    // Check for #[cfg_attr(..., allow(...))]
                     if let Some(caps) = CFG_ATTR_ALLOW_RE.captures(added) {
                         let lint_name = caps.get(1).map(|m| m.as_str().trim().to_string());
                         findings.push(SuppressionFinding {
@@ -255,7 +249,6 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
                         });
                     }
 
-                    // Check for #[expect(...)]
                     if let Some(caps) = EXPECT_RE.captures(added) {
                         let content = caps.get(1).map_or("", |m| m.as_str());
                         let lint_name = content.split(',').next().map(str::trim).map(String::from);
@@ -280,7 +273,6 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
                         });
                     }
 
-                    // Check for // lint-ignore inline comment
                     if LINT_IGNORE_INLINE_RE.is_match(added) {
                         findings.push(SuppressionFinding {
                             file: current_file.clone(),
@@ -291,7 +283,6 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
                         });
                     }
 
-                    // Check for // SAFETY: or // INVARIANT: comments
                     // WHY: LLM workers add these to bypass skip patterns.
                     if let Some(caps) = STRUCTURED_COMMENT_RE.captures(added) {
                         let tag = caps.get(1).map(|m| m.as_str().to_string());
@@ -306,13 +297,11 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
                 }
             }
 
-            // NOTE: Added lines advance the line counter.
             #[expect(clippy::arithmetic_side_effects, reason = "line numbers fit in u32")]
             {
                 line_number += 1;
             }
         } else if !line.starts_with('-') {
-            // NOTE: Context lines (no prefix) also advance the line counter.
             #[expect(clippy::arithmetic_side_effects, reason = "line numbers fit in u32")]
             {
                 line_number += 1;
@@ -335,7 +324,6 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
 pub fn extract_qa_verdict_from_body(body: Option<&str>) -> Option<QaVerdictStatus> {
     let body = body?;
 
-    // NOTE: Check for machine-readable marker first.
     for line in body.lines() {
         let trimmed = line.trim();
         if let Some(inner) = trimmed
@@ -351,7 +339,6 @@ pub fn extract_qa_verdict_from_body(body: Option<&str>) -> Option<QaVerdictStatu
         }
     }
 
-    // NOTE: Fall back to human-readable patterns.
     for line in body.lines() {
         let upper = line.to_uppercase();
         if upper.contains("QA VERDICT") || upper.contains("QA:") {

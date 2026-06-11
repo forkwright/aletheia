@@ -34,7 +34,6 @@ pub async fn mcp_auth(
         return next.run(req).await;
     }
 
-    // Extract Bearer token from Authorization header.
     let token = req
         .headers()
         .get("authorization")
@@ -46,10 +45,9 @@ pub async fn mcp_auth(
         return unauthorized();
     };
 
-    // Validate via JwtManager. When auth_mode != "none" the jwt_manager is
-    // always Some (enforced at construction in server/mod.rs).
+    // INVARIANT: when auth_mode != "none", jwt_manager is always Some
+    // (enforced where DiaporeiaState is built in `aletheia::commands::server`).
     let Some(ref jwt) = state.jwt_manager else {
-        // INVARIANT: should never happen if construction is correct.
         warn!("MCP request rejected: jwt_manager unavailable despite auth_mode != \"none\"");
         return unauthorized();
     };

@@ -18,10 +18,10 @@ mod workspace_integration {
 
     /// Resolve the workspace root by walking up from the manifest directory.
     fn workspace_root() -> PathBuf {
-        // CARGO_MANIFEST_DIR is set by cargo during test runs.
         let manifest =
             std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set by cargo");
-        // gnosis manifest is at `crates/gnosis/`; workspace root is two levels up.
+        // WHY: the gnosis manifest sits at `crates/gnosis/`, so the workspace
+        // root is two levels up.
         PathBuf::from(manifest)
             .parent()
             .expect("crates/")
@@ -40,11 +40,6 @@ mod workspace_integration {
     /// type that has at least one re-export site in the workspace, so this
     /// lower bound validates that the index is actually populated and queries
     /// execute without error.
-    ///
-    /// The original acceptance criterion ("≥10 callers") was written for a
-    /// planned v2 that captures type-use call sites at `symbol_refs` level.
-    /// Filed as a follow-up to #3357: extend gnosis index to capture
-    /// type-use references from fn bodies.
     #[test]
     #[ignore = "parses full workspace — takes 3-8s; run with --include-ignored"]
     fn symbol_rdeps_finds_many_callers() {
@@ -55,12 +50,8 @@ mod workspace_integration {
         let graph = CodeGraph::open(&db_path, &root).expect("open graph");
         graph.rebuild().expect("rebuild");
 
-        // In v1 gnosis only captures impl + reexport edges.
-        // symbol_rdeps will find any crate that `impl`s or `pub use`s `Message`.
         let rows = graph.symbol_rdeps("Message", None).expect("symbol_rdeps");
 
-        // Verify the index is populated and queries return without error.
-        // The count may be low (v1 limitation); provenance must be set on every row.
         for row in &rows {
             assert!(
                 row.source.starts_with("gnosis@"),
@@ -69,7 +60,6 @@ mod workspace_integration {
             );
         }
 
-        // Separately verify the index has symbols at all (not empty).
         let all_syms = graph
             .symbols_in("hermeneus", None)
             .expect("symbols_in hermeneus");

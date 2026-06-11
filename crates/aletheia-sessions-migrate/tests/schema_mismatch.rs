@@ -1,5 +1,5 @@
-//! Test 4 from the deliverable: hand the migrator a `SQLite` file with
-//! mismatched schema, assert it errors with a specific message
+//! Handing the migrator a `SQLite` file with
+//! mismatched schema must error with a specific message
 //! identifying what's wrong.
 
 #![expect(

@@ -101,9 +101,9 @@ is_a[child, ancestor] :=
 /// Confidence decays multiplicatively along each hop: `conf = c1 * c2`.
 /// A minimum threshold of 0.05 prunes negligible chains to bound output size.
 ///
-/// WHY: replaces the application-level BFS in `propagate_confidence`. The
-/// Datalog engine evaluates recursive rules to fixpoint in one query; the
-/// application no longer needs to iteratively fetch edges.
+/// WHY: unlike the application-level BFS in `propagate_confidence`, the
+/// Datalog engine evaluates recursive rules to fixpoint in one query, with no
+/// iterative edge fetching.
 #[cfg_attr(
     not(feature = "mneme-engine"),
     expect(

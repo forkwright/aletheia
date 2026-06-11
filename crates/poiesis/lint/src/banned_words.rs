@@ -1,4 +1,5 @@
-// Banned word and phrase list from kanon WRITING.md.
+//! Banned word and phrase list from kanon WRITING.md.
+
 // WHY: hardcoded at compile time — zero runtime overhead, no external file to lose.
 
 use super::{Finding, FindingKind, LineFix};

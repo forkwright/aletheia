@@ -11,9 +11,6 @@
 pub mod api;
 /// Dioxus UI components for the desktop app.
 pub mod components;
-// Log-to-file initialisation (daily-rolling, non-blocking) lifted into
-// `bathron::logging::init_with_stderr` (theatron v1.2.0). See `run` below
-// for the call site that replaces the former local `logging::init`.
 /// Platform integration: system tray, global hotkeys, native menus, window state, notifications.
 pub(crate) mod platform;
 /// Background services: SSE connection, stream management, and state sync.
@@ -23,8 +20,6 @@ pub mod state;
 
 pub(crate) mod app;
 pub(crate) mod layout;
-// theme module extracted to themelion (chalkeion plan Phase 1+2 W1).
-// See themelion::theme for ThemeMode, ThemeProvider, ResolvedTheme.
 pub(crate) mod views;
 
 /// Launch the desktop application.
@@ -39,24 +34,9 @@ pub(crate) mod views;
 pub fn run(verbose: bool) {
     // WHY: Keep the guard alive for the process lifetime so the non-blocking
     // writer thread flushes pending log records before the file is closed.
-    //
-    // Migrated 2026-05-08 from local `logging.rs` (88 LOC) to
-    // `bathron::logging::init_with_stderr` (theatron v1.2.0) with the
-    // PR-B Option 3 knobs that preserve proskenion's pre-migration
-    // behavior across all 5 axes (log dir, file name, ANSI on file,
-    // EnvFilter directive, stderr trigger):
-    //   - log_dir = ~/.local/share/aletheia/logs/  (preserved via
-    //     with_log_dir; would otherwise be ~/.local/state/<app>/logs/
-    //     under XDG state-dir defaults)
-    //   - app_name = "proskenion" (file becomes proskenion.log)
-    //   - ansi_on_file = false (preserved via with_ansi_on_file)
-    //   - filter_directive = "proskenion=info" (preserved via
-    //     with_filter_directive; RUST_LOG always wins)
-    //   - also_to_stderr = verbose || RUST_LOG_set
-    // WHY: log path preserved at ~/.local/share/aletheia/logs/ (the
-    // pre-migration value). bathron's default would route to
-    // ~/.local/state/aletheia/logs/ via dirs::state_dir, which would
-    // break operator `tail -f` muscle memory.
+    // WHY: log path stays at ~/.local/share/aletheia/logs/. bathron's default
+    // would route to ~/.local/state/aletheia/logs/ via dirs::state_dir, which
+    // would break operator `tail -f` muscle memory.
     let log_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("aletheia")

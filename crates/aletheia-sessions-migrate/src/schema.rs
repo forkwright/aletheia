@@ -16,7 +16,7 @@ use crate::error::{
 ///
 /// Anchored on the final `SQLite` revision shipped before PR #3446 removed
 /// the `SQLite` backend. The operator's real DB shows `PRAGMA user_version
-/// = 32` (verified 2026-04-27).
+/// = 32`.
 pub const REQUIRED_USER_VERSION: i64 = 32;
 
 /// Tables we expect to read from. Other tables (`planning_*`, `audit_log`,

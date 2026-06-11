@@ -38,10 +38,6 @@ fn write_file(path: &std::path::Path, content: &str) {
     std::fs::write(path, content).expect("write fixture");
 }
 
-// -------------------------------------------------------------------------
-// mkdir
-// -------------------------------------------------------------------------
-
 #[tokio::test]
 async fn mkdir_creates_directory() {
     let dir = tempfile::tempdir().expect("tmpdir");
@@ -86,10 +82,6 @@ async fn mkdir_rejects_outside_root() {
         "error should identify outside-root path"
     );
 }
-
-// -------------------------------------------------------------------------
-// mv
-// -------------------------------------------------------------------------
 
 #[tokio::test]
 async fn mv_renames_file() {
@@ -141,10 +133,6 @@ async fn mv_refuses_protected_target() {
     assert!(result.is_error, "moving onto protected path must fail");
 }
 
-// -------------------------------------------------------------------------
-// cp
-// -------------------------------------------------------------------------
-
 #[tokio::test]
 async fn cp_copies_file() {
     let dir = tempfile::tempdir().expect("tmpdir");
@@ -194,10 +182,6 @@ async fn cp_directory_recursive_copies_contents() {
     assert_eq!(nested, "nested", "nested file should be copied");
 }
 
-// -------------------------------------------------------------------------
-// rm
-// -------------------------------------------------------------------------
-
 #[tokio::test]
 async fn rm_removes_file() {
     let dir = tempfile::tempdir().expect("tmpdir");
@@ -244,10 +228,6 @@ async fn rm_missing_path_errors() {
     let result = RmExecutor.execute(&input, &ctx).await.expect("exec");
     assert!(result.is_error, "missing path should be an error result");
 }
-
-// -------------------------------------------------------------------------
-// registration
-// -------------------------------------------------------------------------
 
 #[test]
 fn all_fs_ops_tools_registered() {

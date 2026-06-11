@@ -206,7 +206,6 @@ async fn approve_moves_staged_prompt_to_queue() {
     let staging = tempfile::tempdir().expect("tempdir");
     let queue = tempfile::tempdir().expect("tempdir");
 
-    // Create a staged prompt
     let prompt_path = staging.path().join("42-test-issue.md");
     tokio::fs::write(&prompt_path, "# 42: Test issue\n")
         .await
@@ -236,7 +235,6 @@ async fn approve_moves_staged_prompt_to_queue() {
         "should log approver: {summary}"
     );
 
-    // Verify file moved
     assert!(!prompt_path.exists(), "staged file should be removed");
     let queue_path = queue.path().join("42-test-issue.md");
     assert!(queue_path.exists(), "file should exist in queue");

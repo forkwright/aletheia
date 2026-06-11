@@ -516,9 +516,6 @@ pub async fn rename(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// Session/history limits are now read from `config.api_limits` at runtime.
-// See `taxis::config::ApiLimitsConfig` for defaults and documentation.
-
 /// GET /api/v1/sessions/{id}/history: get conversation history.
 ///
 /// # Cancel safety

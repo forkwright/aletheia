@@ -298,25 +298,21 @@ pub(crate) fn CheckpointCard(
         div {
             style: "{card_style}",
 
-            // Header: title + status badge
             div {
                 style: "{HEADER_ROW}",
                 span { style: "{TITLE_STYLE}", "{checkpoint.title}" }
                 span { style: "{badge_style}", "{badge_label}" }
             }
 
-            // Description
             if !checkpoint.description.is_empty() {
                 div { style: "{DESCRIPTION_STYLE}", "{checkpoint.description}" }
             }
 
-            // Context
             if !checkpoint.context.is_empty() {
                 div { style: "{SECTION_LABEL}", "Context" }
                 div { style: "{CONTEXT_STYLE}", "{checkpoint.context}" }
             }
 
-            // Requirements
             if !checkpoint.requirements.is_empty() {
                 div { style: "{SECTION_LABEL}", "Requirements" }
                 for req in &checkpoint.requirements {
@@ -332,7 +328,6 @@ pub(crate) fn CheckpointCard(
                 }
             }
 
-            // Artifacts
             if !checkpoint.artifacts.is_empty() {
                 div { style: "{SECTION_LABEL}", "Artifacts" }
                 for (i, artifact) in checkpoint.artifacts.iter().enumerate() {
@@ -345,7 +340,6 @@ pub(crate) fn CheckpointCard(
                 }
             }
 
-            // Decision record (resolved gates)
             if let Some(ref decision) = checkpoint.decision {
                 div {
                     style: "{DECISION_BOX}",
@@ -360,12 +354,10 @@ pub(crate) fn CheckpointCard(
                 }
             }
 
-            // Error feedback
             if let Some(ref err) = *error_msg.read() {
                 div { style: "{ERROR_STYLE}", "{err}" }
             }
 
-            // Action area (pending gates only)
             if is_pending {
                 match *selected_action.read() {
                     None => rsx! {

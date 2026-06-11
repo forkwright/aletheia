@@ -167,7 +167,6 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
         div {
             style: "{CONTAINER_STYLE}",
 
-            // Breadcrumb
             div {
                 style: "{BREADCRUMB_STYLE}",
                 Link {
@@ -187,7 +186,6 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                 span { " / {tab_label}" }
             }
 
-            // Header
             match &*project_state.read() {
                 FetchState::Loaded(project) => {
                     let (badge_bg, badge_fg) = status_badge_style(project.status);
@@ -233,7 +231,6 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                 },
             }
 
-            // Tab bar
             div {
                 style: "{TAB_BAR_STYLE}",
                 button {
@@ -268,7 +265,6 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                 }
             }
 
-            // Tab content
             div {
                 style: "{TAB_CONTENT_STYLE}",
                 match tab {

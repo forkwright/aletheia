@@ -351,7 +351,6 @@ impl UncertaintyTracker {
     ) -> error::Result<Vec<OverconfidencePattern>> {
         let points = self.load_points_with_domains(Some(nous_id))?;
 
-        // Aggregate per domain.
         let mut per_domain: std::collections::BTreeMap<String, (f64, u32, u32)> =
             std::collections::BTreeMap::new();
         for point in &points {
@@ -423,8 +422,7 @@ impl UncertaintyTracker {
         let points_part = self.partition("points")?;
         let snap = self.db.read_tx();
 
-        // Collect all points matching the filter, sorted by key (which orders
-        // by nous_id then recorded_at then seq — lexicographic).
+        // NOTE: keys order by nous_id then recorded_at then seq — lexicographic.
         let mut raw: Vec<(Vec<u8>, CalibrationPoint)> = Vec::new();
         let iter: Box<dyn Iterator<Item = _>> = match nous_id {
             Some(id) => {
@@ -443,10 +441,10 @@ impl UncertaintyTracker {
             }
         }
 
-        // Sort by key (ascending: oldest first); limit keeps the most recent.
+        // WHY: ascending sort puts oldest first, so split_off keeps the most
+        // recent `limit` points.
         raw.sort_by(|a, b| a.0.cmp(&b.0));
 
-        // Apply per-agent limit.
         let limit = usize::try_from(self.max_calibration_points).unwrap_or(usize::MAX);
         let mut points: Vec<CalibrationPoint> = if nous_id.is_some() {
             if raw.len() > limit {
@@ -456,7 +454,7 @@ impl UncertaintyTracker {
                 raw.into_iter().map(|(_, p)| p).collect()
             }
         } else {
-            // For the "all agents" view, apply the same cap to keep bounded work.
+            // WHY: the "all agents" view gets the same cap to keep work bounded.
             if raw.len() > limit {
                 let start = raw.len() - limit;
                 raw.split_off(start).into_iter().map(|(_, p)| p).collect()
@@ -465,7 +463,7 @@ impl UncertaintyTracker {
             }
         };
 
-        // Return most-recent-first to match the SQL `ORDER BY recorded_at DESC` contract.
+        // INVARIANT: callers receive points most-recent-first.
         points.reverse();
         Ok(points)
     }
@@ -577,8 +575,8 @@ fn compute_brier_score(points: &[(f64, bool)]) -> f64 {
         .sum();
 
     // WHY f64::from(u32): calibration point count is bounded by
-    // MAX_CALIBRATION_POINTS (1000), so `try_from` is infallible in
-    // practice; u32→f64 is an exact conversion.
+    // `max_calibration_points` (taxis default 1000), so `try_from` is
+    // infallible in practice; u32→f64 is an exact conversion.
     let count_u32 = u32::try_from(points.len()).unwrap_or(u32::MAX);
     let count = f64::from(count_u32);
     sum / count

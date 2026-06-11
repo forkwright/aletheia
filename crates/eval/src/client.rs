@@ -18,7 +18,7 @@ pub struct EvalClient {
 
 impl EvalClient {
     /// Create a new eval client targeting the given base URL.
-    // SAFETY: eval client connects to localhost only. Token sent over cleartext HTTP is intentional.
+    // WHY: The eval client targets localhost; sending the token over cleartext HTTP is intentional.
     pub fn new(base_url: impl Into<String>, token: Option<String>) -> Self {
         let base_url: String = base_url.into().trim_end_matches('/').to_owned();
         if token.is_some()

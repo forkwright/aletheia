@@ -133,7 +133,6 @@ pub fn classify_with_detail(text: &str) -> ClassificationDetail {
     let mut signals = Vec::new();
     let mut score: u32 = 3; // start neutral
 
-    // High-complexity keywords.
     let high_signals = [
         "architecture",
         "redesign",
@@ -156,7 +155,6 @@ pub fn classify_with_detail(text: &str) -> ClassificationDetail {
         }
     }
 
-    // Medium-complexity keywords.
     let medium_signals = [
         "feature",
         "implement",
@@ -176,7 +174,6 @@ pub fn classify_with_detail(text: &str) -> ClassificationDetail {
         }
     }
 
-    // Low-complexity keywords (reduce score).
     let low_signals = [
         "lint",
         "clippy",
@@ -198,7 +195,7 @@ pub fn classify_with_detail(text: &str) -> ClassificationDetail {
         }
     }
 
-    // Penalise very short prompts (less context = less complexity).
+    // WHY: Very short prompts are penalised — less context implies less complexity.
     if text.len() < 100 {
         score = score.saturating_sub(1);
     }
@@ -219,15 +216,15 @@ pub fn classify_with_detail(text: &str) -> ClassificationDetail {
 }
 
 /// Predict the budget allocation for a prompt based on its characteristics.
-//
-// Analyses complexity classification, blast radius size, and domain/type
-// to estimate turn budgets before dispatch.
-//
-// `domain` is optional; when `None` the domain is inferred from the prompt
-// description and body.
-//
-// `max_turns` is an optional caller-supplied ceiling. When `None` a default
-// absolute ceiling of 500 is used.
+///
+/// Analyses complexity classification, blast radius size, and domain/type
+/// to estimate turn budgets before dispatch.
+///
+/// `domain` is optional; when `None` the domain is inferred from the prompt
+/// description and body.
+///
+/// `max_turns` is an optional caller-supplied ceiling. When `None` a default
+/// absolute ceiling of 500 is used.
 #[must_use]
 pub fn predict_budget(
     prompt: &PromptSpec,
@@ -253,7 +250,6 @@ pub fn predict_budget(
     // WHY: Complexity score from classification provides fine-grained tuning.
     let score_adjustment = complexity_score_adjustment(classification.score);
 
-    // Calculate final allocations.
     let ceiling = max_turns.unwrap_or(DEFAULT_MAX_TURNS);
     let initial_turns = apply_adjustments(
         base_initial,
@@ -297,8 +293,8 @@ pub fn predict_budget(
 }
 
 /// Predict budget for a prompt using historical data when available.
-//
-// Blends historical average with characteristic-based prediction.
+///
+/// Blends historical average with characteristic-based prediction.
 #[must_use]
 #[expect(clippy::float_arithmetic, reason = "weighted blending of predictions")]
 #[expect(
@@ -347,9 +343,7 @@ pub fn predict_budget_with_historical(
     prediction
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+// ── Internal helpers ──
 
 /// Infer domain from explicit value or prompt text.
 fn infer_domain(explicit: Option<&str>, text: &str) -> String {
@@ -507,9 +501,9 @@ fn calculate_confidence(
 }
 
 /// Format a human-readable explanation of the prediction.
-//
-// Example style: "Single-file mechanical change in known domain → 30 turns
-// initial, 15 resume (high confidence)"
+///
+/// Example style: "Single-file mechanical change in known domain → 30 turns
+/// initial, 15 resume (high confidence)"
 fn format_explanation(
     complexity: Complexity,
     blast_count: usize,
@@ -544,10 +538,6 @@ fn format_explanation(
         "{blast_str} {complexity_str} in {domain} domain → {initial_turns} turns initial, {resume_turns} resume ({confidence_str})"
     )
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

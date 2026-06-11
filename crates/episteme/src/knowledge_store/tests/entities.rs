@@ -14,10 +14,9 @@ use crate::test_fixtures::{make_entity, make_fact, make_relationship, make_store
 /// `nous_id` and a `fact_entities` row linking the fact to the entity.
 ///
 /// `load_entity_infos` scopes via the `fact_entities → facts.nous_id` join
-/// (#4165 E), so unit tests that previously relied on `insert_entity`
-/// alone need to add a link or the dedup pipeline cannot see them. Reusing
-/// this helper keeps the dedup integration tests honest about the path
-/// the production code now takes.
+/// (#4165 E), so tests that insert via `insert_entity` alone must add a link
+/// or the dedup pipeline cannot see them. Reusing this helper keeps the dedup
+/// integration tests honest about the production path.
 fn link_entity_to_nous(store: &KnowledgeStore, entity_id: &str, nous_id: &str) {
     let fact_id = format!("fact-{entity_id}-{nous_id}");
     let fact = make_fact(&fact_id, nous_id, "stub fact linking entity to nous");
@@ -283,15 +282,11 @@ fn insert_entity_unicode() {
     assert!(rows.is_empty() || !rows.is_empty());
 }
 
-// ---------------------------------------------------------------------------
-// #4165 Path A — end-to-end pipeline tests
-//
-// `dedup_tests.rs` covers `generate_candidates` + `make_embedding_lookup` in
-// isolation; the tests below exercise the actual `KnowledgeStore` API —
-// schema v13 column, `update_entity_name_embedding`, `find_duplicate_entities`,
-// `run_entity_dedup`, and the `approve_merge` queue. This is the reachability
-// proof that the pipeline survives the journey through Cozo storage round-trips.
-// ---------------------------------------------------------------------------
+// WHY(#4165): `dedup_tests.rs` covers `generate_candidates` +
+// `make_embedding_lookup` in isolation; the tests below exercise the actual
+// `KnowledgeStore` API — schema v13 column, `update_entity_name_embedding`,
+// `find_duplicate_entities`, `run_entity_dedup`, and the `approve_merge`
+// queue — proving the pipeline survives Cozo storage round-trips.
 
 /// Pre-fix shape: insert two near-identical entities without populating
 /// `name_embedding`, then run the production `run_entity_dedup`. The bug

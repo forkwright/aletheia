@@ -231,7 +231,8 @@ async fn request_device_authorization(
     let body_text = response.text().await.context(HttpRequestSnafu)?;
 
     if !status.is_success() {
-        // Try to parse as OAuth error
+        // WHY: prefer the structured OAuth error body when it parses; fall back
+        // to the raw HTTP status + body.
         if let Ok(err) = serde_json::from_str::<TokenErrorResponse>(&body_text) {
             return Err(DeviceCodeError::OAuthError {
                 error: err.error,
@@ -263,14 +264,12 @@ async fn poll_token_endpoint(
     let mut current_interval = Duration::from_secs(interval_secs);
 
     loop {
-        // Check if we've exceeded the expiration time
         if start_time.elapsed() >= expires_after {
             return Err(DeviceCodeError::ExpiredToken {
                 location: snafu::location!(),
             });
         }
 
-        // Wait for the polling interval
         tokio::time::sleep(current_interval).await;
 
         let mut params = HashMap::new();
@@ -296,21 +295,21 @@ async fn poll_token_endpoint(
         let body_text = response.text().await.context(HttpRequestSnafu)?;
 
         if status.is_success() {
-            // Success! Parse the token response
             return serde_json::from_str(&body_text).context(ParseResponseSnafu);
         }
 
-        // Handle error responses
         let error_resp: TokenErrorResponse =
             serde_json::from_str(&body_text).context(ParseResponseSnafu)?;
 
         match error_resp.error.as_str() {
             "authorization_pending" => {
-                // User hasn't completed authorization yet, loop continues naturally
+                // NOTE: per RFC 8628 the user has not completed authorization
+                // yet; keep polling at the current interval.
                 debug!("authorization pending, continuing to poll");
             }
             "slow_down" => {
-                // Server wants us to poll less frequently
+                // NOTE: RFC 8628 mandates adding 5 seconds to the poll interval
+                // on slow_down.
                 warn!("server requested slow down, increasing polling interval");
                 current_interval += Duration::from_secs(5);
             }
@@ -444,11 +443,9 @@ where
 {
     let client = reqwest::Client::new();
 
-    // Step 1: Request device authorization
     info!("requesting device authorization");
     let device_auth = request_device_authorization(&client, provider).await?;
 
-    // Step 2: Surface required operator action to the caller
     action_callback(OAuthRequiredAction::DeviceCode {
         verification_uri: device_auth.verification_uri.clone(),
         user_code: device_auth.user_code.clone(),
@@ -459,7 +456,6 @@ where
         expires_in_secs: device_auth.expires_in,
     });
 
-    // Step 3: Poll for token
     let token_response = poll_token_endpoint(
         &client,
         provider,
@@ -473,7 +469,6 @@ where
     info!("successfully obtained access token via device flow"); // kanon:ignore SECURITY/credential-logging -- logs success message, not the token
     action_callback(OAuthRequiredAction::AuthorizationSucceeded);
 
-    // Step 4: Build credential file
     let expires_at = token_response
         .expires_in
         .map(|secs| super::unix_epoch_ms() + secs * 1000);

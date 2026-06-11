@@ -1,4 +1,4 @@
-//! (Split from `types_tests.rs` — see parent mod.)
+//! Reversibility classification tests for tool types.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 

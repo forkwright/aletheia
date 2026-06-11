@@ -406,7 +406,7 @@ pub(crate) fn write_config_checked(
     let tmp = config_dir.join("aletheia.toml.tmp");
 
     // WHY: mode 0600 ensures config file (which may contain secrets) is
-    // readable only by the owning user. Closes #1710.
+    // readable only by the owning user.
     {
         let mut f = std::fs::OpenOptions::new()
             .write(true)

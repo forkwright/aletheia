@@ -4,10 +4,7 @@
     reason = "tests index into fixed-size vectors where panic would itself be a failure signal"
 )]
 
-// Split: Dream engine + types re-export + Send/Sync bounds.
-
-// MemoryFlush
-// ---------------------------------------------------------------------------
+// ── MemoryFlush ──
 
 mod memory_flush {
     use melete::flush::{FlushItem, FlushSource, MemoryFlush};
@@ -59,9 +56,7 @@ mod memory_flush {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Contradiction / ContradictionLog
-// ---------------------------------------------------------------------------
+// ── Contradiction / ContradictionLog ──
 
 mod contradiction_log {
     use melete::contradiction::{Contradiction, ContradictionLog, ResolutionStrategy};
@@ -104,9 +99,7 @@ mod contradiction_log {
     }
 }
 
-// ---------------------------------------------------------------------------
-// DreamConfig / DreamEngine / traits
-// ---------------------------------------------------------------------------
+// ── DreamConfig / DreamEngine / traits ──
 
 mod dream {
     use std::path::PathBuf;
@@ -322,9 +315,7 @@ mod dream {
     }
 }
 
-// ---------------------------------------------------------------------------
-// types re-export
-// ---------------------------------------------------------------------------
+// ── types re-export ──
 
 mod types_reexport {
     use melete::types::{Content, ContentBlock, Message, Role};
@@ -349,9 +340,7 @@ mod types_reexport {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Send + Sync promises on the engine types
-// ---------------------------------------------------------------------------
+// ── Send + Sync promises on the engine types ──
 
 mod send_sync_bounds {
     use melete::contradiction::{Contradiction, ContradictionLog};

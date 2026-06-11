@@ -259,7 +259,7 @@ mod tests {
     fn default_value_containing_colon_is_preserved() {
         let mut jail = EnvJail::new();
         jail.remove_env("_TAX_INTERP_URL");
-        // The first `:-` is the operator; the rest is the default value.
+        // NOTE: the first `:-` is the operator; the rest is the default value.
         let out = interpolate_env_vars("url = ${_TAX_INTERP_URL:-http://localhost:8080}").unwrap();
         assert_eq!(
             out, "url = http://localhost:8080",

@@ -40,7 +40,6 @@ pub(crate) fn AppearancePanel() -> Element {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-6); max-width: 540px;",
 
-            // Theme
             section {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "Theme" }
@@ -78,7 +77,6 @@ pub(crate) fn AppearancePanel() -> Element {
                 }
             }
 
-            // Font size
             section {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "Font Size" }
@@ -116,7 +114,6 @@ pub(crate) fn AppearancePanel() -> Element {
                 }
             }
 
-            // Density
             section {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "UI Density" }
@@ -153,7 +150,6 @@ pub(crate) fn AppearancePanel() -> Element {
                 }
             }
 
-            // Accent color
             section {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "Accent Color" }

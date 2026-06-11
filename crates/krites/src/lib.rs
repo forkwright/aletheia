@@ -6,7 +6,7 @@
 //!
 //! This crate does not evaluate agent behavior. Behavioral and cognitive
 //! evaluation lives in `dokimion` (`crates/eval`).
-// SAFETY: warn-level satisfies the ARCHITECTURE/no-deny-missing-docs lint.
+// WHY: warn-level satisfies the ARCHITECTURE/no-deny-missing-docs lint.
 // deny-level is impractical for krites internal modules.
 #![warn(missing_docs)]
 
@@ -214,7 +214,7 @@ impl Db {
         self.run(script, params, ScriptMutability::Immutable)
     }
 
-    /// Backup the running database into an `SQLite` file.
+    /// Backup the running database: always returns `Unsupported` (storage-sqlite removed).
     pub fn backup_db(&self, out_file: impl AsRef<Path>) -> crate::Result<()> {
         let path = out_file.as_ref();
         let result = match &self.inner {
@@ -225,7 +225,7 @@ impl Db {
         result.map_err(convert_internal)
     }
 
-    /// Restore from an `SQLite` backup.
+    /// Restore from a backup: always returns `Unsupported` (storage-sqlite removed).
     pub fn restore_backup(&self, in_file: impl AsRef<Path>) -> crate::Result<()> {
         let path = in_file.as_ref();
         let result = match &self.inner {

@@ -176,7 +176,7 @@ fn AnomalyCard(anomaly: Anomaly) -> Element {
     }
 }
 
-// -- Radar/spider chart -------------------------------------------------------
+// ── Radar/spider chart ──
 
 #[component]
 fn RadarChart(scorecards: Vec<AgentScorecard>) -> Element {

@@ -1,4 +1,4 @@
-//! (Split from `types_tests.rs` — see parent mod.)
+//! `ToolDiagnostics` and `ToolOutcome` tests.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
@@ -136,15 +136,13 @@ fn tool_result_serde_backward_compat_missing_diagnostics() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// ToolOutcome / partial success (#3633)
-// ---------------------------------------------------------------------------
+// ── ToolOutcome / partial success ──
 
 #[test]
 fn tool_result_partial_success_constructor_carries_reasons() {
-    // Scenario: 3-way sub-agent dispatch where 2 succeeded and 1 failed.
-    // Old is_error bool would collapse this into a binary; new outcome
-    // surfaces it as PartialSuccess with one reason per failed sub-op.
+    // WHY: a 3-way sub-agent dispatch where 2 succeed and 1 fails must surface
+    // as PartialSuccess with one reason per failed sub-op — a bare is_error
+    // bool would collapse it into a binary.
     let r = ToolResult::partial_success(
         r#"[{"ok":1},{"ok":2},{"err":"boom"}]"#,
         vec!["sub-agent #3: boom".to_owned()],
@@ -160,7 +158,7 @@ fn tool_result_partial_success_constructor_carries_reasons() {
         "reasons should propagate through the outcome, not be collapsed"
     );
 
-    // Old consumers still reading is_error get the back-compat view.
+    // NOTE: consumers still reading is_error get the back-compat view.
     match &r.outcome {
         ToolOutcome::PartialSuccess(info) => {
             assert_eq!(info.reasons.len(), 1, "one reason per failed sub-operation");

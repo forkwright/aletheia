@@ -111,7 +111,6 @@ pub(crate) fn Timeline(
                 div {
                     style: "position: relative; min-width: {total_width}px; height: {ROW_HEIGHT}px; padding: 0 var(--space-5);",
 
-                    // Time axis labels
                     for (i, x, _w, block) in &zoomed {
                         div {
                             key: "label-{i}",
@@ -120,7 +119,6 @@ pub(crate) fn Timeline(
                         }
                     }
 
-                    // Phase blocks
                     for (i, x, w, block) in &zoomed {
                         {
                             let border = if block.active {
@@ -154,7 +152,6 @@ pub(crate) fn Timeline(
                         }
                     }
 
-                    // Dependency arrows (SVG overlay)
                     svg {
                         style: "position: absolute; left: 0; top: 0; pointer-events: none;",
                         width: "{total_width}",

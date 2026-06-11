@@ -66,9 +66,6 @@ pub struct DriftEvent {
 }
 
 /// Configuration for drift detection thresholds.
-///
-/// All defaults match the constants they replace so behaviour is identical
-/// when the detector is constructed with `DriftConfig::default()`.
 #[derive(Debug, Clone)]
 pub struct DriftConfig {
     /// Number of turns in the rolling window. Default: 20.
@@ -260,10 +257,10 @@ impl DriftDetector {
                 return None;
             }
         } else if higher_is_worse {
-            // Rising metric (errors, corrections): recent > baseline is bad
+            // NOTE: rising metric (errors, corrections): recent > baseline is bad
             (recent - baseline) / std_dev
         } else {
-            // Falling metric (response length): baseline > recent is bad
+            // NOTE: falling metric (response length): baseline > recent is bad
             (baseline - recent) / std_dev
         };
 

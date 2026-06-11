@@ -209,8 +209,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// or when a query is not successful. After a transaction ends, sending / receiving from
     /// the channels will fail.
     ///
-    /// Write transactions _may_ block other reads, but we guarantee that this does not happen
-    /// for the RocksDB backend.
+    /// Write transactions _may_ block other reads.
     pub fn run_multi_transaction(
         &'s self,
         is_write: bool,

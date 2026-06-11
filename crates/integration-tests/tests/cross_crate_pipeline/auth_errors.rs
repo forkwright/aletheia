@@ -5,10 +5,6 @@
 )]
 use super::*;
 
-// ===========================================================================
-// 5. Auth flow
-// ===========================================================================
-
 #[tokio::test]
 async fn auth_no_token_returns_401() {
     let harness = TestHarness::build().await;
@@ -91,10 +87,6 @@ async fn auth_valid_token_returns_200() {
         .expect("authed request");
     assert_eq!(resp.status(), StatusCode::OK);
 }
-
-// ===========================================================================
-// 6. Error propagation
-// ===========================================================================
 
 #[tokio::test]
 async fn error_invalid_session_returns_404() {

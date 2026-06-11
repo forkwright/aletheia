@@ -16,8 +16,6 @@ use symbolon::types::{Claims, Role, TokenKind};
 mod common;
 use common::{TestEnv, bearer, issue_test_token, permissive_security};
 
-// Split: JWT round-trip + SecurityConfig defaults + CSRF routing.
-
 // ── JWT round-trip via the public symbolon API wired into AppState ─────────
 
 #[tokio::test]

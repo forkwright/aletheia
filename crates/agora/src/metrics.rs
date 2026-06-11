@@ -12,9 +12,7 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
+// ── Label sets ──
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct ChannelMessageLabels {
@@ -22,18 +20,14 @@ struct ChannelMessageLabels {
     status: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
+// ── Metric families ──
 
 static CHANNEL_MESSAGES_TOTAL: LazyLock<Family<ChannelMessageLabels, Counter>> =
     LazyLock::new(Family::default);
 
 static ACTIVE_SUBSCRIPTIONS: LazyLock<Gauge> = LazyLock::new(Gauge::default);
 
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
+// ── Registration ──
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -49,9 +43,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
+// ── Recording ──
 
 /// Record a channel message send.
 pub(crate) fn record_channel_message(channel_id: &str, success: bool) {

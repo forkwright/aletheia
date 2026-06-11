@@ -131,7 +131,7 @@ impl AsyncDb {
             .map_err(|e| map_join_err(&e))?
     }
 
-    /// Backup the running database into an `SQLite` file.
+    /// Backup the running database: always returns `Unsupported` (storage-sqlite removed).
     #[instrument(skip(self, out_file))]
     pub async fn backup_db(
         &self,
@@ -144,7 +144,7 @@ impl AsyncDb {
             .map_err(|e| map_join_err(&e))?
     }
 
-    /// Restore from an `SQLite` backup.
+    /// Restore from a backup: always returns `Unsupported` (storage-sqlite removed).
     #[instrument(skip(self, in_file))]
     pub async fn restore_backup(
         &self,

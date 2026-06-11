@@ -415,9 +415,7 @@ pub(crate) fn parse_vmrss(contents: &str) -> std::io::Result<u64> {
     ))
 }
 
-// ---------------------------------------------------------------------------
-// Memory consistency checking (A-MemGuard consensus-based anomaly detection)
-// ---------------------------------------------------------------------------
+// ── Memory consistency checking (A-MemGuard consensus-based anomaly detection) ──
 
 /// Number of recent facts to sample per consistency check.
 ///

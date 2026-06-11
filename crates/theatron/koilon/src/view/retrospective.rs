@@ -1,4 +1,4 @@
-// Retrospective view: completed project phases with outcomes and key metrics.
+//! Retrospective view: completed project phases with outcomes and key metrics.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -52,7 +52,6 @@ fn render_header(frame: &mut Frame, area: Rect, theme: &Theme) {
 fn render_completed_phases(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
-    // Session summary
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled(
@@ -129,7 +128,6 @@ fn render_completed_phases(app: &App, frame: &mut Frame, area: Rect, theme: &The
 
     lines.push(Line::raw(""));
 
-    // Completed agents/sessions
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled(
@@ -203,7 +201,6 @@ fn render_completed_phases(app: &App, frame: &mut Frame, area: Rect, theme: &The
         }
     }
 
-    // Decision history
     if !app.dashboard.submitted_decisions.is_empty() {
         lines.push(Line::from(vec![
             Span::raw("  "),

@@ -41,7 +41,7 @@ pub type RerankFuture<'a> =
 
 /// Trait for reranking recall candidates.
 ///
-/// Implementations receive the top-K candidates from the baseline 6-factor
+/// Implementations receive the top-K candidates from the baseline 11-factor
 /// ranking and may return them in a refined order.
 pub trait Reranker: Send + Sync {
     /// Reorder `candidates` for the given `query`.

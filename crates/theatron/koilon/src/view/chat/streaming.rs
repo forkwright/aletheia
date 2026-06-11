@@ -17,10 +17,8 @@ pub(super) fn render_streaming(
 ) {
     let phase = app.connection.stream_phase;
 
-    // Phase-specific status indicator
     render_phase_indicator(app, lines, theme, name, phase);
 
-    // Thinking block (if visible)
     if app.layout.thinking_expanded && !app.connection.streaming_thinking.is_empty() {
         lines.push(Line::from(vec![
             Span::raw(" "),
@@ -45,7 +43,6 @@ pub(super) fn render_streaming(
         ]));
     }
 
-    // Streaming text: render complete lines via markdown, partial line as plain text
     if !app.connection.streaming_text.is_empty() {
         // Use cached markdown if text AND width match (streaming content, no OSC 8 links).
         let render_width = inner_width.saturating_sub(2);
@@ -69,7 +66,6 @@ pub(super) fn render_streaming(
             lines.push(Line::from(padded_spans));
         }
 
-        // Render the partial line buffer (not yet flushed to streaming_text)
         if !app.connection.streaming_line_buffer.is_empty() {
             // WHY: markdown strips trailing blank lines, so a \n\n paragraph break at
             // the end of streaming_text is invisible in the rendered output.  Re-insert
@@ -87,7 +83,6 @@ pub(super) fn render_streaming(
             ]));
         }
 
-        // Braille cursor
         let ch = theme::spinner_frame(app.viewport.tick_count);
         lines.push(Line::from(vec![
             Span::raw(" "),
@@ -99,7 +94,6 @@ pub(super) fn render_streaming(
             ),
         ]));
     } else if !app.connection.streaming_line_buffer.is_empty() {
-        // Only partial line buffer (no complete lines yet)
         lines.push(Line::from(vec![
             Span::raw(" "),
             Span::styled(
@@ -118,7 +112,6 @@ pub(super) fn render_streaming(
             ),
         ]));
     } else if app.connection.active_turn_id.is_some() {
-        // No text yet: show tool call phase lines or thinking indicator
         let tool_calls = &app.layout.ops.tool_calls;
         if tool_calls.is_empty() {
             let ch = theme::spinner_frame(app.viewport.tick_count);
@@ -134,7 +127,6 @@ pub(super) fn render_streaming(
                 theme.style_muted(),
             )]));
         } else {
-            // Show last 5 tool calls as collapsible card lines
             let start = tool_calls.len().saturating_sub(5);
             // kanon:ignore RUST/indexing-slicing — start computed with saturating_sub(5), always ≤ tool_calls.len()
             for call in &tool_calls[start..] {
@@ -166,7 +158,6 @@ pub(super) fn render_streaming(
                 ) {
                     phase_text.push_str(&format!(" · {}", format_duration_adaptive(ms)));
                 }
-                // Pulsing border for running tools
                 let border_style =
                     if matches!(call.status, crate::state::ops::OpsToolStatus::Running) {
                         let pulse = (app.viewport.tick_count / 8).is_multiple_of(2);
@@ -209,7 +200,6 @@ pub(super) fn render_queued_messages(app: &App, lines: &mut Vec<Line<'static>>, 
             Span::styled(preview, theme.style_dim()),
         ]));
     }
-    // Hint for canceling
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled("Esc to cancel last queued", theme.style_muted()),
@@ -228,7 +218,6 @@ fn render_phase_indicator(
     let has_text = !app.connection.streaming_text.is_empty()
         || !app.connection.streaming_line_buffer.is_empty();
 
-    // Show agent name header for streaming response
     if has_text || app.connection.active_turn_id.is_some() {
         let phase_suffix = match phase {
             StreamPhase::Requesting => " · connecting",

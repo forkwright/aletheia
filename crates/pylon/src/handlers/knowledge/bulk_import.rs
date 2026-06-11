@@ -10,8 +10,6 @@ use crate::error::{ApiError, BadRequestSnafu};
 use crate::extract::{Claims, require_role};
 use crate::state::KnowledgeState;
 
-// MAX_IMPORT_BATCH_SIZE is now read from `config.api_limits.max_import_batch_size` at runtime.
-
 #[path = "bulk_import_dto.rs"]
 mod bulk_import_dto;
 // WHY: ImportFactError is re-exported for API consumers; rustc flags it unused

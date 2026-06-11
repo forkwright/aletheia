@@ -345,12 +345,11 @@ async fn bootstrap_assembles_from_oikos() {
 }
 
 #[cfg(feature = "knowledge-store")]
-// WHY: multi_thread runtime is required. Once recall actually executes (see #4156),
-// the recall path drives query rewrite through `ProviderRecallBridge::complete_blocking`,
-// which uses `tokio::task::block_in_place` — that panics on the current-thread runtime.
-// The production server runs on the multi-threaded runtime (`#[tokio::main]`), so the
-// test must match it. Before #4156 this test passed only because recall silently failed
-// on the `?`-terminated query and never reached the blocking bridge.
+// WHY(#4156): multi_thread runtime is required — the recall path drives query
+// rewrite through `ProviderRecallBridge::complete_blocking`, which uses
+// `tokio::task::block_in_place` and panics on the current-thread runtime. The
+// production server runs on the multi-threaded runtime (`#[tokio::main]`), so
+// the test must match it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn http_harness_wires_real_knowledge_store_and_embedding_provider() {
     let (harness, captured) = build_capturing_with_knowledge_store().await;

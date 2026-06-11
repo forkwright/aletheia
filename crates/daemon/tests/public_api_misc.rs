@@ -42,11 +42,6 @@ use oikonomos::triggers::TriggerRouter;
 mod common;
 use common::{make_runner, write_fixture};
 
-// Split: DaemonBridge/NoopBridge + WorkspaceGuard + Coordinator / TriggerRouter / DaemonError.
-
-// Section 6: DaemonBridge + NoopBridge
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn noop_bridge_returns_unsuccessful_with_diagnostic_message() {
     let bridge = NoopBridge;
@@ -77,10 +72,6 @@ async fn noop_bridge_is_object_safe_behind_arc_dyn() {
         .expect("arc-dyn dispatch succeeds");
     assert!(!result.success);
 }
-
-// ---------------------------------------------------------------------------
-// Section 9: WorkspaceGuard single-instance locking
-// ---------------------------------------------------------------------------
 
 #[test]
 fn workspace_guard_acquires_and_exposes_lock_path() {
@@ -115,23 +106,21 @@ fn workspace_guard_acquires_releases_and_reacquires_cleanly() {
     drop(second);
 }
 
-// ---------------------------------------------------------------------------
-// Section 10: Misc helpers — Coordinator, TriggerRouter, DaemonError traits
-// ---------------------------------------------------------------------------
+// ── Misc helpers: Coordinator, TriggerRouter, DaemonError ──
 
 #[test]
 fn coordinator_preserves_max_children_limit() {
     let coord = Coordinator::new(4);
     assert_eq!(coord.max_children(), 4);
-    // Coordinator is a reserved boundary today: it preserves configuration but
-    // does not spawn or track children yet. Verify it survives zero capacity.
+    // NOTE: Coordinator is a reserved boundary today: it preserves configuration
+    // but does not spawn or track children yet. Verify it survives zero capacity.
     let zero = Coordinator::new(0);
     assert_eq!(zero.max_children(), 0);
 }
 
 #[test]
 fn trigger_router_default_and_new_produce_equivalent_routers() {
-    // TriggerRouter is a reserved boundary today with no observable event
+    // NOTE: TriggerRouter is a reserved boundary today with no observable event
     // dispatch state. Verify both constructors succeed and the type remains
     // Debug-printable while it is unwired.
     let via_new = TriggerRouter::new();
@@ -154,7 +143,7 @@ fn daemon_error_satisfies_send_sync_and_std_error() {
 
 #[test]
 fn probe_category_serde_uses_snake_case() {
-    // Serde rename_all = "snake_case" is part of the observability contract:
+    // WHY: serde rename_all = "snake_case" is part of the observability contract:
     // downstream consumers parse these strings. Any rename here is a breaking
     // change and must be caught by this test.
     assert_eq!(
@@ -170,5 +159,3 @@ fn probe_category_serde_uses_snake_case() {
         "\"recall\""
     );
 }
-
-// ---------------------------------------------------------------------------

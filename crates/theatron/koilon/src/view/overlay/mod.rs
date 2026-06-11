@@ -124,7 +124,6 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Calculate max available width for descriptions with margins
     let max_width = usize::from(area.width.saturating_sub(HELP_OVERLAY_MARGIN).max(1));
     let desc_max_width = max_width.saturating_sub(HELP_KEY_COLUMN_WIDTH + 2); // +2 for padding
 
@@ -138,7 +137,6 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         for kb in bindings {
             let key_span =
                 Span::styled(format!("  {:<HELP_KEY_COLUMN_WIDTH$}", kb.keys), key_style);
-            // Truncate description if too long, with ellipsis
             let desc = if kb.description.len() > desc_max_width && desc_max_width > 3 {
                 // kanon:ignore RUST/indexing-slicing — slice end is clamped and guarded by len() > desc_max_width > 3
                 // kanon:ignore RUST/string-slice — slice end is clamped and guarded by len() > desc_max_width > 3

@@ -272,8 +272,7 @@ impl Destination {
                 .push(n);
         }
 
-        // Per-session migration with one WriteTransaction per session
-        // (matches the deliverable spec — atomic per session).
+        // WHY: one WriteTransaction per session — migration is atomic per session.
         for (session, legacy) in sessions {
             self.write_session_atomic(
                 session,

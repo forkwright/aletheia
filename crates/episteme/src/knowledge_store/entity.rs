@@ -1117,10 +1117,9 @@ impl KnowledgeStore {
         aliases.push(new_alias.to_owned());
         let aliases_str = aliases.join(",");
 
-        // WHY (#4165 Path A): the entities upsert now also requires
+        // WHY (#4165 Path A): the entities upsert requires
         // `$name_embedding` — preserve the existing column value so the
-        // alias update does not silently clear a previously-populated
-        // embedding.
+        // alias update does not silently clear a populated embedding.
         let existing_embedding = self.get_entity_name_embedding(entity_id)?;
         let emb_value = existing_embedding.map_or(DataValue::Null, |v| {
             DataValue::Vec(Vector::F32(Array1::from(v)))

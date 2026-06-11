@@ -1,8 +1,5 @@
 //! Statistical helpers for eval benchmark reporting.
 //!
-//! Rust translation of `shared/stats.py` from the quantified-self pipeline
-//! (absorbed from `~/dev/gnomon/research/quantified-self/shared/stats.py`).
-//!
 //! This module is the single source of truth for statistical discipline in
 //! the eval crate. Every benchmark comparison that publishes scores **must**
 //! report:

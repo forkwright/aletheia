@@ -118,7 +118,7 @@ fn test_truncate_output_multibyte_at_boundary_produces_valid_utf8() {
     // WHY: If MAX_OUTPUT_BYTES falls in the middle of a multi-byte character,
     // naive truncation produces invalid UTF-8. This test places a 4-byte emoji
     // exactly at the truncation boundary to verify char-boundary-aware
-    // truncation. Closes #3335.
+    // truncation.
     let emoji = "\u{1F600}"; // 4 bytes
     let padding_len = MAX_OUTPUT_BYTES - 2; // 2 bytes short of limit
     let mut input = "x".repeat(padding_len);

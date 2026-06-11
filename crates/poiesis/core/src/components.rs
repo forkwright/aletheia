@@ -135,8 +135,8 @@ impl ComponentRegistry {
     /// Returns the first [`RegistryError`] encountered during discovery.
     pub fn discover(&mut self, root: &Path) -> Result<usize, RegistryError> {
         if !root.exists() {
-            // An absent root is a no-op, not an error; consumers may ship
-            // with no packs and add them later via [`Self::insert`].
+            // WHY: an absent root is a no-op, not an error; consumers may
+            // ship with no packs and add them later via [`Self::insert`].
             return Ok(0);
         }
         let entries = fs::read_dir(root).map_err(|e| RegistryError::Io {
@@ -251,8 +251,8 @@ fn load_pack(id: ComponentId, dir: &Path) -> Result<ComponentDef, RegistryError>
         path: recipe_path.display().to_string(),
         detail: e.to_string(),
     })?;
-    // Recipe parse failure should be reported; we only need to detect parse
-    // errors here — the structured recipe types belong to [[B-004]].
+    // WHY: only parse-validity is checked at discovery; the structured
+    // recipe types belong to the OOXML render side.
     let _recipe: toml::Value = toml::from_str(&recipe_text).map_err(|e| {
         MalformedRecipeSnafu {
             component: id.as_str(),
@@ -351,7 +351,7 @@ fn validate_against_schema(
     errors: &mut Vec<SchemaIssue>,
 ) {
     let Value::Object(schema_obj) = schema else {
-        // A non-object schema is treated as "any" — useful for `true` /
+        // WHY: a non-object schema is treated as "any" — useful for `true` /
         // empty-object schemas during early authoring.
         return;
     };

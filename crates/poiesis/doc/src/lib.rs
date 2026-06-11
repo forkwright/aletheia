@@ -329,7 +329,6 @@ mod tests {
 
     #[test]
     fn inspect_docx_extracts_text() {
-        // Build a known-good DOCX via render and re-inspect it.
         let data = serde_json::json!({
             "paragraphs": [
                 { "text": "Alpha" },

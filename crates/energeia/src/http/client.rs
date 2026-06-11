@@ -18,10 +18,6 @@ use crate::error::{self, Result};
 use crate::http::session::ProcessSessionHandle;
 use crate::http::stream::EventStream;
 
-// ---------------------------------------------------------------------------
-// HttpEngine
-// ---------------------------------------------------------------------------
-
 /// Subprocess-based dispatch engine targeting the Claude CLI.
 ///
 /// Spawns `claude --output-format stream-json` subprocesses and streams NDJSON
@@ -253,10 +249,6 @@ impl DispatchEngine for HttpEngine {
         })
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(

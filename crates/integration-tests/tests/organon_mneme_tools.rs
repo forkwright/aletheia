@@ -44,9 +44,7 @@ use organon::types::{
 const KNOWLEDGE_DIM: usize = 384;
 const RECORDED_AT: &str = "2026-03-01T00:00:00Z";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ── Helpers ──
 
 fn test_store() -> Arc<Mutex<SessionStore>> {
     Arc::new(Mutex::new(
@@ -103,17 +101,12 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Note tool → real SessionStore
-// ---------------------------------------------------------------------------
-
 #[tokio::test(flavor = "multi_thread")]
 async fn note_add_and_list_uses_real_store() {
     let store = test_store();
     let reg = registry();
     let ctx = ctx_with_notes_bb(&store);
 
-    // Add a note
     let add = tool_input(
         "note",
         serde_json::json!({"action": "add", "content": "remember the vow", "category": "task"}),
@@ -126,7 +119,6 @@ async fn note_add_and_list_uses_real_store() {
     );
     assert!(r.content.text_summary().contains("#1"));
 
-    // List notes: should show the note
     let list = tool_input("note", serde_json::json!({"action": "list"}));
     let r = reg.execute(&list, &ctx).await.expect("execute");
     assert!(!r.is_error);
@@ -139,7 +131,6 @@ async fn note_delete_removes_from_real_store() {
     let reg = registry();
     let ctx = ctx_with_notes_bb(&store);
 
-    // Add then delete
     let add = tool_input(
         "note",
         serde_json::json!({"action": "add", "content": "to be deleted"}),
@@ -151,15 +142,10 @@ async fn note_delete_removes_from_real_store() {
     assert!(!r.is_error, "delete should succeed");
     assert!(r.content.text_summary().contains("deleted"));
 
-    // Verify gone
     let list = tool_input("note", serde_json::json!({"action": "list"}));
     let r = reg.execute(&list, &ctx).await.expect("execute");
     assert!(r.content.text_summary().contains("No session notes"));
 }
-
-// ---------------------------------------------------------------------------
-// Blackboard tool → real SessionStore
-// ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
 async fn blackboard_write_and_read_uses_real_store() {
@@ -194,7 +180,6 @@ async fn blackboard_delete_uses_real_store() {
     let reg = registry();
     let ctx = ctx_with_notes_bb(&store);
 
-    // Write then delete
     let write = tool_input(
         "blackboard",
         serde_json::json!({"action": "write", "key": "temp", "value": "gone", "ttl_seconds": 60}),
@@ -209,7 +194,6 @@ async fn blackboard_delete_uses_real_store() {
     assert!(!r.is_error);
     assert!(r.content.text_summary().contains("deleted"));
 
-    // Should be gone
     let read = tool_input(
         "blackboard",
         serde_json::json!({"action": "read", "key": "temp"}),
@@ -218,9 +202,7 @@ async fn blackboard_delete_uses_real_store() {
     assert!(r.content.text_summary().contains("No entry"));
 }
 
-// ---------------------------------------------------------------------------
-// Real KnowledgeSearchService backed by mneme KnowledgeStore
-// ---------------------------------------------------------------------------
+// ── Real KnowledgeSearchService backed by mneme KnowledgeStore ──
 
 struct RealKnowledgeFixture {
     service: Arc<RealKnowledgeService>,
@@ -638,9 +620,7 @@ fn ctx_with_knowledge(svc: Arc<dyn KnowledgeSearchService>) -> ToolContext {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Memory search tool executor wiring
-// ---------------------------------------------------------------------------
+// ── Memory search tool executor wiring ──
 
 #[tokio::test]
 async fn memory_search_tool_returns_results() {

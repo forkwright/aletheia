@@ -16,10 +16,6 @@ use crate::types::{Budget, SessionOutcome, SessionStatus};
 use super::events::{self, StreamOutcome, extract_pr_url};
 use super::options::{ChildSessionProgress, ChildSessionProgressStatus, EngineConfig};
 
-// ---------------------------------------------------------------------------
-// SessionManager
-// ---------------------------------------------------------------------------
-
 /// Per-prompt session executor with budget enforcement and resume escalation.
 ///
 /// Owns a [`DispatchEngine`], shared [`Budget`], and [`ResumePolicy`] to
@@ -85,8 +81,6 @@ impl SessionManager {
         let mut pr_url: Option<String> = None;
         let mut last_output_excerpt: Option<String>;
 
-        // --- Initial session ---
-
         let spec = if let Some(ref components) = prompt.prompt_components {
             SessionSpec {
                 prompt: components.dynamic_suffix.clone(),
@@ -107,7 +101,6 @@ impl SessionManager {
 
         let initial_opts = options.to_agent_options();
 
-        // NOTE: Capture model for cost attribution
         let model = initial_opts.model.clone();
 
         let mut handle = self
@@ -157,20 +150,17 @@ impl SessionManager {
             return Ok(outcome);
         }
 
-        // NOTE: Wait for the session to produce its final result.
         let session_result = handle.wait().await;
 
         let (run_cost, run_turns, run_success, result_text, run_model, cache_hits, cache_misses) =
             extract_run_metrics(session_result, &stream_result);
 
-        // Use model from result if available, otherwise from initial options
         let effective_model = run_model.or_else(|| model.clone());
 
         total_cost += run_cost;
         total_turns += run_turns;
         self.budget.record(run_cost, run_turns);
 
-        // NOTE: Extract PR URL from all text fragments and result text.
         let all_text = collect_text(&stream_result, result_text.as_deref());
         last_output_excerpt = output_excerpt(&all_text);
         let structured_output = parse_structured_output(
@@ -182,20 +172,15 @@ impl SessionManager {
             pr_url = Some(url.to_owned());
         }
 
-        // --- Check stream outcome for early exit ---
-
         if let StreamOutcome::Error { message, .. } = &stream_result
             && !run_success
         {
-            // NOTE: Error during initial run with failed result — try resume.
             tracing::warn!(
                 prompt_number = prompt.number,
                 error = %message,
                 "initial session error, checking resume policy"
             );
         }
-
-        // --- Check if initial run succeeded ---
 
         if run_success {
             let outcome = build_outcome(
@@ -217,8 +202,6 @@ impl SessionManager {
             emit_child_terminal(options, &outcome, last_output_excerpt);
             return Ok(outcome);
         }
-
-        // --- Budget check before entering resume loop ---
 
         if let BudgetStatus::Exceeded(reason) = self.budget.check() {
             tracing::warn!(
@@ -254,11 +237,8 @@ impl SessionManager {
             );
         }
 
-        // --- Resume loop ---
-
         loop {
             let Some(stage) = self.resume_policy.next_stage(total_turns) else {
-                // NOTE: All resume stages exhausted — mark as Stuck.
                 tracing::warn!(
                     prompt_number = prompt.number,
                     total_turns,
@@ -295,7 +275,6 @@ impl SessionManager {
                 "resuming session with escalation"
             );
 
-            // NOTE: Resume the existing session with the stage's escalation message.
             let sid = session_id.as_deref().unwrap_or("unknown");
             let resume_opts = options.options_with_turns(stage.max_turns);
 
@@ -379,14 +358,12 @@ impl SessionManager {
                 cache_misses,
             ) = extract_run_metrics(session_result, &stream_result);
 
-            // Use model from result if available, otherwise preserve existing
             let effective_model = run_model.or_else(|| effective_model.clone());
 
             total_cost += run_cost;
             total_turns += run_turns;
             self.budget.record(run_cost, run_turns);
 
-            // NOTE: Check for PR URL in resume output.
             let all_text = collect_text(&stream_result, result_text.as_deref());
             last_output_excerpt = output_excerpt(&all_text);
             let structured_output = parse_structured_output(
@@ -397,10 +374,6 @@ impl SessionManager {
             if let Some(url) = extract_pr_url(&all_text) {
                 pr_url = Some(url.to_owned());
             }
-
-            // --- Timeout in resume ---
-
-            // --- Success check ---
 
             if run_success {
                 let outcome = build_outcome(
@@ -422,8 +395,6 @@ impl SessionManager {
                 emit_child_terminal(options, &outcome, last_output_excerpt);
                 return Ok(outcome);
             }
-
-            // --- Budget check before next resume ---
 
             match self.budget.check() {
                 BudgetStatus::Exceeded(reason) => {
@@ -461,15 +432,11 @@ impl SessionManager {
                 }
                 BudgetStatus::Ok => {}
             }
-
-            // NOTE: Loop continues to the next resume stage.
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ── Helpers ──
 
 /// Extract run metrics from a session result, falling back to the stream
 /// accumulator if the result is unavailable.
@@ -689,10 +656,6 @@ fn build_outcome(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
@@ -804,7 +767,7 @@ mod tests {
         EngineConfig::new(AgentOptions::new())
     }
 
-    // ---- Success on first run ----
+    // ── Success on first run ──
 
     #[tokio::test]
     async fn execute_success_first_run() {
@@ -891,8 +854,6 @@ mod tests {
         );
     }
 
-    // ---- PR URL extraction ----
-
     #[tokio::test]
     async fn execute_extracts_pr_url() {
         let engine = Arc::new(MockEngine::new(vec![success_with_pr("sess-pr", 0.30, 5)]));
@@ -911,8 +872,6 @@ mod tests {
             Some("https://github.com/acme/repo/pull/42")
         );
     }
-
-    // ---- Resume on failure then success ----
 
     #[tokio::test]
     async fn execute_resumes_on_failure_then_succeeds() {
@@ -937,8 +896,6 @@ mod tests {
         assert_eq!(outcome.num_turns, 13); // 5 + 8
     }
 
-    // ---- Resume exhaustion -> Stuck ----
-
     #[tokio::test]
     async fn execute_stuck_when_resume_exhausted() {
         let engine = Arc::new(MockEngine::new(vec![
@@ -962,8 +919,6 @@ mod tests {
         assert!(outcome.error.as_deref().unwrap().contains("exhausted"));
     }
 
-    // ---- Budget exceeded ----
-
     #[tokio::test]
     async fn execute_budget_exceeded() {
         // Budget of $0.50, session costs $0.60.
@@ -979,8 +934,6 @@ mod tests {
 
         assert_eq!(outcome.status, SessionStatus::BudgetExceeded);
     }
-
-    // ---- Budget warning then continue ----
 
     #[tokio::test]
     async fn execute_budget_warning_continues() {
@@ -1002,8 +955,6 @@ mod tests {
         assert_eq!(outcome.resume_count, 1);
     }
 
-    // ---- Spawn failure ----
-
     #[tokio::test]
     async fn execute_spawn_failure() {
         let engine = Arc::new(MockEngine::new(vec![MockOutcome::SpawnFailure {
@@ -1018,8 +969,6 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.to_string().contains("auth expired"));
     }
-
-    // ---- Error event during initial session ----
 
     #[tokio::test]
     async fn execute_error_event_triggers_resume() {
@@ -1053,8 +1002,6 @@ mod tests {
         assert_eq!(outcome.status, SessionStatus::Success);
         assert_eq!(outcome.resume_count, 1);
     }
-
-    // ---- Budget exceeded during resume loop ----
 
     #[tokio::test]
     async fn execute_budget_exceeded_during_resume() {

@@ -35,7 +35,6 @@ pub struct MessagingConfig {
     /// Mirrors `organon::builtins::agent::DEFAULT_TIMEOUT_SECS`.
     pub agent_dispatch_timeout_secs: u64,
     /// Maximum concurrent inbound-message handler tasks. Default: 64.
-    /// Mirrors `agora::listener::ChannelListener::MAX_CONCURRENT_HANDLERS`.
     pub max_concurrent_handlers: usize,
 }
 

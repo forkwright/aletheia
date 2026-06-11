@@ -1,4 +1,4 @@
-// Planning dashboard: active phases, progress, and pending checkpoint approvals.
+//! Planning dashboard: active phases, progress, and pending checkpoint approvals.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -117,7 +117,6 @@ fn render_phases(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         lines.push(Line::raw(""));
     }
 
-    // Checkpoint approvals section
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled(
@@ -139,7 +138,6 @@ fn render_phases(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     lines.push(Line::raw(""));
 
-    // Progress overview
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled(

@@ -118,12 +118,7 @@ async fn metrics_contains_aletheia_prefixed_families() {
     let (app, _dir) = app().await;
 
     // WHY: `aletheia_http_requests` is a labeled counter Family — it emits no
-    // `_total` series until at least one request is recorded, so asserting the
-    // data line against a fresh registry always fails (this is what made the
-    // test flaky-looking and got it ignored; registration itself is fine — see
-    // `metrics_counters_increment_after_request`). Record one request through
-    // the metrics middleware first so the exposition exercises the full
-    // record -> shared registry -> handler path.
+    // `_total` series until a request is recorded, so record one first.
     let recorded = app
         .clone()
         .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())

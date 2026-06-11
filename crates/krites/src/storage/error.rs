@@ -1,7 +1,7 @@
 //! Error types for the storage layer.
 use snafu::Snafu;
 
-/// Errors from the engine storage backends (redb, fjall, mem, temp).
+/// Errors from the engine storage backends (fjall, mem, temp).
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]

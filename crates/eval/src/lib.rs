@@ -40,7 +40,6 @@ mod tag_tests;
 mod tests {
     #[test]
     fn public_modules_accessible() {
-        // NOTE: verifies that the crate's public module structure is intact
         let report = crate::runner::RunReport {
             passed: 0,
             failed: 0,

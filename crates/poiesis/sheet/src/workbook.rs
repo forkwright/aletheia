@@ -1,4 +1,4 @@
-//! XLSX renderer for the B-001 [`Workbook`] body.
+//! XLSX renderer for the [`Workbook`] body.
 
 use std::collections::BTreeMap;
 
@@ -54,7 +54,6 @@ fn render_sheet(
         message: format!("column count exceeds u16: {e}"),
     })?;
 
-    // Header row
     for (col_idx, header) in sheet.headers.iter().enumerate() {
         let col_u16 =
             u16::try_from(col_idx).map_err(|e| crate::error::WorkbookError::XlsxWrite {
@@ -64,12 +63,10 @@ fn render_sheet(
         ws.write_with_format(0, col_u16, header.as_str(), &fmt)?;
     }
 
-    // Autofilter on header row
     if ncols > 0 {
         ws.autofilter(0, 0, 0, ncols_u16.saturating_sub(1))?;
     }
 
-    // Data rows
     for (row_idx, row) in sheet.rows.iter().enumerate() {
         let row_num =
             u32::try_from(row_idx).map_err(|e| crate::error::WorkbookError::XlsxWrite {
@@ -93,7 +90,6 @@ fn render_sheet(
         }
     }
 
-    // Totals row
     let totals = compute_totals(sheet, facts);
     let totals_row =
         u32::try_from(sheet.rows.len()).map_err(|e| crate::error::WorkbookError::XlsxWrite {

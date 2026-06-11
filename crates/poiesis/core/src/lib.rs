@@ -29,13 +29,9 @@
 //! The pre-envelope [`document::Document`] / [`block::Block`] /
 //! [`renderer::Renderer`] surface is preserved verbatim for the in-tree
 //! `organon` consumer. The new envelope wraps a [`document::Document`]
-//! inside [`bodies::DocumentBody`], so no existing call site changes. The
-//! render-side trait evolution to
-//! `render(&DeliverableSpec, &ResolvedTheme) → Artifact` ships with the
-//! render-side B-NNN entries; this crate carries the typed [`Artifact`]
-//! shape only.
+//! inside [`bodies::DocumentBody`], so no existing call site changes. This
+//! crate carries the typed [`Artifact`] shape only.
 
-// New B-001 surface.
 /// Typed bodies wrapping the existing [`document::Document`] and adding
 /// [`bodies::Deck`] / [`bodies::Workbook`] siblings.
 pub mod bodies;
@@ -57,7 +53,6 @@ pub mod qa;
 /// Typed scalars, units, aspect ratio, tolerance.
 pub mod scalar;
 
-// Pre-existing surface retained verbatim for organon back-compat.
 /// Block-level document elements: headings, paragraphs, notes, tables,
 /// lists, images, math, and raw blocks.
 pub mod block;
@@ -65,20 +60,17 @@ pub mod block;
 pub mod document;
 /// Document metadata: title, author, creation timestamp.
 pub mod metadata;
-/// [`Renderer`] trait for format backends (legacy signature; render-side
-/// B-NNN evolve this).
+/// [`Renderer`] trait for format backends (pre-envelope signature).
 pub mod renderer;
 /// Inline rich text spans: plain, bold, italic, code, cite, links.
 pub mod rich_text;
 
-// Re-exports — pre-existing.
 pub use block::{Block, Image, ListItem, Note, NoteKind, Table};
 pub use document::Document;
 pub use metadata::Metadata;
 pub use renderer::Renderer;
 pub use rich_text::{RichText, Span};
 
-// Re-exports — new B-001 surface.
 pub use bodies::{Deck, DocumentBody, Sheet, Slide, Workbook, WorkbookCell};
 pub use components::{ComponentDef, ComponentRegistry, TokenRef};
 pub use envelope::{Body, DeliverableSpec, Meta};
@@ -94,9 +86,7 @@ pub use scalar::{AspectRatio, Money, Scalar, ScalarKind, Tolerance, Unit};
 ///
 /// `Artifact` carries the produced bytes plus the format identifier and the
 /// concrete body kind the render produced. The pre-existing
-/// [`Renderer::render`] still returns bare `Vec<u8>`; render-side B-NNN
-/// entries (B-003 / B-004 / B-006 / B-007) evolve to producing `Artifact`
-/// via a new trait that they own.
+/// [`Renderer::render`] returns bare `Vec<u8>` and is unaffected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Artifact {
     /// The format identifier, e.g. `"pdf"`, `"pptx"`, `"docx"`, `"xlsx"`,
@@ -108,8 +98,8 @@ pub struct Artifact {
     pub bytes: Vec<u8>,
 }
 
-/// The kind tag of a [`bodies`] arm; useful for runtime dispatch in the
-/// renderer trait that B-003+ will introduce.
+/// The kind tag of a [`bodies`] arm; identifies which body kind an
+/// [`Artifact`] carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BodyKind {
     /// A deck composed of [`bodies::Slide`]s.

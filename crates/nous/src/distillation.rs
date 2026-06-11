@@ -21,8 +21,7 @@ use crate::error;
 /// Configuration for distillation triggers.
 ///
 /// All threshold fields are read from [`taxis::config::AgentBehaviorDefaults`] at
-/// construction. The `Default` impl uses the same values as the deleted constants so
-/// behaviour is unchanged when the config is uncustomised.
+/// construction.
 #[derive(Debug, Clone)]
 pub struct DistillTriggerConfig {
     /// Fraction of context window that triggers legacy threshold. Default: 0.7.

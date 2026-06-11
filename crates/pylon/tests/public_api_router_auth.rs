@@ -19,8 +19,6 @@ use common::{
     permissive_security, read_body_json,
 };
 
-// Split: build_router construction + auth contracts.
-
 // ── build_router: construction contracts ───────────────────────────────────
 
 #[tokio::test]
@@ -518,12 +516,11 @@ fn unauthenticated_read_routes() -> [(Method, &'static str); 8] {
 
 #[tokio::test]
 async fn insights_and_planning_routes_reject_missing_bearer_token() {
-    // WHY: insights (`/api/v1/metrics/*`, `/api/v1/journal`) and planning
-    // (`/api/v1/planning/projects/{id}/verification[/refresh]`) handlers
-    // previously did not require Claims and were not behind a `route_layer`,
-    // so anonymous callers could read per-agent token/cost metrics and
-    // planning state. Regression test: every handler under those prefixes
-    // must reject anonymous requests with 401.
+    // WHY: regression guard — without Claims behind a `route_layer`, anonymous
+    // callers could read per-agent token/cost metrics and planning state.
+    // Every handler under `/api/v1/metrics/*`, `/api/v1/journal`, and
+    // `/api/v1/planning/projects/{id}/verification[/refresh]` must reject
+    // anonymous requests with 401.
     let env = TestEnv::new().await;
     let router = build_router(Arc::clone(&env.state), &permissive_security());
 

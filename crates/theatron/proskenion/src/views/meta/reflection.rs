@@ -114,7 +114,7 @@ fn OverviewCard(value: String, label: &'static str) -> Element {
     }
 }
 
-// -- Activity heatmap ---------------------------------------------------------
+// ── Activity heatmap ──
 
 #[component]
 fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
@@ -212,7 +212,7 @@ fn ActivityHeatmap(cells: Vec<crate::state::meta::HeatmapCell>) -> Element {
     }
 }
 
-// -- Efficiency panel ---------------------------------------------------------
+// ── Efficiency panel ──
 
 #[component]
 fn EfficiencyPanel(
@@ -255,7 +255,7 @@ fn EfficiencyPanel(
     }
 }
 
-// -- System journal -----------------------------------------------------------
+// ── System journal ──
 
 #[component]
 fn SystemJournal(events: Vec<JournalEvent>) -> Element {
@@ -335,7 +335,7 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
     }
 }
 
-// -- Formatters ---------------------------------------------------------------
+// ── Formatters ──
 
 fn format_uptime(seconds: u64) -> String {
     let days = seconds / 86400;

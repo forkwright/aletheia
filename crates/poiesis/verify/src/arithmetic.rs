@@ -1,6 +1,6 @@
-// Simple recursive-descent expression evaluator.
-//
-// Supports: f64 literals, +, -, *, /, parentheses. No variables.
+//! Simple recursive-descent expression evaluator: f64 literals, `+`, `-`,
+//! `*`, `/`, parentheses; no variables.
+
 // WHY: a dependency like `meval` would pull in transitive deps for a ~50-line
 // problem. Rolling our own keeps the dep count flat and the logic auditable.
 

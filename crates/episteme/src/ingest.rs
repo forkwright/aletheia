@@ -211,11 +211,9 @@ fn strip_frontmatter(content: &str) -> &str {
 /// Match an ATX-style Markdown heading line (`#`, `##`, …, `######` followed by
 /// whitespace or end-of-line).
 ///
-/// Previously `split_by_headers` matched only `##`+ headings, which silently
-/// merged documents that used `#` as their section delimiter (#4164/D). The
-/// fix is to recognize any heading level; the first `#` line of a document
-/// effectively becomes the title of the leading section, matching the
-/// behavior every other Markdown tool exhibits.
+/// Matching every heading level keeps `split_by_headers` from silently merging
+/// documents that use `#` as their section delimiter (#4164); the first `#`
+/// line of a document becomes the title of the leading section.
 fn is_md_heading(line: &str) -> bool {
     let trimmed = line.trim_start();
     let hashes = trimmed.bytes().take_while(|b| *b == b'#').count();

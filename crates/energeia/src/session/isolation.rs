@@ -337,7 +337,7 @@ fn remove_unregistered_worktree_path(worktree: &Path) -> std::result::Result<(),
         return Ok(());
     }
 
-    // Safety rule: only remove the exact requested path after git no longer
+    // INVARIANT: Only remove the exact requested path after git no longer
     // lists it, and only when it is a plain directory that is empty or still
     // carries a git worktree marker. Any other contents may be operator data.
     let metadata = fs::symlink_metadata(worktree).map_err(|source| {

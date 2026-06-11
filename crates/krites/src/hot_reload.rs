@@ -178,7 +178,7 @@ impl HotReloader {
             let debounce = Duration::from_millis(500);
 
             while notify_rx.recv().await.is_some() {
-                // Debounce: coalesce events arriving within 500 ms.
+                // WHY: coalesce bursts of notify events into a single reload.
                 tokio::time::sleep(debounce).await;
                 while notify_rx.try_recv().is_ok() {}
 
@@ -266,7 +266,7 @@ impl HotReloader {
         let rules_text: Arc<str> = texts.join("\n").into();
         let source_count = sources.len();
 
-        // Validate by parsing with current fixed rules.
+        // WHY: parse to validate before the swap; a parse failure keeps the old ruleset.
         if !texts.is_empty() {
             let fixed_guard = fixed_rules.read().unwrap_or_else(|e| e.into_inner());
             parse_script(
@@ -321,21 +321,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let rule_dir = dir.path();
 
-        // Write initial valid rule.
         std::fs::write(rule_dir.join("test.mnm"), "rule_a[x] := x = 1\n").unwrap();
 
         let db = test_db();
         let fixed_rules = Arc::clone(&db.fixed_rules);
         let (_reloader, mut rx, store) = HotReloader::start(rule_dir, &fixed_rules).unwrap();
 
-        // Initial load should have happened synchronously.
         assert_eq!(store.load().source_count, 1);
         assert!(store.load().rules_text.contains("rule_a"));
 
-        // Wait for the initial event (some notify implementations emit one on start).
+        // WHY: some notify implementations emit an event on start; drain it first.
         let _ = timeout(Duration::from_millis(100), rx.recv()).await;
 
-        // Modify the file.
         std::fs::write(rule_dir.join("test.mnm"), "rule_b[x] := x = 2\n").unwrap();
 
         let event = wait_for_event(&mut rx).await;
@@ -360,7 +357,6 @@ mod tests {
 
         let _ = timeout(Duration::from_millis(100), rx.recv()).await;
 
-        // Corrupt the file.
         std::fs::write(rule_dir.join("good.mnm"), "this is not valid datalog!!!\n").unwrap();
 
         let event = wait_for_event(&mut rx).await;
@@ -369,7 +365,6 @@ mod tests {
             ReloadEvent::ParseError { .. } => {}
         }
 
-        // Old ruleset should still be active.
         assert!(store.load().rules_text.contains("good_rule"));
     }
 
@@ -386,13 +381,11 @@ mod tests {
 
         let _ = timeout(Duration::from_millis(100), rx.recv()).await;
 
-        // Emit 3 rapid changes.
         for i in 0..3 {
             std::fs::write(rule_dir.join("test.mnm"), format!("rule[x] := x = {i}\n")).unwrap();
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
-        // Wait for the debounced reload.
         let event = wait_for_event(&mut rx).await;
         match event {
             ReloadEvent::Reloaded { count } => assert_eq!(count, 1),
@@ -402,7 +395,6 @@ mod tests {
         // Because of debounce, the final value should reflect the last write.
         assert!(store.load().rules_text.contains("x = 2"));
 
-        // There should NOT be a second event within a short window.
         let second = timeout(Duration::from_millis(300), rx.recv()).await;
         assert!(
             second.is_err() || second.unwrap().is_none(),

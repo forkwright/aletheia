@@ -13,10 +13,6 @@ use crate::store::records::{DispatchRecord, DispatchStatus, SessionRecord};
 #[cfg(feature = "storage-fjall")]
 use crate::store::{EnergeiaStore, SCAN_LIMIT_DISPATCHES, SCAN_LIMIT_SESSIONS};
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 /// Cost and velocity report for a time window.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -73,10 +69,6 @@ pub struct DailyVelocity {
     pub success_rate: f64,
 }
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
 #[cfg(feature = "storage-fjall")]
 /// Compute a cost and velocity report for the given number of past days.
 ///
@@ -127,7 +119,6 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
         .filter(|s| cutoff_ms.is_none_or(|cutoff| s.created_at.as_millisecond() >= cutoff))
         .collect();
 
-    // Count sessions per dispatch for aggregation.
     let sessions_per_dispatch: HashMap<&str, Vec<&SessionRecord>> = {
         let mut map: HashMap<&str, Vec<&SessionRecord>> = HashMap::new();
         for s in &sessions {
@@ -182,10 +173,6 @@ pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<Co
         daily_velocity,
     })
 }
-
-// ---------------------------------------------------------------------------
-// Aggregation helpers
-// ---------------------------------------------------------------------------
 
 #[cfg(feature = "storage-fjall")]
 fn build_project_costs(
@@ -242,7 +229,6 @@ fn build_project_costs(
         })
         .collect();
 
-    // Sort by cost descending for easy reading.
     result.sort_by(|a, b| {
         b.cost_usd
             .partial_cmp(&a.cost_usd)
@@ -267,7 +253,6 @@ fn build_daily_velocity(
     let mut by_day: HashMap<jiff::civil::Date, DayAcc> = HashMap::new();
 
     for d in dispatches {
-        // Convert timestamp to UTC calendar date.
         let date = jiff::Timestamp::from_millisecond(d.created_at.as_millisecond())
             .unwrap_or(d.created_at)
             .to_zoned(jiff::tz::TimeZone::UTC)
@@ -313,14 +298,9 @@ fn build_daily_velocity(
         })
         .collect();
 
-    // Sort by date ascending.
     result.sort_by_key(|d| d.date);
     result
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[cfg(feature = "storage-fjall")]

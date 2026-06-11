@@ -11,7 +11,6 @@ use crate::error::Result;
 fn extract_text_from_slide(xml_data: &str) -> String {
     let mut text_content = String::new();
 
-    // Simple approach: find all <a:t>...</a:t> tags
     for chunk in xml_data.split("<a:t>") {
         if let Some(end) = chunk.find("</a:t>")
             && let Some(text) = chunk.get(..end)
@@ -32,7 +31,6 @@ pub(crate) fn inspect_pptx_impl(bytes: &[u8]) -> Result<PresentationSummary> {
 
     let mut slides: Vec<String> = Vec::new();
 
-    // Read all slide files (ppt/slides/slide1.xml, ppt/slides/slide2.xml, etc.)
     let mut slide_idx = 1;
     loop {
         let slide_path = format!("ppt/slides/slide{slide_idx}.xml");

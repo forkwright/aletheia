@@ -5,8 +5,6 @@ use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
 use crate::sse;
 
-// ---------------------------------------------------------------------------
-
 /// File read tool capability query smoke test.
 pub(super) struct ToolFileReadContent;
 
@@ -263,8 +261,6 @@ impl Scenario for ToolInvalidInputError {
         )
     }
 }
-
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

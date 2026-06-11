@@ -495,7 +495,9 @@ impl Iterator for CacheIter<'_> {
     }
 }
 
-/// Keep an eye on <https://github.com/rust-lang/rust/issues/49638>
+/// Skip-scan over a `BTreeMap`: each `next()` re-runs a range lookup from
+/// `next_bound` because `BTreeMap` has no seekable cursor
+/// (<https://github.com/rust-lang/rust/issues/49638>).
 pub(crate) struct SkipIterator<'a> {
     pub(crate) inner: &'a BTreeMap<Vec<u8>, Vec<u8>>,
     pub(crate) upper: Vec<u8>,

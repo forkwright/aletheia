@@ -412,7 +412,6 @@ fn full_turn_lifecycle() {
     let mut state = make_state();
     let mut mgr = make_manager();
 
-    // User sends a message.
     state.messages.push(ChatMessage {
         role: MessageRole::User,
         content: "Hello".to_string(),
@@ -425,7 +424,6 @@ fn full_turn_lifecycle() {
         plans: Vec::new(),
     });
 
-    // Turn starts.
     let _ = mgr.apply(
         StreamEvent::TurnStart {
             session_id: "s1".into(),
@@ -436,12 +434,10 @@ fn full_turn_lifecycle() {
     );
     assert!(state.streaming.is_streaming);
 
-    // Text arrives.
     let _ = mgr.apply(StreamEvent::TextDelta("Hi ".to_string()), &mut state);
     let _ = mgr.apply(StreamEvent::TextDelta("there!\n".to_string()), &mut state);
     assert_eq!(state.streaming.text, "Hi there!\n");
 
-    // Tool call.
     let _ = mgr.apply(
         StreamEvent::ToolStart {
             tool_name: "search".to_string(),
@@ -461,13 +457,11 @@ fn full_turn_lifecycle() {
         &mut state,
     );
 
-    // More text.
     let _ = mgr.apply(
         StreamEvent::TextDelta("Found it.\n".to_string()),
         &mut state,
     );
 
-    // Turn completes.
     let _ = mgr.apply(
         StreamEvent::TurnComplete {
             outcome: TurnOutcome {
@@ -486,7 +480,6 @@ fn full_turn_lifecycle() {
         &mut state,
     );
 
-    // Verify final state.
     assert_eq!(state.messages.len(), 2);
     assert_eq!(state.messages[0].role, MessageRole::User);
     assert_eq!(state.messages[1].role, MessageRole::Assistant);

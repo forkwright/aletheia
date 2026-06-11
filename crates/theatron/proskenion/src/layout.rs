@@ -9,9 +9,8 @@ use crate::state::navigation::NavAction;
 use crate::state::pipeline::RoutingState;
 use crate::state::view_preservation::ViewPreservationStore;
 
-use crate::components::agent_sidebar::AgentSidebarView;
-
-const SIDEBAR_BASE_STYLE: &str = "\
+const SIDEBAR_COLLAPSED_STYLE: &str = "\
+    width: 48px; \
     background: var(--bg-surface); \
     color: var(--text-primary); \
     padding: var(--space-4) 0; \
@@ -22,7 +21,22 @@ const SIDEBAR_BASE_STYLE: &str = "\
     border-right: 1px solid var(--border-separator); \
     overflow-y: auto; \
     overflow-x: hidden; \
-    transition: width var(--duration-slow) var(--ease-out-expo);\
+    transition: width var(--duration-slow, 350ms) cubic-bezier(0.16, 1, 0.3, 1);\
+";
+
+const SIDEBAR_EXPANDED_STYLE: &str = "\
+    width: 220px; \
+    background: var(--bg-surface); \
+    color: var(--text-primary); \
+    padding: var(--space-4) 0; \
+    display: flex; \
+    flex-direction: column; \
+    gap: var(--space-1); \
+    flex-shrink: 0; \
+    border-right: 1px solid var(--border-separator); \
+    overflow-y: auto; \
+    overflow-x: hidden; \
+    transition: width var(--duration-slow, 350ms) cubic-bezier(0.16, 1, 0.3, 1);\
 ";
 
 const CONTENT_STYLE: &str = "\
@@ -40,6 +54,33 @@ const BRAND_STYLE: &str = "\
     padding: var(--space-2) var(--space-4); \
     margin-bottom: var(--space-2); \
     color: var(--text-primary);\
+";
+
+const NAV_LINK_STYLE: &str = "\
+    display: flex; \
+    align-items: center; \
+    gap: var(--space-2); \
+    padding: var(--space-2) var(--space-4); \
+    border-radius: var(--radius-md); \
+    color: var(--text-primary); \
+    text-decoration: none; \
+    font-size: var(--text-sm); \
+    white-space: nowrap; \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick);\
+";
+
+const NAV_LINK_ICON_ONLY_STYLE: &str = "\
+    display: flex; \
+    align-items: center; \
+    justify-content: center; \
+    padding: var(--space-2) var(--space-3); \
+    border-radius: var(--radius-md); \
+    color: var(--text-secondary); \
+    text-decoration: none; \
+    font-size: var(--text-md); \
+    transition: background-color var(--transition-quick), \
+                color var(--transition-quick);\
 ";
 
 /// Layout shell rendered around all routes.
@@ -75,10 +116,10 @@ pub(crate) fn Layout() -> Element {
         help_visible,
     );
 
-    let sidebar_width = if *sidebar_collapsed.read() {
-        "var(--sidebar-width-collapsed)"
+    let sidebar_style = if *sidebar_collapsed.read() {
+        SIDEBAR_COLLAPSED_STYLE
     } else {
-        "var(--sidebar-width)"
+        SIDEBAR_EXPANDED_STYLE
     };
 
     rsx! {
@@ -90,7 +131,7 @@ pub(crate) fn Layout() -> Element {
             "aria-label": "Aletheia application",
 
             nav {
-                style: "width: {sidebar_width}; {SIDEBAR_BASE_STYLE}",
+                style: "{sidebar_style}",
                 role: "navigation",
                 "aria-label": "Main navigation",
                 if !*sidebar_collapsed.read() {
@@ -101,46 +142,44 @@ pub(crate) fn Layout() -> Element {
                         "A"
                     }
                 }
-                // -- WORKSPACE section --
+                // ── Workspace section ──
                 if !*sidebar_collapsed.read() {
-                    h2 { class: "sidebar-section-label", "Workspace" }
+                    div {
+                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-1);",
+                        "Workspace"
+                    }
                 }
                 NavItem { to: Route::Chat {}, icon: "💬", label: "Chat", shortcut: "Ctrl+1", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Files {}, icon: "📁", label: "Files", shortcut: "Ctrl+2", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Planning {}, icon: "📋", label: "Planning", shortcut: "Ctrl+3", collapsed: *sidebar_collapsed.read() }
 
-                // -- KNOWLEDGE section --
+                div { style: "height: 1px; background: var(--border-separator); margin: var(--space-2) var(--space-3);" }
+
+                // ── Knowledge section ──
                 if !*sidebar_collapsed.read() {
-                    h2 { class: "sidebar-section-label", "Knowledge" }
-                } else {
-                    div { class: "sidebar-divider" }
+                    div {
+                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-1);",
+                        "Knowledge"
+                    }
                 }
                 NavItem { to: Route::Memory {}, icon: "🧠", label: "Memory", shortcut: "Ctrl+4", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Metrics {}, icon: "📊", label: "Metrics", shortcut: "Ctrl+5", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Sessions {}, icon: "📑", label: "Sessions", shortcut: "Ctrl+7", collapsed: *sidebar_collapsed.read() }
 
-                // -- SYSTEM section --
+                div { style: "height: 1px; background: var(--border-separator); margin: var(--space-2) var(--space-3);" }
+
+                // ── System section ──
                 if !*sidebar_collapsed.read() {
-                    h2 { class: "sidebar-section-label", "System" }
-                } else {
-                    div { class: "sidebar-divider" }
+                    div {
+                        style: "font-size: var(--text-xs); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: var(--space-3) var(--space-4) var(--space-1);",
+                        "System"
+                    }
                 }
                 NavItem { to: Route::Ops {}, icon: "⚙\u{fe0f}", label: "Ops", shortcut: "Ctrl+6", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Meta {}, icon: "💡", label: "Insights", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Settings {}, icon: "🔧", label: "Settings", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::ComponentLibrary {}, icon: "◫", label: "Components", shortcut: "", collapsed: *sidebar_collapsed.read() }
-
-                // -- NOUS roster -- presence, set apart from navigation --
-                if !*sidebar_collapsed.read() {
-                    div {
-                        class: "agent-roster",
-                        AgentSidebarView { collapsed: false }
-                    }
-                } else {
-                    AgentSidebarView { collapsed: true }
-                }
             }
-            // Content area: topbar + main
             div {
                 style: "flex: 1; display: flex; flex-direction: column; overflow: hidden;",
                 TopBar {}
@@ -152,7 +191,6 @@ pub(crate) fn Layout() -> Element {
                 }
             }
 
-            // Help overlay (F1)
             HelpOverlay { visible: help_visible }
         }
     }
@@ -171,15 +209,15 @@ fn NavItem(
     } else {
         format!("{label} ({shortcut})")
     };
-    let class = if collapsed {
-        "nav-link nav-link-collapsed"
+    let style = if collapsed {
+        NAV_LINK_ICON_ONLY_STYLE
     } else {
-        "nav-link"
+        NAV_LINK_STYLE
     };
     rsx! {
         Link {
             to,
-            class: "{class}",
+            style: "{style}",
             "aria-label": "{title}",
             title: "{title}",
             span { "aria-hidden": "true", "{icon}" }

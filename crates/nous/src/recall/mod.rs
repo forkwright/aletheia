@@ -200,9 +200,9 @@ impl RecallStage {
 
     /// Set side-query selected IDs for pre-filtering before factor scoring.
     ///
-    /// // WHY: Side-queries (e.g., from tool results or explicit references) can
-    /// // identify relevant knowledge IDs directly, bypassing vector search.
-    /// // Pre-filtering avoids expensive factor scoring on irrelevant candidates.
+    /// Side-queries (e.g., from tool results or explicit references) can
+    /// identify relevant knowledge IDs directly, bypassing vector search.
+    /// Pre-filtering avoids expensive factor scoring on irrelevant candidates.
     #[must_use]
     pub fn with_side_query_ids(mut self, ids: HashSet<String>) -> Self {
         self.side_query_ids = Some(ids);
@@ -350,9 +350,9 @@ impl RecallStage {
     /// then formats the top results as a markdown section for the system prompt.
     /// When `iterative` is enabled, runs a second cycle with terminology-refined queries.
     ///
-    /// // WHY: Iterative recall discovers domain terminology from initial results
-    /// // and re-queries with expanded terms, improving recall for technical queries
-    /// // where the user's vocabulary may not match the knowledge base.
+    /// Iterative recall discovers domain terminology from initial results
+    /// and re-queries with expanded terms, improving recall for technical queries
+    /// where the user's vocabulary may not match the knowledge base.
     ///
     /// Non-fatal errors are returned as `Err`: the caller should catch and continue.
     ///
@@ -629,20 +629,17 @@ impl RecallStage {
         let ranked = mneme::recall::filter_by_cohort_visibility(ranked, nous_id);
         let ranked = mneme::recall::filter_by_project_scope(ranked, &self.project_scope);
 
-        // Extract pinned facts first (they bypass max_results but are still
-        // subject to the token budget).
+        // WHY: pinned facts bypass max_results but stay subject to the token budget.
         let (pinned, rest): (Vec<ScoredResult>, Vec<ScoredResult>) = ranked
             .into_iter()
             .partition(|r| self.pinned_facts.contains(&r.source_id));
 
-        // Deduplicate pinned facts while preserving their ranked order.
         let mut seen_pinned = HashSet::new();
         let pinned: Vec<ScoredResult> = pinned
             .into_iter()
             .filter(|r| seen_pinned.insert(r.source_id.clone()))
             .collect();
 
-        // Apply scope quotas to non-pinned results.
         let rest = self.apply_scope_quotas(rest);
 
         let filtered = self.filter(rest);
@@ -705,7 +702,6 @@ impl RecallStage {
             return results;
         }
 
-        // Group candidates by scope.
         let mut by_scope: std::collections::HashMap<Option<MemoryScope>, Vec<ScoredResult>> =
             std::collections::HashMap::new();
         for r in results {
@@ -730,7 +726,6 @@ impl RecallStage {
             }
         }
 
-        // Sort reserved and pool by score descending.
         reserved.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)

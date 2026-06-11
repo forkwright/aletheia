@@ -86,7 +86,6 @@ impl EmpiricalRouter {
 
         let static_choice = self.fallback.pick(*task_category);
 
-        // Collect success rates for all candidates.
         let mut best_provider: Option<&ProviderId> = None;
         let mut best_rate: f64 = -1.0;
 
@@ -97,7 +96,6 @@ impl EmpiricalRouter {
                 .await;
 
             let Some(stats) = stats else {
-                // No data — this provider does not qualify for empirical selection.
                 continue;
             };
 
@@ -123,7 +121,6 @@ impl EmpiricalRouter {
         }
 
         let Some(winner) = best_provider else {
-            // No candidate had enough data.
             return static_choice.clone();
         };
 
@@ -178,10 +175,6 @@ impl EmpiricalRouter {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Router trait implementation
-// ---------------------------------------------------------------------------
-
 impl Router for EmpiricalRouter {
     /// Route using the empirical success-rate model.
     ///
@@ -193,7 +186,6 @@ impl Router for EmpiricalRouter {
         Box::pin(async move {
             let category = features.effective_category();
             let chosen = self.pick(&category, &features.candidates).await;
-            // Attach confidence when we have stats for the chosen provider.
             let confidence = self
                 .store
                 .rolling_stats(&chosen, &category, self.window)
@@ -227,10 +219,6 @@ impl Router for EmpiricalRouter {
         Ok(())
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

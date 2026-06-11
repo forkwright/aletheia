@@ -16,10 +16,6 @@ use crate::store::records::{DispatchRecord, DispatchStatus, SessionRecord};
 #[cfg(feature = "storage-fjall")]
 use crate::store::{EnergeiaStore, SCAN_LIMIT_DISPATCHES, SCAN_LIMIT_SESSIONS};
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 /// Point-in-time status dashboard.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -77,10 +73,6 @@ pub struct ProjectSummary {
 #[cfg(feature = "storage-fjall")]
 const RECENT_LIMIT: usize = 50;
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
 #[cfg(feature = "storage-fjall")]
 /// Build a real-time status dashboard snapshot.
 ///
@@ -96,7 +88,6 @@ pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard
     let all_dispatches = store.list_dispatches(SCAN_LIMIT_DISPATCHES)?;
     let all_sessions = store.list_all_sessions(SCAN_LIMIT_SESSIONS)?;
 
-    // Count sessions per dispatch for summary aggregation.
     let mut sessions_by_dispatch: HashMap<&str, Vec<&SessionRecord>> = HashMap::new();
     for s in &all_sessions {
         sessions_by_dispatch
@@ -105,10 +96,6 @@ pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard
             .push(s);
     }
 
-    // -----------------------------------------------------------------------
-    // Active dispatches / queue depth
-    // -----------------------------------------------------------------------
-
     let active_dispatch_records: Vec<&DispatchRecord> = all_dispatches
         .iter()
         .filter(|d| d.status == DispatchStatus::Running)
@@ -116,10 +103,6 @@ pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard
 
     let active_dispatches = u64::try_from(active_dispatch_records.len()).unwrap_or(u64::MAX);
     let queue_depth = active_dispatches;
-
-    // -----------------------------------------------------------------------
-    // Recent outcomes — last RECENT_LIMIT dispatches, newest first
-    // -----------------------------------------------------------------------
 
     // Dispatches from the scan come out oldest-first (ULID order). Reverse to
     // get newest first, then take up to RECENT_LIMIT.
@@ -138,10 +121,6 @@ pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard
         })
         .collect();
 
-    // -----------------------------------------------------------------------
-    // Per-project summary
-    // -----------------------------------------------------------------------
-
     let by_project = build_project_summaries(&all_dispatches, &sessions_by_dispatch);
 
     Ok(StatusDashboard {
@@ -152,10 +131,6 @@ pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard
         by_project,
     })
 }
-
-// ---------------------------------------------------------------------------
-// Aggregation helpers
-// ---------------------------------------------------------------------------
 
 #[cfg(feature = "storage-fjall")]
 fn build_project_summaries(
@@ -215,14 +190,9 @@ fn build_project_summaries(
         })
         .collect();
 
-    // Sort alphabetically by project name for stable output.
     result.sort_by(|a, b| a.project.cmp(&b.project));
     result
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[cfg(feature = "storage-fjall")]

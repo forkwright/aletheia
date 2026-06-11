@@ -1,5 +1,3 @@
-//! Split from `hooks/tests.rs` — see parent mod.
-
 use super::*;
 
 // -- Cost control tests --

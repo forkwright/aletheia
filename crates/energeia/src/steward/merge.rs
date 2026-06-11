@@ -26,7 +26,6 @@ pub fn make_merge_decision(
 ) -> MergeDecision {
     let pr_number = classified.pr.number;
 
-    // NOTE: Check if the PR is in a conflicting state.
     if let Some(ref mergeable) = classified.pr.mergeable
         && mergeable == "CONFLICTING"
     {
@@ -37,7 +36,6 @@ pub fn make_merge_decision(
         };
     }
 
-    // NOTE: If review is required for all PRs, route to review.
     if opts.require_review {
         return MergeDecision {
             pr_number,
@@ -46,7 +44,6 @@ pub fn make_merge_decision(
         };
     }
 
-    // NOTE: Check blast radius compliance.
     if !classified.blast_radius_ok {
         return MergeDecision {
             pr_number,
@@ -55,7 +52,6 @@ pub fn make_merge_decision(
         };
     }
 
-    // NOTE: Classify into merge tier.
     let tier = classify_merge_tier(classified, diff);
 
     tracing::info!(
@@ -85,7 +81,6 @@ pub fn make_merge_decision(
             reason: "tier-4: touches public API surface -- held for architect review".to_string(),
         },
         MergeTier::Tier1AutoMerge | MergeTier::Tier2MergeNotify => {
-            // NOTE: Anti-patterns are a warning, not a blocker.
             // WHY: CI already enforces workspace-level clippy denials (expect_used, unwrap_used).
             // If CI passes, the code meets the project's actual standards.
             if !classified.merge_safe {
@@ -126,29 +121,24 @@ pub fn make_merge_decision(
 /// - Tier 5: Block (QA FAIL)
 #[must_use]
 pub fn classify_merge_tier(classified: &ClassifiedPr, diff: Option<&str>) -> MergeTier {
-    // NOTE: Tier 5 -- QA FAIL blocks merge.
     if classified.qa_verdict == Some(QaVerdictStatus::Fail) {
         return MergeTier::Tier5Block;
     }
 
-    // NOTE: Tier 3 -- QA PARTIAL holds for architect.
     if classified.qa_verdict == Some(QaVerdictStatus::Partial) {
         return MergeTier::Tier3Hold;
     }
 
-    // NOTE: Tier 3 -- hold flag in PR body.
     if has_hold_flag(classified.pr.body.as_deref()) {
         return MergeTier::Tier3Hold;
     }
 
-    // NOTE: Tier 4 -- public API surface changes hold for architect.
     if let Some(diff_text) = diff
         && has_public_api_changes(diff_text)
     {
         return MergeTier::Tier4PublicApi;
     }
 
-    // NOTE: Tier 1 vs Tier 2 -- based on blast radius scope.
     if is_multi_module(&classified.changed_files) {
         MergeTier::Tier2MergeNotify
     } else {
@@ -200,7 +190,6 @@ pub fn has_public_api_changes(diff: &str) -> bool {
             continue;
         }
 
-        // NOTE: Only check added lines (not context or removed).
         if let Some(added) = line.strip_prefix('+') {
             if line.starts_with("+++") {
                 continue;

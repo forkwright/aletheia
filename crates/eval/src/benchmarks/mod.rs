@@ -1,6 +1,6 @@
 //! Memory benchmark harness: `LongMemEval`, `LoCoMo`, `HaluMem` scoring against aletheia.
 //!
-//! Based on #2854. Each benchmark provides a standardized dataset of long
+//! Each benchmark provides a standardized dataset of long
 //! conversations + question/answer pairs that measure a specific memory
 //! ability (factual recall, temporal reasoning, cross-session consolidation).
 //! This module provides:
@@ -13,11 +13,11 @@
 //!
 //! # Why this exists
 //!
-//! The memory pipeline has grown several research-backed features
-//! (admission control #2853, staleness #2848, probe QA #2846, evidence gap
-//! #2851, surprise #2852, anomaly detection #2847) — each with heuristic
-//! implementations. Without a benchmark loop, every change is unmeasured and
-//! may regress recall quality. The harness closes that loop.
+//! The memory pipeline has several research-backed features (admission
+//! control, staleness, probe QA, evidence gap, surprise, anomaly detection)
+//! — each with heuristic implementations. Without a benchmark loop, every
+//! change is unmeasured and may regress recall quality. The harness closes
+//! that loop.
 //!
 //! # Running
 //!

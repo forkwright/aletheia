@@ -38,11 +38,7 @@ use taxis::oikos::Oikos;
 mod common;
 use common::{StateBuilder, issue_token};
 
-// Split: Error + DiaporeiaState + DiaporeiaServer construction.
-
-// -------------------------------------------------------------------
-// Section 2: Error type
-// -------------------------------------------------------------------
+// ── Error type ──
 
 #[test]
 fn error_type_satisfies_send_sync_std_error() {
@@ -74,9 +70,7 @@ fn result_alias_refers_to_the_public_error_type() {
     }
 }
 
-// -------------------------------------------------------------------
-// Section 3: DiaporeiaState construction
-// -------------------------------------------------------------------
+// ── DiaporeiaState construction ──
 
 #[test]
 fn state_constructs_from_real_workspace_dependencies() {
@@ -124,9 +118,7 @@ fn state_shutdown_token_propagates_cancellation() {
     assert!(state.shutdown.is_cancelled());
 }
 
-// -------------------------------------------------------------------
-// Section 4: DiaporeiaServer
-// -------------------------------------------------------------------
+// ── DiaporeiaServer ──
 
 #[test]
 fn server_constructs_from_state() {
@@ -216,5 +208,3 @@ fn server_construction_snapshots_config_independently_of_later_mutations() {
     // The server remains alive and cloneable — no poisoning from the mutation.
     let _clone = server.clone();
 }
-
-// -------------------------------------------------------------------

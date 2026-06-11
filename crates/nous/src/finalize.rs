@@ -371,7 +371,6 @@ mod tests {
         let result = simple_result();
         let config = FinalizeConfig::default();
 
-        // NOTE: This would previously fail with FOREIGN KEY constraint error
         finalize(&store, &session, "Hi from orphan", &result, &config).expect("finalize");
 
         let history = store.get_history("ses-orphan", None).expect("history");
@@ -436,13 +435,12 @@ mod tests {
 
     /// Regression test for #758/#916/#923: session ID divergence.
     ///
-    /// Simulates the scenario where pylon creates a session with DB ID "A",
-    /// but the actor's `SessionState` holds a different ID "B". Before the fix,
-    /// `find_or_create_session` would find the existing session by
-    /// (`nous_id`, `session_key`) and return ID "A", but `append_message` would
-    /// use the actor's ID "B": causing an FK constraint violation.
-    ///
-    /// After the fix, the actor adopts the DB session ID so both match.
+    /// Simulates the scenario where pylon creates a session with DB ID "A"
+    /// while the actor's `SessionState` holds a different ID "B". Without
+    /// session-ID adoption, `find_or_create_session` finds the existing session
+    /// by (`nous_id`, `session_key`) and returns ID "A" while `append_message`
+    /// uses the actor's ID "B", causing an FK constraint violation. The actor
+    /// adopts the DB session ID so both match.
     #[test]
     fn finalize_with_matching_session_id_no_fk_violation() {
         let store = SessionStore::open_in_memory().expect("in-memory store");
@@ -453,7 +451,6 @@ mod tests {
             .expect("create session");
 
         // WHY: Actor's SessionState must use the SAME ID as the database.
-        // Before the fix, the actor would generate a different ULID here.
         let config = NousConfig {
             id: Arc::from("test-nous"),
             generation: crate::config::NousGenerationConfig {
@@ -467,7 +464,6 @@ mod tests {
         let result = simple_result();
         let finalize_config = FinalizeConfig::default();
 
-        // NOTE: This must succeed: no FK violation because IDs match.
         let fr = finalize(&store, &session, "Hello", &result, &finalize_config)
             .expect("finalize should not fail with matching session IDs");
         assert_eq!(fr.messages_persisted, 2);
@@ -493,7 +489,6 @@ mod tests {
             .create_session("pylon-id", "test-nous", "main", None, Some("test-model"))
             .expect("create session");
 
-        // NOTE: Actor would have generated a DIFFERENT ID (before the fix)
         let config = NousConfig {
             id: Arc::from("test-nous"),
             generation: crate::config::NousGenerationConfig {
@@ -508,18 +503,11 @@ mod tests {
         let result = simple_result();
         let finalize_config = FinalizeConfig::default();
 
-        // WHY: find_or_create_session finds "pylon-id" by (nous_id, session_key).
-        // But append_message uses "actor-generated-id" which has no DB row.
-        // finalize internally calls find_or_create_session which ensures a
-        // row exists matching the session_key, then tries append_message with
-        // the actor's ID. The find_or_create returns the existing "pylon-id"
-        // row, but append_message uses "actor-generated-id".
-        //
-        // The finalize function calls find_or_create_session with the actor's
-        // session.id as the `id` param. Since an active session already exists
-        // for (nous_id, session_key), it returns that existing session: but
-        // does NOT create a new row with the actor's ID. Subsequent
-        // append_message calls use the actor's ID, which has no row → FK error.
+        // WHY: finalize calls find_or_create_session with the actor's
+        // session.id; an active session already exists for
+        // (nous_id, session_key), so the existing "pylon-id" row is returned
+        // and no row is created for the actor's ID. append_message then uses
+        // "actor-generated-id", which has no row → FK error.
         let result = finalize(
             &store,
             &divergent_session,

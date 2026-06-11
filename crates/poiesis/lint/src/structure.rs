@@ -1,9 +1,4 @@
-// Structural pattern checks: AI structural tells.
-//
-// Checks:
-//   check_structure  — transition word density (≥3 consecutive paragraphs)
-//   check_sections   — required lead and closing sections present
-//   check_header_length — H2 headings over the configured limit
+//! Structural pattern checks: AI structural tells.
 
 use super::{Finding, FindingKind};
 

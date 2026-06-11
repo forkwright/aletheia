@@ -45,7 +45,6 @@ mod tests {
             assert::<Error>();
         };
 
-        // Runtime assertion: verify Error implements Send + Sync
         fn assert_send<T: Send>() {}
         fn assert_sync<T: Sync>() {}
         assert_send::<Error>();

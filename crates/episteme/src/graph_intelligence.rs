@@ -72,7 +72,7 @@ pub(crate) const GRAPH_SCORES_DDL: &str = r":create graph_scores {
 ///
 /// Loaded once from the `graph_scores` relation at query entry. All fields
 /// default to empty when no graph data is available, producing identical
-/// scores to the base 6-factor formula (backward compatible).
+/// scores to the non-graph baseline formula.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct GraphContext {
     /// `entity_id` → normalized `PageRank` score [0.0, 1.0]

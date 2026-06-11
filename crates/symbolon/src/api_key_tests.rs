@@ -90,7 +90,7 @@ fn key_secret_is_64_hex_chars() {
     assert_eq!(parts[2].len(), 64); // NOTE: 32 bytes * 2 hex chars
 }
 
-// ── generate: format, role, nous_id, expiry (mutants 31–48) ──────────────────
+// ── generate: format, role, nous_id, expiry ──
 
 /// WHY: mutant replaces `Ok((full_key, record))` with `Ok(("xyzzy", Default::default()))`
 /// or `Ok((String::new(), Default::default()))`. Assert the returned key has the exact
@@ -100,20 +100,17 @@ fn generate_returns_well_formed_full_key_string() {
     let store = memory_store();
     let (key, _record) = generate(&store, "holder", Role::Operator, None, None).unwrap();
 
-    // Three underscore-delimited segments.
     let parts: Vec<&str> = key.splitn(3, '_').collect();
     assert_eq!(parts.len(), 3);
     assert_eq!(parts[0], KEY_PREFIX);
     assert_eq!(parts[0], "ale");
     assert_eq!(parts[1], "holder");
     assert_eq!(parts[2].len(), 64);
-    // All secret chars are lowercase hex.
     assert!(
         parts[2]
             .chars()
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
     );
-    // Full key is non-empty and starts with the documented prefix.
     assert!(!key.is_empty());
     assert!(key.starts_with("ale_holder_"));
 }
@@ -147,7 +144,7 @@ fn generate_without_expiry_leaves_expires_at_none() {
     assert!(record.expires_at.is_none());
 }
 
-/// WHY: line 39 `SystemTime::now() + d` is mutable to `*` or `-`. `*` produces
+/// WHY: `generate`'s `SystemTime::now() + d` is mutable to `*` or `-`. `*` produces
 /// an absurd future date (centuries out) and `-` produces a pre-1970 timestamp
 /// that panics or saturates. Assert the stored `expires_at` parses back to a
 /// value within ≤2s of `now + expires_in`.
@@ -174,7 +171,7 @@ fn generate_with_expiry_sets_expires_at_near_requested() {
     let expected_low = before + 3600;
     let expected_high = after + 3600;
 
-    // Allow ≤2s slack on each side per the issue's acceptance criterion.
+    // Allow ≤2s slack on each side.
     assert!(
         parsed_secs >= expected_low.saturating_sub(2),
         "expires_at={parsed_secs} too low; expected >= {}",
@@ -216,7 +213,7 @@ fn iso8601_to_unix_secs(s: &str) -> u64 {
     days * 86400 + hour * 3600 + minute * 60 + second
 }
 
-// ── validate: expiry boundary + claims round-trip (mutants 79, 92) ────────────
+// ── validate: expiry boundary + claims round-trip ──
 
 // Store an API key record whose `expires_at` is a known ISO-8601 string, then
 // validate the corresponding raw key. Returns the `validate()` Result so callers
@@ -225,7 +222,6 @@ fn validate_with_stored_expiry(expires_at: &str) -> (crate::error::Result<Claims
     let store = memory_store();
     // Generate a real key to get valid (raw_key, key_hash) pair.
     let (raw_key, record) = generate(&store, "exp", Role::Agent, Some("syn"), None).unwrap();
-    // Overwrite the stored record with a controlled expires_at.
     let overridden = ApiKeyRecord {
         expires_at: Some(expires_at.to_owned()),
         ..record
@@ -235,7 +231,7 @@ fn validate_with_stored_expiry(expires_at: &str) -> (crate::error::Result<Claims
     (result, raw_key)
 }
 
-// WHY: line 92 `if *expires_at < now`. A stored expiry of "1970-..." is in the
+// WHY: `is_expired` uses strict `expires_at < now`. A stored expiry of "1970-..." is in the
 // strict past - must trigger `ExpiredToken`, catching `>`/`==` mutants.
 #[test]
 fn validate_rejects_expired_key() {
@@ -269,7 +265,7 @@ fn validate_equal_to_now_is_not_rejected() {
     );
 }
 
-// WHY: line 79 `Result<Claims>` can be replaced with `Ok(Default::default())`.
+// WHY: `validate`'s `Result<Claims>` can be replaced with `Ok(Default::default())`.
 // Assert every field of the returned Claims carries the stored record data.
 // Uses a table over (role, `nous_id`, prefix) to cover multiple shapes.
 #[test]

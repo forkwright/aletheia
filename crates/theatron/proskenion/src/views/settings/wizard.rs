@@ -38,17 +38,14 @@ pub(crate) fn SetupWizard() -> Element {
                 style: "background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); \
                         width: 100%; max-width: 520px; padding: var(--space-8);",
 
-                // Title
                 div {
                     style: "margin-bottom: var(--space-6);",
                     h1 { style: "font-size: 22px; margin: 0 0 var(--space-2); color: var(--text-primary);", "Welcome to Aletheia" }
                     p { style: "font-size: var(--text-base); color: var(--text-muted); margin: 0;", "Let's get you set up in a few steps." }
                 }
 
-                // Progress bar
                 WizardProgress { current: current_idx, total: step_count }
 
-                // Step content
                 div {
                     style: "margin-top: 28px;",
                     { match step() {
@@ -69,7 +66,6 @@ pub(crate) fn SetupWizard() -> Element {
                             StepReady {
                                 wizard_data,
                                 on_finish: move |_| {
-                                    // Apply wizard data to context signals.
                                     let data = wizard_data.read();
                                     let token = if data.auth_token.expose_secret().is_empty() {
                                         None
@@ -94,11 +90,8 @@ pub(crate) fn SetupWizard() -> Element {
                                     let density = data.selected_density;
                                     drop(data);
 
-                                    // Migrated 2026-05-08 to
-                                    // themelion::ThemeMode::from_slug
-                                    // (theatron v1.2.0); fall back to
-                                    // System for unrecognized slugs to
-                                    // preserve pre-migration behavior.
+                                    // WHY: unrecognized slugs fall back
+                                    // to System rather than erroring.
                                     let new_mode =
                                         ThemeMode::from_slug(selected_theme.as_str())
                                             .unwrap_or(ThemeMode::System);
@@ -112,7 +105,6 @@ pub(crate) fn SetupWizard() -> Element {
                                         }
                                     }
 
-                                    // Persist settings (appearance, keybindings, server list).
                                     {
                                         let store = server_store.read();
                                         let app = appearance.read();
@@ -153,7 +145,7 @@ pub(crate) fn SetupWizard() -> Element {
     }
 }
 
-// --- Progress bar ---
+// ── Progress bar ──
 
 /// Placeholder for the wizard server-URL input, derived from skene's
 /// discovery default so it never drifts from the real gateway port.
@@ -189,12 +181,12 @@ fn WizardProgress(current: usize, total: usize) -> Element {
     }
 }
 
-// --- Step: Server ---
+// ── Step: Server ──
 
 #[component]
 fn StepServer(wizard_data: Signal<WizardData>, on_next: EventHandler<()>) -> Element {
     // WHY: Run auto-discovery once when the wizard's server step renders.
-    // If the URL field is empty (first-run default), fill it with the
+    // WHY: An empty URL field (first-run default) is pre-filled with the
     // discovered server URL so the user can just click "Next".
     let _discovery = use_resource(move || {
         let current = wizard_data.read().server_url.clone();
@@ -247,7 +239,7 @@ fn StepServer(wizard_data: Signal<WizardData>, on_next: EventHandler<()>) -> Ele
     }
 }
 
-// --- Step: Appearance ---
+// ── Step: Appearance ──
 
 #[component]
 fn StepAppearance(
@@ -263,7 +255,6 @@ fn StepAppearance(
                 "Choose your preferred theme and layout density."
             }
 
-            // Theme
             div {
                 style: "display: flex; flex-direction: column; gap: var(--space-2);",
                 div {
@@ -296,7 +287,6 @@ fn StepAppearance(
                 }
             }
 
-            // Density
             div {
                 style: "display: flex; flex-direction: column; gap: var(--space-2);",
                 div {
@@ -329,7 +319,6 @@ fn StepAppearance(
                 }
             }
 
-            // Accent color
             div {
                 style: "display: flex; flex-direction: column; gap: var(--space-2);",
                 div {
@@ -373,7 +362,7 @@ fn StepAppearance(
     }
 }
 
-// --- Step: Ready ---
+// ── Step: Ready ──
 
 #[component]
 fn StepReady(wizard_data: Signal<WizardData>, on_finish: EventHandler<()>) -> Element {
@@ -409,7 +398,7 @@ fn StepReady(wizard_data: Signal<WizardData>, on_finish: EventHandler<()>) -> El
     }
 }
 
-// --- Shared wizard components ---
+// ── Shared wizard components ──
 
 #[component]
 fn WizardNav(

@@ -1,12 +1,6 @@
 // WHY: PersonaRouter adds model-tier and role selection on top of the empirical
-// success-rate routing layer. Phronesis dispatch/persona.rs routed prompts to
-// Opus for architecture/multi-file tasks and Sonnet for well-scoped execution.
-// This module restores that capability on the unified Router trait.
-//
-// Dependency diagram (energeia-trio):
-//   commit 1 (this file): PersonaDecision + PersonaRouter shape
-//   commit 2 (persona_classifier.rs): AST classifier → ModelTier/PersonaRole
-//   commit 3 (affinity.rs): expertise affinity → prefer providers with history
+// success-rate routing layer: Opus-class for architecture/multi-file tasks,
+// Sonnet-class for well-scoped execution (phronesis persona design).
 //
 // Interaction with EmpiricalRouter:
 //   PersonaRouter wraps EmpiricalRouter for provider selection, then overlays
@@ -19,10 +13,6 @@ use tracing::instrument;
 
 use super::empirical::EmpiricalRouter;
 use super::persona_classifier;
-
-// ---------------------------------------------------------------------------
-// ModelTier
-// ---------------------------------------------------------------------------
 
 /// LLM capability tier selected by the persona router.
 ///
@@ -57,10 +47,6 @@ impl std::fmt::Display for ModelTier {
     }
 }
 
-// ---------------------------------------------------------------------------
-// PersonaRole
-// ---------------------------------------------------------------------------
-
 /// Dispatch persona (role) assigned to a session.
 ///
 /// Phronesis encoded role as part of the system prompt sent to the agent.
@@ -92,10 +78,6 @@ impl std::fmt::Display for PersonaRole {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// PersonaDecision
-// ---------------------------------------------------------------------------
 
 /// Extended routing decision that includes model tier and persona role.
 ///
@@ -138,10 +120,6 @@ impl PersonaDecision {
     }
 }
 
-// ---------------------------------------------------------------------------
-// PersonaRouter
-// ---------------------------------------------------------------------------
-
 /// Persona-aware provider router.
 ///
 /// Wraps [`EmpiricalRouter`] for provider selection and overlays model-tier +
@@ -149,10 +127,10 @@ impl PersonaDecision {
 /// historical success rate; the persona layer decides how to configure the
 /// session (model tier + role prompt).
 ///
-/// # Interaction with the classifier (commit 2)
+/// # Interaction with the classifier
 ///
 /// `route_with_persona` accepts a pre-computed `(ModelTier, PersonaRole)` so
-/// the persona classifier (commit 2) can inject its result without coupling
+/// the persona classifier can inject its result without coupling
 /// the router to the classifier. Call sites that have no classifier available
 /// pass `None` and the router falls back to complexity-free tier selection.
 ///
@@ -193,7 +171,6 @@ impl PersonaRouter {
         features: &RequestFeatures,
         persona_hint: Option<(ModelTier, PersonaRole)>,
     ) -> PersonaDecision {
-        // Delegate provider selection to the empirical layer.
         let base = self.inner.route(features).await;
 
         let (model_tier, persona_role, rationale) = if let Some((tier, role)) = persona_hint {
@@ -203,7 +180,6 @@ impl PersonaRouter {
             );
             (tier, role, rationale)
         } else if let Some(prompt) = features.prompt_text.as_deref() {
-            // Try the AST classifier on the prompt text.
             if let Some(classified) = persona_classifier::classify_prompt(prompt) {
                 let rationale = format!(
                     "classifier-assigned tier={} role={} conf={:.2} for provider={}",
@@ -214,7 +190,6 @@ impl PersonaRouter {
                 );
                 (classified.model_tier, classified.persona_role, rationale)
             } else {
-                // Classifier returned None (low confidence) — default tier.
                 let rationale = format!(
                     "classifier-deferred (low confidence) → standard/engineer for provider={}",
                     base.provider
@@ -222,7 +197,6 @@ impl PersonaRouter {
                 (ModelTier::Standard, PersonaRole::Engineer, rationale)
             }
         } else {
-            // No prompt text available — default tier.
             let rationale = format!(
                 "no prompt text → default tier=standard role=engineer for provider={}",
                 base.provider
@@ -242,10 +216,6 @@ impl PersonaRouter {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Router trait impl (delegates to inner EmpiricalRouter)
-// ---------------------------------------------------------------------------
-
 impl Router for PersonaRouter {
     /// Route using the empirical success-rate model.
     ///
@@ -264,10 +234,6 @@ impl Router for PersonaRouter {
         self.inner.after_action(decision, outcome)
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]

@@ -1507,13 +1507,7 @@ impl DaemonConfig {
 > `WorkspaceGuard` (and therefore the inner `File`) lives. Drop closes the
 > file descriptor, which releases the flock automatically.
 > 
-> # Bug history
-> 
-> Previously this used `fd_lock::RwLock<File>` and probed with `try_write()`,
-> then immediately dropped the resulting `RwLockWriteGuard`. This was a bug:
-> `RwLockWriteGuard::drop` calls `flock(fd, LOCK_UN)`, releasing the lock
-> before the `WorkspaceGuard` was even returned to the caller. Two
-> `acquire()` calls in the same process would both succeed. Tracked in #3026.
+> WARNING(#3026): the flock dies with the fd; never probe-and-drop the lock guard.
 ```rust
 pub struct WorkspaceGuard {
     /// The lock file. Holding this open keeps the flock alive on the

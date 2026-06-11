@@ -11,9 +11,7 @@ use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
+// ── Label sets ──
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct AuthAttemptLabels {
@@ -26,9 +24,7 @@ struct TokenRefreshLabels {
     status: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
+// ── Metric families ──
 
 static AUTH_ATTEMPTS_TOTAL: LazyLock<Family<AuthAttemptLabels, Counter>> =
     LazyLock::new(Family::default);
@@ -38,9 +34,7 @@ static TOKEN_REFRESHES_TOTAL: LazyLock<Family<TokenRefreshLabels, Counter>> =
 
 static CREDENTIAL_WRITE_FAILURES_TOTAL: LazyLock<Counter> = LazyLock::new(Counter::default);
 
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
+// ── Registration ──
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -61,9 +55,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
+// ── Recording ──
 
 /// Record an authentication attempt.
 pub(crate) fn record_auth_attempt(method: &str, success: bool) {

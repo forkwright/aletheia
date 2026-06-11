@@ -386,7 +386,6 @@ fn DiscussionCard(
         div {
             style: "{card_style}",
 
-            // Header: question + status + priority
             div {
                 style: "display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--space-2);",
                 span { style: "{QUESTION_STYLE}", "{discussion.question}" }
@@ -397,12 +396,10 @@ fn DiscussionCard(
                 }
             }
 
-            // Context
             if !discussion.context.is_empty() {
                 div { style: "{CONTEXT_STYLE}", "{discussion.context}" }
             }
 
-            // Answered: show summary and undo button
             if is_answered {
                 if let Some(summary) = DiscussionStore::answer_summary(&discussion) {
                     div { style: "{ANSWER_SUMMARY}", "Answer: {summary}" }
@@ -415,7 +412,6 @@ fn DiscussionCard(
                 }
             }
 
-            // Open: show options and answer flow
             if is_open {
                 div {
                     style: "{OPTIONS_GRID}",
@@ -433,7 +429,6 @@ fn DiscussionCard(
                     }
                 }
 
-                // Free-text override
                 div {
                     style: "margin-top: var(--space-3);",
                     button {
@@ -461,7 +456,6 @@ fn DiscussionCard(
                     }
                 }
 
-                // Submit
                 div {
                     style: "display: flex; gap: var(--space-2); margin-top: var(--space-3);",
                     button {
@@ -473,7 +467,6 @@ fn DiscussionCard(
                 }
             }
 
-            // Error feedback
             if let Some(ref err) = *error_msg.read() {
                 div { style: "{ERROR_STYLE}", "{err}" }
             }

@@ -22,10 +22,6 @@ use crate::steward::StewardResult;
 use crate::types::DispatchResult;
 use crate::types::DispatchSpec;
 
-// ---------------------------------------------------------------------------
-// DispatchBackend trait
-// ---------------------------------------------------------------------------
-
 /// High-level dispatch orchestration backend.
 ///
 /// Abstracts the full dispatch workflow: execute prompts, manage PRs via

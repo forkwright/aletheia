@@ -11,7 +11,7 @@ use crate::services::{connection::PylonClient, settings_config};
 use crate::state::connection::{ConnectionConfig, ConnectionState};
 use crate::state::settings::{ServerConfigStore, ServerHealth};
 
-// --- Plain data snapshot (avoids borrow-through-Signal in RSX) ---
+// ── Plain data snapshot (avoids borrow-through-Signal in RSX) ──
 
 #[derive(Clone)]
 struct ServerSnap {
@@ -22,7 +22,7 @@ struct ServerSnap {
     is_active: bool,
 }
 
-// --- Async helpers ---
+// ── Async helpers ──
 
 async fn probe_health(url: &str, token: Option<&str>) -> ServerHealth {
     let config = ConnectionConfig {
@@ -40,7 +40,7 @@ async fn probe_health(url: &str, token: Option<&str>) -> ServerHealth {
     }
 }
 
-// --- Main panel ---
+// ── Main panel ──
 
 /// Server connections management panel.
 #[component]
@@ -55,7 +55,7 @@ pub(crate) fn ServersPanel() -> Element {
     let mut testing_ids: Signal<HashSet<String>> = use_signal(HashSet::new);
     let mut show_add = use_signal(|| false);
 
-    // Pre-collect snapshots before RSX to avoid borrow-through-Signal.
+    // WHY: Pre-collect snapshots before RSX to avoid borrow-through-Signal.
     let snapshots: Vec<ServerSnap> = {
         let store = server_store.read();
         store
@@ -75,7 +75,6 @@ pub(crate) fn ServersPanel() -> Element {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4); max-width: 680px;",
 
-            // Header
             div {
                 style: "display: flex; justify-content: space-between; align-items: center;",
                 h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Server Connections" }
@@ -87,7 +86,6 @@ pub(crate) fn ServersPanel() -> Element {
                 }
             }
 
-            // Add form (inline)
             if show_add() {
                 AddServerForm {
                     server_store,
@@ -95,7 +93,6 @@ pub(crate) fn ServersPanel() -> Element {
                 }
             }
 
-            // Server list
             if snapshots.is_empty() {
                 div {
                     style: "padding: var(--space-8); text-align: center; color: var(--text-muted); font-size: var(--text-base); \
@@ -170,7 +167,7 @@ pub(crate) fn ServersPanel() -> Element {
     }
 }
 
-// --- Server card ---
+// ── Server card ──
 
 #[component]
 fn ServerCard(
@@ -209,7 +206,6 @@ fn ServerCard(
             style: "background: var(--bg-surface); border: {card_border}; border-radius: var(--radius-md); padding: var(--space-4) var(--space-4);",
 
             if editing() {
-                // Edit mode
                 div {
                     style: "display: flex; flex-direction: column; gap: var(--space-3);",
                     div {
@@ -273,7 +269,6 @@ fn ServerCard(
                     }
                 }
             } else {
-                // Display mode
                 div {
                     style: "display: flex; justify-content: space-between; align-items: flex-start;",
 
@@ -345,7 +340,7 @@ fn ServerCard(
     }
 }
 
-// --- Add server form ---
+// ── Add server form ──
 
 #[component]
 fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler<()>) -> Element {

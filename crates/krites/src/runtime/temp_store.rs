@@ -65,8 +65,8 @@ impl RegularTempStore {
     pub(crate) fn put_with_skip(&mut self, tuple: Tuple) {
         self.inner.insert(tuple, true);
     }
-    // INVARIANT: returns true if prev is guaranteed to be the same as self after this function call,
-    // false if we are not sure.
+    /// Returns `true` if `prev` is guaranteed equal to `self` after this call,
+    /// `false` if unsure.
     pub(crate) fn merge_in(&mut self, prev: &mut Self, mut new: Self) -> bool {
         prev.inner.clear();
         if new.inner.is_empty() {

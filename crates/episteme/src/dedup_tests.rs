@@ -251,27 +251,15 @@ fn embedding_similarity_triggers_candidate() {
     assert!(candidates[0].embed_similarity >= 0.80);
 }
 
-// ---------------------------------------------------------------------------
-// #4165 Path A reachability tests
-//
-// These tests pin the contract that makes `MergeDecision::AutoMerge`
-// reachable from production code. Pre-fix, the two production callers of
-// `generate_candidates` (`find_duplicate_entities`, `run_entity_dedup`) both
-// passed `|_, _| 0.0` for `embed_sim`, capping the maximum composite score
-// at 0.70 and making AutoMerge structurally unreachable while a single
-// test (`classify_auto_merge_and_review`) painted a passing picture by
-// injecting `embed_sim = 0.95` directly.
-//
-// The tests below split that into:
-//   - `pre_fix_regression_*` — assert the historical no-embed path
-//     produces no auto-merges, so any future regression that re-introduces
-//     the `|_, _| 0.0` closure trips loudly.
-//   - `path_a_reachable_*` — assert that the production lookup closure
-//     (`make_embedding_lookup`) over realistic stored `name_embedding`s
-//     actually reaches AutoMerge for semantically duplicate entities.
-//   - `path_a_lookup_*` — pin closure-level edge cases (missing
-//     embeddings, dimension mismatch, asymmetric stores).
-// ---------------------------------------------------------------------------
+// WHY(#4165): regression — `MergeDecision::AutoMerge` must stay reachable from
+// the production callers of `generate_candidates` (`find_duplicate_entities`,
+// `run_entity_dedup`); a `|_, _| 0.0` `embed_sim` closure caps the composite
+// score at 0.70 and makes AutoMerge structurally unreachable.
+//   - `pre_fix_regression_*` — the no-embed path produces no auto-merges
+//   - `path_a_reachable_*` — `make_embedding_lookup` over stored
+//     `name_embedding`s reaches AutoMerge for semantic duplicates
+//   - `path_a_lookup_*` — closure-level edge cases (missing embeddings,
+//     dimension mismatch, asymmetric stores)
 
 /// Pre-fix regression: a closure that always returns 0.0 (the historical
 /// `|_, _| 0.0` shape from `entity.rs:141` and `entity.rs:355`) must never
@@ -756,17 +744,11 @@ fn score_boundary_just_below_090() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// #4165 D — DedupTuning config-reachability regression tests
-//
-// These tests pin the contract that operator-tuned
-// `taxis::AgentBehaviorDefaults::knowledge_dedup_*` keys actually flow
-// through `compute_merge_score`, `generate_candidates`, and
-// `MergeDecision::from_score`. Pre-fix, those helpers read the module
-// constants directly and operators could only tune the dedup pipeline
-// by editing source. The tests below assert that adjusting `tuning`
-// changes the observable behaviour at each stage of the pipeline.
-// ---------------------------------------------------------------------------
+// WHY(#4165): regression — operator-tuned
+// `taxis::AgentBehaviorDefaults::knowledge_dedup_*` keys must flow through
+// `compute_merge_score`, `generate_candidates`, and `MergeDecision::from_score`;
+// the tests below assert that adjusting `tuning` changes observable behaviour
+// at each stage of the pipeline.
 
 /// Composite score is recomputed under tuned weights.
 ///

@@ -1,8 +1,6 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 //! Tests for `CredentialFile` parsing and save/load round-trips.
-//!
-//! Split from `credential_tests.rs` to satisfy `RUST/file-too-long`.
 
 use std::path::Path;
 

@@ -3,8 +3,7 @@
 //! This module requires the `mneme-engine` feature flag.
 //!
 //! **Storage:** The `mneme-engine` vendored CozoDB uses only mem/redb/fjall
-//! storage backends: no C++ dependencies. The legacy session-store SQLite
-//! feature is no longer part of the live session backend.
+//! storage backends: no C++ dependencies.
 //!
 //! # Schema
 //!
@@ -162,7 +161,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         confidence: Float,
         created_at: String
     }",
-    // Index 10 — published_facts (added in schema v10, R716 Phase 3)
+    // Index 10 — published_facts (added in schema v10)
     r":create published_facts {
         id: String =>
         original_fact_id: String,
@@ -172,7 +171,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         contested_by: String,
         contest_reason: String?
     }",
-    // Index 11 — provenance (added in schema v10, R716 Phase 3)
+    // Index 11 — provenance (added in schema v10)
     r":create provenance {
         published_fact_id: String, contributor: String =>
         contribution_type: String,
@@ -1058,7 +1057,7 @@ impl KnowledgeStore {
     /// Create a backup of the knowledge database.
     ///
     /// Delegates to the inner engine's `backup_db`. Currently returns an error
-    /// for in-memory and redb backends (`SQLite` storage support was removed).
+    /// for in-memory and redb backends.
     ///
     /// # Complexity
     ///
@@ -1076,7 +1075,7 @@ impl KnowledgeStore {
     /// Restore the knowledge database from a backup file.
     ///
     /// Delegates to the inner engine's `restore_backup`. Currently returns an error
-    /// for in-memory and redb backends (`SQLite` storage support was removed).
+    /// for in-memory and redb backends.
     ///
     /// # Complexity
     ///
@@ -1094,7 +1093,7 @@ impl KnowledgeStore {
     /// Import specific relations from a backup file into the live database.
     ///
     /// Delegates to the inner engine's `import_from_backup`. Currently returns an error
-    /// for in-memory and redb backends (`SQLite` storage support was removed).
+    /// for in-memory and redb backends.
     ///
     /// # Complexity
     ///
