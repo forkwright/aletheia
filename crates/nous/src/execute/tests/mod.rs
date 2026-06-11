@@ -54,6 +54,9 @@ fn test_config() -> NousConfig {
             model: "test-model".to_owned(),
             ..crate::config::NousGenerationConfig::default()
         },
+        tool_groups: organon::types::ToolGroupPolicy::AllowAll {
+            reason: "execute test helper".to_owned(),
+        },
         ..NousConfig::default()
     }
 }

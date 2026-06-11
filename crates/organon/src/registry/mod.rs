@@ -14,7 +14,7 @@ use koina::id::ToolName;
 use crate::error::{self, Result};
 use crate::types::{
     ApprovalRequirement, Reversibility, ToolCallMetadata, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolOutcome, ToolResult, ToolTag,
+    ToolGroupId, ToolGroupPolicy, ToolInput, ToolOutcome, ToolResult, ToolTag,
 };
 
 /// The trait tool implementations must satisfy.
@@ -116,6 +116,33 @@ impl ToolRegistry {
         Ok(())
     }
 
+    fn tools_for_policy<'s, 'p>(
+        &'s self,
+        policy: &'p ToolGroupPolicy,
+    ) -> impl Iterator<Item = &'s RegisteredTool> + 'p
+    where
+        's: 'p,
+    {
+        self.tools
+            .values()
+            .filter(move |tool| policy.permits(&tool.def.groups))
+    }
+
+    fn active_tools_for_policy<'s, 'p>(
+        &'s self,
+        active: &'p HashSet<ToolName>,
+        policy: &'p ToolGroupPolicy,
+    ) -> impl Iterator<Item = &'s RegisteredTool> + 'p
+    where
+        's: 'p,
+    {
+        self.tools_for_policy(policy).filter(move |tool| {
+            tool.def.auto_activate
+                || active.contains(&tool.def.name)
+                || tool.def.name.as_str() == "enable_tool"
+        })
+    }
+
     /// Look up a tool definition by name.
     #[must_use]
     pub fn get_def(&self, name: &ToolName) -> Option<&ToolDef> {
@@ -189,19 +216,19 @@ impl ToolRegistry {
         result
     }
 
-    /// Execute a tool by name, checking that the tool's groups intersect the
-    /// allowed groups for the calling role.
+    /// Execute a tool by name, checking that the tool's groups satisfy the
+    /// policy for the calling role.
     ///
     /// # Errors
     ///
     /// Returns [`Error::ToolGroupViolation`] if the tool's groups do not
-    /// intersect the allowed groups.
+    /// satisfy the policy.
     pub async fn execute_checked(
         &self,
         input: &ToolInput,
         ctx: &ToolContext,
         role: &str,
-        allowed_groups: &[ToolGroupId],
+        policy: &ToolGroupPolicy,
     ) -> Result<ToolResult> {
         let tool = self.tools.get(&input.name).ok_or_else(|| {
             error::ToolNotFoundSnafu {
@@ -210,17 +237,14 @@ impl ToolRegistry {
             .build()
         })?;
 
-        if !allowed_groups.is_empty() && !tool.def.groups.is_empty() {
-            let intersects = tool.def.groups.iter().any(|g| allowed_groups.contains(g));
-            if !intersects {
-                return Err(error::ToolGroupViolationSnafu {
-                    role: role.to_owned(),
-                    tool: input.name.as_str().to_owned(),
-                    allowed: allowed_groups.to_vec(),
-                    tool_groups: tool.def.groups.clone(),
-                }
-                .build());
+        if !policy.permits(&tool.def.groups) {
+            return Err(error::ToolGroupViolationSnafu {
+                role: role.to_owned(),
+                tool: input.name.as_str().to_owned(),
+                allowed: policy.allowed_groups().to_vec(),
+                tool_groups: tool.def.groups.clone(),
             }
+            .build());
         }
 
         self.execute(input, ctx).await
@@ -276,8 +300,7 @@ impl ToolRegistry {
 
     /// Tool definitions filtered by allowed tool groups.
     ///
-    /// Returns only tools whose `groups` intersect the provided `allowed_groups`.
-    /// When `allowed_groups` is empty, returns all tools (legacy fallback).
+    /// Returns only tools whose groups satisfy the provided policy.
     ///
     /// # Complexity
     ///
@@ -285,15 +308,19 @@ impl ToolRegistry {
     #[must_use]
     pub fn definitions_for_groups(&self, allowed_groups: &[ToolGroupId]) -> Vec<&ToolDef> {
         // kanon:ignore RUST/pub-visibility
-        if allowed_groups.is_empty() {
-            return self.definitions();
-        }
-        self.tools
-            .values()
-            .filter(|t| {
-                t.def.groups.is_empty() || t.def.groups.iter().any(|g| allowed_groups.contains(g))
-            })
-            .map(|t| &t.def)
+        self.definitions_for_policy(&ToolGroupPolicy::groups(allowed_groups.to_vec()))
+    }
+
+    /// Tool definitions filtered by explicit tool-group policy.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
+    #[must_use]
+    pub fn definitions_for_policy(&self, policy: &ToolGroupPolicy) -> Vec<&ToolDef> {
+        // kanon:ignore RUST/pub-visibility
+        self.tools_for_policy(policy)
+            .map(|tool| &tool.def)
             .collect()
     }
 
@@ -320,7 +347,7 @@ impl ToolRegistry {
 
     /// Convert registered tools to the LLM wire format, filtered by allowed groups.
     ///
-    /// When `allowed_groups` is empty, returns all tools (legacy fallback).
+    /// An empty group list denies all tools.
     ///
     /// # Complexity
     ///
@@ -331,14 +358,21 @@ impl ToolRegistry {
         allowed_groups: &[ToolGroupId],
     ) -> Vec<hermeneus::types::ToolDefinition> {
         // kanon:ignore RUST/pub-visibility
-        if allowed_groups.is_empty() {
-            return self.to_hermeneus_tools();
-        }
-        self.tools
-            .values()
-            .filter(|t| {
-                t.def.groups.is_empty() || t.def.groups.iter().any(|g| allowed_groups.contains(g))
-            })
+        self.to_hermeneus_tools_for_policy(&ToolGroupPolicy::groups(allowed_groups.to_vec()))
+    }
+
+    /// Convert registered tools to the LLM wire format, filtered by policy.
+    ///
+    /// # Complexity
+    ///
+    /// O(n) where n is the number of registered tools.
+    #[must_use]
+    pub fn to_hermeneus_tools_for_policy(
+        &self,
+        policy: &ToolGroupPolicy,
+    ) -> Vec<hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
+        self.tools_for_policy(policy)
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
@@ -376,7 +410,7 @@ impl ToolRegistry {
     /// Convert tools to LLM wire format with **name + description only**, filtered by
     /// allowed groups.
     ///
-    /// When `allowed_groups` is empty, returns all tools (legacy fallback).
+    /// An empty group list denies all tools.
     #[cfg(feature = "deferred-schemas")]
     #[must_use]
     pub fn to_hermeneus_tools_summaries_for_groups(
@@ -384,15 +418,21 @@ impl ToolRegistry {
         allowed_groups: &[ToolGroupId],
     ) -> Vec<hermeneus::types::ToolDefinition> {
         // kanon:ignore RUST/pub-visibility
-        if allowed_groups.is_empty() {
-            return self.to_hermeneus_tools_summaries();
-        }
-        self.tools
-            .values()
-            .filter(|t| {
-                t.def.groups.is_empty()
-                    || t.def.groups.iter().any(|g| allowed_groups.contains(g))
-            })
+        self.to_hermeneus_tools_summaries_for_policy(&ToolGroupPolicy::groups(
+            allowed_groups.to_vec(),
+        ))
+    }
+
+    /// Convert tools to LLM wire format with **name + description only**, filtered by
+    /// policy.
+    #[cfg(feature = "deferred-schemas")]
+    #[must_use]
+    pub fn to_hermeneus_tools_summaries_for_policy(
+        &self,
+        policy: &ToolGroupPolicy,
+    ) -> Vec<hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
+        self.tools_for_policy(policy)
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
@@ -437,7 +477,7 @@ impl ToolRegistry {
     /// Convert tools to LLM wire format with **name + description only**, filtered by
     /// activation state and allowed groups.
     ///
-    /// When `allowed_groups` is empty, returns all activation-filtered tools (legacy fallback).
+    /// An empty group list denies all activation-filtered tools.
     #[cfg(feature = "deferred-schemas")]
     #[must_use]
     pub fn to_hermeneus_tools_summaries_filtered_for_groups(
@@ -446,19 +486,23 @@ impl ToolRegistry {
         allowed_groups: &[ToolGroupId],
     ) -> Vec<hermeneus::types::ToolDefinition> {
         // kanon:ignore RUST/pub-visibility
-        if allowed_groups.is_empty() {
-            return self.to_hermeneus_tools_summaries_filtered(active);
-        }
-        self.tools
-            .values()
-            .filter(|t| {
-                let active_ok = t.def.auto_activate
-                    || active.contains(&t.def.name)
-                    || t.def.name.as_str() == "enable_tool";
-                let group_ok = t.def.groups.is_empty()
-                    || t.def.groups.iter().any(|g| allowed_groups.contains(g));
-                active_ok && group_ok
-            })
+        self.to_hermeneus_tools_summaries_filtered_for_policy(
+            active,
+            &ToolGroupPolicy::groups(allowed_groups.to_vec()),
+        )
+    }
+
+    /// Convert tools to LLM wire format with **name + description only**, filtered by
+    /// activation state and policy.
+    #[cfg(feature = "deferred-schemas")]
+    #[must_use]
+    pub fn to_hermeneus_tools_summaries_filtered_for_policy(
+        &self,
+        active: &HashSet<ToolName>,
+        policy: &ToolGroupPolicy,
+    ) -> Vec<hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
+        self.active_tools_for_policy(active, policy)
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
@@ -557,7 +601,7 @@ impl ToolRegistry {
 
     /// Convert tools to LLM wire format, filtered by activation state and allowed groups.
     ///
-    /// When `allowed_groups` is empty, returns all activation-filtered tools (legacy fallback).
+    /// An empty group list denies all activation-filtered tools.
     #[must_use]
     pub fn to_hermeneus_tools_filtered_for_groups(
         &self,
@@ -565,19 +609,21 @@ impl ToolRegistry {
         allowed_groups: &[ToolGroupId],
     ) -> Vec<hermeneus::types::ToolDefinition> {
         // kanon:ignore RUST/pub-visibility
-        if allowed_groups.is_empty() {
-            return self.to_hermeneus_tools_filtered(active);
-        }
-        self.tools
-            .values()
-            .filter(|t| {
-                let active_ok = t.def.auto_activate
-                    || active.contains(&t.def.name)
-                    || t.def.name.as_str() == "enable_tool";
-                let group_ok = t.def.groups.is_empty()
-                    || t.def.groups.iter().any(|g| allowed_groups.contains(g));
-                active_ok && group_ok
-            })
+        self.to_hermeneus_tools_filtered_for_policy(
+            active,
+            &ToolGroupPolicy::groups(allowed_groups.to_vec()),
+        )
+    }
+
+    /// Convert tools to LLM wire format, filtered by activation state and policy.
+    #[must_use]
+    pub fn to_hermeneus_tools_filtered_for_policy(
+        &self,
+        active: &HashSet<ToolName>,
+        policy: &ToolGroupPolicy,
+    ) -> Vec<hermeneus::types::ToolDefinition> {
+        // kanon:ignore RUST/pub-visibility
+        self.active_tools_for_policy(active, policy)
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),

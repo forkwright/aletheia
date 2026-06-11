@@ -71,6 +71,7 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `thinking_budget` | u32 | `10000` | Max tokens for extended thinking |
 | `max_tool_iterations` | u32 | `200` | Safety limit on consecutive tool use per turn |
 | `allowed_roots` | string[] | `[]` | Filesystem paths the agent may access |
+| `toolGroups` | `"all"`, `"deny"`, or string[] | `"deny"` | Tool-group policy. Missing or empty values deny all groups. |
 | `tool_timeouts` | object | see `agents.defaults.tool_timeouts` section | Per-tool execution timeout overrides |
 | `working_state_ttl_secs` | u64 | `604800` | Working-state expiry window (7 days) |
 | `working_state_max_task_stack` | usize | `10` | Maximum working-state task stack depth before oldest entries are evicted |
@@ -112,6 +113,7 @@ primary = "claude-sonnet-4-6"
 [agents.defaults]
 context_tokens = 200000
 thinking_enabled = false
+toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
 
 [agents.defaults.tool_timeouts]
 default_ms = 120000
@@ -135,6 +137,10 @@ domains = ["research", "analysis"]
 primary = "claude-opus-4-6"
 fallbacks = ["claude-sonnet-4-6"]
 ```
+
+`toolGroups` is fail-closed. If the field is absent, set to `"deny"`, or set
+to `[]`, the agent receives no grouped tools. Use `"all"` only for an explicit
+admin/full-access policy; use an array for normal role-limited access.
 
 `nous::PipelineConfig` also carries per-stage turn budgets (`context`,
 `recall`, `history`, `guard`, `execute`, `finalize`, `reflection`, and

@@ -55,6 +55,7 @@ fn ensure_agent_definition<'a>(
         episteme_cohort: None,
         recall: None,
         tool_allowlist: None,
+        tool_groups: None,
         recall_profile: None,
         behavior: None,
     });

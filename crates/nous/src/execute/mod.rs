@@ -76,7 +76,7 @@ pub async fn execute(
     // tier when tool_count crosses small integer breakpoints, so approximation
     // here doesn't bend routing off the correct tier.
     let tool_count = config.tool_allowlist.as_ref().map_or_else(
-        || tools.definitions_for_groups(&config.tool_groups).len(),
+        || tools.definitions_for_policy(&config.tool_groups).len(),
         Vec::len,
     );
     let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
@@ -133,10 +133,10 @@ pub async fn execute(
         let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
         #[cfg(feature = "deferred-schemas")]
         let mut tool_defs =
-            tools.to_hermeneus_tools_summaries_filtered_for_groups(&active, &config.tool_groups);
+            tools.to_hermeneus_tools_summaries_filtered_for_policy(&active, &config.tool_groups);
         #[cfg(not(feature = "deferred-schemas"))]
         let mut tool_defs =
-            tools.to_hermeneus_tools_filtered_for_groups(&active, &config.tool_groups);
+            tools.to_hermeneus_tools_filtered_for_policy(&active, &config.tool_groups);
 
         if let Some(allowlist) = &config.tool_allowlist {
             tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
@@ -282,45 +282,29 @@ pub async fn execute(
             extracted.tool_uses
         };
 
-        // WHY: tool-group gating — reject calls whose tool groups do not intersect
-        // the role's allowed groups.  Empty allowed_groups is legacy fallback.
-        let effective_tool_uses: Vec<_> = if config.tool_groups.is_empty() {
-            effective_tool_uses
-        } else {
-            let (allowed, denied): (Vec<_>, Vec<_>) =
-                effective_tool_uses.into_iter().partition(|(_, name, _)| {
-                    ToolName::new(name)
-                        .ok()
-                        .and_then(|n| tools.get_def(&n))
-                        .is_none_or(|def| {
-                            def.groups.is_empty()
-                                || def.groups.iter().any(|g| config.tool_groups.contains(g))
-                        })
-                });
+        let (effective_tool_uses, denied): (Vec<_>, Vec<_>) =
+            effective_tool_uses.into_iter().partition(|(_, name, _)| {
+                ToolName::new(name)
+                    .ok()
+                    .and_then(|n| tools.get_def(&n))
+                    .is_none_or(|def| config.tool_groups.permits(&def.groups))
+            });
 
-            for (id, name, _) in &denied {
-                warn!(
-                    tool = %name,
-                    tool_use_id = %id,
-                    "tool call denied by group policy"
-                );
-                denied_blocks.push(ContentBlock::ToolResult {
-                    tool_use_id: id.clone(),
-                    content: ToolResultContent::Text(format!(
-                        "Tool '{name}' is not in your allowed tool groups. Allowed groups: {}",
-                        config
-                            .tool_groups
-                            .iter()
-                            .map(std::string::ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )),
-                    is_error: Some(true),
-                });
-            }
-
-            allowed
-        };
+        for (id, name, _) in &denied {
+            warn!(
+                tool = %name,
+                tool_use_id = %id,
+                "tool call denied by group policy"
+            );
+            denied_blocks.push(ContentBlock::ToolResult {
+                tool_use_id: id.clone(),
+                content: ToolResultContent::Text(format!(
+                    "Tool '{name}' is not in your allowed tool groups. Policy: {}",
+                    config.tool_groups.description()
+                )),
+                is_error: Some(true),
+            });
+        }
 
         // WHY: before_tool hooks run after allowlist filtering but before dispatch,
         // so hooks can deny individual tool calls based on budget/scope/policy.
@@ -483,7 +467,7 @@ pub async fn execute_streaming(
     // Must come before find_streaming_provider so the streaming provider is
     // looked up for the actual model the turn will use.
     let tool_count = config.tool_allowlist.as_ref().map_or_else(
-        || tools.definitions_for_groups(&config.tool_groups).len(),
+        || tools.definitions_for_policy(&config.tool_groups).len(),
         Vec::len,
     );
     let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
@@ -519,7 +503,7 @@ pub async fn execute_streaming(
             budget_tokens: config.generation.thinking_budget,
         });
 
-    let mut tool_defs = tools.to_hermeneus_tools_for_groups(&config.tool_groups);
+    let mut tool_defs = tools.to_hermeneus_tools_for_policy(&config.tool_groups);
     if let Some(allowlist) = &config.tool_allowlist {
         tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
     }
@@ -660,45 +644,29 @@ pub async fn execute_streaming(
             extracted.tool_uses
         };
 
-        // WHY: tool-group gating — reject calls whose tool groups do not intersect
-        // the role's allowed groups.  Empty allowed_groups is legacy fallback.
-        let effective_tool_uses: Vec<_> = if config.tool_groups.is_empty() {
-            effective_tool_uses
-        } else {
-            let (allowed, denied): (Vec<_>, Vec<_>) =
-                effective_tool_uses.into_iter().partition(|(_, name, _)| {
-                    ToolName::new(name)
-                        .ok()
-                        .and_then(|n| tools.get_def(&n))
-                        .is_none_or(|def| {
-                            def.groups.is_empty()
-                                || def.groups.iter().any(|g| config.tool_groups.contains(g))
-                        })
-                });
+        let (effective_tool_uses, denied): (Vec<_>, Vec<_>) =
+            effective_tool_uses.into_iter().partition(|(_, name, _)| {
+                ToolName::new(name)
+                    .ok()
+                    .and_then(|n| tools.get_def(&n))
+                    .is_none_or(|def| config.tool_groups.permits(&def.groups))
+            });
 
-            for (id, name, _) in &denied {
-                warn!(
-                    tool = %name,
-                    tool_use_id = %id,
-                    "tool call denied by group policy"
-                );
-                denied_blocks.push(ContentBlock::ToolResult {
-                    tool_use_id: id.clone(),
-                    content: ToolResultContent::Text(format!(
-                        "Tool '{name}' is not in your allowed tool groups. Allowed groups: {}",
-                        config
-                            .tool_groups
-                            .iter()
-                            .map(std::string::ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )),
-                    is_error: Some(true),
-                });
-            }
-
-            allowed
-        };
+        for (id, name, _) in &denied {
+            warn!(
+                tool = %name,
+                tool_use_id = %id,
+                "tool call denied by group policy"
+            );
+            denied_blocks.push(ContentBlock::ToolResult {
+                tool_use_id: id.clone(),
+                content: ToolResultContent::Text(format!(
+                    "Tool '{name}' is not in your allowed tool groups. Policy: {}",
+                    config.tool_groups.description()
+                )),
+                is_error: Some(true),
+            });
+        }
 
         // WHY: before_tool hooks filter tool calls before streaming dispatch
         let effective_tool_uses = if let Some(hook_registry) = hooks {

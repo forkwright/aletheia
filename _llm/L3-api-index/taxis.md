@@ -98,6 +98,18 @@ pub struct AgentsConfig {
 ```
 
 ```rust
+pub enum AgentToolGroupPolicy {
+    /// All tool groups are permitted.
+    AllowAll,
+    /// Only tools with one of these groups are permitted.
+    Groups(Vec<String>),
+    /// No tool groups are permitted.
+    #[default]
+    DenyAll,
+}
+```
+
+```rust
 pub struct RecallWeights {
     /// Temporal decay weight (0.0--1.0).
     pub decay: f64,
@@ -218,6 +230,8 @@ pub struct AgentDefaults {
     pub max_tool_iterations: u32,
     /// Filesystem paths the agent is permitted to access.
     pub allowed_roots: Vec<String>,
+    /// Default tool-group policy for agents. Missing or empty configuration denies all groups.
+    pub tool_groups: AgentToolGroupPolicy,
     /// Prompt caching configuration.
     pub caching: CachingConfig,
     /// Recall pipeline settings applied to all agents unless overridden.
@@ -291,6 +305,9 @@ pub struct NousDefinition {
     /// Tool allowlist override; when `None`, all tools are enabled.
     #[serde(default)]
     pub tool_allowlist: Option<Vec<String>>,
+    /// Tool-group policy override; when `None`, inherits from [`AgentDefaults::tool_groups`].
+    #[serde(default)]
+    pub tool_groups: Option<AgentToolGroupPolicy>,
     /// Named recall behavior profile; when `None`, resolves to [`RecallProfile::Default`].
     #[serde(default)]
     pub recall_profile: Option<RecallProfile>,
@@ -1922,6 +1939,8 @@ pub struct ResolvedNousConfig {
     pub episteme_cohort: Arc<str>,
     /// Merged set of permitted filesystem roots.
     pub allowed_roots: Vec<String>,
+    /// Resolved tool-group policy.
+    pub tool_groups: AgentToolGroupPolicy,
     /// Knowledge domains this agent covers.
     pub domains: Vec<String>,
     /// Resolved recall pipeline settings.

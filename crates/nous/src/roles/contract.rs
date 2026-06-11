@@ -14,7 +14,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
-use organon::types::ToolGroupId;
+use organon::types::{ToolGroupId, ToolGroupPolicy};
 
 use crate::error::{self, Result};
 use crate::roles::Role;
@@ -34,9 +34,9 @@ pub struct RoleContract {
     pub behaviors: Vec<String>,
     /// Constraints: what this role MUST NOT do.
     pub constraints: Vec<String>,
-    /// Allowed tool groups.  Empty means all tools (legacy fallback).
+    /// Tool-group policy. Missing or empty configuration denies all tools.
     #[serde(default)]
-    pub tool_groups: Vec<ToolGroupId>,
+    pub tool_groups: ToolGroupPolicy,
 }
 
 impl RoleContract {
@@ -60,12 +60,22 @@ impl RoleContract {
             out.push('\n');
         }
 
-        if !self.tool_groups.is_empty() {
-            out.push_str("### Allowed Tool Groups\n\n");
-            for group in &self.tool_groups {
-                out.push_str(&format!("- {group}\n"));
+        match &self.tool_groups {
+            ToolGroupPolicy::Groups(groups) => {
+                out.push_str("### Allowed Tool Groups\n\n");
+                for group in groups {
+                    out.push_str(&format!("- {group}\n"));
+                }
+                out.push('\n');
             }
-            out.push('\n');
+            ToolGroupPolicy::AllowAll { reason } => {
+                out.push_str("### Tool Group Policy\n\n");
+                out.push_str(&format!("- all ({reason})\n\n"));
+            }
+            ToolGroupPolicy::DenyAll => {
+                out.push_str("### Tool Group Policy\n\n");
+                out.push_str("- deny\n\n");
+            }
         }
 
         if !self.constraints.is_empty() {
@@ -106,7 +116,7 @@ struct RoleContractToml {
     #[serde(default)]
     constraints: Vec<String>,
     #[serde(default)]
-    tool_groups: Vec<ToolGroupId>,
+    tool_groups: ToolGroupPolicy,
 }
 
 /// Registry of role contracts, keyed by role name.
@@ -180,19 +190,12 @@ impl ContractRegistry {
                 constraints: toml_contract.constraints,
                 tool_groups: toml_contract.tool_groups,
             };
-            if contract.tool_groups.is_empty() {
-                warn!(
-                    role = %role_name,
-                    "role contract has no tool_groups; allowing all tools (legacy fallback). \
-                     File a follow-up issue to populate explicit tool_groups."
-                );
-            }
             info!(
                 role = %role_name,
                 version = contract.version,
                 behaviors = contract.behaviors.len(),
                 constraints = contract.constraints.len(),
-                tool_groups = contract.tool_groups.len(),
+                tool_group_policy = %contract.tool_groups.description(),
                 "loaded role contract from file"
             );
             registry.contracts.insert(role_name, contract);
@@ -263,12 +266,12 @@ fn coder_contract() -> RoleContract {
             "Ask clarifying questions instead of making conservative choices".to_owned(),
             "Leave the build broken".to_owned(),
         ],
-        tool_groups: vec![
+        tool_groups: ToolGroupPolicy::groups(vec![
             ToolGroupId::Read,
             ToolGroupId::Edit,
             ToolGroupId::Command,
             ToolGroupId::Verify,
-        ],
+        ]),
     }
 }
 
@@ -290,7 +293,11 @@ fn researcher_contract() -> RoleContract {
             "Omit source citations".to_owned(),
             "Modify files or execute commands".to_owned(),
         ],
-        tool_groups: vec![ToolGroupId::Read, ToolGroupId::Mcp, ToolGroupId::Plan],
+        tool_groups: ToolGroupPolicy::groups(vec![
+            ToolGroupId::Read,
+            ToolGroupId::Mcp,
+            ToolGroupId::Plan,
+        ]),
     }
 }
 
@@ -312,7 +319,11 @@ fn reviewer_contract() -> RoleContract {
             "Invent problems to appear thorough".to_owned(),
             "Provide vague feedback without specific locations".to_owned(),
         ],
-        tool_groups: vec![ToolGroupId::Read, ToolGroupId::Verify, ToolGroupId::Mcp],
+        tool_groups: ToolGroupPolicy::groups(vec![
+            ToolGroupId::Read,
+            ToolGroupId::Verify,
+            ToolGroupId::Mcp,
+        ]),
     }
 }
 
@@ -331,7 +342,7 @@ fn explorer_contract() -> RoleContract {
             "Dump entire file contents without summarizing".to_owned(),
             "Report findings without file paths".to_owned(),
         ],
-        tool_groups: vec![ToolGroupId::Read, ToolGroupId::Plan],
+        tool_groups: ToolGroupPolicy::groups(vec![ToolGroupId::Read, ToolGroupId::Plan]),
     }
 }
 
@@ -351,7 +362,11 @@ fn runner_contract() -> RoleContract {
             "Add extra commands not requested".to_owned(),
             "Retry commands unless instructed".to_owned(),
         ],
-        tool_groups: vec![ToolGroupId::Read, ToolGroupId::Command, ToolGroupId::Verify],
+        tool_groups: ToolGroupPolicy::groups(vec![
+            ToolGroupId::Read,
+            ToolGroupId::Command,
+            ToolGroupId::Verify,
+        ]),
     }
 }
 
@@ -363,6 +378,13 @@ fn runner_contract() -> RoleContract {
 )]
 mod tests {
     use super::*;
+
+    fn groups(policy: &ToolGroupPolicy) -> &[ToolGroupId] {
+        match policy {
+            ToolGroupPolicy::Groups(groups) => groups,
+            ToolGroupPolicy::AllowAll { .. } | ToolGroupPolicy::DenyAll => &[],
+        }
+    }
 
     #[test]
     fn default_registry_has_all_roles() {
@@ -457,6 +479,11 @@ constraints = ["Execute plans"]
         let planner = registry.get("planner").unwrap();
         assert_eq!(planner.role, "planner");
         assert_eq!(planner.version, 1);
+        assert_eq!(
+            planner.tool_groups,
+            ToolGroupPolicy::DenyAll,
+            "missing tool_groups should deny all tools"
+        );
 
         // Built-in defaults still present
         assert!(registry.get("coder").is_some());
@@ -475,7 +502,7 @@ constraints = ["Execute plans"]
             version: 2,
             behaviors: vec!["Write code".to_owned(), "Run tests".to_owned()],
             constraints: vec!["Break the build".to_owned()],
-            tool_groups: vec![ToolGroupId::Read, ToolGroupId::Edit],
+            tool_groups: ToolGroupPolicy::groups(vec![ToolGroupId::Read, ToolGroupId::Edit]),
         };
 
         let section = contract.to_prompt_section();
@@ -497,7 +524,7 @@ constraints = ["Execute plans"]
             version: 1,
             behaviors: Vec::new(),
             constraints: Vec::new(),
-            tool_groups: Vec::new(),
+            tool_groups: ToolGroupPolicy::DenyAll,
         };
         let section = contract.to_prompt_section();
         assert!(
@@ -536,6 +563,7 @@ constraints = ["Custom constraint"]
         let coder = registry.get("coder").unwrap();
         assert_eq!(coder.version, 3);
         assert_eq!(coder.behaviors, vec!["Custom behavior"]);
+        assert_eq!(coder.tool_groups, ToolGroupPolicy::DenyAll);
     }
 
     #[test]
@@ -545,7 +573,7 @@ constraints = ["Custom constraint"]
             version: 2,
             behaviors: vec!["Write code".to_owned()],
             constraints: vec!["Break things".to_owned()],
-            tool_groups: vec![ToolGroupId::Read, ToolGroupId::Edit],
+            tool_groups: ToolGroupPolicy::groups(vec![ToolGroupId::Read, ToolGroupId::Edit]),
         };
         let json = serde_json::to_string(&contract).unwrap();
         let back: RoleContract = serde_json::from_str(&json).unwrap();
@@ -580,7 +608,7 @@ constraints = ["Custom constraint"]
         let registry = ContractRegistry::defaults();
         for (name, contract) in registry.all() {
             assert!(
-                !contract.tool_groups.is_empty(),
+                !groups(&contract.tool_groups).is_empty(),
                 "contract for {name} should have non-empty tool_groups"
             );
         }
@@ -590,20 +618,22 @@ constraints = ["Custom constraint"]
     fn coder_has_edit_and_command_groups() {
         let registry = ContractRegistry::defaults();
         let coder = registry.get("coder").unwrap();
-        assert!(coder.tool_groups.contains(&ToolGroupId::Read));
-        assert!(coder.tool_groups.contains(&ToolGroupId::Edit));
-        assert!(coder.tool_groups.contains(&ToolGroupId::Command));
-        assert!(coder.tool_groups.contains(&ToolGroupId::Verify));
+        let groups = groups(&coder.tool_groups);
+        assert!(groups.contains(&ToolGroupId::Read));
+        assert!(groups.contains(&ToolGroupId::Edit));
+        assert!(groups.contains(&ToolGroupId::Command));
+        assert!(groups.contains(&ToolGroupId::Verify));
     }
 
     #[test]
     fn explorer_is_read_only_plus_plan() {
         let registry = ContractRegistry::defaults();
         let explorer = registry.get("explorer").unwrap();
-        assert!(explorer.tool_groups.contains(&ToolGroupId::Read));
-        assert!(explorer.tool_groups.contains(&ToolGroupId::Plan));
-        assert!(!explorer.tool_groups.contains(&ToolGroupId::Edit));
-        assert!(!explorer.tool_groups.contains(&ToolGroupId::Command));
+        let groups = groups(&explorer.tool_groups);
+        assert!(groups.contains(&ToolGroupId::Read));
+        assert!(groups.contains(&ToolGroupId::Plan));
+        assert!(!groups.contains(&ToolGroupId::Edit));
+        assert!(!groups.contains(&ToolGroupId::Command));
     }
 
     #[test]
@@ -613,7 +643,7 @@ constraints = ["Custom constraint"]
             version: 1,
             behaviors: vec!["Write code".to_owned()],
             constraints: vec!["Break things".to_owned()],
-            tool_groups: vec![ToolGroupId::Read, ToolGroupId::Edit],
+            tool_groups: ToolGroupPolicy::groups(vec![ToolGroupId::Read, ToolGroupId::Edit]),
         };
         let section = contract.to_prompt_section();
         assert!(
@@ -631,18 +661,22 @@ constraints = ["Custom constraint"]
     }
 
     #[test]
-    fn to_prompt_section_omits_tool_groups_when_empty() {
+    fn to_prompt_section_marks_deny_all() {
         let contract = RoleContract {
             role: "empty".to_owned(),
             version: 1,
             behaviors: vec!["Behave".to_owned()],
             constraints: vec!["Misbehave".to_owned()],
-            tool_groups: Vec::new(),
+            tool_groups: ToolGroupPolicy::DenyAll,
         };
         let section = contract.to_prompt_section();
         assert!(
-            !section.contains("Allowed Tool Groups"),
-            "prompt section should omit tool groups when empty"
+            section.contains("Tool Group Policy"),
+            "prompt section should state deny-all policy"
+        );
+        assert!(
+            section.contains("- deny"),
+            "prompt section should state deny-all policy"
         );
     }
 
@@ -657,8 +691,37 @@ tool_groups = ["read", "edit"]
 "#;
         let registry = ContractRegistry::from_toml(toml).unwrap();
         let coder = registry.get("coder").unwrap();
-        assert_eq!(coder.tool_groups.len(), 2);
-        assert!(coder.tool_groups.contains(&ToolGroupId::Read));
-        assert!(coder.tool_groups.contains(&ToolGroupId::Edit));
+        let groups = groups(&coder.tool_groups);
+        assert_eq!(groups.len(), 2);
+        assert!(groups.contains(&ToolGroupId::Read));
+        assert!(groups.contains(&ToolGroupId::Edit));
+    }
+
+    #[test]
+    fn from_toml_parses_allow_all_policy() {
+        let toml = r#"
+[admin]
+version = 1
+tool_groups = "all"
+"#;
+        let registry = ContractRegistry::from_toml(toml).unwrap();
+        assert!(matches!(
+            registry.get("admin").unwrap().tool_groups,
+            ToolGroupPolicy::AllowAll { .. }
+        ));
+    }
+
+    #[test]
+    fn from_toml_empty_groups_denies_all() {
+        let toml = r"
+[empty]
+version = 1
+tool_groups = []
+";
+        let registry = ContractRegistry::from_toml(toml).unwrap();
+        assert_eq!(
+            registry.get("empty").unwrap().tool_groups,
+            ToolGroupPolicy::DenyAll
+        );
     }
 }

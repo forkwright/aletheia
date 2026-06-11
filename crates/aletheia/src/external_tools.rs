@@ -1035,7 +1035,12 @@ done
             arguments: serde_json::json!({"message": "hello"}),
         };
         let err = registry
-            .execute_checked(&input, &test_ctx(), "reader", &[ToolGroupId::Read])
+            .execute_checked(
+                &input,
+                &test_ctx(),
+                "reader",
+                &organon::types::ToolGroupPolicy::groups(vec![ToolGroupId::Read]),
+            )
             .await
             .expect_err("mcp group denied");
         assert!(err.to_string().contains("tool group violation"));

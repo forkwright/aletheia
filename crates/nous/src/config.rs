@@ -277,13 +277,12 @@ pub struct NousConfig {
     /// during ephemeral sub-agent spawning.
     #[serde(default)]
     pub tool_allowlist: Option<Vec<String>>,
-    /// Allowed tool groups for role-based gating.
+    /// Tool-group policy for role-based gating.
     ///
-    /// When non-empty, only tools whose `groups` intersect this list are
-    /// visible to the LLM and executable.  Empty means all tools (legacy
-    /// fallback).  Populated from `RoleContract.tool_groups`.
+    /// Only tools permitted by this policy are visible to the LLM and
+    /// executable. Absent or empty configuration resolves to deny-all.
     #[serde(default)]
-    pub tool_groups: Vec<organon::types::ToolGroupId>,
+    pub tool_groups: organon::types::ToolGroupPolicy,
     /// Turn-level hook configuration.
     #[serde(default)]
     pub hooks: HookConfig,
@@ -397,7 +396,7 @@ impl Default for NousConfig {
             recall: RecallConfig::default(),
             recall_profile: RecallProfile::Default,
             tool_allowlist: None,
-            tool_groups: Vec::new(),
+            tool_groups: organon::types::ToolGroupPolicy::DenyAll,
             hooks: HookConfig::default(),
             behavior: AgentBehaviorDefaults::default(),
         }
@@ -662,7 +661,7 @@ mod tests {
             recall: RecallConfig::default(),
             recall_profile: RecallProfile::Default,
             tool_allowlist: None,
-            tool_groups: Vec::new(),
+            tool_groups: organon::types::ToolGroupPolicy::DenyAll,
             hooks: HookConfig::default(),
             behavior: AgentBehaviorDefaults::default(),
         };

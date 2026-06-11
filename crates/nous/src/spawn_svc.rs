@@ -165,7 +165,9 @@ impl SpawnService for SpawnServiceImpl {
 
         let tool_groups = template
             .as_ref()
-            .map_or_else(Vec::new, |t| t.tool_groups.clone());
+            .map_or_else(organon::types::ToolGroupPolicy::default, |t| {
+                t.tool_groups.clone()
+            });
 
         let timeout = Duration::from_secs(request.timeout_secs);
         let task = request.task.clone();

@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use super::{
-    AgencyLevel, AgentBehaviorDefaults, AletheiaConfig, ExtractionConfig, RecallProfile,
-    RecallSettings,
+    AgencyLevel, AgentBehaviorDefaults, AgentToolGroupPolicy, AletheiaConfig, ExtractionConfig,
+    RecallProfile, RecallSettings,
 };
 
 /// Resolved model selection for an agent.
@@ -75,6 +75,8 @@ pub struct ResolvedNousConfig {
     pub episteme_cohort: Arc<str>,
     /// Merged set of permitted filesystem roots.
     pub allowed_roots: Vec<String>,
+    /// Resolved tool-group policy.
+    pub tool_groups: AgentToolGroupPolicy,
     /// Knowledge domains this agent covers.
     pub domains: Vec<String>,
     /// Resolved recall pipeline settings.
@@ -152,6 +154,9 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     }
 
     let domains = agent.map_or_else(Vec::new, |agent| agent.domains.clone());
+    let tool_groups = agent
+        .and_then(|agent| agent.tool_groups.clone())
+        .unwrap_or_else(|| defaults.tool_groups.clone());
     let name = agent.and_then(|a| a.name.clone());
     let private = agent.is_some_and(|a| a.private);
     let episteme_cohort = agent
@@ -214,6 +219,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         private,
         episteme_cohort: Arc::from(episteme_cohort),
         allowed_roots,
+        tool_groups,
         domains,
         recall,
         extraction: config.knowledge.extraction.clone(),
