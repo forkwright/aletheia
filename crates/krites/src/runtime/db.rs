@@ -74,7 +74,7 @@ pub enum ScriptMutability {
     Immutable,
 }
 
-/// The mneme engine database object.
+/// The krites engine database object.
 #[derive(Clone)]
 pub struct Db<S> {
     pub(crate) db: S,
@@ -348,11 +348,11 @@ impl<'s, S: Storage<'s>> Db<S> {
             .clone();
     }
 
-    /// Backup the running database into an Sqlite file.
+    /// Backup the running database.
     ///
     /// # Errors
     ///
-    /// Returns an error if the backup operation is not supported or fails.
+    /// Always returns `Unsupported` (storage-sqlite removed).
     #[must_use = "backup can fail"]
     pub fn backup_db(&'s self, _out_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
@@ -361,11 +361,11 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
         .fail()?
     }
-    /// Restore from an Sqlite backup.
+    /// Restore from a backup.
     ///
     /// # Errors
     ///
-    /// Returns an error if the restore operation is not supported or fails.
+    /// Always returns `Unsupported` (storage-sqlite removed).
     #[must_use = "restore can fail"]
     pub fn restore_backup(&'s self, _in_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {

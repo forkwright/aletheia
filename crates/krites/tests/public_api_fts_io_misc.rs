@@ -13,17 +13,11 @@ use std::time::Duration;
 use krites::{DataValue, Db, NamedRows, ScriptMutability};
 use serde_json::json;
 
-// Split: FTS + Import/Export + Callbacks + Query cache + Errors + Fixed rules + Data types.
-
-// Full-Text Search
-// ============================================================================
-
 /// Test FTS index creation, text search, and index lifecycle.
 #[test]
 fn fts_index_lifecycle() {
     let db = Db::open_mem().expect("opening in-memory database should succeed");
 
-    // Create relation with text column
     db.run(
         ":create documents {id: String => content: String}",
         BTreeMap::new(),
@@ -31,7 +25,6 @@ fn fts_index_lifecycle() {
     )
     .expect("creating documents relation should succeed");
 
-    // Insert documents
     db.run(
         r#"?[id, content] <- [["doc1", "The quick brown fox jumps over the lazy dog"],
                             ["doc2", "A quick brown dog outpaces the lazy fox"],
@@ -42,7 +35,6 @@ fn fts_index_lifecycle() {
     )
     .expect("inserting documents should succeed");
 
-    // Create FTS index
     db.run(
         "::fts create documents:fts_idx {\n\
          extractor: content,\n\
@@ -54,7 +46,6 @@ fn fts_index_lifecycle() {
     )
     .expect("creating FTS index should succeed");
 
-    // Search for "quick"
     let result = db
         .run_read_only(
             "?[id, content, score] := ~documents:fts_idx{id, content | query: \"quick\", k: 10, bind_score: score}",
@@ -67,7 +58,7 @@ fn fts_index_lifecycle() {
         "should find documents containing 'quick'"
     );
 
-    // Search for "fox" - FTS requires k parameter in the search options
+    // NOTE: FTS search requires the k parameter.
     let result = db
         .run_read_only(
             "?[id, content, score] := ~documents:fts_idx{id, content | query: \"fox\", k: 10, bind_score: score}",
@@ -80,7 +71,7 @@ fn fts_index_lifecycle() {
         "should find documents containing 'fox'"
     );
 
-    // Add more documents after index creation (should be auto-indexed)
+    // NOTE: documents inserted after index creation are auto-indexed.
     db.run(
         r#"?[id, content] <- [["doc4", "The quick red fox is very fast"]] :put documents {id => content}"#,
         BTreeMap::new(),
@@ -88,7 +79,6 @@ fn fts_index_lifecycle() {
     )
     .expect("inserting additional document should succeed");
 
-    // Search again - should find the new document
     let result = db
         .run_read_only(
             "?[id, content] := ~documents:fts_idx{id, content | query: \"red\", k: 10}",
@@ -101,7 +91,6 @@ fn fts_index_lifecycle() {
         "should find document containing 'red'"
     );
 
-    // Drop the FTS index
     db.run(
         "::fts drop documents:fts_idx",
         BTreeMap::new(),
@@ -110,16 +99,11 @@ fn fts_index_lifecycle() {
     .expect("dropping FTS index should succeed");
 }
 
-// ============================================================================
-// Import/Export
-// ============================================================================
-
 /// Test exporting and importing relations.
 #[test]
 fn export_import_relations() {
     let db = Db::open_mem().expect("opening in-memory database should succeed");
 
-    // Create and populate relations
     db.run(
         ":create source {id: Int => value: String}",
         BTreeMap::new(),
@@ -134,7 +118,6 @@ fn export_import_relations() {
     )
     .expect("inserting data should succeed");
 
-    // Export the relation
     let exported = db
         .export_relations(["source"].iter())
         .expect("exporting relation should succeed");
@@ -142,7 +125,6 @@ fn export_import_relations() {
     assert!(exported.contains_key("source"));
     assert_eq!(exported["source"].rows.len(), 3);
 
-    // Create new database and import into a relation with matching schema
     let db2 = Db::open_mem().expect("opening second database should succeed");
 
     db2.run(
@@ -155,7 +137,6 @@ fn export_import_relations() {
     db2.import_relations(exported)
         .expect("importing relations should succeed");
 
-    // Verify imported data
     let result = db2
         .run_read_only("?[id, value] := *source{id, value}", BTreeMap::new())
         .expect("querying imported data should succeed");
@@ -178,19 +159,13 @@ fn named_rows_json_roundtrip() {
     assert_eq!(json["rows"], json!([[1, "Alice"], [2, "Bob"]]));
 }
 
-// ============================================================================
-// Callbacks
-// ============================================================================
-
 /// Test registering callbacks and receiving change notifications.
 #[test]
 fn callback_receives_changes() {
     let db = Db::open_mem().expect("opening in-memory database should succeed");
 
-    // Register callback before creating relation
     let (_callback_id, receiver) = db.register_callback("changes_test", Some(10));
 
-    // Create relation
     db.run(
         ":create changes_test {id: Int => value: String}",
         BTreeMap::new(),
@@ -198,7 +173,6 @@ fn callback_receives_changes() {
     )
     .expect("creating relation should succeed");
 
-    // Insert data
     db.run(
         r#"?[id, value] <- [[1, "first"], [2, "second"]] :put changes_test {id => value}"#,
         BTreeMap::new(),
@@ -206,7 +180,6 @@ fn callback_receives_changes() {
     )
     .expect("inserting should succeed");
 
-    // Update data (should trigger callback with old and new values)
     db.run(
         r#"?[id, value] <- [[1, "updated"]] :put changes_test {id => value}"#,
         BTreeMap::new(),
@@ -214,22 +187,16 @@ fn callback_receives_changes() {
     )
     .expect("updating should succeed");
 
-    // Give callbacks time to be delivered
+    // WHY: callback delivery is asynchronous; allow time before draining.
     std::thread::sleep(Duration::from_millis(50));
 
-    // Collect callbacks
     let mut callbacks = Vec::new();
     while let Ok(cb) = receiver.try_recv() {
         callbacks.push(cb);
     }
 
-    // Should have received callbacks for the puts
     assert!(!callbacks.is_empty(), "should have received callbacks");
 }
-
-// ============================================================================
-// Query Cache
-// ============================================================================
 
 /// Test query cache statistics tracking.
 #[test]
@@ -238,19 +205,16 @@ fn query_cache_tracks_hits_and_misses() {
         .expect("opening database should succeed")
         .with_cache(NonZeroUsize::new(100).expect("non-zero cache size"));
 
-    // First query should be a miss
     let _ = db.run_read_only("?[x] := x = 1", BTreeMap::new());
     let stats = db.cache_stats().expect("cache stats should be available");
     assert_eq!(stats.misses, 1);
     assert_eq!(stats.hits, 0);
 
-    // Same query should be a hit
     let _ = db.run_read_only("?[x] := x = 1", BTreeMap::new());
     let stats = db.cache_stats().expect("cache stats should be available");
     assert_eq!(stats.misses, 1);
     assert_eq!(stats.hits, 1);
 
-    // Different query should be another miss
     let _ = db.run_read_only("?[x] := x = 2", BTreeMap::new());
     let stats = db.cache_stats().expect("cache stats should be available");
     assert_eq!(stats.misses, 2);
@@ -264,35 +228,26 @@ fn query_cache_normalizes_whitespace() {
         .expect("opening database should succeed")
         .with_cache(NonZeroUsize::new(100).expect("non-zero cache size"));
 
-    // First query with standard spacing
     let _ = db.run_read_only("?[x] := x = 1", BTreeMap::new());
     let stats = db.cache_stats().expect("cache stats should be available");
     assert_eq!(stats.misses, 1);
 
-    // Same query with extra whitespace should hit
     let _ = db.run_read_only("  ?[x]   :=  x  =  1  ", BTreeMap::new());
     let stats = db.cache_stats().expect("cache stats should be available");
     assert_eq!(stats.hits, 1);
 }
-
-// ============================================================================
-// Error Handling
-// ============================================================================
 
 /// Test error variants for malformed queries.
 #[test]
 fn malformed_query_errors() {
     let db = Db::open_mem().expect("opening database should succeed");
 
-    // Syntax error
     let result = db.run_read_only("?[x] :=", BTreeMap::new());
     assert!(result.is_err(), "incomplete query should error");
 
-    // Unknown relation
     let result = db.run_read_only("?[x] := *nonexistent{x}", BTreeMap::new());
     assert!(result.is_err(), "query on unknown relation should error");
 
-    // Type error in query
     db.run(
         ":create typed {n: Int}",
         BTreeMap::new(),
@@ -308,7 +263,6 @@ fn malformed_query_errors() {
 fn invalid_relation_operations() {
     let db = Db::open_mem().expect("opening database should succeed");
 
-    // Create relation
     db.run(
         ":create existing {id: Int}",
         BTreeMap::new(),
@@ -316,7 +270,6 @@ fn invalid_relation_operations() {
     )
     .expect("creating relation should succeed");
 
-    // Creating same relation again should fail
     let result = db.run(
         ":create existing {id: Int}",
         BTreeMap::new(),
@@ -324,7 +277,6 @@ fn invalid_relation_operations() {
     );
     assert!(result.is_err(), "creating duplicate relation should fail");
 
-    // Dropping non-existent relation should fail
     let result = db.run(
         "::remove nonexistent_relation",
         BTreeMap::new(),
@@ -336,19 +288,12 @@ fn invalid_relation_operations() {
     );
 }
 
-// ============================================================================
-// Fixed Rules (Graph Algorithms)
-// ============================================================================
-
-/// Test PageRank graph algorithm via fixed rules.
 /// Test PageRank graph algorithm via fixed rules.
 #[test]
 #[cfg(feature = "graph-algo")]
 fn pagerank_graph_algorithm() {
     let db = Db::open_mem().expect("opening database should succeed");
 
-    // Run PageRank with inline edge definitions
-    // Based on internal tests, PageRank uses inline relation syntax
     let result = db
         .run_read_only(
             r"
@@ -359,7 +304,6 @@ fn pagerank_graph_algorithm() {
         )
         .expect("PageRank query should succeed");
 
-    // Should have scores for all nodes
     assert!(!result.rows.is_empty(), "PageRank should return results");
     assert_eq!(result.rows.len(), 4, "PageRank should return 4 nodes");
 }
@@ -369,8 +313,6 @@ fn pagerank_graph_algorithm() {
 fn shortest_path_bfs() {
     let db = Db::open_mem().expect("opening database should succeed");
 
-    // Run ShortestPathBFS with inline relation definitions
-    // Based on internal tests, the rule expects inline data definitions
     let result = db
         .run_read_only(
             r#"
@@ -386,10 +328,6 @@ fn shortest_path_bfs() {
     assert!(!result.rows.is_empty(), "should return paths");
 }
 
-// ============================================================================
-// Data Types
-// ============================================================================
-
 /// Test various DataValue types.
 #[test]
 fn data_value_types() {
@@ -402,7 +340,6 @@ fn data_value_types() {
     )
     .expect("creating relation should succeed");
 
-    // Insert various types
     db.run(
         r#"?[id, s, b, n] <- [[1, "hello", true, 3.14]] :put typed_data {id => s, b, n}"#,
         BTreeMap::new(),
@@ -410,7 +347,6 @@ fn data_value_types() {
     )
     .expect("inserting typed data should succeed");
 
-    // Query back and verify
     let result = db
         .run_read_only("?[s, b, n] := *typed_data{id: 1, s, b, n}", BTreeMap::new())
         .expect("querying typed data should succeed");

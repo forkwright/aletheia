@@ -1,6 +1,4 @@
 //! SessionTx methods for HNSW KNN search.
-//! SessionTx methods for HNSW vector index operations.
-//! Hierarchical Navigable Small World vector index.
 
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;

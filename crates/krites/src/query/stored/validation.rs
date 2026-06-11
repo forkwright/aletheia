@@ -1,10 +1,7 @@
 //! Stored relation validation: verify constraints and removal operations.
-//! SessionTx methods for stored relation mutation and FTS/HNSW/LSH index maintenance.
-//! Stored relation access operators.
 #![expect(
     clippy::as_conversions,
     clippy::default_trait_access,
-    clippy::doc_markdown,
     clippy::elidable_lifetime_names,
     clippy::implicit_clone,
     clippy::indexing_slicing,

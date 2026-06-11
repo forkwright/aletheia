@@ -45,7 +45,6 @@ fn index_simple_fn() {
                 format!('Hello, {name}!')
             }
         ";
-    // Write to a temp file.
     let tmp = tempfile::NamedTempFile::new().expect("tempfile");
     std::fs::write(tmp.path(), src.replace('\'', "\"")).expect("write");
     let path_str = tmp.path().to_string_lossy().into_owned();
@@ -101,7 +100,6 @@ fn reindex_clears_old_symbols() {
     let c1 = store.symbols().expect("count v1").len();
     assert_eq!(c1, 1);
 
-    // Overwrite with different content.
     std::fs::write(tmp.path(), "pub fn beta() {} pub fn gamma() {}").expect("write v2");
     index_file(&store, "krate", &path_str, "").expect("index v2");
 
@@ -109,7 +107,6 @@ fn reindex_clears_old_symbols() {
     let c2 = symbols.len();
     assert_eq!(c2, 2, "old symbols must be cleared on re-index");
 
-    // Verify alpha is gone.
     let alpha = symbols
         .iter()
         .filter(|symbol| symbol.symbol_name == "alpha")
@@ -269,7 +266,6 @@ fn rebuild_prunes_deleted_files() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let ws = tmp.path();
 
-    // Minimal workspace.
     std::fs::write(
         ws.join("Cargo.toml"),
         r#"
@@ -312,7 +308,6 @@ edition = "2021"
         "foo.rs symbol should exist before deletion"
     );
 
-    // Delete foo.rs and rebuild.
     std::fs::remove_file(&foo_rs).expect("remove foo.rs");
     std::fs::write(&lib_rs, "pub fn keep() {}").expect("rewrite lib.rs");
 

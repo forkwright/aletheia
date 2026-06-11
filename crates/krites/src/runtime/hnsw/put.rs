@@ -594,10 +594,8 @@ impl SessionTx<'_> {
 mod tests {
     use crate::DbInstance;
 
-    // ---------------------------------------------------------------------------
-    // Helper: create a standard 4-dim F32/L2 HNSW index on a relation named
-    // `vectors { id: Int => vec: <F32; 4> }` with the index named `idx`.
-    // ---------------------------------------------------------------------------
+    /// Create a standard 4-dim F32/L2 HNSW index on a relation named
+    /// `vectors { id: Int => vec: <F32; 4> }` with the index named `idx`.
     fn setup_db() -> DbInstance {
         let db = DbInstance::default();
         db.run_default(":create vectors { id: Int => vec: <F32; 4> }")

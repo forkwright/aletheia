@@ -233,10 +233,7 @@ fn list_sessions_filters_by_nous_id() {
 
 #[test]
 fn delete_session_removes_empty_session() {
-    // WHY: only the no-children path works today. delete_session of a session
-    // that has any messages/usage/distillation/notes hits a FK constraint
-    // violation because the schema does NOT have ON DELETE CASCADE despite
-    // the doc comment claiming it does. Tracked in #2959.
+    // WHY: baseline — deleting a childless session must succeed.
     let (store, _dir) = fresh_store();
     let session_id = Ulid::new().to_string();
     store
@@ -254,10 +251,9 @@ fn delete_session_removes_empty_session() {
 
 #[test]
 fn delete_session_removes_session_and_messages() {
-    // WHY: the regression test for #2959. delete_session now manually
-    // cleans up children (messages, usage_records, distillation_records,
-    // agent_notes) inside a transaction since the schema lacks
-    // ON DELETE CASCADE.
+    // WHY(#2959): regression — delete_session must remove child records
+    // (messages, usage, distillations, notes) in the same transaction;
+    // nothing in the store cascades deletes automatically.
     let (store, _dir) = fresh_store();
     let session_id = Ulid::new().to_string();
     store
@@ -274,7 +270,7 @@ fn delete_session_removes_session_and_messages() {
         after.is_none(),
         "session should not be findable after delete"
     );
-    // WHY: also verify no orphan rows remain in messages.
+    // WHY: also verify no orphan messages remain.
     let history = store.get_history(&session_id, None).expect("history query");
     assert!(
         history.is_empty(),

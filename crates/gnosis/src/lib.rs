@@ -35,8 +35,7 @@
 //!
 //! ## Rebuild trigger
 //!
-//! Today: manual, via [`CodeGraph::rebuild`] or the MCP tool `op=rebuild`.
-//! Future: kanon-forge-sync post-receive hook (filed as follow-up to #3357).
+//! Manual, via [`CodeGraph::rebuild`] or the MCP tool `op=rebuild`.
 //!
 //! ## Epistemic provenance
 //!
@@ -100,7 +99,6 @@ impl CodeGraph {
     /// the fjall database cannot be opened, or schema initialisation fails.
     #[tracing::instrument]
     pub fn open(db_path: &Path, workspace_root: &Path) -> Result<Self> {
-        // Ensure the cache directory exists.
         if let Some(parent) = db_path.parent()
             && !parent.exists()
         {

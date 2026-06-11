@@ -5,8 +5,6 @@ use std::collections::BTreeMap;
 
 use krites::{DataValue, Db, ScriptMutability};
 
-// Split: DB lifecycle, relations, HNSW, FTS, parameterized/recursive queries.
-
 // ── Database lifecycle ──────────────────────────────────────────────────────
 
 #[test]
@@ -52,7 +50,6 @@ fn db_multiple_independent_queries() {
 fn relation_create_insert_query_pipeline() {
     let db = Db::open_mem().expect("in-memory db creation should succeed");
 
-    // Create
     db.run(
         ":create employees {id: Int => name: String, dept: String, salary: Float}",
         BTreeMap::new(),
@@ -60,7 +57,6 @@ fn relation_create_insert_query_pipeline() {
     )
     .expect("creating employees relation should succeed");
 
-    // Insert
     db.run(
         r#"?[id, name, dept, salary] <- [
             [1, "Alice", "Engineering", 120000.0],
@@ -74,7 +70,6 @@ fn relation_create_insert_query_pipeline() {
     )
     .expect("inserting employees should succeed");
 
-    // Query all
     let result = db
         .run_read_only(
             "?[name, dept] := *employees{name, dept} :order name",
@@ -84,7 +79,6 @@ fn relation_create_insert_query_pipeline() {
     assert_eq!(result.rows.len(), 5);
     assert_eq!(result.rows[0][0], DataValue::from("Alice"));
 
-    // Aggregation query
     let result = db
         .run_read_only(
             "?[dept, count(name), mean(salary)] := *employees{dept, name, salary}",
@@ -93,7 +87,6 @@ fn relation_create_insert_query_pipeline() {
         .expect("aggregation query should succeed");
     assert_eq!(result.rows.len(), 2, "two departments");
 
-    // Filter query
     let result = db
         .run_read_only(
             r#"?[name, salary] := *employees{name, dept: "Engineering", salary}, salary > 115000.0"#,
@@ -102,7 +95,6 @@ fn relation_create_insert_query_pipeline() {
         .expect("filtered query should succeed");
     assert_eq!(result.rows.len(), 2, "Alice and Carol above 115k");
 
-    // Update via put
     db.run(
         r#"?[id, name, dept, salary] <- [[2, "Bob", "Engineering", 100000.0]]
            :put employees {id => name, dept, salary}"#,
@@ -116,7 +108,6 @@ fn relation_create_insert_query_pipeline() {
         .expect("querying updated Bob should succeed");
     assert_eq!(result.rows[0][0], DataValue::from("Engineering"));
 
-    // Delete via rm
     db.run(
         "?[id] <- [[4]] :rm employees {id}",
         BTreeMap::new(),
@@ -163,7 +154,6 @@ fn relation_create_with_compound_key() {
 fn hnsw_vector_insert_and_search_in_memory() {
     let db = Db::open_mem().expect("in-memory db creation should succeed");
 
-    // Create relation with vector column
     db.run(
         ":create docs {id: String => embedding: <F32; 4>}",
         BTreeMap::new(),
@@ -171,7 +161,6 @@ fn hnsw_vector_insert_and_search_in_memory() {
     )
     .expect("creating vector relation should succeed");
 
-    // Insert vectors
     db.run(
         r#"?[id, embedding] <- [
             ["alpha", vec([1.0, 0.0, 0.0, 0.0])],
@@ -185,7 +174,6 @@ fn hnsw_vector_insert_and_search_in_memory() {
     )
     .expect("inserting vectors should succeed");
 
-    // Create HNSW index
     db.run(
         "::hnsw create docs:idx {
             dim: 4,
@@ -210,7 +198,6 @@ fn hnsw_vector_insert_and_search_in_memory() {
 
     assert_eq!(result.rows.len(), 2, "k=2 should return 2 results");
 
-    // The nearest neighbor to [1,0,0,0] should be "alpha" with distance ~0
     let nearest_dist = result.rows[0][0]
         .get_float()
         .expect("distance should be float");
@@ -224,7 +211,6 @@ fn hnsw_vector_insert_and_search_in_memory() {
         "nearest neighbor should be alpha"
     );
 
-    // Drop index
     db.run(
         "::hnsw drop docs:idx",
         BTreeMap::new(),
@@ -258,7 +244,6 @@ fn hnsw_vector_insert_after_index_creation() {
     )
     .expect("creating index should succeed");
 
-    // Insert more items after index creation
     db.run(
         "?[id, vec] <- [[3, vec([0,0,1])], [4, vec([1,1,0])]] :put items {id => vec}",
         BTreeMap::new(),
@@ -266,7 +251,6 @@ fn hnsw_vector_insert_after_index_creation() {
     )
     .expect("inserting after index creation should succeed");
 
-    // Search should find items from both before and after index creation
     let result = db
         .run_read_only(
             "?[id, dist] := ~items:idx{id | query: vec([1,0,0]), k: 4, ef: 20, bind_distance: dist}",
@@ -317,7 +301,6 @@ fn fts_index_create_search_drop() {
     )
     .expect("creating FTS index should succeed");
 
-    // Search for "rust"
     let result = db
         .run_read_only(
             r#"?[id, body, score] := ~articles:fts{id, body | query: "rust", k: 10, bind_score: score}"#,
@@ -326,7 +309,6 @@ fn fts_index_create_search_drop() {
         .expect("FTS search for 'rust' should succeed");
     assert_eq!(result.rows.len(), 2, "two articles mention Rust");
 
-    // Search for "data"
     let result = db
         .run_read_only(
             r#"?[id, body] := ~articles:fts{id, body | query: "data", k: 10}"#,
@@ -335,7 +317,6 @@ fn fts_index_create_search_drop() {
         .expect("FTS search for 'data' should succeed");
     assert_eq!(result.rows.len(), 1, "one article about data science");
 
-    // Search for term not in any document
     let result = db
         .run_read_only(
             r#"?[id] := ~articles:fts{id | query: "quantum", k: 10}"#,
@@ -344,7 +325,6 @@ fn fts_index_create_search_drop() {
         .expect("FTS search for absent term should succeed");
     assert_eq!(result.rows.len(), 0, "no articles about quantum");
 
-    // Drop index
     db.run(
         "::fts drop articles:fts",
         BTreeMap::new(),
@@ -371,7 +351,6 @@ fn fts_index_incremental_insert() {
     )
     .expect("creating FTS index should succeed");
 
-    // Insert first document after index creation
     db.run(
         r#"?[id, text] <- [["n1", "the quick brown fox"]] :put notes {id => text}"#,
         BTreeMap::new(),
@@ -387,7 +366,6 @@ fn fts_index_incremental_insert() {
         .expect("searching for fox should succeed");
     assert_eq!(result.rows.len(), 1, "fox should be indexed");
 
-    // Insert second document
     db.run(
         r#"?[id, text] <- [["n2", "the slow brown bear"]] :put notes {id => text}"#,
         BTreeMap::new(),
@@ -403,7 +381,6 @@ fn fts_index_incremental_insert() {
         .expect("searching for bear should succeed");
     assert_eq!(result.rows.len(), 1, "bear should be indexed");
 
-    // Both documents should be searchable for shared term "brown"
     let result = db
         .run_read_only(
             r#"?[id] := ~notes:fts{id | query: "brown", k: 10}"#,

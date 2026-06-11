@@ -35,8 +35,8 @@ fn save_err(reason: String) -> crate::error::InternalError {
 ///
 /// 1. Write to a temporary file in the same directory as `target_path`.
 /// 2. `fsync` the temporary file to guarantee data is on disk.
-/// 3. `fsync` on Unix platforms to guarantee the directory entry is durable.
-/// 4. Atomically rename the temp file to `target_path`.
+/// 3. Atomically rename the temp file to `target_path`.
+/// 4. `fsync` the parent directory (Unix) so the rename is durable.
 ///
 /// If any step fails, the temp file is cleaned up and `target_path` is
 /// untouched.
@@ -48,21 +48,17 @@ pub(crate) fn atomic_write(target_path: &Path, data: &[u8]) -> Result<()> {
     let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
     let temp_path = temp_path_for(target_path);
 
-    // Step 1: write to temp file.
     let write_result = write_temp(&temp_path, data);
     if let Err(e) = write_result {
-        // Clean up temp file on failure.
         let _ = std::fs::remove_file(&temp_path);
         return Err(e);
     }
 
-    // Step 2: fsync the temp file.
     if let Err(e) = fsync_file(&temp_path) {
         let _ = std::fs::remove_file(&temp_path);
         return Err(e);
     }
 
-    // Step 3: atomic rename.
     if let Err(e) = std::fs::rename(&temp_path, target_path) {
         let _ = std::fs::remove_file(&temp_path);
         return Err(save_err(format!(
@@ -72,7 +68,6 @@ pub(crate) fn atomic_write(target_path: &Path, data: &[u8]) -> Result<()> {
         )));
     }
 
-    // Step 4: fsync the parent directory to make the rename durable.
     if let Err(e) = fsync_dir(parent) {
         // WHY: propagate directory fsync errors instead of silently ignoring
         // them. A failed dir fsync means the rename may not survive a crash.

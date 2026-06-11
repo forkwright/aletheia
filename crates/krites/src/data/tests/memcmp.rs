@@ -138,12 +138,10 @@ fn str_decode_roundtrips_across_utf8_shapes() {
 
 /// Corrupt-payload simulation: construct a key whose `encode_bytes` framing
 /// is well-formed but whose *payload* bytes are deliberately non-UTF-8 (a
-/// bare 0xFF continuation byte and a lone 0xC0 start byte). This is the
-/// exact invariant boundary that the former `unsafe { String::from_utf8_unchecked }`
-/// relied on — "payload bytes are valid UTF-8 because we wrote them from a
-/// `&str`". A bit-rot or tamper at the bytes layer would have triggered UB.
-/// After the audit, decode uses `String::from_utf8_lossy`, so invalid bytes
-/// become U+FFFD and the function remains total/safe.
+/// bare 0xFF continuation byte and a lone 0xC0 start byte). Decode uses
+/// `String::from_utf8_lossy`, so invalid payload bytes become U+FFFD and
+/// decoding stays total: no UB and no panic under bit-rot or tampering at
+/// the bytes layer.
 ///
 /// Miri-safe: no mmap, no FFI, no OS resources.
 #[cfg_attr(miri, test)]

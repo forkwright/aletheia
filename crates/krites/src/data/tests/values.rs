@@ -16,16 +16,14 @@ use crate::data::value::DataValue;
 
 #[test]
 fn type_size_consistency() {
-    // Verify that type sizes are as expected for memory layout optimization.
-    // These assertions catch unexpected size changes from dependency updates
-    // or struct modifications.
+    // WHY: regression guard against size drift from dependency updates or
+    // struct changes.
     let datavalue_size = size_of::<DataValue>();
     let symbol_size = size_of::<Symbol>();
     let string_size = size_of::<String>();
     let hashmap_size = size_of::<HashMap<String, String>>();
     let btreemap_size = size_of::<BTreeMap<String, String>>();
 
-    // DataValue is an enum with multiple variants; expect reasonable size
     assert!(
         (16..=64).contains(&datavalue_size),
         "DataValue size {datavalue_size} seems unreasonable"
@@ -43,13 +41,11 @@ fn type_size_consistency() {
         "String size should be 24 bytes on 64-bit systems"
     );
 
-    // HashMap has some overhead for the hash table
     assert!(
         (32..=64).contains(&hashmap_size),
         "HashMap size {hashmap_size} seems unreasonable"
     );
 
-    // BTreeMap has node overhead
     assert!(
         (16..=48).contains(&btreemap_size),
         "BTreeMap size {btreemap_size} seems unreasonable"
@@ -74,7 +70,6 @@ fn utf8() {
 
 #[test]
 fn display_datavalues() {
-    // Verify Display trait implementations for DataValue variants
     assert_eq!(DataValue::Null.to_string(), "null");
     assert_eq!(DataValue::from(true).to_string(), "true");
     assert_eq!(DataValue::from(-1).to_string(), "-1");
@@ -89,7 +84,6 @@ fn display_datavalues() {
         r#"to_float("NEG_INF")"#
     );
 
-    // List formatting with mixed content including special characters
     let list = DataValue::List(vec![
         DataValue::from(false),
         DataValue::from(r#"abc"你"好'啊👌"#),

@@ -261,7 +261,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     // ── impl blocks ───────────────────────────────────────────────────────────
 
     fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
-        // Only record impl-trait blocks (not inherent impls).
+        // NOTE: only impl-trait blocks are recorded (not inherent impls).
         if let Some((_, trait_path, _)) = &node.trait_ {
             let type_name = type_name_from_type(&node.self_ty);
             let line = span_line(
@@ -282,7 +282,6 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     // ── pub use re-exports ────────────────────────────────────────────────────
 
     fn visit_item_use(&mut self, node: &'ast syn::ItemUse) {
-        // Only track `pub use ...` (public re-exports).
         if matches!(node.vis, syn::Visibility::Public(_)) {
             extract_reexports(&node.tree, self, &mut Vec::new());
         }
@@ -353,8 +352,8 @@ fn extract_reexports(
             }
         }
         syn::UseTree::Glob(_) => {
-            // Glob re-exports (`pub use foo::*`) are not individually tracked
-            // in v1 — they would require type resolution to enumerate.
+            // NOTE: glob re-exports (`pub use foo::*`) are not individually
+            // tracked in v1 — they would require type resolution to enumerate.
         }
         syn::UseTree::Group(g) => {
             for item in &g.items {
@@ -479,7 +478,8 @@ pub(crate) fn rebuild(store: &Store, workspace_root: &Path) -> Result<()> {
         .exec()
         .context(CargoMetadataSnafu)?;
 
-    // Full metadata (with deps) for crate_edges.
+    // WHY: crate_edges needs dependency info, so run a second metadata pass
+    // with deps included.
     let metadata_full = MetadataCommand::new()
         .current_dir(workspace_root)
         .exec()
@@ -514,7 +514,6 @@ pub(crate) fn rebuild(store: &Store, workspace_root: &Path) -> Result<()> {
             let present_path = file_path.to_string_lossy().into_owned();
             let path_str = present_path.as_str();
 
-            // Read for hashing first.
             let content = match std::fs::read(&file_path) {
                 Ok(c) => c,
                 Err(e) => {
@@ -525,7 +524,6 @@ pub(crate) fn rebuild(store: &Store, workspace_root: &Path) -> Result<()> {
             };
             let hash = file_hash(&content);
 
-            // Check stored hash.
             let stored_hash = store.file_hash(path_str)?;
 
             if stored_hash.as_deref() == Some(hash.as_str()) {
@@ -534,7 +532,6 @@ pub(crate) fn rebuild(store: &Store, workspace_root: &Path) -> Result<()> {
                 continue;
             }
 
-            // Parse and index.
             let module_path = module_path_from_file_path(&src_dir, &file_path);
             if let Err(e) = index_file(store, crate_name, path_str, &module_path) {
                 tracing::warn!(file = %path_str, error = %e, "gnosis: parse error, skipping file");
@@ -542,7 +539,6 @@ pub(crate) fn rebuild(store: &Store, workspace_root: &Path) -> Result<()> {
                 continue;
             }
 
-            // Update hash.
             store.set_file_hash(path_str, &hash)?;
             all_present_paths.push(present_path);
         }

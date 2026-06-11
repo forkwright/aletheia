@@ -228,7 +228,7 @@ impl SessionStore {
 
     fn write_session(&self, session: &Session) -> Result<()> {
         let sessions = self.partition("sessions")?;
-        // Stamp provenance before serialising — metadata travels with the record.
+        // WHY: stamp provenance before serialising so metadata travels with the record.
         let mut stamped = session.clone();
         stamped.artefact_meta = Some(stamped.stamp());
         let data = serde_json::to_vec(&stamped).context(error::StoredJsonSnafu)?;
@@ -261,7 +261,7 @@ impl SessionStore {
         session: &Session,
         old_updated_at: &str,
     ) {
-        // Remove the old index entry before writing the new one.
+        // NOTE: removes only the old index entry; the caller inserts the new one.
         let old_key = Self::session_nous_index_key(&session.nous_id, old_updated_at, &session.id);
         tx.remove(partition, old_key.as_str());
     }
@@ -299,7 +299,6 @@ impl SessionStore {
                     .build()
                 })?;
                 let session = self.read_session_by_raw_id(&id)?;
-                // Only return active sessions.
                 Ok(session.filter(|s| s.status == SessionStatus::Active))
             }
         }
@@ -355,7 +354,6 @@ impl SessionStore {
             artefact_meta: None,
         };
 
-        // Check for uniqueness on (nous_id, session_key).
         let sessions = self.partition("sessions")?;
         let idx_key = Self::session_key_index_key(nous_id, session_key);
         if self.get_bytes(&sessions, &idx_key)?.is_some() {
@@ -433,7 +431,6 @@ impl SessionStore {
             return Ok(session);
         }
 
-        // No existing session: create new.
         let session_type = SessionType::from_key(session_key);
         let now = now_iso();
         let session = Session {
@@ -481,9 +478,8 @@ impl SessionStore {
         let mut sessions = Vec::new();
 
         if let Some(nous_id) = nous_id {
-            // Scan the `idx:nous:{nous_id}:upd:` prefix.
             let prefix = format!("idx:nous:{nous_id}:upd:");
-            // Compute the exclusive upper bound: replace last character with next.
+            // WHY: prefix scans need an exclusive upper bound — bump the last character.
             let upper = {
                 let mut s = prefix.clone();
                 let last = s.pop().unwrap_or('\0');
@@ -491,10 +487,8 @@ impl SessionStore {
                 s
             };
 
-            // Keys are `idx:nous:{nous_id}:upd:{updated_at}:{session_id}`.
-            // Collect session IDs from the suffix, then load sessions.
-            // The lexicographic sort on updated_at gives us ascending order;
-            // we reverse to get descending (most recently updated first).
+            // WHY: lexicographic order on updated_at is ascending; reverse for
+            // most-recent-first.
             let mut index_keys: Vec<Vec<u8>> = Vec::new();
             for guard in snap.range(&sessions_part, prefix.as_str()..upper.as_str()) {
                 let (k, _v) = guard.into_inner().map_err(|e| {
@@ -508,7 +502,6 @@ impl SessionStore {
 
             for raw_key in index_keys.into_iter().rev() {
                 let key = String::from_utf8_lossy(&raw_key).into_owned();
-                // Extract session_id: everything after the last ':'.
                 if let Some(session_id) = key.rsplit(':').next()
                     && let Some(session) = self.read_session_by_raw_id(session_id)?
                 {
@@ -516,7 +509,6 @@ impl SessionStore {
                 }
             }
         } else {
-            // Full scan: find all keys that don't start with "idx:" (raw session rows).
             let idx_prefix = b"idx:".as_slice();
             let mut raw_sessions: Vec<Session> = Vec::new();
             for guard in snap.range::<&str, _>(&sessions_part, ..) {
@@ -530,7 +522,6 @@ impl SessionStore {
                 }
             }
 
-            // Sort descending by updated_at.
             raw_sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
             sessions = raw_sessions;
         }
@@ -618,7 +609,6 @@ impl SessionStore {
             return Ok(false);
         };
 
-        // Gather index keys to delete.
         let key_idx = Self::session_key_index_key(&session.nous_id, &session.session_key);
         let nous_idx = Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
 
@@ -629,7 +619,6 @@ impl SessionStore {
 
         let mut tx = self.db.write_tx();
 
-        // Delete messages.
         let msg_prefix = format!("{id}:");
         let msg_upper = format!("{id};\x00");
         let msg_keys: Vec<Vec<u8>> = tx
@@ -640,10 +629,8 @@ impl SessionStore {
         for key in &msg_keys {
             tx.remove(&messages_part, key.as_slice());
         }
-        // Delete next_seq counter for this session.
         tx.remove(&messages_part, format!("next_seq:{id}").as_str());
 
-        // Delete usage.
         let usage_prefix = format!("{id}:");
         let usage_upper = format!("{id};\x00");
         let usage_keys: Vec<Vec<u8>> = tx
@@ -655,7 +642,6 @@ impl SessionStore {
             tx.remove(&usage_part, key.as_slice());
         }
 
-        // Delete distillations.
         let dist_prefix = format!("{id}:");
         let dist_upper = format!("{id};\x00");
         let dist_keys: Vec<Vec<u8>> = tx
@@ -670,7 +656,6 @@ impl SessionStore {
             tx.remove(&distillations_part, key.as_slice());
         }
 
-        // Delete notes.
         let notes_prefix = format!("{id}:");
         let notes_upper = format!("{id};\x00");
         let note_keys: Vec<Vec<u8>> = tx
@@ -678,7 +663,6 @@ impl SessionStore {
             .filter_map(|g| g.into_inner().ok())
             .map(|(k, _v)| k.to_vec())
             .collect();
-        // Also delete gid index entries for this session.
         let id_prefix = format!("{id}:");
         let gid_keys: Vec<Vec<u8>> = tx
             .range(&notes_part, "gid:".."gid;\x00")
@@ -693,7 +677,6 @@ impl SessionStore {
             tx.remove(&notes_part, key.as_slice());
         }
 
-        // Delete session and its index entries.
         tx.remove(&sessions_part, id);
         tx.remove(&sessions_part, key_idx.as_str());
         tx.remove(&sessions_part, nous_idx.as_str());
@@ -730,7 +713,6 @@ impl SessionStore {
         let messages_part = self.partition("messages")?;
         let sessions_part = self.partition("sessions")?;
 
-        // Read current next_seq for this session.
         let next_seq_key = format!("next_seq:{session_id}");
         let snap = self.db.read_tx();
         let current_seq = snap
@@ -746,7 +728,7 @@ impl SessionStore {
         drop(snap);
 
         let msg_id_counter = {
-            // Use a global message counter for the `id` field (unique across sessions).
+            // WHY: the `id` field uses a global counter so it is unique across sessions.
             let counters = self.partition("counters")?;
             let snap2 = self.db.read_tx();
             let c = snap2
@@ -780,7 +762,6 @@ impl SessionStore {
         let msg_key = format!("{session_id}:{}", pad_u64(seq));
         let msg_data = serde_json::to_vec(&msg).context(error::StoredJsonSnafu)?;
 
-        // Update session counters.
         let mut session = self.read_session_by_raw_id(session_id)?.ok_or_else(|| {
             error::SessionNotFoundSnafu {
                 id: session_id.to_owned(),
@@ -943,7 +924,8 @@ impl SessionStore {
         use fjall::Readable;
 
         let messages_part = self.partition("messages")?;
-        // The distillation summary is the message at seq=0 that is NOT distilled.
+        // INVARIANT: the distillation summary is the seq=0 message with
+        // is_distilled == false.
         let key = format!("{session_id}:{}", pad_u64(0));
         let snap = self.db.read_tx();
         let bytes = snap.get(&messages_part, key.as_str()).map_err(|e| {
@@ -992,7 +974,6 @@ impl SessionStore {
             }
         }
 
-        // Recalculate session token/message count from remaining undistilled messages.
         let prefix = format!("{session_id}:");
         let upper = format!("{session_id};\x00");
         // WHY: read after writing — use the tx's read-your-own-writes to see updates.
@@ -1050,11 +1031,9 @@ impl SessionStore {
 
         let mut tx = self.db.write_tx();
 
-        // Delete any existing summary at seq 0.
         let seq0_key = format!("{session_id}:{}", pad_u64(0));
         tx.remove(&messages_part, seq0_key.as_str());
 
-        // Delete all messages marked is_distilled = true.
         let prefix = format!("{session_id}:");
         let upper = format!("{session_id};\x00");
         let distilled_keys: Vec<Vec<u8>> = tx
@@ -1076,7 +1055,6 @@ impl SessionStore {
             tx.remove(&messages_part, key.as_slice());
         }
 
-        // Increment global msg_id counter.
         let counters_part = self.partition("counters")?;
         let current_msg_id = tx
             .get(&counters_part, "msg_id")
@@ -1102,7 +1080,6 @@ impl SessionStore {
         let summary_data = serde_json::to_vec(&summary_msg).context(error::StoredJsonSnafu)?;
         tx.insert(&messages_part, seq0_key.as_str(), summary_data.as_slice());
 
-        // Recalculate session token/message counts via read-your-own-writes.
         // WHY: The range scan includes the summary at seq 0 we just inserted above
         // (fjall WriteTransaction provides read-your-own-writes), so we do NOT add
         // token_estimate again here — that would double-count it.
@@ -1194,7 +1171,6 @@ impl SessionStore {
         tx.insert(&distillations_part, dist_key.as_str(), rec_data.as_slice());
         tx.insert(&counters_part, "dist_id", encode_u64(dist_id));
 
-        // Update session distillation counter.
         if let Some(bytes) = tx
             .get(&sessions_part, session_id)
             .map_err(|e| storage_error(format!("fjall record_distillation session get: {e}")))?
@@ -1417,7 +1393,6 @@ impl SessionStore {
 
         let now = now_iso();
         let expires_at = if ttl_secs > 0 {
-            // Approximate: add ttl_secs to now.
             Some(
                 jiff::Zoned::now()
                     .checked_add(
@@ -1565,9 +1540,9 @@ impl SessionStore {
 // ── Portability (issue #4163) ──────────────────────────────────────────────
 //
 // Raw entry points that bypass the distilled-message filter and preserve
-// caller-supplied timestamps/metrics. Used by the agent portability code
-// (`aletheia agent export`/`import`) to round-trip an agent without silent
-// data loss. Recall and serve paths must NOT call these — they would leak
+// caller-supplied timestamps/metrics. Used by `aletheia agent export`/`import`
+// to round-trip an agent without silent data loss.
+// WARNING: recall and serve paths must NOT call these — they would leak
 // distilled summaries to the LLM and wedge the `idx:nous:...:upd:...`
 // index with past timestamps.
 
@@ -1599,8 +1574,8 @@ impl SessionStore {
             let (k, v) = guard
                 .into_inner()
                 .map_err(|e| storage_error(format!("fjall get_history_raw: {e}")))?;
-            // Skip the `next_seq:{session_id}` counter row, which shares the
-            // partition but is not a Message.
+            // WHY: the `next_seq:{session_id}` counter key shares the partition
+            // but is not a Message.
             if k.starts_with(b"next_seq:") {
                 continue;
             }
@@ -1641,7 +1616,7 @@ impl SessionStore {
         let sessions_part = self.partition("sessions")?;
         let counters_part = self.partition("counters")?;
 
-        // Refuse if the session does not exist — the message would be
+        // WHY: refuse if the session does not exist — the message would be
         // orphaned and never appear in list/recall views.
         let snap = self.db.read_tx();
         if snap
@@ -1752,9 +1727,8 @@ impl SessionStore {
             }
         }
 
-        // If forcing an overwrite where session_id exists with a different
-        // updated_at, remove the stale nous index entry so listings don't
-        // duplicate or shadow the import.
+        // WHY: a forced overwrite with a different updated_at must remove the
+        // stale nous index entry so listings don't duplicate or shadow the import.
         let mut tx = self.db.write_tx();
         if let Some(prev_bytes) = existing_self {
             let prev: Session =
@@ -1766,8 +1740,8 @@ impl SessionStore {
             }
         }
 
-        // Stamp provenance — same as write_session would do, but with the
-        // imported session's timestamps already in place.
+        // WHY: stamp provenance as write_session would, but with the imported
+        // session's timestamps already in place.
         let mut stamped = session.clone();
         stamped.artefact_meta = Some(stamped.stamp());
         let data = serde_json::to_vec(&stamped).context(error::StoredJsonSnafu)?;
@@ -1801,7 +1775,7 @@ fn is_expired(row: &BlackboardRow) -> bool {
     let Some(ref expires_at) = row.expires_at else {
         return false;
     };
-    // Compare ISO 8601 strings lexicographically (both in UTC, same format).
+    // WHY: ISO 8601 UTC strings in one fixed format compare correctly as strings.
     let now = now_iso();
     expires_at.as_str() <= now.as_str()
 }

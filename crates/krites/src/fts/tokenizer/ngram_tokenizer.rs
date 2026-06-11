@@ -8,8 +8,6 @@ use crate::fts::tokenizer::BoxTokenStream;
 /// Tokenize the text by splitting words into n-grams of the given size(s)
 ///
 /// With this tokenizer, the `position` is always 0.
-/// Beware however, in presence of multiple value for the same field,
-/// the position will be `POSITION_GAP * index of value`.
 ///
 /// Example 1: `hello` would be tokenized as (`min_gram`: 2, `max_gram`: 3, `prefix_only`: false)
 ///
@@ -32,9 +30,6 @@ use crate::fts::tokenizer::BoxTokenStream;
 /// |----------|-----|-----|-------|-------|
 /// | Position | 0   | 0   | 0     | 0     |
 /// | Offsets  | 0,3 | 0,4 | 0,5   | 0,6   |
-///
-/// For `"hello"` with `min_gram=2, max_gram=3, prefix_only=false`, the output
-/// is: `he, hel, el, ell, ll, llo, lo`.
 #[derive(Debug, Clone)]
 pub(crate) struct NgramTokenizer {
     /// Minimum n-gram character length (inclusive).
@@ -68,13 +63,9 @@ impl NgramTokenizer {
 
 /// Token stream for [`NgramTokenizer`].
 pub(crate) struct NgramTokenStream<'a> {
-    /// parameters
     ngram_charidx_iterator: StutteringIterator<CodepointFrontiers<'a>>,
-    /// true if the `NgramTokenStream` is in prefix mode.
     prefix_only: bool,
-    /// input
     text: &'a str,
-    /// output
     token: Token,
 }
 
@@ -128,8 +119,8 @@ impl TokenStream for NgramTokenStream<'_> {
 /// The elements are emitted in the order of appearance
 /// of `a` first, `b` then.
 ///
-/// See `test_stutterring_iterator` for an example of its
-/// output.
+/// See `stuttering_iterator_produces_overlapping_ngram_pairs` for an example
+/// of its output.
 struct StutteringIterator<T> {
     underlying: T,
     min_gram: usize,
