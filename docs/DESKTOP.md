@@ -22,7 +22,7 @@ sudo dnf install gtk3-devel webkit2gtk4.1-devel libxdo-devel
 
 ## Build
 
-The desktop crate is excluded from the workspace because its GTK/webkit2gtk dependencies are not available in CI and would cause build failures and cargo-deny advisory noise.
+The desktop crate is excluded from the root workspace because its GTK/webkit2gtk dependency set needs dedicated system packages and carries desktop-only cargo-deny advisory noise. The path-filtered desktop CI job installs those packages and compiles, lints, and tests `proskenion` through its standalone manifest.
 
 For the standard local install flow, run:
 
@@ -69,7 +69,7 @@ The standard installer runs this check before building, and the release workflow
 
 ## Why excluded from workspace
 
-1. **CI compatibility.** GTK3 and webkit2gtk are not installed in the CI environment. Including the crate in the workspace would fail `cargo build --workspace` and `cargo clippy --workspace`.
+1. **Root workspace compatibility.** GTK3 and webkit2gtk are installed only by the dedicated desktop CI job. Keeping `proskenion` outside the root workspace avoids forcing every workspace gate to install desktop system packages, while the desktop job still runs compile, clippy, and tests through the standalone manifest.
 2. **Dependency advisories.** GTK bindings pull in crates with known advisories that are acceptable for a desktop app but would block cargo-deny checks for the rest of the workspace.
 3. **Independent versioning.** The desktop crate tracks its own version instead of inheriting from `[workspace.package]`, since it ships on a separate release cadence.
 
