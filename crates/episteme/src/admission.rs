@@ -199,7 +199,7 @@ impl StructuredAdmissionPolicy {
     fn score_utility(&self, fact: &Fact) -> f64 {
         // kanon:ignore RUST/as-cast — usize→f64 for a sigmoid input; precision is irrelevant for content-length scoring and try_from(usize)→f64 doesn't exist.
         let len = fact.content.len() as f64;
-        // Sigmoid centered at 50 chars, steepness 0.05
+        // INVARIANT: sigmoid centered at 50 chars, steepness 0.05
         1.0 / (1.0 + (-0.05 * (len - 50.0)).exp())
     }
 
@@ -228,7 +228,7 @@ impl StructuredAdmissionPolicy {
             return 1.0;
         }
         let age_hours = age_nanos as f64 / 3_600_000_000_000.0;
-        // Exponential decay: half-life at max_age_hours / 3
+        // INVARIANT: exponential decay with half-life at max_age_hours / 3
         let half_life = self.config.max_age_hours / 3.0;
         (-age_hours * (2.0_f64.ln()) / half_life).exp()
     }
@@ -239,16 +239,15 @@ impl StructuredAdmissionPolicy {
         reason = "method takes &self for API consistency; will use config for type-specific priors"
     )]
     fn score_type_prior(&self, fact: &Fact) -> f64 {
+        // INVARIANT: priors rank fact types by retention value —
+        // identity/preference highest, then structural/project, behavioral
+        // observations, session-scoped (transient); unknown types get a
+        // neutral prior.
         match fact.fact_type.as_str() {
-            // Identity and preference facts have highest retention value
             "identity" | "preference" | "user" | "feedback" => 0.9,
-            // Structural/project facts are high value
             "project" | "reference" | "architecture" | "decision" => 0.8,
-            // Behavioral observations are medium value
             "observation" | "pattern" | "skill" | "instinct" => 0.6,
-            // Session-scoped facts are lower value (often transient)
             "session" | "context" | "ephemeral" => 0.3,
-            // Unknown types get a neutral prior
             _ => 0.5,
         }
     }

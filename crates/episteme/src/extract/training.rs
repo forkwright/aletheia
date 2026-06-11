@@ -152,7 +152,6 @@ pub fn extract_from_training_data(training_dir: &Path) -> std::io::Result<Extrac
     let mut result = ExtractionResult::default();
     let mut rule_buckets: HashMap<String, RuleBucket> = HashMap::new();
 
-    // Read violations.
     let violations_path = training_dir.join("violations.jsonl");
     if violations_path.exists() {
         // WHY: read_to_string avoids disallowed File::open; file sizes are bounded
@@ -182,7 +181,6 @@ pub fn extract_from_training_data(training_dir: &Path) -> std::io::Result<Extrac
         }
     }
 
-    // Read lint summaries for trend detection.
     let lint_path = training_dir.join("lint.jsonl");
     if lint_path.exists() {
         let content = std::fs::read_to_string(&lint_path)?;
@@ -209,7 +207,6 @@ pub fn extract_from_training_data(training_dir: &Path) -> std::io::Result<Extrac
         }
     }
 
-    // Convert rule buckets to lessons.
     for (rule, bucket) in &rule_buckets {
         result.lessons.extend(bucket.to_lessons(rule));
     }
@@ -271,10 +268,6 @@ pub fn lessons_to_facts(lessons: &[TrainingLesson]) -> Vec<super::types::Extract
         .collect()
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
 /// Accumulator for violations grouped by rule.
 #[derive(Debug, Default)]
 struct RuleBucket {
@@ -303,9 +296,7 @@ impl RuleBucket {
         let mut lessons = Vec::new();
         let affected_files: Vec<String> = self.files.keys().cloned().collect();
 
-        // Lesson from fixed violations (high confidence).
         if !self.fixed.is_empty() {
-            // Group by PR number for distinct lessons per PR.
             let mut by_pr: HashMap<u32, Vec<&ViolationRecord>> = HashMap::new();
             for v in &self.fixed {
                 if let Some(pr) = v.pr_number {
@@ -333,7 +324,6 @@ impl RuleBucket {
             }
         }
 
-        // Lesson from recurring violations (moderate confidence).
         if !self.unfixed.is_empty() {
             let count = u32::try_from(self.unfixed.len()).unwrap_or(u32::MAX);
             let sample_snippet = self
@@ -356,7 +346,6 @@ impl RuleBucket {
             });
         }
 
-        // Trend lesson from lint summaries.
         if let Some(trend) = &self.trend {
             let trend_confidence = match trend {
                 LessonOutcome::ImprovingTrend | LessonOutcome::DegradingTrend => 0.7,
@@ -441,7 +430,6 @@ mod tests {
     fn rule_bucket_classifies_fixed_vs_unfixed() {
         let mut bucket = RuleBucket::default();
 
-        // Fixed violation (has PR context).
         bucket.add_violation(&ViolationRecord {
             record_type: "violation".to_owned(),
             schema_version: 2,
@@ -455,7 +443,6 @@ mod tests {
             sha: Some("abc123".to_owned()),
         });
 
-        // Unfixed violation (no PR context).
         bucket.add_violation(&ViolationRecord {
             record_type: "violation".to_owned(),
             schema_version: 2,
@@ -581,14 +568,12 @@ mod tests {
     fn extract_from_training_files() {
         let dir = tempfile::tempdir().unwrap();
 
-        // Write a violations file.
         let violations = [
             r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123"}"#,
             r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":20,"snippet":".expect(\"other\")","project":"","pr_number":null,"sha":null}"#,
         ];
         std::fs::write(dir.path().join("violations.jsonl"), violations.join("\n")).unwrap();
 
-        // Write a lint summary file.
         let lint = r#"{"type":"lint","schema_version":2,"ts":"2026-03-25T15:43:30Z","repo":"/repo","total_violations":100,"rules_triggered":10,"duration_ms":5000}"#;
         std::fs::write(dir.path().join("lint.jsonl"), lint).unwrap();
 
@@ -597,7 +582,6 @@ mod tests {
         assert_eq!(result.lint_summaries_read, 1);
         assert!(!result.lessons.is_empty());
 
-        // Should have a fixed lesson and a recurring lesson.
         assert!(
             result
                 .lessons
@@ -648,7 +632,6 @@ mod tests {
         let result = extract_from_training_data(dir.path()).unwrap();
         assert!(result.lessons.len() >= 2);
 
-        // First lesson should have higher confidence.
         assert!(
             result.lessons[0].confidence >= result.lessons[1].confidence,
             "lessons should be sorted by confidence descending"

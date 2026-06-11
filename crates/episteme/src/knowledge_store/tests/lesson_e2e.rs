@@ -47,7 +47,6 @@ fn end_to_end_lesson_extraction_and_persist() {
         source: "pr-merge:42".to_owned(),
     };
 
-    // Step 1: Extract lessons from diff.
     let lesson = extract_lessons(SAMPLE_PR_DIFF, &config);
     assert!(
         !lesson.facts.is_empty(),
@@ -58,7 +57,6 @@ fn end_to_end_lesson_extraction_and_persist() {
         "lesson extraction should produce entities"
     );
 
-    // Step 2: Persist to knowledge store.
     let result = persist_lesson(&lesson, &store, &config).expect("persist_lesson should succeed");
 
     assert!(result.facts_inserted > 0, "should insert at least one fact");
@@ -71,7 +69,6 @@ fn end_to_end_lesson_extraction_and_persist() {
         "should insert at least one relationship"
     );
 
-    // Step 3: Verify facts appear in the knowledge store.
     let all_facts = store
         .list_all_facts(100)
         .expect("list_all_facts should succeed");
@@ -80,13 +77,11 @@ fn end_to_end_lesson_extraction_and_persist() {
         "knowledge store should contain facts after lesson persist"
     );
 
-    // Verify at least one fact mentions the file path.
     assert!(
         all_facts.iter().any(|f| f.content.contains("token")),
         "should have a fact mentioning the token file"
     );
 
-    // Step 4: Verify entities exist.
     let entities = store.list_entities().expect("list_entities should succeed");
     assert!(
         entities.iter().any(|e| e.entity_type == "pull_request"),
@@ -97,7 +92,6 @@ fn end_to_end_lesson_extraction_and_persist() {
         "should have file entities"
     );
 
-    // Step 5: Verify causal edges were created.
     let causal_edges = store
         .list_causal_edges()
         .expect("list_causal_edges should succeed");

@@ -12,9 +12,7 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
+// ── Label sets ──────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct NousLabels {
@@ -32,9 +30,7 @@ struct ProviderLabels {
     provider: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
+// ── Metric families ─────────────────────────────────────────────────────────
 
 static KNOWLEDGE_FACTS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
     LazyLock::new(Family::default);
@@ -60,10 +56,6 @@ type ProviderHistogramFamily = Family<ProviderLabels, Histogram, fn() -> Histogr
 static EMBEDDING_DURATION_SECONDS: LazyLock<ProviderHistogramFamily> =
     LazyLock::new(|| Family::new_with_constructor(embedding_duration_histogram));
 
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
-
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
     registry.register(
@@ -88,9 +80,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
+// ── Recording ───────────────────────────────────────────────────────────────
 
 /// Record a fact insertion.
 #[cfg(any(feature = "mneme-engine", test))]

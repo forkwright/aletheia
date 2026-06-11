@@ -93,7 +93,6 @@ impl EvidenceGapTracker {
         };
         let question_text = question_text.clone();
 
-        // Check if already answered -- merge if so.
         if let Some(existing) = self
             .query
             .answered
@@ -109,7 +108,6 @@ impl EvidenceGapTracker {
             return;
         }
 
-        // Remove from gaps, add to answered.
         self.query.gaps.retain(|g| g != &question_text);
         self.query.answered.push(AnsweredQuestion {
             question: question_text,
@@ -119,10 +117,6 @@ impl EvidenceGapTracker {
     }
 
     /// Returns the sub-questions that have not been answered yet.
-    ///
-    /// # Complexity
-    ///
-    /// O(1) -- returns a slice reference.
     #[must_use]
     pub fn remaining_gaps(&self) -> &[String] {
         &self.query.gaps
@@ -132,10 +126,6 @@ impl EvidenceGapTracker {
     ///
     /// Returns a value in `[0.0, 1.0]`. A query with zero sub-questions
     /// returns `1.0` (vacuously satisfied).
-    ///
-    /// # Complexity
-    ///
-    /// O(1) -- integer division.
     #[must_use]
     pub fn coverage_ratio(&self) -> f64 {
         let total = self.query.sub_questions.len();
@@ -163,10 +153,6 @@ impl EvidenceGapTracker {
     /// Whether the evidence gathered meets the minimum coverage threshold.
     ///
     /// `min_coverage` is clamped to `[0.0, 1.0]`.
-    ///
-    /// # Complexity
-    ///
-    /// O(1).
     #[must_use]
     pub fn is_satisfied(&self, min_coverage: f64) -> bool {
         self.coverage_ratio() >= min_coverage.clamp(0.0, 1.0)
@@ -191,7 +177,6 @@ impl EvidenceGapTracker {
             return self.query.gaps.first().cloned();
         }
 
-        // Combine unanswered sub-questions into a single refinement query.
         let gap_text = self.query.gaps.join("; ");
         Some(format!(
             "Regarding \"{}\": {}",
@@ -200,10 +185,6 @@ impl EvidenceGapTracker {
     }
 
     /// Access the underlying [`EvidenceQuery`] state.
-    ///
-    /// # Complexity
-    ///
-    /// O(1).
     #[must_use]
     pub fn query(&self) -> &EvidenceQuery {
         &self.query
@@ -230,15 +211,12 @@ fn decompose_query(query: &str) -> Vec<String> {
         return Vec::new();
     }
 
-    // Step 1: split on conjunctions at word boundaries.
     let clauses = split_on_conjunctions(trimmed);
 
-    // Step 2: for each clause, try to extract interrogative sub-questions.
     let mut sub_questions: Vec<String> = Vec::new();
     for clause in &clauses {
         let interrogatives = extract_interrogatives(clause);
         if interrogatives.is_empty() {
-            // No embedded interrogatives -- use the clause as-is.
             let cleaned = clause.trim().to_owned();
             if !cleaned.is_empty() {
                 sub_questions.push(cleaned);
@@ -248,7 +226,6 @@ fn decompose_query(query: &str) -> Vec<String> {
         }
     }
 
-    // Step 3: if decomposition produced nothing useful, fall back to original.
     if sub_questions.is_empty() {
         return vec![trimmed.to_owned()];
     }
@@ -292,7 +269,6 @@ fn split_on_conjunctions(query: &str) -> Vec<String> {
         }
         prev = *conj_end;
     }
-    // Trailing part.
     if let Some(tail) = query.get(prev..) {
         let trimmed = tail.trim();
         if !trimmed.is_empty() {
@@ -329,7 +305,6 @@ fn extract_interrogatives(clause: &str) -> Vec<String> {
         let mut start = 0;
         while let Some(pos) = lower.get(start..).and_then(|s| s.find(interr)) {
             let abs = start + pos;
-            // Ensure word boundary: must be at start or preceded by non-alphanumeric.
             if abs == 0 || !lower.as_bytes()[abs - 1].is_ascii_alphanumeric() {
                 positions.push(abs);
             }
@@ -430,7 +405,6 @@ mod tests {
         tracker.record_evidence(0, "fact-001", 0.5);
         tracker.record_evidence(0, "fact-002", 0.8);
 
-        // Still only one answered question.
         assert_eq!(tracker.query().answered.len(), 1);
         let answered = &tracker.query().answered[0];
         assert_eq!(answered.evidence_ids.len(), 2);
@@ -442,7 +416,6 @@ mod tests {
     fn record_evidence_ignores_out_of_bounds() {
         let mut tracker = EvidenceGapTracker::new("just one question");
         tracker.record_evidence(999, "fact-001", 1.0);
-        // Nothing changed.
         assert_eq!(tracker.remaining_gaps().len(), 1);
         assert!(tracker.query().answered.is_empty());
     }
@@ -460,7 +433,6 @@ mod tests {
         tracker.record_evidence(0, "fact-001", 0.5);
         tracker.record_evidence(0, "fact-001", 0.9);
         assert_eq!(tracker.query().answered[0].evidence_ids.len(), 1);
-        // Confidence updated to the higher value.
         assert!((tracker.query().answered[0].confidence - 0.9).abs() < f64::EPSILON);
     }
 
@@ -504,7 +476,6 @@ mod tests {
 
         tracker.record_evidence(1, "fact-001", 0.9);
         assert_eq!(tracker.remaining_gaps().len(), 2);
-        // The gap that was removed corresponds to sub_questions[1].
         let removed_q = &tracker.query().sub_questions[1];
         assert!(!tracker.remaining_gaps().contains(removed_q));
     }
@@ -525,7 +496,6 @@ mod tests {
         let suggestion = tracker
             .suggest_refinement()
             .expect("should have a suggestion");
-        // Single remaining gap returned directly (no wrapping).
         assert_eq!(suggestion, tracker.remaining_gaps()[0]);
     }
 
@@ -535,7 +505,6 @@ mod tests {
         let suggestion = tracker
             .suggest_refinement()
             .expect("should have a suggestion");
-        // Multiple gaps: includes original query context.
         assert!(suggestion.contains("Regarding"));
         assert!(suggestion.contains(&tracker.query().original_query));
     }

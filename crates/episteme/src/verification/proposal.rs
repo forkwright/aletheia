@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 /// Default Accept-vote threshold that triggers auto-promotion.
 ///
-/// Per R716 Phase 3: when N≥3 distinct nouses cast Accept, the proposal
-/// promotes the fact to the proposed tier.
+/// When N≥3 distinct nouses cast Accept, the proposal promotes the fact to
+/// the proposed tier.
 pub const DEFAULT_VERIFICATION_THRESHOLD: u32 = 3;
 
 /// Outcome of casting a vote on a verification proposal.

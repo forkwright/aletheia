@@ -78,7 +78,6 @@ fn insert_and_query_causal_edge() {
         .insert_causal_edge(&edge)
         .expect("insert causal edge should succeed");
 
-    // Query effects of fact-a.
     let effects = store
         .query_effects(&FactId::new("fact-a").expect("valid test id"))
         .expect("query_effects should succeed");
@@ -93,7 +92,6 @@ fn insert_and_query_causal_edge() {
         "confidence should be 0.9"
     );
 
-    // Query causes of fact-b.
     let causes = store
         .query_causes(&FactId::new("fact-b").expect("valid test id"))
         .expect("query_causes should succeed");

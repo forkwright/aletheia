@@ -1,8 +1,6 @@
-//! Multi-agent verification protocol per R716 Phase 3.
-//!
-//! Adds publish + vote + conflict-resolution operations on top of `eidos`'s
-//! `PublishedFact` / `VerificationProposal` / `ConflictResolution` types
-//! (landed in W8 PR1, #55).
+//! Multi-agent verification protocol: publish + vote + conflict-resolution
+//! operations on top of `eidos`'s `PublishedFact` / `VerificationProposal` /
+//! `ConflictResolution` types.
 
 pub mod conflict;
 pub mod proposal;

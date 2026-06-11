@@ -176,7 +176,6 @@ fn build_lesson(changes: &[ChangeRecord], config: &LessonConfig) -> ExtractedLes
     let mut facts = Vec::new();
     let mut causal_edges = Vec::new();
 
-    // Create a PR entity.
     let pr_name = if let Some(num) = config.pr_number {
         format!("PR #{num}")
     } else {
@@ -190,7 +189,6 @@ fn build_lesson(changes: &[ChangeRecord], config: &LessonConfig) -> ExtractedLes
     });
 
     for change in changes {
-        // Extract file path components for entities.
         let file_entity_name = extract_module_name(&change.file_path);
 
         entities.push(super::types::ExtractedEntity {
@@ -199,7 +197,6 @@ fn build_lesson(changes: &[ChangeRecord], config: &LessonConfig) -> ExtractedLes
             description: change.file_path.clone(),
         });
 
-        // PR modifies/adds/deletes file.
         relationships.push(super::types::ExtractedRelationship {
             source: pr_name.clone(),
             relation: change.change_type.to_string(),
@@ -207,7 +204,6 @@ fn build_lesson(changes: &[ChangeRecord], config: &LessonConfig) -> ExtractedLes
             confidence: 1.0,
         });
 
-        // Create a fact about the change.
         let change_fact_idx = facts.len();
         facts.push(super::types::ExtractedFact {
             subject: pr_name.clone(),
@@ -218,12 +214,10 @@ fn build_lesson(changes: &[ChangeRecord], config: &LessonConfig) -> ExtractedLes
             fact_type: Some("event".to_owned()),
         });
 
-        // Extract facts from hunk-level patterns.
         let hunk_facts = extract_hunk_facts(change, &file_entity_name);
         for hunk_fact in hunk_facts {
             let effect_idx = facts.len();
             facts.push(hunk_fact);
-            // The file change caused the hunk-level observation.
             causal_edges.push(CausalFactPair {
                 cause_index: change_fact_idx,
                 effect_index: effect_idx,
@@ -231,7 +225,6 @@ fn build_lesson(changes: &[ChangeRecord], config: &LessonConfig) -> ExtractedLes
             });
         }
 
-        // Extract context-level entities (functions/methods from hunk headers).
         for ctx in &change.contexts {
             let ctx_name = ctx.trim().to_owned();
             if !ctx_name.is_empty() {
@@ -265,10 +258,8 @@ fn extract_hunk_facts(
 ) -> Vec<super::types::ExtractedFact> {
     let mut facts = Vec::new();
 
-    // Detect fix patterns in additions.
     let all_additions: Vec<&str> = change.contexts.iter().map(String::as_str).collect();
 
-    // Detect if this looks like a bug fix (common patterns).
     if is_bug_fix_pattern(change) {
         facts.push(super::types::ExtractedFact {
             subject: file_entity.to_owned(),
@@ -280,7 +271,6 @@ fn extract_hunk_facts(
         });
     }
 
-    // Detect dependency changes.
     if is_dependency_change(&change.file_path) {
         let dep_action = match change.lines_added.cmp(&change.lines_removed) {
             std::cmp::Ordering::Greater => "added dependencies",
@@ -297,7 +287,6 @@ fn extract_hunk_facts(
         });
     }
 
-    // Detect test changes.
     if is_test_file(&change.file_path) || has_test_context(&all_additions) {
         facts.push(super::types::ExtractedFact {
             subject: file_entity.to_owned(),
@@ -309,7 +298,6 @@ fn extract_hunk_facts(
         });
     }
 
-    // Detect refactoring (significant removals and additions, not a new/deleted file).
     if change.change_type == ChangeType::Modified
         && change.lines_added > 5
         && change.lines_removed > 5
@@ -330,11 +318,9 @@ fn extract_hunk_facts(
 /// Heuristic: does this change look like a bug fix?
 fn is_bug_fix_pattern(change: &ChangeRecord) -> bool {
     let path_lower = change.file_path.to_lowercase();
-    // File path hints.
     if path_lower.contains("fix") || path_lower.contains("patch") {
         return true;
     }
-    // Context hints (function names containing "fix").
     change
         .contexts
         .iter()
@@ -377,7 +363,6 @@ fn extract_module_name(path: &str) -> String {
         0 => path.to_owned(),
         1 => parts.first().map_or(path, |p| p).to_owned(),
         _ => {
-            // Use last two components for context: "knowledge_store/causal.rs"
             let start = parts.len().saturating_sub(2);
             parts
                 .get(start..)
@@ -420,7 +405,6 @@ pub(crate) fn persist_lesson(
     let now = jiff::Timestamp::now();
     let mut result = LessonPersistResult::default();
 
-    // Insert entities.
     for entity in &lesson.entities {
         let id = crate::id::EntityId::new(slugify(&entity.name)).map_err(|e| {
             PersistSnafu {
@@ -455,7 +439,6 @@ pub(crate) fn persist_lesson(
         result.entities_inserted += 1;
     }
 
-    // Insert relationships.
     for rel in &lesson.relationships {
         let src = crate::id::EntityId::new(slugify(&rel.source)).map_err(|e| {
             PersistSnafu {
@@ -485,7 +468,6 @@ pub(crate) fn persist_lesson(
         result.relationships_inserted += 1;
     }
 
-    // Insert facts and track their IDs for causal edge linking.
     let mut fact_ids: Vec<crate::id::FactId> = Vec::new();
     for (i, fact) in lesson.facts.iter().enumerate() {
         let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
@@ -543,7 +525,6 @@ pub(crate) fn persist_lesson(
         result.facts_inserted += 1;
     }
 
-    // Insert causal edges between facts.
     for causal in &lesson.causal_edges {
         if let (Some(cause_id), Some(effect_id)) = (
             fact_ids.get(causal.cause_index),
@@ -650,7 +631,6 @@ diff --git a/Cargo.toml b/Cargo.toml
             "should extract at least one relationship"
         );
 
-        // Should have a PR entity.
         assert!(
             lesson
                 .entities
@@ -659,19 +639,16 @@ diff --git a/Cargo.toml b/Cargo.toml
             "should have PR entity"
         );
 
-        // Should have file entities.
         assert!(
             lesson.entities.iter().any(|e| e.entity_type == "file"),
             "should have file entities"
         );
 
-        // Should detect the new file.
         assert!(
             lesson.facts.iter().any(|f| f.predicate == "added"),
             "should detect new file addition"
         );
 
-        // Should detect dependency change.
         assert!(
             lesson
                 .facts
@@ -688,19 +665,16 @@ diff --git a/Cargo.toml b/Cargo.toml
 
         assert_eq!(changes.len(), 3, "three files in the diff");
 
-        // First file is new.
         assert_eq!(
             changes[0].change_type,
             ChangeType::Added,
             "causal.rs is new"
         );
-        // Second file is modified.
         assert_eq!(
             changes[1].change_type,
             ChangeType::Modified,
             "knowledge.rs is modified"
         );
-        // Third file is modified.
         assert_eq!(
             changes[2].change_type,
             ChangeType::Modified,
@@ -719,7 +693,6 @@ diff --git a/Cargo.toml b/Cargo.toml
 
         let lesson = extract_lessons(PR_DIFF, &config);
 
-        // Causal edges should link file-level changes to hunk-level observations.
         for edge in &lesson.causal_edges {
             assert!(
                 edge.cause_index < lesson.facts.len(),
