@@ -192,7 +192,7 @@ pub fn assemble_steps(messages: &[PipelineMessage]) -> Vec<crate::memory::step::
                 } else if let Some(last) = steps.last_mut() {
                     last.observations.push(obs);
                 }
-                // If there are no steps at all, drop the orphan.
+                // NOTE: with no steps at all, the orphan observation is dropped.
             }
             _ => {
                 if let Some(note) = current_note.take() {
@@ -247,9 +247,9 @@ struct CallRecord {
 ///
 /// Uses a two-tier response: first `Warn`, then `Halt` after `max_warnings`.
 ///
-/// // WHY: Agents can get stuck in loops (repeatedly calling the same failing tool,
-/// // oscillating between two approaches). The two-tier response gives the LLM
-/// // a chance to self-correct with a warning before we forcibly halt execution.
+/// Agents can get stuck in loops (repeatedly calling the same failing tool,
+/// oscillating between two approaches). The two-tier response gives the LLM
+/// a chance to self-correct with a warning before we forcibly halt execution.
 #[derive(Debug, Clone)]
 pub struct LoopDetector {
     /// Recent tool call records (ring buffer, capped at `window` entries).
@@ -330,9 +330,9 @@ impl LoopDetector {
     /// [`LoopVerdict::Warn`] on first detection (inject warning and continue),
     /// or [`LoopVerdict::Halt`] after `max_warnings` have been issued.
     ///
-    /// // WHY: The `input_hash` (not full input) is used for comparison to keep
-    /// // memory usage bounded. Collisions are unlikely with a good hash and
-    /// // false positives only trigger warnings, not immediate halts.
+    /// The `input_hash` (not full input) is used for comparison to keep
+    /// memory usage bounded. Collisions are unlikely with a good hash and
+    /// false positives only trigger warnings, not immediate halts.
     // kanon:ignore RUST/doc-promised-observability — doc comment describes algorithm, not tracing; function is pure logic
     pub fn record(&mut self, tool_name: &str, input_hash: &str, is_error: bool) -> LoopVerdict {
         let signature = format!("{tool_name}:{input_hash}");
@@ -889,9 +889,9 @@ pub fn check_guard(session: &SessionState, config: &NousConfig) -> GuardResult {
 /// typed event that simultaneously records a metric and produces a structured
 /// log line. Pass `None` to use the production metrics-backed emitter.
 ///
-/// // WHY: The pipeline uses a mutable `PipelineContext` passed between stages
-/// // rather than returning values. This allows each stage to build on the
-/// // work of previous stages (e.g., recall uses remaining tokens after context).
+/// The pipeline uses a mutable `PipelineContext` passed between stages
+/// rather than returning values. This allows each stage to build on the
+/// work of previous stages (e.g., recall uses remaining tokens after context).
 #[expect(
     clippy::too_many_arguments,
     reason = "pipeline threading requires all dependencies until config struct refactor"
@@ -988,7 +988,6 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
-        // Run pre-LLM triage: classify intent, sensitivity, and complexity tier.
         time_budget.begin_stage("triage");
         let triage_result = triage::TriageStage::classify(&input.content);
         tracing::info!(
@@ -1108,8 +1107,8 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
-        // Before-query hooks run after guard (so rejected requests never reach hooks)
-        // but before execute (so hooks can modify context before the model call).
+        // WHY: before-query hooks run after guard (so rejected requests never reach
+        // hooks) but before execute (so hooks can modify context before the model call).
         enforce_turn_time_budget(&time_budget, config, "execute", emitter)?;
         if let Some(hook_registry) = hooks {
             let mut query_ctx = QueryContext {
@@ -1211,9 +1210,9 @@ pub(crate) async fn run_pipeline(
         if pipeline_config.training.enabled {
             match crate::training::TrainingCapture::new(oikos.root(), &pipeline_config.training) {
                 Ok(mut capture) => {
-                    // Tool outcomes: one entry per tool call with
-                    // success/error classification and timing. Feeds
-                    // the DPO/ORPO reward signal (#3417).
+                    // NOTE: one entry per tool call with success/error
+                    // classification and timing — feeds the DPO/ORPO reward
+                    // signal (#3417).
                     let tool_outcomes = if result.tool_calls.is_empty() {
                         None
                     } else {
@@ -1251,10 +1250,9 @@ pub(crate) async fn run_pipeline(
                         )
                     };
 
-                    // Recall signals: project the stage aggregate into
-                    // the training schema (#3418). Per-fact entries are
-                    // left empty because the injected `recall_section`
-                    // is not structured at the pipeline boundary today.
+                    // WHY(#3418): per-fact entries are left empty because the
+                    // injected `recall_section` is not structured at the
+                    // pipeline boundary today.
                     let recall_signals = ctx.recall_result.as_ref().map(|r| {
                         let candidates_found =
                             u32::try_from(r.candidates_found).unwrap_or(u32::MAX);
@@ -1293,10 +1291,10 @@ pub(crate) async fn run_pipeline(
         // WHY: DPO pair extraction runs after training capture so the same
         // quality-filtered turn data feeds both pipelines. Uses a global
         // extractor because the pipeline task has no persistent actor state.
-        // Session IDs are ULID-based and globally unique. Closes #3421.
+        // Session IDs are ULID-based and globally unique.
         if pipeline_config.training.enabled {
-            // Authorship gate for DPO: skip agent-authored turns to prevent
-            // preference pairs derived from AI-generated text. (#3786)
+            // WHY(#3786): authorship gate skips agent-authored turns to prevent
+            // preference pairs derived from AI-generated text.
             let dpo_passes_authorship = if pipeline_config.training.author_classifier_enabled {
                 let classifier = aletheia_classify::Classifier::new();
                 match classifier.classify(&input.content) {
@@ -1401,7 +1399,6 @@ pub(crate) async fn run_pipeline(
         )]
         current_span.record("pipeline.tool_calls", result.tool_calls.len() as u64); // kanon:ignore RUST/as-cast
 
-        // Single event emission replaces separate metrics::record_turn + tracing::info.
         let duration_ms = u64::try_from(pipeline_start.elapsed().as_millis()).unwrap_or(u64::MAX);
         #[expect(
             clippy::as_conversions,

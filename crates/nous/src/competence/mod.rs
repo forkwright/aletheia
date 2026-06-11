@@ -53,9 +53,6 @@ fn encode_u64(v: u64) -> [u8; 8] {
 }
 
 /// Per-agent competence scoring configuration.
-///
-/// All defaults match the constants they replace so behaviour is identical
-/// when the tracker is constructed with `CompetenceConfig::default()`.
 #[derive(Debug, Clone)]
 pub struct CompetenceConfig {
     /// Competence score penalty per correction. Default: 0.05.

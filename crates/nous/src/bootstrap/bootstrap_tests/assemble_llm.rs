@@ -1,5 +1,3 @@
-//! (Split from `bootstrap_tests/mod.rs` — see parent mod.)
-
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use super::super::*;

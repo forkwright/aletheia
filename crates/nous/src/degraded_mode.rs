@@ -76,14 +76,8 @@ pub fn is_transient_llm_error(err: &error::Error) -> bool {
 /// Either way the original error is logged at `warn` level so it remains visible
 /// in traces without being surfaced to the caller as a hard error.
 ///
-/// # Parameters
-///
-/// - `nous_id` — agent identifier used for log context.
-/// - `session_id` — session identifier used for log context.
-/// - `original_error` — the transient error that triggered degradation.
-/// - `recent_distillation` — most recent distillation summary for this session,
-///   if any. Callers should pass `None` when no store is available or when the
-///   session has never been distilled.
+/// Callers should pass `recent_distillation = None` when no store is available
+/// or when the session has never been distilled.
 pub fn build_degraded_response(
     nous_id: &str,
     session_id: &str,

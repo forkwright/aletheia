@@ -41,7 +41,7 @@ pub trait VectorSearch: Send + Sync {
     }
 }
 
-// Trait implementations and adapter types are in a separate module
+// WHY: trait implementations and adapter types live in a separate module
 // to avoid trait-impl colocation.
 mod search_impl;
 

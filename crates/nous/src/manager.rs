@@ -420,8 +420,8 @@ impl NousManager {
             } else if is_active {
                 let turn_start = entry.turn_started_at_ms.load(Ordering::Acquire);
                 if turn_start == 0 {
-                    // active_turn is true but timestamp is 0: inconsistent state.
-                    // Treat as alive to avoid false restarts.
+                    // WHY: active_turn is true but timestamp is 0: inconsistent
+                    // state. Treat as alive to avoid false restarts.
                     true
                 } else {
                     #[expect(
@@ -536,7 +536,6 @@ impl NousManager {
 
         let restart_decay_window =
             Duration::from_secs(self.nous_behavior.manager_restart_decay_window_secs);
-        // Decay restart_count if actor has been stable since last restart
         let restart_count = if let Some(last_restart) = entry.last_restart {
             if last_restart.elapsed() >= restart_decay_window {
                 0
@@ -986,7 +985,6 @@ async fn supervise_health_poller(
 ) {
     let mut restart_count = 0u64;
     loop {
-        // If shutdown has been requested, don't spawn another poller.
         if cancel.is_cancelled() {
             break;
         }

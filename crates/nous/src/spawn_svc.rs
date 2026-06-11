@@ -153,7 +153,7 @@ impl SpawnService for SpawnServiceImpl {
         // WHY(#3958, ADR-005): spawned actors with neither an explicit
         // `allowed_tools` nor a recognized role template MUST fall back to a
         // conservative read-only allowlist rather than `None`. `None` means
-        // "no allowlist" — and the execute-time gate (execute/mod.rs:638)
+        // "no allowlist" — and the execute-time `tool_allowlist` gate in `execute/mod.rs`
         // treats that as unrestricted, which lets an unknown-role spawn run
         // exec/rm/http_request/sessions_dispatch with no operator approval
         // (the parent's approval gate doesn't follow into the child).
@@ -367,10 +367,10 @@ mod tests {
         (dir, oikos)
     }
 
-    // WHY (#4235): the Coder/Researcher role templates now resolve to
-    // `koina::defaults::DEFAULT_MODEL` (Sonnet 4.6), not the old date-pinned
-    // Sonnet 4.0 literal. The mock provider's supported-models list must
-    // include the workspace default so `spawn_and_run` can route Coder tasks.
+    // WHY (#4235): the Coder/Researcher role templates resolve to
+    // `koina::defaults::DEFAULT_MODEL`. The mock provider's supported-models
+    // list must include the workspace default so `spawn_and_run` can route
+    // Coder tasks.
     const SUPPORTED_MOCK_MODELS: &[&str] = &[
         koina::defaults::DEFAULT_MODEL,
         "claude-sonnet-4-20250514",

@@ -94,17 +94,14 @@ impl TurnHook for WorkingCheckpointInjector {
                 return HookResult::Continue;
             }
 
-            // Build the injection section.
             let mut section = String::new();
 
-            // <key_info> from the most recent checkpoint.
             if let Some(latest) = checkpoints.first() {
                 section.push_str("<key_info>\n");
                 section.push_str(&latest.content);
                 section.push_str("\n</key_info>");
             }
 
-            // <history> from older checkpoints.
             if let Some(rest) = checkpoints.get(1..) {
                 section.push_str("\n<history>\n");
                 for cp in rest {
@@ -117,20 +114,17 @@ impl TurnHook for WorkingCheckpointInjector {
                     );
                     section.push_str("---\n");
                 }
-                // Remove trailing separator.
                 if section.ends_with("---\n") {
                     section.truncate(section.len().saturating_sub(4));
                 }
                 section.push_str("\n</history>");
             }
 
-            // Truncate if the total block exceeds the max chars limit.
             if section.len() > self.key_info_max_chars {
                 section.truncate(self.key_info_max_chars);
                 section.push_str("\n...[truncated]");
             }
 
-            // Mod-N boundary: also inject identity reminder if flagged.
             if self.reinject_next_turn.swap(false, Ordering::SeqCst) {
                 section.push_str("\n<identity_reminder>\n");
                 section.push_str(&self.identity_reminder_text);
@@ -139,7 +133,6 @@ impl TurnHook for WorkingCheckpointInjector {
 
             let token_estimate = i64::try_from(section.len() / 4).unwrap_or(i64::MAX);
 
-            // Check remaining token budget before injecting.
             if context.pipeline.remaining_tokens < token_estimate * 2 {
                 warn!(
                     nous_id = context.nous_id,
@@ -151,7 +144,6 @@ impl TurnHook for WorkingCheckpointInjector {
                 return HookResult::Continue;
             }
 
-            // Append to system prompt.
             if let Some(ref mut prompt) = context.pipeline.system_prompt {
                 prompt.push_str("\n\n");
                 prompt.push_str(&section);
@@ -177,8 +169,8 @@ impl TurnHook for WorkingCheckpointInjector {
         context: &'a TurnContext<'_>,
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         Box::pin(async move {
-            // Flag the next turn for identity reinjection when the pipeline
-            // signals a mod-N boundary.
+            // NOTE: the pipeline signals mod-N boundaries via reinject_identity;
+            // the flag defers the reminder to the next turn's injection.
             if context.reinject_identity {
                 self.reinject_next_turn.store(true, Ordering::SeqCst);
                 debug!(
@@ -189,7 +181,6 @@ impl TurnHook for WorkingCheckpointInjector {
                 );
             }
 
-            // Verify that a checkpoint was written this turn, if any.
             if let Some(ref store) = self.store {
                 match store.read_latest(context.session_id) {
                     Ok(Some(cp)) if cp.turn_number == context.turn_number => {

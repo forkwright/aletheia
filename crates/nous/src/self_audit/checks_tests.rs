@@ -161,25 +161,31 @@ fn response_quality_passes_with_good_lengths() {
 #[test]
 fn response_quality_warns_on_many_short_responses() {
     let check = ResponseQualityCheck;
-    // 4/10 = 40% short responses (above 30% threshold)
     let ctx = CheckContext {
         recent_response_lengths: vec![5, 3, 100, 200, 2, 150, 300, 250, 1, 400],
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Warn);
+    assert_eq!(
+        result.status,
+        CheckStatus::Warn,
+        "4/10 = 40% short responses is above the 30% warn threshold"
+    );
 }
 
 #[test]
 fn response_quality_fails_on_majority_short() {
     let check = ResponseQualityCheck;
-    // 6/10 = 60% short responses (above 50% threshold)
     let ctx = CheckContext {
         recent_response_lengths: vec![1, 2, 3, 4, 5, 6, 100, 200, 300, 400],
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Fail);
+    assert_eq!(
+        result.status,
+        CheckStatus::Fail,
+        "6/10 = 60% short responses is above the 50% fail threshold"
+    );
 }
 
 // --- ResponseCoherenceCheck ---
@@ -210,37 +216,46 @@ fn coherence_passes_with_stable_lengths() {
 #[test]
 fn coherence_warns_on_moderate_drift() {
     let check = ResponseCoherenceCheck;
-    // First half mean ~300, second half mean ~150 => drift ~0.50
     let ctx = CheckContext {
         recent_response_lengths: vec![300, 300, 300, 150, 150, 150],
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Warn);
+    assert_eq!(
+        result.status,
+        CheckStatus::Warn,
+        "first-half mean ~300 vs second-half mean ~150 => drift ~0.50"
+    );
 }
 
 #[test]
 fn coherence_fails_on_severe_drift() {
     let check = ResponseCoherenceCheck;
-    // First half mean ~400, second half mean ~50 => drift ~0.875
     let ctx = CheckContext {
         recent_response_lengths: vec![400, 400, 400, 50, 50, 50],
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Fail);
+    assert_eq!(
+        result.status,
+        CheckStatus::Fail,
+        "first-half mean ~400 vs second-half mean ~50 => drift ~0.875"
+    );
 }
 
 #[test]
 fn coherence_passes_when_responses_get_longer() {
     let check = ResponseCoherenceCheck;
-    // Getting longer is not a drift signal.
     let ctx = CheckContext {
         recent_response_lengths: vec![100, 100, 100, 300, 300, 300],
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Pass);
+    assert_eq!(
+        result.status,
+        CheckStatus::Pass,
+        "getting longer is not a drift signal"
+    );
     assert!(
         result.score >= 1.0 - f64::EPSILON,
         "lengthening should score 1.0"
@@ -283,7 +298,6 @@ fn correction_passes_with_low_rate() {
 #[test]
 fn correction_warns_on_moderate_rate() {
     let check = CorrectionFrequencyCheck;
-    // 2/10 = 20% correction rate (above 15% warn threshold)
     let corrections: Vec<CorrectionRecord> = (0..2)
         .map(|i| CorrectionRecord {
             session_id: String::from("s1"),
@@ -296,13 +310,16 @@ fn correction_warns_on_moderate_rate() {
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Warn);
+    assert_eq!(
+        result.status,
+        CheckStatus::Warn,
+        "2/10 = 20% correction rate is above the 15% warn threshold"
+    );
 }
 
 #[test]
 fn correction_fails_on_high_rate() {
     let check = CorrectionFrequencyCheck;
-    // 4/10 = 40% correction rate (above 30% fail threshold)
     let corrections: Vec<CorrectionRecord> = (0..4)
         .map(|i| CorrectionRecord {
             session_id: String::from("s1"),
@@ -315,7 +332,11 @@ fn correction_fails_on_high_rate() {
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Fail);
+    assert_eq!(
+        result.status,
+        CheckStatus::Fail,
+        "4/10 = 40% correction rate is above the 30% fail threshold"
+    );
 }
 
 // --- MemoryUtilizationCheck ---
@@ -352,7 +373,6 @@ fn memory_passes_with_high_hit_rate() {
 #[test]
 fn memory_warns_on_low_hit_rate() {
     let check = MemoryUtilizationCheck;
-    // 2/10 = 20% hit rate (below 30% warn threshold, above 10% fail)
     let ctx = CheckContext {
         memory_recall: MemoryRecallStats {
             recall_attempts: 10,
@@ -361,13 +381,16 @@ fn memory_warns_on_low_hit_rate() {
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Warn);
+    assert_eq!(
+        result.status,
+        CheckStatus::Warn,
+        "2/10 = 20% hit rate is below the 30% warn threshold, above the 10% fail threshold"
+    );
 }
 
 #[test]
 fn memory_fails_on_very_low_hit_rate() {
     let check = MemoryUtilizationCheck;
-    // 0/10 = 0% hit rate (below 10% fail threshold)
     let ctx = CheckContext {
         memory_recall: MemoryRecallStats {
             recall_attempts: 10,
@@ -376,7 +399,11 @@ fn memory_fails_on_very_low_hit_rate() {
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Fail);
+    assert_eq!(
+        result.status,
+        CheckStatus::Fail,
+        "0/10 = 0% hit rate is below the 10% fail threshold"
+    );
 }
 
 // --- SessionContinuityCheck ---
@@ -415,7 +442,6 @@ fn continuity_passes_with_good_signals() {
 #[test]
 fn continuity_warns_on_low_carry() {
     let check = SessionContinuityCheck;
-    // 2/10 = 20% carry (below 25% warn threshold, above 10% fail)
     let ctx = CheckContext {
         session_continuity: SessionContinuityStats {
             total_turns: 10,
@@ -425,13 +451,16 @@ fn continuity_warns_on_low_carry() {
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Warn);
+    assert_eq!(
+        result.status,
+        CheckStatus::Warn,
+        "2/10 = 20% carry is below the 25% warn threshold, above the 10% fail threshold"
+    );
 }
 
 #[test]
 fn continuity_warns_on_high_restatement() {
     let check = SessionContinuityCheck;
-    // 3/10 = 30% restatement (above 20% warn, below 35% fail)
     let ctx = CheckContext {
         session_continuity: SessionContinuityStats {
             total_turns: 10,
@@ -441,13 +470,16 @@ fn continuity_warns_on_high_restatement() {
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Warn);
+    assert_eq!(
+        result.status,
+        CheckStatus::Warn,
+        "3/10 = 30% restatement is above the 20% warn threshold, below the 35% fail threshold"
+    );
 }
 
 #[test]
 fn continuity_fails_on_both_bad_signals() {
     let check = SessionContinuityCheck;
-    // 0/10 carry (fail) and 4/10 restatement (fail)
     let ctx = CheckContext {
         session_continuity: SessionContinuityStats {
             total_turns: 10,
@@ -457,7 +489,11 @@ fn continuity_fails_on_both_bad_signals() {
         ..Default::default()
     };
     let result = check.run(&ctx);
-    assert_eq!(result.status, CheckStatus::Fail);
+    assert_eq!(
+        result.status,
+        CheckStatus::Fail,
+        "0/10 carry and 4/10 restatement both exceed fail thresholds"
+    );
 }
 
 // --- worse_status ---

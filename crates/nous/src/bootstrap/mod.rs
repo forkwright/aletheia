@@ -41,10 +41,10 @@ use crate::error::{self, Result};
 
 /// Default TTL for bootstrap file cache entries when no operator override is set.
 ///
-/// // WHY: 60s balances freshness (operator edits to SOUL.md/USER.md should
-/// // surface within about a minute) against the cost of re-reading every
-/// // workspace file on every turn. mtime-based invalidation catches edits
-/// // sooner when they happen.
+/// 60s balances freshness (operator edits to SOUL.md/USER.md should
+/// surface within about a minute) against the cost of re-reading every
+/// workspace file on every turn. mtime-based invalidation catches edits
+/// sooner when they happen.
 pub const DEFAULT_BOOTSTRAP_CACHE_TTL_SECS: u64 = 60;
 
 /// Cached content of a bootstrap workspace file.
@@ -1328,8 +1328,8 @@ impl<'a> BootstrapAssembler<'a> {
     /// Keeps the **newest** (last) lines that fit within the budget, dropping
     /// the oldest. A truncation marker is prepended to indicate removed content.
     ///
-    /// // WHY: Line-by-line is coarser than header-based truncation but handles
-    /// // files without markdown structure. Still prefers newest content.
+    /// Line-by-line is coarser than header-based truncation but handles
+    /// files without markdown structure. Still prefers newest content.
     fn truncate_by_lines(&self, section: &BootstrapSection, max_tokens: u64) -> BootstrapSection {
         let lines: Vec<&str> = section.content.lines().collect();
 

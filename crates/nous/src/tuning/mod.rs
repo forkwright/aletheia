@@ -118,7 +118,6 @@ impl TuningProposer {
 
         let max_changes = self.config.max_changes_per_cycle as usize; // kanon:ignore RUST/as-cast
 
-        // Group observations by metric name.
         let mut by_metric: std::collections::HashMap<&str, Vec<&MetricSample>> =
             std::collections::HashMap::new();
         for obs in observations {
@@ -135,7 +134,6 @@ impl TuningProposer {
                 break;
             }
 
-            // Find parameters whose outcome_signal matches this metric.
             let specs = taxis::registry::all_specs()
                 .iter()
                 .filter(|s| s.outcome_signal == *metric_name)
@@ -165,7 +163,6 @@ impl TuningProposer {
         samples: &[&MetricSample],
         nous_id: &str,
     ) -> ProposalOutcome {
-        // Guard: only SelfTuning parameters may be tuned.
         if spec.tier != ParameterTier::SelfTuning {
             return ProposalOutcome::Rejected {
                 key: spec.key.to_owned(),
@@ -178,7 +175,6 @@ impl TuningProposer {
 
         let min_samples = self.config.evidence_min_samples as usize; // kanon:ignore RUST/as-cast
 
-        // Guard: minimum sample count.
         if samples.len() < min_samples {
             return ProposalOutcome::Rejected {
                 key: spec.key.to_owned(),
@@ -190,7 +186,8 @@ impl TuningProposer {
             };
         }
 
-        // Split samples into before/after halves for A/B comparison.
+        // NOTE: validate_evidence splits samples into before/after halves for
+        // A/B comparison.
         let values: Vec<f64> = samples.iter().map(|s| s.value).collect();
         let validation = evidence::validate_evidence(&values, self.config.significance_threshold);
 
@@ -214,10 +211,8 @@ impl TuningProposer {
             };
         }
 
-        // Derive a proposed value from the current default and the direction of improvement.
         let proposed = derive_proposed_value(spec, result.delta);
 
-        // Validate against operator bounds.
         if let Some((min, max)) = spec.bounds {
             let proposed_f64 = parameter_value_to_f64(&proposed);
             if proposed_f64 < min || proposed_f64 > max {
@@ -302,14 +297,15 @@ fn derive_proposed_value(spec: &ParameterSpec, delta: f64) -> ParameterValue {
             }
         }
         TuningDirection::Contextual => {
-            // For contextual parameters, use the sign of delta directly.
+            // WHY: contextual parameters have no fixed beneficial direction, so
+            // the nudge follows the observed delta's sign. The body coincides
+            // with the Higher arm today but the arms are semantically distinct.
             if delta > 0.0 { 0.10 } else { -0.10 }
         }
     };
 
     let proposed_f64 = current_f64 * (1.0 + nudge_factor);
 
-    // Preserve the type of the original value.
     match spec.default {
         ParameterValue::Int(_) => {
             // WHY: proposed_f64 is derived from int * 1.1 or int * 0.9, which is

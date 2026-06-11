@@ -134,7 +134,7 @@ pub struct NousLimits {
     /// before producing any reasoning, wasting tokens and obscuring intent.
     /// When the limit is hit, a system message is injected asking the agent
     /// to explain its reasoning before making more tool calls. Set to `0` to
-    /// disable. Default: 3. Closes #1980.
+    /// disable. Default: 3.
     pub max_consecutive_tool_only_iterations: u32,
     /// Consecutive no-progress turn limit before the mistake brake fires.
     ///
@@ -144,7 +144,7 @@ pub struct NousLimits {
     /// resets on the next user message.
     ///
     /// Operator-tunable via `KOINA_CONSECUTIVE_MISTAKE_LIMIT` environment
-    /// variable. Default: 5. Closes #187.
+    /// variable. Default: 5.
     pub consecutive_mistake_limit: u32,
 }
 
@@ -290,8 +290,7 @@ pub struct NousConfig {
     /// Resolved per-agent behavioral parameters (distillation, competence, drift, etc.).
     ///
     /// Populated at startup from taxis config cascade and passed through the
-    /// pipeline for all behavioral threshold reads. Defaults match the
-    /// constants they replace so behaviour is identical when unconfigured.
+    /// pipeline for all behavioral threshold reads.
     #[serde(default)]
     pub behavior: AgentBehaviorDefaults,
 }

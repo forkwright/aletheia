@@ -164,7 +164,7 @@ mod tests {
         };
         let s = e.to_string();
         assert_eq!(s, "The AI provider is temporarily unavailable. Try again.");
-        // The message must not duplicate the "AI provider" wording (#4154).
+        // WHY(#4154): the message must not duplicate the "AI provider" wording.
         assert_eq!(s.matches("AI provider").count(), 1);
     }
 

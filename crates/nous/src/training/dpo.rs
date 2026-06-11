@@ -193,7 +193,6 @@ impl DpoExtractor {
         is_correction: bool,
     ) -> Option<DpoPair> {
         if is_correction {
-            // Promote the last non-correction turn to pending.
             if let Some(last) = self.last_turn.remove(session_id) {
                 debug!(
                     session_id,
@@ -215,12 +214,10 @@ impl DpoExtractor {
                 // much later non-correction turn.
                 self.pending.remove(session_id);
             }
-            // Do not cache correction turns as last_turn.
+            // WHY: correction turns are never cached as last_turn.
             return None;
         }
 
-        // Not a correction turn. If we have a pending correction,
-        // try to finalize the pair.
         let pair = if let Some(pending) = self.pending.remove(session_id) {
             if Self::validate_semantic_match(&pending.prompt, user_message) {
                 info!(
@@ -252,7 +249,6 @@ impl DpoExtractor {
             None
         };
 
-        // Cache this turn as the last non-correction turn for the session.
         self.last_turn.insert(
             session_id.to_owned(),
             TurnSnapshot {
@@ -403,7 +399,6 @@ pub fn process_turn_global(
     is_correction: bool,
 ) -> Option<DpoPair> {
     let Ok(mut guard) = EXTRACTOR.lock() else {
-        // Mutex poisoned — log and continue without emitting.
         tracing::warn!("DPO extractor mutex poisoned; skipping pair extraction");
         return None;
     };
@@ -430,7 +425,6 @@ mod tests {
     fn extractor_emits_pair_on_correction_sequence() {
         let mut extractor = DpoExtractor::new();
 
-        // Turn 1: normal
         let p1 = extractor.process_turn(
             "ses-1",
             1,
@@ -440,7 +434,6 @@ mod tests {
         );
         assert!(p1.is_none(), "single normal turn should not emit");
 
-        // Turn 2: correction
         let p2 = extractor.process_turn(
             "ses-1",
             2,
@@ -450,7 +443,6 @@ mod tests {
         );
         assert!(p2.is_none(), "correction turn should not emit");
 
-        // Turn 3: corrected response (same semantic question)
         let p3 =
             extractor.process_turn("ses-1", 3, "What is the capital of France?", "Paris", false);
         let pair = p3.expect("should emit pair after correction sequence");
@@ -481,7 +473,6 @@ mod tests {
             true,
         );
 
-        // Turn 3: completely different topic
         let p3 = extractor.process_turn("ses-1", 3, "What is the weather today?", "Sunny", false);
         assert!(p3.is_none(), "semantic mismatch should not emit pair");
     }
@@ -505,7 +496,6 @@ mod tests {
             true,
         );
 
-        // Turn 3: short continuation
         let p3 = extractor.process_turn("ses-1", 3, "ok", "Paris", false);
         let pair = p3.expect("short continuation should pass validation");
         assert_eq!(pair.chosen, "Paris");
@@ -515,19 +505,15 @@ mod tests {
     fn extractor_handles_multiple_sessions() {
         let mut extractor = DpoExtractor::new();
 
-        // Session A
         let _ = extractor.process_turn("ses-a", 1, "Question A?", "Wrong A", false);
         let _ = extractor.process_turn("ses-a", 2, "Actually...", "Sorry.", true);
 
-        // Session B (interleaved)
         let _ = extractor.process_turn("ses-b", 1, "Question B?", "Wrong B", false);
         let _ = extractor.process_turn("ses-b", 2, "No, it's...", "My mistake.", true);
 
-        // Session A corrected
         let pa = extractor.process_turn("ses-a", 3, "Question A?", "Right A", false);
         assert!(pa.is_some(), "session A should emit");
 
-        // Session B corrected
         let pb = extractor.process_turn("ses-b", 3, "Question B?", "Right B", false);
         assert!(pb.is_some(), "session B should emit");
     }
@@ -538,16 +524,12 @@ mod tests {
 
         let _ = extractor.process_turn("ses-1", 1, "Question?", "Wrong 1", false);
         let _ = extractor.process_turn("ses-1", 2, "Actually...", "Sorry.", true);
-        // Chain: another correction before a real answer
         let _ = extractor.process_turn("ses-1", 3, "No wait...", "I see.", true);
 
-        // The second correction should overwrite pending.
-        // Since there was no last_turn cached (Turn 2 was a correction),
-        // the pending from Turn 1 may have been cleared and no new
-        // pending established. Let's verify behavior.
+        // WHY: turn 2 was itself a correction, so no last_turn was cached and
+        // the chained correction at turn 3 clears pending — turn 4 finds no
+        // pending and must emit nothing.
         let p4 = extractor.process_turn("ses-1", 4, "Question?", "Right", false);
-        // Turn 3 was a correction with no last_turn, so pending is empty.
-        // Turn 4 is normal with no pending, so no pair.
         assert!(
             p4.is_none(),
             "chained correction without intermediate answer should not emit"

@@ -79,7 +79,7 @@ fn record_pipeline_panic_enters_degraded_at_threshold() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
     assert_eq!(actor.channel.status, NousLifecycle::Idle);
 
-    // DEGRADED_PANIC_THRESHOLD is 5 — trigger exactly 5 panics.
+    // NOTE: taxis `degraded_panic_threshold` defaults to 5 — trigger exactly 5 panics.
     for _ in 0..5 {
         actor.record_pipeline_panic();
     }

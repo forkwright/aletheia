@@ -18,10 +18,6 @@ const ACTIVITY_WINDOW_SIZE: usize = 5;
 /// dropping under normal conditions.
 pub(crate) const PROGRESS_CHANNEL_CAPACITY: usize = 64;
 
-// ---------------------------------------------------------------------------
-// TaskId
-// ---------------------------------------------------------------------------
-
 /// Stable task identifier wrapping a UUID v4.
 ///
 /// WHY: Tasks need identity that survives across progress updates, GC checks,
@@ -65,10 +61,6 @@ impl<'de> Deserialize<'de> for TaskId {
         koina::uuid::Uuid::deserialize(deserializer).map(Self::from)
     }
 }
-
-// ---------------------------------------------------------------------------
-// TaskType
-// ---------------------------------------------------------------------------
 
 /// Task variant with type-specific metadata.
 ///
@@ -121,10 +113,6 @@ impl fmt::Display for TaskType {
     }
 }
 
-// ---------------------------------------------------------------------------
-// TaskStatus
-// ---------------------------------------------------------------------------
-
 /// Task status lifecycle.
 ///
 /// ```text
@@ -166,10 +154,6 @@ impl fmt::Display for TaskStatus {
     }
 }
 
-// ---------------------------------------------------------------------------
-// ToolCallSummary
-// ---------------------------------------------------------------------------
-
 /// Summary of a single tool call for the rolling activity window.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallSummary {
@@ -178,10 +162,6 @@ pub struct ToolCallSummary {
     /// Wall-clock duration of the tool execution.
     pub elapsed: jiff::SignedDuration,
 }
-
-// ---------------------------------------------------------------------------
-// ProgressEvent
-// ---------------------------------------------------------------------------
 
 /// Progress event emitted on a task's broadcast channel.
 ///
@@ -204,10 +184,6 @@ pub enum ProgressEvent {
     /// An error snapshot for diagnostics.
     Error(String),
 }
-
-// ---------------------------------------------------------------------------
-// TaskEntry
-// ---------------------------------------------------------------------------
 
 /// A task entry in the registry.
 ///

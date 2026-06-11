@@ -12,9 +12,7 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
+// ── Label sets ──
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct NousLabels {
@@ -52,9 +50,7 @@ struct NousReasonLabels {
     reason: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
+// ── Metric families ──
 
 static PIPELINE_TURNS_TOTAL: LazyLock<Family<NousLabels, Counter>> = LazyLock::new(Family::default);
 
@@ -92,10 +88,6 @@ static TRAINING_CAPTURE_REJECTED_TOTAL: LazyLock<Family<NousReasonLabels, Counte
     LazyLock::new(Family::default);
 
 static HEALTH_POLLER_RESTARTS_TOTAL: LazyLock<Counter> = LazyLock::new(Counter::default);
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -156,9 +148,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
+// ── Recording ──
 
 /// Record a completed pipeline stage.
 pub(crate) fn record_stage(nous_id: &str, stage: &str, duration_secs: f64) {
@@ -218,7 +208,7 @@ fn record_pipeline_event(name: &str, labels: &[(&str, String)], value: f64) {
             }
         }
         _ => {
-            // Other event types have no associated metrics.
+            // NOTE: other event types have no associated metrics.
         }
     }
 }
@@ -233,7 +223,7 @@ fn label<'a>(labels: &'a [(&str, String)], key: &str) -> Option<&'a str> {
 /// Record a tool execution failure.
 ///
 /// WHY: Tool failures at warn level need a metrics counter so operators can
-/// set alerts on systematic tool problems. Closes #3284.
+/// set alerts on systematic tool problems.
 pub(crate) fn record_tool_failure(nous_id: &str, tool_name: &str) {
     tracing::warn!(nous_id, tool_name, "tool execution failed");
     TOOL_FAILURES_TOTAL
@@ -247,7 +237,7 @@ pub(crate) fn record_tool_failure(nous_id: &str, tool_name: &str) {
 /// Record a dropped streaming event.
 ///
 /// WHY: Silently dropped streaming events are invisible contract violations.
-/// This counter surfaces the drop rate for alerting. Closes #3285.
+/// This counter surfaces the drop rate for alerting.
 pub(crate) fn record_stream_event_dropped(nous_id: &str, reason: &str) {
     tracing::debug!(nous_id, reason, "streaming event dropped");
     STREAM_EVENTS_DROPPED_TOTAL
@@ -262,7 +252,7 @@ pub(crate) fn record_stream_event_dropped(nous_id: &str, reason: &str) {
 ///
 /// WHY: DPO pair capture is a training pipeline signal. Operators need
 /// visibility into how much free preference data is being generated
-/// from user corrections. Closes #3421.
+/// from user corrections.
 pub(crate) fn record_dpo_pair(nous_id: &str) {
     DPO_PAIRS_CAPTURED_TOTAL
         .get_or_create(&NousLabels {
@@ -275,7 +265,7 @@ pub(crate) fn record_dpo_pair(nous_id: &str) {
 ///
 /// WHY: Operators need visibility into decontamination rates.
 /// `reason` is the author class that triggered rejection
-/// (e.g. "subagent", `system_scaffolding`). Closes #3786.
+/// (e.g. "subagent", `system_scaffolding`).
 pub(crate) fn record_training_capture_rejected(nous_id: &str, reason: &str) {
     TRAINING_CAPTURE_REJECTED_TOTAL
         .get_or_create(&NousReasonLabels {
@@ -288,7 +278,7 @@ pub(crate) fn record_training_capture_rejected(nous_id: &str, reason: &str) {
 /// Record a background task failure.
 ///
 /// WHY: Background extraction/distillation failures are silent data loss.
-/// This counter surfaces the failure rate for alerting. Closes #2724.
+/// This counter surfaces the failure rate for alerting.
 pub(crate) fn record_background_failure(nous_id: &str, task_type: &str) {
     BACKGROUND_TASK_FAILURES_TOTAL
         .get_or_create(&NousTaskTypeLabels {

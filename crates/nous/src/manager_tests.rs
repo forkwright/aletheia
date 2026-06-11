@@ -666,9 +666,8 @@ async fn health_poller_supervisor_runs_until_cancelled() {
 }
 
 /// When the inner poller panics, the supervisor catches the `JoinError`,
-/// logs, and respawns after backoff. This is the previously-broken path:
-/// without supervision a panicking `health_cycle` would kill health checks
-/// permanently for all actors. (#3607)
+/// logs, and respawns after backoff. Without supervision a panicking
+/// `health_cycle` would kill health checks permanently for all actors. (#3607)
 #[tokio::test]
 async fn health_poller_supervisor_restarts_on_panic() {
     let cancel = CancellationToken::new();

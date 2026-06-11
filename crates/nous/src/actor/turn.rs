@@ -134,7 +134,6 @@ impl NousActor {
     /// turns, and increments per-tool-group counters for failed tools. When the
     /// global limit is reached, the turn content is replaced with an intervention
     /// message and the brake is tripped. The brake resets on the next user turn.
-    /// Closes #187.
     pub(super) fn apply_mistake_brake(
         &mut self,
         session_key: &str,
@@ -301,7 +300,7 @@ impl NousActor {
     #[tracing::instrument(skip(self, content, turn_result), fields(model = %turn_result.model_used))]
     fn record_router_outcome(&self, content: &str, turn_result: &TurnResult) {
         if turn_result.model_used.is_empty() {
-            // Degraded-mode turns have no model; skip.
+            // WHY: degraded-mode turns have no model; skip.
             return;
         }
 
@@ -315,9 +314,8 @@ impl NousActor {
             true, // is_interactive
         );
 
-        // The decision struct carries the provider selected for this turn.
-        // Confidence is not available at finalize time (the store was queried
-        // during execute, not here).
+        // WHY: confidence is not available at finalize time (the store was
+        // queried during execute), so the decision carries only the provider.
         let decision = RoutingDecision::new(Arc::from(turn_result.model_used.as_str()), None);
 
         if let Err(e) = self.services.router.after_action(&decision, &outcome) {
@@ -333,9 +331,9 @@ impl NousActor {
     /// practice this is only called from the sequential actor loop, so
     /// cancellation only occurs at shutdown when the actor is consumed.
     ///
-    /// // NOTE: The panic boundary in `execute_turn_with_panic_boundary` ensures
-    /// // that even if the pipeline panics, the actor remains in a consistent
-    /// // state and can process subsequent messages.
+    /// The panic boundary in `execute_turn_with_panic_boundary` ensures
+    /// that even if the pipeline panics, the actor remains in a consistent
+    /// state and can process subsequent messages.
     pub(super) async fn handle_turn(
         &mut self,
         session_key: String, // kanon:ignore RUST/plain-string-secret
@@ -417,9 +415,9 @@ impl NousActor {
     /// is caught, logged, and an error is returned to the caller. The actor
     /// continues processing subsequent messages.
     ///
-    /// // WHY: Pipeline panics are isolated to a spawned task so they don't
-    /// // crash the actor. This is essential for long-running agents where
-    /// // a single malformed input or tool bug shouldn't terminate the service.
+    /// Pipeline panics are isolated to a spawned task so they don't
+    /// crash the actor. This is essential for long-running agents where
+    /// a single malformed input or tool bug shouldn't terminate the service.
     pub(super) async fn execute_turn_with_panic_boundary(
         &mut self,
         session_key: &str,
@@ -481,9 +479,9 @@ impl NousActor {
     /// ensures the actor's session ID matches the database row created by
     /// pylon, preventing FK constraint failures in finalize and tools.
     ///
-    /// // WHY(#2160): Session is persisted BEFORE spawning the pipeline task.
-    /// // If the actor crashes mid-pipeline, the `session_id` survives in fjall
-    /// // for recovery instead of being lost with the in-memory `HashMap`.
+    /// The session is persisted BEFORE spawning the pipeline task (#2160):
+    /// if the actor crashes mid-pipeline, the `session_id` survives in fjall
+    /// for recovery instead of being lost with the in-memory `HashMap`.
     #[expect(
         clippy::too_many_lines,
         reason = "pipeline setup is sequential and cohesive; splitting adds indirection"
@@ -524,7 +522,7 @@ impl NousActor {
             session.surprise_calculator.compute_surprise(content);
         }
 
-        // Persist session to store BEFORE spawning the pipeline task.
+        // INVARIANT(#2160): the session is persisted BEFORE the pipeline task spawns.
         if let Some(ref store) = self.stores.session_store {
             let guard = store.lock().await;
             match guard.find_or_create_session(

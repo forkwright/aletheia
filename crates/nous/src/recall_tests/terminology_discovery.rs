@@ -1,5 +1,3 @@
-//! (Split from `recall_tests.rs` — see parent mod.)
-
 #![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 
 use super::super::*;
@@ -385,7 +383,7 @@ fn test_internal_fact_admitted_to_local_hosted_provider_but_stripped_from_cloud(
     );
 
     // Admission path: plug the provider's reported target into the recall
-    // stage (mirroring pipeline/stages.rs:108-112) and verify `Internal`
+    // stage (mirroring `run_recall_stage`) and verify `Internal`
     // facts survive the sovereignty filter for a local provider.
     let search_local = MockVectorSearch::new(results.clone());
     let config = RecallConfig {

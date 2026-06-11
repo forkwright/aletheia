@@ -13,9 +13,8 @@ use mneme::recall::ScoredResult;
 /// These values are placed directly into the non-vector
 /// [`mneme::recall::FactorScores`] fields. Only vector similarity is computed
 /// from the actual embedding distance; decay, relevance, tier, proximity, frequency,
-/// and graph importance use these configured values as their scores. All values default
-/// to the previously hardcoded constants, preserving existing behaviour unless an
-/// operator overrides them in taxis config.
+/// and graph importance use these configured values as their scores. Operators
+/// override the defaults in taxis config.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallWeights {
     /// Temporal decay weight (0.0-1.0).

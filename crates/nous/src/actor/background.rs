@@ -54,7 +54,7 @@ impl NousActor {
         let now = std::time::Instant::now();
         self.runtime.background_panic_timestamps.push(now);
 
-        // Clean up old timestamps outside the window (for accurate logging/monitoring)
+        // WHY: drop timestamps outside the window so logging/monitoring stay accurate
         let degraded_window = Duration::from_secs(self.nous_behavior.degraded_window_secs);
         let cutoff = std::time::Instant::now()
             .checked_sub(degraded_window)
@@ -654,7 +654,6 @@ async fn run_extraction(
 
             #[cfg(feature = "knowledge-store")]
             if let Some(store) = knowledge_store {
-                // Run cohort-scoped conflict detection when enabled.
                 if config.detect_conflict {
                     for fact in &refined.extraction.facts {
                         match mneme::verification::detect_conflict(fact, store, nous_id) {

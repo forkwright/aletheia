@@ -275,7 +275,7 @@ pub(crate) fn facts_to_sections(facts: &[Fact]) -> Vec<BootstrapSection> {
                 ));
             }
         } else {
-            // Plain-text fallback: treat as always-injected
+            // WHY: plain-text (non-skill JSON) content falls back to always-injected
             let content = fact.content.clone();
             let tokens = CharEstimator::default().estimate(&content);
             always_sections.push(BootstrapSection {
@@ -422,8 +422,8 @@ mod tests {
         assert_eq!(sanitize_fts_query("?!@#$%"), "");
     }
 
-    // Legacy helper: kept in tests module for unit-test coverage of the
-    // single-fact conversion path.
+    // NOTE: legacy helper kept in the tests module for unit-test coverage of
+    // the single-fact conversion path.
     fn fact_to_section(fact: &Fact) -> BootstrapSection {
         let content =
             if let Ok(skill) = serde_json::from_str::<mneme::skill::SkillContent>(&fact.content) {
