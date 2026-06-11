@@ -158,7 +158,7 @@ l3_token_estimate = 12375
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "3f676cdc0432fce914ab41bcf439f7776c5f53c838cdb4e1129b27679e8bf4e7"
+source_hash = "9b444115c265a131cf3bbc0bfb2e5aa6ffd821af0f14ffbb6f8e4266f1dd3291"
 l3_token_estimate = 11818
 
 [[crates]]
