@@ -67,7 +67,7 @@ The benchmark runner connects to a live aletheia HTTP API. The service must
 be running and accessible:
 
 ```bash
-# Start the service (passwordless sudo on menos)
+# Start the service
 sudo systemctl start aletheia.service
 
 # Verify it is healthy

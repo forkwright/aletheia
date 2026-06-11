@@ -160,14 +160,14 @@ fn accepts_provider_type_and_deployment_aliases() {
             "models": ["gpt-4.1"]
         },
         {
-            "name": "menos-chat",
+            "name": "local-chat",
             "providerType": "open-ai-compatible",
             "baseUrl": "http://127.0.0.1:5001/v1",
             "deploymentTarget": "local_hosted",
             "models": ["anubis-70b"]
         },
         {
-            "name": "menos-vlm",
+            "name": "local-vlm",
             "providerType": "openai-compatible",
             "baseUrl": "http://127.0.0.1:5009/v1",
             "deploymentTarget": "localhosted",
@@ -198,7 +198,7 @@ fn provider_aliases_deserialize_to_typed_config() {
                 "models": ["gpt-4.1"]
             },
             {
-                "name": "menos-chat",
+                "name": "local-chat",
                 "providerType": "openai-compatible",
                 "baseUrl": "http://127.0.0.1:5001/v1",
                 "deploymentTarget": "local_hosted",
@@ -1041,5 +1041,5 @@ fn is_loopback_bind_rejects_wildcard_and_lan() {
     // without matching the LAN/tailnet PII patterns.
     assert!(!crate::validate::is_loopback_bind("10.0.0.1"));
     assert!(!crate::validate::is_loopback_bind("172.16.0.1"));
-    assert!(!crate::validate::is_loopback_bind("menos.lan"));
+    assert!(!crate::validate::is_loopback_bind("host-a.lan"));
 }

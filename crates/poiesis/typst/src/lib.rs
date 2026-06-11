@@ -31,8 +31,8 @@
 //!
 //! ## Attribution
 //!
-//! The compiler `World` implementation is adapted from `ergon_tools/sdr`
-//! (Cody's private code, freely adaptable per issue #3450).
+//! The compiler `World` implementation is adapted from a prior private project,
+//! used with permission per issue #3450.
 
 mod error;
 mod world;

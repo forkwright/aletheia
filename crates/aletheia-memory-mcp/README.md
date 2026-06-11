@@ -102,5 +102,5 @@ cargo clippy -p aletheia-memory-mcp --all-targets -- -D warnings
 Full gate (simulates CI):
 
 ```bash
-kanon gate --full  # from ~/dev/kanon
+kanon gate --full  # from a public kanon checkout
 ```

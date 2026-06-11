@@ -125,7 +125,7 @@ fn instance_example_provider_entries_load_strictly() {
     assert_eq!(anthropic.kind, ProviderKind::Anthropic);
     assert_eq!(anthropic.deployment_target, DeploymentTarget::Cloud);
 
-    for name in ["menos-chat", "menos-code", "menos-inference", "menos-vlm"] {
+    for name in ["local-chat", "local-code", "local-inference", "local-vlm"] {
         let provider = config
             .providers
             .iter()

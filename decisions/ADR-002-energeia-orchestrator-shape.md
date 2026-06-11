@@ -1,5 +1,4 @@
-<!-- Operator-review-pending: agent-drafted under DIRECTIVE v20; T0 metis review required before status moves Proposed → Accepted -->
-# ADR-001: energeia orchestrator shape
+# ADR-002: energeia orchestrator shape
 
 ## Status
 

@@ -1,12 +1,12 @@
 //! Minimal in-memory implementation of the Typst `World` trait.
 //!
-//! Adapted from `ergon_tools/sdr` (Cody's private code, freely adaptable per
-//! issue #3450). Changes from the sdr original:
+//! Adapted from a prior private project, used with permission per issue #3450.
+//! Changes from the original:
 //! - source lives in memory (not on disk) so `render_typst` can be called
 //!   without touching the filesystem;
 //! - an optional `data.json` virtual file is synthesized so templates can load
 //!   injected data via `json("data.json")`;
-//! - fonts are discovered from standard system paths, same as sdr.
+//! - fonts are discovered from standard system paths.
 //!
 //! WHY library not CLI: reproducibility and error fidelity. The library route
 //! gives typed diagnostics with source spans; the CLI route requires writing

@@ -563,7 +563,7 @@
 ### Documentation
 
 * **_llm:** Phase 2 L1 workspace overview + L2 per-crate summaries ([#3670](https://github.com/forkwright/aletheia/issues/3670)) ([c43241b](https://github.com/forkwright/aletheia/commit/c43241b3caf83709a854bd32355e1de1c232c095))
-* absorb ergon_tools patterns into standards, templates, and hooks ([#3674](https://github.com/forkwright/aletheia/issues/3674)) ([e9b9a8a](https://github.com/forkwright/aletheia/commit/e9b9a8abdb1d8e3da41ee703a3d47d7a1925726f))
+* absorb external standards patterns into standards, templates, and hooks ([#3674](https://github.com/forkwright/aletheia/issues/3674)) ([e9b9a8a](https://github.com/forkwright/aletheia/commit/e9b9a8abdb1d8e3da41ee703a3d47d7a1925726f))
 * **architecture:** preserving informative tension pattern + binary decision audit ([#3635](https://github.com/forkwright/aletheia/issues/3635)) ([37751e2](https://github.com/forkwright/aletheia/commit/37751e22a43d9f0d1f76874c8abd7f5a62c4174b)), closes [#3488](https://github.com/forkwright/aletheia/issues/3488)
 * **paper:** draft technical paper on Datalog, sandbox, and 6-factor recall ([#3641](https://github.com/forkwright/aletheia/issues/3641)) ([87afbef](https://github.com/forkwright/aletheia/commit/87afbefd95ed1405d36c6f55227905fced6c4c1e)), closes [#3427](https://github.com/forkwright/aletheia/issues/3427)
 * replace em-dashes and smart quotes with ASCII equivalents ([#3735](https://github.com/forkwright/aletheia/issues/3735)) ([949d026](https://github.com/forkwright/aletheia/commit/949d0261784b68bef70ab5c050ee1896177a8abe))
@@ -1395,7 +1395,7 @@
 * remove private agent name from codebase ([#2415](https://github.com/forkwright/aletheia/issues/2415)) ([59c6cfa](https://github.com/forkwright/aletheia/commit/59c6cfad7ea0cdd137d0988fc15f8f1acc826ffa))
 * remove unfulfilled dead_code expects in msg.rs and overlay.rs ([b57cd66](https://github.com/forkwright/aletheia/commit/b57cd66abd35e5afd900c01df56548d449f82844))
 * **resilience:** graceful shutdown, OOM, disk, embedding, streaming ([#1758](https://github.com/forkwright/aletheia/issues/1758)) ([742d4fd](https://github.com/forkwright/aletheia/commit/742d4fd6f04b12f849efa04c40751206bd2f6193))
-* resolve 17 lint violations via verda ([#2340](https://github.com/forkwright/aletheia/issues/2340)) ([49ad8cb](https://github.com/forkwright/aletheia/commit/49ad8cb9da27b114e6d15c4e560294abcb645363))
+* resolve 17 lint violations via automation ([#2340](https://github.com/forkwright/aletheia/issues/2340)) ([49ad8cb](https://github.com/forkwright/aletheia/commit/49ad8cb9da27b114e6d15c4e560294abcb645363))
 * resolve 6 code quality audit findings ([#1923](https://github.com/forkwright/aletheia/issues/1923)) ([17ec00d](https://github.com/forkwright/aletheia/commit/17ec00ddade286d62783c0dc55ec783a085f6751))
 * resolve clippy lint violations across workspace ([9fc0ae8](https://github.com/forkwright/aletheia/commit/9fc0ae8eefcaabd8e39d1cc26313d0749b64943a))
 * resolve lint violations via kanon lint --fix ([64f8573](https://github.com/forkwright/aletheia/commit/64f8573bef942a69873425d64ee92e4073b837a0))
@@ -1779,7 +1779,7 @@
 * remove private agent name from codebase ([#2415](https://github.com/forkwright/aletheia/issues/2415)) ([59c6cfa](https://github.com/forkwright/aletheia/commit/59c6cfad7ea0cdd137d0988fc15f8f1acc826ffa))
 * remove unfulfilled dead_code expects in msg.rs and overlay.rs ([b57cd66](https://github.com/forkwright/aletheia/commit/b57cd66abd35e5afd900c01df56548d449f82844))
 * **resilience:** graceful shutdown, OOM, disk, embedding, streaming ([#1758](https://github.com/forkwright/aletheia/issues/1758)) ([742d4fd](https://github.com/forkwright/aletheia/commit/742d4fd6f04b12f849efa04c40751206bd2f6193))
-* resolve 17 lint violations via verda ([#2340](https://github.com/forkwright/aletheia/issues/2340)) ([49ad8cb](https://github.com/forkwright/aletheia/commit/49ad8cb9da27b114e6d15c4e560294abcb645363))
+* resolve 17 lint violations via automation ([#2340](https://github.com/forkwright/aletheia/issues/2340)) ([49ad8cb](https://github.com/forkwright/aletheia/commit/49ad8cb9da27b114e6d15c4e560294abcb645363))
 * resolve 6 code quality audit findings ([#1923](https://github.com/forkwright/aletheia/issues/1923)) ([17ec00d](https://github.com/forkwright/aletheia/commit/17ec00ddade286d62783c0dc55ec783a085f6751))
 * resolve clippy lint violations across workspace ([9fc0ae8](https://github.com/forkwright/aletheia/commit/9fc0ae8eefcaabd8e39d1cc26313d0749b64943a))
 * resolve lint violations via kanon lint --fix ([7de04c8](https://github.com/forkwright/aletheia/commit/7de04c8febb4c2c353947b5bea301f1a48e3402b))
@@ -2189,7 +2189,7 @@
 * remove duplicate module files and fix inner doc comments ([70eb84a](https://github.com/forkwright/aletheia/commit/70eb84ad1d9f0ab3d36364792ec009a82a0ddfcd))
 * remove unfulfilled dead_code expects in msg.rs and overlay.rs ([b57cd66](https://github.com/forkwright/aletheia/commit/b57cd66abd35e5afd900c01df56548d449f82844))
 * **resilience:** graceful shutdown, OOM, disk, embedding, streaming ([#1758](https://github.com/forkwright/aletheia/issues/1758)) ([742d4fd](https://github.com/forkwright/aletheia/commit/742d4fd6f04b12f849efa04c40751206bd2f6193))
-* resolve 17 lint violations via verda ([#2340](https://github.com/forkwright/aletheia/issues/2340)) ([49ad8cb](https://github.com/forkwright/aletheia/commit/49ad8cb9da27b114e6d15c4e560294abcb645363))
+* resolve 17 lint violations via automation ([#2340](https://github.com/forkwright/aletheia/issues/2340)) ([49ad8cb](https://github.com/forkwright/aletheia/commit/49ad8cb9da27b114e6d15c4e560294abcb645363))
 * resolve 6 code quality audit findings ([#1923](https://github.com/forkwright/aletheia/issues/1923)) ([17ec00d](https://github.com/forkwright/aletheia/commit/17ec00ddade286d62783c0dc55ec783a085f6751))
 * resolve clippy lint violations across workspace ([9fc0ae8](https://github.com/forkwright/aletheia/commit/9fc0ae8eefcaabd8e39d1cc26313d0749b64943a))
 * resolve lint violations via kanon lint --fix ([a2b4786](https://github.com/forkwright/aletheia/commit/a2b4786c49b9f470846854dd32e4e9be5668156e))
@@ -2380,7 +2380,7 @@
 ### Bug Fixes
 
 * **aletheia:** correct #[expect] reason strings in export commands ([#2334](https://github.com/forkwright/aletheia/issues/2334)) ([b9c83af](https://github.com/forkwright/aletheia/commit/b9c83af0d7f2c3d020813e1a26cf346a2afb2cd1))
-* resolve 17 lint violations via verda ([#2340](https://github.com/forkwright/aletheia/issues/2340)) ([49ad8cb](https://github.com/forkwright/aletheia/commit/49ad8cb9da27b114e6d15c4e560294abcb645363))
+* resolve 17 lint violations via automation ([#2340](https://github.com/forkwright/aletheia/issues/2340)) ([49ad8cb](https://github.com/forkwright/aletheia/commit/49ad8cb9da27b114e6d15c4e560294abcb645363))
 
 ## [0.13.22](https://github.com/forkwright/aletheia/compare/v0.13.21...v0.13.22) (2026-04-02)
 

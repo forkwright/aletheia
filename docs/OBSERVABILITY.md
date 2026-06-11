@@ -102,7 +102,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 | HTTP 5xx rate | < 1% over 5 minutes | `aletheia_http_requests_total{status=~"5.."}` |
 | LLM p95 latency | < 30 seconds | `aletheia_llm_request_duration_seconds` |
 | LLM TTFT p95 | < 5 seconds | `aletheia_llm_ttft_seconds` |
-| Backup freshness | < 48 hours since last success | `aletheia_backup_duration_seconds_count{status="ok"}` |
+| Backup freshness | Deployment-defined | Backup metric is registered but inactive until backup recording is reattached |
 | Hung processes | 0 | `aletheia_watchdog_hung_processes` |
 
 ---
@@ -169,8 +169,8 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 **Impact:** Data loss risk. Session store cannot be restored to a recent point in time.
 
 **Steps:**
-1. Verify the backup metric is active: `curl -sf http://localhost:18789/metrics | grep aletheia_backup_duration_seconds`
-2. If empty, backup recording is not yet wired to fjall. Run a manual backup: `aletheia backup`
+1. Confirm whether your deployment has wired backup recording to `aletheia_backup_duration_seconds`.
+2. If the metric is empty, backup recording is not yet wired to fjall. Run a manual backup using your deployment's backup process.
 3. Check cron timer: `systemctl --user list-timers | grep aletheia`
 4. Review backup script logs: `journalctl --user -u aletheia-health --since "48 hours ago"`
 5. Test a restore from the latest backup file

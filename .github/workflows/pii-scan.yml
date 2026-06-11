@@ -26,5 +26,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ripgrep bats
       - name: Run PII scanner
         run: scripts/scan-pii.sh
+      - name: Run ADR provenance guard
+        run: scripts/check-adr.sh
       - name: Run scanner unit tests
         run: bats tests/pii-scanner/test_scanner.bats

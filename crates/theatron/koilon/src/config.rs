@@ -335,7 +335,7 @@ mod tests {
             discovery: Some(DiscoveryFileConfig {
                 port: Some(18790),
                 urls: Some(vec!["https://aletheia.example".into()]),
-                lan_hostnames: Some(vec!["metis".into()]),
+                lan_hostnames: Some(vec!["host-a".into()]),
                 tailscale_ips: Some(vec!["100.64.0.10".into()]),
             }),
         };
@@ -365,7 +365,7 @@ mod tests {
         );
         assert_eq!(
             discovery.lan_hostnames.as_deref(),
-            Some(&["metis".to_string()][..])
+            Some(&["host-a".to_string()][..])
         );
         assert_eq!(
             discovery.tailscale_ips.as_deref(),

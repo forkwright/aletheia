@@ -1,6 +1,5 @@
 <!--
 scope: aletheia repo conventions (cognition-server crates, recipes, organon tools, theatron UI)
-defers_to: ~/menos-ops/CLAUDE.md for machine topology; ~/.claude/CLAUDE.md for operator principles (including "build the system you'd trust to run without you")
 tightens: per-crate CLAUDE.md files under crates/*/ can narrow conventions within their blast radius
 -->
 
@@ -16,10 +15,10 @@ See also [AGENTS.md](AGENTS.md) for a cross-tool quick-reference (build commands
 
 ## Standards
 
-Universal: `~/dev/kanon/crates/basanos/standards/STANDARDS.md`
-Rust: `~/dev/kanon/crates/basanos/standards/RUST.md`
-Writing: `~/dev/kanon/crates/basanos/standards/WRITING.md`
-Shell: `~/dev/kanon/crates/basanos/standards/SHELL.md`
+Universal: [standards/](standards/)
+Rust: [standards/](standards/)
+Writing: [standards/](standards/)
+Shell: [standards/](standards/)
 
 ## Structure
 
@@ -87,7 +86,7 @@ for the release-time substance-audit gate that calls this tool via
 - **Config:** TOML cascade in `taxis` (owned loader, no figment)
 - **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]`; every suppression justified
 - **Visibility:** `pub(crate)` by default; `pub` only for cross-crate API surface
-- **Naming:** Greek names per `~/dev/kanon/crates/basanos/standards/GNOMON.md`, registry at [docs/lexicon.md](docs/lexicon.md)
+- **Naming:** Greek names per [standards/](standards/), registry at [docs/lexicon.md](docs/lexicon.md)
 - **No barrel files**: import from the file that owns the symbol
 - **Module imports flow downward**: higher layers depend on lower, never reverse
 

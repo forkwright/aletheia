@@ -3,7 +3,7 @@
 //!
 //! The `symbol_rdeps_finds_many_callers` test is marked `#[ignore]` because
 //! it runs `cargo metadata` and parses the full workspace — expected wall time
-//! is 3–8 seconds on menos hardware.  Run it with:
+//! is 3-8 seconds on a typical workstation. Run it with:
 //!
 //! ```text
 //! cargo nextest run -p gnosis --features test-core -- --include-ignored symbol_rdeps_finds_many_callers

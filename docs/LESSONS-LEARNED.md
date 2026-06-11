@@ -34,9 +34,9 @@ Entries are prepended (newest first). Do not reorder existing entries.
 
 ## Entries
 
-### 2026-04-17 - ergon_tools pattern absorption (Wave 7)
+### 2026-04-17 - standards pattern absorption (Wave 7)
 
-**Context:** Bulk standards absorption from ergon_tools (external reference
+**Context:** Bulk standards absorption from an external reference
 project). No Rust changes; standards and workflow artifacts only.
 
 **What worked:** Deriving the agentic pipeline standard from existing code
@@ -44,8 +44,8 @@ project). No Rust changes; standards and workflow artifacts only.
 already embodied the right structure; the standard made it explicit and
 navigable for agents starting cold.
 
-**What failed:** ergon_tools repo was not present at any of the expected paths
-(`~/dev/ergon`, `~/menos-ops/repos/ergon`, `~/menos-ops/repos/reference/ergon`).
+**What failed:** The external reference repo was not present at any expected
+local checkout path.
 All absorption had to be driven from the issue body description alone.
 
 **Structural fix:** `standards/AGENTIC_PIPELINE.md` added as canonical pipeline
@@ -54,4 +54,3 @@ description. `workflow/prompts/templates/` populated with 5 role templates.
 `docs/LESSONS-LEARNED.md` (this file) created as structured capture format.
 `standards/STANDARDS.md` standards index updated to reference new files.
 Closes #3451.
-
