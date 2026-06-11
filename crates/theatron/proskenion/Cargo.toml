@@ -40,7 +40,8 @@ features = ["logging"]
 [package]
 name = "proskenion"
 # WHY: explicit values instead of workspace inheritance because this crate
-# is excluded from the workspace (GTK/webkit2gtk deps break CI).
+# is excluded from the root workspace; dedicated desktop CI compiles and lints
+# it through this standalone manifest.
 version = "0.13.1"
 edition = "2024"
 license = "AGPL-3.0-or-later"
@@ -142,8 +143,9 @@ notify-rust = "4"
 [dev-dependencies]
 tempfile = "3"
 
-# WHY: proskenion is excluded from the workspace (GTK3/webkit2gtk
-# system library requirement). Inline lints replace workspace inheritance.
+# WHY: proskenion is excluded from the root workspace (GTK3/webkit2gtk system
+# library requirement). Inline lints replace workspace inheritance while
+# dedicated desktop CI compiles and lints this standalone manifest.
 [lints.rust]
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }
