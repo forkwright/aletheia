@@ -22,6 +22,12 @@ jobs:
     name: gate-attestation
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # WHY: full debuginfo is the bulk of the dev-profile target dir; with a
+      # cold cargo cache the workspace test build exceeded the hosted runner's
+      # free disk (ENOSPC killed the gate mid-nextest, 2026-06-11). Line tables
+      # keep usable backtraces for test failures at a fraction of the size.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       # WHY: bypass keys off the PR author login, not github.actor. The actor
       # changes to a maintainer login whenever someone re-runs the workflow
@@ -40,6 +46,18 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      # WHY: hosted runners ship ~25 GB of toolchains this job never uses
+      # (dotnet, Android, GHC, CodeQL bundles). The workspace test build needs
+      # that headroom when the cargo cache is cold — ENOSPC killed the gate
+      # mid-nextest on 2026-06-11. Plain rm keeps this dependency-free.
+      - name: Reclaim runner disk
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+          echo "free disk after reclaim:"
+          df -h / | tail -1
 
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
