@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "0e59a81d9f677af1fb2a6fcd00594f39c9312bebe7551a994ffa6f985ef316bf"
+source_hash = "fe62493976f3b971192651ea2bd81a4b11da6b5291c4db1459c754f0e006a3c9"
 l3_token_estimate = 167
 
 [[crates]]
@@ -86,13 +86,13 @@ l3_token_estimate = 20097
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "3035b09e907f821772ec8807e4dee04bde13eb9fe494faa63200b769cc57e8eb"
+source_hash = "b1b835055e19efb3716e6a22d40569e757be29e0e31f116e4424a98a485bf7a0"
 l3_token_estimate = 32852
 
 [[crates]]
 name = "gnosis"
 path = "crates/gnosis"
-source_hash = "2a474401b9957d9bd455a295b379e1188a1b7d5061ed6d62cfa87940a1696a43"
+source_hash = "0ae7a03934b171e9c7ae2ceea87540c667aa7b58dc888115c0ab8a18712e1f2e"
 l3_token_estimate = 1107
 
 [[crates]]
@@ -116,7 +116,7 @@ l3_token_estimate = 1170
 [[crates]]
 name = "koilon"
 path = "crates/theatron/koilon"
-source_hash = "839b2e40206cabe71c9e630202e9adc8f781545ba8f13965927b5a00f0336f34"
+source_hash = "7e172cb60e036a9b2c2242f72fff5806d29cba636d081048dd55e1b156d15fa4"
 l3_token_estimate = 11570
 
 [[crates]]
@@ -212,7 +212,7 @@ l3_token_estimate = 456
 [[crates]]
 name = "poiesis-lint"
 path = "crates/poiesis/lint"
-source_hash = "d5cd02135b510016862781c328b231357158157156dd4f15f0b3471604380ff8"
+source_hash = "fded9d5d8886060bcaa29da45ab1ca0475ea7f1305f321f6d78b0bd0cc79fe10"
 l3_token_estimate = 976
 
 [[crates]]
@@ -254,13 +254,13 @@ l3_token_estimate = 5254
 [[crates]]
 name = "poiesis-typst"
 path = "crates/poiesis/typst"
-source_hash = "4e22a49f88f02025c1e02067f0a36921d1424005c81ce75d43bed18395c4e341"
+source_hash = "74474a50b19b3b9fd46b46466a9622baab377d4b365b0aa950765b485e189016"
 l3_token_estimate = 398
 
 [[crates]]
 name = "poiesis-verify"
 path = "crates/poiesis/verify"
-source_hash = "dba202a8d9c20f68e5211e7846c3885949ef473353dc83f03f08d45014718929"
+source_hash = "9e495ae347cc0067be4241df63cd2bd6ac9aec78029d46b0786fe1812bdd728c"
 l3_token_estimate = 1354
 
 [[crates]]
@@ -272,7 +272,7 @@ l3_token_estimate = 17595
 [[crates]]
 name = "skene"
 path = "crates/theatron/skene"
-source_hash = "01828596c76ceeb8c3e0ab6dad0328597bb6963625c47d880e5373d7236906eb"
+source_hash = "1597a8ece5eb94cbcfeaf0a83ee5d7ec9a6927917a9db25b31629e68879229de"
 l3_token_estimate = 4844
 
 [[crates]]
@@ -284,13 +284,13 @@ l3_token_estimate = 6585
 [[crates]]
 name = "taxis"
 path = "crates/taxis"
-source_hash = "5a2a3d0c8d0fc0952c5a79d673dbbce7801a10c1b35ea54c2a2a54ddadd63a1b"
+source_hash = "eb161c845c1e5ce838b6a2ef0814da87411661fa96c0ef879cb7ca1f223ed828"
 l3_token_estimate = 23335
 
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "21483c9f12a1f1ee5881f18eb30c6f76327c2d0b42b0e81fb20d1ec58fc27f45"
+source_hash = "88694ed44ad910a2a2c7abe105f6f27caf1bf96aba4cee4c7dd1ff608d9c701f"
 l3_token_estimate = 22061
 
 [[crates]]
