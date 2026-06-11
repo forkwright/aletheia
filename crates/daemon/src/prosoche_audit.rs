@@ -1,11 +1,10 @@
 // kanon:ignore RUST/file-too-long — cohesive prosoche audit framework: trait + impls + report structs belong together
 //! Prosoche self-audit framework: structured attention-quality checks.
 //!
-//! Implements REQ-01 and REQ-02 from Phase 05:
-//! - REQ-01: Five check types (consistency, staleness, goal alignment, session quality,
-//!   instinct patterns) as a trait + per-type implementations.
-//! - REQ-02: A [`ProsocheAuditRunner`] that runs all registered checks on demand and
-//!   persists [`Finding`]s with [`ArtefactMeta`] stamps for operator review.
+//! Five check types (consistency, staleness, goal alignment, session quality,
+//! instinct patterns) implement [`ProsocheCheck`]; a [`ProsocheAuditRunner`]
+//! runs all registered checks on demand and persists [`Finding`]s with
+//! [`ArtefactMeta`] stamps for operator review.
 //!
 //! # Philosophy
 //!
@@ -27,14 +26,6 @@
 //! `ProsocheCheck::check` returns a `Pin<Box<dyn Future>>` (same pattern as
 //! [`DaemonBridge`](crate::bridge::DaemonBridge)) so the trait is object-safe
 //! and `Arc<dyn ProsocheCheck>` works without `async_trait`.
-//!
-//! # v1 implementation notes
-//!
-//! - `ConsistencyCheck`: detects contradictory fact pairs (X and not-X assertions).
-//! - `StalenessCheck`: flags sessions and facts stale beyond a configurable window.
-//! - `GoalAlignmentCheck`: keyword-overlap heuristic between session turns and goal list.
-//! - `SessionQualityCheck`: flags sessions with high error ratios or only abandoned turns.
-//! - `InstinctPatternsCheck`: stub — shape is correct, gnomon weights needed (follow-up).
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -45,16 +36,8 @@ use eidos::knowledge::finding::{EvidenceLevel, Finding, FindingStats};
 use eidos::meta::{ArtefactMeta, Stamped};
 use serde::{Deserialize, Serialize};
 
-// ── ProsocheCheckKind ─────────────────────────────────────────────────────────
-
-/// The five categories of prosoche self-audit check.
-///
-/// Each variant corresponds to a distinct attention-quality dimension:
-/// - [`Consistency`](ProsocheCheckKind::Consistency): contradiction detection in the fact graph.
-/// - [`Staleness`](ProsocheCheckKind::Staleness): recency checks on facts and sessions.
-/// - [`GoalAlignment`](ProsocheCheckKind::GoalAlignment): verifying sessions advance stated goals.
-/// - [`SessionQuality`](ProsocheCheckKind::SessionQuality): evaluating session productivity.
-/// - [`InstinctPatterns`](ProsocheCheckKind::InstinctPatterns): detecting recurring behavioral loops.
+/// The five categories of prosoche self-audit check, one per
+/// attention-quality dimension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum ProsocheCheckKind {
@@ -84,8 +67,6 @@ impl std::fmt::Display for ProsocheCheckKind {
         }
     }
 }
-
-// ── ProsocheState ─────────────────────────────────────────────────────────────
 
 /// Snapshot of system state available to prosoche checks.
 ///
@@ -149,8 +130,6 @@ pub struct SessionSnapshot {
     pub turn_text: String,
 }
 
-// ── ProsocheCheck trait ───────────────────────────────────────────────────────
-
 /// A single prosoche self-audit check.
 ///
 /// Implementations receive a [`ProsocheState`] snapshot and produce zero or
@@ -184,8 +163,6 @@ pub trait ProsocheCheck: Send + Sync {
     fn kind(&self) -> ProsocheCheckKind;
 }
 
-// ── ConsistencyCheck ──────────────────────────────────────────────────────────
-
 /// Detect contradictions in the fact graph.
 ///
 /// v1 heuristic: looks for fact pairs where one fact content contains a term
@@ -205,7 +182,6 @@ impl ProsocheCheck for ConsistencyCheck {
         Box::pin(async move {
             let mut findings = Vec::new();
 
-            // Collect (fact_id, content, normalised_terms) tuples.
             let normalised: Vec<(String, String, Vec<String>)> = state
                 .facts
                 .iter()
@@ -217,7 +193,6 @@ impl ProsocheCheck for ConsistencyCheck {
 
             for (i, (id_a, content_a, terms_a)) in normalised.iter().enumerate() {
                 for (id_b, content_b, _) in normalised.get(i + 1..).unwrap_or_default() {
-                    // Check if any term from A appears negated in B or vice versa.
                     for term in terms_a {
                         let negated = format!("not {term}");
                         let negated_alt = format!("never {term}");
@@ -242,7 +217,6 @@ impl ProsocheCheck for ConsistencyCheck {
                             break;
                         }
 
-                        // Also check if B's content is negated in A.
                         let content_a_lower = content_a.to_lowercase();
                         let neg_in_a = content_a_lower.contains(&negated)
                             || content_a_lower.contains(&negated_alt);
@@ -307,8 +281,6 @@ fn extract_key_terms(content: &str) -> Vec<String> {
         .collect()
 }
 
-// ── StalenessCheck ────────────────────────────────────────────────────────────
-
 /// Flag facts and sessions that haven't been touched in N days without a
 /// documented rationale.
 ///
@@ -337,7 +309,6 @@ impl ProsocheCheck for StalenessCheck {
         Box::pin(async move {
             let mut findings = Vec::new();
 
-            // Check stale facts.
             for fact in &state.facts {
                 if let Some(days) = fact.days_since_touched
                     && days > self.fact_stale_days
@@ -361,7 +332,6 @@ impl ProsocheCheck for StalenessCheck {
                 }
             }
 
-            // Check stale incomplete sessions.
             // Future: carry session_age_days in SessionSnapshot and use it here.
             for session in &state.sessions {
                 if !session.completed && session.turn_count > 10 {
@@ -397,8 +367,6 @@ impl ProsocheCheck for StalenessCheck {
     }
 }
 
-// ── GoalAlignmentCheck ────────────────────────────────────────────────────────
-
 /// Verify recent session turns are advancing stated goals.
 ///
 /// v1: keyword-overlap heuristic. For each session, count how many of the
@@ -428,7 +396,6 @@ impl ProsocheCheck for GoalAlignmentCheck {
                 return findings;
             }
 
-            // Build a flat keyword list from all stated goals.
             let goal_terms: Vec<String> = state
                 .stated_goals
                 .iter()
@@ -476,8 +443,6 @@ impl ProsocheCheck for GoalAlignmentCheck {
         ProsocheCheckKind::GoalAlignment
     }
 }
-
-// ── SessionQualityCheck ───────────────────────────────────────────────────────
 
 /// Flag sessions with high error rates or only abandoned turns.
 ///
@@ -543,7 +508,6 @@ impl ProsocheCheck for SessionQualityCheck {
                 }
             }
 
-            // Check if ALL recent sessions were abandoned.
             let completed_count = qualified.iter().filter(|s| s.completed).count();
             if qualified.len() >= 5 && completed_count == 0 {
                 findings.push(Finding {
@@ -578,8 +542,6 @@ impl ProsocheCheck for SessionQualityCheck {
     }
 }
 
-// ── InstinctPatternsCheck ─────────────────────────────────────────────────────
-
 /// Detect recurring patterns in agent behavior.
 ///
 /// v1: stub implementation. The trait shape and variant are correct; the
@@ -612,8 +574,8 @@ impl ProsocheCheck for InstinctPatternsCheck {
                 "prosoche audit complete (stub — gnomon weights needed)"
             );
 
-            // Return a single speculative finding noting the stub state, so the
-            // operator knows this check ran but has no depth yet.
+            // WHY: return a single speculative finding noting the stub state, so
+            // the operator knows this check ran but has no depth yet.
             vec![Finding {
                 finding_id: "PROSOCHE-INSTINCT-STUB-001".to_owned(),
                 claim: "InstinctPatternsCheck is a v1 stub; no behavioral pattern data is \
@@ -633,8 +595,6 @@ impl ProsocheCheck for InstinctPatternsCheck {
         ProsocheCheckKind::InstinctPatterns
     }
 }
-
-// ── AuditStorage ─────────────────────────────────────────────────────────────
 
 /// Persistence backend for audit reports.
 ///
@@ -660,7 +620,6 @@ impl AuditStorage {
     pub fn persist(&self, report: &AuditReport) -> std::io::Result<PathBuf> {
         std::fs::create_dir_all(&self.dir)?;
 
-        // Sanitise the timestamp for use in a filename.
         let ts = report.audited_at.replace([':', '.'], "-");
         let filename = format!("prosoche-audit-{ts}.json");
         let path = self.dir.join(filename);
@@ -676,8 +635,6 @@ impl AuditStorage {
         Ok(path)
     }
 }
-
-// ── AuditReport ──────────────────────────────────────────────────────────────
 
 /// Result of a single prosoche self-audit pass.
 ///
@@ -724,8 +681,6 @@ impl Stamped for AuditReport {
         )
     }
 }
-
-// ── ProsocheAuditRunner ───────────────────────────────────────────────────────
 
 /// Runs all registered prosoche checks and persists the resulting findings.
 ///
@@ -807,7 +762,7 @@ impl ProsocheAuditRunner {
 
         let total = all_findings.len();
 
-        // Build the meta stamp at write time (not construction time).
+        // WHY: the meta stamp is built at write time, not construction time.
         let meta = ArtefactMeta::new(
             format!("oikonomos@{}", env!("CARGO_PKG_VERSION")),
             1,
@@ -827,7 +782,8 @@ impl ProsocheAuditRunner {
             meta,
         };
 
-        // Persist — log on failure but don't fail the audit.
+        // WHY: a persist failure is logged but never fails the audit — the
+        // report is still returned to the caller.
         match self.storage.persist(&report) {
             Ok(path) => {
                 tracing::info!(
@@ -850,8 +806,6 @@ impl ProsocheAuditRunner {
         report
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 #[path = "prosoche_audit_tests.rs"]

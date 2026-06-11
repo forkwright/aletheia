@@ -35,9 +35,6 @@ use crate::turn_buffer::TurnBufferHandle;
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
 
-// Message and identifier size limits are now read from `config.api_limits` at runtime.
-// See `taxis::config::ApiLimitsConfig` for defaults and documentation.
-
 /// Guard that aborts a spawned task when dropped.
 ///
 /// Stored alongside the SSE response stream so that when the client
@@ -762,9 +759,9 @@ pub async fn stream_turn(
 /// GET /api/v1/events: global SSE keep-alive channel.
 ///
 /// Returns a persistent SSE connection with periodic keep-alive comments.
-/// Full server-side broadcast (system events, agent status changes) requires
-/// wiring a `tokio::sync::broadcast` channel into `AppState`: that is tracked
-/// in issue #1248 and is out of scope here.
+/// Domain-event broadcast is served separately by `GET /api/v1/events/subscribe`
+/// (`handlers::events::subscribe` over the `EventBus`); this endpoint stays
+/// comment-only.
 #[utoipa::path(
     get,
     path = "/api/v1/events",
@@ -778,8 +775,8 @@ pub async fn events(
     _claims: Claims,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     // WHY: emit periodic comment-only events so the connection stays alive and
-    // proxies do not close it. Real domain events require a broadcast channel
-    // wired into AppState: deferred to issue #1248.
+    // proxies do not close it. Domain events flow through the EventBus stream
+    // on /api/v1/events/subscribe, not this channel.
     // WHY: keepalive interval (15s) must be well below the client read timeout
     // (45s in skene) to prevent false disconnects. The IntervalStream and
     // axum KeepAlive are belt-and-suspenders: either alone would work but
@@ -1003,7 +1000,7 @@ static SECRET_PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::
 /// Strip potential secrets (API keys, bearer tokens) from an error message
 /// before including it in a client-visible SSE event.
 ///
-/// WHY #844: error messages from providers may contain credential fragments
+/// WHY(#844): error messages from providers may contain credential fragments
 /// in rejection messages (e.g. "invalid key sk-ant-..."). This strips
 /// anything that looks like a secret token.
 fn redact_secrets(msg: &str) -> String {

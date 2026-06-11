@@ -7,9 +7,7 @@ use super::*;
 /// Default max key length for tests (matches `ApiLimitsConfig::default()`).
 const TEST_MAX_KEY_LEN: usize = 64;
 
-// ─────────────────────────────────────────────────────────
-// extract_idempotency_key
-// ─────────────────────────────────────────────────────────
+// ── extract_idempotency_key ──
 
 #[test]
 fn idempotency_key_absent_returns_none() {
@@ -57,7 +55,7 @@ fn idempotency_key_at_max_length_accepted() {
 
 #[test]
 fn idempotency_key_case_insensitive_header() {
-    // HTTP headers are case-insensitive; axum normalizes them
+    // NOTE: HTTP headers are case-insensitive; axum normalizes them.
     let mut headers = HeaderMap::new();
     headers.insert(
         "Idempotency-Key",
@@ -67,9 +65,7 @@ fn idempotency_key_case_insensitive_header() {
     assert_eq!(result.as_deref(), Some("mixed-case"));
 }
 
-// ─────────────────────────────────────────────────────────
-// classify_llm_error
-// ─────────────────────────────────────────────────────────
+// ── classify_llm_error ──
 
 #[expect(
     clippy::unnecessary_box_returns,
@@ -214,7 +210,7 @@ fn llm_error_api_500_redacts_secrets_in_message() {
     }
     .into_error(snafu::NoneError);
     let (_, msg) = classify_llm_error(&err);
-    // WHY #844: secrets must be redacted from client-visible messages
+    // WHY(#844): secrets must be redacted from client-visible messages
     assert!(
         !msg.contains("sk-ant-abc123def456"),
         "API key must be redacted"
@@ -222,9 +218,7 @@ fn llm_error_api_500_redacts_secrets_in_message() {
     assert!(msg.contains("[REDACTED]"));
 }
 
-// ─────────────────────────────────────────────────────────
-// turn_error_info — nous error dispatch
-// ─────────────────────────────────────────────────────────
+// ── turn_error_info: nous error dispatch ──
 
 #[test]
 fn nous_pipeline_timeout_classified() {
@@ -319,9 +313,7 @@ fn nous_guard_rejected_includes_reason() {
     assert!(msg.contains("token limit exceeded"));
 }
 
-// ─────────────────────────────────────────────────────────
-// redact_secrets
-// ─────────────────────────────────────────────────────────
+// ── redact_secrets ──
 
 #[test]
 fn redact_strips_anthropic_api_key() {
@@ -362,9 +354,7 @@ fn redact_strips_bearer_token() {
     );
 }
 
-// ─────────────────────────────────────────────────────────
-// sse_event_to_axum_with_id — serialization
-// ─────────────────────────────────────────────────────────
+// ── sse_event_to_axum_with_id: serialization ──
 
 #[test]
 fn sse_event_text_delta_serializes_correctly() {
@@ -372,8 +362,8 @@ fn sse_event_text_delta_serializes_correctly() {
         text: "hello world".to_owned(),
     };
     let result = sse_event_to_axum_with_id((1, event)).expect("infallible");
-    // We can't directly inspect axum::response::sse::Event fields, but we
-    // can verify the conversion doesn't panic and produces *something*.
+    // WHY: axum::response::sse::Event fields are not inspectable; the test
+    // verifies the conversion does not panic.
     drop(result);
 }
 

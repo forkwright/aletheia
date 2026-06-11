@@ -774,17 +774,14 @@ async fn unarchive_active_session_succeeds() {
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
-    // Archive first
     let req = authed_request("POST", &format!("/api/v1/sessions/{id}/archive"), None);
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    // Then unarchive
     let req = authed_request("POST", &format!("/api/v1/sessions/{id}/unarchive"), None);
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    // Verify session is active again
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
@@ -846,9 +843,9 @@ async fn get_session_accepts_token_scoped_to_matching_agent() {
 
 #[tokio::test]
 async fn history_rejects_token_scoped_to_a_different_agent() {
-    // WHY: GET /api/v1/sessions/{id}/history previously did not scope-check.
-    // A token scoped to `audit-bot` could read the full message history of
-    // any `syn` session — the most sensitive read in the sessions surface.
+    // WHY: regression guard — without the scope check, a token scoped to
+    // `audit-bot` could read the full message history of any `syn` session,
+    // the most sensitive read in the sessions surface.
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -884,10 +881,9 @@ async fn history_accepts_token_scoped_to_matching_agent() {
 
 #[tokio::test]
 async fn list_sessions_rejects_query_filter_outside_scope() {
-    // WHY: ?nous_id=other-agent with a token scoped to `syn` previously
-    // returned that agent's sessions. The handler now rejects mismatched
-    // explicit filters rather than silently rewriting them, so a scoped
-    // caller can never observe other agents' session ids.
+    // WHY: the handler rejects mismatched explicit ?nous_id filters rather
+    // than silently rewriting them, so a scoped caller can never observe
+    // other agents' session ids.
     let (router, _dir) = app().await;
 
     let resp = router

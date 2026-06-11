@@ -33,19 +33,17 @@ async fn self_prompt_not_queued_when_disabled() {
     let mut runner = TaskRunner::with_bridge("test-nous", token, bridge);
     runner.register(make_echo_task("test-task"));
 
-    // Simulate a result with a follow-up section
     let result = ExecutionResult {
         success: true,
         output: Some("## Follow-up\nInvestigate disk usage.\n".to_owned()),
     };
     runner.maybe_queue_self_prompt("test-task", &result);
 
-    // Give a moment for any spawned task (there should be none)
     // kanon:ignore TESTING/sleep-in-test reason = "verifying no async task was spawned; brief yield to confirm absence"
     tokio::time::sleep(Duration::from_millis(10)).await;
 
-    // No way to directly inspect spawned tasks, but we verify the limiter
-    // was not invoked (count stays 0)
+    // WHY: spawned tasks cannot be inspected directly; the untouched limiter
+    // count is the observable.
     assert_eq!(
         runner.self_prompt_limiter.count("test-nous"),
         0,
@@ -95,7 +93,6 @@ async fn self_prompt_rate_limited_after_max() {
     runner.maybe_queue_self_prompt("test-task", &result);
     assert_eq!(runner.self_prompt_limiter.count("test-nous"), 1);
 
-    // Second attempt should be rate-limited
     let result2 = ExecutionResult {
         success: true,
         output: Some("## Follow-up\nSecond action.\n".to_owned()),
@@ -171,14 +168,13 @@ fn register_task_with_invalid_cron_fails() {
         ..TaskDef::default()
     };
 
-    // Registration succeeds (validation is lazy)
+    // WHY: cron validation is lazy, so registration of a bad expression succeeds.
     runner.register(task);
     assert_eq!(runner.status().len(), 1);
 
-    // But next_run calculation should fail - extract to avoid temporary lifetime issue
+    // WHY: bound to a local to avoid a temporary-lifetime error.
     let statuses = runner.status();
     let result = statuses[0].next_run.as_ref();
-    // next_run is None when calculation fails
     assert!(result.is_none() || result.unwrap().is_empty());
 }
 
@@ -199,7 +195,6 @@ async fn failing_command_records_consecutive_failures() {
     };
     runner.register(task);
 
-    // Simulate failure recording
     runner.record_task_failure("failing-command", "exit code: 42");
 
     let statuses = runner.status();
@@ -363,7 +358,6 @@ async fn propose_rules_with_missing_data_dir_returns_error() {
     )
     .await;
 
-    // Should complete without panic, even if data dir is missing
     assert!(result.is_ok());
 }
 
@@ -452,7 +446,6 @@ fn maintenance_io_error_includes_context() {
 fn blocking_join_error_includes_context() {
     use crate::error::Error;
 
-    // Create a fake JoinError by panicking a task and catching it
     let rt = tokio::runtime::Runtime::new().unwrap();
     let join_err = rt
         .block_on(async {

@@ -13,10 +13,6 @@ use std::collections::BTreeSet;
 
 use crate::error;
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
 /// A parsed cron expression.
 #[derive(Debug, Clone)]
 pub struct CronExpr {
@@ -27,10 +23,6 @@ pub struct CronExpr {
     months: BTreeSet<u8>,
     days_of_week: BTreeSet<u8>,
 }
-
-// ---------------------------------------------------------------------------
-// Parsing
-// ---------------------------------------------------------------------------
 
 impl CronExpr {
     /// Parse a standard cron expression.
@@ -96,20 +88,18 @@ impl CronExpr {
         reason = "single cohesive cron field-walking state machine; splitting would scatter the carry logic across helpers and obscure rollover semantics"
     )]
     pub(crate) fn next_after(&self, after: jiff::Timestamp) -> Option<jiff::Timestamp> {
-        // Work in UTC civil datetime for field-level manipulation.
+        // WHY: cron matching works in UTC civil datetime for field-level manipulation.
         let dt = after.to_zoned(jiff::tz::TimeZone::UTC).datetime();
 
         let mut year = dt.year();
-        // WHY: jiff returns these signed (i8) but all cron-domain values (month 1..=12,
-        // day 1..=31, hour 0..=23, minute/second 0..=59) fit in u8 without loss;
-        // keeping them in u8 lets every try_from be lossless without saturation.
+        // WHY: domain-bounded i8→u8 casts — see the cast rationale above this fn.
         let mut month: u8 = u8::try_from(dt.month()).ok()?;
         let mut day: u8 = u8::try_from(dt.day()).ok()?;
         let mut hour: u8 = u8::try_from(dt.hour()).ok()?;
         let mut minute: u8 = u8::try_from(dt.minute()).ok()?;
         let mut second: u8 = u8::try_from(dt.second()).ok()?;
 
-        // Advance by one second so we are strictly after `after`.
+        // WHY: advance one second so the result is strictly after `after`.
         second += 1;
         if second > 59 {
             second = 0;
@@ -123,7 +113,7 @@ impl CronExpr {
             hour = 0;
             day += 1;
         }
-        // Day/month overflow handled in the main loop below.
+        // NOTE: day/month overflow is handled in the main loop below.
 
         let max_year = year + 4;
 
@@ -132,9 +122,8 @@ impl CronExpr {
                 return None;
             }
 
-            // --- Month ---
             match next_value(&self.months, month) {
-                Some(m) if m == month => { /* current month is valid */ }
+                Some(m) if m == month => {}
                 Some(m) => {
                     month = m;
                     day = 1;
@@ -143,7 +132,6 @@ impl CronExpr {
                     second = 0;
                 }
                 None => {
-                    // No valid month left this year — roll to next year.
                     year += 1;
                     month = first_value(&self.months);
                     day = 1;
@@ -154,9 +142,7 @@ impl CronExpr {
                 }
             }
 
-            // --- Day of month ---
             let dim = days_in_month(year, month);
-            // Clamp day-of-month candidates to actual month length.
             if let Some(d) = next_value_max(&self.days_of_month, day, dim) {
                 if d != day {
                     day = d;
@@ -165,7 +151,6 @@ impl CronExpr {
                     second = 0;
                 }
             } else {
-                // No valid day left in this month — advance month.
                 month += 1;
                 if month > 12 {
                     month = 1;
@@ -178,10 +163,8 @@ impl CronExpr {
                 continue;
             }
 
-            // --- Day of week check ---
             let dow = day_of_week(year, month, day);
             if !self.days_of_week.contains(&dow) {
-                // Advance to the next day.
                 day += 1;
                 hour = 0;
                 minute = 0;
@@ -197,7 +180,6 @@ impl CronExpr {
                 continue;
             }
 
-            // --- Hour ---
             match next_value(&self.hours, hour) {
                 Some(h) if h == hour => {}
                 Some(h) => {
@@ -206,7 +188,6 @@ impl CronExpr {
                     second = 0;
                 }
                 None => {
-                    // Advance to the next day.
                     day += 1;
                     hour = 0;
                     minute = 0;
@@ -223,7 +204,6 @@ impl CronExpr {
                 }
             }
 
-            // --- Minute ---
             match next_value(&self.minutes, minute) {
                 Some(m) if m == minute => {}
                 Some(m) => {
@@ -250,7 +230,6 @@ impl CronExpr {
                 }
             }
 
-            // --- Second ---
             match next_value(&self.seconds, second) {
                 Some(s) if s == second => {}
                 Some(s) => {
@@ -279,10 +258,8 @@ impl CronExpr {
                 }
             }
 
-            // All fields matched — construct result.
-            // WHY: jiff's civil DateTime API takes i8 for month/day/hour/minute/second;
-            // we keep them in u8 internally (cron domain bounded 0..=59) and convert
-            // fallibly at the boundary. Any failure bubbles out as None (no valid match).
+            // WHY: domain-bounded u8→i8 casts at the jiff boundary — see the cast
+            // rationale above this fn.
             let month_i8 = i8::try_from(month).ok()?;
             let day_i8 = i8::try_from(day).ok()?;
             let hour_i8 = i8::try_from(hour).ok()?;
@@ -298,10 +275,6 @@ impl CronExpr {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Error construction helper
-// ---------------------------------------------------------------------------
-
 /// Build a `CronParse` error (for use in `.map_err()` paths).
 fn cron_error(expression: &str, reason: String) -> error::Error {
     error::Error::CronParse {
@@ -311,9 +284,7 @@ fn cron_error(expression: &str, reason: String) -> error::Error {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Field parsing helpers
-// ---------------------------------------------------------------------------
+// ── Field parsing helpers ──
 
 /// Name aliases for month fields.
 const MONTH_NAMES: [(&str, u8); 12] = [
@@ -430,9 +401,7 @@ fn resolve_value(token: &str, names: &[(&str, u8)], min: u8, max: u8) -> Result<
     Ok(v)
 }
 
-// ---------------------------------------------------------------------------
-// Next-value helpers
-// ---------------------------------------------------------------------------
+// ── Next-value helpers ──
 
 /// Find the first value in `set` that is >= `from`.
 fn next_value(set: &BTreeSet<u8>, from: u8) -> Option<u8> {
@@ -451,10 +420,6 @@ fn next_value_max(set: &BTreeSet<u8>, from: u8, max: u8) -> Option<u8> {
 fn first_value(set: &BTreeSet<u8>) -> u8 {
     set.iter().next().copied().unwrap_or(0)
 }
-
-// ---------------------------------------------------------------------------
-// Calendar helpers
-// ---------------------------------------------------------------------------
 
 /// Number of days in a given month (1-12) for a given year.
 ///
@@ -492,10 +457,6 @@ fn day_of_week(year: i16, month: u8, day: u8) -> u8 {
     let dow_i32 = (y + y / 4 - y / 100 + y / 400 + offset + d).rem_euclid(7);
     u8::try_from(dow_i32).unwrap_or(0)
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
@@ -660,7 +621,6 @@ mod tests {
         let base = jiff::Timestamp::from_second(1_700_000_000).unwrap();
         let next = expr.next_after(base).unwrap();
         let dt = next.to_zoned(jiff::tz::TimeZone::UTC).datetime();
-        // Verify it's a Monday
         let month_u8 = u8::try_from(dt.month()).unwrap();
         let day_u8 = u8::try_from(dt.day()).unwrap();
         let dow = day_of_week(dt.year(), month_u8, day_u8);

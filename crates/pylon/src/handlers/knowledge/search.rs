@@ -53,9 +53,8 @@ pub async fn search(
     }
     query.limit = query.limit.min(max_search_limit);
 
-    // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.
-    // The previous call to get_all_facts hardcoded nous_id: None, causing the store
-    // to return empty even when facts were persisted under a specific agent (Bug #1252).
+    // WHY(#1252): the caller-supplied nous_id must reach get_stored_facts — a
+    // hardcoded nous_id: None makes the store return empty for agent-scoped facts.
     let facts_query = FactsQuery {
         nous_id: query.nous_id.clone(),
         sort: default_sort(),
@@ -136,9 +135,6 @@ pub async fn timeline(
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
     query.limit = query.limit.min(max_facts_limit);
 
-    // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.
-    // The previous call to get_all_facts hardcoded nous_id: None, causing the store
-    // to return empty even when facts were persisted under a specific agent (Bug #1252).
     let timeline_query = FactsQuery {
         nous_id: query.nous_id,
         sort: default_sort(),

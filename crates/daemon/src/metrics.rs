@@ -14,9 +14,7 @@ use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
-// ---------------------------------------------------------------------------
-// Label sets
-// ---------------------------------------------------------------------------
+// ── Label sets ──
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct WatchdogLabels {
@@ -40,9 +38,7 @@ struct BackgroundFailureLabels {
     task_type: String,
 }
 
-// ---------------------------------------------------------------------------
-// Metric families
-// ---------------------------------------------------------------------------
+// ── Metric families ──
 
 static WATCHDOG_RESTARTS_TOTAL: LazyLock<Family<WatchdogLabels, Counter>> =
     LazyLock::new(Family::default);
@@ -70,10 +66,6 @@ static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<Family<BackgroundFailureLabels, 
 // incremented alongside the instrumentation write.
 static CRON_EXECUTIONS_OK: AtomicU64 = AtomicU64::new(0);
 static CRON_EXECUTIONS_ERROR: AtomicU64 = AtomicU64::new(0);
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -104,9 +96,7 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
+// ── Recording ──
 
 /// Record a watchdog process restart.
 pub(crate) fn record_watchdog_restart(process_id: &str) {
@@ -145,8 +135,8 @@ pub(crate) fn record_cron_execution(task_name: &str, duration_secs: f64, success
 
 /// Record a background task failure.
 ///
-/// WHY: Background task failures are silent data loss. This counter
-/// surfaces the failure rate for alerting. Closes #2724.
+/// WHY(#2724): background task failures are silent data loss. This counter
+/// surfaces the failure rate for alerting.
 pub(crate) fn record_background_failure(nous_id: &str, task_type: &str) {
     BACKGROUND_TASK_FAILURES_TOTAL
         .get_or_create(&BackgroundFailureLabels {
@@ -156,14 +146,10 @@ pub(crate) fn record_background_failure(nous_id: &str, task_type: &str) {
         .inc();
 }
 
-// ---------------------------------------------------------------------------
-// Readers
-// ---------------------------------------------------------------------------
+// ── Readers ──
 //
-// WHY: ops fact extraction needs point-in-time snapshots of cron execution
-// counters. `prometheus-client` doesn't expose a public iteration API over a
-// family's label sets, so shadow counters in [`record_cron_execution`] track
-// the running totals for read-side access.
+// WHY: reads come from the shadow counters — see the rationale above
+// `CRON_EXECUTIONS_OK`.
 
 /// Total completed cron executions across all tasks and statuses.
 pub(crate) fn cron_executions_total() -> u64 {

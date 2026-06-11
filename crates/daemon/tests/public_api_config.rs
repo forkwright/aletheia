@@ -43,10 +43,7 @@ use oikonomos::triggers::TriggerRouter;
 mod common;
 use common::{make_runner, write_fixture};
 
-// Split: MaintenanceConfig defaults + DbStatus + TOML/JSON serde round-trips.
-
-// Section 1: MaintenanceConfig defaults
-// ---------------------------------------------------------------------------
+// ── MaintenanceConfig defaults ──
 
 #[test]
 fn maintenance_config_default_composes_sensible_sub_defaults() {
@@ -234,9 +231,7 @@ fn cron_config_default_all_tasks_disabled() {
     assert_eq!(gc.interval, cfg.graph_cleanup.interval);
 }
 
-// ---------------------------------------------------------------------------
-// Section 2: DbStatus and report types
-// ---------------------------------------------------------------------------
+// ── DbStatus and report types ──
 
 #[test]
 fn db_status_display_renders_lowercase_labels() {
@@ -303,9 +298,7 @@ fn maintenance_report_serde_roundtrips_through_json() {
     assert_eq!(back.detail, original.detail);
 }
 
-// ---------------------------------------------------------------------------
-// Section 7: DaemonConfig TOML round-trip, SelfPromptConfig JSON round-trip
-// ---------------------------------------------------------------------------
+// ── DaemonConfig TOML round-trip, SelfPromptConfig JSON round-trip ──
 
 #[test]
 fn daemon_config_default_is_disabled_with_three_children() {
@@ -421,9 +414,7 @@ fn self_prompt_config_serde_roundtrips_and_supplies_defaults() {
     assert_eq!(empty.max_per_hour, 1);
 }
 
-// ---------------------------------------------------------------------------
-// Section 8: ExecutionResult, TaskStatus, BuiltinTask, Schedule serde
-// ---------------------------------------------------------------------------
+// ── ExecutionResult, TaskStatus, BuiltinTask, Schedule serde ──
 
 #[test]
 fn execution_result_serde_roundtrips_through_json() {
@@ -496,5 +487,3 @@ fn schedule_serde_roundtrips_cron_interval_once_startup() {
     let back: Schedule = serde_json::from_str(&serde_json::to_string(&startup).unwrap()).unwrap();
     assert!(matches!(back, Schedule::Startup));
 }
-
-// ---------------------------------------------------------------------------

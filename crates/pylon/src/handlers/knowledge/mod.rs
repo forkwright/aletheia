@@ -49,8 +49,6 @@ const VALID_ENTITY_SORT_FIELDS: &[&str] = &[
     "name",
 ];
 
-// MAX_SEARCH_LIMIT is now read from `config.api_limits.max_search_limit` at runtime.
-
 /// Validate sort/order query parameters, returning 400 with descriptive errors.
 fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
     if !VALID_SORT_FIELDS.contains(&sort) {
@@ -206,9 +204,6 @@ pub async fn get_fact(
     State(state): State<KnowledgeState>,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
-    // WHY: The previous implementation called get_all_facts which hardcoded
-    // nous_id: None, causing get_stored_facts to always return an empty Vec
-    // (it requires nous_id.is_some() to query the store). Bug #1252.
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let facts = store

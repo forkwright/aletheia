@@ -42,7 +42,8 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
     // endpoint. The overall timeout guarantees a response even if multiple
     // checks hang simultaneously (#3277).
     let checks = tokio::time::timeout(OVERALL_TIMEOUT, async {
-        // Read config once before spawning concurrent checks.
+        // WHY: read config once before spawning concurrent checks so each check
+        // does not contend on the config lock.
         let api_limits = &state.config.read().await.api_limits;
         let clock_skew_leeway = api_limits.clock_skew_leeway_secs;
         let expiry_warning_threshold = api_limits.expiry_warning_threshold_secs;
@@ -54,7 +55,7 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
             timed_check("storage_writable", check_storage_writable(&state)),
         );
 
-        // These are synchronous / cheap — no timeout needed.
+        // WHY: these checks are synchronous and cheap — no timeout needed.
         let provider_check = check_provider_availability(&state);
         let credential_check =
             check_credential_validity(&state, clock_skew_leeway, expiry_warning_threshold);
@@ -246,7 +247,6 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
         };
     }
 
-    // Check if any provider is healthy (Up status)
     let any_healthy = providers.iter().any(|p| {
         state.provider_registry.provider_health(p.name())
             == Some(hermeneus::health::ProviderHealth::Up)
@@ -259,7 +259,6 @@ fn check_provider_reachability(state: &HealthState) -> HealthCheck {
             message: None,
         }
     } else {
-        // Check if any provider is degraded
         let any_degraded = providers.iter().any(|p| {
             matches!(
                 state.provider_registry.provider_health(p.name()),
@@ -336,7 +335,6 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
 
 /// Check if config can be read (verify config file exists and is accessible).
 async fn check_config_readable(state: &HealthState) -> HealthCheck {
-    // Check for TOML config first, then JSON
     let config_dir = state.oikos.config();
     let instance_root = state.oikos.root();
 
@@ -375,7 +373,7 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
     match tokio::fs::metadata(&config_path).await {
         Ok(metadata) => {
             if metadata.is_file() {
-                // Also verify we can read the current config in memory
+                // WHY: also verify the in-memory config lock is readable.
                 let _config = state.config.read().await;
                 HealthCheck {
                     name: "config_readable",
@@ -394,7 +392,7 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
             }
         }
         Err(e) => {
-            // Config file may not exist yet (first run scenario)
+            // WHY: warn, not fail — the config file may not exist yet (first run).
             HealthCheck {
                 name: "config_readable",
                 status: "warn",
@@ -407,9 +405,6 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
     }
 }
 
-// CLOCK_SKEW_LEEWAY and EXPIRY_WARNING_THRESHOLD are now read from
-// `config.api_limits` at runtime. See `taxis::config::ApiLimitsConfig`.
-
 /// Check credential validity (presence and expiry).
 fn check_credential_validity(
     state: &HealthState,
@@ -420,7 +415,6 @@ fn check_credential_validity(
         return check;
     }
 
-    // Check for API key in environment
     let env_key = RealSystem.var("ANTHROPIC_API_KEY").or_else(|| {
         tracing::debug!("ANTHROPIC_API_KEY not set");
         None
@@ -435,9 +429,8 @@ fn check_credential_validity(
             };
         }
 
-        // Check if it's an OAuth token and if it appears expired
         if key.starts_with("sk-ant-oat") {
-            // Try to decode JWT expiry
+            // NOTE: the sk-ant-oat prefix marks an OAuth token with a decodable expiry.
             if let Some(exp_secs) = decode_jwt_exp(&key) {
                 let now_secs = std::time::SystemTime::now()
                     .duration_since(std::time::SystemTime::UNIX_EPOCH)
@@ -452,7 +445,6 @@ fn check_credential_validity(
                     };
                 }
 
-                // Check if expiring soon (within 1 hour)
                 if exp_secs + clock_skew_leeway + expiry_warning_threshold < now_secs {
                     return HealthCheck {
                         name: "credential_validity",
@@ -470,12 +462,10 @@ fn check_credential_validity(
         };
     }
 
-    // Check for credentials file
     let creds_dir = state.oikos.credentials();
     let cred_file = creds_dir.join("anthropic.json");
 
     if let Some(cred_file) = symbolon::credential::CredentialFile::load(&cred_file) {
-        // Check if token is expired or expiring soon
         if let Some(remaining_secs) = cred_file.seconds_remaining() {
             #[expect(
                 clippy::cast_possible_wrap,
@@ -511,7 +501,6 @@ fn check_credential_validity(
         };
     }
 
-    // Check if CC provider handles auth (Claude Code credentials)
     let cc_credentials =
         symbolon::credential::claude_code_default_path().is_some_and(|p| p.exists());
     if cc_credentials {
@@ -576,7 +565,6 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
     let data_dir = state.oikos.data();
     let instance_root = state.oikos.root();
 
-    // Ensure data directory exists
     if let Err(e) = tokio::fs::create_dir_all(&data_dir).await {
         return HealthCheck {
             name: "storage_writable",
@@ -609,7 +597,6 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
 
     match tokio::fs::write(&test_file, b"health-check").await {
         Ok(()) => {
-            // Clean up the test file
             let _ = tokio::fs::remove_file(&test_file).await;
             HealthCheck {
                 name: "storage_writable",
@@ -633,7 +620,6 @@ fn decode_jwt_exp(token: &str) -> Option<u64> {
     let _header = parts.next()?;
     let payload_b64 = parts.next()?;
 
-    // Base64url decode payload
     let payload = base64url_decode(payload_b64).ok()?;
     let json: serde_json::Value = serde_json::from_slice(&payload).ok()?;
 
@@ -656,7 +642,7 @@ fn base64url_decode(s: &str) -> Result<Vec<u8>, ()> {
 
     let bytes = s.as_bytes();
     let end = bytes.iter().rposition(|&b| b != b'=').map_or(0, |i| i + 1);
-    // SAFETY: end <= bytes.len() by construction from rposition's return value.
+    // INVARIANT: end <= bytes.len() by construction from rposition's return value.
     let bytes = bytes.get(..end).unwrap_or(bytes);
 
     let mut out = Vec::with_capacity(bytes.len() * 6 / 8 + 1);
@@ -687,8 +673,8 @@ mod tests {
 
     #[test]
     fn health_state_has_all_required_fields() {
-        // Verify HealthState has all fields needed by health handlers.
-        // This is a compile-time check that the fields exist and are accessible.
+        // WHY: compile-time shape assertion — if this fn compiles, HealthState
+        // has every field the health handlers need, with the right types.
         #[expect(
             dead_code,
             reason = "compile-time shape assertion: proves field types via unused local fn"
@@ -711,8 +697,6 @@ mod tests {
             let _: &Option<Arc<dyn mneme::embedding::EmbeddingProvider>> =
                 &state.embedding_provider;
         }
-        // The function above proves all required fields exist and have correct types.
-        // If this compiles, HealthState has all the fields health handlers need.
         assert!(std::mem::size_of::<HealthState>() > 0);
     }
 

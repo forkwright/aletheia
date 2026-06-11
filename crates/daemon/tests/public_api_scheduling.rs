@@ -42,10 +42,7 @@ use oikonomos::triggers::TriggerRouter;
 mod common;
 use common::{make_runner, write_fixture};
 
-// Split: Cron scheduling via Schedule::Cron + TaskRunner + mock RetentionExecutor.
-
-// Section 4: Cron scheduling via Schedule::Cron + TaskRunner
-// ---------------------------------------------------------------------------
+// ── Cron scheduling via Schedule::Cron + TaskRunner ──
 
 /// Build a minimal registration for a single shell command with a specific schedule.
 fn builtin_probe_task(id: &str, schedule: Schedule) -> TaskDef {
@@ -234,10 +231,7 @@ fn task_runner_with_maintenance_and_output_mode_chains() {
     assert!(runner.status().is_empty());
 }
 
-// ---------------------------------------------------------------------------
-// Section 11: Mock RetentionExecutor as DynTrait — verifies the trait
-// contract from outside the crate without reaching into internals.
-// ---------------------------------------------------------------------------
+// ── Mock RetentionExecutor as dyn trait: verifies the trait contract from outside the crate ──
 
 struct InMemoryRetention {
     summary: RetentionSummary,

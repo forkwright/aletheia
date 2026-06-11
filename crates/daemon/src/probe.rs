@@ -20,10 +20,6 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
 /// Configuration for the adversarial probe audit task.
 #[derive(Debug, Clone)]
 pub struct ProbeAuditConfig {
@@ -49,10 +45,6 @@ impl Default for ProbeAuditConfig {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Probe categories
-// ---------------------------------------------------------------------------
-
 /// Top-level category of an adversarial probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -65,10 +57,6 @@ pub enum ProbeCategory {
     /// Questions about facts that should be retrievable from the knowledge graph.
     Recall,
 }
-
-// ---------------------------------------------------------------------------
-// Probe definition
-// ---------------------------------------------------------------------------
 
 /// A single adversarial probe: a prompt with expected behavioral constraints.
 #[derive(Debug, Clone)]
@@ -222,10 +210,6 @@ impl ProbeSet {
     }
 }
 
-// ---------------------------------------------------------------------------
-// ProbeResult
-// ---------------------------------------------------------------------------
-
 /// Outcome of evaluating a single adversarial probe.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProbeResult {
@@ -297,9 +281,7 @@ impl ProbeAuditSummary {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Built-in probe banks
-// ---------------------------------------------------------------------------
+// ── Built-in probe banks ──
 
 /// Probes that test answer consistency across equivalent phrasings.
 ///
@@ -426,10 +408,6 @@ fn recall_probes() -> Vec<Probe> {
     ]
 }
 
-// ---------------------------------------------------------------------------
-// Bridge-based execution entry point
-// ---------------------------------------------------------------------------
-
 /// Build the structured probe-audit prompt for bridge dispatch.
 ///
 /// Returns a prompt string that asks the nous to run through each probe category
@@ -456,10 +434,6 @@ pub fn build_probe_audit_prompt(probe_set: &ProbeSet) -> String {
         probe_summaries.join("\n")
     )
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
@@ -560,10 +534,8 @@ mod tests {
             required_patterns: &["PARIS"],
             description: "case insensitive check",
         };
-        // required pattern "PARIS" should match "paris" in response
         let result = ProbeSet::run_probe(&probe, "The answer is paris.");
         assert!(result.passed);
-        // forbidden pattern "NEVER" should match "never" in response
         let result2 = ProbeSet::run_probe(&probe, "I never say paris.");
         assert!(!result2.passed);
     }
@@ -683,7 +655,6 @@ mod tests {
     #[test]
     fn evaluate_all_missing_response_fails() {
         let set = ProbeSet::for_categories(&[ProbeCategory::Recall]);
-        // Provide no responses at all
         let results = set.evaluate_all(|_id| None);
         assert!(
             results.iter().all(|r| !r.passed),
@@ -695,7 +666,6 @@ mod tests {
     fn build_probe_audit_prompt_contains_probe_ids() {
         let set = ProbeSet::default_probes();
         let prompt = build_probe_audit_prompt(&set);
-        // Every probe's ID must appear in the prompt
         for probe in set.iter() {
             assert!(
                 prompt.contains(probe.id),
