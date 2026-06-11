@@ -42,7 +42,8 @@ const SECTION_STYLE: &str = "\
     border-radius: var(--radius-lg); \
     padding: var(--space-4); \
     box-shadow: var(--shadow-card); \
-    min-width: 0;\
+    min-width: 0; \
+    contain: layout;\
 ";
 
 const SECTION_TITLE_STYLE: &str = "\
@@ -121,6 +122,11 @@ fn ThemeFrame(theme: &'static str, title: &'static str) -> Element {
     rsx! {
         div {
             "data-theme": "{theme}",
+            // WHY: layout containment isolates each theme frame's layout so a
+            // scroll repaint or unrelated re-render doesn't force the sibling
+            // frame to recalc. No paint containment: the inner section cards
+            // cast box-shadow that must paint past their box. PERF: bounds
+            // layout recalc when rendering the full surface twice.
             style: "\
                 background: var(--bg); \
                 color: var(--text-primary); \
@@ -129,7 +135,8 @@ fn ThemeFrame(theme: &'static str, title: &'static str) -> Element {
                 padding: var(--space-4); \
                 display: flex; \
                 flex-direction: column; \
-                gap: var(--space-4);\
+                gap: var(--space-4); \
+                contain: layout;\
             ",
             h2 {
                 style: "margin: 0; font-size: var(--text-lg); color: var(--text-primary);",
@@ -243,16 +250,24 @@ fn FeedbackSection() -> Element {
 
 #[component]
 fn DataSection() -> Element {
-    let entries = vec![
-        chart_entry("Tokens", 48.0, "var(--accent)", Some("48k")),
-        chart_entry("Tools", 32.0, "var(--status-info)", Some("32")),
-        chart_entry("Errors", 8.0, "var(--status-error)", Some("8")),
-    ];
-    let donut = vec![
-        chart_entry("Prompt", 58.0, "var(--accent)", None),
-        chart_entry("Completion", 31.0, "var(--status-success)", None),
-        chart_entry("Tools", 11.0, "var(--status-info)", None),
-    ];
+    // WHY: Chart data is fixed reference content. Memoizing keeps the
+    // Vec/String allocations off the per-render path so re-renders triggered by
+    // unrelated global signal ticks stay cheap. PERF: re-render no longer
+    // rebuilds six ChartEntry values per frame.
+    let entries = use_memo(|| {
+        vec![
+            chart_entry("Tokens", 48.0, "var(--accent)", Some("48k")),
+            chart_entry("Tools", 32.0, "var(--status-info)", Some("32")),
+            chart_entry("Errors", 8.0, "var(--status-error)", Some("8")),
+        ]
+    });
+    let donut = use_memo(|| {
+        vec![
+            chart_entry("Prompt", 58.0, "var(--accent)", None),
+            chart_entry("Completion", 31.0, "var(--status-success)", None),
+            chart_entry("Tools", 11.0, "var(--status-info)", None),
+        ]
+    });
 
     rsx! {
         section {
@@ -261,13 +276,13 @@ fn DataSection() -> Element {
             div {
                 style: "display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: var(--space-4); align-items: center;",
                 HorizBarChart {
-                    entries,
+                    entries: entries.read().clone(),
                     max_value: 60.0,
                     show_value: true,
                     on_click: None::<EventHandler<String>>,
                 }
                 DonutChart {
-                    segments: donut,
+                    segments: donut.read().clone(),
                     size_px: 128,
                     center_label: "Usage".to_string(),
                 }

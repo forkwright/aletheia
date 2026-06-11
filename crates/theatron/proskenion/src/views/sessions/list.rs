@@ -8,30 +8,10 @@ use crate::state::sessions::{
     session_display_status, status_color,
 };
 
-const ROW_STYLE: &str = "\
-    display: flex; \
-    align-items: center; \
-    gap: var(--space-3); \
-    padding: var(--space-3) var(--space-3); \
-    border-bottom: 1px solid #222; \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
-const ROW_HOVER_STYLE: &str = "\
-    display: flex; \
-    align-items: center; \
-    gap: var(--space-3); \
-    padding: var(--space-3) var(--space-3); \
-    border-bottom: 1px solid #222; \
-    cursor: pointer; \
-    background: var(--bg-surface); \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
+// WHY: row hover lives in CSS (`.session-row:hover` in base.css), not in a
+// Dioxus signal. A signal-driven hover re-rendered the row subtree on every
+// pointer enter/leave (visible jank); a CSS :hover reflows nothing and never
+// re-renders.
 
 const TITLE_STYLE: &str = "\
     flex: 1; \
@@ -186,9 +166,6 @@ pub(crate) fn SessionRow(
     on_click: EventHandler<SessionId>,
     on_toggle_select: EventHandler<SessionId>,
 ) -> Element {
-    let mut hovered = use_signal(|| false);
-    let is_hovered = *hovered.read();
-
     let status_dot_color = status_color(&status);
     let relative_time = format_relative_time(&updated_at);
 
@@ -197,9 +174,7 @@ pub(crate) fn SessionRow(
 
     rsx! {
         div {
-            style: if is_hovered { "{ROW_HOVER_STYLE}" } else { "{ROW_STYLE}" },
-            onmouseenter: move |_| hovered.set(true),
-            onmouseleave: move |_| hovered.set(false),
+            class: "session-row",
             onclick: {
                 let id = id_for_click;
                 move |_| on_click.call(id.clone())

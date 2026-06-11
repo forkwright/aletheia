@@ -68,40 +68,50 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
     };
 
     rsx! {
+        // WHY: sunken panel wrapper sets the roster apart from the nav list —
+        // presence reads as a distinct shaded box, not another nav section.
         div {
-            class: "agent-roster-section",
-            h2 { class: "agent-roster-label", "Nous" }
-            if agents.is_empty() {
-                div { class: "agent-roster-empty", "No nous" }
-            } else {
-                for (id , name , emoji , status , is_active) in agents {
-                    {
-                        let id_clone = id.clone();
-                        let color = status.dot_color();
-                        let row_class = if is_active { "agent-row active" } else { "agent-row" };
-                        let dot_class = if matches!(status, AgentStatus::Active) {
-                            "agent-dot status-dot-active"
-                        } else {
-                            "agent-dot"
-                        };
-                        let status_label = status.label();
-                        rsx! {
-                            div {
-                                key: "{id}",
-                                class: "{row_class}",
-                                title: "Status: {status_label}",
-                                onclick: move |_| {
-                                    store.write().set_active(&id_clone);
-                                },
-                                span {
-                                    class: "{dot_class}",
-                                    style: "color: {color};",
-                                    "●"
+            class: "agent-roster",
+            div {
+                class: "agent-roster-section",
+                h2 { class: "agent-roster-label", "Nous" }
+                if agents.is_empty() {
+                    div { class: "agent-roster-empty", "No nous" }
+                } else {
+                    for (id , name , emoji , status , is_active) in agents {
+                        {
+                            let id_clone = id.clone();
+                            let status_slug = match status {
+                                AgentStatus::Active => "active",
+                                AgentStatus::Idle => "idle",
+                                AgentStatus::Error => "error",
+                            };
+                            let pill_class = if is_active {
+                                format!("nous-pill is-{status_slug} active")
+                            } else {
+                                format!("nous-pill is-{status_slug}")
+                            };
+                            let dot_class = if matches!(status, AgentStatus::Active) {
+                                "nous-pill-dot status-dot-active"
+                            } else {
+                                "nous-pill-dot"
+                            };
+                            let status_label = status.label();
+                            rsx! {
+                                div {
+                                    key: "{id}",
+                                    class: "{pill_class}",
+                                    title: "Status: {status_label}",
+                                    onclick: move |_| {
+                                        store.write().set_active(&id_clone);
+                                    },
+                                    span { class: "{dot_class}" }
+                                    if !emoji.is_empty() {
+                                        span { class: "nous-pill-emoji", "{emoji}" }
+                                    }
+                                    span { class: "nous-pill-name", "{name}" }
+                                    span { class: "nous-pill-status", "{status_label}" }
                                 }
-                                if !emoji.is_empty() {
-                                    span { style: "font-size: var(--text-base);", "{emoji}" }
-                                }
-                                span { "{name}" }
                             }
                         }
                     }

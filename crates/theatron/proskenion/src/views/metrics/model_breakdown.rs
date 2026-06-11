@@ -6,8 +6,18 @@ use crate::components::chart::{ChartEntry, DonutChart};
 use crate::state::metrics::{ModelTokenRow, cost_per_1k_output, format_tokens, model_color};
 
 /// Per-model token breakdown with donut chart.
+///
+/// WHY: model identity is data, not a declared list — a model appears only if
+/// it was used in the selected period. Zero-usage rows (e.g. a retired model
+/// the API still enumerates) are filtered so the view stays 100% data-derived.
 #[component]
 pub(crate) fn ModelBreakdown(models: Vec<ModelTokenRow>, grand_total: u64) -> Element {
+    let models: Vec<ModelTokenRow> = models.into_iter().filter(|m| m.total() > 0).collect();
+
+    if models.is_empty() {
+        return rsx! {};
+    }
+
     let segments: Vec<ChartEntry> = models
         .iter()
         .map(|m| ChartEntry {

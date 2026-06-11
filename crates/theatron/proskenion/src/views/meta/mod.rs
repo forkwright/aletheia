@@ -68,6 +68,7 @@ struct AgentTokenRowEntry {
 struct CostMetricsApiResponse {
     #[serde(default)]
     series: Vec<CostBucketEntry>,
+    #[expect(dead_code, reason = "deserialized from API for future use")]
     #[serde(default)]
     month_cost: f64,
 }
