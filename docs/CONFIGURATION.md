@@ -69,7 +69,7 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `timeout_seconds` | u32 | `300` | LLM call timeout |
 | `thinking_enabled` | bool | `false` | Enable extended thinking |
 | `thinking_budget` | u32 | `10000` | Max tokens for extended thinking |
-| `max_tool_iterations` | u32 | `50` | Safety limit on consecutive tool use per turn |
+| `max_tool_iterations` | u32 | `200` | Safety limit on consecutive tool use per turn |
 | `allowed_roots` | string[] | `[]` | Filesystem paths the agent may access |
 | `tool_timeouts` | object | see `agents.defaults.tool_timeouts` section | Per-tool execution timeout overrides |
 | `working_state_ttl_secs` | u64 | `604800` | Working-state expiry window (7 days) |

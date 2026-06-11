@@ -1,3 +1,3 @@
 # Standards
 
-Canonical fleet standards live in kanon at `~/dev/kanon/crates/basanos/standards/STANDARDS.md`. This pointer file replaces the per-repo standards copy that was drifting (D-049, kanon backlog).
+Canonical public standards for this repository live in this directory. Maintainer-internal standards may be mirrored from forkwright/kanon, but public contributors should treat `standards/` as the local source of truth.

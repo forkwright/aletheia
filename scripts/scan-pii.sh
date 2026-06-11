@@ -57,6 +57,9 @@ DEFAULT_ALLOWLIST=(
     # WHY: PII-redaction implementation contains literal fixtures whose
     # whole purpose is to exercise the redactor on realistic shapes.
     '^crates/nous/src/training/pii\.rs$'
+    # WHY: multilingual FTS stopword fixtures legitimately include common
+    # non-English words that overlap with private fleet hostnames.
+    '^crates/krites/src/fts/tokenizer/stop_word_filter/stopwords/'
     # WHY: operator-specific template; mirrors .gitleaks.toml allowlist.
     '^shared/'
     '^instance\.example/'

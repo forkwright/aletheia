@@ -37,7 +37,7 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const TOTAL_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// LAN hostnames probed when callers do not provide discovery config.
-const DEFAULT_LAN_HOSTNAMES: &[&str] = &["menos", "metis"];
+const DEFAULT_LAN_HOSTNAMES: &[&str] = &[];
 
 /// Configured server discovery candidates.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,7 +288,7 @@ mod tests {
     #[test]
     fn build_candidates_includes_lan_hosts() {
         let config =
-            DiscoveryConfig::default().with_lan_hostnames(["menos".to_string(), "metis".into()]);
+            DiscoveryConfig::default().with_lan_hostnames(["host-a".to_string(), "host-b".into()]);
         let candidates = build_candidates(&config);
         let lan_count = candidates.iter().filter(|c| c.label == "lan").count();
         assert_eq!(lan_count, 2);
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn build_candidates_total_count() {
         let config = DiscoveryConfig::default()
-            .with_lan_hostnames(["menos"])
+            .with_lan_hostnames(["host-a"])
             .with_tailscale_ips(["100.64.0.10"])
             .with_base_urls(["https://example.test"]);
         let candidates = build_candidates(&config);

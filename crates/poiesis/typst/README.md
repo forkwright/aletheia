@@ -85,8 +85,8 @@ crates, not by shelling out to the `typst` binary. Rationale:
 
 ## Attribution
 
-The compiler `World` implementation is adapted from `ergon_tools/sdr` (Cody's
-private code, freely adaptable per issue #3450). Changes from the sdr original:
+The compiler `World` implementation is adapted from a prior private project,
+used with permission per issue #3450. Changes from the original:
 
 - in-memory source instead of disk-backed root;
 - synthesized `data.json` virtual file for JSON injection;

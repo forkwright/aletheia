@@ -1,7 +1,7 @@
 # Memory dedup: making auto-merge reachable
 
 **Date:** 2026-05-28
-**Author:** Stability v3 (opus on verda)
+**Author:** Stability v3
 **Status:** Proposal (operator decision required before implementation)
 **Tracks:** #4165 — `memory dedup` can never merge anything
 

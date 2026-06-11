@@ -7,10 +7,10 @@
 //! server, discovers tools via `tools/list`, registers each discovered tool in
 //! organon, and routes execution back through `tools/call`.
 //!
-//! WHY: Different deployments have different MCP servers available.  A menos
-//! instance has Semantic Scholar + `PubMed` + kanon-mcp.  A verda instance has
-//! none.  This module lets operators declare available tools per-deployment
-//! without hardcoded tool assumptions.
+//! WHY: Different deployments have different MCP servers available. One
+//! deployment might expose Semantic Scholar + `PubMed` + an internal MCP
+//! server, while another exposes none. This module lets operators declare
+//! available tools per-deployment without hardcoded tool assumptions.
 
 use std::collections::HashMap;
 use std::future::Future;

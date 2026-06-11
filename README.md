@@ -49,7 +49,7 @@ The tarball contains `instance.example/` with the reference config layout. See [
 
 ## Naming
 
-Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See kanon's `~/dev/kanon/crates/basanos/standards/GNOMON.md` for the naming system and [lexicon.md](docs/lexicon.md) for the full registry.
+Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See the in-repo [standards](standards/) and [lexicon.md](docs/lexicon.md) for the naming system and full registry.
 
 ---
 

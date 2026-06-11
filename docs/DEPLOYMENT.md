@@ -119,11 +119,11 @@ The binary finds the instance directory in this order:
 
 ## Configuration
 
-The init wizard writes a complete `config/aletheia.toml`. If you are setting up manually, create one from `instance.example/config/aletheia.toml.example`:
+The init wizard writes a complete `config/aletheia.toml`. If you are setting up manually, create one from `instance.example/config/aletheia.toml`:
 
 ```bash
 # If you didn't use the init wizard
-cp instance/config/aletheia.toml.example instance/config/aletheia.toml
+cp instance.example/config/aletheia.toml instance/config/aletheia.toml
 ```
 
 Then edit the file:
@@ -146,7 +146,7 @@ default = true
 workspace = "nous/main"
 ```
 
-The workspace path can be relative (relative to the instance root) or absolute. In this example, `instance/nous/main` is relative and will resolve to `./instance/instance/nous/main` when the instance root is `./instance`. For absolute paths, use the full filesystem path: `/srv/aletheia/instance/nous/main`.
+The workspace path can be relative (relative to the instance root) or absolute. In this example, `nous/main` is relative and will resolve to `./instance/nous/main` when the instance root is `./instance`. For absolute paths, use the full filesystem path: `/srv/aletheia/instance/nous/main`.
 
 The config cascade loads in order (later wins): compiled defaults, TOML file, `ALETHEIA_` environment variables. See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference.
 

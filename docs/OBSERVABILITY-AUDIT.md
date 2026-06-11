@@ -92,7 +92,7 @@
 
 **GAP-LOG-1 (pylon nous.rs handlers):** The `recover` handler restarts a nous actor. There is no `warn!/error!` on failure paths in this handler - if the recovery call returns an error it propagates as an `ApiError` (HTTP 500) without a structured log event with context about which nous actor failed and why.
 
-**GAP-LOG-2 (pylon planning.rs):** `get_verification` and `refresh_verification` handlers have no structured logging. Both are stubs returning `501 Not Implemented` - acceptable while unimplemented.
+**GAP-LOG-2 (pylon planning.rs):** `get_verification` and `refresh_verification` handlers load planning verification state and return structured API errors. They no longer return `501 Not Implemented`; the remaining gap is sparse structured logging on load failures beyond the propagated `ApiError`.
 
 ---
 
@@ -111,7 +111,7 @@ Entry points are HTTP handlers in `src/handlers/`. All session handlers are inst
 | **`handlers/nous.rs` - list, get_status, tools, recover** | **No** | Recover has no structured warn/error |
 | `handlers/health.rs` - health check | No (intentional: health is high-freq, spans would add noise) | N/A |
 | `handlers/metrics.rs` - Prometheus scrape endpoint | No (intentional) | N/A |
-| `handlers/planning.rs` - get/refresh verification | No (stubs) | N/A |
+| `handlers/planning.rs` - get/refresh verification | Partial | Via `ApiError` mapping; sparse structured logs |
 
 ### nous
 

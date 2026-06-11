@@ -111,10 +111,10 @@ git clone <repo-url> aletheia
 cd aletheia
 cargo build --release -p aletheia
 
-# 3. Restore instance data from NAS restic backup
+# 3. Restore instance data from a restic backup
 #    (adjust RESTIC_REPOSITORY and RESTIC_PASSWORD_FILE to your environment)
-export RESTIC_REPOSITORY="/nas/docker/backups/menos"   # or your repo URL
-export RESTIC_PASSWORD_FILE="$HOME/menos-ops/secrets/restic-password"
+export RESTIC_REPOSITORY="/path/to/restic-repo"   # or your repo URL
+export RESTIC_PASSWORD_FILE="$HOME/.config/restic/password"
 
 # Restore the latest snapshot for your host
 restic restore latest --target "$HOME/aletheia-restored" \
@@ -141,7 +141,7 @@ loginctl enable-linger
 aletheia health
 ```
 
-> On the reference infrastructure (`menos`), daily restic backups are driven by `~/.local/bin/menos-backup`. Adapt the `RESTIC_REPOSITORY` and snapshot paths to your own restic setup.
+> In a reference deployment, daily restic backups can be driven by a user-level backup script. Adapt the `RESTIC_REPOSITORY` and snapshot paths to your own restic setup.
 
 ---
 

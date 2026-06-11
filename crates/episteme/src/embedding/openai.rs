@@ -6,8 +6,8 @@
 //!
 //! # Local llama-server
 //!
-//! Point `base_url` at `http://127.0.0.1:5005/v1` (menos convention for the
-//! Qwen3-Embedding-0.6B service; see `menos-ops/CLAUDE.md` § AI Service Surface).
+//! Point `base_url` at the local OpenAI-compatible embedding endpoint, such as
+//! `http://127.0.0.1:5005/v1` for a local Qwen3-Embedding-0.6B service.
 
 use std::time::Duration;
 

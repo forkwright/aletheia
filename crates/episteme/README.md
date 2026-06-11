@@ -20,12 +20,13 @@ model = "qwen-embed"
 dimension = 384
 ```
 
-On **menos**, the Tier-1 embed service runs Qwen3-Embedding-0.6B at port `5005`
-with an OpenAI-shim (`llama-server --embedding`). Pointing `base_url` at
+For a local embedding service, run Qwen3-Embedding-0.6B or another compatible
+embedding model at port `5005` with an OpenAI shim (`llama-server --embedding`).
+Pointing `base_url` at
 `http://127.0.0.1:5005/v1` keeps weights in a single process, eliminating the
 ~2GB duplicate VRAM load that occurs when candle runs in-process alongside the
-inference server. See `menos-ops/CLAUDE.md` § "AI Service Surface" for the live
-service topology.
+inference server. For other local or cloud deployments, point `base_url` at the
+OpenAI-compatible embedding endpoint you operate.
 
 For authenticated cloud endpoints, add an `api_key`:
 

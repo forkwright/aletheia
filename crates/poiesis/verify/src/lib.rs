@@ -5,6 +5,8 @@
 //! (arithmetic formula) and `Ref` (cross-claim reference) sources.
 //! SQL sources are stored in the manifest schema for auditability but are not
 //! executed by this crate — execution requires an external tool.
+//!
+//! Ported from a prior private project, used with permission.
 
 /// Recursive-descent arithmetic formula evaluator.
 pub mod arithmetic;

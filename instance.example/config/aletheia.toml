@@ -165,7 +165,7 @@ models = [
 ]
 
 [[providers]]
-name = "menos-chat"
+name = "local-chat"
 providerType = "openai-compatible"
 baseUrl = "http://127.0.0.1:8088/v1"
 deploymentTarget = "localhosted"
@@ -175,7 +175,7 @@ models = [
 ]
 
 [[providers]]
-name = "menos-code"
+name = "local-code"
 providerType = "openai-compatible"
 baseUrl = "http://127.0.0.1:8089/v1"
 deploymentTarget = "localhosted"
@@ -185,7 +185,7 @@ models = [
 ]
 
 [[providers]]
-name = "menos-inference"
+name = "local-inference"
 providerType = "openai-compatible"
 baseUrl = "http://127.0.0.1:8090/v1"
 deploymentTarget = "localhosted"
@@ -195,7 +195,7 @@ models = [
 ]
 
 [[providers]]
-name = "menos-vlm"
+name = "local-vlm"
 providerType = "openai-compatible"
 baseUrl = "http://127.0.0.1:8091/v1"
 deploymentTarget = "localhosted"

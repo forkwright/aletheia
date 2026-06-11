@@ -98,7 +98,7 @@ jobs:
         include:
           # WHY: musl produces a fully static binary — no glibc, no runtime
           # deps. Runs on any Linux kernel 3.10+ regardless of distro.
-          # Covers: server, Verda, containers, ARM boards (future).
+          # Covers: server, CI runner, containers, ARM boards (future).
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             artifact: aletheia-linux-x86_64

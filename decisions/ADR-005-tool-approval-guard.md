@@ -1,4 +1,3 @@
-<!-- Operator-review-pending: agent-drafted under DIRECTIVE v20; T0 metis review required before status moves Proposed → Accepted -->
 # ADR-005: Tool approval guard
 
 ## Status
@@ -31,7 +30,7 @@ impl From<Reversibility> for ApprovalRequirement {
 
 The frontend wiring (`skene::events::StreamEvent::ToolApprovalRequired` / `skene::events::StreamEvent::ToolApprovalResolved`, `proskenion::api::streaming`, `koilon::update::streaming::StreamToolApprovalRequired`) is already in place and ready to drive an overlay. Pylon's stream DTO (`crates/pylon/src/stream_dto.rs:103-115`) and stream forwarder (`crates/pylon/src/handlers/sessions/streaming.rs:572-589`) already pass these events through. The only missing piece is the backend gate and the return path.
 
-C-13 (FERRYMAN-REPORT §5.1 #1) flagged this as a v1.0.0 release-readiness blocker. The operator selected OPTION A (2026-05-29): implement the real guard rather than strip the metadata.
+Issue #3958 flagged this as a v1.0.0 release-readiness blocker. The accepted direction is to implement the real guard rather than strip the metadata.
 
 ## Decision
 
@@ -113,8 +112,8 @@ A single `taxis::config::ApprovalConfig` carries the timeout and a `auto_approve
 ## References
 
 - forkwright/aletheia#3958 (this work)
-- FERRYMAN-REPORT §5.1 #1 / C-13 (v1.0.0 release-readiness)
-- Operator decision (2026-05-29): OPTION A — implement the real guard, do not strip the metadata
+- forkwright/aletheia#3958 (v1.0.0 release-readiness)
+- Accepted direction (2026-05-29): implement the real guard, do not strip the metadata
 - `crates/organon/src/types/mod.rs:252-327` (Reversibility, ApprovalRequirement, From impl)
 - `crates/nous/src/execute/dispatch.rs:548-617` (current emission and the missing gate)
 - `crates/nous/src/spawn_svc.rs:143-146` (spawn allowlist fallback)
