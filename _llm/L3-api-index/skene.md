@@ -65,6 +65,36 @@ impl ApiClient {
 }
 ```
 
+## `src/api/routes.rs`
+
+> Template for `GET` project verification.
+```rust
+pub const PROJECT_VERIFICATION_TEMPLATE: &str =
+        "/api/v1/planning/projects/{project_id}/verification";
+```
+
+> Template for `POST` project verification refresh.
+```rust
+pub const PROJECT_VERIFICATION_REFRESH_TEMPLATE: &str =
+        "/api/v1/planning/projects/{project_id}/verification/refresh";
+```
+
+```rust
+pub fn project_verification_path (project_id: &str) -> String
+```
+
+```rust
+pub fn project_verification_url (base_url: &str, project_id: &str) -> String
+```
+
+```rust
+pub fn project_verification_refresh_path (project_id: &str) -> String
+```
+
+```rust
+pub fn project_verification_refresh_url (base_url: &str, project_id: &str) -> String
+```
+
 ## `src/api/sse.rs`
 
 > Manages the global SSE connection to /api/v1/events.
