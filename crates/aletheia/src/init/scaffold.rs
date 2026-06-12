@@ -226,7 +226,14 @@ mode = "{auth_mode}"
 # --- Agents ---
 [agents.defaults]
 context_tokens = 200000  # auto-upgraded to 1M for Opus models
-toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
+# Tool profile: least-privilege-starter
+toolGroups = ["read", "plan", "verify"]
+# Tool profile: full-power-local
+# WARNING: Only use this profile for trusted single-operator deployments.
+# `edit` can change files, `command` can run local processes, `mcp` can call
+# configured external tool servers, and `spawn_subtask` delegates work to
+# child agents.
+# toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
 max_output_tokens = 16384
 user_timezone = "{timezone}"
 timeout_seconds = 300
@@ -389,6 +396,49 @@ mod tests {
                 "rendered config must parse for model id {model}"
             );
         }
+    }
+
+    #[test]
+    fn render_config_defaults_to_least_privilege_tool_profile() {
+        let answers = Answers {
+            root: PathBuf::from("/tmp/aletheia-init"),
+            api_key: None,
+            api_provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-6".to_owned(),
+            agent_id: "alice".to_owned(),
+            agent_name: "Alice".to_owned(),
+            bind: "localhost".to_owned(),
+            auth_mode: "none".to_owned(),
+            timezone: "America/Chicago".to_owned(),
+            credential_source: "auto".to_owned(),
+        };
+
+        let rendered = render_config(&answers);
+        let parsed: toml::Value = match toml::from_str(&rendered) {
+            Ok(parsed) => parsed,
+            Err(e) => panic!("rendered config must parse: {e}"),
+        };
+        let Some(groups) = parsed
+            .get("agents")
+            .and_then(|agents| agents.get("defaults"))
+            .and_then(|defaults| defaults.get("toolGroups"))
+            .and_then(toml::Value::as_array)
+        else {
+            panic!("agents.defaults.toolGroups must be an array");
+        };
+        let groups: Vec<&str> = groups.iter().filter_map(toml::Value::as_str).collect();
+
+        assert_eq!(groups, ["read", "plan", "verify"]);
+        assert!(
+            rendered.contains("# Tool profile: full-power-local"),
+            "rendered config must document the named full-power profile"
+        );
+        assert!(
+            rendered.contains(
+                "# toolGroups = [\"read\", \"edit\", \"command\", \"mcp\", \"spawn_subtask\", \"plan\", \"verify\"]"
+            ),
+            "rendered config must show the full-power tool group list as an explicit opt-in"
+        );
     }
 
     fn contains_tw_command(content: &str) -> bool {

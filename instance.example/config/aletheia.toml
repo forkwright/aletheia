@@ -13,7 +13,7 @@
 # --- Gateway ---
 [gateway]
 port = 18789
-bind = "lan"              # lan | localhost | auto
+bind = "localhost"        # localhost | lan | auto
 
 [gateway.auth]
 mode = "token"            # token | jwt | none
@@ -55,7 +55,14 @@ primary = "claude-sonnet-4-6"
 # retriesBeforeFallback = 2           # retry primary N times before fallback
 
 contextTokens = 200000  # auto-upgraded to 1M for Opus models
-toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
+# Tool profile: least-privilege-starter
+toolGroups = ["read", "plan", "verify"]
+# Tool profile: full-power-local
+# WARNING: Only use this profile for trusted single-operator deployments.
+# `edit` can change files, `command` can run local processes, `mcp` can call
+# configured external tool servers, and `spawn_subtask` delegates work to
+# child agents.
+# toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
 # thinkingEnabled = false
 # thinkingBudget = 10000
 # maxToolIterations = 50

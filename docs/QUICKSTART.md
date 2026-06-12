@@ -87,6 +87,11 @@ The wizard prompts for:
 - **Bind address** (default: `localhost`)
 - **Auth mode** (default: `none` -- no bearer token required for local use)
 
+`localhost` is the safe copy-paste default. For private LAN or tailnet access,
+copy the reference settings from `instance.example/config/aletheia.tailnet.toml`
+and choose explicit authentication, CORS, and TLS settings before switching to
+`bind = "lan"`.
+
 For non-interactive setup (CI, scripting, or agent-driven):
 
 ```bash

@@ -9,6 +9,9 @@ cp -r instance.example instance
 ```
 
 Then configure `instance/config/aletheia.toml` and add your agents under `instance/nous/`.
+The starter config binds the gateway to localhost. For private LAN or tailnet
+exposure, copy the named reference settings from
+`config/aletheia.tailnet.toml` and keep authentication, CORS, and TLS explicit.
 
 ## Directory Structure
 
