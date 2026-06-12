@@ -49,7 +49,7 @@ The streaming handler spawns three concurrent tasks (`streaming.rs:281`, `525`, 
 
 ### Signal handler startup
 
-**Resolved:** `spawn_sighup_handler` (`server.rs:427`) and `shutdown_signal_with` (`server.rs:507`) now treat signal-installation failures as warnings and continue serving without that signal path. SIGHUP handler installation returning `None` simply disables config reload on signal; Ctrl+C or SIGTERM installation failures cause the corresponding future to pend forever rather than panic. The `.expect()` calls cited in the 2026-04 audit have been removed.
+**Resolved:** `spawn_sighup_handler` (`server.rs:428`) and `shutdown_signal_with` (`server.rs:508`) now treat signal-installation failures as warnings and continue serving without that signal path. SIGHUP handler installation returning `None` simply disables config reload on signal; Ctrl+C or SIGTERM installation failures cause the corresponding future to pend forever rather than panic. The `.expect()` calls cited in the 2026-04 audit have been removed.
 
 ## Daemon Workers
 
@@ -100,7 +100,7 @@ See [Daemon Workers](#daemon-workers). Maintenance tasks inherit the same isolat
 The following components can turn a local failure into a process-wide crash:
 
 1. **Krites Datalog engine** - `panic!` on internal invariant violations during query planning and JSON serialization.
-2. ~~Pylon signal handler setup~~ - **resolved** (`server.rs:427`, `507`).
+2. ~~Pylon signal handler setup~~ - **resolved** (`server.rs:428`, `508`).
 3. ~~Nous manager health poller~~ - **resolved** (`manager.rs:631`).
 
 ## Summary Table
@@ -118,7 +118,7 @@ The following components can turn a local failure into a process-wide crash:
 | Hermeneus concurrency limiter | `parking_lot::Mutex` - no poisoning | Process | No-poison mutex; limiter survives panics | ✅ None (resolved: `concurrency.rs:24`) |
 | Hermeneus health tracker | `unwrap_or_else(PoisonError::into_inner)` | Component | Recovers stale state, continues | ✅ None |
 | Tool executors | Errors returned; sandbox no-op on non-Linux | Request | Isolate and return errors | ✅ None |
-| Pylon signal handlers | `.expect()` on signal installation failure | Process | Log warning, continue without signals | `server.rs:365`, `413`, `419` |
+| Pylon signal handlers | Signal-installation failures logged as warnings, serving continues | Process | Log warning, continue without signals | ✅ None (resolved: `server.rs:428`, `508`) |
 | Pylon streaming handlers | Spawned tasks awaited, `JoinError` mapped to SSE | Request | Per-request failure isolation | ✅ None |
 | Krites query engine | `panic!` on internal invariant violations | Process | Return `Result` error to caller | `data/json.rs:76`, `query/graph.rs:127`, `query/graph.rs:205`, `query/magic.rs:217`, `query/stratify.rs:203` |
 | Krites storage backend | `unreachable!` on assumed-live transaction | Process | Return corruption/error instead of panic | `storage/fjall_backend.rs:194` |
