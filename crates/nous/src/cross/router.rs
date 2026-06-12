@@ -139,11 +139,13 @@ impl CrossNousRouter {
 
         self.enforce_address_mask(&message).await?;
 
+        let message_for_log = message.clone();
         let envelope = CrossNousEnvelope { message };
 
         match sender.send(envelope).await {
             Ok(()) => {
-                self.log_delivery_state(&to, DeliveryState::Delivered).await;
+                self.log_delivery(&message_for_log, &DeliveryState::Delivered)
+                    .await;
                 Ok(DeliveryState::Delivered)
             }
             Err(send_err) => {
@@ -343,16 +345,6 @@ impl CrossNousRouter {
             from: message.from.clone(),
             to: message.to.clone(),
             state: state.clone(),
-            timestamp: jiff::Timestamp::now(),
-        });
-    }
-
-    async fn log_delivery_state(&self, to: &str, state: DeliveryState) {
-        self.delivery_log.write().await.record(DeliveryEntry {
-            message_id: Ulid::new(),
-            from: String::new(),
-            to: to.to_owned(),
-            state,
             timestamp: jiff::Timestamp::now(),
         });
     }

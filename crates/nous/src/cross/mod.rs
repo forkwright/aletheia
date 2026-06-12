@@ -288,6 +288,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_success_log_preserves_message_attribution() {
+        let (router, _rx) = setup_router().await;
+        let msg = CrossNousMessage::new("sender", "target", "hello");
+        let msg_id = msg.id;
+        let state = router.send(msg).await.unwrap();
+        assert_eq!(state, DeliveryState::Delivered);
+
+        let log = router.delivery_log.read().await;
+        let entries = log.recent(10);
+        let delivered = entries
+            .iter()
+            .find(|e| matches!(e.state, DeliveryState::Delivered))
+            .unwrap();
+        assert_eq!(delivered.message_id, msg_id);
+        assert_eq!(delivered.from, "sender");
+        assert_eq!(delivered.to, "target");
+        assert_eq!(delivered.state, DeliveryState::Delivered);
+    }
+
+    #[tokio::test]
     async fn address_mask_default_public_permits_send() {
         let (router, mut rx) = setup_router().await;
         let msg = CrossNousMessage::new("sender", "target", "hello");
