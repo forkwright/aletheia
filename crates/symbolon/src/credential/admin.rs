@@ -9,6 +9,7 @@ use crate::error::{self, Result};
 use crate::types::{ManagedCredential, ManagedCredentialRole, ManagedCredentialStatus};
 
 use super::CredentialFile;
+use super::file_ops::CredentialFileLock;
 
 const BACKUP_SUFFIX: &str = ".backup";
 const JSON_EXT: &str = "json";
@@ -48,12 +49,37 @@ pub(crate) fn add(
     role: ManagedCredentialRole,
 ) -> Result<ManagedCredential> {
     let path = credential_path(root, provider, role)?;
-    if path.exists() {
-        return Err(error::DuplicateSnafu {
-            entity: "credential".to_owned(),
-            id: credential_id(provider, role),
+
+    // WHY: use `create_new` so the existence check and file creation happen
+    // atomically, closing the TOCTOU window between `path.exists()` and `save()`.
+    let create_result = {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&path)
         }
-        .build());
+        #[cfg(not(unix))]
+        {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+        }
+    };
+
+    if let Err(source) = create_result {
+        if source.kind() == std::io::ErrorKind::AlreadyExists {
+            return Err(error::DuplicateSnafu {
+                entity: "credential".to_owned(),
+                id: credential_id(provider, role),
+            }
+            .build());
+        }
+        return Err(io_error(&path, source));
     }
 
     let credential = CredentialFile {
@@ -63,9 +89,14 @@ pub(crate) fn add(
         scopes: None,
         subscription_type: None,
     };
-    credential
-        .save(&path)
-        .map_err(|source| io_error(&path, source))?;
+
+    if let Err(source) = credential.save(&path) {
+        // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of the
+        // placeholder created above so a failed add does not leave a partial file.
+        let _ = std::fs::remove_file(&path);
+        return Err(io_error(&path, source));
+    }
+
     metadata_from_path(root, provider, role, None)?.ok_or_else(|| {
         error::NotFoundSnafu {
             entity: "credential".to_owned(),
@@ -92,6 +123,14 @@ pub(crate) fn rotate(root: &Path, provider: &str) -> Result<Vec<ManagedCredentia
     let primary_path = credential_path(root, provider, ManagedCredentialRole::Primary)?;
     let backup_path = credential_path(root, provider, ManagedCredentialRole::Backup)?;
 
+    // WHY: provider-wide exclusive lock so the two renames appear atomic to
+    // concurrent readers/writers. A crash after the first rename leaves both
+    // files readable (one old, one new); a crash before any rename leaves the
+    // previous state intact.
+    let lock_path = provider_lock_path(root, provider);
+    let _lock = CredentialFileLock::exclusive_at(&lock_path)
+        .map_err(|source| io_error(&lock_path, source))?;
+
     let primary = CredentialFile::load(&primary_path).ok_or_else(|| {
         error::NotFoundSnafu {
             entity: "credential".to_owned(),
@@ -107,6 +146,9 @@ pub(crate) fn rotate(root: &Path, provider: &str) -> Result<Vec<ManagedCredentia
         .build()
     })?;
 
+    // INVARIANT: rename the new primary into place first. If the second rename
+    // fails, the provider still has a usable credential at both paths (roles may
+    // be partially swapped, but no data is lost).
     backup
         .save(&primary_path)
         .map_err(|source| io_error(&primary_path, source))?;
@@ -136,9 +178,24 @@ pub(crate) fn remove(root: &Path, id: &str) -> Result<()> {
         .build());
     }
 
+    // WHY: prevent operators from deleting the only usable credential for a
+    // provider. If a backup exists, the primary may be removed; the backup is
+    // still usable and can be rotated or promoted separately.
+    if role == ManagedCredentialRole::Primary {
+        let backup_path = credential_path(root, &provider, ManagedCredentialRole::Backup)?;
+        let backup_loadable = CredentialFile::load(&backup_path).is_some();
+        if !backup_loadable {
+            return Err(error::RemoveLastPrimarySnafu { provider }.build());
+        }
+    }
+
     remove_file_if_exists(&path)?;
     remove_file_if_exists(&path.with_extension("json.key"))?;
     remove_file_if_exists(&path.with_extension("json.lock"))
+}
+
+fn provider_lock_path(root: &Path, provider: &str) -> PathBuf {
+    root.join(format!(".{provider}.lock"))
 }
 
 fn metadata_from_path(
@@ -312,6 +369,113 @@ mod tests {
             rotated
                 .iter()
                 .all(|entry| !entry.redacted_preview.contains("sk-"))
+        );
+    }
+
+    #[test]
+    fn rotate_is_idempotent_or_consistent() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-primary-1111"),
+            ManagedCredentialRole::Primary,
+        )
+        .unwrap();
+        add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-backup-2222"),
+            ManagedCredentialRole::Backup,
+        )
+        .unwrap();
+
+        rotate(&root, "anthropic").unwrap();
+        rotate(&root, "anthropic").unwrap();
+
+        let primary = CredentialFile::load(&root.join("anthropic.json")).unwrap();
+        let backup = CredentialFile::load(&root.join("anthropic.backup.json")).unwrap();
+        let primary_secret = primary.token.expose_secret();
+        let backup_secret = backup.token.expose_secret();
+        assert!(
+            (primary_secret == "sk-primary-1111" && backup_secret == "sk-backup-2222")
+                || (primary_secret == "sk-backup-2222" && backup_secret == "sk-primary-1111"),
+            "after two rotations the pair must be coherent, got primary={primary_secret} backup={backup_secret}"
+        );
+    }
+
+    #[test]
+    fn remove_last_primary_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-primary-1111"),
+            ManagedCredentialRole::Primary,
+        )
+        .unwrap();
+
+        let result = remove(&root, "anthropic:primary");
+        assert!(
+            matches!(result, Err(error::Error::RemoveLastPrimary { .. })),
+            "removing the only usable credential for a provider must fail, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn remove_succeeds_when_backup_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-primary-1111"),
+            ManagedCredentialRole::Primary,
+        )
+        .unwrap();
+        add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-backup-2222"),
+            ManagedCredentialRole::Backup,
+        )
+        .unwrap();
+
+        remove(&root, "anthropic:primary").expect("removing primary with a backup must succeed");
+        assert!(CredentialFile::load(&root.join("anthropic.json")).is_none());
+        assert!(CredentialFile::load(&root.join("anthropic.backup.json")).is_some());
+    }
+
+    #[test]
+    fn add_duplicate_returns_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-first"),
+            ManagedCredentialRole::Primary,
+        )
+        .unwrap();
+
+        let result = add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-second"),
+            ManagedCredentialRole::Primary,
+        );
+        assert!(
+            matches!(result, Err(error::Error::Duplicate { .. })),
+            "adding the same credential twice must fail with Duplicate, got {result:?}"
+        );
+
+        let primary = CredentialFile::load(&root.join("anthropic.json")).unwrap();
+        assert_eq!(
+            primary.token.expose_secret(),
+            "sk-first",
+            "duplicate add must not overwrite the existing credential"
         );
     }
 }
