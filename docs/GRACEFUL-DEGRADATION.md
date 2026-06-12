@@ -118,7 +118,7 @@ The following components can turn a local failure into a process-wide crash:
 | Hermeneus concurrency limiter | `parking_lot::Mutex` - no poisoning | Process | No-poison mutex; limiter survives panics | ✅ None (resolved: `concurrency.rs:24`) |
 | Hermeneus health tracker | `unwrap_or_else(PoisonError::into_inner)` | Component | Recovers stale state, continues | ✅ None |
 | Tool executors | Errors returned; sandbox no-op on non-Linux | Request | Isolate and return errors | ✅ None |
-| Pylon signal handlers | Signal-installation failures logged as warnings, serving continues | Process | Log warning, continue without signals | ✅ None (resolved: `server.rs:428`, `508`) |
+| Pylon signal handlers | Signal-installation failures log warnings | Signal path | Continue serving without the failed signal path | ✅ None (resolved: `server.rs:428`, `508`) |
 | Pylon streaming handlers | Spawned tasks awaited, `JoinError` mapped to SSE | Request | Per-request failure isolation | ✅ None |
 | Krites query engine | `panic!` on internal invariant violations | Process | Return `Result` error to caller | `data/json.rs:76`, `query/graph.rs:127`, `query/graph.rs:205`, `query/magic.rs:217`, `query/stratify.rs:203` |
 | Krites storage backend | `unreachable!` on assumed-live transaction | Process | Return corruption/error instead of panic | `storage/fjall_backend.rs:194` |
