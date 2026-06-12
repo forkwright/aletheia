@@ -281,7 +281,10 @@ The following fields are **not implemented** in the current runtime: `dm_policy`
 
 ## bindings
 
-Array of routing rules mapping channel sources to agents. Evaluated in order; first match wins.
+Array of routing rules mapping channel sources to agents. The Agora router
+uses a fixed specificity order; it does **not** use declaration order or first
+match. The order of `[[bindings]]` entries in the config file does not affect
+routing.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -293,16 +296,28 @@ Array of routing rules mapping channel sources to agents. Evaluated in order; fi
 ```toml
 [[bindings]]
 channel = "signal"
-source = "+15559876543"
-nous_id = "research"
+source = "*"
+nous_id = "main"
 
 [[bindings]]
 channel = "signal"
-source = "*"
-nous_id = "main"
+source = "+15559876543"
+nous_id = "research"
 ```
 
-More specific bindings should appear first.
+### Routing precedence
+
+The router resolves each inbound message in the following order (`crates/agora/src/router.rs`):
+
+1. **Group binding** — exact match on `channel` + `group_id`.
+2. **Source binding** — exact match on `channel` + sender/source.
+3. **Channel default** — `channel` + `source = "*"`.
+4. **Global default** — the agent configured with `default: true`.
+5. **No match** — message is dropped.
+
+A wildcard `source = "*"` entry before an exact source entry does **not** win;
+the exact source binding always takes precedence. Use the most specific binding
+you need and rely on the fixed order above.
 
 ---
 
