@@ -667,6 +667,11 @@ pub const API_V1: &str = "/api/v1";
 pub const API_HEALTH: &str = "/api/health";
 ```
 
+> Cloud-metadata and loopback hostnames rejected outright.
+```rust
+pub const BLOCKED_HOSTNAMES: &[&str] = &["localhost", "metadata.google.internal"];
+```
+
 > TLS-protected URL scheme, including the `://` separator.
 ```rust
 pub const HTTPS_SCHEME_PREFIX: &str = "https://";
@@ -678,6 +683,53 @@ pub fn has_http_or_https_scheme (url: &str) -> bool
 
 ```rust
 pub fn is_plaintext_loopback_url (url: &str) -> bool
+```
+
+> Future returned by [`HostResolver`] implementations.
+```rust
+pub type ResolveHostFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<Vec<SocketAddr>, String>> + Send + 'a>>;
+```
+
+> Resolver seam for SSRF guard tests.
+```rust
+pub trait HostResolver {
+    fn resolve_host <'a> (&'a self, host: &'a str, port: u16) -> ResolveHostFuture<'a>;
+}
+```
+
+```rust
+pub struct TokioHostResolver;
+```
+
+```rust
+pub fn is_private_ip (ip: &IpAddr) -> bool
+```
+
+> Resolve a URL host and verify none of its addresses are private/internal.
+> 
+> # Errors
+> 
+> Returns an error when the URL is invalid, has no host, uses a blocked
+> hostname, fails DNS resolution, resolves to no addresses, or resolves to
+> a private/internal address.
+```rust
+pub async fn validate_url_not_internal (url_str: &str) -> Result<(), String>
+```
+
+> Resolve a URL host with a supplied resolver and reject private/internal targets.
+> 
+> # Errors
+> 
+> Returns an error when the URL is invalid, has no host, uses a blocked
+> hostname, fails DNS resolution, resolves to no addresses, or resolves to
+> a private/internal address.
+```rust
+pub async fn validate_url_not_internal_with_resolver <R> (
+    url_str: &str,
+    resolver: &R,
+) -> Result<(), String> where
+    R: HostResolver + ?Sized,
 ```
 
 ## `src/id.rs`
