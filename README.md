@@ -43,7 +43,7 @@ The tarball contains `instance.example/` with the reference config layout. See [
 
 ## Architecture
 
-48 Rust workspace crates plus the excluded desktop shell. Single binary deployment. The substrate includes persistent sessions, Datalog-backed memory, working-memory injection, HTTP/SSE, MCP, Signal, dispatch, and a 15-scenario substrate canary suite. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
+48 Rust workspace crates plus the excluded desktop shell. Single binary deployment. The substrate includes persistent sessions, Datalog-backed memory, working-memory injection, HTTP/SSE, MCP, Signal, dispatch, and a 25-scenario substrate canary suite. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
 
 ---
 
