@@ -18,6 +18,11 @@ use super::workspace::extract_str;
 
 struct EnableToolExecutor;
 
+enum ToolSource {
+    LocalLazy,
+    ProviderServer { sensitive: bool },
+}
+
 impl ToolExecutor for EnableToolExecutor {
     fn execute<'a>(
         &'a self,
@@ -35,24 +40,37 @@ impl ToolExecutor for EnableToolExecutor {
                 return Ok(ToolResult::error(format!("invalid tool name: {name}")));
             };
 
-            let server_catalog = services.server_tool_config.catalog_entries();
-            let catalog_entry = services
+            let local_entry = services
                 .lazy_tool_catalog
                 .iter()
-                .find(|(n, _)| *n == tool_name)
-                .or_else(|| server_catalog.iter().find(|(n, _)| *n == tool_name));
+                .find(|(n, _)| *n == tool_name);
+            let server_entry = services
+                .server_tool_config
+                .catalog_entries_with_metadata()
+                .into_iter()
+                .find(|entry| entry.name == tool_name);
 
-            let Some((_, description)) = catalog_entry else {
-                let mut available: Vec<&str> = services
-                    .lazy_tool_catalog
-                    .iter()
-                    .map(|(n, _)| n.as_str())
-                    .collect();
-                available.extend(server_catalog.iter().map(|(n, _)| n.as_str()));
-                return Ok(ToolResult::error(format!(
-                    "tool '{name}' not found. Available tools: {}",
-                    available.join(", ")
-                )));
+            let (description, source) = match (local_entry, server_entry) {
+                (Some((_, desc)), _) => (desc.clone(), ToolSource::LocalLazy),
+                (None, Some(entry)) => (
+                    entry.description,
+                    ToolSource::ProviderServer {
+                        sensitive: entry.sensitive,
+                    },
+                ),
+                (None, None) => {
+                    let server_catalog = services.server_tool_config.catalog_entries();
+                    let mut available: Vec<&str> = services
+                        .lazy_tool_catalog
+                        .iter()
+                        .map(|(n, _)| n.as_str())
+                        .collect();
+                    available.extend(server_catalog.iter().map(|(n, _)| n.as_str()));
+                    return Ok(ToolResult::error(format!(
+                        "tool '{name}' not found. Available tools: {}",
+                        available.join(", ")
+                    )));
+                }
             };
 
             // WHY: Single write lock for the check-and-set: acquiring a read
@@ -68,8 +86,22 @@ impl ToolExecutor for EnableToolExecutor {
                 if active.contains(&tool_name) {
                     return Ok(ToolResult::text(format!("'{name}' is already active.")));
                 }
-                active.insert(tool_name);
+                active.insert(tool_name.clone());
             }
+
+            let (source_str, sensitive) = match &source {
+                ToolSource::LocalLazy => ("local_lazy", false),
+                ToolSource::ProviderServer { sensitive } => ("provider_server", *sensitive),
+            };
+
+            tracing::info!(
+                target_tool = %tool_name,
+                session_id = %ctx.session_id,
+                turn_number = ctx.turn_number,
+                source = source_str,
+                sensitive,
+                "enable_tool: activated tool"
+            );
 
             Ok(ToolResult::text(format!(
                 "Activated '{name}': {description}"
@@ -79,6 +111,9 @@ impl ToolExecutor for EnableToolExecutor {
 }
 
 fn enable_tool_def() -> ToolDef {
+    // WHY: enable_tool mutates the session's active tool surface, changing which
+    // lazy tools and provider server tools are visible in later turns. It must
+    // therefore require a non-read capability and be approval-worthy.
     ToolDef {
         name: ToolName::from_static("enable_tool"), // kanon:ignore RUST/expect
         description: "Activate a tool for this session. Some tools are not loaded by default \
@@ -98,10 +133,10 @@ fn enable_tool_def() -> ToolDef {
             required: vec!["name".to_owned()],
         },
         category: ToolCategory::System,
-        reversibility: Reversibility::FullyReversible,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: true,
-        groups: vec![ToolGroupId::Read],
-        tags: vec![ToolTag::Execute],
+        groups: vec![ToolGroupId::Command],
+        tags: vec![ToolTag::Edit, ToolTag::Execute],
     }
 }
 
@@ -119,8 +154,11 @@ mod tests {
 
     use koina::id::{NousId, SessionId, ToolName};
 
+    use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
-    use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolServices};
+    use crate::types::{
+        ApprovalRequirement, ServerToolConfig, ToolContext, ToolInput, ToolServices,
+    };
 
     use super::*;
 
@@ -344,6 +382,104 @@ mod tests {
         assert!(
             text.contains("code_execution"),
             "expected text.contains(\"code_execution\") to be true"
+        );
+    }
+
+    #[test]
+    fn enable_tool_def_is_capability_mutation() {
+        let def = enable_tool_def();
+        assert_ne!(
+            def.reversibility,
+            Reversibility::FullyReversible,
+            "enable_tool must not be fully reversible"
+        );
+        assert!(
+            !def.groups.contains(&ToolGroupId::Read),
+            "enable_tool must not be in the Read group"
+        );
+        assert!(
+            def.groups.contains(&ToolGroupId::Command),
+            "enable_tool must require the Command group"
+        );
+        assert!(
+            def.tags.contains(&ToolTag::Execute),
+            "enable_tool should carry the Execute tag"
+        );
+    }
+
+    #[test]
+    fn enable_tool_not_presented_to_read_only_policy() {
+        let mut reg = ToolRegistry::new();
+        register(&mut reg).expect("register enable_tool");
+
+        let defs = reg.definitions_for_groups(&[ToolGroupId::Read]);
+        assert!(
+            defs.iter().all(|d| d.name.as_str() != "enable_tool"),
+            "enable_tool should not appear under a read-only group policy"
+        );
+    }
+
+    #[tokio::test]
+    async fn enable_tool_code_execution_not_available_when_disabled() {
+        let ctx = mock_ctx_with_server_tools(ServerToolConfig::default());
+
+        let executor = EnableToolExecutor;
+        let result = executor
+            .execute(&make_input("code_execution"), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("not found"),
+            "expected result.content.text_summary().contains(\"not found\") to be true"
+        );
+    }
+
+    #[tokio::test]
+    async fn enable_tool_code_execution_records_active_and_approval_is_required() {
+        let ctx = mock_ctx_with_server_tools(ServerToolConfig {
+            web_search: false,
+            web_search_max_uses: None,
+            code_execution: true,
+        });
+
+        let executor = EnableToolExecutor;
+        let result = executor
+            .execute(&make_input("code_execution"), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(!result.is_error, "expected result.is_error to be false");
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("Activated 'code_execution'"),
+            "expected activation message for code_execution"
+        );
+
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let active = ctx.active_tools.read().expect("lock poisoned");
+        assert!(
+            active.contains(&ToolName::from_static("code_execution")),
+            "expected active.contains(&ToolName::from_static(\"code_execution\")) to be true"
+        );
+
+        let mut reg = ToolRegistry::new();
+        register(&mut reg).expect("register enable_tool");
+        let approval = reg
+            .approval_requirement_for_input(&make_input("code_execution"))
+            .expect("approval requirement");
+        assert!(
+            matches!(
+                approval,
+                ApprovalRequirement::Required | ApprovalRequirement::Mandatory
+            ),
+            "expected approval to be Required or Mandatory, got {approval:?}"
         );
     }
 }
