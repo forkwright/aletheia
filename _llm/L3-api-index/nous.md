@@ -1905,6 +1905,20 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 ## `src/execute/mod.rs`
 
+> Execute stage: calls the LLM and iterates on tool use.
+> 
+> This is the core agent loop. It:
+> 1. Builds a `CompletionRequest` from pipeline context
+> 2. Calls the LLM
+> 3. Processes `tool_use` blocks by dispatching to the `ToolRegistry`
+> 4. Feeds tool results back and re-calls the LLM
+> 5. Repeats until `EndTurn`, `MaxTokens`, or iteration limit
+> 
+> # Cancel safety
+> 
+> Not cancel-safe. If cancelled mid-loop, tool calls may have been
+> dispatched but their results not processed, leaving the session
+> in an inconsistent state. Do not use in `select!` branches.
 ```rust
 pub async fn execute (
     ctx: &PipelineContext,

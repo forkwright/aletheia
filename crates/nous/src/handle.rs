@@ -176,7 +176,7 @@ impl NousHandle {
     /// This method passes `approval_gate: None` — intentional for batch/headless
     /// callers (e.g. `diaporeia`'s memory-MCP tool turns) where no interactive
     /// operator is present to approve reversibility-class tools. The gate's
-    /// `None` contract (see `dispatch_tools_streaming`) is: Mandatory →
+    /// `None` contract (see shared execute dispatch) is: Mandatory →
     /// default-deny, Required → approve. Callers that DO have an interactive
     /// operator session must use [`send_turn_streaming_with_approval`](Self::send_turn_streaming_with_approval)
     /// so the approval event is surfaced to the operator and the gate is wired.

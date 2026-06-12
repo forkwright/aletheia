@@ -25,9 +25,7 @@ use koina::id::ToolName;
 use organon::registry::ToolRegistry;
 use organon::types::ToolContext;
 
-use self::dispatch::{
-    DispatchResult, build_messages, classify_signals, dispatch_tools, dispatch_tools_streaming,
-};
+use self::dispatch::{DispatchResult, build_messages, classify_signals, dispatch_tools};
 use self::resolve::{
     process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
     resolve_turn_model,
@@ -55,11 +53,6 @@ use crate::stream::TurnStreamEvent;
 /// Not cancel-safe. If cancelled mid-loop, tool calls may have been
 /// dispatched but their results not processed, leaving the session
 /// in an inconsistent state. Do not use in `select!` branches.
-#[expect(
-    clippy::too_many_lines,
-    reason = "execution loop is inherently sequential, splitting would obscure control flow"
-)]
-#[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub async fn execute(
     ctx: &PipelineContext,
     session: &SessionState,
@@ -67,6 +60,32 @@ pub async fn execute(
     providers: &ProviderRegistry,
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
+    hooks: Option<&HookRegistry>,
+) -> error::Result<TurnResult> {
+    execute_with_dispatch(
+        ctx, session, config, providers, tools, tool_ctx, None, None, hooks,
+    )
+    .await
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "execution loop is inherently sequential, splitting would obscure control flow"
+)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "shared execute core accepts optional streaming and approval adapters"
+)]
+#[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
+async fn execute_with_dispatch(
+    ctx: &PipelineContext,
+    session: &SessionState,
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    tools: &ToolRegistry,
+    tool_ctx: &ToolContext,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     // WHY: resolve the turn model once — complexity routing pins a tier for
@@ -347,6 +366,8 @@ pub async fn execute(
             &mut loop_detector,
             &mut all_tool_calls,
             iterations,
+            stream_tx,
+            approval_gate,
             config.limits.max_tool_result_bytes,
             Some(&session.receipt_signer),
             Some(&*session.receipt_ledger),
@@ -473,8 +494,18 @@ pub async fn execute_streaming(
     let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
 
     let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {
-        // NOTE: fall back to non-streaming execute if no streaming provider is registered
-        return execute(ctx, session, config, providers, tools, tool_ctx, hooks).await;
+        return execute_with_dispatch(
+            ctx,
+            session,
+            config,
+            providers,
+            tools,
+            tool_ctx,
+            Some(stream_tx),
+            approval_gate,
+            hooks,
+        )
+        .await;
     };
 
     let provider = resolve_provider_checked(providers, &turn_model)?;
@@ -701,14 +732,14 @@ pub async fn execute_streaming(
         let DispatchResult {
             mut blocks,
             loop_warning,
-        } = dispatch_tools_streaming(
+        } = dispatch_tools(
             &effective_tool_uses,
             tools,
             tool_ctx,
             &mut loop_detector,
             &mut all_tool_calls,
             iterations,
-            stream_tx,
+            Some(stream_tx),
             approval_gate,
             config.limits.max_tool_result_bytes,
             Some(&session.receipt_signer),

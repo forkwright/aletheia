@@ -198,8 +198,38 @@ async fn run_tool_with_limits(
         None,
     );
 
-    let result = handle.send_turn("main", "run tool").await.expect("turn");
+    // WHY: the unified dispatcher fail-closes mandatory-approval tools on
+    // gateless turns, so limit tests stream with an auto-approving gate —
+    // the limits themselves are what's under test.
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(64);
+    let (decision_tx, decision_rx) = tokio::sync::mpsc::channel(8);
+    let gate = crate::approval::ApprovalGate::new(decision_rx, std::time::Duration::from_secs(10));
+    let approver = tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+            if let crate::stream::TurnStreamEvent::ToolApprovalRequired { tool_id, .. } = event {
+                let _ = decision_tx
+                    .send(crate::approval::ApprovalDecision {
+                        tool_id,
+                        choice: crate::approval::ApprovalChoice::Approved,
+                    })
+                    .await;
+            }
+        }
+    });
+    let result = handle
+        .send_turn_streaming_with_approval(
+            "main",
+            None,
+            "run tool",
+            event_tx,
+            Some(gate),
+            std::time::Duration::from_secs(30),
+            CancellationToken::new(),
+        )
+        .await
+        .expect("turn");
     handle.shutdown().await.expect("shutdown");
+    approver.abort();
     join.await.expect("actor join");
     drop(dir);
     result
@@ -334,8 +364,38 @@ async fn reload_config_updates_tool_limits_for_existing_actor() {
         .await
         .expect("reload");
 
-    let result = handle.send_turn("main", "run tool").await.expect("turn");
+    // WHY: the unified dispatcher fail-closes mandatory-approval tools on
+    // gateless turns, so limit tests stream with an auto-approving gate —
+    // the limits themselves are what's under test.
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(64);
+    let (decision_tx, decision_rx) = tokio::sync::mpsc::channel(8);
+    let gate = crate::approval::ApprovalGate::new(decision_rx, std::time::Duration::from_secs(10));
+    let approver = tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+            if let crate::stream::TurnStreamEvent::ToolApprovalRequired { tool_id, .. } = event {
+                let _ = decision_tx
+                    .send(crate::approval::ApprovalDecision {
+                        tool_id,
+                        choice: crate::approval::ApprovalChoice::Approved,
+                    })
+                    .await;
+            }
+        }
+    });
+    let result = handle
+        .send_turn_streaming_with_approval(
+            "main",
+            None,
+            "run tool",
+            event_tx,
+            Some(gate),
+            std::time::Duration::from_secs(30),
+            CancellationToken::new(),
+        )
+        .await
+        .expect("turn");
     handle.shutdown().await.expect("shutdown");
+    approver.abort();
     join.await.expect("actor join");
     drop(dir);
 
