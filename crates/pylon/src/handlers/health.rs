@@ -421,45 +421,11 @@ fn check_credential_validity(
     });
 
     if let Some(key) = env_key {
-        if key.is_empty() {
-            return HealthCheck {
-                name: "credential_validity",
-                status: "warn",
-                message: Some("ANTHROPIC_API_KEY is set but empty".to_owned()),
-            };
-        }
-
-        if key.starts_with("sk-ant-oat") {
-            // NOTE: the sk-ant-oat prefix marks an OAuth token with a decodable expiry.
-            if let Some(exp_secs) = decode_jwt_exp(&key) {
-                let now_secs = std::time::SystemTime::now()
-                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-
-                if exp_secs + clock_skew_leeway < now_secs {
-                    return HealthCheck {
-                        name: "credential_validity",
-                        status: "warn",
-                        message: Some("OAuth token has expired".to_owned()),
-                    };
-                }
-
-                if exp_secs + clock_skew_leeway + expiry_warning_threshold < now_secs {
-                    return HealthCheck {
-                        name: "credential_validity",
-                        status: "warn",
-                        message: Some("OAuth token expires soon".to_owned()),
-                    };
-                }
-            }
-        }
-
-        return HealthCheck {
-            name: "credential_validity",
-            status: "pass",
-            message: None,
-        };
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        return check_env_oauth_token(&key, now_secs, clock_skew_leeway, expiry_warning_threshold);
     }
 
     let creds_dir = state.oikos.credentials();
@@ -517,6 +483,54 @@ fn check_credential_validity(
             status: "warn",
             message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file, no Claude Code credentials)".to_owned()),
         }
+    }
+}
+
+/// Check an env-var credential for OAuth token expiry.
+///
+/// Returns a `credential_validity` [`HealthCheck`] for the given `ANTHROPIC_API_KEY`
+/// value. Non-OAuth keys and OAuth tokens without a decodable expiry claim are
+/// treated as valid.
+fn check_env_oauth_token(
+    key: &str,
+    now_secs: u64,
+    clock_skew_leeway: u64,
+    expiry_warning_threshold: u64,
+) -> HealthCheck {
+    if key.is_empty() {
+        return HealthCheck {
+            name: "credential_validity",
+            status: "warn",
+            message: Some("ANTHROPIC_API_KEY is set but empty".to_owned()),
+        };
+    }
+
+    if key.starts_with("sk-ant-oat") {
+        // NOTE: the sk-ant-oat prefix marks an OAuth token with a decodable expiry.
+        if let Some(exp_secs) = decode_jwt_exp(key) {
+            let remaining_secs =
+                exp_secs.saturating_sub(now_secs.saturating_add(clock_skew_leeway));
+            if remaining_secs == 0 {
+                return HealthCheck {
+                    name: "credential_validity",
+                    status: "warn",
+                    message: Some("OAuth token has expired".to_owned()),
+                };
+            }
+            if remaining_secs <= expiry_warning_threshold {
+                return HealthCheck {
+                    name: "credential_validity",
+                    status: "warn",
+                    message: Some("OAuth token expires soon".to_owned()),
+                };
+            }
+        }
+    }
+
+    HealthCheck {
+        name: "credential_validity",
+        status: "pass",
+        message: None,
     }
 }
 
@@ -925,5 +939,78 @@ mod tests {
         // With padding should also work
         let decoded = base64url_decode("eyJleHAiOjEyMzQ1Njc4OTB9").unwrap();
         assert_eq!(String::from_utf8(decoded).unwrap(), r#"{"exp":1234567890}"#);
+    }
+
+    fn base64url_encode(input: &[u8]) -> String {
+        const TABLE: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let mut out = String::new();
+        let mut buf: u32 = 0;
+        let mut bits: u32 = 0;
+        for &b in input {
+            buf = (buf << 8) | u32::from(b);
+            bits += 8;
+            while bits >= 6 {
+                bits -= 6;
+                out.push(char::from(TABLE[((buf >> bits) & 0x3F) as usize]));
+            }
+        }
+        if bits > 0 {
+            out.push(char::from(TABLE[((buf << (6 - bits)) & 0x3F) as usize]));
+        }
+        out
+    }
+
+    fn oauth_token_with_exp(exp: u64) -> String {
+        let payload = serde_json::json!({ "exp": exp }).to_string();
+        format!(
+            "sk-ant-oat-header.{}.signature",
+            base64url_encode(payload.as_bytes())
+        )
+    }
+
+    #[test]
+    fn env_token_expired_reports_expired() {
+        let now = 1_000_000;
+        let exp = now - 100;
+        let token = oauth_token_with_exp(exp);
+        let check = check_env_oauth_token(&token, now, 60, 300);
+        assert_eq!(check.status, "warn");
+        assert!(check.message.unwrap().contains("expired"));
+    }
+
+    #[test]
+    fn env_token_expires_soon_reports_soon() {
+        let now = 1_000_000;
+        let exp = now + 150;
+        let token = oauth_token_with_exp(exp);
+        let check = check_env_oauth_token(&token, now, 60, 300);
+        assert_eq!(check.status, "warn");
+        assert!(check.message.unwrap().contains("soon"));
+    }
+
+    #[test]
+    fn env_token_valid_reports_ok() {
+        let now = 1_000_000;
+        let exp = now + 900;
+        let token = oauth_token_with_exp(exp);
+        let check = check_env_oauth_token(&token, now, 60, 300);
+        assert_eq!(check.status, "pass");
+        assert!(check.message.is_none());
+    }
+
+    #[test]
+    fn env_token_empty_env_var_handled() {
+        let check = check_env_oauth_token("", 1_000_000, 60, 300);
+        assert_eq!(check.status, "warn");
+        assert!(check.message.unwrap().contains("empty"));
+    }
+
+    #[test]
+    fn env_token_undecodable_returns_error() {
+        // A non-OAuth, non-JWT string does not trigger expiry checks and is
+        // treated as a plain API key.
+        let check = check_env_oauth_token("not-a-jwt-and-not-oauth", 1_000_000, 60, 300);
+        assert_eq!(check.status, "pass");
     }
 }
