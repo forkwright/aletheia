@@ -25,7 +25,7 @@ pub(crate) struct ProjectPhaseInfo {
     pub(crate) total: u32,
 }
 
-/// A planning project returned from `GET /api/planning/projects`.
+/// A planning project returned from the planning project-list API.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct Project {
     // kanon:ignore RUST/primitive-for-domain-id — Planning state mirrors server-side string IDs from the planning API
@@ -222,7 +222,7 @@ pub(crate) struct PhaseDependency {
     pub(crate) to_phase_id: String,
 }
 
-/// Full roadmap returned from `GET /api/planning/projects/{id}/roadmap`.
+/// Full roadmap returned from the planning roadmap API.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct Roadmap {
     pub(crate) phases: Vec<Phase>,

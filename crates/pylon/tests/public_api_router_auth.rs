@@ -11,6 +11,7 @@ use tower::ServiceExt;
 
 use koina::http::{API_HEALTH, API_V1};
 use pylon::router::build_router;
+use skene::api::routes::planning::{project_verification_path, project_verification_refresh_path};
 use symbolon::types::Role;
 
 mod common;
@@ -198,6 +199,63 @@ async fn protected_endpoint_accepts_valid_bearer() {
         .expect("router response");
 
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn proskenion_planning_fetch_urls_match_pylon_routes() {
+    let env = TestEnv::new().await;
+    let token = issue_test_token(&env.state);
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for (method, path) in [
+        (Method::GET, project_verification_path("some-project")),
+        (
+            Method::POST,
+            project_verification_refresh_path("some-project"),
+        ),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .header("authorization", bearer(&token))
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("router response");
+
+        let body = read_body_json(response).await;
+        assert_eq!(body["error"]["code"], "not_found");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .expect("error message")
+                .contains("planning/projects/some-project"),
+            "proskenion planning URL must reach the planning handler"
+        );
+    }
+}
+
+#[tokio::test]
+async fn legacy_planning_fetch_url_is_not_served() {
+    let env = TestEnv::new().await;
+    let token = issue_test_token(&env.state);
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let response = router
+        .oneshot(
+            Request::get("/api/planning/projects/some-project/verification")
+                .header("authorization", bearer(&token))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

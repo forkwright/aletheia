@@ -74,7 +74,7 @@ pub(crate) struct Checkpoint {
     pub(crate) decision: Option<CheckpointDecision>,
 }
 
-/// Request body for `POST /api/planning/projects/{id}/checkpoints/{id}/action`.
+/// Request body for `POST /api/v1/planning/projects/{id}/checkpoints/{id}/action`.
 #[derive(Debug, Serialize)]
 pub(crate) struct CheckpointActionRequest {
     pub(crate) action: CheckpointAction,

@@ -2,9 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::app::Route;
-use crate::state::connection::ConnectionConfig;
 use crate::state::planning::{Project, status_badge_style, status_label};
 use crate::views::planning::checkpoints::CheckpointsView;
 use crate::views::planning::discussion::DiscussionView;
@@ -24,6 +22,10 @@ enum ActiveTab {
 }
 
 #[derive(Debug, Clone)]
+#[expect(
+    dead_code,
+    reason = "project metadata route is pending B23 backend work"
+)]
 enum FetchState {
     Loading,
     Loaded(Project),
@@ -114,44 +116,8 @@ const BADGE_STYLE: &str = "\
 /// then delegates to tabbed sub-views.
 #[component]
 pub(crate) fn PlanningProject(project_id: String) -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
-    let mut project_state = use_signal(|| FetchState::Loading);
-    let mut active_tab = use_signal(|| ActiveTab::Requirements);
-
-    let project_id_effect = project_id.clone();
-
-    use_effect(move || {
-        let cfg = config.read().clone();
-        let pid = project_id_effect.clone();
-        project_state.set(FetchState::Loading);
-
-        spawn(async move {
-            let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/planning/projects/{pid}",
-                cfg.server_url.trim_end_matches('/')
-            );
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => match resp.json::<Project>().await {
-                    Ok(project) => project_state.set(FetchState::Loaded(project)),
-                    Err(e) => {
-                        project_state.set(FetchState::Error(format!("parse error: {e}")));
-                    }
-                },
-                Ok(resp) if resp.status().as_u16() == 404 => {
-                    project_state.set(FetchState::NotAvailable);
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    project_state.set(FetchState::Error(format!("server returned {status}")));
-                }
-                Err(e) => {
-                    project_state.set(FetchState::Error(format!("connection error: {e}")));
-                }
-            }
-        });
-    });
+    let project_state = use_signal(|| FetchState::NotAvailable);
+    let mut active_tab = use_signal(|| ActiveTab::Verification);
 
     let tab = *active_tab.read();
     let tab_label = match tab {
@@ -226,7 +192,7 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{HEADER_STYLE}",
-                        div { style: "color: var(--text-secondary); font-size: var(--text-base);", "Project not found" }
+                        div { style: "color: var(--text-secondary); font-size: var(--text-base);", "Project metadata not available" }
                     }
                 },
             }

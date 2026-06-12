@@ -297,33 +297,9 @@ pub fn build_router_with(
 /// Fallback handler for unmatched routes.
 ///
 /// Returns 410 Gone with migration hints for old unversioned `/api/nous`
-/// and `/api/planning` paths. Other unknown paths get 404.
+/// paths. Other unknown paths get 404.
 async fn fallback_handler(uri: axum::http::Uri) -> Response {
     let path = uri.path();
-
-    // WHY(#3266): old `/api/planning/...` routes moved to `/api/v1/planning/...`.
-    // Return 301 so existing clients (proskenion) follow the redirect.
-    if path.starts_with("/api/planning/") {
-        let new_path = path.replacen("/api/planning/", "/api/v1/planning/", 1);
-        let mut response = (
-            StatusCode::MOVED_PERMANENTLY,
-            axum::Json(ErrorResponse {
-                error: ErrorBody {
-                    code: "api_version_required".to_owned(),
-                    message: format!("This endpoint has moved. Use {new_path} instead."),
-                    request_id: None,
-                    details: None,
-                },
-            }),
-        )
-            .into_response();
-        if let Ok(location) = axum::http::HeaderValue::from_str(&new_path) {
-            response
-                .headers_mut()
-                .insert(axum::http::header::LOCATION, location);
-        }
-        return response;
-    }
 
     if path.starts_with("/api/nous") {
         let suggestion = path.replacen("/api/", "/api/v1/", 1);
@@ -488,23 +464,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fallback_redirects_old_planning_routes() {
+    async fn fallback_returns_404_for_old_planning_routes() {
         let uri: axum::http::Uri = "/api/planning/projects/proj-1/verification"
             .parse()
             .expect("parse URI");
         let response = fallback_handler(uri).await;
         assert_eq!(
             response.status(),
-            axum::http::StatusCode::MOVED_PERMANENTLY,
-            "old planning path should return 301"
-        );
-        let location = response
-            .headers()
-            .get(axum::http::header::LOCATION)
-            .expect("301 must include Location header");
-        assert_eq!(
-            location.to_str().unwrap(),
-            "/api/v1/planning/projects/proj-1/verification"
+            axum::http::StatusCode::NOT_FOUND,
+            "old planning path should not be redirected"
         );
     }
 

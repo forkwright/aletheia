@@ -1,6 +1,7 @@
 //! Verification view: goal-backward requirement verification results.
 
 use dioxus::prelude::*;
+use skene::api::routes::planning::{project_verification_refresh_url, project_verification_url};
 
 use crate::api::client::authenticated_client;
 use crate::components::coverage_bar::{CoverageBar, coverage_color};
@@ -117,7 +118,7 @@ const PLACEHOLDER_STYLE: &str = "\
 
 /// Goal-backward verification results view.
 ///
-/// Fetches from `GET /api/planning/projects/{project_id}/verification`.
+/// Fetches from `GET /api/v1/planning/projects/{project_id}/verification`.
 /// Displays overall and per-tier coverage bars, a requirement table,
 /// and the gap analysis panel.
 #[component]
@@ -141,10 +142,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
 
         spawn(async move {
             let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/planning/projects/{pid}/verification",
-                cfg.server_url.trim_end_matches('/')
-            );
+            let url = project_verification_url(&cfg.server_url, &pid);
 
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
@@ -183,10 +181,7 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
 
         spawn(async move {
             let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/planning/projects/{pid}/verification/refresh",
-                cfg.server_url.trim_end_matches('/')
-            );
+            let url = project_verification_refresh_url(&cfg.server_url, &pid);
 
             match client.post(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {

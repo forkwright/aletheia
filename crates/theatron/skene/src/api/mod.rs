@@ -2,6 +2,7 @@
 
 pub mod client;
 pub mod error;
+pub mod routes;
 pub mod sse;
 pub mod streaming;
 pub mod types;
