@@ -71,7 +71,7 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 | `aletheia_sessions_total` | Counter | `nous_id`, `session_type` | Sessions created |
 | `aletheia_backup_duration_seconds` | Histogram | `status` | Backup duration (`ok` or `error`) |
 
-> **Note:** `aletheia_backup_duration_seconds` is registered but the production call site was removed in #3446. It is retained for future fjall backup integration. Backup staleness alerting uses this metric and will activate only after backup recording is reattached.
+> **Note:** `aletheia_backup_duration_seconds` is live. The runtime installs `RuntimeBackupMetricsRecorder` (`crates/aletheia/src/runtime/mod.rs:594`), and the daemon's fjall backup task records each run (`crates/daemon/src/execution.rs:436-448`). Semantics: failures always record `status="error"`; success records `status="ok"` only when the run produced a backup (`report.backup_path.is_some()`) — skipped backups record nothing. Backup staleness alerting can rely on this metric.
 
 ### Knowledge and embeddings
 
@@ -102,7 +102,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 | HTTP 5xx rate | < 1% over 5 minutes | `aletheia_http_requests_total{status=~"5.."}` |
 | LLM p95 latency | < 30 seconds | `aletheia_llm_request_duration_seconds` |
 | LLM TTFT p95 | < 5 seconds | `aletheia_llm_ttft_seconds` |
-| Backup freshness | Deployment-defined | Backup metric is registered but inactive until backup recording is reattached |
+| Backup freshness | Deployment-defined | `aletheia_backup_duration_seconds{status="ok"}` (recorded per completed fjall backup) |
 | Hung processes | 0 | `aletheia_watchdog_hung_processes` |
 
 ---
@@ -169,8 +169,8 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 **Impact:** Data loss risk. Session store cannot be restored to a recent point in time.
 
 **Steps:**
-1. Confirm whether your deployment has wired backup recording to `aletheia_backup_duration_seconds`.
-2. If the metric is empty, backup recording is not yet wired to fjall. Run a manual backup using your deployment's backup process.
+1. Check `aletheia_backup_duration_seconds{status="error"}` for failed backup runs (failures are always recorded).
+2. If the metric has no recent `status="ok"` samples, recent runs either failed or were skipped (skipped runs record nothing). Check the daemon's fjall backup task and run a manual backup if needed.
 3. Check cron timer: `systemctl --user list-timers | grep aletheia`
 4. Review backup script logs: `journalctl --user -u aletheia-health --since "48 hours ago"`
 5. Test a restore from the latest backup file
