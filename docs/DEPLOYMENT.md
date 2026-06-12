@@ -462,10 +462,16 @@ aletheia health
 aletheia backup                     # create backup
 aletheia backup --list              # list available backups
 aletheia backup --prune --keep 5    # remove old backups
-aletheia backup --export-json       # export sessions as JSON
+aletheia backup verify <path>       # verify a backup snapshot
 ```
 
 Backups are stored in `instance/data/backups/`. Always back up before upgrading.
+
+The `--export-json` flag was removed during the SQLite-to-fjall migration
+(#3446, #4657). Session archives that are already JSON live under
+`instance/data/archive/sessions/`. The cron helper `scripts/backup-cron.sh`
+still references the removed flag and should not be installed until it is
+updated.
 
 ---
 

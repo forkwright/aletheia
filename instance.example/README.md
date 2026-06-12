@@ -19,7 +19,10 @@ instance/
 │   └── credentials/            # API keys, OAuth tokens, Signal creds
 │
 ├── data/                       # Runtime data stores
-│   └── *.db                    # SQLite databases (sessions, messages, planning)
+│   ├── sessions.db/            # fjall-backed session store (directory, not a file)
+│   ├── knowledge.fjall/        # fjall-backed knowledge store
+│   ├── backups/                # Daemon-managed backup snapshots
+│   └── archive/                # Archived sessions exported as JSON
 │
 ├── logs/                       # Runtime log output
 │
@@ -93,7 +96,7 @@ Tools, templates, hooks, and config all resolve through this cascade.
 | Shared tools & scripts | `shared/tools/`, `shared/bin/` | Runtime infrastructure |
 | Coordination state | `shared/coordination/` | Runtime traces, status |
 | API keys, OAuth tokens | `config/credentials/` | Deployment secrets |
-| Runtime databases | `data/` | SQLite session/message stores |
+| Runtime databases | `data/` | fjall-backed session and knowledge stores |
 
 ## Key Principles
 
