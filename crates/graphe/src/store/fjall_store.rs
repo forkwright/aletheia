@@ -406,17 +406,17 @@ impl SessionStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
 
-        if let Some(existing) = self.read_session_by_raw_id(id)? {
-            if existing.nous_id != nous_id || existing.session_key != session_key {
-                return Err(error::StorageSnafu {
-                    message: format!(
-                        "UNIQUE constraint failed: session id {id} already exists \
-                         for ({}, {})",
-                        existing.nous_id, existing.session_key
-                    ),
-                }
-                .build());
+        if let Some(existing) = self.read_session_by_raw_id(id)?
+            && (existing.nous_id != nous_id || existing.session_key != session_key)
+        {
+            return Err(error::StorageSnafu {
+                message: format!(
+                    "UNIQUE constraint failed: session id {id} already exists \
+                     for ({}, {})",
+                    existing.nous_id, existing.session_key
+                ),
             }
+            .build());
         }
 
         let idx_key = Self::session_key_index_key(nous_id, session_key);
@@ -681,11 +681,9 @@ impl SessionStore {
                 child_prefix.as_str()..child_upper.as_str(),
             )
             .map(|g| {
-                g.into_inner()
-                    .map(|(k, _v)| k.to_vec())
-                    .map_err(|e| {
-                        storage_error(format!("fjall delete_session distillations scan: {e}"))
-                    })
+                g.into_inner().map(|(k, _v)| k.to_vec()).map_err(|e| {
+                    storage_error(format!("fjall delete_session distillations scan: {e}"))
+                })
             })
             .collect::<Result<_>>()?;
 
@@ -703,9 +701,7 @@ impl SessionStore {
             .map(|g| {
                 g.into_inner()
                     .map(|(k, v)| (k.to_vec(), v.starts_with(id_prefix.as_bytes())))
-                    .map_err(|e| {
-                        storage_error(format!("fjall delete_session gid-index scan: {e}"))
-                    })
+                    .map_err(|e| storage_error(format!("fjall delete_session gid-index scan: {e}")))
             })
             .collect::<Result<Vec<_>>>()?
             .into_iter()

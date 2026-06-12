@@ -295,10 +295,14 @@ fn cleanup_orphaned_temp_file(credential_path: &Path, tmp: &Path) {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     debug!(path = %tmp.display(), "orphaned temp file already removed");
                 }
-                Err(e) => warn!(error = %e, path = %tmp.display(), "failed to clean up orphaned temp file"),
+                Err(e) => {
+                    warn!(error = %e, path = %tmp.display(), "failed to clean up orphaned temp file");
+                }
             }
         }
-        Err(e) => warn!(error = %e, path = %tmp.display(), "skipped orphaned temp cleanup; could not acquire exclusive lock"),
+        Err(e) => {
+            warn!(error = %e, path = %tmp.display(), "skipped orphaned temp cleanup; could not acquire exclusive lock");
+        }
     }
 }
 

@@ -76,7 +76,10 @@ fn create_session_rejects_duplicate_raw_id_different_owner() {
         .create_session("ses-1", "alice", "main", None, None)
         .expect("first create");
     let result = store.create_session("ses-1", "bob", "main", None, None);
-    assert!(result.is_err(), "duplicate raw id under different nous must fail");
+    assert!(
+        result.is_err(),
+        "duplicate raw id under different nous must fail"
+    );
     let msg = result.unwrap_err().to_string();
     assert!(
         msg.contains("UNIQUE constraint failed: session id ses-1 already exists"),
@@ -284,7 +287,10 @@ fn distillation_refreshes_nous_index() {
 
     let listed = store.list_sessions(Some("alice")).expect("list");
     assert_eq!(listed.len(), 2, "both sessions must remain indexed");
-    assert_eq!(listed[0].id, "ses-a", "distilled session must be most recent");
+    assert_eq!(
+        listed[0].id, "ses-a",
+        "distilled session must be most recent"
+    );
     assert_eq!(listed[1].id, "ses-b");
 }
 
@@ -316,7 +322,11 @@ fn list_sessions_no_duplicates_after_distillation() {
         .expect("record distillation");
 
     let listed = store.list_sessions(Some("alice")).expect("list");
-    assert_eq!(listed.len(), 1, "exactly one entry after all distillation writes");
+    assert_eq!(
+        listed.len(),
+        1,
+        "exactly one entry after all distillation writes"
+    );
     assert_eq!(listed[0].id, "ses-1");
 }
 
@@ -338,13 +348,22 @@ fn delete_session_removes_all_child_rows() {
     assert!(deleted, "delete must return true for an existing session");
 
     let history = store.get_history("ses-del", None).expect("history");
-    assert!(history.is_empty(), "messages must be removed with the session");
+    assert!(
+        history.is_empty(),
+        "messages must be removed with the session"
+    );
 
     let sessions = store.list_sessions(Some("alice")).expect("list");
-    assert!(sessions.is_empty(), "session must not appear in listing after deletion");
+    assert!(
+        sessions.is_empty(),
+        "session must not appear in listing after deletion"
+    );
 
     let second_delete = store.delete_session("ses-del").expect("second delete");
-    assert!(!second_delete, "deleting a non-existent session must return false");
+    assert!(
+        !second_delete,
+        "deleting a non-existent session must return false"
+    );
 }
 
 #[test]
