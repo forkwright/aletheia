@@ -2169,6 +2169,14 @@ pub struct ServerConfig {
 
 ```rust
 pub enum ServerError {
+    /// Configuration could not be loaded at startup.
+    #[snafu(display("failed to load config from {}: {source}", path.display()))]
+    Config {
+        path: PathBuf,
+        #[snafu(source(from(taxis::error::Error, Box::new)))]
+        source: Box<taxis::error::Error>,
+    },
+
     /// Failed to open or initialize the session store.
     #[snafu(display("failed to open session store: {source}"))]
     SessionStore { source: mneme::error::Error },
@@ -2211,6 +2219,7 @@ pub enum ServerError {
 > # Errors
 > 
 > Returns [`ServerError::Validation`] if the instance directory layout is invalid.
+> Returns [`ServerError::Config`] if the config cascade cannot be loaded.
 > Returns [`ServerError::SessionStore`] if the session database cannot be opened.
 > Returns [`ServerError::Bind`] if the server cannot bind to the configured address.
 > Returns [`ServerError::Serve`] if the HTTP server encounters a fatal I/O error.

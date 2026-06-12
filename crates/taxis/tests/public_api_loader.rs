@@ -95,13 +95,13 @@ fn load_config_env_var_overrides_toml_value() {
 fn load_config_env_var_preserves_numeric_looking_string_leaf() {
     let mut jail = EnvJail::new();
     let root = seed_instance(&jail).to_path_buf();
-    jail.set_env("ALETHEIA_AGENTS__DEFAULTS__MODEL__PRIMARY", "+15551234567");
+    jail.set_env("ALETHEIA_AGENTS__DEFAULTS__MODEL__PRIMARY", "+05550100123");
 
     let oikos = Oikos::from_root(&root);
     let config = load_config(&oikos).unwrap();
     assert_eq!(
         config.agents.defaults.model_defaults.model.primary,
-        "+15551234567"
+        "+05550100123"
     );
 }
 
