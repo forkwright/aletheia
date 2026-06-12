@@ -404,26 +404,40 @@ Exposes `nous_turn_duration_seconds`, `anthropic_requests_total`, `http_requests
 
 ## Systemd service (Linux)
 
-A ready-to-use service template lives in `instance.example/services/aletheia.service`.
-It uses `%h` (systemd's `$HOME` specifier) so paths resolve automatically.
+A service template lives in `instance.example/services/aletheia.service`.
+It uses `%h` (systemd's `$HOME` specifier) so paths resolve automatically, but
+it is **not** copy-paste ready: the shipped template contains inline directive
+comments and references undefined environment variables (`${ALETHEIA_DATA_DIR}`,
+`${ALETHEIA_INSTANCE_DIR}`) that `systemd-analyze verify` will reject. Treat it
+as a starting point and customize it before enabling.
 
 ```bash
 # 1. Copy the template
 mkdir -p ~/.config/systemd/user
 cp instance.example/services/aletheia.service ~/.config/systemd/user/aletheia.service
 
-# 2. Adjust paths if needed (binary not at ~/.local/bin/, instance not at ~/aletheia/instance/)
-#    Edit ~/.config/systemd/user/aletheia.service and update ExecStart and ALETHEIA_ROOT.
+# 2. Review and edit the unit file
+#    - Move any inline comments to their own lines (systemd does not support
+#      inline comments on directive lines).
+#    - Replace ${ALETHEIA_DATA_DIR} and ${ALETHEIA_INSTANCE_DIR} with concrete
+#      paths, e.g. %h/aletheia/instance/data and %h/aletheia/instance, or
+#      define them in the EnvironmentFile loaded by the unit.
+#    - Adjust ExecStart if the binary is not at ~/.local/bin/aletheia or the
+#      instance is not at ~/aletheia/instance.
 
-# 3. Enable and start
+# 3. Verify the unit parses
+systemd-analyze verify ~/.config/systemd/user/aletheia.service
+
+# 4. Enable and start
 systemctl --user daemon-reload
 systemctl --user enable --now aletheia
 
-# 4. Persist across logout (run once per user)
+# 5. Persist across logout (run once per user)
 loginctl enable-linger
 ```
 
-The template sets `ALETHEIA_ROOT=%h/aletheia/instance` and loads an optional
+The template sets `ExecStart=%h/.local/bin/aletheia -r %h/aletheia/instance`
+(`-r` points the binary at the instance root) and loads an optional
 `EnvironmentFile` from `%h/aletheia/instance/config/env` (silently ignored if absent).
 If your API key is stored in `instance/config/credentials/anthropic.json` (written by
 `aletheia init`), no extra environment setup is needed.
@@ -448,10 +462,16 @@ aletheia health
 aletheia backup                     # create backup
 aletheia backup --list              # list available backups
 aletheia backup --prune --keep 5    # remove old backups
-aletheia backup --export-json       # export sessions as JSON
+aletheia backup verify <path>       # verify a backup snapshot
 ```
 
 Backups are stored in `instance/data/backups/`. Always back up before upgrading.
+
+The `--export-json` flag was removed during the SQLite-to-fjall migration
+(#3446, #4657). Session archives that are already JSON live under
+`instance/data/archive/sessions/`. The cron helper `scripts/backup-cron.sh`
+still references the removed flag and should not be installed until it is
+updated.
 
 ---
 

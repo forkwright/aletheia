@@ -52,12 +52,20 @@ aletheia --version
 Download the tarball from the [releases page](https://github.com/forkwright/aletheia/releases) instead of building from source:
 
 ```bash
-VERSION=v0.27.0
+VERSION=v0.30.0
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 tar xzf aletheia.tar.gz
 cd "aletheia-${VERSION}"
 sudo cp aletheia /usr/local/bin/
+```
+
+To use the latest release without hard-coding the version:
+
+```bash
+VERSION=$(curl -s https://api.github.com/repos/forkwright/aletheia/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
+curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
+  -o aletheia.tar.gz
 ```
 
 ---
@@ -235,7 +243,7 @@ nous_id = "pronoea"
 
 4. Restart the server. Send a message to your Signal number.
 
-See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for DM/group policies, allowlists, and multi-account setup.
+See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for the supported Signal account fields and multi-account setup. DM/group gating, mention requirements, read receipts, and message chunking are not enforced by the Aletheia runtime today; configure those behaviors in signal-cli directly.
 
 ---
 

@@ -56,24 +56,69 @@ Check `git log --oneline` or [GitHub releases](https://github.com/forkwright/ale
 ## Store migration
 
 Sessions now use a fjall-backed store. The pre-fjall SQLite session backend is
-historical; use the one-shot migration tool if you still have a legacy
-`sessions.db` file.
+historical. If you have a legacy SQLite `sessions.db` from aletheia 0.15.x, use
+the `aletheia-sessions-migrate` one-shot tool to move session history into a
+fresh fjall keyspace.
 
 The embedded Datalog engine (knowledge store) manages its own schema versioning internally.
 
 **Always back up before upgrading.** While migrations are tested, restoring from backup is the safest recovery path if something goes wrong.
 
-### Upgrading from <0.16 to >=0.16 (fjall session store)
+### Migrating a legacy SQLite `sessions.db` to fjall
 
-Version 0.16.0 changed the default session store backend from historical SQLite
-to fjall. Both backends use the same path (`data/sessions.db`), but the
-historical SQLite backend creates a file while fjall creates a directory.
-Upgrading without preparation causes a startup crash.
+The migrator `crates/aletheia-sessions-migrate` (binary `aletheia-sessions-migrate`)
+reads a v32 SQLite sessions database read-only and writes its contents to a new
+fjall directory that matches the layout used by current aletheia. It supports:
 
-`data/knowledge.fjall` may also be incompatible if it was created by an
-older fjall version (the error message will mention `InvalidTag(CompressionType)`).
+- `--dry-run` — inspect the source DB and report the migration plan without writing.
+- `--verify` — after migrating, sample rows and compare SHA-256 checksums of message bodies.
+- `--verify-only` — verify a previously written destination directory.
+- `--print-mapping` — print the SQLite → fjall field mapping.
 
-**Before deploying the new binary:**
+**Requirements and limits:**
+
+- Source DB must have `PRAGMA user_version = 32` (the last SQLite session schema).
+- Required tables must exist: `sessions`, `messages`, `usage`, `distillations`, `agent_notes`, `blackboard`.
+- Columns with no direct fjall equivalent (`thinking_enabled`, `thinking_budget`, `working_state`, `distillation_priming`) are preserved under a `migration_legacy` partition rather than dropped.
+- Messages whose parent session row is missing are recovered as synthesised `orphan-recovery` sessions.
+- The migrator does not migrate the knowledge store; `knowledge.fjall` must be created fresh or handled separately.
+
+**Migration workflow:**
+
+```bash
+# 1. Stop the service
+systemctl --user stop aletheia
+
+# 2. Back up the current instance directory
+cp -r instance instance-backup-$(date +%Y%m%d)
+
+# 3. Run a dry run to confirm the source is readable
+aletheia-sessions-migrate \
+  --source instance/data/pre-0.16-archive/sessions.db \
+  --dest instance/data/sessions.db.migrated \
+  --dry-run
+
+# 4. Migrate and verify
+aletheia-sessions-migrate \
+  --source instance/data/pre-0.16-archive/sessions.db \
+  --dest instance/data/sessions.db.migrated \
+  --verify
+
+# 5. Swap the migrated keyspace into place
+mv instance/data/sessions.db instance/data/sessions.db.pre-migration
+mv instance/data/sessions.db.migrated instance/data/sessions.db
+
+# 6. Start the service and check health
+systemctl --user start aletheia
+aletheia health
+```
+
+If verification fails, the migrator exits non-zero and leaves the destination
+untouched. Restore from the backup taken in step 2 and inspect the mismatch report.
+
+### Upgrading from <0.16 to >=0.16 (fjall session store) without migration
+
+If you do not need historical session data, you can start fresh instead:
 
 ```bash
 # Stop the service
@@ -85,9 +130,7 @@ mv instance/data/sessions.db* instance/data/pre-0.16-archive/
 mv instance/data/knowledge.fjall instance/data/pre-0.16-archive/
 ```
 
-The new binary will create fresh fjall stores on startup. Existing session
-history from historical SQLite is not automatically migrated; it is preserved in the
-archive directory for manual export if needed.
+The new binary will create fresh fjall stores on startup.
 
 ---
 

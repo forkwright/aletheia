@@ -31,6 +31,10 @@ Background tasks (extraction, distillation, skill analysis) are spawned into a `
 
 The manager's `health_cycle` pings actors and restarts dead ones with exponential backoff (`manager.rs:388-434`). Restart drains the old `JoinHandle` with a timeout (`manager.rs:494`). Panics during drain are caught as `JoinError` and logged; they do not propagate.
 
+### Manager health poller
+
+**Resolved:** `start_health_poller` (`manager.rs:631`) now returns a supervisor `JoinHandle`. It spawns an inner `health_cycle` poller and, if that task panics, logs the failure, increments a metric, waits a short backoff, and respawns the poller. Health checks therefore cannot stop permanently for all actors managed by this manager.
+
 ## Pylon Handlers
 
 ### Per-request failure isolation
@@ -45,7 +49,7 @@ The streaming handler spawns three concurrent tasks (`streaming.rs:281`, `525`, 
 
 ### Signal handler startup
 
-**Gap:** The SIGHUP reload task and shutdown signal future use `.expect()` on signal handler installation (`server.rs:365`, `413`, `419`). In a restricted container or when file descriptors are exhausted, this **panics the process** during startup.
+**Resolved:** `spawn_sighup_handler` (`server.rs:427`) and `shutdown_signal_with` (`server.rs:507`) now treat signal-installation failures as warnings and continue serving without that signal path. SIGHUP handler installation returning `None` simply disables config reload on signal; Ctrl+C or SIGTERM installation failures cause the corresponding future to pend forever rather than panic. The `.expect()` calls cited in the 2026-04 audit have been removed.
 
 ## Daemon Workers
 
@@ -96,8 +100,8 @@ See [Daemon Workers](#daemon-workers). Maintenance tasks inherit the same isolat
 The following components can turn a local failure into a process-wide crash:
 
 1. **Krites Datalog engine** - `panic!` on internal invariant violations during query planning and JSON serialization.
-2. **Pylon signal handler setup** - `.expect()` on signal installation; startup crash in restricted environments.
-3. **Nous manager health poller** - fire-and-forget task; if `health_cycle()` panics, health checks stop forever for all actors.
+2. ~~Pylon signal handler setup~~ - **resolved** (`server.rs:427`, `507`).
+3. ~~Nous manager health poller~~ - **resolved** (`manager.rs:631`).
 
 ## Summary Table
 
@@ -105,7 +109,7 @@ The following components can turn a local failure into a process-wide crash:
 |---|---|---|---|---|
 | Nous actor - normal turn | Pipeline panic caught as `JoinError` | Request | Actor continues, enter degraded mode if repeated | ✅ None |
 | Nous actor - cross-nous message | Pipeline panic caught as `JoinError` via `execute_turn_with_panic_boundary` | Request | Actor continues, enter degraded mode if repeated | ✅ None (resolved: `actor/mod.rs:470`) |
-| Nous manager health poller | `health_cycle()` panic kills spawned task silently | All actors managed | Supervisor restarts poller on failure | `manager.rs:547` fire-and-forget, no monitoring |
+| Nous manager health poller | Supervisor respawns panicked inner poller | All actors managed | Supervisor restarts poller on failure | ✅ None (resolved: `manager.rs:631`) |
 | Daemon task runner | `JoinError` caught per-task in `check_in_flight` | Task | Task disabled after 3 failures | ✅ None |
 | Daemon maintenance tasks | `spawn_blocking` panics caught as `JoinError` | Task | Same isolation as async tasks | ✅ None |
 | Session store | `tokio::sync::Mutex` - no poisoning | Request | Errors returned to caller | ✅ None |
@@ -137,9 +141,12 @@ The following components can turn a local failure into a process-wide crash:
 - `crates/nous/src/manager.rs:547` - `start_health_poller` spawns health task with no restart supervision.
 
 ### Pylon
-- `crates/pylon/src/server.rs:365` - `.expect("failed to install SIGHUP handler")`.
-- `crates/pylon/src/server.rs:413` - `.expect("failed to install ctrl+c handler")`.
-- `crates/pylon/src/server.rs:419` - `.expect("failed to install SIGTERM handler")`.
+- ~~`crates/pylon/src/server.rs:365` - `.expect("failed to install SIGHUP handler")`.~~ Resolved: handler now returns `None` on failure.
+- ~~`crates/pylon/src/server.rs:413` - `.expect("failed to install ctrl+c handler")`.~~ Resolved: Ctrl+C failure logs a warning and the future pends.
+- ~~`crates/pylon/src/server.rs:419` - `.expect("failed to install SIGTERM handler")`.~~ Resolved: SIGTERM failure logs a warning and the future pends.
+
+### Nous
+- `crates/nous/src/manager.rs:631` - `start_health_poller` supervises the inner poller and respawns it on panic (resolved).
 
 ### Daemon
 - `crates/daemon/src/runner/inflight.rs:92` - `JoinError` from panics caught and logged.

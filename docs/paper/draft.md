@@ -143,11 +143,11 @@ comm[labels, entity_id] <~ CommunityDetectionLouvain(edges_w[])
 
 ### 3.3 Kernel-level sandbox (organon)
 
-Aletheia executes tools in child processes with three layers of kernel enforcement, applied via `pre_exec` between `fork` and `exec`:
+Aletheia executes external-process tools in child processes with three layers of kernel enforcement, applied via `pre_exec` between `fork` and `exec` on Linux:
 
-1. **Landlock LSM** (Linux 5.13+) restricts filesystem access. The policy grants read, write, and execute permissions to specific paths. Landlock ABI v5 is probed at startup. If the kernel lacks Landlock, the system falls back to permissive mode or blocks execution based on operator configuration.
+1. **Landlock LSM** (Linux 5.13+) restricts filesystem access. The policy grants read, write, and execute permissions to specific paths. Landlock ABI v5 is probed at startup. If the kernel lacks Landlock, behavior depends on the configured enforcement level.
 
-2. **seccomp BPF** blocks dangerous syscalls. A BPF filter denies `ptrace`, `mount`, `umount2`, `reboot`, `kexec_load`, `init_module`, `delete_module`, `finit_module`, `pivot_root`, and `chroot`. In permissive mode, violations are logged; in enforcing mode, they return `EPERM`.
+2. **seccomp BPF** blocks dangerous syscalls. A BPF filter denies `ptrace`, `mount`, `umount2`, `reboot`, `kexec_load`, `init_module`, `delete_module`, `finit_module`, `pivot_root`, and `chroot`. In enforcing mode violations return `EPERM`; in permissive mode they are logged and allowed.
 
 3. **Network namespaces** isolate egress. `unshare(CLONE_NEWUSER | CLONE_NEWNET)` creates a namespace with only loopback, blocking all outbound connections without root. If unprivileged namespaces are disabled, a seccomp fallback blocks `socket(AF_INET)` and `socket(AF_INET6)`.
 
@@ -162,7 +162,7 @@ extra_read_paths = ["/data/shared"]
 extra_write_paths = ["/tmp/workspace"]
 ```
 
-Tool execution in the agent loop (`nous → organon`) applies the sandbox to every external process automatically. Built-in tools that do not spawn processes (e.g., HTTP client, file read) run inside the main process with their own restrictions.
+The compiled default is `enabled = true` with `enforcement = "permissive"` and `egress = "allow"`, so new installations log sandbox violations instead of blocking them and do not restrict outbound network. Operators who want hard isolation must set `enforcement = "enforcing"` and `egress = "deny"` (or `egress = "allowlist"`). Setting `enabled = false` disables the sandbox entirely. Tool execution in the agent loop applies the sandbox only when it is enabled and only to external-process tools; built-in tools that do not spawn processes run inside the main process with their own restrictions. On macOS and Windows the sandbox machinery compiles but is a no-op.
 
 Comparison to alternatives: OpenAI Codex [5] uses a similar sandbox but inside a containerized environment with heavier orchestration. NVIDIA OpenShell [6] applies seccomp and namespaces but focuses on shell command isolation. Aletheia's sandbox is lighter (no containers, no root) and integrated directly into the agent turn loop.
 

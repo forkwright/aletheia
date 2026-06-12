@@ -36,6 +36,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [bindings](#bindings)
 - [embedding](#embedding)
 - [credential](#credential)
+- [providers](#providers)
 - [provider capability matrix](#provider-capability-matrix)
 - [data](#data)
 - [nous_behavior](#nous_behavior)
@@ -262,11 +263,6 @@ clock_skew_leeway_secs = 30
 | `http_port` | u16 | `8080` | signal-cli JSON-RPC port |
 | `cli_path` | string | -- | Path to signal-cli binary (auto-detected if unset) |
 | `auto_start` | bool | `true` | Auto-start receive loop |
-| `dm_policy` | string | `"contacts"` | DM access: `"contacts"` (known contacts only), `"open"` (anyone), `"allowlist"` |
-| `group_policy` | string | `"allowlist"` | Group access: `"open"`, `"allowlist"` |
-| `require_mention` | bool | `true` | Require @mention in groups |
-| `send_read_receipts` | bool | `true` | Send read receipts |
-| `text_chunk_limit` | u32 | `2000` | Max chars per outgoing message chunk |
 
 ```toml
 [channels.signal]
@@ -276,16 +272,19 @@ enabled = true
 account = "+15551234567"
 http_host = "localhost"
 http_port = 8080
-dm_policy = "contacts"
-group_policy = "allowlist"
-require_mention = true
+auto_start = true
 ```
+
+The following fields are **not implemented** in the current runtime: `dm_policy`, `group_policy`, `require_mention`, `send_read_receipts`, and `text_chunk_limit`. They are accepted by the typed config but are not read by `build_signal_provider`; inbound Signal routing and message handling are controlled by the channel bindings (see [bindings](#bindings)) and by signal-cli's own settings until these policy fields are wired.
 
 ---
 
 ## bindings
 
-Array of routing rules mapping channel sources to agents. Evaluated in order; first match wins.
+Array of routing rules mapping channel sources to agents. The Agora router
+uses a fixed specificity order; it does **not** use declaration order or first
+match. The order of `[[bindings]]` entries in the config file does not affect
+routing.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -297,16 +296,28 @@ Array of routing rules mapping channel sources to agents. Evaluated in order; fi
 ```toml
 [[bindings]]
 channel = "signal"
-source = "+15559876543"
-nous_id = "research"
+source = "*"
+nous_id = "main"
 
 [[bindings]]
 channel = "signal"
-source = "*"
-nous_id = "main"
+source = "+15559876543"
+nous_id = "research"
 ```
 
-More specific bindings should appear first.
+### Routing precedence
+
+The router resolves each inbound message in the following order (`crates/agora/src/router.rs`):
+
+1. **Group binding** — exact match on `channel` + `group_id`.
+2. **Source binding** — exact match on `channel` + sender/source.
+3. **Channel default** — `channel` + `source = "*"`.
+4. **Global default** — the agent configured with `default: true`.
+5. **No match** — message is dropped.
+
+A wildcard `source = "*"` entry before an exact source entry does **not** win;
+the exact source binding always takes precedence. Use the most specific binding
+you need and rely on the fixed order above.
 
 ---
 
@@ -348,16 +359,55 @@ claude_code_credentials = "~/.claude/.credentials.json"
 
 ---
 
-## provider capability matrix
+## providers
 
-Aletheia can route completions through either the native Anthropic provider or seat-bridged CLI providers. The seat-bridged providers run the CLI's own agentic loop, so `request.tools` are not translated into Aletheia tool execution.
+`[[providers]]` entries declare available LLM providers declaratively. The runtime registers them in list order; model routing picks the first provider that advertises the requested model. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and registered in `crates/aletheia/src/runtime/setup.rs`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Operator-facing label, must be unique across the list. |
+| `providerType` | string | yes | `anthropic`, `openai`, `openai-compatible`, `claude-code`, or `codex-oauth`. |
+| `apiFamily` | string | no | For `openai`: `responses` (default) or `chat-completions`. For `openai-compatible`: `chat-completions` (default). Ignored for other kinds. |
+| `baseUrl` | string | no | HTTP base URL. Required for `openai-compatible`; optional for `anthropic` (defaults to `https://api.anthropic.com`); ignored for subprocess adapters. |
+| `apiKeyEnv` | string | no | Environment variable holding the API key. Read at startup via `std::env::var`. Optional for loopback providers without auth. |
+| `deploymentTarget` | string | no | `cloud` (default), `local-hosted`, or `embedded`. Drives the fact-sensitivity filter and air-gapped mode. |
+| `models` | string[] | no | Model identifiers this provider advertises. The first provider in list order claiming a model wins. |
+
+```toml
+[[providers]]
+name = "anthropic-cloud"
+providerType = "anthropic"
+apiKeyEnv = "ANTHROPIC_API_KEY"
+deploymentTarget = "cloud"
+models = ["claude-sonnet-4-6"]
+
+[[providers]]
+name = "openai-cloud"
+providerType = "openai"
+apiKeyEnv = "OPENAI_API_KEY"
+apiFamily = "responses"
+deploymentTarget = "cloud"
+models = ["gpt-5.3-codex"]
+
+[[providers]]
+name = "local-llama"
+providerType = "openai-compatible"
+baseUrl = "http://127.0.0.1:8088/v1"
+deploymentTarget = "embedded"
+models = ["llama3.1-70b"]
+```
+
+### Provider capability matrix
 
 | Provider path | Credential source | Simple chat + recall | Aletheia organon tool-loop | Notes |
 |---|---|---|---|---|
-| Native Anthropic provider | `ANTHROPIC_API_KEY` | yes | yes | Serializes `request.tools` and parses `ToolUse` blocks. |
-| Claude Code subprocess (`cc`) | Local Claude Code OAuth seat; no API key | yes | no | Runs `claude -p`; tools stay inside the CLI's own loop. |
-| Codex subprocess (`codex`) | Local Codex seat; no API key | yes | no | Runs `codex exec`; tools stay inside the CLI's own loop. |
-| Kimi subprocess (`kimi`) | Local Kimi seat; no API key | yes | no | Runs `kimi`; tools stay inside the CLI's own loop. |
+| Native Anthropic provider | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` | yes | yes | Messages API. Declarative `anthropic` entries require `apiKeyEnv` to avoid double-registering the first-party provider. |
+| OpenAI cloud (`openai`) | `OPENAI_API_KEY` | yes | yes | First-party `/v1/responses` by default; set `apiFamily = "chat-completions"` for the legacy endpoint. |
+| OpenAI-compatible local/third-party (`openai-compatible`) | Optional (`apiKeyEnv`) | yes | yes | `/v1/chat/completions` wire format for llama.cpp, ollama, vllm, and compatible proxies. |
+| Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); registered via the credential chain, declarative entries are accepted but skipped by the registry to avoid duplicates. |
+| Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); registered via the credential chain, declarative entries are accepted but do not change startup behavior. |
+
+The `aletheia add-nous` scaffolding command currently validates only `anthropic` and `openai` provider strings and checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Other provider kinds must be configured manually in `aletheia.toml`.
 
 ---
 
@@ -437,7 +487,23 @@ still belong under `agents.defaults.tool_timeouts`.
 
 ## maintenance
 
-Background maintenance tasks. All run automatically when the server is running, and can be triggered via `aletheia maintenance run <task>`.
+Background maintenance tasks. Some run automatically when the server is running; others are opt-in or not yet implemented. Tasks can also be triggered manually via `aletheia maintenance run <task>`.
+
+### Always-on maintenance (enabled by default)
+
+| Task | Config section | Default | Schedule |
+|------|----------------|---------|----------|
+| Trace rotation | `maintenance.trace_rotation` | `enabled = true` | Cron |
+| Drift detection | `maintenance.drift_detection` | `enabled = true` | Cron |
+| DB size monitoring | `maintenance.db_monitoring` | `enabled = true` | Cron |
+
+### Opt-in maintenance (disabled by default)
+
+| Task | Config section | Default | Schedule |
+|------|----------------|---------|----------|
+| Retention enforcement | `maintenance.retention` | `enabled = false` | Cron |
+| Knowledge maintenance | `maintenance.knowledge_maintenance_enabled` | `false` | see below |
+| Serendipity discovery | `maintenance.knowledge_maintenance_serendipity` | `enabled = false` | Cron |
 
 ### maintenance.trace_rotation
 
@@ -473,11 +539,40 @@ Background maintenance tasks. All run automatically when the server is running, 
 
 ### maintenance.knowledge_maintenance_enabled
 
+`knowledge_maintenance_enabled` is a top-level boolean switch (not a table) that
+gates all scheduled knowledge-maintenance tasks. It defaults to `false`.
+
+When set to `true` **and** a knowledge executor is available, the daemon
+registers the following implemented tasks (`crates/daemon/src/runner/registration.rs`):
+
+| Task ID | Cadence | Purpose |
+|---------|---------|---------|
+| `decay-refresh` | every 4 hours | Refresh temporal decay scores |
+| `entity-dedup` | every 6 hours | Merge duplicate knowledge graph entities |
+| `graph-recompute` | every 8 hours | Recompute PageRank / centrality scores |
+| `skill-decay` | daily at 06:00 | Retire stale skills |
+| `derived-facts-materialize` | every 6 hours | Materialize derived Datalog rules |
+
+The following tasks are **not implemented or scheduled** today; calling them
+via `aletheia maintenance run` returns an explicit "not scheduled" error
+(`crates/aletheia/src/knowledge_maintenance.rs`):
+
+- `embedding-refresh` — requires an `EmbeddingProvider` bridge.
+- `knowledge-gc` / edge pruning — no concrete store contract.
+- `index-maintenance` — no concrete store contract.
+- `graph-health-check` — no concrete diagnostic contract.
+
+### maintenance.knowledge_maintenance_serendipity
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `knowledge_maintenance_enabled` | bool | `false` | Whether background knowledge graph maintenance tasks run (entity deduplication, edge pruning, embedding refresh) |
+| `enabled` | bool | `false` | Whether serendipity discovery maintenance runs |
+| `cadence` | string | `"0 0 7 * * *"` | Cron expression for the task (daily at 07:00 UTC) |
 
 ```toml
+[maintenance]
+knowledge_maintenance_enabled = true
+
 [maintenance.trace_rotation]
 enabled = true
 max_age_days = 7
@@ -492,6 +587,10 @@ alert_threshold_mb = 1000
 
 [maintenance.retention]
 enabled = true
+
+[maintenance.knowledge_maintenance_serendipity]
+enabled = true
+cadence = "0 0 7 * * *"
 ```
 
 ---

@@ -276,12 +276,15 @@ If refresh fails (e.g. revoked grant), re-authenticate:
 ## Static API key rotation
 
 1. Generate a new key in the Anthropic console.
-2. Update `instance/config/aletheia.toml`:
+2. Set the environment variable `ANTHROPIC_API_KEY`, or add a declarative provider entry in `instance/config/aletheia.toml`:
    ```toml
-   [provider]
-   api_key = "sk-ant-..."
+   [[providers]]
+   name = "anthropic-cloud"
+   providerType = "anthropic"
+   apiKeyEnv = "ANTHROPIC_API_KEY"
+   deploymentTarget = "cloud"
+   models = ["claude-sonnet-4-6"]
    ```
-   Or set the environment variable `ANTHROPIC_API_KEY`.
 3. Restart the service: `systemctl --user restart aletheia`
 4. Confirm: `aletheia health`
 
@@ -384,7 +387,7 @@ aletheia backup --prune --keep 5 --yes    # skip confirmation
 
 ## Export sessions as JSON (before deletion)
 
-No built-in JSON export exists since the SQLite-to-fjall migration (#3446). Archived sessions are already JSON in `instance/data/archive/sessions/`.
+No built-in JSON export exists since the SQLite-to-fjall migration (#3446). Archived sessions are already JSON in `instance/data/archive/sessions/`. The `aletheia backup --export-json` command referenced in older docs and in `scripts/backup-cron.sh` is removed; do not use it.
 
 ## Verify backup integrity
 
@@ -743,7 +746,7 @@ The session history remains in the archive. Start a fresh session for new work.
 
 ### Configuration
 
-The distillation model defaults to the workspace-wide `koina::defaults::DEFAULT_MODEL` (currently `claude-sonnet-4-6`; the single source of truth, see #4235). To use a cheaper model for summaries, set `distillation_model` under `[agents.defaults]` in `instance/config/aletheia.toml`. This field is hot-reloadable (no restart needed).
+The distillation model defaults to the workspace-wide `koina::defaults::DEFAULT_MODEL` (currently `claude-sonnet-4-6`; the single source of truth, see #4235). There is no `distillation_model` config field under `[agents.defaults]` in the current typed config; per-agent model selection uses the `model.primary` / `model.fallbacks` fields documented in `docs/CONFIGURATION.md#agents`.
 
 ---
 
