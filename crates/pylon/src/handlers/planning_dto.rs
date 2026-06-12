@@ -81,6 +81,12 @@ pub(crate) struct VerificationResult {
     pub(crate) requirements: Vec<RequirementVerification>,
     /// ISO 8601 timestamp of the last verification run.
     pub(crate) last_verified_at: String,
+    /// Project visibility label surfaced for privacy review.
+    pub(crate) visibility: String,
+    /// Classification label surfaced for privacy review.
+    pub(crate) classification: String,
+    /// True when evidence and gap detail have been redacted.
+    pub(crate) redacted: bool,
 }
 
 /// Request body accepted by `POST .../verification/refresh`.

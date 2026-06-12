@@ -97,6 +97,17 @@ const TAB_INACTIVE: &str = "\
                 border-color var(--transition-quick);\
 ";
 
+const TAB_DISABLED: &str = "\
+    padding: var(--space-2) var(--space-4); \
+    border: 1px solid transparent; \
+    border-radius: var(--radius-md) 6px 0 0; \
+    font-size: var(--text-sm); \
+    color: var(--text-muted); \
+    background: transparent; \
+    opacity: 0.6; \
+    cursor: not-allowed;\
+";
+
 const TAB_CONTENT_STYLE: &str = "\
     flex: 1; \
     overflow: hidden;\
@@ -117,17 +128,10 @@ const BADGE_STYLE: &str = "\
 #[component]
 pub(crate) fn PlanningProject(project_id: String) -> Element {
     let project_state = use_signal(|| FetchState::NotAvailable);
-    let mut active_tab = use_signal(|| ActiveTab::Verification);
+    let active_tab = use_signal(|| ActiveTab::Verification);
 
     let tab = *active_tab.read();
-    let tab_label = match tab {
-        ActiveTab::Requirements => "Requirements",
-        ActiveTab::Roadmap => "Roadmap",
-        ActiveTab::Checkpoints => "Checkpoints",
-        ActiveTab::Verification => "Verification",
-        ActiveTab::Discussion => "Discussion",
-        ActiveTab::Execution => "Execution",
-    };
+    let active_tab_label = tab_label(tab);
 
     rsx! {
         div {
@@ -149,7 +153,7 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                         span { style: "color: var(--text-secondary);", "{project_id}" }
                     },
                 }
-                span { " / {tab_label}" }
+                span { " / {active_tab_label}" }
             }
 
             match &*project_state.read() {
@@ -199,36 +203,12 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
 
             div {
                 style: "{TAB_BAR_STYLE}",
-                button {
-                    style: if tab == ActiveTab::Requirements { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
-                    onclick: move |_| active_tab.set(ActiveTab::Requirements),
-                    "Requirements"
-                }
-                button {
-                    style: if tab == ActiveTab::Roadmap { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
-                    onclick: move |_| active_tab.set(ActiveTab::Roadmap),
-                    "Roadmap"
-                }
-                button {
-                    style: if tab == ActiveTab::Checkpoints { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
-                    onclick: move |_| active_tab.set(ActiveTab::Checkpoints),
-                    "Checkpoints"
-                }
-                button {
-                    style: if tab == ActiveTab::Verification { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
-                    onclick: move |_| active_tab.set(ActiveTab::Verification),
-                    "Verification"
-                }
-                button {
-                    style: if tab == ActiveTab::Discussion { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
-                    onclick: move |_| active_tab.set(ActiveTab::Discussion),
-                    "Discussion"
-                }
-                button {
-                    style: if tab == ActiveTab::Execution { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
-                    onclick: move |_| active_tab.set(ActiveTab::Execution),
-                    "Execution"
-                }
+                {render_tab(ActiveTab::Requirements, active_tab)}
+                {render_tab(ActiveTab::Roadmap, active_tab)}
+                {render_tab(ActiveTab::Checkpoints, active_tab)}
+                {render_tab(ActiveTab::Verification, active_tab)}
+                {render_tab(ActiveTab::Discussion, active_tab)}
+                {render_tab(ActiveTab::Execution, active_tab)}
             }
 
             div {
@@ -255,5 +235,80 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                 }
             }
         }
+    }
+}
+
+#[must_use]
+fn tab_label(tab: ActiveTab) -> &'static str {
+    match tab {
+        ActiveTab::Requirements => "Requirements",
+        ActiveTab::Roadmap => "Roadmap",
+        ActiveTab::Checkpoints => "Checkpoints",
+        ActiveTab::Verification => "Verification",
+        ActiveTab::Discussion => "Discussion",
+        ActiveTab::Execution => "Execution",
+    }
+}
+
+/// Only the verification API is currently wired on pylon.
+#[must_use]
+fn is_tab_supported(tab: ActiveTab) -> bool {
+    matches!(tab, ActiveTab::Verification)
+}
+
+/// Render a tab button. Supported tabs are clickable; placeholder tabs are disabled.
+fn render_tab(tab: ActiveTab, mut active_tab: Signal<ActiveTab>) -> Element {
+    let label = tab_label(tab);
+    let is_active = *active_tab.read() == tab;
+
+    if is_tab_supported(tab) {
+        rsx! {
+            button {
+                style: if is_active { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
+                onclick: move |_| active_tab.set(tab),
+                "{label}"
+            }
+        }
+    } else {
+        rsx! {
+            button {
+                style: "{TAB_DISABLED}",
+                disabled: true,
+                "{label}"
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ActiveTab, is_tab_supported, tab_label};
+
+    #[test]
+    fn verification_tab_is_supported() {
+        assert!(is_tab_supported(ActiveTab::Verification));
+    }
+
+    #[test]
+    fn non_verification_tabs_are_disabled() {
+        assert!(!is_tab_supported(ActiveTab::Requirements));
+        assert!(!is_tab_supported(ActiveTab::Roadmap));
+        assert!(!is_tab_supported(ActiveTab::Checkpoints));
+        assert!(!is_tab_supported(ActiveTab::Discussion));
+        assert!(!is_tab_supported(ActiveTab::Execution));
+    }
+
+    #[test]
+    fn tab_labels_are_distinct() {
+        let tabs = [
+            ActiveTab::Requirements,
+            ActiveTab::Roadmap,
+            ActiveTab::Checkpoints,
+            ActiveTab::Verification,
+            ActiveTab::Discussion,
+            ActiveTab::Execution,
+        ];
+        let labels: std::collections::HashSet<_> = tabs.iter().map(|t| tab_label(*t)).collect();
+        assert_eq!(labels.len(), tabs.len(), "all tab labels must be distinct");
     }
 }

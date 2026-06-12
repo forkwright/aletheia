@@ -592,12 +592,26 @@ pub struct DiscoveryConfig {
     pub lan_hostnames: Vec<String>,
     /// Tailscale IPs to probe directly.
     pub tailscale_ips: Vec<String>,
+    /// Base URLs discovered from environment variables.
+    env_base_urls: Vec<String>,
+    /// LAN hostnames discovered from environment variables.
+    env_lan_hostnames: Vec<String>,
+    /// Tailscale IPs discovered from environment variables.
+    env_tailscale_ips: Vec<String>,
+    /// Base URLs read from the known-hosts file.
+    known_hosts_base_urls: Vec<String>,
+    /// LAN hostnames read from the known-hosts file.
+    known_hosts_lan_hostnames: Vec<String>,
+    /// Tailscale IPs read from the known-hosts file.
+    known_hosts_tailscale_ips: Vec<String>,
 }
 ```
 
 ```rust
 impl DiscoveryConfig {
     pub fn new () -> Self;
+    pub fn from_env () -> Self;
+    pub fn from_env_and_known_hosts () -> Self;
     pub fn with_lan_hostnames <I, S> (mut self, hostnames: I) -> Self where
         I: IntoIterator<Item = S>,
         S: Into<String>,;
@@ -607,6 +621,7 @@ impl DiscoveryConfig {
     pub fn with_base_urls <I, S> (mut self, urls: I) -> Self where
         I: IntoIterator<Item = S>,
         S: Into<String>,;
+    pub fn with_known_hosts_file <P: AsRef<Path>> (mut self, path: P) -> Self;
 }
 ```
 

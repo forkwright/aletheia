@@ -128,8 +128,10 @@ pub(crate) fn ConnectView(
             if *user_edited_url.peek() {
                 return;
             }
-            let discovery_config =
-                skene::discovery::DiscoveryConfig::default().with_base_urls(persisted_url);
+            let mut discovery_config = skene::discovery::DiscoveryConfig::from_env_and_known_hosts();
+            if let Some(url) = persisted_url {
+                discovery_config.base_urls.push(url);
+            }
             let discovered = skene::discovery::discover_server_with_config(&discovery_config).await;
             // NOTE: Re-checked after the await -- the user may have typed while
             // the probe was in flight, and their value wins.
@@ -186,9 +188,10 @@ pub(crate) fn ConnectView(
             ..ConnectionConfig::default()
         };
 
-        // WHY: Persist config to disk so settings survive app restarts.
+        // WHY: Persist the active server to the canonical settings store so
+        // the connection survives app restarts.
         if let Err(e) = config::save(&new_config) {
-            tracing::warn!("failed to save config: {e}");
+            tracing::warn!("failed to save active server: {e}");
         }
 
         // NOTE: Update the shared config signal so other components see the new values.
@@ -259,18 +262,7 @@ pub(crate) fn ConnectView(
                             token_input.set(evt.value().clone());
                         },
                     }
-                    if !token_input.read().is_empty() {
-                        div {
-                            style: "\
-                                font-size: var(--text-xs); \
-                                color: var(--status-warning); \
-                                margin-top: var(--space-1); \
-                                line-height: 1.4;\
-                            ",
-                            "Token will be stored in plaintext (~/.config/aletheia/desktop.toml, mode 0600). \
-                             OS keyring integration is planned but not yet implemented."
-                        }
-                    }
+
                 }
 
                 if is_connecting {

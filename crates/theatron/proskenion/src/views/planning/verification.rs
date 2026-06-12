@@ -41,6 +41,21 @@ const SECTION_LABEL: &str = "\
     margin: var(--space-4) 0 var(--space-2);\
 ";
 
+const PRIVACY_ROW: &str = "\
+    display: flex; \
+    flex-wrap: wrap; \
+    gap: var(--space-2); \
+    margin-bottom: var(--space-3);\
+";
+
+const PRIVACY_BADGE: &str = "\
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-sm); \
+    padding: 2px var(--space-2); \
+    color: var(--text-secondary); \
+    font-size: var(--text-xs); \
+";
+
 const COVERAGE_SECTION: &str = "\
     background: var(--bg-surface); \
     border: 1px solid var(--border); \
@@ -277,6 +292,9 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                         .as_ref()
                         .map(|r| r.last_verified_at.as_str())
                         .unwrap_or("unknown");
+                    let (visibility, classification, redacted) =
+                        verification_privacy(store.result.as_ref());
+                    let redaction = redaction_label(redacted);
                     let reqs: Vec<RequirementVerification> = store
                         .result
                         .as_ref()
@@ -287,6 +305,12 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                             style: "flex: 1; overflow-y: auto;",
                             div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--space-3);",
                                 "Last verified: {last_verified}"
+                            }
+                            div {
+                                style: "{PRIVACY_ROW}",
+                                span { style: "{PRIVACY_BADGE}", "Visibility: {visibility}" }
+                                span { style: "{PRIVACY_BADGE}", "Classification: {classification}" }
+                                span { style: "{PRIVACY_BADGE}", "{redaction}" }
                             }
 
                             div {
@@ -397,9 +421,30 @@ fn reverify_failure_message(status: u16) -> (&'static str, &'static str) {
     }
 }
 
+fn verification_privacy(result: Option<&VerificationResult>) -> (String, String, bool) {
+    result.map_or_else(
+        || ("private".to_string(), "restricted".to_string(), true),
+        |result| {
+            (
+                result.visibility.clone(),
+                result.classification.clone(),
+                result.redacted,
+            )
+        },
+    )
+}
+
+fn redaction_label(redacted: bool) -> &'static str {
+    if redacted {
+        "Details redacted"
+    } else {
+        "Details visible"
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::reverify_failure_message;
+    use super::{redaction_label, reverify_failure_message, verification_privacy};
 
     #[test]
     fn reverify_failure_message_marks_missing_endpoint_unavailable() {
@@ -416,5 +461,19 @@ mod tests {
         let (title, body) = reverify_failure_message(500);
         assert_eq!(title, "Re-verify failed");
         assert!(body.contains("returned an error"));
+    }
+
+    #[test]
+    fn redaction_label_tracks_privacy_state() {
+        assert_eq!(redaction_label(true), "Details redacted");
+        assert_eq!(redaction_label(false), "Details visible");
+    }
+
+    #[test]
+    fn privacy_defaults_to_restricted_when_result_missing() {
+        let (visibility, classification, redacted) = verification_privacy(None);
+        assert_eq!(visibility, "private");
+        assert_eq!(classification, "restricted");
+        assert!(redacted);
     }
 }

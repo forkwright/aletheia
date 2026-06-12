@@ -1,11 +1,15 @@
-//! Settings config persistence: server list, appearance, keybindings.
+//! Settings config persistence: active server, server list, appearance, keybindings.
 //!
 //! Reads and writes `~/.config/aletheia-desktop/settings.toml` using TOML
-//! serialization. The file is restricted to owner-only access (0o600).
+//! serialization. This is the canonical owner for desktop connection settings;
+//! `services::config` is a compatibility/migration facade for legacy
+//! `~/.config/aletheia/desktop.toml` profiles and notification preferences.
+//! The file is restricted to owner-only access (0o600).
 
 use std::collections::HashMap;
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt as _;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
@@ -250,17 +254,39 @@ impl SettingsConfig {
     }
 }
 
-// --- I/O functions ---
+// --- Path helpers ---
 
-fn settings_path() -> Result<std::path::PathBuf, SettingsConfigError> {
-    let dir = dirs::config_dir().ok_or(SettingsConfigError::NoConfigDir)?;
-    Ok(dir.join("aletheia-desktop").join("settings.toml"))
+fn settings_dir_from(base: &Path) -> PathBuf {
+    base.join("aletheia-desktop")
 }
 
-/// Whether this is the first run (no settings file exists yet).
+fn settings_path_from(base: &Path) -> PathBuf {
+    settings_dir_from(base).join("settings.toml")
+}
+
+fn legacy_config_path_from(base: &Path) -> PathBuf {
+    base.join("aletheia").join("desktop.toml")
+}
+
+// --- First-run detection ---
+
+/// Whether this is the first run (no settings file or legacy config exists yet).
+///
+/// A clean profile has neither `~/.config/aletheia-desktop/settings.toml` nor
+/// `~/.config/aletheia/desktop.toml`. Profiles with a legacy desktop.toml are
+/// treated as returning users and are migrated on first load.
 pub(crate) fn is_first_run() -> bool {
-    settings_path().map_or(true, |p| !p.exists())
+    let Some(base) = dirs::config_dir() else {
+        return true;
+    };
+    is_first_run_in(&base)
 }
+
+pub(crate) fn is_first_run_in(base: &Path) -> bool {
+    !settings_path_from(base).exists() && !legacy_config_path_from(base).exists()
+}
+
+// --- I/O functions ---
 
 /// Load settings from disk.
 ///
@@ -268,7 +294,12 @@ pub(crate) fn is_first_run() -> bool {
 ///
 /// Returns an error if the file exists but cannot be read or parsed.
 pub(crate) fn load() -> Result<SettingsConfig, SettingsConfigError> {
-    let path = settings_path()?;
+    let base = dirs::config_dir().ok_or(SettingsConfigError::NoConfigDir)?;
+    load_in(&base)
+}
+
+pub(crate) fn load_in(base: &Path) -> Result<SettingsConfig, SettingsConfigError> {
+    let path = settings_path_from(base);
     let contents = std::fs::read_to_string(&path).context(ReadFileSnafu)?;
     toml::from_str(&contents).context(TomlParseSnafu)
 }
@@ -280,7 +311,15 @@ pub(crate) fn load() -> Result<SettingsConfig, SettingsConfigError> {
 /// Returns an error if the directory cannot be created or the file cannot
 /// be written.
 pub(crate) fn save(config: &SettingsConfig) -> Result<(), SettingsConfigError> {
-    let path = settings_path()?;
+    let base = dirs::config_dir().ok_or(SettingsConfigError::NoConfigDir)?;
+    save_in(config, &base)
+}
+
+pub(crate) fn save_in(
+    config: &SettingsConfig,
+    base: &Path,
+) -> Result<(), SettingsConfigError> {
+    let path = settings_path_from(base);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).context(CreateDirSnafu)?;
     }
@@ -297,18 +336,30 @@ pub(crate) fn save(config: &SettingsConfig) -> Result<(), SettingsConfigError> {
 
 /// Load settings from disk, falling back to defaults on any error.
 ///
-/// On first launch (no settings file), writes sensible defaults to disk
-/// silently -- a missing config on first run is expected, not exceptional.
+/// On first launch (no settings file), returns defaults *without* writing a
+/// file. Writing a default settings file before first-run detection would
+/// cause clean profiles to skip the setup wizard.
 pub(crate) fn load_or_default() -> SettingsConfig {
     if is_first_run() {
-        let config = SettingsConfig::default();
-        if let Err(e) = save(&config) {
-            tracing::warn!("failed to write default settings on first launch: {e}");
-        }
-        return config;
+        return SettingsConfig::default();
     }
 
     match load() {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::warn!("failed to load settings config, using defaults: {e}");
+            SettingsConfig::default()
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn load_or_default_in(base: &Path) -> SettingsConfig {
+    if is_first_run_in(base) {
+        return SettingsConfig::default();
+    }
+
+    match load_in(base) {
         Ok(config) => config,
         Err(e) => {
             tracing::warn!("failed to load settings config, using defaults: {e}");
@@ -331,11 +382,79 @@ pub(crate) fn save_state(
     }
 }
 
+pub(crate) fn upsert_active_server_in(
+    base: &Path,
+    server_url: String,
+    auth_token: Option<String>,
+) -> Result<(), SettingsConfigError> {
+    let settings_path = settings_path_from(base);
+    let mut config = if settings_path.exists() {
+        load_in(base)?
+    } else {
+        SettingsConfig::default()
+    };
+    let mut store = config.server_store();
+
+    let existing_id = store
+        .servers
+        .iter()
+        .find(|s| s.url == server_url)
+        .map(|s| s.id.clone());
+
+    if let Some(id) = existing_id {
+        if let Some(entry) = store.servers.iter_mut().find(|s| s.id == id) {
+            entry.auth_token = auth_token;
+        }
+        store.set_active(&id);
+    } else {
+        let id = unique_server_id(&store);
+        store.servers.push(ServerEntry {
+            id: id.clone(),
+            name: "My Aletheia".to_string(),
+            url: server_url,
+            auth_token,
+            last_connected: None,
+        });
+        store.set_active(&id);
+    }
+
+    config.apply_server_store(&store);
+    save_in(&config, base)
+}
+
+fn unique_server_id(store: &ServerConfigStore) -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let base_id = format!("srv_{ms:013x}");
+    if !store.servers.iter().any(|entry| entry.id == base_id) {
+        return base_id;
+    }
+
+    let mut suffix = 1;
+    loop {
+        let id = format!("{base_id}_{suffix}");
+        if !store.servers.iter().any(|entry| entry.id == id) {
+            return id;
+        }
+        suffix += 1;
+    }
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
     use crate::state::settings::{AppearanceSettings, KeybindingStore, ServerConfigStore};
+
+    fn temp_base() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().to_path_buf();
+        (dir, base)
+    }
 
     #[test]
     fn appearance_round_trips_via_serialized_form() {
@@ -439,5 +558,95 @@ mod tests {
         assert_eq!(restored.appearance.density, "comfortable");
         assert_eq!(restored.appearance.accent_color, "#5b6af0");
         assert!(restored.keybinding_overrides.is_empty());
+    }
+
+    // --- Clean profile / migration / persistence tests ---
+
+    #[test]
+    fn clean_profile_is_first_run() {
+        let (_dir, base) = temp_base();
+        assert!(is_first_run_in(&base));
+    }
+
+    #[test]
+    fn clean_profile_load_or_default_does_not_write_settings() {
+        let (_dir, base) = temp_base();
+        let config = load_or_default_in(&base);
+
+        assert!(config.servers.is_empty());
+        assert!(config.active_server.is_none());
+        assert!(!settings_path_from(&base).exists());
+    }
+
+    #[test]
+    fn legacy_desktop_toml_makes_first_run_false() {
+        let (_dir, base) = temp_base();
+        let legacy = legacy_config_path_from(&base);
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(&legacy, "[connection]\nserver_url = \"http://old:3000\"\n").unwrap();
+
+        assert!(!is_first_run_in(&base));
+    }
+
+    #[test]
+    fn upsert_active_server_creates_settings() {
+        let (_dir, base) = temp_base();
+        upsert_active_server_in(
+            &base,
+            "http://remote.example.com:18789".to_string(),
+            Some("tok".to_string()),
+        )
+        .unwrap();
+
+        let config = load_in(&base).unwrap();
+        let store = config.server_store();
+        let active = store.active().expect("active server after upsert");
+        assert_eq!(active.url, "http://remote.example.com:18789");
+        assert_eq!(active.auth_token.as_deref(), Some("tok"));
+    }
+
+    #[test]
+    fn upsert_existing_url_updates_token_and_makes_active() {
+        let (_dir, base) = temp_base();
+        upsert_active_server_in(&base, "http://same:3000".to_string(), Some("first".to_string()))
+            .unwrap();
+        upsert_active_server_in(
+            &base,
+            "http://same:3000".to_string(),
+            Some("second".to_string()),
+        )
+        .unwrap();
+
+        let config = load_in(&base).unwrap();
+        let store = config.server_store();
+        assert_eq!(store.servers.len(), 1);
+        assert_eq!(store.active().unwrap().auth_token.as_deref(), Some("second"));
+    }
+
+    #[test]
+    fn upsert_existing_malformed_settings_returns_error() {
+        let (_dir, base) = temp_base();
+        let settings = settings_path_from(&base);
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(&settings, "not valid toml = [").unwrap();
+
+        let err = upsert_active_server_in(&base, "http://server:3000".to_string(), None)
+            .expect_err("malformed settings should not be overwritten");
+        assert!(
+            matches!(err, SettingsConfigError::TomlParse { .. }),
+            "expected parse error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn server_switch_reload_restores_active_server() {
+        let (_dir, base) = temp_base();
+        upsert_active_server_in(&base, "http://server-a:3000".to_string(), None).unwrap();
+        upsert_active_server_in(&base, "http://server-b:3000".to_string(), None).unwrap();
+
+        let config = load_in(&base).unwrap();
+        let store = config.server_store();
+        assert_eq!(store.active().unwrap().url, "http://server-b:3000");
+        assert_eq!(store.servers.len(), 2);
     }
 }

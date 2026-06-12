@@ -6,7 +6,7 @@
 
 use dioxus::prelude::*;
 
-use crate::services::{config, settings_config};
+use crate::services::settings_config;
 use crate::state::connection::ConnectionConfig;
 use crate::state::settings::{
     ACCENT_PRESETS, AppearanceSettings, ServerConfigStore, UiDensity, WizardData, WizardStep,
@@ -73,7 +73,7 @@ pub(crate) fn SetupWizard() -> Element {
                                         Some(data.auth_token.expose_secret().to_owned())
                                     };
 
-                                    let server_id = {
+                                    {
                                         let mut store = server_store.write();
                                         let id = store.add(
                                             "My Aletheia".to_string(),
@@ -81,10 +81,14 @@ pub(crate) fn SetupWizard() -> Element {
                                             token.clone(),
                                         );
                                         store.set_active(&id);
-                                        id
-                                    };
-                                    drop(server_id);
+                                    }
 
+                                    let new_config = ConnectionConfig {
+                                        server_url: data.server_url.clone(),
+                                        auth_token: token,
+                                        auto_reconnect: true,
+                                        ..ConnectionConfig::default()
+                                    };
                                     let selected_theme = data.selected_theme.clone();
                                     let selected_accent = data.selected_accent.clone();
                                     let density = data.selected_density;
@@ -105,34 +109,15 @@ pub(crate) fn SetupWizard() -> Element {
                                         }
                                     }
 
+                                    // WHY: The canonical settings store owns the active
+                                    // connection; write it once and update the shared signal.
                                     {
                                         let store = server_store.read();
                                         let app = appearance.read();
                                         let keys = keybindings.read();
                                         settings_config::save_state(&store, &app, &keys);
                                     }
-
-                                    // WHY: Also persist the URL to the connection config
-                                    // (desktop.toml) so ConnectView picks it up instead
-                                    // of reverting to the compiled default.
-                                    {
-                                        let data = wizard_data.read();
-                                        let token = if data.auth_token.expose_secret().is_empty() {
-                                            None
-                                        } else {
-                                            Some(data.auth_token.expose_secret().to_owned())
-                                        };
-                                        let new_config = ConnectionConfig {
-                                            server_url: data.server_url.clone(),
-                                            auth_token: token,
-                                            auto_reconnect: true,
-                                            ..ConnectionConfig::default()
-                                        };
-                                        connection_config.set(new_config.clone());
-                                        if let Err(e) = config::save(&new_config) {
-                                            tracing::warn!("failed to save connection config from wizard: {e}");
-                                        }
-                                    }
+                                    connection_config.set(new_config);
 
                                     is_first_run.set(false);
                                 }
