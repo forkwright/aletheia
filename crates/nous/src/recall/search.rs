@@ -11,7 +11,12 @@ use crate::error;
 /// `KnowledgeStore` implements this when the `mneme-engine` feature is available.
 pub(crate) trait TextSearch: Send + Sync {
     /// Search by text (BM25) and return the `k` best-matching results.
-    fn search_text(&self, query: &str, k: usize) -> error::Result<Vec<KnowledgeRecallResult>>;
+    fn search_text(
+        &self,
+        query: &str,
+        k: usize,
+        requester_nous_id: &str,
+    ) -> error::Result<Vec<KnowledgeRecallResult>>;
 }
 
 /// Abstracts vector knowledge search.
@@ -25,6 +30,7 @@ pub trait VectorSearch: Send + Sync {
         query_vec: Vec<f32>,
         k: usize,
         ef: usize,
+        requester_nous_id: &str,
     ) -> error::Result<Vec<KnowledgeRecallResult>>;
 
     /// Run tiered query-rewrite search when the backing store supports it.
@@ -35,6 +41,7 @@ pub trait VectorSearch: Send + Sync {
         _query_vec: Vec<f32>,
         _k: usize,
         _ef: usize,
+        _requester_nous_id: &str,
         _rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
     ) -> Option<error::Result<Vec<KnowledgeRecallResult>>> {
         None
@@ -63,13 +70,16 @@ pub(super) fn vector_search(
     search: &dyn VectorSearch,
     query_vec: Vec<f32>,
     k: usize,
+    requester_nous_id: &str,
 ) -> error::Result<Vec<KnowledgeRecallResult>> {
-    search.search_vectors(query_vec, k, 50).map_err(|e| {
-        error::RecallSearchSnafu {
-            message: e.to_string(),
-        }
-        .build()
-    })
+    search
+        .search_vectors(query_vec, k, 50, requester_nous_id)
+        .map_err(|e| {
+            error::RecallSearchSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })
 }
 
 /// Run tiered search when available, otherwise fall back to vector search.
@@ -79,14 +89,22 @@ pub(super) fn vector_search_tiered(
     query: &str,
     query_vec: Vec<f32>,
     k: usize,
+    requester_nous_id: &str,
     rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
 ) -> error::Result<Vec<KnowledgeRecallResult>> {
-    if let Some(result) = search.search_tiered(query, query_vec.clone(), k, 50, rewrite_provider) {
+    if let Some(result) = search.search_tiered(
+        query,
+        query_vec.clone(),
+        k,
+        50,
+        requester_nous_id,
+        rewrite_provider,
+    ) {
         // WHY: `search_tiered` already wraps engine errors in `RecallSearchSnafu`
         // (see search/search_impl.rs); return its result directly rather than
         // wrapping a second time. The prior double-wrap produced the duplicated
         // "recall search failed: recall search failed:" message. See #4156.
         return result;
     }
-    vector_search(search, query_vec, k)
+    vector_search(search, query_vec, k, requester_nous_id)
 }

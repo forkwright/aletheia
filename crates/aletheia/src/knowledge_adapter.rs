@@ -70,7 +70,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
 
             let results = self
                 .store
-                .search_hybrid_async(hybrid_query)
+                .search_hybrid_scoped_async(hybrid_query, nous_id.clone())
                 .await
                 .map_err(|e| {
                     SearchSnafu {
@@ -84,7 +84,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .to_string();
             let facts = self
                 .store
-                .query_facts_async(nous_id, now, i64::try_from(limit).unwrap_or(i64::MAX))
+                .query_visible_facts_async(nous_id, now, i64::try_from(limit).unwrap_or(i64::MAX))
                 .await
                 .unwrap_or_else(|e| {
                     tracing::warn!(error = %e, "fact query failed, returning empty results");
@@ -95,16 +95,14 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
 
             let mut out = Vec::with_capacity(results.len());
             for r in results {
-                let content = match fact_map.get(r.id.as_str()) {
-                    Some(f) => f.content.clone(),
-                    None => format!("[fact {}]", r.id),
-                };
-                out.push(MemoryResult {
-                    id: r.id.to_string(),
-                    content,
-                    score: r.rrf_score,
-                    source_type: "fact".to_owned(),
-                });
+                if let Some(f) = fact_map.get(r.id.as_str()) {
+                    out.push(MemoryResult {
+                        id: r.id.to_string(),
+                        content: f.content.clone(),
+                        score: r.rrf_score,
+                        source_type: "fact".to_owned(),
+                    });
+                }
             }
 
             // WHY: External recall sources (issue #2338) are queried in

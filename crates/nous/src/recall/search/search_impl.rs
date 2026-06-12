@@ -32,10 +32,15 @@ impl KnowledgeTextSearch {
 
 #[cfg(feature = "knowledge-store")]
 impl TextSearch for KnowledgeTextSearch {
-    fn search_text(&self, query: &str, k: usize) -> error::Result<Vec<KnowledgeRecallResult>> {
+    fn search_text(
+        &self,
+        query: &str,
+        k: usize,
+        requester_nous_id: &str,
+    ) -> error::Result<Vec<KnowledgeRecallResult>> {
         let k_i64 = i64::try_from(k).unwrap_or(i64::MAX);
         self.store
-            .search_text_for_recall(query, k_i64)
+            .search_text_for_recall_scoped(query, k_i64, requester_nous_id)
             .map_err(|e| {
                 error::RecallSearchSnafu {
                     message: e.to_string(),
@@ -67,11 +72,12 @@ impl VectorSearch for KnowledgeVectorSearch {
         query_vec: Vec<f32>,
         k: usize,
         ef: usize,
+        requester_nous_id: &str,
     ) -> error::Result<Vec<KnowledgeRecallResult>> {
         let k_i64 = i64::try_from(k).unwrap_or(i64::MAX);
         let ef_i64 = i64::try_from(ef).unwrap_or(i64::MAX);
         self.store
-            .search_vectors(query_vec, k_i64, ef_i64)
+            .search_vectors_scoped(query_vec, k_i64, ef_i64, requester_nous_id)
             .map_err(|e| {
                 error::RecallSearchSnafu {
                     message: e.to_string(),
@@ -86,6 +92,7 @@ impl VectorSearch for KnowledgeVectorSearch {
         query_vec: Vec<f32>,
         k: usize,
         ef: usize,
+        requester_nous_id: &str,
         rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
     ) -> Option<error::Result<Vec<KnowledgeRecallResult>>> {
         let hybrid = mneme::knowledge_store::HybridQuery {
@@ -99,7 +106,14 @@ impl VectorSearch for KnowledgeVectorSearch {
         let config = mneme::query_rewrite::TieredSearchConfig::default();
         Some(
             self.store
-                .search_tiered_for_recall(&hybrid, &rewriter, rewrite_provider, None, &config)
+                .search_tiered_for_recall_scoped(
+                    &hybrid,
+                    &rewriter,
+                    rewrite_provider,
+                    None,
+                    &config,
+                    requester_nous_id,
+                )
                 .map(|r| r.results)
                 .map_err(|e| {
                     error::RecallSearchSnafu {

@@ -2888,6 +2888,7 @@ pub trait VectorSearch : Send + Sync {
         query_vec: Vec<f32>,
         k: usize,
         ef: usize,
+        requester_nous_id: &str,
     ) -> error::Result<Vec<KnowledgeRecallResult>>;
     fn search_tiered (
         &self,
@@ -2895,6 +2896,7 @@ pub trait VectorSearch : Send + Sync {
         _query_vec: Vec<f32>,
         _k: usize,
         _ef: usize,
+        _requester_nous_id: &str,
         _rewrite_provider: &dyn mneme::query_rewrite::RewriteProvider,
     ) -> Option<error::Result<Vec<KnowledgeRecallResult>>>; // default impl
 }

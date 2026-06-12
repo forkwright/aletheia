@@ -332,7 +332,7 @@ impl RecallStage {
         }
 
         let k = self.config.max_results * 3;
-        let raw = text_search.search_text(query, k)?;
+        let raw = text_search.search_text(query, k, nous_id)?;
 
         if raw.is_empty() {
             debug!("no BM25 recall candidates found");
@@ -448,12 +448,12 @@ impl RecallStage {
         let query_vec = embed(query, embedding_provider)?;
         #[cfg(feature = "knowledge-store")]
         let raw = if let Some(provider) = rewrite_provider {
-            vector_search_tiered(vs, query, query_vec, k, provider)?
+            vector_search_tiered(vs, query, query_vec, k, nous_id, provider)?
         } else {
-            vector_search(vs, query_vec, k)?
+            vector_search(vs, query_vec, k, nous_id)?
         };
         #[cfg(not(feature = "knowledge-store"))]
-        let raw = vector_search(vs, query_vec, k)?;
+        let raw = vector_search(vs, query_vec, k, nous_id)?;
 
         if raw.is_empty() {
             debug!("no recall candidates found");
@@ -490,12 +490,12 @@ impl RecallStage {
         let query_vec = embed(query, embedding_provider)?;
         #[cfg(feature = "knowledge-store")]
         let raw_cycle1 = if let Some(provider) = rewrite_provider {
-            vector_search_tiered(vs, query, query_vec, k, provider)?
+            vector_search_tiered(vs, query, query_vec, k, nous_id, provider)?
         } else {
-            vector_search(vs, query_vec, k)?
+            vector_search(vs, query_vec, k, nous_id)?
         };
         #[cfg(not(feature = "knowledge-store"))]
-        let raw_cycle1 = vector_search(vs, query_vec, k)?;
+        let raw_cycle1 = vector_search(vs, query_vec, k, nous_id)?;
 
         if raw_cycle1.is_empty() {
             debug!("no recall candidates in cycle 1");
@@ -533,7 +533,7 @@ impl RecallStage {
         );
 
         let refined_vec = embed(&refined, embedding_provider)?;
-        let raw_cycle2 = vector_search(vs, refined_vec, k)?;
+        let raw_cycle2 = vector_search(vs, refined_vec, k, nous_id)?;
 
         let mut seen: HashSet<String> = HashSet::new();
         let mut merged: Vec<KnowledgeRecallResult> = Vec::new();

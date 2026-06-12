@@ -2166,9 +2166,22 @@ impl KnowledgeStore {
         rel: &crate::knowledge::Relationship,
     ) -> crate::error::Result<()>;
     pub fn remove_orphaned_entities (&self) -> crate::error::Result<usize>;
+    pub fn insert_fact_entity (
+        &self,
+        fact_id: &crate::id::FactId,
+        entity_id: &crate::id::EntityId,
+    ) -> crate::error::Result<()>;
     pub fn list_entities (&self) -> crate::error::Result<Vec<crate::knowledge::Entity>>;
+    pub fn list_entities_for_facts (
+        &self,
+        fact_ids: &[crate::id::FactId],
+    ) -> crate::error::Result<Vec<crate::knowledge::Entity>>;
     pub fn list_all_relationships (
         &self,
+    ) -> crate::error::Result<Vec<crate::knowledge::Relationship>>;
+    pub fn list_relationships_between_entities (
+        &self,
+        entity_ids: &std::collections::HashSet<String>,
     ) -> crate::error::Result<Vec<crate::knowledge::Relationship>>;
     pub fn find_duplicate_entities (
         &self,
@@ -2250,6 +2263,12 @@ impl KnowledgeStore {
         now: &str,
         limit: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>>;
+    pub fn query_visible_facts (
+        &self,
+        requester_nous_id: &str,
+        now: &str,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>>;
     pub async fn increment_access_async (
         self: &std::sync::Arc<Self>,
         fact_ids: Vec<crate::id::FactId>,
@@ -2263,6 +2282,11 @@ impl KnowledgeStore {
         self: &std::sync::Arc<Self>,
         nous_id: String,
         limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>>;
+    pub fn read_visible_facts_by_id (
+        &self,
+        fact_id: &str,
+        requester_nous_id: &str,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>>;
     pub async fn query_facts_temporal_async (
         self: &std::sync::Arc<Self>,
@@ -2329,6 +2353,12 @@ impl KnowledgeStore {
     pub async fn query_facts_async (
         self: &std::sync::Arc<Self>,
         nous_id: String,
+        now: String,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>>;
+    pub async fn query_visible_facts_async (
+        self: &std::sync::Arc<Self>,
+        requester_nous_id: String,
         now: String,
         limit: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>>;
@@ -2633,25 +2663,61 @@ impl KnowledgeStore {
         k: i64,
         ef: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>>;
+    pub fn search_vectors_scoped (
+        &self,
+        query_vec: Vec<f32>,
+        k: i64,
+        ef: i64,
+        requester_nous_id: &str,
+    ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>>;
     pub async fn search_vectors_async (
         self: &std::sync::Arc<Self>,
         query_vec: Vec<f32>,
         k: i64,
         ef: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>>;
+    pub async fn search_vectors_scoped_async (
+        self: &std::sync::Arc<Self>,
+        query_vec: Vec<f32>,
+        k: i64,
+        ef: i64,
+        requester_nous_id: String,
+    ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>>;
     pub fn search_text_for_recall (
         &self,
         query_text: &str,
         k: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>>;
+    pub fn search_text_for_recall_scoped (
+        &self,
+        query_text: &str,
+        k: i64,
+        requester_nous_id: &str,
+    ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>>;
+    pub fn search_hybrid_scoped (
+        &self,
+        q: &HybridQuery,
+        requester_nous_id: &str,
+    ) -> crate::error::Result<Vec<HybridResult>>;
     pub async fn search_hybrid_async (
         self: &std::sync::Arc<Self>,
         q: HybridQuery,
+    ) -> crate::error::Result<Vec<HybridResult>>;
+    pub async fn search_hybrid_scoped_async (
+        self: &std::sync::Arc<Self>,
+        q: HybridQuery,
+        requester_nous_id: String,
     ) -> crate::error::Result<Vec<HybridResult>>;
     pub fn search_enhanced (
         &self,
         base_query: &HybridQuery,
         query_variants: &[String],
+    ) -> crate::error::Result<Vec<HybridResult>>;
+    pub fn search_enhanced_scoped (
+        &self,
+        base_query: &HybridQuery,
+        query_variants: &[String],
+        requester_nous_id: &str,
     ) -> crate::error::Result<Vec<HybridResult>>;
     pub fn search_tiered (
         &self,
@@ -2661,6 +2727,15 @@ impl KnowledgeStore {
         context: Option<&str>,
         config: &crate::query_rewrite::TieredSearchConfig,
     ) -> crate::error::Result<crate::query_rewrite::TieredSearchResult<HybridResult>>;
+    pub fn search_tiered_scoped (
+        &self,
+        base_query: &HybridQuery,
+        rewriter: &crate::query_rewrite::QueryRewriter,
+        provider: &dyn crate::query_rewrite::RewriteProvider,
+        context: Option<&str>,
+        config: &crate::query_rewrite::TieredSearchConfig,
+        requester_nous_id: &str,
+    ) -> crate::error::Result<crate::query_rewrite::TieredSearchResult<HybridResult>>;
     pub fn search_tiered_for_recall (
         &self,
         base_query: &HybridQuery,
@@ -2668,6 +2743,17 @@ impl KnowledgeStore {
         provider: &dyn crate::query_rewrite::RewriteProvider,
         context: Option<&str>,
         config: &crate::query_rewrite::TieredSearchConfig,
+    ) -> crate::error::Result<
+        crate::query_rewrite::TieredSearchResult<crate::knowledge::RecallResult>,
+    >;
+    pub fn search_tiered_for_recall_scoped (
+        &self,
+        base_query: &HybridQuery,
+        rewriter: &crate::query_rewrite::QueryRewriter,
+        provider: &dyn crate::query_rewrite::RewriteProvider,
+        context: Option<&str>,
+        config: &crate::query_rewrite::TieredSearchConfig,
+        requester_nous_id: &str,
     ) -> crate::error::Result<
         crate::query_rewrite::TieredSearchResult<crate::knowledge::RecallResult>,
     >;
