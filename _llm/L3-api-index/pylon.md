@@ -856,6 +856,75 @@ pub struct SearchResponse {
 ```
 
 ```rust
+pub struct ExplainQuery {
+    pub q: String,
+    #[serde(default)]
+    pub nous_id: Option<String>,
+    #[serde(default = "default_search_limit")]
+    pub limit: usize,
+}
+```
+
+```rust
+pub struct FactorScoreBreakdown {
+    pub vector_similarity: f64,
+    pub decay: f64,
+    pub relevance: f64,
+    pub epistemic_tier: f64,
+    pub access_frequency: f64,
+    pub relationship_proximity: f64,
+    pub graph_importance: f64,
+}
+```
+
+```rust
+pub enum ExplainDecision {
+    /// Included in the returned result set.
+    Selected,
+    /// Removed because it did not meet a hard gate.
+    Dropped,
+    /// Removed by a policy filter such as forgetting or visibility.
+    Filtered,
+}
+```
+
+```rust
+pub struct ExplainCandidate {
+    pub id: String,
+    pub content: String,
+    pub confidence: f64,
+    pub tier: String,
+    pub fact_type: String,
+    pub score: f64,
+    pub decision: ExplainDecision,
+    pub reasons: Vec<String>,
+    pub factors: FactorScoreBreakdown,
+}
+```
+
+```rust
+pub struct RecallWeightsView {
+    pub vector_similarity: f64,
+    pub decay: f64,
+    pub relevance: f64,
+    pub epistemic_tier: f64,
+    pub access_frequency: f64,
+    pub relationship_proximity: f64,
+    pub graph_importance: f64,
+}
+```
+
+```rust
+pub struct ExplainResponse {
+    pub query: String,
+    pub weights: RecallWeightsView,
+    pub total_candidates: usize,
+    pub selected: Vec<ExplainCandidate>,
+    pub dropped: Vec<ExplainCandidate>,
+}
+```
+
+```rust
 pub struct SimilarFact {
     pub id: String,
     pub content: String,
@@ -945,10 +1014,10 @@ pub async fn merge_entities (
 
 ```rust
 pub async fn flag_entity (
-    State(_state): State<KnowledgeState>,
+    State(state): State<KnowledgeState>,
     claims: Claims,
-    Path(_id): Path<String>,
-    Json(_body): Json<FlagRequest>,
+    Path(id): Path<String>,
+    Json(body): Json<FlagRequest>,
 ) -> Result<StatusCode, ApiError>
 ```
 
@@ -1126,8 +1195,20 @@ pub async fn update_sensitivity (
 ```rust
 pub async fn search (
     State(state): State<KnowledgeState>,
-    Query(mut query): Query<SearchQuery>,
+    Query(query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError>
+```
+
+> 
+> # Cancel safety
+> 
+> Cancel-safe. Axum handler; cancellation drops the future with no
+> side effects beyond not returning a response.
+```rust
+pub async fn explain (
+    State(state): State<KnowledgeState>,
+    Query(query): Query<ExplainQuery>,
+) -> Result<Json<ExplainResponse>, ApiError>
 ```
 
 > 
