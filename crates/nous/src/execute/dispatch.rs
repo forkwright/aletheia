@@ -184,6 +184,32 @@ fn emit_tool_result(
     }
 }
 
+fn record_tool_outcome(
+    all_tool_calls: &mut Vec<ToolCall>,
+    tool_results: &mut Vec<ContentBlock>,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    tool_ctx: &ToolContext,
+    outcome: SingleToolOutcome,
+) -> bool {
+    let is_error = outcome.is_error;
+    all_tool_calls.push(outcome.call);
+    if let Some(call) = all_tool_calls.last()
+        && let Some(result) = call.result.clone()
+    {
+        emit_tool_result(
+            stream_tx,
+            tool_ctx,
+            &call.id,
+            &call.name,
+            result,
+            call.is_error,
+            call.duration_ms,
+        );
+    }
+    tool_results.push(outcome.result_block);
+    is_error
+}
+
 /// Inject a bounded diagnostic preamble into tool result content.
 ///
 /// Diagnostics are placed at the front of the payload so they survive
@@ -402,68 +428,26 @@ struct SingleToolOutcome {
     is_error: bool,
 }
 
-/// Execute one tool call: substitute secrets, invoke the executor,
-/// truncate + log + build the (`ToolCall`, `ContentBlock::ToolResult`)
-/// pair. Loop-detection bookkeeping is handled by the caller.
+/// Execute one prepared tool call: invoke the executor, truncate + log + build
+/// the (`ToolCall`, `ContentBlock::ToolResult`) pair. Loop-detection
+/// bookkeeping is handled by the caller.
 #[expect(
     clippy::too_many_arguments,
     reason = "dispatch needs tool id, name, input, registry, context, limits, and receipt infra"
 )]
-#[expect(
-    clippy::too_many_lines,
-    reason = "single-tool dispatch: secret substitution, execution, diagnostics, truncation, receipt signing, and loop detection"
-)]
 async fn dispatch_single_tool(
     tool_id: &str,
     tool_name: &str,
-    tool_name_id: ToolName,
-    tool_input: &serde_json::Value,
+    execution_input: &ToolInput,
+    persisted_input: &serde_json::Value,
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
     max_tool_result_bytes: u32,
     receipt_signer: Option<&organon::receipts::ReceiptSigner>,
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<SingleToolOutcome> {
-    // WHY(#3569): substitute secrets at the LAST moment before tool
-    // execution. The original `tool_input` (with placeholders) is preserved
-    // for persistence in the `ToolCall`; only the executor sees resolved
-    // values.
-    let mut substituted_args = tool_input.clone();
-    if let Some(services) = &tool_ctx.services
-        && let Err(e) = substitute_in_json(&mut substituted_args, &services.secret_vault)
-    {
-        crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
-        let msg = format!("Tool error: {e}");
-        return Ok(SingleToolOutcome {
-            call: ToolCall {
-                id: tool_id.to_owned(),
-                name: tool_name.to_owned(),
-                input: tool_input.clone(),
-                result: Some(msg.clone()),
-                is_error: true,
-                duration_ms: 0,
-                receipt: None,
-            },
-            result_block: ContentBlock::ToolResult {
-                tool_use_id: tool_id.to_owned(),
-                content: ToolResultContent::text(msg),
-                is_error: Some(true),
-            },
-            is_error: true,
-        });
-    }
-
     let start = std::time::Instant::now();
-    let result = tools
-        .execute(
-            &ToolInput {
-                name: tool_name_id,
-                tool_use_id: tool_id.to_owned(),
-                arguments: substituted_args,
-            },
-            tool_ctx,
-        )
-        .await;
+    let result = tools.execute(execution_input, tool_ctx).await;
 
     #[expect(
         clippy::cast_possible_truncation,
@@ -504,7 +488,7 @@ async fn dispatch_single_tool(
     let (content, receipt) = if let Some(signer) = receipt_signer {
         let ts = jiff::Timestamp::now();
         let result_text = content.text_summary();
-        let receipt_str = signer.sign(tool_name, &tool_input.to_string(), &result_text, ts);
+        let receipt_str = signer.sign(tool_name, &persisted_input.to_string(), &result_text, ts);
         if let Some(ledger) = receipt_ledger {
             let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
                 tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
@@ -513,7 +497,7 @@ async fn dispatch_single_tool(
             guard.record(
                 receipt_str.clone(),
                 tool_name.to_owned(),
-                tool_input.to_string(),
+                persisted_input.to_string(),
                 result_text.clone(),
                 ts,
             );
@@ -539,7 +523,7 @@ async fn dispatch_single_tool(
     let call = ToolCall {
         id: tool_id.to_owned(),
         name: tool_name.to_owned(),
-        input: tool_input.clone(),
+        input: persisted_input.clone(),
         result: Some(content.text_summary()),
         is_error,
         duration_ms,
@@ -600,8 +584,67 @@ pub(super) async fn dispatch_tools(
             .build()
         })?;
 
+        // WHY(#3569): substitute secrets at the LAST moment before tool
+        // execution. The original `tool_input` (with placeholders) is preserved
+        // for persistence in `all_tool_calls`; only the executor sees resolved
+        // values.
+        let mut substituted_args = tool_input.clone();
+        if let Some(services) = &tool_ctx.services
+            && let Err(e) = substitute_in_json(&mut substituted_args, &services.secret_vault)
+        {
+            let msg = format!("Tool error: {e}");
+            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
+            let outcome = SingleToolOutcome {
+                call: ToolCall {
+                    id: tool_id.clone(),
+                    name: tool_name.clone(),
+                    input: tool_input.clone(),
+                    result: Some(msg.clone()),
+                    is_error: true,
+                    duration_ms: 0,
+                    receipt: None,
+                },
+                result_block: ContentBlock::ToolResult {
+                    tool_use_id: tool_id.clone(),
+                    content: ToolResultContent::text(msg),
+                    is_error: Some(true),
+                },
+                is_error: true,
+            };
+            let is_error = record_tool_outcome(
+                all_tool_calls,
+                &mut tool_results,
+                stream_tx,
+                tool_ctx,
+                outcome,
+            );
+            let input_hash = simple_hash(tool_input);
+            match loop_detector.record(tool_name, &input_hash, is_error) {
+                LoopVerdict::Ok => {}
+                LoopVerdict::Warn { message, .. } => {
+                    return Ok(DispatchResult {
+                        blocks: tool_results,
+                        loop_warning: Some(message),
+                    });
+                }
+                LoopVerdict::Halt { pattern, .. } => {
+                    return Err(error::LoopDetectedSnafu {
+                        iterations,
+                        pattern,
+                    }
+                    .build());
+                }
+            }
+            continue;
+        }
+
+        let approval_input = ToolInput {
+            name: tool_name_id,
+            tool_use_id: tool_id.clone(),
+            arguments: substituted_args,
+        };
         let approval = tools
-            .approval_requirement(&tool_name_id)
+            .approval_requirement_for_input(&approval_input)
             .unwrap_or(ApprovalRequirement::Mandatory);
 
         // WHY(#3958, ADR-005): one decision boundary protects streaming,
@@ -658,7 +701,7 @@ pub(super) async fn dispatch_tools(
         let outcome = dispatch_single_tool(
             tool_id,
             tool_name,
-            tool_name_id,
+            &approval_input,
             tool_input,
             tools,
             tool_ctx,
@@ -668,24 +711,16 @@ pub(super) async fn dispatch_tools(
         )
         .await?;
 
-        all_tool_calls.push(outcome.call);
-        if let Some(call) = all_tool_calls.last()
-            && let Some(result) = call.result.clone()
-        {
-            emit_tool_result(
-                stream_tx,
-                tool_ctx,
-                &call.id,
-                &call.name,
-                result,
-                call.is_error,
-                call.duration_ms,
-            );
-        }
-        tool_results.push(outcome.result_block);
+        let is_error = record_tool_outcome(
+            all_tool_calls,
+            &mut tool_results,
+            stream_tx,
+            tool_ctx,
+            outcome,
+        );
 
         let input_hash = simple_hash(tool_input);
-        match loop_detector.record(tool_name, &input_hash, outcome.is_error) {
+        match loop_detector.record(tool_name, &input_hash, is_error) {
             LoopVerdict::Ok => {}
             LoopVerdict::Warn { message, .. } => {
                 return Ok(DispatchResult {

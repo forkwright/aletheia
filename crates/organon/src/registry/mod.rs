@@ -13,8 +13,9 @@ use koina::id::ToolName;
 
 use crate::error::{self, Result};
 use crate::types::{
-    ApprovalRequirement, Reversibility, ToolCallMetadata, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolGroupPolicy, ToolInput, ToolOutcome, ToolResult, ToolTag,
+    ApprovalRequirement, Reversibility, ToolCallCapability, ToolCallCapabilityRule,
+    ToolCallMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolGroupPolicy, ToolInput,
+    ToolOutcome, ToolResult, ToolTag,
 };
 
 /// The trait tool implementations must satisfy.
@@ -59,6 +60,7 @@ pub trait ToolExecutor: Send + Sync {
 
 struct RegisteredTool {
     def: ToolDef,
+    call_capability: Option<ToolCallCapabilityRule>,
     executor: Box<dyn ToolExecutor>,
 }
 
@@ -104,15 +106,43 @@ impl ToolRegistry {
     /// Returns an error if a tool with the same name is already registered.
     pub fn register(&mut self, def: ToolDef, executor: Box<dyn ToolExecutor>) -> Result<()> {
         // kanon:ignore RUST/pub-visibility
+        self.register_inner(def, None, executor)
+    }
 
+    /// Register a tool with argument-driven call capability metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a tool with the same name is already registered.
+    pub fn register_with_call_capability(
+        &mut self,
+        def: ToolDef,
+        call_capability: ToolCallCapabilityRule,
+        executor: Box<dyn ToolExecutor>,
+    ) -> Result<()> {
+        self.register_inner(def, Some(call_capability), executor)
+    }
+
+    fn register_inner(
+        &mut self,
+        def: ToolDef,
+        call_capability: Option<ToolCallCapabilityRule>,
+        executor: Box<dyn ToolExecutor>,
+    ) -> Result<()> {
         ensure!(
             !self.tools.contains_key(&def.name),
             error::DuplicateToolSnafu {
                 name: def.name.clone()
             }
         );
-        self.tools
-            .insert(def.name.clone(), RegisteredTool { def, executor });
+        self.tools.insert(
+            def.name.clone(),
+            RegisteredTool {
+                def,
+                call_capability,
+                executor,
+            },
+        );
         Ok(())
     }
 
@@ -141,6 +171,25 @@ impl ToolRegistry {
                 || active.contains(&tool.def.name)
                 || tool.def.name.as_str() == "enable_tool"
         })
+    }
+
+    fn call_capability_for_tool(
+        tool: &RegisteredTool,
+        input: &ToolInput,
+    ) -> Result<ToolCallCapability> {
+        match &tool.call_capability {
+            Some(rule) => rule.classify(&input.arguments).map_err(|reason| {
+                error::InvalidInputSnafu {
+                    name: input.name.clone(),
+                    reason,
+                }
+                .build()
+            }),
+            None => Ok(ToolCallCapability::new(
+                tool.def.groups.clone(),
+                tool.def.reversibility,
+            )),
+        }
     }
 
     /// Look up a tool definition by name.
@@ -237,12 +286,13 @@ impl ToolRegistry {
             .build()
         })?;
 
-        if !policy.permits(&tool.def.groups) {
+        let call_capability = Self::call_capability_for_tool(tool, input)?;
+        if !policy.permits(&call_capability.groups) {
             return Err(error::ToolGroupViolationSnafu {
                 role: role.to_owned(),
                 tool: input.name.as_str().to_owned(),
                 allowed: policy.allowed_groups().to_vec(),
-                tool_groups: tool.def.groups.clone(),
+                tool_groups: call_capability.groups,
             }
             .build());
         }
@@ -649,6 +699,41 @@ impl ToolRegistry {
             .map(|t| ApprovalRequirement::from(t.def.reversibility))
     }
 
+    /// Classify one concrete tool call.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tool is missing or its call-level selector is invalid.
+    pub fn call_capability(&self, input: &ToolInput) -> Result<ToolCallCapability> {
+        let tool = self.tools.get(&input.name).ok_or_else(|| {
+            error::ToolNotFoundSnafu {
+                name: input.name.clone(),
+            }
+            .build()
+        })?;
+        Self::call_capability_for_tool(tool, input)
+    }
+
+    /// Check whether a concrete call satisfies a policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tool is missing or its call-level selector is invalid.
+    pub fn permits_call(&self, input: &ToolInput, policy: &ToolGroupPolicy) -> Result<bool> {
+        let call_capability = self.call_capability(input)?;
+        Ok(policy.permits(&call_capability.groups))
+    }
+
+    /// Determine what approval is required for a concrete tool call.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tool is missing or its call-level selector is invalid.
+    pub fn approval_requirement_for_input(&self, input: &ToolInput) -> Result<ApprovalRequirement> {
+        let call_capability = self.call_capability(input)?;
+        Ok(ApprovalRequirement::from(call_capability.reversibility))
+    }
+
     /// Build session-log metadata for a tool call.
     #[must_use]
     pub fn call_metadata(&self, name: &ToolName, dry_run: bool) -> Option<ToolCallMetadata> {
@@ -656,6 +741,24 @@ impl ToolRegistry {
         self.tools.get(name).map(|t| ToolCallMetadata {
             reversibility: t.def.reversibility,
             approval: ApprovalRequirement::from(t.def.reversibility),
+            dry_run,
+        })
+    }
+
+    /// Build session-log metadata for a concrete tool call.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tool is missing or its call-level selector is invalid.
+    pub fn call_metadata_for_input(
+        &self,
+        input: &ToolInput,
+        dry_run: bool,
+    ) -> Result<ToolCallMetadata> {
+        let call_capability = self.call_capability(input)?;
+        Ok(ToolCallMetadata {
+            reversibility: call_capability.reversibility,
+            approval: ApprovalRequirement::from(call_capability.reversibility),
             dry_run,
         })
     }

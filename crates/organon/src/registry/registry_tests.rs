@@ -3,7 +3,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use koina::id::{NousId, SessionId};
 
 use super::*;
-use crate::types::{InputSchema, PropertyDef, PropertyType, Reversibility};
+use crate::types::{
+    ApprovalRequirement, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
+    ToolCallCapabilityRule,
+};
 
 /// Mock executor that captures calls for verification.
 struct MockExecutor {
@@ -68,6 +71,18 @@ fn mock_executor(response: &str) -> (Box<dyn ToolExecutor>, Arc<Mutex<Vec<ToolNa
         response: response.to_owned(),
     });
     (executor, calls)
+}
+
+fn capability(groups: Vec<ToolGroupId>, reversibility: Reversibility) -> ToolCallCapability {
+    ToolCallCapability::new(groups, reversibility)
+}
+
+fn tool_input(name: &'static str, arguments: serde_json::Value) -> ToolInput {
+    ToolInput {
+        name: ToolName::from_static(name),
+        tool_use_id: format!("toolu_{name}"),
+        arguments,
+    }
 }
 
 #[test]
@@ -818,6 +833,181 @@ async fn execute_checked_allow_all_grants_tool() {
         .await
         .expect("execute_checked should succeed with allow-all policy");
     assert_eq!(result.content.text_summary(), "hello");
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "test covers the mixed-tool call capability policy matrix"
+)]
+async fn execute_checked_enforces_call_capability_for_mixed_tools() {
+    let mut reg = ToolRegistry::new();
+    let (note_exec, note_calls) = mock_executor("note ok");
+    let (blackboard_exec, blackboard_calls) = mock_executor("blackboard ok");
+    let (fact_exec, fact_calls) = mock_executor("fact ok");
+
+    let mut note_def = make_def("note", ToolCategory::Memory);
+    note_def.groups = vec![ToolGroupId::Read, ToolGroupId::Edit];
+    reg.register_with_call_capability(
+        note_def,
+        ToolCallCapabilityRule::argument_value(
+            "action",
+            [
+                (
+                    "add",
+                    capability(vec![ToolGroupId::Edit], Reversibility::Reversible),
+                ),
+                (
+                    "list",
+                    capability(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+                ),
+                (
+                    "delete",
+                    capability(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+                ),
+            ],
+        ),
+        note_exec,
+    )
+    .expect("register note");
+
+    let mut blackboard_def = make_def("blackboard", ToolCategory::Memory);
+    blackboard_def.groups = vec![ToolGroupId::Read, ToolGroupId::Edit];
+    reg.register_with_call_capability(
+        blackboard_def,
+        ToolCallCapabilityRule::argument_value(
+            "action",
+            [
+                (
+                    "write",
+                    capability(vec![ToolGroupId::Edit], Reversibility::Reversible),
+                ),
+                (
+                    "read",
+                    capability(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+                ),
+                (
+                    "delete",
+                    capability(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+                ),
+            ],
+        ),
+        blackboard_exec,
+    )
+    .expect("register blackboard");
+
+    let mut fact_def = make_def("architecture_fact", ToolCategory::Research);
+    fact_def.groups = vec![ToolGroupId::Read, ToolGroupId::Edit, ToolGroupId::Plan];
+    reg.register_with_call_capability(
+        fact_def,
+        ToolCallCapabilityRule::argument_value(
+            "op",
+            [
+                (
+                    "get",
+                    capability(
+                        vec![ToolGroupId::Read, ToolGroupId::Plan],
+                        Reversibility::FullyReversible,
+                    ),
+                ),
+                (
+                    "put",
+                    capability(
+                        vec![ToolGroupId::Edit, ToolGroupId::Plan],
+                        Reversibility::PartiallyReversible,
+                    ),
+                ),
+            ],
+        ),
+        fact_exec,
+    )
+    .expect("register architecture_fact");
+
+    let read_policy = ToolGroupPolicy::groups(vec![ToolGroupId::Read]);
+    reg.execute_checked(
+        &tool_input("note", serde_json::json!({"action": "list"})),
+        &mock_ctx(),
+        "reader",
+        &read_policy,
+    )
+    .await
+    .expect("read operation allowed");
+
+    for input in [
+        tool_input("note", serde_json::json!({"action": "add"})),
+        tool_input("note", serde_json::json!({"action": "delete"})),
+        tool_input("blackboard", serde_json::json!({"action": "write"})),
+        tool_input("blackboard", serde_json::json!({"action": "delete"})),
+        tool_input("architecture_fact", serde_json::json!({"op": "put"})),
+    ] {
+        let err = reg
+            .execute_checked(&input, &mock_ctx(), "reader", &read_policy)
+            .await
+            .expect_err("write operation should be denied");
+        assert!(
+            err.to_string().contains("tool group violation"),
+            "error should mention tool group violation: {err}"
+        );
+    }
+
+    assert_eq!(note_calls.lock().expect("lock poisoned").len(), 1);
+    assert_eq!(blackboard_calls.lock().expect("lock poisoned").len(), 0);
+    assert_eq!(fact_calls.lock().expect("lock poisoned").len(), 0);
+}
+
+#[test]
+fn call_capability_drives_approval_requirement() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _) = mock_executor("ok");
+    let mut def = make_def("note", ToolCategory::Memory);
+    def.groups = vec![ToolGroupId::Read, ToolGroupId::Edit];
+    reg.register_with_call_capability(
+        def,
+        ToolCallCapabilityRule::argument_value(
+            "action",
+            [
+                (
+                    "list",
+                    capability(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+                ),
+                (
+                    "add",
+                    capability(vec![ToolGroupId::Edit], Reversibility::Reversible),
+                ),
+                (
+                    "delete",
+                    capability(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+                ),
+            ],
+        ),
+        exec,
+    )
+    .expect("register");
+
+    assert_eq!(
+        reg.approval_requirement_for_input(&tool_input(
+            "note",
+            serde_json::json!({"action": "list"})
+        ))
+        .expect("approval"),
+        ApprovalRequirement::None
+    );
+    assert_eq!(
+        reg.approval_requirement_for_input(&tool_input(
+            "note",
+            serde_json::json!({"action": "add"})
+        ))
+        .expect("approval"),
+        ApprovalRequirement::Advisory
+    );
+    assert_eq!(
+        reg.approval_requirement_for_input(&tool_input(
+            "note",
+            serde_json::json!({"action": "delete"})
+        ))
+        .expect("approval"),
+        ApprovalRequirement::Required
+    );
 }
 
 #[test]
