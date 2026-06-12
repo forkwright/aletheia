@@ -29,11 +29,6 @@ use super::process;
 /// Model name prefix that routes requests to this provider.
 pub(crate) const KIMI_MODEL_PREFIX: &str = "kimi/";
 
-const DEFAULT_MODEL: &str = "kimi/kimi-k2-thinking";
-
-/// Models Kimi can route to. Kept minimal: the CLI owns concrete model routing.
-const SUPPORTED_MODELS: &[&str] = &[DEFAULT_MODEL];
-
 /// Configuration for the Kimi subprocess provider.
 #[derive(Debug, Clone)]
 pub struct KimiProviderConfig {
@@ -52,7 +47,7 @@ impl Default for KimiProviderConfig {
         Self {
             kimi_binary: None,
             working_directory: None,
-            default_model: DEFAULT_MODEL.to_owned(),
+            default_model: koina::models::names::kimi().to_owned(),
             timeout: Duration::from_mins(5),
         }
     }
@@ -132,10 +127,16 @@ impl KimiProvider {
 
     /// Resolve the model name, falling back to the configured default.
     fn resolve_model<'a>(&'a self, model: &'a str) -> &'a str {
-        if model.is_empty() {
+        let selected = if model.is_empty() {
             &self.default_model
         } else {
             model
+        };
+        let stripped = selected.strip_prefix(KIMI_MODEL_PREFIX).unwrap_or(selected);
+        if stripped.is_empty() {
+            koina::models::names::kimi()
+        } else {
+            stripped
         }
     }
 
@@ -295,7 +296,7 @@ impl LlmProvider for KimiProvider {
     }
 
     fn supported_models(&self) -> &[&str] {
-        SUPPORTED_MODELS
+        koina::models::provider_models(koina::models::ModelProvider::Kimi)
     }
 
     fn supports_model(&self, model: &str) -> bool {
@@ -303,10 +304,7 @@ impl LlmProvider for KimiProvider {
     }
 
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
-        if SUPPORTED_MODELS.contains(&model) {
-            // WHY: Kimi's canonical default model string is namespaced, so
-            // the exact supported-model match should win over the broader
-            // `kimi/` prefix for that one model ID.
+        if self.supported_models().contains(&model) {
             Some(MatchKind::Exact)
         } else if model.starts_with(KIMI_MODEL_PREFIX) {
             Some(MatchKind::Prefix)
@@ -348,7 +346,7 @@ mod tests {
         let provider = KimiProvider {
             kimi_binary: PathBuf::from("kimi"),
             working_directory: PathBuf::from("."),
-            default_model: DEFAULT_MODEL.to_owned(),
+            default_model: koina::models::names::kimi().to_owned(),
             timeout: Duration::from_secs(1),
         };
         assert_eq!(
@@ -356,7 +354,7 @@ mod tests {
             Some(MatchKind::Prefix)
         );
         assert_eq!(
-            provider.match_specificity(DEFAULT_MODEL),
+            provider.match_specificity(koina::models::names::kimi()),
             Some(MatchKind::Exact)
         );
         assert_eq!(provider.match_specificity("claude-sonnet-4-6"), None);

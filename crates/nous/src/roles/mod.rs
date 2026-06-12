@@ -134,10 +134,6 @@ pub struct RoleTemplate {
     pub model: &'static str,
 }
 
-const OPUS_MODEL: &str = "claude-opus-4-20250514";
-const SONNET_MODEL: &str = koina::defaults::DEFAULT_MODEL;
-const HAIKU_MODEL: &str = "claude-haiku-4-5-20251001";
-
 fn coder_template() -> RoleTemplate {
     RoleTemplate {
         role: Role::Coder,
@@ -160,7 +156,7 @@ fn coder_template() -> RoleTemplate {
             organon::types::ToolGroupId::Command,
             organon::types::ToolGroupId::Verify,
         ]),
-        model: SONNET_MODEL,
+        model: koina::models::task_role_default(koina::models::TaskRole::Coder),
     }
 }
 
@@ -183,7 +179,7 @@ fn researcher_template() -> RoleTemplate {
             organon::types::ToolGroupId::Mcp,
             organon::types::ToolGroupId::Plan,
         ]),
-        model: SONNET_MODEL,
+        model: koina::models::task_role_default(koina::models::TaskRole::Researcher),
     }
 }
 
@@ -204,7 +200,7 @@ fn reviewer_template() -> RoleTemplate {
             organon::types::ToolGroupId::Verify,
             organon::types::ToolGroupId::Mcp,
         ]),
-        model: OPUS_MODEL,
+        model: koina::models::task_role_default(koina::models::TaskRole::Reviewer),
     }
 }
 
@@ -223,7 +219,7 @@ fn explorer_template() -> RoleTemplate {
             organon::types::ToolGroupId::Read,
             organon::types::ToolGroupId::Plan,
         ]),
-        model: HAIKU_MODEL,
+        model: koina::models::task_role_default(koina::models::TaskRole::Explorer),
     }
 }
 
@@ -244,7 +240,7 @@ fn runner_template() -> RoleTemplate {
             organon::types::ToolGroupId::Command,
             organon::types::ToolGroupId::Verify,
         ]),
-        model: HAIKU_MODEL,
+        model: koina::models::task_role_default(koina::models::TaskRole::Runner),
     }
 }
 
@@ -563,11 +559,26 @@ mod tests {
 
     #[test]
     fn model_preferences() {
-        assert_eq!(Role::Coder.template().model, SONNET_MODEL);
-        assert_eq!(Role::Researcher.template().model, SONNET_MODEL);
-        assert_eq!(Role::Reviewer.template().model, OPUS_MODEL);
-        assert_eq!(Role::Explorer.template().model, HAIKU_MODEL);
-        assert_eq!(Role::Runner.template().model, HAIKU_MODEL);
+        assert_eq!(
+            Role::Coder.template().model,
+            koina::models::task_role_default(koina::models::TaskRole::Coder)
+        );
+        assert_eq!(
+            Role::Researcher.template().model,
+            koina::models::task_role_default(koina::models::TaskRole::Researcher)
+        );
+        assert_eq!(
+            Role::Reviewer.template().model,
+            koina::models::task_role_default(koina::models::TaskRole::Reviewer)
+        );
+        assert_eq!(
+            Role::Explorer.template().model,
+            koina::models::task_role_default(koina::models::TaskRole::Explorer)
+        );
+        assert_eq!(
+            Role::Runner.template().model,
+            koina::models::task_role_default(koina::models::TaskRole::Runner)
+        );
     }
 
     #[test]

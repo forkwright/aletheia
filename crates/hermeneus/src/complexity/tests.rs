@@ -1,4 +1,5 @@
 use super::*;
+use crate::models::names;
 
 fn input(text: &str) -> ComplexityInput<'_> {
     ComplexityInput {
@@ -286,7 +287,7 @@ fn route_model_disabled_returns_sonnet() {
     };
 
     let decision = route_model(&input("analyze this"), &config);
-    assert_eq!(decision.model, names::SONNET);
+    assert_eq!(decision.model, names::sonnet());
     assert!(!decision.is_override);
 }
 
@@ -298,7 +299,7 @@ fn route_model_simple_query_routes_haiku() {
     };
 
     let decision = route_model(&input("yes"), &config);
-    assert_eq!(decision.model, names::HAIKU);
+    assert_eq!(decision.model, names::haiku());
     assert_eq!(decision.complexity.tier, ModelTier::NoLlm);
 }
 
@@ -313,7 +314,7 @@ fn route_model_complex_query_routes_opus() {
         &input("Think hard about the best migration strategy"),
         &config,
     );
-    assert_eq!(decision.model, names::OPUS);
+    assert_eq!(decision.model, names::opus());
 }
 
 #[test]
@@ -411,7 +412,7 @@ fn model_tier_display() {
 fn routing_outcome_captures_escalation() {
     let outcome = RoutingOutcome {
         decision: RoutingDecision {
-            model: names::SONNET.to_owned(),
+            model: names::sonnet().to_owned(),
             complexity: ComplexityScore {
                 score: 45,
                 tier: ModelTier::Sonnet,

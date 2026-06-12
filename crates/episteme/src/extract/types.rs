@@ -61,7 +61,7 @@ const fn default_tier_inferred() -> EpistemicTier {
 impl Default for ExtractionConfig {
     fn default() -> Self {
         Self {
-            model: "claude-haiku-4-5-20251001".to_owned(),
+            model: koina::models::task_role_default(koina::models::TaskRole::Extraction).to_owned(),
             min_message_length: 50,
             max_entities: 20,
             max_relationships: 30,

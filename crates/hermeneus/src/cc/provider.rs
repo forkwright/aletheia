@@ -29,16 +29,6 @@ use super::process;
 /// Model name prefix that routes requests to this provider.
 pub(crate) const CC_MODEL_PREFIX: &str = "cc/";
 
-/// Models CC can route to. Kept minimal: CC itself resolves aliases.
-const SUPPORTED_MODELS: &[&str] = &[
-    "claude-opus-4-20250514",
-    "claude-opus-4-6",
-    "claude-sonnet-4-20250514",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5-20251001",
-    "claude-haiku-4-5",
-];
-
 /// Configuration for the CC subprocess provider.
 #[derive(Debug, Clone)]
 pub struct CcProviderConfig {
@@ -54,7 +44,7 @@ impl Default for CcProviderConfig {
     fn default() -> Self {
         Self {
             cc_binary: None,
-            default_model: crate::models::names::OPUS.to_owned(),
+            default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_mins(5),
         }
     }
@@ -287,7 +277,7 @@ impl LlmProvider for CcProvider {
     }
 
     fn supported_models(&self) -> &[&str] {
-        SUPPORTED_MODELS
+        koina::models::provider_models(koina::models::ModelProvider::Anthropic)
     }
 
     fn supports_model(&self, model: &str) -> bool {
@@ -300,16 +290,10 @@ impl LlmProvider for CcProvider {
             // this provider is the intended destination regardless of what
             // other providers are registered.
             Some(MatchKind::Prefix)
-        } else if SUPPORTED_MODELS.contains(&model) {
-            // WHY: an exact-model-ID match on the statically-known list is
-            // high specificity. If a second provider (e.g. AnthropicProvider)
-            // also exact-matches the same ID the tie breaks by registration
-            // order (first registered wins), which is a stable contract.
-            Some(MatchKind::Exact)
         } else if model.starts_with("claude-") {
             // WHY: CC delegates model routing to the `claude` CLI, which
             // handles all claude-* models internally, including future IDs
-            // not yet in SUPPORTED_MODELS. This catch-all ensures forward
+            // not yet in the shared catalog. This catch-all ensures forward
             // compatibility at the cost of lower precedence: any provider
             // with an exact-model match wins over this branch.
             Some(MatchKind::CatchAll)
@@ -438,32 +422,36 @@ mod tests {
 
     #[test]
     fn resolve_model_strips_prefix() {
-        // Can't create CcProvider in tests (no binary), so test the logic directly.
-        let stripped = "cc/claude-sonnet-4-20250514"
+        let model = format!("{CC_MODEL_PREFIX}{}", crate::models::names::sonnet());
+        let stripped = model
             .strip_prefix(CC_MODEL_PREFIX)
-            .unwrap_or("cc/claude-sonnet-4-20250514");
-        assert_eq!(stripped, "claude-sonnet-4-20250514");
+            .unwrap_or(model.as_str());
+        assert_eq!(stripped, crate::models::names::sonnet());
     }
 
     #[test]
     fn supports_model_with_prefix() {
-        // Test the prefix logic without needing a real binary.
-        let model = "cc/claude-sonnet-4-20250514";
+        let model = format!("{CC_MODEL_PREFIX}{}", crate::models::names::sonnet());
         assert!(model.starts_with(CC_MODEL_PREFIX));
     }
 
     #[test]
     fn supports_model_known() {
-        assert!(SUPPORTED_MODELS.contains(&"claude-sonnet-4-20250514"));
-        assert!(SUPPORTED_MODELS.contains(&"claude-opus-4-20250514"));
-        assert!(!SUPPORTED_MODELS.contains(&"gpt-4"));
+        let provider = CcProvider {
+            cc_binary: PathBuf::from("claude"),
+            default_model: crate::models::names::opus().to_owned(),
+            timeout: Duration::from_secs(1),
+        };
+        assert!(provider.supports_model(crate::models::names::sonnet()));
+        assert!(provider.supports_model("claude-future-family-model"));
+        assert!(!provider.supports_model("gpt-4"));
     }
 
     #[test]
     fn cc_provider_reports_cloud_deployment_target() {
         let provider = CcProvider {
             cc_binary: PathBuf::from("claude"),
-            default_model: crate::models::names::OPUS.to_owned(),
+            default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_secs(1),
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
@@ -473,7 +461,7 @@ mod tests {
     fn seat_bridged_fields() {
         let provider = CcProvider {
             cc_binary: PathBuf::from("/usr/local/bin/claude"),
-            default_model: crate::models::names::OPUS.to_owned(),
+            default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_mins(5),
         };
         assert_eq!(

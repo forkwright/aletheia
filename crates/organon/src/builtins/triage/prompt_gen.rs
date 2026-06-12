@@ -27,7 +27,8 @@ pub(crate) fn generate_prompt(issue: &GitHubIssue, repo: &str) -> String {
 
     let mut prompt = String::new();
 
-    prompt.push_str("---\nmodel: claude-opus-4-6\n---\n\n");
+    let model = koina::models::task_role_default(koina::models::TaskRole::TriagePrompt);
+    let _ = writeln!(prompt, "---\nmodel: {model}\n---\n");
 
     let _ = writeln!(prompt, "# {number}: {}\n", issue.title);
 

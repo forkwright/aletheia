@@ -272,7 +272,8 @@ impl Default for AgentModelDefaults {
             thinking_enabled: false,
             thinking_budget: 10_000,
             chars_per_token: d::CHARS_PER_TOKEN,
-            prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+            prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
+                .to_owned(),
             max_tool_result_bytes: d::MAX_TOOL_RESULT_BYTES,
         }
     }

@@ -283,16 +283,11 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
         "api-key".clone_into(&mut answers.credential_source);
     }
 
-    let model: &str = cliclack::select("Default model")
-        .item(
-            koina::defaults::DEFAULT_MODEL,
-            "claude-sonnet-4-6 (recommended)",
-            "",
-        )
-        .item("claude-opus-4-6", "claude-opus-4-6", "")
-        .item("claude-haiku-4-5", "claude-haiku-4-5", "")
-        .interact()
-        .context(PromptSnafu)?;
+    let mut model_select = cliclack::select("Default model");
+    for option in koina::models::model_menu_options() {
+        model_select = model_select.item(option.value, option.label, "");
+    }
+    let model: &str = model_select.interact().context(PromptSnafu)?;
     model.clone_into(&mut answers.model);
 
     let agent_id: String = cliclack::input("Agent ID")

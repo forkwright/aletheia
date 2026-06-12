@@ -86,7 +86,7 @@ impl Default for NousGenerationConfig {
     fn default() -> Self {
         use koina::defaults as d;
         Self {
-            model: "claude-opus-4-20250514".to_owned(),
+            model: koina::models::tier_default(koina::models::ModelTier::Opus).to_owned(),
             fallback_models: Vec::new(),
             retries_before_fallback: 2,
             context_window: d::CONTEXT_TOKENS,
@@ -365,7 +365,7 @@ fn default_chars_per_token() -> u32 {
 
 /// Default prosoche model: Haiku-tier for cheap heartbeat checks.
 fn default_prosoche_model() -> String {
-    "claude-haiku-4-5-20251001".to_owned()
+    koina::models::task_role_default(koina::models::TaskRole::Prosoche).to_owned()
 }
 
 fn default_max_tool_result_bytes() -> u32 {
@@ -627,7 +627,7 @@ mod tests {
             id: Arc::from("analyst"),
             name: Some("Analyst".to_owned()),
             generation: NousGenerationConfig {
-                model: "claude-haiku-4-5-20251001".to_owned(),
+                model: koina::models::tier_default(koina::models::ModelTier::Haiku).to_owned(),
                 fallback_models: Vec::new(),
                 retries_before_fallback: 2,
                 context_window: 100_000,
@@ -636,7 +636,8 @@ mod tests {
                 thinking_enabled: true,
                 thinking_budget: 5_000,
                 chars_per_token: 4,
-                prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+                prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
+                    .to_owned(),
                 complexity: ComplexityConfig::default(),
                 extraction_model: None,
                 distillation_model: None,
@@ -677,7 +678,7 @@ mod tests {
         let config = NousConfig::default();
         assert_eq!(
             config.generation.prosoche_model,
-            "claude-haiku-4-5-20251001"
+            koina::models::task_role_default(koina::models::TaskRole::Prosoche)
         );
     }
 }

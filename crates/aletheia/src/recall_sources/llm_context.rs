@@ -218,51 +218,37 @@ impl RecallSource for LlmContextSource {
     }
 }
 
-/// Known Anthropic model catalog.
-///
-/// NOTE: This is intentionally static data. The issue specifies that model
-/// cards should be "updated automatically when new providers are configured,"
-/// which is handled by overlaying pricing config. Adding entirely new models
-/// requires a code UPDATE (or future config-driven model registry).
 fn anthropic_model_cards() -> Vec<ModelCard> {
-    vec![
-        ModelCard {
-            id: "claude-sonnet-4-20250514".to_owned(),
-            name: "Claude Sonnet 4".to_owned(),
-            provider: "Anthropic".to_owned(),
-            context_window: 200_000,
-            max_output_tokens: 16_000,
-            supports_tools: true,
-            supports_vision: true,
-            supports_thinking: true,
-            input_cost_per_mtok: Some(3.0),
-            output_cost_per_mtok: Some(15.0),
-        },
-        ModelCard {
-            id: "claude-opus-4-20250514".to_owned(),
-            name: "Claude Opus 4".to_owned(),
-            provider: "Anthropic".to_owned(),
-            context_window: 200_000,
-            max_output_tokens: 32_000,
-            supports_tools: true,
-            supports_vision: true,
-            supports_thinking: true,
-            input_cost_per_mtok: Some(15.0),
-            output_cost_per_mtok: Some(75.0),
-        },
-        ModelCard {
-            id: "claude-3-5-haiku-20241022".to_owned(),
-            name: "Claude 3.5 Haiku".to_owned(),
-            provider: "Anthropic".to_owned(),
-            context_window: 200_000,
-            max_output_tokens: 8_192,
-            supports_tools: true,
-            supports_vision: true,
-            supports_thinking: false,
-            input_cost_per_mtok: Some(0.8),
-            output_cost_per_mtok: Some(4.0),
-        },
-    ]
+    let pricing = koina::models::pricing_entries().collect::<std::collections::HashMap<_, _>>();
+
+    koina::models::provider_models(koina::models::ModelProvider::Anthropic)
+        .iter()
+        .map(|model| {
+            let tier = koina::models::model_tier(model).unwrap_or(koina::models::ModelTier::Sonnet);
+            let price = pricing.get(model);
+            ModelCard {
+                id: (*model).to_owned(),
+                name: format!("Anthropic {tier}"),
+                provider: "Anthropic".to_owned(),
+                context_window: u64::from(koina::models::context_tokens(model).unwrap_or(200_000)),
+                max_output_tokens: if tier == koina::models::ModelTier::Opus {
+                    32_000
+                } else if matches!(
+                    tier,
+                    koina::models::ModelTier::NoLlm | koina::models::ModelTier::Haiku
+                ) {
+                    8_192
+                } else {
+                    16_000
+                },
+                supports_tools: true,
+                supports_vision: true,
+                supports_thinking: tier != koina::models::ModelTier::Haiku,
+                input_cost_per_mtok: price.map(|p| p.input_cost_per_mtok),
+                output_cost_per_mtok: price.map(|p| p.output_cost_per_mtok),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -75,12 +75,6 @@ pub(crate) fn estimate_cost(
     }
 }
 
-/// Cache read tokens are billed at 10% of the input token price.
-const CACHE_READ_DISCOUNT: f64 = 0.1;
-
-/// Cache write (creation) tokens are billed at 125% of the input token price.
-const CACHE_WRITE_PREMIUM: f64 = 1.25;
-
 /// Estimate cost including prompt cache token pricing.
 ///
 /// Uses Anthropic's standard cache pricing ratios:
@@ -114,8 +108,8 @@ pub(crate) fn estimate_cost_with_cache(
         reason = "u64->f64 for token counts: acceptable precision loss for cost estimates"
     )]
     {
-        base + (usage.cache_read_tokens as f64 * p.input_cost_per_mtok * CACHE_READ_DISCOUNT // kanon:ignore RUST/as-cast
-            + usage.cache_write_tokens as f64 * p.input_cost_per_mtok * CACHE_WRITE_PREMIUM) // kanon:ignore RUST/as-cast
+        base + (usage.cache_read_tokens as f64 * p.input_cost_per_mtok * koina::models::cache_read_ratio() // kanon:ignore RUST/as-cast
+            + usage.cache_write_tokens as f64 * p.input_cost_per_mtok * koina::models::cache_write_ratio()) // kanon:ignore RUST/as-cast
             / 1_000_000.0
     }
 }

@@ -33,6 +33,8 @@ pub mod http;
 pub mod id;
 /// Shared Prometheus metrics registry (prometheus-client wrapper).
 pub mod metrics;
+/// Shared model catalog and tier defaults.
+pub mod models;
 /// Multi-output pipeline stages via the OutputBuffer pattern.
 pub mod output_buffer;
 /// Sensitive value redaction for safe log output (API keys, tokens, passwords).

@@ -1,6 +1,7 @@
 //! Wizard state: step definitions, field types, and collected answers.
 
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
@@ -284,20 +285,20 @@ pub(crate) static AUTH_OPTIONS: &[SelectOption] = &[
     },
 ];
 
-pub(crate) static MODEL_OPTIONS: &[SelectOption] = &[
-    SelectOption {
-        value: koina::defaults::DEFAULT_MODEL,
-        label: "claude-sonnet-4-6 (recommended)",
-    },
-    SelectOption {
-        value: "claude-opus-4-6",
-        label: "claude-opus-4-6",
-    },
-    SelectOption {
-        value: "claude-haiku-4-5",
-        label: "claude-haiku-4-5",
-    },
-];
+static MODEL_OPTIONS: LazyLock<Box<[SelectOption]>> = LazyLock::new(|| {
+    koina::models::model_menu_options()
+        .iter()
+        .map(|option| SelectOption {
+            value: option.value,
+            label: option.label,
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice()
+});
+
+fn model_options() -> &'static [SelectOption] {
+    &MODEL_OPTIONS
+}
 
 // ─── Step factories ──────────────────────────────────────────────────────────
 
@@ -383,7 +384,7 @@ fn make_agent_step() -> StepState {
                 "pronoea",
                 "alphanumeric + hyphens, used in paths",
             ),
-            WizardField::select("Model", MODEL_OPTIONS, koina::defaults::DEFAULT_MODEL, ""),
+            WizardField::select("Model", model_options(), koina::defaults::DEFAULT_MODEL, ""),
         ],
         cursor: 0,
         editing: None,
