@@ -24,6 +24,7 @@ use tokio::sync::Mutex;
 
 use crate::actor;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
+use crate::handle::DEFAULT_SEND_TIMEOUT;
 use crate::roles::Role;
 
 const SONNET_MODEL: &str = DEFAULT_MODEL;
@@ -279,6 +280,7 @@ impl SpawnService for SpawnServiceImpl {
 
                 // WHY: ephemeral actors get their own cancellation token: short-lived, no shared parent
                 let ephemeral_cancel = CancellationToken::new();
+                let actor_cancel = ephemeral_cancel.clone();
                 let (cross_tx, cross_rx) = if let Some(router) = router.as_ref() {
                     let (tx, rx) = tokio::sync::mpsc::channel(32);
                     router.register(&spawn_id, tx.clone()).await;
@@ -301,7 +303,7 @@ impl SpawnService for SpawnServiceImpl {
                     Vec::new(),
                     cross_rx,
                     cross_tx,
-                    ephemeral_cancel,
+                    actor_cancel,
                     taxis::config::NousBehaviorConfig::default(),
                     tool_config,
                     audit_log,
@@ -310,8 +312,27 @@ impl SpawnService for SpawnServiceImpl {
 
                 info!(session_key = %session_key, "ephemeral actor started");
 
-                let result =
-                    tokio::time::timeout(timeout, handle.send_turn(&session_key, &task)).await;
+                // WHY: request-scoped cancellation token lets us cancel the child
+                // turn itself when the parent timeout fires. Wrapping only the
+                // waiting future with `tokio::time::timeout` drops the reply but
+                // leaves the pipeline running inside the actor (#4776).
+                let turn_cancel = CancellationToken::new();
+                let result = tokio::time::timeout(
+                    timeout,
+                    handle.send_turn_with_cancel(
+                        &session_key,
+                        None,
+                        &task,
+                        DEFAULT_SEND_TIMEOUT,
+                        turn_cancel.clone(),
+                    ),
+                )
+                .await;
+
+                if result.is_err() {
+                    turn_cancel.cancel();
+                    ephemeral_cancel.cancel();
+                }
 
                 // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown of ephemeral actor
                 let _ = handle.shutdown().await;
@@ -561,15 +582,17 @@ mod tests {
     async fn spawn_timeout_returns_error() {
         let (_dir, oikos) = make_oikos();
 
+        let stuck = Arc::new(StuckProvider::new());
         let mut providers = ProviderRegistry::new();
-        providers.register(Box::new(SlowProvider));
+        providers.register(Box::new(StuckProvider::clone_ref(&stuck)));
         let svc = SpawnServiceImpl::new(Arc::new(providers), Arc::new(ToolRegistry::new()), oikos);
 
+        let start = tokio::time::Instant::now();
         let result = svc
             .spawn_and_run(
                 SpawnRequest {
                     role: "coder".to_owned(),
-                    task: "Slow task".to_owned(),
+                    task: "Stuck task".to_owned(),
                     model: None,
                     allowed_tools: None,
                     timeout_secs: 1,
@@ -578,14 +601,110 @@ mod tests {
             )
             .await
             .expect("spawn");
+        let elapsed = start.elapsed();
 
         assert!(result.is_error);
         assert!(result.content.contains("timed out"));
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "parent should return promptly after timeout, took {elapsed:?}"
+        );
+        assert!(
+            stuck.started(),
+            "stuck provider should have started the child turn"
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), stuck.dropped())
+                .await
+                .is_ok(),
+            "stuck provider future should be dropped after turn cancellation"
+        );
+        assert!(
+            !stuck.completed(),
+            "stuck provider should not complete after cancellation"
+        );
     }
 
-    struct SlowProvider;
+    #[derive(Clone)]
+    struct StuckProvider {
+        inner: Arc<StuckProviderInner>,
+    }
 
-    impl LlmProvider for SlowProvider {
+    struct StuckProviderInner {
+        started: std::sync::atomic::AtomicBool,
+        dropped: std::sync::atomic::AtomicBool,
+        dropped_notify: tokio::sync::Notify,
+        completed: std::sync::atomic::AtomicBool,
+    }
+
+    impl StuckProvider {
+        fn new() -> Self {
+            Self {
+                inner: Arc::new(StuckProviderInner {
+                    started: std::sync::atomic::AtomicBool::new(false),
+                    dropped: std::sync::atomic::AtomicBool::new(false),
+                    dropped_notify: tokio::sync::Notify::new(),
+                    completed: std::sync::atomic::AtomicBool::new(false),
+                }),
+            }
+        }
+
+        fn clone_ref(this: &Arc<Self>) -> Self {
+            // WHY: share the same inner state with the test while letting the
+            // ProviderRegistry take ownership of the boxed provider.
+            Self {
+                inner: Arc::clone(&this.inner),
+            }
+        }
+
+        fn started(&self) -> bool {
+            self.inner.started.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        fn completed(&self) -> bool {
+            self.inner
+                .completed
+                .load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        async fn dropped(&self) {
+            let dropped = self.inner.dropped_notify.notified();
+            tokio::pin!(dropped);
+            if self.inner.dropped.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            dropped.await;
+        }
+    }
+
+    struct StuckCompletionFuture {
+        inner: Arc<StuckProviderInner>,
+    }
+
+    impl Future for StuckCompletionFuture {
+        type Output = hermeneus::error::Result<CompletionResponse>;
+
+        fn poll(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Self::Output> {
+            self.inner
+                .started
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            std::task::Poll::Pending
+        }
+    }
+
+    impl Drop for StuckCompletionFuture {
+        fn drop(&mut self) {
+            self.inner
+                .dropped
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            self.inner.dropped_notify.notify_waiters();
+        }
+    }
+
+    impl LlmProvider for StuckProvider {
         fn complete<'a>(
             &'a self,
             _request: &'a CompletionRequest,
@@ -596,21 +715,8 @@ mod tests {
                     + 'a,
             >,
         > {
-            Box::pin(async {
-                // WHY: real sleep required to test timeout in multi_thread runtime
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await; // kanon:ignore TESTING/sleep-in-test
-                Ok(CompletionResponse {
-                    id: "slow".to_owned(),
-                    model: "claude-sonnet-4-20250514".to_owned(),
-                    stop_reason: StopReason::EndTurn,
-                    content: vec![ContentBlock::Text {
-                        text: "late".to_owned(),
-                        citations: None,
-                    }],
-                    usage: Usage::default(),
-                    cost_usd: None,
-                    duration_ms: None,
-                })
+            Box::pin(StuckCompletionFuture {
+                inner: Arc::clone(&self.inner),
             })
         }
 
@@ -620,7 +726,7 @@ mod tests {
 
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
         fn name(&self) -> &str {
-            "slow"
+            "stuck"
         }
     }
 
