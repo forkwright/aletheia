@@ -10,6 +10,8 @@ use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
 use crate::state::KnowledgeState;
 
+#[cfg(feature = "knowledge-store")]
+use super::FlagSeverity;
 use super::{EntityMemory, FlagRequest, MergeRequest};
 
 #[cfg(feature = "knowledge-store")]
@@ -328,29 +330,66 @@ pub async fn merge_entities(
 
 /// POST /api/v1/knowledge/entities/{id}/flag
 ///
-/// The review queue for entity flags is not yet persisted in the knowledge
-/// store, so the endpoint returns `501 Not Implemented` until that backend
-/// support exists.
+/// Persist an operator review flag against the entity. The latest flag for an
+/// entity overwrites any previous flag.
 #[utoipa::path(
     post,
     path = "/api/v1/knowledge/entities/{id}/flag",
     params(("id" = String, Path, description = "Entity ID")),
     request_body = FlagRequest,
     responses(
-        (status = 501, description = "Entity flag review queue not implemented", body = crate::error::ErrorResponse),
+        (status = 204, description = "Entity flagged"),
+        (status = 400, description = "Invalid request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 404, description = "Entity not found", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not enabled", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn flag_entity(
-    State(_state): State<KnowledgeState>,
+    State(state): State<KnowledgeState>,
     claims: Claims,
-    Path(_id): Path<String>,
-    Json(_body): Json<FlagRequest>,
+    Path(id): Path<String>,
+    Json(body): Json<FlagRequest>,
 ) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
-    Err(ApiError::NotImplemented {
-        message: "entity flag review queue is not implemented yet".to_owned(),
+
+    if body.reason.trim().is_empty() {
+        return Err(ApiError::BadRequest {
+            message: "reason must not be empty".to_owned(),
+            location: snafu::location!(),
+        });
+    }
+
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = (&id, &body);
+
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        let entity_id = parse_entity_id(&id)?;
+        let _entity = get_entity_from_store(store, entity_id.as_str())?;
+
+        let severity = match body.severity {
+            FlagSeverity::Low => "low",
+            FlagSeverity::Medium => "medium",
+            FlagSeverity::High => "high",
+        };
+
+        store
+            .flag_entity(&entity_id, body.reason.trim(), severity, &claims.sub)
+            .map_err(|e| ApiError::Internal {
+                message: e.to_string(),
+                location: snafu::location!(),
+            })?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
+
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = state;
+
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not enabled on this server".to_owned(),
         location: snafu::location!(),
     })
 }
@@ -439,6 +478,14 @@ pub async fn delete_entity(
                 message: e.to_string(),
                 location: snafu::location!(),
             })?;
+
+        if let Err(e) = store.clear_entity_flags(&entity_id) {
+            tracing::warn!(
+                entity_id = %id,
+                error = %e,
+                "failed to clear entity flags during entity delete"
+            );
+        }
 
         return Ok(StatusCode::NO_CONTENT);
     }

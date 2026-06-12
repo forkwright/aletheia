@@ -337,6 +337,8 @@ pub struct ExportedSession {
     pub distillation_priming: Option<serde_json::Value>,
     pub notes: Vec<ExportedNote>,
     pub messages: Vec<ExportedMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_records: Option<Vec<ExportedUsageRecord>>,
 }
 ```
 
@@ -348,6 +350,10 @@ pub struct ExportedMessage {
     pub token_estimate: i64,
     pub is_distilled: bool,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
 }
 ```
 
@@ -356,6 +362,18 @@ pub struct ExportedNote {
     pub category: String,
     pub content: String,
     pub created_at: String,
+}
+```
+
+```rust
+pub struct ExportedUsageRecord {
+    pub turn_seq: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_write_tokens: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 ```
 
@@ -391,6 +409,16 @@ pub struct KnowledgeExport {
     pub entities: Vec<crate::knowledge::Entity>,
     /// All relationships between entities.
     pub relationships: Vec<crate::knowledge::Relationship>,
+    /// Exact fact-to-entity links that should be restored on import.
+    #[serde(default)]
+    pub fact_entity_edges: Vec<FactEntityEdge>,
+}
+```
+
+```rust
+pub struct FactEntityEdge {
+    pub fact_id: crate::id::FactId,
+    pub entity_id: crate::id::EntityId,
 }
 ```
 
@@ -473,6 +501,7 @@ impl SessionStore {
     ) -> Result<()>;
     pub fn usage_exists_for_turn (&self, session_id: &str, turn_seq: i64) -> Result<bool>;
     pub fn record_usage (&self, record: &UsageRecord) -> Result<()>;
+    pub fn get_usage_for_session (&self, session_id: &str) -> Result<Vec<UsageRecord>>;
     pub fn add_note (
         &self,
         session_id: &str,

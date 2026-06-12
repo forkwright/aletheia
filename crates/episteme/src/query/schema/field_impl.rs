@@ -1,8 +1,8 @@
 //! Field trait implementations for knowledge graph relations.
 
 use super::{
-    CausalEdgesField, EmbeddingsField, EntitiesField, FactEntitiesField, FactsField, Field,
-    MergeAuditField, PendingMergesField, RelationshipsField,
+    CausalEdgesField, EmbeddingsField, EntitiesField, EntityFlagsField, FactEntitiesField,
+    FactsField, Field, MergeAuditField, PendingMergesField, RelationshipsField,
 };
 
 impl Field for FactsField {
@@ -110,6 +110,18 @@ impl Field for PendingMergesField {
             Self::AliasOverlap => "alias_overlap",
             Self::MergeScore => "merge_score",
             Self::CreatedAt => "created_at",
+        }
+    }
+}
+
+impl Field for EntityFlagsField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::EntityId => "entity_id",
+            Self::Reason => "reason",
+            Self::Severity => "severity",
+            Self::FlaggedBy => "flagged_by",
+            Self::FlaggedAt => "flagged_at",
         }
     }
 }

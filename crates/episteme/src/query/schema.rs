@@ -22,6 +22,8 @@ pub enum Relation {
     MergeAudit,
     /// Queue of candidate entity merges awaiting review.
     PendingMerges,
+    /// Operator review flags attached to entities.
+    EntityFlags,
     /// Directed causal edges between fact nodes.
     CausalEdges,
 }
@@ -38,6 +40,7 @@ impl Relation {
             Self::FactEntities => "fact_entities",
             Self::MergeAudit => "merge_audit",
             Self::PendingMerges => "pending_merges",
+            Self::EntityFlags => "entity_flags",
             Self::CausalEdges => "causal_edges",
         }
     }
@@ -174,6 +177,21 @@ pub enum PendingMergesField {
     AliasOverlap,
     MergeScore,
     CreatedAt,
+}
+
+/// Fields in the `entity_flags` relation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(
+    missing_docs,
+    reason = "field enum variants are self-documenting Datalog column names"
+)]
+#[non_exhaustive]
+pub enum EntityFlagsField {
+    EntityId,
+    Reason,
+    Severity,
+    FlaggedBy,
+    FlaggedAt,
 }
 
 /// Fields in the `causal_edges` relation.

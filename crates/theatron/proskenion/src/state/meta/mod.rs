@@ -361,6 +361,27 @@ pub(crate) fn compute_acceleration(values: &[f64]) -> TrendDirection {
 
 // -- Memory health ------------------------------------------------------------
 
+/// Source of a metric value so the UI can label honest/partial/unavailable data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum MetricSource {
+    /// Computed client-side from backend graph/fact data.
+    #[default]
+    Computed,
+    /// No backend data was available; value is a placeholder.
+    Unavailable,
+}
+
+impl MetricSource {
+    /// Short label shown beneath a metric value.
+    #[must_use]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Computed => "computed",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
 /// Composite memory health data.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct MemoryHealthStore {
@@ -368,7 +389,9 @@ pub(crate) struct MemoryHealthStore {
     pub confidence_distribution: Vec<ConfidenceBucket>,
     pub stale_entities: Vec<StaleEntity>,
     pub orphan_ratio: f64,
+    pub orphan_ratio_source: MetricSource,
     pub decay_pressure_count: u32,
+    pub decay_pressure_source: MetricSource,
     pub health_over_time: Vec<DataPoint>,
     pub recommendations: Vec<String>,
 }

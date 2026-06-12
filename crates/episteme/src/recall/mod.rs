@@ -31,6 +31,9 @@ use crate::knowledge::{EpistemicTier, FactType, Visibility};
 #[cfg(feature = "reranker")]
 pub mod reranker;
 
+/// Explainable recall scoring helpers for HTTP search surfaces.
+pub mod explain;
+
 /// Type alias for a recall candidate used by rerankers.
 pub type RecallCandidate = ScoredResult;
 
@@ -103,7 +106,7 @@ impl RecallWeights {
     /// Sum of all weights (for normalization).
     #[must_use]
     #[instrument(skip(self))]
-    pub(crate) fn total(&self) -> f64 {
+    pub fn total(&self) -> f64 {
         self.vector_similarity
             + self.decay
             + self.relevance
@@ -551,11 +554,7 @@ impl RecallEngine {
     /// Access the current weights.
     #[must_use]
     #[instrument(skip(self))]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "knowledge pipeline infrastructure")
-    )]
-    pub(crate) fn weights(&self) -> &RecallWeights {
+    pub fn weights(&self) -> &RecallWeights {
         &self.weights
     }
 

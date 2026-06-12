@@ -1233,6 +1233,28 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Get all usage records for a session, ordered by turn sequence.
+    #[instrument(skip(self))]
+    pub fn get_usage_for_session(&self, session_id: &str) -> Result<Vec<UsageRecord>> {
+        use fjall::Readable;
+
+        let usage_part = self.partition("usage")?;
+        let prefix = format!("{session_id}:");
+        let upper = format!("{session_id};\x00");
+        let snap = self.db.read_tx();
+
+        let mut records = Vec::new();
+        for guard in snap.range(&usage_part, prefix.as_str()..upper.as_str()) {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall get_usage_for_session range: {e}")))?;
+            records
+                .push(serde_json::from_slice::<UsageRecord>(&v).context(error::StoredJsonSnafu)?);
+        }
+
+        Ok(records)
+    }
+
     // ── Agent notes ───────────────────────────────────────────────────────
 
     /// Valid agent note categories (must match schema.rs `VALID_CATEGORIES`).

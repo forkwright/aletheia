@@ -77,10 +77,12 @@ pub(crate) fn HealthStrip(health: FactHealth) -> Element {
     let avg_color = confidence_color(health.avg_confidence);
     let avg_label = format!("{:.0}%", health.avg_confidence * 100.0);
 
+    let total_label = format!("{} / {}", health.active, health.total);
+
     rsx! {
         div {
             style: "{STRIP_STYLE}",
-            HealthStat { label: "Facts", value: "{health.total}", color: "var(--text-primary)" }
+            HealthStat { label: "Active / Total", value: total_label, color: "var(--text-primary)" }
             HealthStat { label: "Stale >30d", value: "{health.stale}", color: stale_color }
             HealthStat { label: "Low conf", value: "{health.low_confidence}", color: low_conf_color }
             HealthStat { label: "Forgotten", value: "{health.forgotten}", color: forgotten_color }

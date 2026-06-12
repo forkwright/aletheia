@@ -245,8 +245,12 @@ pub(crate) fn Memory() -> Element {
             let client = authenticated_client(&cfg);
             let base = cfg.server_url.trim_end_matches('/');
 
+            let store = fact_store.read();
+            let include_forgotten = store.include_forgotten();
+            drop(store);
+
             let mut url = format!(
-                "{base}/api/v1/knowledge/facts?limit={}&sort={}&order=desc",
+                "{base}/api/v1/knowledge/facts?limit={}&sort={}&order=desc&include_forgotten={include_forgotten}",
                 FactListStore::FETCH_LIMIT,
                 sort.wire()
             );
@@ -285,8 +289,8 @@ pub(crate) fn Memory() -> Element {
                         .filter(|f| type_filter.is_empty() || type_filter.contains(&f.fact_type))
                         .filter(|f| tier_filter.is_empty() || tier_filter.contains(&f.tier))
                         .collect();
-                    let shown = filtered.len();
-                    fact_store.write().load(filtered, total.max(shown));
+                    let active_count = filtered.iter().filter(|f| !f.is_forgotten).count();
+                    fact_store.write().load(filtered, active_count, total);
                 }
                 Ok(resp) => {
                     tracing::warn!(status = %resp.status(), "facts request failed");
@@ -483,7 +487,7 @@ pub(crate) fn Memory() -> Element {
     let can_back = nav_history.read().can_go_back();
     let can_forward = nav_history.read().can_go_forward();
     let breadcrumbs: Vec<String> = nav_history.read().breadcrumbs().to_vec();
-    let fact_count = fact_store.read().total;
+    let fact_count = fact_store.read().total_count;
     let health = fact_store.read().health();
 
     rsx! {

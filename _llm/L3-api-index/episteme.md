@@ -2202,6 +2202,10 @@ impl KnowledgeStore {
         &self,
         fact_ids: &[crate::id::FactId],
     ) -> crate::error::Result<Vec<crate::knowledge::Entity>>;
+    pub fn list_fact_entity_edges_for_facts (
+        &self,
+        fact_ids: &[crate::id::FactId],
+    ) -> crate::error::Result<Vec<(crate::id::FactId, crate::id::EntityId)>>;
     pub fn list_all_relationships (
         &self,
     ) -> crate::error::Result<Vec<crate::knowledge::Relationship>>;
@@ -2266,6 +2270,14 @@ impl KnowledgeStore {
         tuning: &crate::dedup::DedupTuning,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>>;
     pub fn orphaned_entity_ids (&self) -> crate::error::Result<Vec<String>>;
+    pub fn flag_entity (
+        &self,
+        entity_id: &crate::id::EntityId,
+        reason: &str,
+        severity: &str,
+        flagged_by: &str,
+    ) -> crate::error::Result<()>;
+    pub fn clear_entity_flags (&self, entity_id: &crate::id::EntityId) -> crate::error::Result<()>;
 }
 ```
 
@@ -2426,7 +2438,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         visibility: String default 'private',
         sensitivity: String default 'public'
     }",
-    // WHY: index 1 is a sentinel — `init_schema` skips this entry and runs
+    // WHY: index 1 is a sentinel - `init_schema` skips this entry and runs
     // the dim-parameterized `entities_ddl(self.dim)` instead so the relation
     // carries a `name_embedding: <F32; DIM>?` column for the dedup pipeline
     // (#4165 Path A). The literal here documents the pre-v13 shape but is
@@ -2475,25 +2487,25 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         confidence: Float,
         created_at: String
     }",
-    // Index 7 — type_hierarchy (added in schema v8)
+    // Index 7 - type_hierarchy (added in schema v8)
     r":create type_hierarchy {
         child_type: String, parent_type: String =>
         created_at: String
     }",
-    // Index 8 — derived_facts (added in schema v8)
+    // Index 8 - derived_facts (added in schema v8)
     r":create derived_facts {
         entity_id: String, rule_id: String, derived_content: String =>
         confidence: Float,
         materialized_at: String
     }",
-    // Index 9 — defaults (added in schema v8)
+    // Index 9 - defaults (added in schema v8)
     r":create defaults {
         entity_id: String, tag: String =>
         default_content: String,
         confidence: Float,
         created_at: String
     }",
-    // Index 10 — published_facts (added in schema v10)
+    // Index 10 - published_facts (added in schema v10)
     r":create published_facts {
         id: String =>
         original_fact_id: String,
@@ -2503,7 +2515,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         contested_by: String,
         contest_reason: String?
     }",
-    // Index 11 — provenance (added in schema v10)
+    // Index 11 - provenance (added in schema v10)
     r":create provenance {
         published_fact_id: String, contributor: String =>
         contribution_type: String,
@@ -2511,6 +2523,14 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         contributed_at: String
     }",
     EMBEDDING_META_DDL,
+    // Index 13 - entity_flags (added in schema v16)
+    r":create entity_flags {
+        entity_id: String =>
+        reason: String,
+        severity: String,
+        flagged_by: String,
+        flagged_at: String
+    }",
 ];
 ```
 
@@ -3031,6 +3051,8 @@ pub enum Relation {
     MergeAudit,
     /// Queue of candidate entity merges awaiting review.
     PendingMerges,
+    /// Operator review flags attached to entities.
+    EntityFlags,
     /// Directed causal edges between fact nodes.
     CausalEdges,
 }
@@ -3131,6 +3153,16 @@ pub enum PendingMergesField {
     AliasOverlap,
     MergeScore,
     CreatedAt,
+}
+```
+
+```rust
+pub enum EntityFlagsField {
+    EntityId,
+    Reason,
+    Severity,
+    FlaggedBy,
+    FlaggedAt,
 }
 ```
 
@@ -3245,6 +3277,58 @@ pub struct TieredSearchResult<T> { // kanon:ignore TOPOLOGY/shallow-struct
 }
 ```
 
+## `src/recall/explain.rs`
+
+```rust
+pub enum CandidateDecision {
+    /// Included in the returned result set.
+    Selected,
+    /// Removed because it did not meet a hard gate.
+    Dropped,
+    /// Removed by a policy filter such as forgetting or visibility.
+    Filtered,
+}
+```
+
+```rust
+pub struct ExplainedCandidate {
+    /// Underlying recall candidate.
+    pub result: ScoredResult,
+    /// Whether the candidate was selected, dropped, or filtered.
+    pub decision: CandidateDecision,
+    /// Short machine-readable reasons for the decision.
+    pub reasons: Vec<String>,
+    /// Source confidence carried from the fact provenance.
+    pub confidence: f64,
+    /// Source epistemic tier carried from the fact provenance.
+    pub tier: String,
+    /// Source fact type carried from the fact.
+    pub fact_type: String,
+}
+```
+
+```rust
+pub struct RecallExplanation {
+    /// Weights used to compute the composite score.
+    pub weights: RecallWeights,
+    /// Sum of the active weights (the normalization denominator).
+    pub total_weight: f64,
+    /// Every candidate seen, including those that were filtered or dropped.
+    pub candidates: Vec<ExplainedCandidate>,
+}
+```
+
+```rust
+pub fn explain_recall (
+    engine: &RecallEngine,
+    facts: &[Fact],
+    query: &str,
+    query_nous_id: Option<&str>,
+    now: jiff::Timestamp,
+    limit: usize,
+) -> RecallExplanation
+```
+
 ## `src/recall/mod.rs`
 
 > Type alias for a recall candidate used by rerankers.
@@ -3296,6 +3380,12 @@ pub struct RecallWeights {
     /// non-consolidated facts have `source_count` 0 and score 0 here, so enabling
     /// the weight never regresses them.
     pub convergence: f64,
+}
+```
+
+```rust
+impl RecallWeights {
+    pub fn total (&self) -> f64;
 }
 ```
 
@@ -3424,6 +3514,7 @@ impl RecallEngine {
         selected_ids: &HashSet<String, S>,
     ) -> Vec<ScoredResult>;
     pub fn rank (&self, mut candidates: Vec<ScoredResult>) -> Vec<ScoredResult>;
+    pub fn weights (&self) -> &RecallWeights;
     pub fn score_graph_importance (&self, importance: f64) -> f64;
     pub fn score_serendipity (&self, graph_importance: f64, distance: f64) -> f64;
     pub fn score_surprise (&self, surprise_nats: f64, midpoint_nats: f64) -> f64;

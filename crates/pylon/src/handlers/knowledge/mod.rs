@@ -15,10 +15,11 @@ pub(crate) mod entity;
 pub(crate) use dto::default_limit;
 pub use dto::{
     EntitiesQuery, EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship,
-    FactDetailResponse, FactsQuery, FactsResponse, FlagRequest, FlagSeverity, ForgetRequest,
-    GraphCheckReport, MergeRequest, RelationshipDirection, RelationshipsResponse, SearchQuery,
-    SearchResponse, SearchResult, SimilarFact, TimelineEvent, TimelineQuery, TimelineResponse,
-    UpdateConfidenceRequest, UpdateSensitivityRequest,
+    ExplainCandidate, ExplainDecision, ExplainQuery, ExplainResponse, FactDetailResponse,
+    FactorScoreBreakdown, FactsQuery, FactsResponse, FlagRequest, FlagSeverity, ForgetRequest,
+    GraphCheckReport, MergeRequest, RecallWeightsView, RelationshipDirection,
+    RelationshipsResponse, SearchQuery, SearchResponse, SearchResult, SimilarFact, TimelineEvent,
+    TimelineQuery, TimelineResponse, UpdateConfidenceRequest, UpdateSensitivityRequest,
 };
 pub(crate) use dto::{default_order, default_sort};
 pub use entity::{
@@ -589,7 +590,7 @@ pub use mutation::{
 };
 #[cfg(test)]
 use search::truncate_content;
-pub use search::{__path_search, __path_timeline, search, timeline};
+pub use search::{__path_explain, __path_search, __path_timeline, explain, search, timeline};
 use search::{get_entity_relationships, get_stored_entities, get_stored_facts, sort_facts};
 #[cfg(feature = "knowledge-store")]
 use search::{get_fact_relationships, get_similar_facts};

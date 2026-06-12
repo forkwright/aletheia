@@ -1,13 +1,14 @@
 // kanon:ignore RUST/file-too-long — cohesive insights surface: agent-perf, quality, token, cost, and journal handlers share helper bucketing/date-range/series functions and DTOs; splitting now would duplicate those helpers across sibling modules.
 //! Meta-insights handlers: agent performance, quality metrics, system journal.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use tracing::warn;
 
-use mneme::types::{Message, Role, Session};
+use jiff::ToSpan;
+use mneme::types::{Message, Role, Session, UsageRecord};
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::extract::Claims;
@@ -416,6 +417,12 @@ impl TokenTotals {
     }
 }
 
+#[derive(Debug, Clone)]
+struct SessionUsage {
+    session: Session,
+    usage_records: Vec<UsageRecord>,
+}
+
 async fn load_token_metrics(state: InsightsState, query: MetricsQuery) -> TokenMetricsResponse {
     let agent_configs: Vec<(String, String, String)> = state
         .nous_manager
@@ -443,15 +450,20 @@ async fn load_token_metrics(state: InsightsState, query: MetricsQuery) -> TokenM
         let sessions = store.list_sessions(None).map_err(ApiError::from)?;
         let mut rows = Vec::with_capacity(sessions.len());
         for session in sessions {
-            let messages = store.get_history(&session.id, None).unwrap_or_else(|err| {
-                warn!(
-                    session_id = %session.id,
-                    error = %err,
-                    "failed to load session history for token metrics"
-                );
-                Vec::new()
+            let usage_records = store
+                .get_usage_for_session(&session.id)
+                .unwrap_or_else(|err| {
+                    warn!(
+                        session_id = %session.id,
+                        error = %err,
+                        "failed to load usage records for token metrics"
+                    );
+                    Vec::new()
+                });
+            rows.push(SessionUsage {
+                session,
+                usage_records,
             });
-            rows.push((session, messages));
         }
         Ok::<_, ApiError>(rows)
     })
@@ -468,14 +480,24 @@ async fn load_token_metrics(state: InsightsState, query: MetricsQuery) -> TokenM
         Vec::new()
     });
 
-    build_token_metrics(&agent_configs, &model_by_agent, &session_rows, &query)
+    let today = jiff::Timestamp::now()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .date();
+    build_token_metrics_at(
+        &agent_configs,
+        &model_by_agent,
+        &session_rows,
+        &query,
+        today,
+    )
 }
 
-fn build_token_metrics(
+fn build_token_metrics_at(
     agent_configs: &[(String, String, String)],
     model_by_agent: &HashMap<String, String>,
-    session_rows: &[(Session, Vec<Message>)],
+    session_rows: &[SessionUsage],
     query: &MetricsQuery,
+    today: jiff::civil::Date,
 ) -> TokenMetricsResponse {
     let mut total = TokenTotals::default();
     let mut agents: HashMap<String, (String, TokenTotals)> = agent_configs
@@ -488,12 +510,16 @@ fn build_token_metrics(
         .collect();
     let mut series: HashMap<String, TokenTotals> = HashMap::new();
 
-    for (session, messages) in session_rows {
+    for row in session_rows {
+        let session = &row.session;
         if !date_in_range(&session.created_at, query) {
             continue;
         }
+        if row.usage_records.is_empty() {
+            continue;
+        }
 
-        let (input_tokens, output_tokens) = message_token_split(messages);
+        let (input_tokens, output_tokens) = usage_token_split(&row.usage_records);
         total.add_tokens(input_tokens, output_tokens);
         total.add_session();
 
@@ -503,14 +529,24 @@ fn build_token_metrics(
         agent_entry.1.add_tokens(input_tokens, output_tokens);
         agent_entry.1.add_session();
 
-        let model = session
-            .model
-            .clone()
-            .or_else(|| model_by_agent.get(&session.nous_id).cloned())
-            .unwrap_or_else(|| "unknown".to_owned());
-        let model_entry = models.entry(model).or_default();
-        model_entry.add_tokens(input_tokens, output_tokens);
-        model_entry.add_session();
+        let mut models_for_session = HashSet::new();
+        for usage in &row.usage_records {
+            let model = usage
+                .model
+                .clone()
+                .or_else(|| session.model.clone())
+                .or_else(|| model_by_agent.get(&session.nous_id).cloned())
+                .unwrap_or_else(|| "unknown".to_owned());
+            let model_entry = models.entry(model.clone()).or_default();
+            model_entry.add_tokens(
+                token_i64_to_u64(usage.input_tokens),
+                token_i64_to_u64(usage.output_tokens),
+            );
+            models_for_session.insert(model);
+        }
+        for model in models_for_session {
+            models.entry(model).or_default().add_session();
+        }
 
         let bucket = bucket_date(&session.created_at, query.granularity.as_deref());
         series
@@ -519,39 +555,105 @@ fn build_token_metrics(
             .add_tokens(input_tokens, output_tokens);
     }
 
+    let windows = token_period_windows(session_rows, today);
     TokenMetricsResponse {
         series: series_points(series),
         agents: agent_rows(agents),
         models: model_rows(models),
-        today_input: total.input_tokens,
-        today_output: total.output_tokens,
-        week_input: total.input_tokens,
-        week_output: total.output_tokens,
-        month_input: total.input_tokens,
-        month_output: total.output_tokens,
-        prev_today_input: 0,
-        prev_today_output: 0,
-        prev_week_input: 0,
-        prev_week_output: 0,
-        prev_month_input: 0,
-        prev_month_output: 0,
+        today_input: windows.today.input_tokens,
+        today_output: windows.today.output_tokens,
+        week_input: windows.week.input_tokens,
+        week_output: windows.week.output_tokens,
+        month_input: windows.month.input_tokens,
+        month_output: windows.month.output_tokens,
+        prev_today_input: windows.prev_today.input_tokens,
+        prev_today_output: windows.prev_today.output_tokens,
+        prev_week_input: windows.prev_week.input_tokens,
+        prev_week_output: windows.prev_week.output_tokens,
+        prev_month_input: windows.prev_month.input_tokens,
+        prev_month_output: windows.prev_month.output_tokens,
     }
 }
 
-fn message_token_split(messages: &[Message]) -> (u64, u64) {
-    let mut input_tokens = 0_u64;
-    let mut output_tokens = 0_u64;
+#[derive(Debug, Default)]
+struct TokenPeriodWindows {
+    today: TokenTotals,
+    week: TokenTotals,
+    month: TokenTotals,
+    prev_today: TokenTotals,
+    prev_week: TokenTotals,
+    prev_month: TokenTotals,
+}
 
-    for message in messages {
-        let tokens = u64::try_from(message.token_estimate).unwrap_or(0);
-        if message.role == Role::Assistant {
-            output_tokens = output_tokens.saturating_add(tokens);
-        } else {
-            input_tokens = input_tokens.saturating_add(tokens);
+fn token_period_windows(
+    session_rows: &[SessionUsage],
+    today: jiff::civil::Date,
+) -> TokenPeriodWindows {
+    let week_start = today.checked_sub(6.days()).unwrap_or(today);
+    let prev_week_end = week_start.checked_sub(1.days()).unwrap_or(week_start);
+    let prev_week_start = week_start.checked_sub(7.days()).unwrap_or(week_start);
+    let month_start = jiff::civil::Date::new(today.year(), today.month(), 1).unwrap_or(today);
+    let (prev_month_year, prev_month) = if today.month() == 1 {
+        (today.year() - 1, 12)
+    } else {
+        (today.year(), today.month() - 1)
+    };
+    let prev_month_start =
+        jiff::civil::Date::new(prev_month_year, prev_month, 1).unwrap_or(month_start);
+    let prev_month_end = month_start
+        .checked_sub(1.days())
+        .unwrap_or(prev_month_start);
+    let yesterday = today.checked_sub(1.days()).unwrap_or(today);
+
+    let mut windows = TokenPeriodWindows::default();
+    for row in session_rows {
+        let Some(date) = session_date(&row.session) else {
+            continue;
+        };
+        if row.usage_records.is_empty() {
+            continue;
+        }
+        let (input_tokens, output_tokens) = usage_token_split(&row.usage_records);
+        if date == today {
+            windows.today.add_tokens(input_tokens, output_tokens);
+        }
+        if date == yesterday {
+            windows.prev_today.add_tokens(input_tokens, output_tokens);
+        }
+        if date >= week_start && date <= today {
+            windows.week.add_tokens(input_tokens, output_tokens);
+        }
+        if date >= prev_week_start && date <= prev_week_end {
+            windows.prev_week.add_tokens(input_tokens, output_tokens);
+        }
+        if date >= month_start && date <= today {
+            windows.month.add_tokens(input_tokens, output_tokens);
+        }
+        if date >= prev_month_start && date <= prev_month_end {
+            windows.prev_month.add_tokens(input_tokens, output_tokens);
         }
     }
+    windows
+}
 
+fn session_date(session: &Session) -> Option<jiff::civil::Date> {
+    session.created_at.get(..10)?.parse().ok()
+}
+
+fn usage_token_split(records: &[UsageRecord]) -> (u64, u64) {
+    let input_tokens = records
+        .iter()
+        .map(|record| token_i64_to_u64(record.input_tokens))
+        .sum();
+    let output_tokens = records
+        .iter()
+        .map(|record| token_i64_to_u64(record.output_tokens))
+        .sum();
     (input_tokens, output_tokens)
+}
+
+fn token_i64_to_u64(tokens: i64) -> u64 {
+    u64::try_from(tokens).unwrap_or(0)
 }
 
 fn date_in_range(timestamp: &str, query: &MetricsQuery) -> bool {
@@ -852,5 +954,103 @@ mod tests {
         assert!(validate_metrics_query(&query(None, None, Some("2026-13-45"))).is_err());
         // A syntactically plausible but out-of-calendar date is also rejected.
         assert!(validate_metrics_query(&query(None, Some("2026-02-30"), None)).is_err());
+    }
+
+    fn test_session(id: &str, created_at: &str) -> Session {
+        Session {
+            id: id.to_owned(),
+            nous_id: "alice".to_owned(),
+            session_key: id.to_owned(),
+            status: mneme::types::SessionStatus::Active,
+            model: Some("model-a".to_owned()),
+            session_type: mneme::types::SessionType::Primary,
+            created_at: format!("{created_at}T00:00:00Z"),
+            updated_at: format!("{created_at}T00:00:00Z"),
+            metrics: mneme::types::SessionMetrics {
+                token_count_estimate: 0,
+                message_count: 0,
+                last_input_tokens: 0,
+                bootstrap_hash: None,
+                distillation_count: 0,
+                last_distilled_at: None,
+                computed_context_tokens: 0,
+            },
+            origin: mneme::types::SessionOrigin {
+                parent_session_id: None,
+                thread_id: None,
+                transport: Some("test".to_owned()),
+                display_name: None,
+            },
+            artefact_meta: None,
+        }
+    }
+
+    fn usage(session_id: &str, input_tokens: i64, output_tokens: i64) -> UsageRecord {
+        UsageRecord {
+            session_id: session_id.to_owned(),
+            turn_seq: 1,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            model: Some("model-a".to_owned()),
+        }
+    }
+
+    fn fixed_date(date: &str) -> jiff::civil::Date {
+        match date.parse() {
+            Ok(date) => date,
+            Err(err) => panic!("fixed test date must parse: {err}"),
+        }
+    }
+
+    fn first_item<'a, T>(items: &'a [T], label: &str) -> &'a T {
+        match items.first() {
+            Some(item) => item,
+            None => panic!("{label} should contain at least one item"),
+        }
+    }
+
+    #[test]
+    fn token_metrics_use_durable_usage_and_real_period_windows() {
+        let rows = vec![
+            SessionUsage {
+                session: test_session("today", "2026-06-12"),
+                usage_records: vec![usage("today", 10, 5)],
+            },
+            SessionUsage {
+                session: test_session("yesterday", "2026-06-11"),
+                usage_records: vec![usage("yesterday", 20, 10)],
+            },
+            SessionUsage {
+                session: test_session("prev-week", "2026-06-05"),
+                usage_records: vec![usage("prev-week", 30, 15)],
+            },
+            SessionUsage {
+                session: test_session("prev-month", "2026-05-20"),
+                usage_records: vec![usage("prev-month", 40, 20)],
+            },
+        ];
+        let agent_configs = vec![("alice".to_owned(), "Alice".to_owned(), "model-a".to_owned())];
+        let model_by_agent = HashMap::from([("alice".to_owned(), "model-a".to_owned())]);
+        let response = build_token_metrics_at(
+            &agent_configs,
+            &model_by_agent,
+            &rows,
+            &query(Some("daily"), Some("2026-06-12"), Some("2026-06-12")),
+            fixed_date("2026-06-12"),
+        );
+
+        assert_eq!(response.series.len(), 1);
+        assert_eq!(first_item(&response.series, "series").input_tokens, 10);
+        assert_eq!(first_item(&response.agents, "agents").input_tokens, 10);
+        assert_eq!(first_item(&response.agents, "agents").session_count, 1);
+        assert_eq!(first_item(&response.models, "models").output_tokens, 5);
+        assert_eq!(response.today_input, 10);
+        assert_eq!(response.prev_today_input, 20);
+        assert_eq!(response.week_input, 30);
+        assert_eq!(response.prev_week_input, 30);
+        assert_eq!(response.month_input, 60);
+        assert_eq!(response.prev_month_input, 40);
     }
 }

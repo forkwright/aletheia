@@ -43,7 +43,7 @@ Key substrate properties as of the 2026-05-08 refresh:
 - **Knowledge schema v11:** `eidos::Visibility` and `eidos::MemoryScope` travel
   through facts, Datalog schema, recall filtering, and MCP/API surfaces.
 - **Operator-independent verification:** `integration-tests` owns the shared
-  `TestHarness` plus a 15-scenario substrate canary suite.
+  `TestHarness` plus a 25-scenario substrate canary suite.
 
 ---
 

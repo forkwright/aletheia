@@ -170,6 +170,43 @@ impl KnowledgeStore {
         parse_entities(&rows)
     }
 
+    /// List exact fact-to-entity links for the supplied fact IDs.
+    ///
+    /// Used by portability/export paths so import can restore the original
+    /// bipartite edges instead of linking every exported fact to every entity.
+    pub fn list_fact_entity_edges_for_facts(
+        &self,
+        fact_ids: &[crate::id::FactId],
+    ) -> crate::error::Result<Vec<(crate::id::FactId, crate::id::EntityId)>> {
+        use std::collections::BTreeMap;
+
+        if fact_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let fact_id_list = quoted_id_list(fact_ids.iter().map(crate::id::FactId::as_str));
+        let script = format!(
+            r"?[fact_id, entity_id] :=
+                *fact_entities{{fact_id, entity_id}},
+                fact_id in [{fact_id_list}]
+            :order fact_id, entity_id"
+        );
+        let rows = self.run_read(&script, BTreeMap::new())?;
+
+        let mut edges = Vec::new();
+        for row in &rows.rows {
+            if row.len() < 2 {
+                continue;
+            }
+            let fact_id = crate::id::FactId::new(extract_str(&row[0])?)
+                .context(crate::error::InvalidIdSnafu)?;
+            let entity_id = crate::id::EntityId::new(extract_str(&row[1])?)
+                .context(crate::error::InvalidIdSnafu)?;
+            edges.push((fact_id, entity_id));
+        }
+        Ok(edges)
+    }
+
     /// List all relationships in the knowledge graph.
     ///
     /// Used by agent portability export (issue #4163) to round-trip the full
@@ -1197,7 +1234,56 @@ impl KnowledgeStore {
         use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert("id".to_owned(), DataValue::Str(entity_id.as_str().into()));
-        self.run_mut(&queries::rm_entity(), params)
+        self.run_mut(&queries::rm_entity(), params)?;
+        // WHY: keep the flag relation consistent with the entity lifecycle;
+        // flags are review state tied to a specific entity row.
+        if let Err(e) = self.clear_entity_flags(entity_id) {
+            tracing::warn!(
+                entity_id = %entity_id,
+                error = %e,
+                "failed to clear entity flags during delete"
+            );
+        }
+        Ok(())
+    }
+
+    /// Flag an entity for operator review.
+    #[instrument(skip(self))]
+    pub fn flag_entity(
+        &self,
+        entity_id: &crate::id::EntityId,
+        reason: &str,
+        severity: &str,
+        flagged_by: &str,
+    ) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
+        let mut params = BTreeMap::new();
+        params.insert(
+            "entity_id".to_owned(),
+            DataValue::Str(entity_id.as_str().into()),
+        );
+        params.insert("reason".to_owned(), DataValue::Str(reason.into()));
+        params.insert("severity".to_owned(), DataValue::Str(severity.into()));
+        params.insert("flagged_by".to_owned(), DataValue::Str(flagged_by.into()));
+        params.insert("flagged_at".to_owned(), DataValue::Str(now.into()));
+        self.run_mut(&queries::upsert_entity_flag(), params)
+    }
+
+    /// Remove any review flags for an entity.
+    #[instrument(skip(self))]
+    pub fn clear_entity_flags(&self, entity_id: &crate::id::EntityId) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let mut params = BTreeMap::new();
+        params.insert(
+            "entity_id".to_owned(),
+            DataValue::Str(entity_id.as_str().into()),
+        );
+        self.run_mut(&queries::rm_entity_flag(), params)
     }
 
     /// Store a pending merge candidate for review.

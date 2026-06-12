@@ -4,7 +4,7 @@
 
 use dioxus::prelude::*;
 
-use crate::state::memory::{FactListStore, FactRecency, FactTier, FactType};
+use crate::state::memory::{FactListStore, FactRecency, FactReviewMode, FactTier, FactType};
 
 const BAR_STYLE: &str = "\
     display: flex; \
@@ -86,6 +86,7 @@ pub(crate) fn FactFilters(
     let active_types = store.type_filter.clone();
     let active_tiers = store.tier_filter.clone();
     let recency = store.recency;
+    let review_mode = store.review_mode;
     let has_filters = store.has_active_filters();
     drop(store);
 
@@ -173,6 +174,30 @@ pub(crate) fn FactFilters(
                                     on_filter_change.call(());
                                 },
                                 "{t.label()}"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // -- Review mode --
+            div {
+                style: "{GROUP_STYLE}",
+                span { style: "{GROUP_LABEL_STYLE}", "Review" }
+                for mode in FactReviewMode::ALL {
+                    {
+                        let m = *mode;
+                        let active = review_mode == m;
+                        let style = chip_style(active, "var(--accent)");
+                        rsx! {
+                            span {
+                                key: "review-{m.label()}",
+                                style: "{style}",
+                                onclick: move |_| {
+                                    list_store.write().review_mode = m;
+                                    on_filter_change.call(());
+                                },
+                                "{m.label()}"
                             }
                         }
                     }

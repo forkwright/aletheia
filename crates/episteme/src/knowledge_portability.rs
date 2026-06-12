@@ -20,7 +20,7 @@ pub(crate) fn export_knowledge(
     nous_id: &str,
     store: &crate::knowledge_store::KnowledgeStore,
 ) -> Option<graphe::portability::KnowledgeExport> {
-    // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot: missing data on any leg yields an empty list (then the caller short-circuits to None below) rather than blocking the export.
+    // kanon:ignore RUST/no-result-unwrap-or-default - best-effort portability snapshot: missing data on any leg yields an empty list (then the caller short-circuits to None below) rather than blocking the export.
     let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
     let facts = store
         .query_facts(nous_id, &now, 100_000)
@@ -29,15 +29,22 @@ pub(crate) fn export_knowledge(
 
     let fact_ids: Vec<crate::id::FactId> = facts.iter().map(|fact| fact.id.clone()).collect();
 
-    // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot; see WHY above.
+    // kanon:ignore RUST/no-result-unwrap-or-default - best-effort portability snapshot; see WHY above.
     let entities = store.list_entities_for_facts(&fact_ids).unwrap_or_default();
+    // kanon:ignore RUST/no-result-unwrap-or-default - best-effort portability snapshot; see WHY above.
+    let fact_entity_edges = store
+        .list_fact_entity_edges_for_facts(&fact_ids)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(fact_id, entity_id)| graphe::portability::FactEntityEdge { fact_id, entity_id })
+        .collect();
 
     let entity_ids: std::collections::HashSet<String> = entities
         .iter()
         .map(|entity| entity.id.as_str().to_owned())
         .collect();
 
-    // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot; see WHY above.
+    // kanon:ignore RUST/no-result-unwrap-or-default - best-effort portability snapshot; see WHY above.
     let relationships = store
         .list_relationships_between_entities(&entity_ids)
         .unwrap_or_default();
@@ -58,6 +65,7 @@ pub(crate) fn export_knowledge(
         facts,
         entities,
         relationships,
+        fact_entity_edges,
     })
 }
 
@@ -98,16 +106,14 @@ pub(crate) fn import_knowledge(
         }
         result.facts_imported += 1;
     }
-    for fact in &knowledge.facts {
-        for entity in &knowledge.entities {
-            if let Err(e) = store.insert_fact_entity(&fact.id, &entity.id) {
-                warn!(
-                    fact_id = %fact.id,
-                    entity_id = %entity.id,
-                    error = %e,
-                    "failed to import fact/entity link"
-                );
-            }
+    for edge in &knowledge.fact_entity_edges {
+        if let Err(e) = store.insert_fact_entity(&edge.fact_id, &edge.entity_id) {
+            warn!(
+                fact_id = %edge.fact_id,
+                entity_id = %edge.entity_id,
+                error = %e,
+                "failed to import fact/entity link"
+            );
         }
     }
 
@@ -214,6 +220,15 @@ mod tests {
 
         assert_eq!(exported.facts.len(), 1);
         assert_eq!(exported.facts[0].id.as_str(), "export-alice-fact");
+        assert_eq!(exported.fact_entity_edges.len(), 1);
+        assert_eq!(
+            exported.fact_entity_edges[0].fact_id.as_str(),
+            "export-alice-fact"
+        );
+        assert_eq!(
+            exported.fact_entity_edges[0].entity_id.as_str(),
+            "export-alice-entity"
+        );
         assert!(entity_ids.contains(&"export-alice-entity"));
         assert!(
             !entity_ids.contains(&"export-bob-entity"),
