@@ -6,7 +6,7 @@ Talk to an AI that remembers your previous conversations, learns your preference
 
 One binary. No containers. No external databases. Beyond your LLM provider, there are no cloud dependencies.
 
-[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md)
+[Golden Path](docs/GOLDEN-PATH.md) · [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md)
 
 ---
 
