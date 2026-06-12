@@ -20,6 +20,7 @@ impl ApiClient {
     pub fn new (base_url: &str, token: Option<String>) -> Result<Self>;
     pub fn token (&self) -> Option<&str>;
     pub async fn health (&self) -> Result<bool>;
+    pub async fn health_details (&self) -> Result<HealthResponse>;
     pub async fn auth_mode (&self) -> Result<AuthMode>;
     pub async fn login (&self, username: &str, password: &str) -> Result<LoginResponse>;
     pub async fn agents (&self) -> Result<Vec<Agent>>;
@@ -497,6 +498,34 @@ pub struct NousTool {
 pub struct NousToolsResponse {
     /// List of tools.
     pub tools: Vec<NousTool>,
+}
+```
+
+```rust
+pub struct HealthResponse {
+    /// Aggregate status: `"healthy"`, `"degraded"`, or `"unhealthy"`.
+    pub status: String,
+    /// Crate version from `Cargo.toml`.
+    pub version: String,
+    /// Build git SHA when available.
+    pub git_sha: String,
+    /// Seconds since server start.
+    pub uptime_seconds: u64,
+    /// Individual subsystem check results.
+    pub checks: Vec<HealthCheck>,
+    /// Absolute path to the instance data directory.
+    pub data_dir: String,
+}
+```
+
+```rust
+pub struct HealthCheck {
+    /// Subsystem name (e.g. `"session_store"`, `"providers"`).
+    pub name: String,
+    /// Check outcome: `"pass"`, `"warn"`, `"fail"`, or `"timeout"`.
+    pub status: String,
+    /// Diagnostic message when status is not `"pass"`.
+    pub message: Option<String>,
 }
 ```
 

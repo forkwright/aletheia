@@ -10,7 +10,7 @@ use crate::state::OpsState;
 
 #[path = "ops_dto.rs"]
 mod ops_dto;
-pub use ops_dto::{ActiveTool, OpsToolsResponse, ToolHistoryEntry};
+pub use ops_dto::{LiveInvocationEntry, OpsToolsResponse, ToolCatalogEntry};
 
 fn metrics_snapshot() -> (u64, u64) {
     let registry = koina::metrics::MetricsRegistry::new();
@@ -43,11 +43,11 @@ fn metrics_snapshot() -> (u64, u64) {
 
 /// GET /api/v1/ops/tools: summarize the live tool registry and metrics.
 ///
-/// The registry listing is sourced from organon's live tool registry. Tool
-/// call totals are read from the organon metrics families registered into a
-/// scratch registry at request time. The runtime does not currently persist a
-/// chronological tool-call history, so `tool_history` is empty until such a
-/// store is added.
+/// The registry catalog is sourced from organon's live tool registry. Live
+/// invocations are tracked by organon's metrics module and removed when the
+/// execution guard drops. Totals and errors are read from the organon
+/// Prometheus families. Chronological tool-call history is not persisted, so
+/// `history_unavailable` is `true`.
 #[utoipa::path(
     get,
     path = "/api/v1/ops/tools",
@@ -62,22 +62,34 @@ pub async fn tools(
     claims: Claims,
 ) -> Result<Json<OpsToolsResponse>, ApiError> {
     require_role(&claims, Role::Operator)?;
-    let active_tools = state
+
+    let catalog = state
         .tool_registry
         .definitions()
         .into_iter()
-        .map(|def| ActiveTool {
+        .map(|def| ToolCatalogEntry {
             name: def.name.as_str().to_owned(),
+            description: def.description.clone(),
             id: def.name.as_str().to_owned(),
+        })
+        .collect();
+
+    let live_invocations = organon::metrics::live_invocations()
+        .into_iter()
+        .map(|inv| LiveInvocationEntry {
+            id: inv.id,
+            tool_name: inv.tool_name,
+            elapsed_ms: u64::try_from(inv.started_at.elapsed().as_millis()).unwrap_or(u64::MAX),
         })
         .collect();
 
     let (total_calls, total_errors) = metrics_snapshot();
 
     Ok(Json(OpsToolsResponse {
-        active_tools,
-        tool_history: Vec::new(),
+        catalog,
+        live_invocations,
         total_calls,
         total_errors,
+        history_unavailable: true,
     }))
 }

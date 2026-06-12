@@ -7,8 +7,8 @@ use koina::secret::SecretString;
 
 use super::error::{ApiError, AuthSnafu, HttpSnafu, Result, ServerSnafu};
 use super::types::{
-    Agent, AgentsResponse, AuthMode, DailyResponse, HistoryMessage, HistoryResponse, LoginResponse,
-    NousTool, NousToolsResponse, Session, SessionsResponse,
+    Agent, AgentsResponse, AuthMode, DailyResponse, HealthResponse, HistoryMessage,
+    HistoryResponse, LoginResponse, NousTool, NousToolsResponse, Session, SessionsResponse,
 };
 
 /// Build the shared reqwest client used by all API paths (REST, streaming, SSE).
@@ -136,6 +136,42 @@ impl ApiClient {
     pub async fn health(&self) -> Result<bool> {
         let resp = self.client.get(self.url("/api/health")).send().await;
         Ok(resp.is_ok())
+    }
+
+    /// Fetch the server's full health report.
+    ///
+    /// Returns the parsed [`HealthResponse`] for both successful (healthy/degraded)
+    /// and `503 Service Unavailable` (unhealthy) responses so callers can render
+    /// the real check states. Network failures and unparseable responses are
+    /// returned as errors, preserving the distinction between reachability and
+    /// backend health.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn health_details(&self) -> Result<HealthResponse> {
+        let resp = self
+            .client
+            .get(self.url("/api/health"))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "health details",
+            })?;
+
+        // WHY: the health endpoint returns a JSON body for both OK and 503
+        // responses. Accept both so callers can distinguish server reachability
+        // from an unhealthy backend.
+        if resp.status().is_success() || resp.status() == StatusCode::SERVICE_UNAVAILABLE {
+            resp.json().await.context(HttpSnafu {
+                operation: "health details response",
+            })
+        } else {
+            Self::check_status(resp, "health details request").await?;
+            unreachable!("check_status returns Ok only for success status codes")
+        }
     }
 
     /// Query the server's authentication mode.

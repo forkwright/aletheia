@@ -1420,6 +1420,10 @@ pub struct MetricsState {
     pub(crate) turn_history: Vec<TurnTokens>,
     /// Whether the last health check returned OK.
     pub(crate) api_healthy: Option<bool>,
+    /// Last parsed server health response, if reachable and parseable.
+    pub(crate) health: Option<HealthResponse>,
+    /// Error message when the health response was unreachable or unparseable.
+    pub(crate) health_error: Option<String>,
     /// Scroll offset in the per-agent table.
     pub(crate) scroll_offset: usize,
     /// Selected agent row index in the per-agent table.

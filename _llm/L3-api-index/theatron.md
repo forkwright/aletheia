@@ -1420,6 +1420,10 @@ pub struct MetricsState {
     pub(crate) turn_history: Vec<TurnTokens>,
     /// Whether the last health check returned OK.
     pub(crate) api_healthy: Option<bool>,
+    /// Last parsed server health response, if reachable and parseable.
+    pub(crate) health: Option<HealthResponse>,
+    /// Error message when the health response was unreachable or unparseable.
+    pub(crate) health_error: Option<String>,
     /// Scroll offset in the per-agent table.
     pub(crate) scroll_offset: usize,
     /// Selected agent row index in the per-agent table.
@@ -2315,29 +2319,16 @@ pub enum HealthTier {
 ```
 
 ```rust
-pub enum JobResult {
+pub enum HealthStatus {
+    /// No health data has been loaded or the response was unparseable.
     #[default]
     Unknown,
-    Success,
-    Failure,
-}
-```
-
-```rust
-pub enum TaskStatus {
-    #[default]
-    Running,
-    Stopped,
-    Failed,
-}
-```
-
-```rust
-pub enum Trend {
-    Up,
-    Down,
-    #[default]
-    Stable,
+    /// All subsystem checks pass.
+    Healthy,
+    /// One or more checks warn; no hard failures.
+    Degraded,
+    /// One or more checks fail or time out.
+    Unhealthy,
 }
 ```
 
@@ -2596,6 +2587,7 @@ impl ApiClient {
     pub fn new (base_url: &str, token: Option<String>) -> Result<Self>;
     pub fn token (&self) -> Option<&str>;
     pub async fn health (&self) -> Result<bool>;
+    pub async fn health_details (&self) -> Result<HealthResponse>;
     pub async fn auth_mode (&self) -> Result<AuthMode>;
     pub async fn login (&self, username: &str, password: &str) -> Result<LoginResponse>;
     pub async fn agents (&self) -> Result<Vec<Agent>>;
@@ -3073,6 +3065,34 @@ pub struct NousTool {
 pub struct NousToolsResponse {
     /// List of tools.
     pub tools: Vec<NousTool>,
+}
+```
+
+```rust
+pub struct HealthResponse {
+    /// Aggregate status: `"healthy"`, `"degraded"`, or `"unhealthy"`.
+    pub status: String,
+    /// Crate version from `Cargo.toml`.
+    pub version: String,
+    /// Build git SHA when available.
+    pub git_sha: String,
+    /// Seconds since server start.
+    pub uptime_seconds: u64,
+    /// Individual subsystem check results.
+    pub checks: Vec<HealthCheck>,
+    /// Absolute path to the instance data directory.
+    pub data_dir: String,
+}
+```
+
+```rust
+pub struct HealthCheck {
+    /// Subsystem name (e.g. `"session_store"`, `"providers"`).
+    pub name: String,
+    /// Check outcome: `"pass"`, `"warn"`, `"fail"`, or `"timeout"`.
+    pub status: String,
+    /// Diagnostic message when status is not `"pass"`.
+    pub message: Option<String>,
 }
 ```
 

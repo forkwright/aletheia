@@ -228,6 +228,10 @@ impl ToolRegistry {
             tool.status = tracing::field::Empty,
         );
         let start = Instant::now();
+        // WHY: Track the invocation as live from just before the executor call
+        // until the guard drops. Cancellation or normal completion both remove
+        // the entry, so the ops surface never shows stale live calls.
+        let _active_guard = crate::metrics::track_invocation(input.name.as_str());
         // WHY: `.instrument(span)` instead of `span.enter()` so the span context
         // propagates correctly across `.await` points. `span.enter()` in async code
         // keeps the span entered on the current thread even when suspended, which

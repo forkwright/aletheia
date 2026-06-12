@@ -1,5 +1,5 @@
 //! Operations dashboard: agent status, service health, toggle controls,
-//! tool history, and credential management.
+//! tool catalog, live invocation state, and credential management.
 
 mod agents;
 pub(crate) mod credentials;
@@ -15,9 +15,8 @@ use crate::state::connection::ConnectionConfig;
 use crate::state::events::EventState;
 use crate::state::fetch::FetchState;
 use crate::state::ops::{
-    AgentCardData, AgentStatusStore, AgentToggle, CronJobInfo, DaemonTaskInfo, FeatureFlag,
-    HealthTier, JobResult, ServiceHealthStore, TaskStatus, ToggleStore, ToolToggle, Trend,
-    health_from_status,
+    AgentCardData, AgentStatusStore, AgentToggle, FeatureFlag, HealthTier, ServiceHealthStore,
+    ToggleStore, ToolToggle, health_from_status,
 };
 
 use self::agents::AgentCards;
@@ -79,47 +78,6 @@ struct ToolEntryResp {
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
-struct HealthApiResponse {
-    #[expect(dead_code, reason = "deserialized from API but not inspected here")]
-    #[serde(default)]
-    status: String,
-    #[serde(default)]
-    cron_jobs: Vec<CronJobEntry>,
-    #[serde(default)]
-    daemon_tasks: Vec<DaemonTaskEntry>,
-    #[serde(default)]
-    failure_count: u32,
-    #[serde(default)]
-    failure_trend: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct CronJobEntry {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    schedule: String,
-    #[serde(default)]
-    last_run: Option<String>,
-    #[serde(default)]
-    next_run: Option<String>,
-    #[serde(default)]
-    last_result: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct DaemonTaskEntry {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    status: Option<String>,
-    #[serde(default)]
-    uptime: Option<String>,
-    #[serde(default)]
-    restart_count: u32,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
 struct ConfigResponse {
     #[serde(default)]
     feature_flags: Vec<FeatureFlagEntry>,
@@ -139,54 +97,60 @@ struct FeatureFlagEntry {
 
 #[derive(Debug, Clone, Default)]
 struct ToolStats {
-    total: u32,
-    succeeded: u32,
-    failed: u32,
-    active: Vec<ActiveToolEntry>,
-    history: Vec<ToolHistoryEntry>,
+    total: u64,
+    succeeded: u64,
+    failed: u64,
+    catalog: Vec<ToolCatalogEntry>,
+    live_invocations: Vec<LiveInvocationEntry>,
+    history_unavailable: bool,
 }
 
 #[derive(Debug, Clone)]
-struct ActiveToolEntry {
+struct ToolCatalogEntry {
     name: String,
     id: String,
+    description: String,
 }
 
 #[derive(Debug, Clone)]
-struct ToolHistoryEntry {
-    name: String,
-    is_error: bool,
-    duration_ms: u64,
+struct LiveInvocationEntry {
+    id: u64,
+    tool_name: String,
+    elapsed_ms: u64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct OpsResponse {
     #[serde(default)]
-    active_tools: Vec<OpsActiveTool>,
+    catalog: Vec<OpsCatalogTool>,
     #[serde(default)]
-    tool_history: Vec<OpsToolHistory>,
+    live_invocations: Vec<OpsLiveInvocation>,
     #[serde(default)]
-    total_calls: u32,
+    total_calls: u64,
     #[serde(default)]
-    total_errors: u32,
+    total_errors: u64,
+    #[serde(default)]
+    history_unavailable: bool,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-struct OpsActiveTool {
+struct OpsCatalogTool {
     #[serde(default)]
     name: String,
     #[serde(default)]
     id: String,
+    #[serde(default)]
+    description: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-struct OpsToolHistory {
+struct OpsLiveInvocation {
     #[serde(default)]
-    name: String,
+    id: u64,
     #[serde(default)]
-    is_error: bool,
+    tool_name: String,
     #[serde(default)]
-    duration_ms: u64,
+    elapsed_ms: u64,
 }
 
 // ── Style constants ──
@@ -319,7 +283,7 @@ pub(crate) fn Ops() -> Element {
     let mut toggle_store = use_signal(ToggleStore::new);
     let mut dash_fetch = use_signal(|| FetchState::<()>::Loading);
 
-    // ── Tools-tab state (preserved from original) ──
+    // ── Tools-tab state ──
     let mut stats = use_signal(ToolStats::default);
     let mut tools_fetch = use_signal(|| FetchState::<()>::Loading);
 
@@ -372,7 +336,7 @@ pub(crate) fn Ops() -> Element {
                     name: a.name.clone().unwrap_or_else(|| a.id.clone()),
                     emoji: a.emoji.clone(),
                     health: HealthTier::Healthy,
-                    model: a.model.clone().unwrap_or_else(|| "\u{2014}".to_string()),
+                    model: a.model.clone().unwrap_or_else(|| "-".to_string()),
                     active_turns: 0,
                     last_activity: None,
                     connected: true,
@@ -403,58 +367,31 @@ pub(crate) fn Ops() -> Element {
                 })
                 .collect();
 
-            // ── Health ──
-            let health_data = match health_res {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<HealthApiResponse>().await {
-                        Ok(data) => data,
+            // Health
+            // WHY: accept both 2xx and 503 responses because the health endpoint
+            // returns a JSON body even when the backend is unhealthy. Parse failures
+            // and non-2xx/unparseable responses are stored as reachability errors
+            // so the UI distinguishes server reachability from backend health.
+            let health_store_data = match health_res {
+                Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 503 => {
+                    match resp.json::<skene::api::types::HealthResponse>().await {
+                        Ok(data) => ServiceHealthStore::from_response(data),
                         Err(err) => {
                             tracing::warn!(error = %err, "failed to parse ops health response");
-                            HealthApiResponse::default()
+                            ServiceHealthStore::unreachable(format!(
+                                "failed to parse health response: {err}"
+                            ))
                         }
                     }
                 }
-                _ => HealthApiResponse::default(),
+                Ok(resp) => ServiceHealthStore::unreachable(format!(
+                    "health endpoint returned {}",
+                    resp.status()
+                )),
+                Err(e) => ServiceHealthStore::unreachable(format!("connection error: {e}")),
             };
 
-            health_store.set(ServiceHealthStore {
-                cron_jobs: health_data
-                    .cron_jobs
-                    .into_iter()
-                    .map(|j| CronJobInfo {
-                        name: j.name,
-                        schedule: j.schedule,
-                        last_run: j.last_run,
-                        next_run: j.next_run,
-                        last_result: match j.last_result.as_deref() {
-                            Some("success") => JobResult::Success,
-                            Some("failure" | "error") => JobResult::Failure,
-                            _ => JobResult::Unknown,
-                        },
-                    })
-                    .collect(),
-                daemon_tasks: health_data
-                    .daemon_tasks
-                    .into_iter()
-                    .map(|t| DaemonTaskInfo {
-                        name: t.name,
-                        status: match t.status.as_deref() {
-                            Some("running") => TaskStatus::Running,
-                            Some("stopped") => TaskStatus::Stopped,
-                            Some("failed" | "error") => TaskStatus::Failed,
-                            _ => TaskStatus::Running,
-                        },
-                        uptime: t.uptime,
-                        restart_count: t.restart_count,
-                    })
-                    .collect(),
-                failure_count: health_data.failure_count,
-                failure_trend: match health_data.failure_trend.as_deref() {
-                    Some("up") => Trend::Up,
-                    Some("down") => Trend::Down,
-                    _ => Trend::Stable,
-                },
-            });
+            health_store.set(health_store_data);
 
             // ── Feature flags ──
             let feature_flags: Vec<FeatureFlag> = match config_res {
@@ -468,6 +405,7 @@ pub(crate) fn Ops() -> Element {
                                 description: f.description,
                                 enabled: f.enabled,
                                 pending: false,
+                                error: None,
                             })
                             .collect(),
                         Err(err) => {
@@ -490,7 +428,7 @@ pub(crate) fn Ops() -> Element {
         });
     };
 
-    // ── Tools data fetch (preserved from original) ──
+    // ── Tools data fetch ──
     let mut refresh_tools = move || {
         let cfg = config.read().clone();
         tools_fetch.set(FetchState::Loading);
@@ -507,23 +445,25 @@ pub(crate) fn Ops() -> Element {
                             total: data.total_calls,
                             succeeded,
                             failed: data.total_errors,
-                            active: data
-                                .active_tools
+                            catalog: data
+                                .catalog
                                 .into_iter()
-                                .map(|t| ActiveToolEntry {
+                                .map(|t| ToolCatalogEntry {
                                     name: t.name,
                                     id: t.id,
+                                    description: t.description,
                                 })
                                 .collect(),
-                            history: data
-                                .tool_history
+                            live_invocations: data
+                                .live_invocations
                                 .into_iter()
-                                .map(|t| ToolHistoryEntry {
-                                    name: t.name,
-                                    is_error: t.is_error,
-                                    duration_ms: t.duration_ms,
+                                .map(|i| LiveInvocationEntry {
+                                    id: i.id,
+                                    tool_name: i.tool_name,
+                                    elapsed_ms: i.elapsed_ms,
                                 })
                                 .collect(),
+                            history_unavailable: data.history_unavailable,
                         });
                         tools_fetch.set(FetchState::Loaded(()));
                     }
@@ -657,35 +597,58 @@ pub(crate) fn Ops() -> Element {
                         div {
                             style: "{CARD_STYLE}",
                             div { style: "{CARD_VALUE} color: var(--accent);",
-                                "{current_stats.active.len()}"
+                                "{current_stats.catalog.len()}"
                             }
-                            div { style: "{CARD_LABEL}", "Active" }
+                            div { style: "{CARD_LABEL}", "Catalog" }
+                        }
+                        div {
+                            style: "{CARD_STYLE}",
+                            div { style: "{CARD_VALUE} color: var(--accent);",
+                                "{current_stats.live_invocations.len()}"
+                            }
+                            div { style: "{CARD_LABEL}", "Live" }
                         }
                     }
 
-                    if !current_stats.active.is_empty() {
-                        div {
-                            style: "{SECTION_STYLE}",
-                            div { style: "{SECTION_TITLE}", "Active Tools" }
-                            for tool in &current_stats.active {
-                                div {
-                                    style: "{ENTRY_STYLE}",
-                                    span { style: "{ACTIVE_DOT}" }
-                                    span { style: "color: var(--text-primary);", "{tool.name}" }
-                                    span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{tool.id}" }
-                                }
+                    div {
+                        style: "{SECTION_STYLE}",
+                        div { style: "{SECTION_TITLE}", "Tool Catalog" }
+                        if current_stats.catalog.is_empty() {
+                            div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No tools registered" }
+                        }
+                        for tool in &current_stats.catalog {
+                            div {
+                                style: "{ENTRY_STYLE}",
+                                span { style: "{ACTIVE_DOT}" }
+                                span { style: "color: var(--text-primary);", "{tool.name}" }
+                                span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{tool.description}" }
+                                span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{tool.id}" }
                             }
                         }
                     }
 
                     div {
                         style: "{SECTION_STYLE}",
-                        div { style: "{SECTION_TITLE}", "Tool History" }
-                        if current_stats.history.is_empty() {
-                            div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No tool calls recorded" }
+                        div { style: "{SECTION_TITLE}", "Live Invocations" }
+                        if current_stats.live_invocations.is_empty() {
+                            div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No tool invocations running" }
                         }
-                        for (i , entry) in current_stats.history.iter().enumerate() {
-                            {render_tool_history_row(i, entry)}
+                        for invocation in &current_stats.live_invocations {
+                            div {
+                                style: "{ENTRY_STYLE}",
+                                span { style: "{ACTIVE_DOT}" }
+                                span { style: "color: var(--text-primary); flex: 1;", "{invocation.tool_name}" }
+                                span { style: "color: var(--text-muted); font-size: var(--text-xs);", "#{invocation.id}" }
+                                span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{invocation.elapsed_ms}ms" }
+                            }
+                        }
+                    }
+
+                    if current_stats.history_unavailable {
+                        div {
+                            style: "{SECTION_STYLE}",
+                            div { style: "{SECTION_TITLE}", "Tool History" }
+                            div { style: "color: var(--text-muted); font-size: var(--text-sm);", "Tool history unavailable: calls are not persisted yet" }
                         }
                     }
                 },
@@ -694,26 +657,6 @@ pub(crate) fn Ops() -> Element {
                     credentials::CredentialsView {}
                 },
             }
-        }
-    }
-}
-
-fn render_tool_history_row(i: usize, entry: &ToolHistoryEntry) -> Element {
-    let color = if entry.is_error {
-        "var(--status-error)"
-    } else {
-        "var(--status-success)"
-    };
-    let icon = if entry.is_error { "[x]" } else { "[v]" };
-    let icon_style = format!("color: {color};");
-
-    rsx! {
-        div {
-            key: "{i}",
-            style: "{ENTRY_STYLE}",
-            span { style: "{icon_style}", "{icon}" }
-            span { style: "color: var(--text-primary); flex: 1;", "{entry.name}" }
-            span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{entry.duration_ms}ms" }
         }
     }
 }

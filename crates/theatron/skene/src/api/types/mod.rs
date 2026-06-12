@@ -422,6 +422,34 @@ pub struct NousToolsResponse {
     pub tools: Vec<NousTool>,
 }
 
+/// Server health response from `GET /api/health`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthResponse {
+    /// Aggregate status: `"healthy"`, `"degraded"`, or `"unhealthy"`.
+    pub status: String,
+    /// Crate version from `Cargo.toml`.
+    pub version: String,
+    /// Build git SHA when available.
+    pub git_sha: String,
+    /// Seconds since server start.
+    pub uptime_seconds: u64,
+    /// Individual subsystem check results.
+    pub checks: Vec<HealthCheck>,
+    /// Absolute path to the instance data directory.
+    pub data_dir: String,
+}
+
+/// Result of a single subsystem health check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthCheck {
+    /// Subsystem name (e.g. `"session_store"`, `"providers"`).
+    pub name: String,
+    /// Check outcome: `"pass"`, `"warn"`, `"fail"`, or `"timeout"`.
+    pub status: String,
+    /// Diagnostic message when status is not `"pass"`.
+    pub message: Option<String>,
+}
+
 #[cfg(test)]
 #[expect(
     clippy::unwrap_used,

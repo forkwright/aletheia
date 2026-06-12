@@ -127,8 +127,21 @@ pub(crate) fn ToggleControlsPanel(
         let data = store.read();
         data.feature_flags
             .iter()
-            .map(|f| (f.key.clone(), f.description.clone(), f.enabled, f.pending))
+            .map(|f| {
+                (
+                    f.key.clone(),
+                    f.description.clone(),
+                    f.enabled,
+                    f.pending,
+                    f.error.clone(),
+                )
+            })
             .collect()
+    };
+
+    let restart_required: Vec<_> = {
+        let data = store.read();
+        data.restart_required.clone()
     };
 
     rsx! {
@@ -162,13 +175,27 @@ pub(crate) fn ToggleControlsPanel(
                 div { style: "{EMPTY_STATE}", "No feature flags configured" }
             }
 
-            for (key , description , enabled , pending) in flag_data {
+            if !restart_required.is_empty() {
+                div {
+                    style: "color: var(--status-warning); font-size: var(--text-xs); margin-bottom: var(--space-2);",
+                    "Restart required for changes to take effect:"
+                }
+                for path in restart_required {
+                div {
+                    style: "color: var(--status-warning); font-size: var(--text-xs); margin-left: var(--space-2);",
+                    "- {path}"
+                }
+            }
+            }
+
+            for (key , description , enabled , pending , error) in flag_data {
                 FeatureFlagRow {
                     key: "{key}",
                     flag_key: key,
                     description,
                     enabled,
                     pending,
+                    error,
                     store,
                     config,
                 }
@@ -312,12 +339,20 @@ fn ToolToggleRow(
     }
 }
 
+const ERROR_STYLE: &str = "\
+    color: var(--status-error); \
+    font-size: var(--text-xs); \
+    padding: var(--space-1) 0; \
+    margin-top: calc(-1 * var(--space-1));\
+";
+
 #[component]
 fn FeatureFlagRow(
     flag_key: String, // kanon:ignore RUST/plain-string-secret -- feature flag identifier, not credential material (#3988)
     description: String,
     enabled: bool,
     pending: bool,
+    error: Option<String>,
     store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
 ) -> Element {
@@ -339,6 +374,9 @@ fn FeatureFlagRow(
             }
             if !description.is_empty() {
                 div { style: "{FLAG_DESC}", "{description}" }
+            }
+            if let Some(ref err) = error {
+                div { style: "{ERROR_STYLE}", "{err}" }
             }
         }
     }
@@ -495,6 +533,19 @@ fn fire_tool_toggle(
     });
 }
 
+/// Server response shape for `PUT /api/v1/config/feature_flags`.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct ConfigFeatureFlagsUpdateResponse {
+    #[serde(default)]
+    restart_required: Vec<String>,
+}
+
+/// Build the URL for updating the `feature_flags` config section.
+#[must_use]
+fn feature_flags_update_url(base: &str) -> String {
+    format!("{}/api/v1/config/feature_flags", base.trim_end_matches('/'))
+}
+
 fn fire_feature_toggle(
     mut store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
@@ -509,18 +560,145 @@ fn fire_feature_toggle(
     spawn(async move {
         let client = authenticated_client(&cfg);
         let base = cfg.server_url.trim_end_matches('/');
-        let new_enabled = !prev_val;
-        let url = format!("{base}/api/v1/config");
+        let url = feature_flags_update_url(base);
 
-        let result = client
-            .patch(&url)
-            .json(&serde_json::json!({
-                "feature_flags": { flag_key: new_enabled }
-            }))
-            .send()
-            .await;
+        // WHY: Send the complete feature_flags section so the server replaces
+        // the array wholesale; a partial PATCH would silently drop sibling flags.
+        let payload = {
+            let data = store.read();
+            data.feature_flags_payload()
+        };
 
-        let success = matches!(result, Ok(ref r) if r.status().is_success());
-        store.write().resolve_feature(&key, success, prev_val);
+        let result = client.put(&url).json(&payload).send().await;
+
+        match result {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.json::<ConfigFeatureFlagsUpdateResponse>().await {
+                    Ok(body) => {
+                        store.write().resolve_feature(
+                            &flag_key,
+                            true,
+                            prev_val,
+                            None,
+                            body.restart_required,
+                        );
+                    }
+                    Err(err) => {
+                        store.write().resolve_feature(
+                            &flag_key,
+                            false,
+                            prev_val,
+                            Some(format!("failed to parse config response: {err}")),
+                            Vec::new(),
+                        );
+                    }
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let detail = resp.text().await.unwrap_or_default();
+                let message = if detail.is_empty() {
+                    format!("server returned {status}")
+                } else {
+                    format!("server returned {status}: {}", detail.trim())
+                };
+                store.write().resolve_feature(
+                    &flag_key,
+                    false,
+                    prev_val,
+                    Some(message),
+                    Vec::new(),
+                );
+            }
+            Err(e) => {
+                store.write().resolve_feature(
+                    &flag_key,
+                    false,
+                    prev_val,
+                    Some(format!("connection error: {e}")),
+                    Vec::new(),
+                );
+            }
+        }
     });
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use crate::state::ops::{FeatureFlag, ToggleStore};
+
+    use super::feature_flags_update_url;
+
+    #[test]
+    fn feature_flags_update_url_uses_put_section_endpoint() {
+        assert_eq!(
+            feature_flags_update_url("https://example.com"),
+            "https://example.com/api/v1/config/feature_flags"
+        );
+    }
+
+    #[test]
+    fn feature_flags_update_url_trims_trailing_slash() {
+        assert_eq!(
+            feature_flags_update_url("http://localhost:8080/"),
+            "http://localhost:8080/api/v1/config/feature_flags"
+        );
+    }
+
+    #[test]
+    fn feature_flags_payload_matches_put_contract() {
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "dark_mode".to_string(),
+            description: "Enable dark mode".to_string(),
+            enabled: true,
+            pending: false,
+            error: None,
+        });
+        store.feature_flags.push(FeatureFlag {
+            key: "beta_tools".to_string(),
+            description: "Beta tool access".to_string(),
+            enabled: false,
+            pending: false,
+            error: None,
+        });
+
+        let json = serde_json::to_value(store.feature_flags_payload()).unwrap();
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+
+        let first = arr[0].as_object().unwrap();
+        assert_eq!(first["key"], "dark_mode");
+        assert_eq!(first["description"], "Enable dark mode");
+        assert_eq!(first["enabled"], true);
+
+        let second = arr[1].as_object().unwrap();
+        assert_eq!(second["key"], "beta_tools");
+        assert_eq!(second["enabled"], false);
+    }
+
+    #[test]
+    fn feature_flags_payload_preserves_state_after_flip() {
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "flag_a".to_string(),
+            description: String::new(),
+            enabled: false,
+            pending: false,
+            error: None,
+        });
+        store.feature_flags.push(FeatureFlag {
+            key: "flag_b".to_string(),
+            description: String::new(),
+            enabled: true,
+            pending: false,
+            error: None,
+        });
+
+        store.flip_feature("flag_a");
+        let payload = store.feature_flags_payload();
+        assert!(payload.iter().any(|f| f.key == "flag_a" && f.enabled));
+        assert!(payload.iter().any(|f| f.key == "flag_b" && f.enabled));
+    }
 }

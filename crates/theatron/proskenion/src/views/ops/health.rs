@@ -1,8 +1,8 @@
-//! Service health panel: cron jobs, daemon tasks, and failure summary.
+//! Service health panel: aggregate status and per-check rows from `/api/health`.
 
 use dioxus::prelude::*;
 
-use crate::state::ops::{CronJobInfo, DaemonTaskInfo, ServiceHealthStore};
+use crate::state::ops::{HealthCheckInfo, HealthStatus, ServiceHealthStore};
 
 const PANEL_STYLE: &str = "\
     background: var(--bg-surface); \
@@ -19,15 +19,6 @@ const SECTION_TITLE: &str = "\
     font-weight: var(--weight-bold); \
     color: var(--text-secondary); \
     margin-bottom: var(--space-3);\
-";
-
-const SUBSECTION_TITLE: &str = "\
-    font-size: var(--text-xs); \
-    font-weight: var(--weight-bold); \
-    color: var(--text-secondary); \
-    margin: var(--space-3) 0 var(--space-2) 0; \
-    text-transform: uppercase; \
-    letter-spacing: 0.5px;\
 ";
 
 const ROW_STYLE: &str = "\
@@ -54,27 +45,10 @@ const NAME_STYLE: &str = "\
     text-overflow: ellipsis;\
 ";
 
-const DETAIL_STYLE: &str = "\
+const MESSAGE_STYLE: &str = "\
     color: var(--text-muted); \
     font-size: var(--text-xs); \
     white-space: nowrap;\
-";
-
-const FAILURE_BOX: &str = "\
-    display: flex; \
-    align-items: center; \
-    gap: var(--space-2); \
-    padding: var(--space-2) var(--space-3); \
-    background: var(--bg-surface); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-md); \
-    margin-bottom: var(--space-3);\
-";
-
-const FAILURE_COUNT: &str = "\
-    font-size: var(--text-2xl); \
-    font-weight: var(--weight-bold); \
-    color: var(--text-primary);\
 ";
 
 const EMPTY_STATE: &str = "\
@@ -83,14 +57,18 @@ const EMPTY_STATE: &str = "\
     padding: var(--space-1) 0;\
 ";
 
+const STATUS_BADGE_BASE: &str = "\
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-bold); \
+    padding: var(--space-1) var(--space-2); \
+    border-radius: var(--radius-md); \
+    text-transform: uppercase; \
+    letter-spacing: 0.5px;\
+";
+
 #[component]
 pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
     let data = store.read();
-
-    let trend_color = data.failure_trend.color();
-    let trend_indicator = data.failure_trend.indicator();
-    let trend_style =
-        format!("color: {trend_color}; font-size: var(--text-md); margin-left: auto;");
 
     rsx! {
         div {
@@ -99,80 +77,57 @@ pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
             div { style: "{SECTION_TITLE}", "Service Health" }
 
             div {
-                style: "{FAILURE_BOX}",
-                span { style: "{FAILURE_COUNT}", "{data.failure_count}" }
-                span { style: "color: var(--text-secondary); font-size: var(--text-xs);", "failures" }
+                style: "display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3);",
                 span {
-                    style: "{trend_style}",
-                    title: "trend",
-                    "{trend_indicator}"
+                    style: format!("{STATUS_BADGE_BASE} background: {}; color: {};",
+                        data.status.dot_color(),
+                        badge_text_color(data.status)),
+                    "{data.status.label()}"
+                }
+                if data.checks.is_empty() && data.error.is_none() {
+                    span { style: "{EMPTY_STATE}", "No checks loaded" }
                 }
             }
 
-            div { style: "{SUBSECTION_TITLE}", "Cron Jobs" }
-
-            if data.cron_jobs.is_empty() {
-                div { style: "{EMPTY_STATE}", "No cron jobs configured" }
+            if let Some(ref err) = data.error {
+                div {
+                    style: "color: var(--status-error); font-size: var(--text-sm); margin-bottom: var(--space-3);",
+                    "{err}"
+                }
             }
 
-            for (i , job) in data.cron_jobs.iter().enumerate() {
-                {render_cron_row(i, job)}
-            }
-
-            div { style: "{SUBSECTION_TITLE}", "Daemon Tasks" }
-
-            if data.daemon_tasks.is_empty() {
-                div { style: "{EMPTY_STATE}", "No daemon tasks registered" }
-            }
-
-            for (i , task) in data.daemon_tasks.iter().enumerate() {
-                {render_daemon_row(i, task)}
+            for check in &data.checks {
+                {render_check_row(check)}
             }
         }
     }
 }
 
-fn render_cron_row(i: usize, job: &CronJobInfo) -> Element {
-    let dot_style = format!("{DOT_BASE} background: {};", job.last_result.dot_color());
-
-    rsx! {
-        div {
-            key: "cron-{i}",
-            style: "{ROW_STYLE}",
-            span { style: "{dot_style}" }
-            span { style: "{NAME_STYLE}", "{job.name}" }
-            span { style: "{DETAIL_STYLE}", "{job.schedule}" }
-            if let Some(ref last) = job.last_run {
-                span { style: "{DETAIL_STYLE}", "{last}" }
-            }
-        }
-    }
-}
-
-fn render_daemon_row(i: usize, task: &DaemonTaskInfo) -> Element {
-    let dot_style = format!("{DOT_BASE} background: {};", task.status.dot_color());
-    let status_style = format!(
-        "color: {}; font-size: var(--text-xs);",
-        task.status.dot_color()
+fn render_check_row(check: &HealthCheckInfo) -> Element {
+    let status = HealthStatus::from_status(&check.status);
+    let dot_style = format!("{DOT_BASE} background: {};", status.dot_color());
+    let badge_style = format!(
+        "{STATUS_BADGE_BASE} background: {}; color: {};",
+        status.dot_color(),
+        badge_text_color(status)
     );
-    let status_label = task.status.label();
 
     rsx! {
         div {
-            key: "task-{i}",
             style: "{ROW_STYLE}",
             span { style: "{dot_style}" }
-            span { style: "{NAME_STYLE}", "{task.name}" }
-            span { style: "{status_style}", "{status_label}" }
-            if let Some(ref uptime) = task.uptime {
-                span { style: "{DETAIL_STYLE}", "{uptime}" }
-            }
-            if task.restart_count > 0 {
-                span {
-                    style: "color: var(--status-warning); font-size: var(--text-xs);",
-                    "{task.restart_count} restarts"
-                }
+            span { style: "{NAME_STYLE}", "{check.name}" }
+            span { style: "{badge_style}", "{check.status}" }
+            if let Some(ref message) = check.message {
+                span { style: "{MESSAGE_STYLE}", "{message}" }
             }
         }
+    }
+}
+
+fn badge_text_color(status: HealthStatus) -> &'static str {
+    match status {
+        HealthStatus::Degraded => "var(--text-primary)",
+        _ => "var(--bg-surface)",
     }
 }

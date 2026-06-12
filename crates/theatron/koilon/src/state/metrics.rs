@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use crate::api::types::HealthResponse;
 use crate::id::NousId;
 
 /// Maximum number of recent turns tracked for the sparkline.
@@ -48,6 +49,10 @@ pub struct MetricsState {
     pub(crate) turn_history: Vec<TurnTokens>,
     /// Whether the last health check returned OK.
     pub(crate) api_healthy: Option<bool>,
+    /// Last parsed server health response, if reachable and parseable.
+    pub(crate) health: Option<HealthResponse>,
+    /// Error message when the health response was unreachable or unparseable.
+    pub(crate) health_error: Option<String>,
     /// Scroll offset in the per-agent table.
     pub(crate) scroll_offset: usize,
     /// Selected agent row index in the per-agent table.
@@ -65,6 +70,8 @@ impl MetricsState {
             agent_stats: HashMap::new(),
             turn_history: Vec::with_capacity(SPARKLINE_CAPACITY),
             api_healthy: None,
+            health: None,
+            health_error: None,
             scroll_offset: 0,
             selected_agent: 0,
         }
