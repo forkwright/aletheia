@@ -2,6 +2,10 @@
 
 Cross-tool guide for AI coding agents (Claude Code, Cursor, Windsurf, Copilot, etc.).
 
+## Depth
+
+Read `docs/GOLDEN-PATH.md` first to understand the public desktop-first app workflow and the implemented versus planned app surfaces.
+
 ## Build / Test / Lint
 
 ```bash

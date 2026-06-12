@@ -11,7 +11,7 @@ Repo-level conventions for AI coding agents working on Aletheia. Key crates: ale
 
 ## Depth
 
-See also [AGENTS.md](AGENTS.md) for a cross-tool quick-reference (build commands, crate selection flowchart, common mistakes).
+Read [docs/GOLDEN-PATH.md](docs/GOLDEN-PATH.md) first to understand the public desktop-first app workflow. See also [AGENTS.md](AGENTS.md) for a cross-tool quick-reference (build commands, crate selection flowchart, common mistakes).
 
 ## Standards
 
@@ -22,6 +22,7 @@ Shell: [standards/](standards/)
 
 ## Structure
 
+[docs/GOLDEN-PATH.md](docs/GOLDEN-PATH.md): first orientation read for the public app workflow and implemented/planned app surfaces.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate workspace, module map, dependency graph, trait boundaries.
 [docs/ARCHITECTURE-QUICK.md](docs/ARCHITECTURE-QUICK.md): one-page crate reference for cold-start.
 
