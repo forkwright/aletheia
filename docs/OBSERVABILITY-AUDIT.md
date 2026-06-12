@@ -15,7 +15,7 @@
 | **pylon** | sessions (create, get, list, delete, update, restore, send, streaming), config (get/set/reload), knowledge bulk_import | `nous.rs` handlers (list, get_status, tools, recover) have **no span** - gap |
 | **nous** | actor run loop, pipeline stages, finalize, recall, execute (both paths), instinct (tool dispatch), cross-router | Good coverage across the hot path |
 | **hermeneus** | anthropic client complete + complete_streaming, cc process (two fns), stream accumulator, error classifier, fallback | Core LLM call paths all instrumented |
-| **organon** | triage tool only | `ToolRegistry::execute` dispatch loop has **no span** - all 67 tools (default) execute without a per-invocation parent span |
+| **organon** | triage tool, `ToolRegistry::execute` | `ToolRegistry::execute` now creates a `tool_execute` span (`crates/organon/src/registry/mod.rs:174`). Individual tool executors still vary in instrumentation. |
 | daemon | execution, watchdog, cron jobs, prosoche, self_prompt, lifecycle hooks | Good coverage |
 | episteme | consolidation engine, embedding, knowledge store ops | Good coverage |
 | agora | semeion client | Covered |
@@ -27,7 +27,7 @@
 
 **GAP-SPAN-1 (pylon/nous.rs):** `list`, `get_status`, `tools`, `recover` handlers have no `#[instrument]`. These are user-facing nous management endpoints - missing spans means no distributed trace context for nous listing/recovery operations.
 
-**GAP-SPAN-2 (organon/ToolRegistry):** The central `execute` dispatch path has no span. All 67 built-in tools (default) therefore execute without a common parent span. Traces jump from the nous pipeline span directly to individual tool calls (where they exist). Tool-level `#[instrument]` exists only in `triage/mod.rs`.
+**GAP-SPAN-2 (organon/ToolRegistry):** Resolved. `ToolRegistry::execute` now creates a `tool_execute` span with `tool.name`, `tool.reversibility`, `tool.approval`, `tool.duration_ms`, and `tool.status` fields (`crates/organon/src/registry/mod.rs:174`). Individual tool executors still vary in instrumentation; the remaining gap is per-tool coverage, not the dispatch span.
 
 ---
 
@@ -136,7 +136,7 @@ All critical LLM paths instrumented. The `AnthropicProvider::complete` and `comp
 
 ### organon
 
-Only `triage/mod.rs` has `#[instrument]`. The `ToolRegistry::execute` dispatch method has no span. Individual tool executors (filesystem, git, memory, etc.) have no `#[instrument]`. Tool metrics (`record_invocation`) are called, but without a parent span the trace is disconnected from the nous pipeline.
+`ToolRegistry::execute` now creates a `tool_execute` span (`registry/mod.rs:174`), so the dispatch path is instrumented. Individual tool executors (filesystem, git, memory, etc.) still vary in whether they add their own `#[instrument]`; the remaining gap is per-tool coverage, not the central dispatch span.
 
 ---
 
@@ -145,7 +145,7 @@ Only `triage/mod.rs` has `#[instrument]`. The `ToolRegistry::execute` dispatch m
 | ID | Severity | Gap | Recommended fix |
 |----|----------|-----|----------------|
 | GAP-SPAN-1 | Medium | `pylon/nous.rs` handlers missing `#[instrument]` | Add `#[instrument(skip(state, _claims))]` to `list`, `get_status`, `tools`, `recover` |
-| GAP-SPAN-2 | Medium | `organon/ToolRegistry::execute` missing span | Add `#[instrument(skip_all, fields(tool = %name))]` on the dispatch call site |
+| GAP-SPAN-2 | Medium | ~~organon/ToolRegistry::execute missing span~~ | Resolved: `tool_execute` span is created in `registry/mod.rs:174` |
 | GAP-METRIC-1 | High | No queue-depth metric for NousActor inboxes | Add `aletheia_nous_inbox_depth` gauge updated in actor run loop |
 | GAP-METRIC-2 | Low | `nous::metrics::init()` not wired to server boot | Call `nous::metrics::init()` alongside `pylon::metrics::init()` at server startup |
 | GAP-LOG-1 | Medium | `pylon/nous.rs` `recover` handler lacks structured error log | Add `error!(nous_id = %id, error = %e, "nous recovery failed")` on error path |
