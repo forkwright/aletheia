@@ -9,6 +9,8 @@ use std::io::Write as _;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+use tokio_util::sync::CancellationToken;
+
 use crate::bridge::DaemonBridge;
 use crate::maintenance::{MaintenanceConfig, MaintenanceReport, RetentionSummary};
 
@@ -326,14 +328,18 @@ async fn routing_store_refresh_builtin_refreshes_attached_store() {
         after_action_store: Some(Arc::clone(&store)),
         ..MaintenanceConfig::default()
     };
+    let daemon_behavior = taxis::config::DaemonBehaviorConfig::default();
     let result = execute_builtin_with_behavior(
         &BuiltinTask::RoutingStoreRefresh,
-        "system",
-        None,
-        Some(&config),
-        None,
-        None,
-        &taxis::config::DaemonBehaviorConfig::default(),
+        ExecutionContext {
+            nous_id: "system",
+            bridge: None,
+            maintenance: Some(&config),
+            retention_executor: None,
+            knowledge_executor: None,
+            daemon_behavior: &daemon_behavior,
+            cancel: CancellationToken::new(),
+        },
     )
     .await
     .expect("routing refresh should succeed");

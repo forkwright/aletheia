@@ -68,6 +68,10 @@ pub struct TaskRunner {
 /// Tracks a task that is currently executing.
 struct InFlightTask {
     handle: tokio::task::JoinHandle<Result<ExecutionResult>>,
+    /// Daemon-owned cancellation token for this task. Cancelling it propagates
+    /// to the child token passed into the task future, which the bridge forwards
+    /// into the actor turn.
+    cancel: CancellationToken,
     started_at: Instant,
     timeout: Duration,
     warned: bool,

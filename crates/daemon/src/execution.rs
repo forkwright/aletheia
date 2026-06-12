@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use koina::system::{Environment, RealSystem};
 use snafu::ResultExt;
+use tokio_util::sync::CancellationToken;
 
 use crate::bridge::DaemonBridge;
 use crate::cron::{evolution, graph_cleanup, reflection};
@@ -21,8 +22,23 @@ use crate::prosoche_audit::{ProsocheAuditRunner, ProsocheState};
 use crate::runner::ExecutionResult;
 use crate::schedule::{BuiltinTask, TaskAction};
 
+pub(crate) struct ExecutionContext<'a> {
+    pub(crate) nous_id: &'a str,
+    pub(crate) bridge: Option<&'a dyn DaemonBridge>,
+    pub(crate) maintenance: Option<&'a MaintenanceConfig>,
+    pub(crate) retention_executor: Option<Arc<dyn RetentionExecutor>>,
+    pub(crate) knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    pub(crate) daemon_behavior: &'a taxis::config::DaemonBehaviorConfig,
+    pub(crate) cancel: CancellationToken,
+}
+
 /// Execute a task action. Receives owned `Arc`s for executor references
 /// so it can be spawned as a `'static` future.
+///
+/// This is the legacy entry point used by tests; it uses a fresh cancellation
+/// token. The runner uses [`execute_action_with_cancel`] so it can propagate
+/// cancellation into bridge-dispatched turns.
+#[cfg(test)]
 #[tracing::instrument(skip_all)]
 pub(crate) async fn execute_action(
     action: &TaskAction,
@@ -33,23 +49,40 @@ pub(crate) async fn execute_action(
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
     daemon_behavior: &taxis::config::DaemonBehaviorConfig,
 ) -> Result<ExecutionResult> {
+    execute_action_with_cancel(
+        action,
+        ExecutionContext {
+            nous_id,
+            bridge,
+            maintenance,
+            retention_executor,
+            knowledge_executor,
+            daemon_behavior,
+            cancel: CancellationToken::new(),
+        },
+    )
+    .await
+}
+
+/// Execute a task action with a cancellation token that is passed to any
+/// bridge-dispatched prompt.
+#[tracing::instrument(skip_all)]
+pub(crate) async fn execute_action_with_cancel(
+    action: &TaskAction,
+    ctx: ExecutionContext<'_>,
+) -> Result<ExecutionResult> {
     match action {
         TaskAction::Command(cmd) => execute_command(cmd).await,
         TaskAction::SelfPrompt(prompt) => {
-            crate::self_prompt::execute_self_prompt(nous_id, prompt, bridge).await
-        }
-        TaskAction::Builtin(builtin) => {
-            execute_builtin_with_behavior(
-                builtin,
-                nous_id,
-                bridge,
-                maintenance,
-                retention_executor,
-                knowledge_executor,
-                daemon_behavior,
+            crate::self_prompt::execute_self_prompt_with_cancel(
+                ctx.nous_id,
+                prompt,
+                ctx.bridge,
+                ctx.cancel,
             )
             .await
         }
+        TaskAction::Builtin(builtin) => execute_builtin_with_behavior(builtin, ctx).await,
     }
 }
 
@@ -107,14 +140,18 @@ pub(crate) async fn execute_builtin(
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
 ) -> Result<ExecutionResult> {
+    let daemon_behavior = taxis::config::DaemonBehaviorConfig::default();
     execute_builtin_with_behavior(
         builtin,
-        nous_id,
-        bridge,
-        maintenance,
-        retention_executor,
-        knowledge_executor,
-        &taxis::config::DaemonBehaviorConfig::default(),
+        ExecutionContext {
+            nous_id,
+            bridge,
+            maintenance,
+            retention_executor,
+            knowledge_executor,
+            daemon_behavior: &daemon_behavior,
+            cancel: CancellationToken::new(),
+        },
     )
     .await
 }
@@ -126,18 +163,24 @@ pub(crate) async fn execute_builtin(
 )]
 pub(crate) async fn execute_builtin_with_behavior(
     builtin: &BuiltinTask,
-    nous_id: &str,
-    bridge: Option<&dyn DaemonBridge>,
-    maintenance: Option<&MaintenanceConfig>,
-    retention_executor: Option<Arc<dyn RetentionExecutor>>,
-    knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
-    daemon_behavior: &taxis::config::DaemonBehaviorConfig,
+    ctx: ExecutionContext<'_>,
 ) -> Result<ExecutionResult> {
+    let nous_id = ctx.nous_id;
+    let bridge = ctx.bridge;
+    let maintenance = ctx.maintenance;
+    let retention_executor = ctx.retention_executor;
+    let knowledge_executor = ctx.knowledge_executor;
+    let daemon_behavior = ctx.daemon_behavior;
+    let cancel = ctx.cancel;
+
     match builtin {
         BuiltinTask::Prosoche => {
             if let Some(bridge) = bridge {
                 let prompt = "Run your prosoche heartbeat check per PROSOCHE.md.";
-                match bridge.send_prompt(nous_id, "daemon:prosoche", prompt).await {
+                match bridge
+                    .send_prompt_with_cancel(nous_id, "daemon:prosoche", prompt, cancel.clone())
+                    .await
+                {
                     Ok(result) => {
                         tracing::debug!(
                             nous_id = %nous_id,
@@ -351,9 +394,13 @@ pub(crate) async fn execute_builtin_with_behavior(
                 )),
             })
         }
-        BuiltinTask::ProbeAudit => execute_probe_audit(nous_id, bridge).await,
-        BuiltinTask::EvolutionSearch => evolution::execute_evolution(nous_id, bridge).await,
-        BuiltinTask::SelfReflection => reflection::execute_reflection(nous_id, bridge).await,
+        BuiltinTask::ProbeAudit => execute_probe_audit(nous_id, bridge, cancel.clone()).await,
+        BuiltinTask::EvolutionSearch => {
+            evolution::execute_evolution(nous_id, bridge, cancel.clone()).await
+        }
+        BuiltinTask::SelfReflection => {
+            reflection::execute_reflection(nous_id, bridge, cancel.clone()).await
+        }
         BuiltinTask::GraphCleanup => {
             graph_cleanup::execute_graph_cleanup(nous_id, knowledge_executor).await
         }
@@ -537,6 +584,7 @@ pub(crate) async fn execute_builtin_with_behavior(
 async fn execute_probe_audit(
     nous_id: &str,
     bridge: Option<&dyn DaemonBridge>,
+    cancel: CancellationToken,
 ) -> Result<ExecutionResult> {
     let Some(bridge) = bridge else {
         return Ok(ExecutionResult {
@@ -549,7 +597,7 @@ async fn execute_probe_audit(
     let prompt = build_probe_audit_prompt(&probe_set);
 
     match bridge
-        .send_prompt(nous_id, "daemon:probe-audit", &prompt)
+        .send_prompt_with_cancel(nous_id, "daemon:probe-audit", &prompt, cancel)
         .await
     {
         Ok(dispatch_result) => {

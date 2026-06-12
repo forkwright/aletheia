@@ -37,4 +37,14 @@ impl DaemonBridge for Arc<dyn DaemonBridge> {
     ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
         (**self).send_prompt(nous_id, session_key, prompt)
     }
+
+    fn send_prompt_with_cancel(
+        &self,
+        nous_id: &str,
+        session_key: &str,
+        prompt: &str,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
+        (**self).send_prompt_with_cancel(nous_id, session_key, prompt, cancel)
+    }
 }

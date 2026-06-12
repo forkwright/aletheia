@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use tokio_util::sync::CancellationToken;
+
 /// Configuration for the evolution cron task.
 #[derive(Debug, Clone)]
 pub struct CronEvolutionConfig {
@@ -30,6 +32,7 @@ impl Default for CronEvolutionConfig {
 pub(crate) async fn execute_evolution(
     nous_id: &str,
     bridge: Option<&dyn crate::bridge::DaemonBridge>,
+    cancel: CancellationToken,
 ) -> crate::error::Result<crate::runner::ExecutionResult> {
     let Some(bridge) = bridge else {
         return Ok(crate::runner::ExecutionResult {
@@ -46,7 +49,7 @@ pub(crate) async fn execute_evolution(
     );
 
     match bridge
-        .send_prompt(nous_id, "daemon:evolution", prompt)
+        .send_prompt_with_cancel(nous_id, "daemon:evolution", prompt, cancel)
         .await
     {
         Ok(result) => {
@@ -88,7 +91,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_without_bridge_returns_failure() {
-        let result = execute_evolution("test-nous", None)
+        let result = execute_evolution("test-nous", None, CancellationToken::new())
             .await
             .expect("should not error");
         assert!(!result.success);

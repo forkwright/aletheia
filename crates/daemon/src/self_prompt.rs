@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 
 /// Session key used for all self-prompt dispatches.
 ///
@@ -232,11 +233,26 @@ pub(crate) fn extract_follow_up(output: &str) -> Option<String> {
 }
 
 /// Execute a self-prompt: send the extracted follow-up to the nous via the bridge.
+///
+/// Legacy entry point used by tests; uses a fresh cancellation token. The runner
+/// uses [`execute_self_prompt_with_cancel`] to propagate task cancellation.
+#[cfg(test)]
 #[tracing::instrument(skip_all)]
 pub(crate) async fn execute_self_prompt(
     nous_id: &str,
     prompt: &str,
     bridge: Option<&dyn crate::bridge::DaemonBridge>,
+) -> crate::error::Result<crate::runner::ExecutionResult> {
+    execute_self_prompt_with_cancel(nous_id, prompt, bridge, CancellationToken::new()).await
+}
+
+/// Execute a self-prompt with a cancellation token propagated to the bridge.
+#[tracing::instrument(skip_all)]
+pub(crate) async fn execute_self_prompt_with_cancel(
+    nous_id: &str,
+    prompt: &str,
+    bridge: Option<&dyn crate::bridge::DaemonBridge>,
+    cancel: CancellationToken,
 ) -> crate::error::Result<crate::runner::ExecutionResult> {
     let Some(bridge) = bridge else {
         return Ok(crate::runner::ExecutionResult {
@@ -252,7 +268,7 @@ pub(crate) async fn execute_self_prompt(
     );
 
     match bridge
-        .send_prompt(nous_id, SELF_PROMPT_SESSION_KEY, prompt)
+        .send_prompt_with_cancel(nous_id, SELF_PROMPT_SESSION_KEY, prompt, cancel)
         .await
     {
         Ok(result) => {
