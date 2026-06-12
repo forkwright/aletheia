@@ -77,6 +77,8 @@ pub struct DaemonSpawnParams {
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
     /// Optional tool services (shared with parent).
     pub tool_services: Option<Arc<organon::types::ToolServices>>,
+    /// Tool execution limits inherited from deployment config.
+    pub tool_config: Arc<taxis::config::ToolLimitsConfig>,
     /// Additional bootstrap sections for the child agent.
     pub extra_bootstrap: Vec<BootstrapSection>,
     /// Optional empirical router (shared with parent).
@@ -2037,6 +2039,7 @@ impl NousHandle {
         &self,
         config: NousConfig,
         pipeline_config: PipelineConfig,
+        tool_config: taxis::config::ToolLimitsConfig,
         timeout: Duration,
     ) -> error::Result<()>;
     pub async fn status (&self) -> error::Result<NousStatus>;
@@ -2094,6 +2097,8 @@ pub struct NousManager {
     cancel: CancellationToken,
     /// Deployment-level behavioral configuration (health intervals, restart limits).
     nous_behavior: taxis::config::NousBehaviorConfig,
+    /// Deployment-level tool execution limits shared by newly spawned actors.
+    tool_config: RwLock<Arc<taxis::config::ToolLimitsConfig>>,
     /// Prompt audit log shared across all actors (#3411).
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     /// Empirical router shared across all actors.
@@ -2121,6 +2126,7 @@ impl NousManager {
         router: Option<Arc<crate::cross::CrossNousRouter>>,
         tool_services: Option<Arc<ToolServices>>,
         nous_behavior: taxis::config::NousBehaviorConfig,
+        tool_config: taxis::config::ToolLimitsConfig,
     ) -> Self;
     pub fn with_audit_log (mut self, audit_log: Arc<crate::audit::PromptAuditLog>) -> Self;
     pub fn with_empirical_router (mut self, router: Arc<dyn Router>) -> Self;
@@ -2140,6 +2146,7 @@ impl NousManager {
     pub async fn reload_actor_configs (
         &self,
         configs: Vec<(String, NousConfig, PipelineConfig)>,
+        tool_config: taxis::config::ToolLimitsConfig,
     ) -> crate::error::Result<()>;
     pub async fn check_health (&self) -> BTreeMap<String, ActorHealth>;
     pub async fn health_cycle (&mut self);
@@ -3391,6 +3398,7 @@ pub struct SpawnServiceImpl {
     router: Option<Arc<crate::cross::CrossNousRouter>>,
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
+    tool_config: Arc<taxis::config::ToolLimitsConfig>,
     tool_services: OnceLock<Arc<ToolServices>>,
 }
 ```
@@ -3414,6 +3422,8 @@ pub struct InheritedSpawnServices {
     pub audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     /// Empirical routing backend shared with parent actors.
     pub empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
+    /// Tool execution limits inherited from deployment config.
+    pub tool_config: Arc<taxis::config::ToolLimitsConfig>,
 }
 ```
 

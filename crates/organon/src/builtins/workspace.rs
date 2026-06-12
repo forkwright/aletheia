@@ -612,7 +612,12 @@ impl ToolExecutor for ExecExecutor {
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
             let command = extract_str(&input.arguments, "command", &input.name)?;
-            let timeout_ms = extract_opt_u64(&input.arguments, "timeout").unwrap_or(120_000);
+            let configured_timeout_ms =
+                ctx.tool_config.subprocess_timeout_secs.saturating_mul(1000);
+            let timeout_ms = extract_opt_u64(&input.arguments, "timeout")
+                .map_or(configured_timeout_ms, |timeout| {
+                    timeout.min(configured_timeout_ms)
+                });
 
             let max_cmd = ctx.tool_config.max_command_length;
             if command.len() > max_cmd {
@@ -931,9 +936,10 @@ fn exec_def() -> ToolDef {
                     "timeout".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Number,
-                        description: "Timeout in milliseconds (default 30000)".to_owned(),
+                        description: "Timeout in milliseconds, capped by deployment config"
+                            .to_owned(),
                         enum_values: None,
-                        default: Some(serde_json::json!(30000)),
+                        default: None,
                     },
                 ),
             ]),

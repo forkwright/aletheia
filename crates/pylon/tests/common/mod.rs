@@ -139,6 +139,7 @@ impl TestEnvBuilder {
             None,
             None,
             taxis::config::NousBehaviorConfig::default(),
+            taxis::config::ToolLimitsConfig::default(),
         );
 
         if self.with_actor {

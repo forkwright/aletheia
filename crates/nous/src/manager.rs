@@ -4,8 +4,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 // WHY: lock held only during synchronous .take() on Option<JoinHandle>: no await while locked
-use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, RwLock}; // kanon:ignore RUST/std-mutex-in-async
 use std::time::Duration;
 
 use tokio::sync::Mutex as TokioMutex;
@@ -91,6 +91,8 @@ pub struct NousManager {
     cancel: CancellationToken,
     /// Deployment-level behavioral configuration (health intervals, restart limits).
     nous_behavior: taxis::config::NousBehaviorConfig,
+    /// Deployment-level tool execution limits shared by newly spawned actors.
+    tool_config: RwLock<Arc<taxis::config::ToolLimitsConfig>>,
     /// Prompt audit log shared across all actors (#3411).
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     /// Empirical router shared across all actors.
@@ -122,6 +124,7 @@ impl NousManager {
         router: Option<Arc<crate::cross::CrossNousRouter>>,
         tool_services: Option<Arc<ToolServices>>,
         nous_behavior: taxis::config::NousBehaviorConfig,
+        tool_config: taxis::config::ToolLimitsConfig,
     ) -> Self {
         let (ready_tx, ready_rx) = watch::channel(false);
         Self {
@@ -142,9 +145,20 @@ impl NousManager {
             ready_rx,
             cancel: CancellationToken::new(),
             nous_behavior,
+            tool_config: RwLock::new(Arc::new(tool_config)),
             audit_log: None,
             empirical_router: None,
         }
+    }
+
+    fn current_tool_config(&self) -> Arc<taxis::config::ToolLimitsConfig> {
+        self.tool_config
+            .read()
+            .unwrap_or_else(|e| {
+                warn!("tool_config lock poisoned, recovering");
+                e.into_inner()
+            })
+            .clone()
     }
 
     /// Attach a prompt audit log to the manager (#3411).
@@ -317,6 +331,7 @@ impl NousManager {
             cross_tx,
             child_cancel,
             self.nous_behavior.clone(),
+            self.current_tool_config(),
             self.audit_log.clone(),
             self.empirical_router.clone(),
         );
@@ -376,12 +391,25 @@ impl NousManager {
     pub async fn reload_actor_configs(
         &self,
         configs: Vec<(String, NousConfig, PipelineConfig)>,
+        tool_config: taxis::config::ToolLimitsConfig,
     ) -> crate::error::Result<()> {
+        {
+            let mut guard = self.tool_config.write().unwrap_or_else(|e| {
+                warn!("tool_config lock poisoned, recovering");
+                e.into_inner()
+            });
+            *guard = Arc::new(tool_config.clone());
+        }
         for (id, config, pipeline_config) in configs {
             if let Some(entry) = self.actors.get(&id) {
                 entry
                     .handle
-                    .reload_config(config, pipeline_config, DEFAULT_SEND_TIMEOUT)
+                    .reload_config(
+                        config,
+                        pipeline_config,
+                        tool_config.clone(),
+                        DEFAULT_SEND_TIMEOUT,
+                    )
                     .await?;
             }
         }

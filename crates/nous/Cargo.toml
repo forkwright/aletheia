@@ -64,9 +64,11 @@ tracing = { workspace = true }
 [dev-dependencies]
 hermeneus = { path = "../hermeneus", features = ["test-support"] }
 mneme = { path = "../mneme", features = ["test-support"] }
+organon = { path = "../organon", features = ["test-support"] }
 criterion = { workspace = true }
 indexmap = { workspace = true }
 proptest = { workspace = true }
+reqwest = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

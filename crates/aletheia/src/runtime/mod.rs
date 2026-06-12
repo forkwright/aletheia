@@ -518,6 +518,7 @@ impl RuntimeBuilder {
                     router: Some(Arc::clone(&cross_router)),
                     audit_log: Some(Arc::clone(&audit_log)),
                     empirical_router: Some(Arc::clone(&empirical_router)),
+                    tool_config: Arc::new(self.config.tool_limits.clone()),
                 }),
             ))
         } else {
@@ -564,6 +565,7 @@ impl RuntimeBuilder {
             Some(Arc::clone(&cross_router)),
             Some(tool_services),
             self.config.nous_behavior.clone(),
+            self.config.tool_limits.clone(),
         )
         .with_audit_log(Arc::clone(&audit_log))
         .with_empirical_router(Arc::clone(&empirical_router));
@@ -786,7 +788,10 @@ impl RuntimeBuilder {
                             (agent.id.clone(), nous_config, pipeline_config)
                         })
                         .collect();
-                    if let Err(e) = reload_manager.reload_actor_configs(actor_configs).await {
+                    if let Err(e) = reload_manager
+                        .reload_actor_configs(actor_configs, config.tool_limits.clone())
+                        .await
+                    {
                         warn!(error = %e, "failed to apply hot-reloaded actor config");
                     }
                 }

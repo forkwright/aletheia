@@ -240,6 +240,7 @@ impl TestHarness {
             None,
             None,
             taxis::config::NousBehaviorConfig::default(),
+            taxis::config::ToolLimitsConfig::default(),
         );
 
         let nous_config = NousConfig {

@@ -55,6 +55,7 @@ pub(crate) fn spawn(
     cross_tx: Option<mpsc::Sender<CrossNousEnvelope>>,
     cancel: CancellationToken,
     nous_behavior: taxis::config::NousBehaviorConfig,
+    tool_config: Arc<taxis::config::ToolLimitsConfig>,
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     router: Option<Arc<dyn Router>>,
 ) -> (
@@ -91,6 +92,7 @@ pub(crate) fn spawn(
         Arc::clone(&active_turn),
         Arc::clone(&turn_started_at_ms),
         nous_behavior,
+        tool_config,
         audit_log,
         router,
     );
@@ -130,6 +132,8 @@ pub struct DaemonSpawnParams {
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
     /// Optional tool services (shared with parent).
     pub tool_services: Option<Arc<organon::types::ToolServices>>,
+    /// Tool execution limits inherited from deployment config.
+    pub tool_config: Arc<taxis::config::ToolLimitsConfig>,
     /// Additional bootstrap sections for the child agent.
     pub extra_bootstrap: Vec<BootstrapSection>,
     /// Optional empirical router (shared with parent).
@@ -173,6 +177,7 @@ pub fn spawn_for_daemon(
         None, // cross_tx
         cancel,
         taxis::config::NousBehaviorConfig::default(),
+        params.tool_config,
         None, // WHY: daemon child agents share the parent's audit log via binary crate wiring
         params.empirical_router,
     )

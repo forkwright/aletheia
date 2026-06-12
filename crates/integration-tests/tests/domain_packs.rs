@@ -170,6 +170,7 @@ priority = "important"
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let config = NousConfig {
@@ -326,6 +327,7 @@ domains = ["healthcare"]
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let analyst_config = NousConfig {
@@ -365,6 +367,7 @@ domains = ["healthcare"]
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let hermes_config = NousConfig {

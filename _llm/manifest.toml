@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "34e2feca7d2ef18773ab0ffe3b039b925e63d393ca8784c0c0e40b8e7cb30b2e"
+source_hash = "01715dab5ca8c7d193583d2216676eee8dfc0104f561ceae0bd7ad6ac1c5e500"
 l3_token_estimate = 167
 
 [[crates]]
@@ -62,7 +62,7 @@ l3_token_estimate = 7702
 [[crates]]
 name = "diaporeia"
 path = "crates/diaporeia"
-source_hash = "2916b347dad6b4c11db8d18e1d9338a7e02f3cf1d254535487e3e5f4a56b98bc"
+source_hash = "b237d33ac2de51af65c61a4c57a479f0febbd7f173197e96c3f1898241673d9d"
 l3_token_estimate = 2544
 
 [[crates]]
@@ -110,7 +110,7 @@ l3_token_estimate = 13698
 [[crates]]
 name = "integration-tests"
 path = "crates/integration-tests"
-source_hash = "0ab54fc1087d4b8758c852ec53721e1a2aaa995c12ba40c739c0bd5d13599f1c"
+source_hash = "38d05a0e2ea1e6328b2d2c51abe8c1894ff37b38dd666fd76b6dc1c3ddb3c252"
 l3_token_estimate = 1170
 
 [[crates]]
@@ -146,8 +146,8 @@ l3_token_estimate = 51
 [[crates]]
 name = "nous"
 path = "crates/nous"
-source_hash = "3983621821c6008c9f3f50d9e426c08a212782849797dcd2fcf3b106cb9db1dc"
-l3_token_estimate = 34322
+source_hash = "c97fd8de1f1cc1b3b739f09a5aae8ce2e3146cc5aad84dc1489a652d7dcadeba"
+l3_token_estimate = 34474
 
 [[crates]]
 name = "oikonomos"
@@ -158,7 +158,7 @@ l3_token_estimate = 12375
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "7db6b08917d770bb288b424f2b46554aa292c0236e78e79e663ca260efce5300"
+source_hash = "1c18a483b8009ada0ee94f5beed7d5ef0f054306f67983c972a901cf61ae85d8"
 l3_token_estimate = 12171
 
 [[crates]]
@@ -266,7 +266,7 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "b0c2812e62aa1fa40a3db5762c8e12dc07b50f851308ee8bdaa25c9a87fdf112"
+source_hash = "0e655a95f075fc12fedccf065f1a3be930e609813c8c82f963102a573101e9f0"
 l3_token_estimate = 18067
 
 [[crates]]
@@ -284,7 +284,7 @@ l3_token_estimate = 6585
 [[crates]]
 name = "taxis"
 path = "crates/taxis"
-source_hash = "cd786949b2f637059a1af84f30ead7f743495137e48b2744d4b920d3ffb07017"
+source_hash = "a2a8e654c5771e21403b48c937f5f1d87903ece952d8d540b060336fdc3380f6"
 l3_token_estimate = 23836
 
 [[crates]]

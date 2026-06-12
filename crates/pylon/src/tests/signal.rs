@@ -98,6 +98,7 @@ fn minimal_app_state() -> Arc<AppState> {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let default_config = AletheiaConfig::default();

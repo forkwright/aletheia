@@ -179,6 +179,7 @@ async fn identity_continuity_pins_top_facts_and_late_injects_anchor() {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let mut config = NousConfig {

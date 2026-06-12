@@ -58,6 +58,7 @@ pub(crate) enum NousMessage {
     ReloadConfig {
         config: Box<NousConfig>,
         pipeline_config: Box<PipelineConfig>,
+        tool_config: Box<taxis::config::ToolLimitsConfig>,
         reply: oneshot::Sender<()>,
     },
     /// Graceful shutdown.

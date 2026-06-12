@@ -47,6 +47,7 @@ fn make_manager(oikos: Arc<Oikos>) -> NousManager {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     )
 }
 

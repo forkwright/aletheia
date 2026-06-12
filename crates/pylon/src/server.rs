@@ -138,6 +138,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
     let nous_config = NousConfig::default();
     nous_manager
