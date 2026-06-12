@@ -90,3 +90,33 @@ impl From<DataValue> for JsonValue {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: DataValue::Bot previously panicked during JSON export.
+    /// Verified fix: Bot must map to JsonValue::Null, not unreachable.
+    #[test]
+    fn data_value_bot_exports_as_null_not_panic() {
+        assert_eq!(JsonValue::from(DataValue::Bot), JsonValue::Null);
+    }
+
+    #[test]
+    fn data_value_null_exports_as_null() {
+        assert_eq!(JsonValue::from(DataValue::Null), JsonValue::Null);
+    }
+
+    /// Justify the f64 unreachable: every f64 is exactly one of finite/NaN/infinite
+    /// by IEEE 754; the else branch provably cannot be reached.
+    #[test]
+    fn f64_is_always_finite_nan_or_infinite() {
+        let samples: &[f64] = &[0.0, 1.5, -1.5, f64::MAX, f64::MIN_POSITIVE, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
+        for &f in samples {
+            assert!(
+                f.is_finite() || f.is_nan() || f.is_infinite(),
+                "f64 {f} is neither finite nor NaN nor infinite — unreachable branch reachable"
+            );
+        }
+    }
+}
