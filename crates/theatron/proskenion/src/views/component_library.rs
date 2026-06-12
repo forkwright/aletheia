@@ -1,4 +1,4 @@
-//! Component library reference page for D5 desktop quality review.
+//! Dev-only component library reference. Only compiled in debug builds (`#[cfg(debug_assertions)]`). Not part of the operator nav.
 
 use dioxus::prelude::*;
 

@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-06-12T21:25:31Z"
+generated_at = "2026-06-08T17:46:24Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "f2db2e856b375fd3a4b21abf64161635295dc5f905d00251c7ddd2ff9d5ea155"
+source_hash = "ec4860dd533ea0c01c44dcd47f3374856482680bf96b044b774e3a4506576ceb"
 l3_token_estimate = 167
 
 [[crates]]
@@ -68,14 +68,14 @@ l3_token_estimate = 2544
 [[crates]]
 name = "dokimion"
 path = "crates/eval"
-source_hash = "443e502fd1681bf68cb2598f6cf1966d58e8f6cf6de9a1c5662e1e65dd4757b5"
-l3_token_estimate = 9985
+source_hash = "f52b0b5d044542d3eeb0bf8e3185373e0d6c9eeefe9a9891b9f1961f252ec117"
+l3_token_estimate = 8198
 
 [[crates]]
 name = "eidos"
 path = "crates/eidos"
-source_hash = "b1fef82c52706696e389c61ba365bb6a502c2034a98c6695ef60b2811d565771"
-l3_token_estimate = 13731
+source_hash = "87c77416bf821e6107ed73a027c6092149b193d760ac3743c3443226c32ac225"
+l3_token_estimate = 13338
 
 [[crates]]
 name = "energeia"
@@ -110,7 +110,7 @@ l3_token_estimate = 13465
 [[crates]]
 name = "integration-tests"
 path = "crates/integration-tests"
-source_hash = "b80a4c2f9fc9e6cd6d79aff277823c15daaf1af69644005320a50ddf384f3318"
+source_hash = "0a647e87af60920a507baeea71441b5c10910f215b436f5bca3c61491973cddc"
 l3_token_estimate = 1170
 
 [[crates]]
@@ -152,8 +152,8 @@ l3_token_estimate = 34616
 [[crates]]
 name = "oikonomos"
 path = "crates/daemon"
-source_hash = "1b3832020e2ae362cd5853037c3b21db61162c6aa19c6d9d7ae9d3f6865c6be7"
-l3_token_estimate = 13839
+source_hash = "6449288a79adce6b57b43268dd2aa670f7a95fd8ef34bda8a99364fb67b36e46"
+l3_token_estimate = 12441
 
 [[crates]]
 name = "organon"
@@ -272,8 +272,8 @@ l3_token_estimate = 19314
 [[crates]]
 name = "skene"
 path = "crates/theatron/skene"
-source_hash = "6afc27d09463ab102e7b6e8d76198e84041396961821670f9a96f332efdc4917"
-l3_token_estimate = 6186
+source_hash = "42235e724462fbb3a9e1acdee8b013cf75c05dee0b6bd8fb01be962ee92b5fa1"
+l3_token_estimate = 5424
 
 [[crates]]
 name = "symbolon"
@@ -290,8 +290,8 @@ l3_token_estimate = 24571
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "e41bd907957ce3f56827ae74488ea4b6f872760e022cf1489c7f0ef8edcdc22d"
-l3_token_estimate = 23101
+source_hash = "4375aa59b9fc93428d998e99f4dfd3e5d19de383634016f111c3aaa7fddfa8f2"
+l3_token_estimate = 22245
 
 [[crates]]
 name = "thesauros"
