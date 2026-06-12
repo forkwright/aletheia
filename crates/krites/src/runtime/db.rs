@@ -23,6 +23,7 @@ use compact_str::CompactString;
 use crossbeam::channel::{Receiver, bounded, unbounded};
 use crossbeam::sync::ShardedLock;
 use itertools::Itertools;
+use parking_lot::RwLock;
 use serde_json::json;
 use snafu::Snafu;
 
@@ -121,7 +122,7 @@ pub struct Db<S> {
     pub(crate) callback_count: Arc<AtomicU32>,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) event_callbacks: Arc<ShardedLock<EventCallbackRegistry>>,
-    pub(crate) relation_locks: Arc<ShardedLock<BTreeMap<CompactString, Arc<ShardedLock<()>>>>>,
+    pub(crate) relation_locks: Arc<ShardedLock<BTreeMap<CompactString, Arc<RwLock<()>>>>>,
     #[cfg(feature = "hot-reload")]
     pub(crate) rule_store: Option<Arc<arc_swap::ArcSwap<crate::hot_reload::RuleSet>>>,
 }
@@ -540,7 +541,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     pub(crate) fn obtain_relation_locks<'a, T: Iterator<Item = &'a CompactString>>(
         &'s self,
         rels: T,
-    ) -> Vec<Arc<ShardedLock<()>>> {
+    ) -> Vec<Arc<RwLock<()>>> {
         let mut collected = vec![];
         let mut pending = vec![];
         {

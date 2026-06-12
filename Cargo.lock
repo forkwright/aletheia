@@ -5335,6 +5335,7 @@ dependencies = [
  "ndarray",
  "notify",
  "ordered-float 5.3.0",
+ "parking_lot",
  "pest",
  "pest_derive",
  "priority-queue",

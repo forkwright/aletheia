@@ -52,7 +52,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     }
                     .build()
                 })?;
-            let _guard = lock.write().unwrap_or_else(|e| e.into_inner());
+            let _guard = lock.write();
             body()
         }
     }
@@ -106,10 +106,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 } else {
                     self.obtain_relation_locks(rel_name_strs)
                 };
-                let _guards = locks
-                    .iter()
-                    .map(|l| l.read().unwrap_or_else(|e| e.into_inner()))
-                    .collect_vec();
+                let _guards = locks.iter().map(|l| l.read()).collect_vec();
                 let mut bounds = vec![];
                 for rs in rel_names {
                     let bound = tx.destroy_relation(rs)?;
@@ -194,7 +191,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                             }
                             .build()
                         })?;
-                    let _guard = lock.read().unwrap_or_else(|e| e.into_inner());
+                    let _guard = lock.read();
                     tx.remove_index(rel_name, idx_name)?
                 };
 
@@ -218,10 +215,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 } else {
                     self.obtain_relation_locks(rel_names)
                 };
-                let _guards = locks
-                    .iter()
-                    .map(|l| l.read().unwrap_or_else(|e| e.into_inner()))
-                    .collect_vec();
+                let _guards = locks.iter().map(|l| l.read()).collect_vec();
                 for (old, new) in rename_pairs {
                     tx.rename_relation(old, new)?;
                 }
