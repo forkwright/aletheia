@@ -377,7 +377,7 @@ impl AnthropicProvider {
                 tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
-            let (token_prefix, credential_source) = self.credential_log_info();
+            let credential_source = self.credential_source();
             let headers = self.build_headers()?;
 
             let mut response = match self
@@ -400,13 +400,9 @@ impl AnthropicProvider {
 
             if !response.status().is_success() {
                 let status = response.status().as_u16();
-                let err = super::error::map_error_response(
-                    response,
-                    &request.model,
-                    &token_prefix,
-                    &credential_source,
-                )
-                .await;
+                let err =
+                    super::error::map_error_response(response, &request.model, &credential_source)
+                        .await;
                 self.health.record_error(&err);
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
                     #[expect(
@@ -569,24 +565,16 @@ impl AnthropicProvider {
         }))
     }
 
-    /// Return `(token_prefix, credential_source)` strings for diagnostic logging.
+    /// Return the credential source class string for diagnostic logging.
     ///
-    /// The token prefix is the first 4 characters of the current secret value;
-    /// the credential source is the [`CredentialSource`] display string.
-    /// Returns empty strings when no credential is available.
+    /// Returns an empty string when no credential is available.
     ///
-    /// // WHY: Only the first 4 characters of the token are logged to avoid
-    /// // leaking credential material in logs while still allowing operators to
-    /// // distinguish between different tokens (e.g., after a refresh rotation).
-    fn credential_log_info(&self) -> (String, String) {
+    /// WHY(#4885): only the source class (e.g. "oauth", "api-key") is logged,
+    /// never a token prefix or any credential-derived material.
+    fn credential_source(&self) -> String {
         match self.credential_provider.get_credential() {
-            Some(cred) => {
-                let s = cred.secret.expose_secret();
-                let prefix = s.get(..4.min(s.len())).unwrap_or("").to_owned();
-                let source = cred.source.to_string();
-                (prefix, source)
-            }
-            None => (String::new(), String::new()),
+            Some(cred) => cred.source.to_string(),
+            None => String::new(),
         }
     }
 
@@ -849,7 +837,7 @@ impl AnthropicProvider {
                 tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
-            let (token_prefix, credential_source) = self.credential_log_info();
+            let credential_source = self.credential_source();
             let mut headers = self.build_headers()?;
             if let Ok(val) = HeaderValue::from_str(&idempotency_key) {
                 headers.insert("idempotency-key", val);
@@ -941,13 +929,9 @@ impl AnthropicProvider {
                 return parsed;
             }
 
-            let err = super::error::map_error_response(
-                response,
-                &request.model,
-                &token_prefix,
-                &credential_source,
-            )
-            .await;
+            let err =
+                super::error::map_error_response(response, &request.model, &credential_source)
+                    .await;
             self.health.record_error(&err);
 
             if status == 401 || ((400..500).contains(&status) && status != 429) {

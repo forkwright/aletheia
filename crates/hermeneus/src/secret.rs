@@ -204,6 +204,25 @@ pub fn redact_in_json(value: &mut serde_json::Value) {
     }
 }
 
+/// Truncate a provider error body to at most `max_bytes` bytes for safe logging.
+///
+/// Appends `[…N bytes]` when the body is truncated so operators know the log
+/// entry is incomplete. Walks back to a UTF-8 character boundary so the
+/// truncated slice is always valid text.
+pub(crate) fn truncate_error_body(body: &str, max_bytes: usize) -> String {
+    if body.len() <= max_bytes {
+        return body.to_owned();
+    }
+    // Walk back from max_bytes to the nearest char boundary.
+    let mut end = max_bytes;
+    while end > 0 && !body.is_char_boundary(end) {
+        end -= 1;
+    }
+    let remaining = body.len() - end;
+    let prefix = body.get(..end).unwrap_or_default();
+    format!("{prefix}[…{remaining} bytes]")
+}
+
 /// Heuristic: treat long alphanumeric strings without whitespace as sensitive.
 fn looks_like_secret(s: &str) -> bool {
     if s.len() <= 32 {
@@ -343,5 +362,33 @@ mod tests {
             value["text"],
             "this is a long sentence with spaces in it ok"
         );
+    }
+
+    #[test]
+    fn truncate_error_body_short_body_unchanged() {
+        let body = r#"{"error":"not found"}"#;
+        assert_eq!(truncate_error_body(body, 500), body);
+    }
+
+    #[test]
+    fn truncate_error_body_long_body_truncated_with_marker() {
+        let body = "x".repeat(600);
+        let result = truncate_error_body(&body, 500);
+        assert!(result.starts_with(&"x".repeat(500)));
+        assert!(result.contains("[…"), "must include truncation marker");
+        assert!(result.contains("bytes]"), "must include byte count");
+    }
+
+    #[test]
+    fn truncate_error_body_respects_utf8_boundary() {
+        // 3-byte UTF-8 char at position 499 would split a char if not handled.
+        let mut body = "a".repeat(498);
+        body.push('€'); // 3 bytes (0xe2, 0x82, 0xac)
+        body.push_str(&"z".repeat(100));
+        let result = truncate_error_body(&body, 500);
+        // The euro sign starts at byte 498 and ends at 501 — max_bytes=500
+        // falls inside it. We must back up to 498, not split the char.
+        assert!(std::str::from_utf8(result.as_bytes().get(..498).unwrap_or(b"")).is_ok());
+        assert!(result.contains("[…"), "must include truncation marker");
     }
 }

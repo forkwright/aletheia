@@ -7,17 +7,22 @@ use tracing::warn;
 use super::wire::WireErrorResponse;
 use crate::error::{self, ApiErrorContext, Result};
 
+/// Maximum bytes of a provider error body preserved in logs.
+///
+/// WHY(#4885): Raw provider error bodies can contain prompt fragments or tool
+/// payloads. Truncating to 512 bytes captures enough for diagnostics while
+/// bounding the maximum log line size.
+const MAX_ERROR_BODY_LOG_BYTES: usize = 512;
+
 /// Map an HTTP response with a non-success status to a hermeneus error.
 ///
 /// Consumes the response body to extract the Anthropic error detail.
-/// Logs the full raw body, model, token prefix, credential source, and
-/// `x-request-id` at WARN level before parsing so operators can diagnose
-/// opaque errors (e.g. OAuth token with unknown model alias returning "Error").
+/// Logs status, model, credential source class, request-id, and a truncated
+/// body at WARN — no credential-derived token material is logged.
 #[tracing::instrument(skip_all)]
 pub(crate) async fn map_error_response(
     response: Response,
     model: &str,
-    token_prefix: &str,
     credential_source: &str,
 ) -> error::Error {
     let status = response.status().as_u16();
@@ -36,13 +41,16 @@ pub(crate) async fn map_error_response(
         }
     };
 
+    // WHY(#4885): truncate before logging — raw bodies can contain prompt
+    // or tool-payload fragments. No token prefix is logged.
+    let body_truncated = crate::secret::truncate_error_body(&body, MAX_ERROR_BODY_LOG_BYTES);
+
     warn!(
         status,
         model,
-        token_prefix,
         credential_source,
         request_id = request_id.as_deref().unwrap_or(""),
-        body = %body,
+        body = %body_truncated,
         "Anthropic API error response"
     );
 
