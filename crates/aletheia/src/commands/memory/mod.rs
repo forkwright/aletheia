@@ -1609,26 +1609,42 @@ fn query_entities(
 }
 
 #[cfg(feature = "recall")]
+fn validate_nous_id(nous_id: &str) -> Result<()> {
+    if nous_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        Ok(())
+    } else {
+        whatever!(
+            "invalid nous_id '{nous_id}': only alphanumeric characters, hyphens, and underscores are allowed"
+        );
+    }
+}
+
+#[cfg(feature = "recall")]
 fn query_entities_filtered(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: &str,
 ) -> Result<Vec<mneme::knowledge::Entity>> {
+    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
 
-    // WHY: inline nous_id into the script because CozoDB parameter binding
-    // for string literals in filters uses '$var' syntax; we avoid the extra
-    // param plumbing for a single string filter.
-    let script = format!(
-        r"
+    validate_nous_id(nous_id)?;
+
+    // WHY: bind nous_id as a CozoDB parameter so special characters cannot
+    // escape the query string and alter the Datalog semantics.
+    let mut params = BTreeMap::new();
+    params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+    let script = r"
         ?[id, name, entity_type, aliases, created_at, updated_at] :=
-            *entities{{id, name, entity_type, aliases, created_at, updated_at}},
-            *fact_entities{{fact_id, entity_id: id}},
-            *facts{{fact_id, nous_id: '{nous_id}'}}
+            *entities{id, name, entity_type, aliases, created_at, updated_at},
+            *fact_entities{fact_id, entity_id: id},
+            *facts{fact_id, nous_id: $nous_id}
         :order name
-        "
-    );
+    ";
     let result = store
-        .run_query(&script, BTreeMap::new())
+        .run_query(script, params)
         .whatever_context("filtered entity query failed")?;
     parse_entity_rows(&result)
 }
@@ -1651,20 +1667,23 @@ fn query_relationships_filtered(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: &str,
 ) -> Result<Vec<mneme::knowledge::Relationship>> {
+    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
 
-    let script = format!(
-        r"
+    validate_nous_id(nous_id)?;
+
+    let mut params = BTreeMap::new();
+    params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+    let script = r"
         ?[src, dst, relation, weight, created_at] :=
-            *relationships{{src, dst, relation, weight, created_at}},
-            *fact_entities{{fact_id: fid1, entity_id: src}},
-            *facts{{fid1, nous_id: '{nous_id}'}},
-            *fact_entities{{fact_id: fid2, entity_id: dst}},
-            *facts{{fid2, nous_id: '{nous_id}'}}
-        "
-    );
+            *relationships{src, dst, relation, weight, created_at},
+            *fact_entities{fact_id: fid1, entity_id: src},
+            *facts{fid1, nous_id: $nous_id},
+            *fact_entities{fact_id: fid2, entity_id: dst},
+            *facts{fid2, nous_id: $nous_id}
+    ";
     let result = store
-        .run_query(&script, BTreeMap::new())
+        .run_query(script, params)
         .whatever_context("filtered relationship query failed")?;
     parse_relationship_rows(&result)
 }
