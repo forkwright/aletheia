@@ -66,13 +66,13 @@ pub(super) fn MemoryHealthSection(store: MemoryHealthStore) -> Element {
                 style: "{CARD_STYLE} flex: 1; min-width: 140px; text-align: center;",
                 div { style: "{CARD_VALUE}", "{store.orphan_ratio * 100.0:.0}%" }
                 div { style: "{CARD_LABEL}", "Orphan Ratio" }
-                div { style: "{CARD_SUB}", "Entities with 0-1 relationships" }
+                div { style: "{CARD_SUB}", "Entities with 0 relationships ({store.orphan_ratio_source.label()})" }
             }
             div {
                 style: "{CARD_STYLE} flex: 1; min-width: 140px; text-align: center;",
                 div { style: "{CARD_VALUE}", "{store.decay_pressure_count}" }
                 div { style: "{CARD_LABEL}", "Decay Pressure" }
-                div { style: "{CARD_SUB}", "Near FSRS threshold" }
+                div { style: "{CARD_SUB}", "Access age >= stability hours ({store.decay_pressure_source.label()})" }
             }
         }
 

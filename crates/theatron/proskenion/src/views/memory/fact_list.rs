@@ -3,7 +3,9 @@
 
 use dioxus::prelude::*;
 
-use crate::state::memory::{Fact, FactListStore, FactSort, confidence_color, format_confidence};
+use crate::state::memory::{
+    Fact, FactListStore, FactReviewMode, FactSort, confidence_color, format_confidence,
+};
 use crate::state::sessions::format_relative_time;
 use crate::views::memory::curation::{
     AdjustConfidenceDialog, ChangeSensitivityDialog, ForgetFactDialog, RestoreFactDialog,
@@ -184,11 +186,19 @@ pub(crate) fn FactList(
 
     let store = list_store.read();
     let sort = store.sort;
+    let review_mode = store.review_mode;
     let visible: Vec<Fact> = store.visible().into_iter().cloned().collect();
-    let total = store.total;
+    let active_count = store.active_count;
+    let total_count = store.total_count;
     drop(store);
 
     let shown = visible.len();
+    let forgotten_count = total_count.saturating_sub(active_count);
+    let count_label = match review_mode {
+        FactReviewMode::Active => format!("{shown} of {active_count} active facts"),
+        FactReviewMode::Forgotten => format!("{shown} of {forgotten_count} forgotten facts"),
+        FactReviewMode::All => format!("{shown} of {total_count} facts ({active_count} active)"),
+    };
 
     rsx! {
         div {
@@ -214,7 +224,7 @@ pub(crate) fn FactList(
                 }
                 span {
                     style: "margin-left: auto;",
-                    "{shown} of {total} facts"
+                    "{count_label}"
                 }
             }
 
@@ -248,6 +258,16 @@ pub(crate) fn FactList(
                             let access = fact.access_count;
                             let forgotten = fact.is_forgotten;
                             let row_opacity = if forgotten { "opacity: 0.55;" } else { "" };
+                            let source_session = fact.source_session_id.clone();
+                            let valid_from = fact.valid_from.clone();
+                            let valid_to = fact.valid_to.clone();
+                            let last_accessed = fact.last_accessed_at.clone();
+                            let stability = fact.stability_hours;
+                            let scope = fact.scope;
+                            let project_id = fact.project_id.clone();
+                            let superseded_by = fact.superseded_by.clone();
+                            let forgotten_at = fact.forgotten_at.clone();
+                            let forget_reason = fact.forget_reason;
 
                             let ft_label = fact.fact_type.label().to_string();
                             let ft_color = fact.fact_type.color();
@@ -294,8 +314,37 @@ pub(crate) fn FactList(
                                         if access > 0 {
                                             span { "{access} recalls" }
                                         }
-                                        if forgotten {
+                                        if let Some(ref ts) = last_accessed {
+                                            span { title: "Last recalled", "last {format_relative_time(ts)}" }
+                                        }
+                                        if !valid_from.is_empty() {
+                                            span { title: "Valid from", "valid from {format_relative_time(&valid_from)}" }
+                                        }
+                                        if !valid_to.is_empty() && !valid_to.starts_with("9999") {
+                                            span { title: "Valid to", "valid to {format_relative_time(&valid_to)}" }
+                                        }
+                                        if stability > 0.0 {
+                                            span { title: "FSRS stability in hours", "stability {stability:.0}h" }
+                                        }
+                                        if let Some(ref session) = source_session {
+                                            span { title: "Source session", "session {session}" }
+                                        }
+                                        if let Some(scope) = scope {
+                                            span { title: "Memory scope", "{scope.label()}" }
+                                        }
+                                        if let Some(ref project) = project_id {
+                                            span { title: "Project partition", "{project}" }
+                                        }
+                                        if let Some(ref sup) = superseded_by {
+                                            span { title: "Superseded by", "superseded by {sup}" }
+                                        }
+                                        if let Some(reason) = forget_reason {
+                                            span { title: "Forget reason", "forgotten: {reason.label()}" }
+                                        } else if forgotten {
                                             span { style: "{FORGOTTEN_TAG_STYLE}", "forgotten" }
+                                        }
+                                        if let Some(ref ts) = forgotten_at {
+                                            span { title: "Forgotten at", "forgotten {format_relative_time(ts)}" }
                                         }
 
                                         div {

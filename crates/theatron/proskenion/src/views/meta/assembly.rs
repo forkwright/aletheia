@@ -9,6 +9,7 @@ use super::{
     SessionEntry, SystemReflectionStore, TimeSeriesPointEntry, TimelineEntry,
     TokenMetricsApiResponse,
 };
+use crate::state::meta::MetricSource;
 
 /// Assemble all fetched data into the composite `MetaData` structure.
 #[expect(
@@ -219,9 +220,11 @@ pub(super) fn assemble_meta_data(
         facts.iter().map(|f| f.confidence).sum::<f64>() / count_to_f64(facts.len())
     };
 
+    // WHY: an orphan has zero relationships, not one; a single relationship is
+    // still connected to the graph.
     let orphan_count = entities
         .iter()
-        .filter(|e| e.relationship_count <= 1)
+        .filter(|e| e.relationship_count == 0)
         .count();
     let orphan_ratio = if entities.is_empty() {
         0.0
@@ -229,12 +232,13 @@ pub(super) fn assemble_meta_data(
         count_to_f64(orphan_count) / count_to_f64(entities.len())
     };
 
-    // WHY: approximate staleness from facts with empty recorded_at or old dates.
-    let stale_count = facts.iter().filter(|f| f.recorded_at.is_empty()).count();
-    let staleness_ratio = if facts.is_empty() {
+    // WHY: staleness is computed from fact recorded_at age, not an empty string.
+    let active_facts: Vec<&FactEntry> = facts.iter().filter(|f| !f.is_forgotten).collect();
+    let stale_count = active_facts.iter().filter(|f| fact_is_stale(f)).count();
+    let staleness_ratio = if active_facts.is_empty() {
         0.0
     } else {
-        count_to_f64(stale_count) / count_to_f64(facts.len())
+        count_to_f64(stale_count) / count_to_f64(active_facts.len())
     };
 
     let health_score =
@@ -261,6 +265,49 @@ pub(super) fn assemble_meta_data(
         })
         .collect();
 
+    // WHY: decay pressure is computed client-side from backend stability and
+    // last-access timestamps. It is not a server-reported metric, so the UI
+    // labels it "computed" rather than presenting a hardcoded zero.
+    let decay_pressure_count: u32 = active_facts
+        .iter()
+        .filter(|f| {
+            let stability = f.stability_hours;
+            if stability <= 0.0 {
+                return false;
+            }
+            let last_access_age = if f.last_accessed_at.is_empty() {
+                crate::state::memory::age_in_days(&f.recorded_at).map(|d| d as f64 * 24.0)
+            } else {
+                crate::state::memory::age_in_days(&f.last_accessed_at).map(|d| d as f64 * 24.0)
+            }
+            .unwrap_or(0.0);
+            last_access_age >= stability
+        })
+        .count()
+        .try_into()
+        .unwrap_or(u32::MAX);
+    let decay_pressure_source = if active_facts.iter().any(|f| f.stability_hours > 0.0) {
+        MetricSource::Computed
+    } else {
+        MetricSource::Unavailable
+    };
+
+    let stale_entities: Vec<crate::state::meta::StaleEntity> = entities
+        .iter()
+        .filter(|e| {
+            crate::state::memory::age_in_days(&e.updated_at).is_some_and(|d| d > 30)
+                && !e.name.is_empty()
+        })
+        .filter_map(|e| {
+            let days = crate::state::memory::age_in_days(&e.updated_at)?;
+            Some(crate::state::meta::StaleEntity {
+                name: e.name.clone(),
+                last_updated: e.updated_at.clone(),
+                days_stale: days.min(u32::MAX as u64) as u32,
+            })
+        })
+        .collect();
+
     let recommendations = crate::state::meta::generate_recommendations(
         staleness_ratio,
         orphan_ratio,
@@ -271,9 +318,15 @@ pub(super) fn assemble_meta_data(
     let mem_health = MemoryHealthStore {
         health_score,
         confidence_distribution,
-        stale_entities: Vec::new(),
+        stale_entities,
         orphan_ratio,
-        decay_pressure_count: 0,
+        orphan_ratio_source: if entities.is_empty() {
+            MetricSource::Unavailable
+        } else {
+            MetricSource::Computed
+        },
+        decay_pressure_count,
+        decay_pressure_source,
         health_over_time: vec![crate::state::meta::DataPoint {
             label: "now".to_string(),
             value: health_score,
@@ -340,6 +393,26 @@ pub(super) fn assemble_meta_data(
         health: mem_health,
         reflection,
     }
+}
+
+fn fact_is_stale(fact: &FactEntry) -> bool {
+    crate::state::memory::age_in_days(&fact.recorded_at).is_some_and(|d| d > 30)
+        || timestamp_is_past(&fact.valid_to)
+}
+
+fn timestamp_is_past(timestamp: &str) -> bool {
+    let Some(ts) = crate::state::sessions::parse_iso_to_unix(timestamp) else {
+        return false;
+    };
+    if ts == 0 {
+        return false;
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    ts <= now
 }
 
 /// Convert API time-series entries to internal `DataPoint` values.

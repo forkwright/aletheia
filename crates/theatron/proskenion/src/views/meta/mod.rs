@@ -95,14 +95,26 @@ struct FactEntry {
     // NOTE: facts carry `recorded_at` (system recording time), not `updated_at`.
     #[serde(default)]
     recorded_at: String,
+    #[serde(default)]
+    is_forgotten: bool,
+    #[serde(default)]
+    last_accessed_at: String,
+    #[serde(default)]
+    stability_hours: f64,
+    #[serde(default)]
+    valid_to: String,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct EntityEntry {
     #[serde(default)]
+    name: String,
+    #[serde(default)]
     entity_type: String,
     #[serde(default)]
     relationship_count: u32,
+    #[serde(default)]
+    updated_at: String,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -565,7 +577,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     // JSON token/cost insights endpoints instead.
     let tokens_url = format!("{base}/api/v1/metrics/tokens");
     let costs_url = format!("{base}/api/v1/metrics/costs");
-    let facts_url = format!("{base}/api/v1/knowledge/facts?limit=1000");
+    let facts_url = format!("{base}/api/v1/knowledge/facts?limit=1000&include_forgotten=true");
     let entities_url = format!("{base}/api/v1/knowledge/entities");
     let timeline_url = format!("{base}/api/v1/knowledge/timeline");
     let sessions_url = format!("{base}/api/v1/sessions");

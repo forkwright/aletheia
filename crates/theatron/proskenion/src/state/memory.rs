@@ -887,6 +887,81 @@ impl FactVisibility {
     }
 }
 
+/// Team-memory scope for a fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum MemoryScope {
+    User,
+    Feedback,
+    Project,
+    Reference,
+}
+
+impl MemoryScope {
+    /// Classify a raw server string; unknown values fall back to `User`.
+    #[must_use]
+    pub(crate) fn from_raw(raw: &str) -> Self {
+        match raw.to_ascii_lowercase().as_str() {
+            "feedback" => Self::Feedback,
+            "project" => Self::Project,
+            "reference" => Self::Reference,
+            _ => Self::User,
+        }
+    }
+
+    /// Human-readable label.
+    #[must_use]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::User => "User",
+            Self::Feedback => "Feedback",
+            Self::Project => "Project",
+            Self::Reference => "Reference",
+        }
+    }
+}
+
+/// Reason a fact was forgotten.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ForgetReason {
+    UserRequested,
+    Outdated,
+    Incorrect,
+    Privacy,
+    Stale,
+    Superseded,
+    Contradicted,
+}
+
+impl ForgetReason {
+    /// Classify a raw server string; unknown values fall back to `UserRequested`.
+    #[must_use]
+    pub(crate) fn from_raw(raw: &str) -> Self {
+        match raw.to_ascii_lowercase().as_str() {
+            "outdated" => Self::Outdated,
+            "incorrect" => Self::Incorrect,
+            "privacy" => Self::Privacy,
+            "stale" => Self::Stale,
+            "superseded" => Self::Superseded,
+            "contradicted" => Self::Contradicted,
+            _ => Self::UserRequested,
+        }
+    }
+
+    /// Human-readable label.
+    #[must_use]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::UserRequested => "user requested",
+            Self::Outdated => "outdated",
+            Self::Incorrect => "incorrect",
+            Self::Privacy => "privacy",
+            Self::Stale => "stale",
+            Self::Superseded => "superseded",
+            Self::Contradicted => "contradicted",
+        }
+    }
+}
+
 /// A remembered fact. Mirrors the flat JSON served by `/knowledge/facts`.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(from = "FactRaw")]
@@ -914,6 +989,34 @@ pub(crate) struct Fact {
     pub access_count: u32,
     /// Whether the fact has been forgotten (soft-deleted).
     pub is_forgotten: bool,
+
+    // -- Provenance / lifecycle fields preserved from the backend Fact --
+    /// Session that produced this fact, if known.
+    pub source_session_id: Option<String>,
+    /// When this fact became valid in the domain.
+    pub valid_from: String,
+    /// When this fact ceases to be valid in the domain.
+    pub valid_to: String,
+    /// Base FSRS stability in hours.
+    pub stability_hours: f64,
+
+    // -- Lifecycle --
+    /// ID of the fact that replaced this one, if any.
+    pub superseded_by: Option<String>,
+    /// When the fact was forgotten, if it has been.
+    pub forgotten_at: Option<String>,
+    /// Why the fact was forgotten, if applicable.
+    pub forget_reason: Option<ForgetReason>,
+
+    // -- Access --
+    /// Timestamp of the most recent recall, if any.
+    pub last_accessed_at: Option<String>,
+
+    // -- Scope / project --
+    /// Team-memory scope, if the server provided one.
+    pub scope: Option<MemoryScope>,
+    /// Project partition, if the server provided one.
+    pub project_id: Option<String>,
 }
 
 /// Raw wire shape for [`Fact`]; tolerant of missing fields.
@@ -940,6 +1043,26 @@ struct FactRaw {
     access_count: u32,
     #[serde(default)]
     is_forgotten: bool,
+    #[serde(default)]
+    source_session_id: Option<String>,
+    #[serde(default)]
+    valid_from: String,
+    #[serde(default)]
+    valid_to: String,
+    #[serde(default)]
+    stability_hours: f64,
+    #[serde(default)]
+    superseded_by: Option<String>,
+    #[serde(default)]
+    forgotten_at: Option<String>,
+    #[serde(default)]
+    forget_reason: String,
+    #[serde(default)]
+    last_accessed_at: Option<String>,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    project_id: Option<String>,
 }
 
 impl From<FactRaw> for Fact {
@@ -949,6 +1072,12 @@ impl From<FactRaw> for Fact {
             tier: FactTier::from_raw(&raw.tier),
             sensitivity: FactSensitivity::from_raw(&raw.sensitivity),
             visibility: FactVisibility::from_raw(&raw.visibility),
+            forget_reason: if raw.forget_reason.is_empty() {
+                None
+            } else {
+                Some(ForgetReason::from_raw(&raw.forget_reason))
+            },
+            scope: raw.scope.as_deref().map(MemoryScope::from_raw),
             id: raw.id,
             nous_id: raw.nous_id,
             content: raw.content,
@@ -956,6 +1085,14 @@ impl From<FactRaw> for Fact {
             recorded_at: raw.recorded_at,
             access_count: raw.access_count,
             is_forgotten: raw.is_forgotten,
+            source_session_id: raw.source_session_id,
+            valid_from: raw.valid_from,
+            valid_to: raw.valid_to,
+            stability_hours: raw.stability_hours,
+            superseded_by: raw.superseded_by,
+            forgotten_at: raw.forgotten_at,
+            last_accessed_at: raw.last_accessed_at,
+            project_id: raw.project_id,
         }
     }
 }
@@ -1062,7 +1199,9 @@ pub(crate) fn age_in_days(recorded_at: &str) -> Option<u64> {
 /// strip above the list, so "is my memory healthy?" is answered in place.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct FactHealth {
-    /// Total active (non-forgotten) facts.
+    /// Active (non-forgotten) facts.
+    pub active: usize,
+    /// All facts including forgotten ones.
     pub total: usize,
     /// Active facts older than 30 days.
     pub stale: usize,
@@ -1078,20 +1217,22 @@ impl FactHealth {
     /// Compute the strip from the currently loaded facts.
     #[must_use]
     pub(crate) fn compute(facts: &[Fact]) -> Self {
+        let total = facts.len();
         let active: Vec<&Fact> = facts.iter().filter(|f| !f.is_forgotten).collect();
-        let total = active.len();
-        let forgotten = facts.len() - total;
+        let active_count = active.len();
+        let forgotten = total - active_count;
         let stale = active
             .iter()
             .filter(|f| age_in_days(&f.recorded_at).is_some_and(|d| d > 30))
             .count();
         let low_confidence = active.iter().filter(|f| f.confidence < 0.4).count();
-        let avg_confidence = if total > 0 {
-            active.iter().map(|f| f.confidence).sum::<f64>() / total as f64
+        let avg_confidence = if active_count > 0 {
+            active.iter().map(|f| f.confidence).sum::<f64>() / active_count as f64
         } else {
             0.0
         };
         Self {
+            active: active_count,
             total,
             stale,
             low_confidence,
@@ -1101,13 +1242,58 @@ impl FactHealth {
     }
 }
 
+/// Which facts the operator wants to review.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum FactReviewMode {
+    /// Only active (non-forgotten) facts.
+    #[default]
+    Active,
+    /// Only forgotten facts.
+    Forgotten,
+    /// Both active and forgotten facts.
+    All,
+}
+
+impl FactReviewMode {
+    /// All review modes in display order.
+    pub(crate) const ALL: &[Self] = &[Self::Active, Self::Forgotten, Self::All];
+
+    /// Human-readable label.
+    #[must_use]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Active => "Active",
+            Self::Forgotten => "Forgotten",
+            Self::All => "All",
+        }
+    }
+
+    /// Whether forgotten facts should be requested from the server.
+    #[must_use]
+    pub(crate) fn include_forgotten(self) -> bool {
+        matches!(self, Self::Forgotten | Self::All)
+    }
+
+    /// Whether an active (non-forgotten) fact passes this mode.
+    #[must_use]
+    pub(crate) fn active_passes(self, is_forgotten: bool) -> bool {
+        match self {
+            Self::Active => !is_forgotten,
+            Self::Forgotten => is_forgotten,
+            Self::All => true,
+        }
+    }
+}
+
 /// Paginated fact list with sort and filter state (default memory surface).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct FactListStore {
     /// All loaded facts (the strip + filters derive from these).
     pub facts: Vec<Fact>,
-    /// Total facts reported by the server.
-    pub total: usize,
+    /// Total active facts reported by the server.
+    pub active_count: usize,
+    /// Total facts including forgotten ones reported by the server.
+    pub total_count: usize,
     /// Current sort field.
     pub sort: FactSort,
     /// Free-text content filter.
@@ -1118,6 +1304,24 @@ pub(crate) struct FactListStore {
     pub tier_filter: Vec<FactTier>,
     /// Recency window.
     pub recency: FactRecency,
+    /// Review mode controlling whether forgotten facts are fetched/shown.
+    pub review_mode: FactReviewMode,
+}
+
+impl Default for FactListStore {
+    fn default() -> Self {
+        Self {
+            facts: Vec::new(),
+            active_count: 0,
+            total_count: 0,
+            sort: FactSort::default(),
+            search_query: String::new(),
+            type_filter: Vec::new(),
+            tier_filter: Vec::new(),
+            recency: FactRecency::All,
+            review_mode: FactReviewMode::default(),
+        }
+    }
 }
 
 impl FactListStore {
@@ -1125,12 +1329,16 @@ impl FactListStore {
     pub(crate) const FETCH_LIMIT: usize = 500;
 
     /// Replace the fact list with fresh data.
-    pub(crate) fn load(&mut self, facts: Vec<Fact>, total: usize) {
+    ///
+    /// `active_count` and `total_count` are reported separately so the UI can
+    /// distinguish active facts from all facts when forgotten review is on.
+    pub(crate) fn load(&mut self, facts: Vec<Fact>, active_count: usize, total_count: usize) {
         self.facts = facts;
-        self.total = total;
+        self.active_count = active_count;
+        self.total_count = total_count;
     }
 
-    /// Reset all filters and search.
+    /// Reset all filters and search; review mode is preserved.
     pub(crate) fn clear_filters(&mut self) {
         self.search_query.clear();
         self.type_filter.clear();
@@ -1147,12 +1355,12 @@ impl FactListStore {
             || self.recency != FactRecency::All
     }
 
-    /// Facts passing the in-memory recency window (type/tier/search are pushed
-    /// to the server, but recency is computed client-side over `recorded_at`).
+    /// Facts passing the in-memory review-mode and recency windows.
     #[must_use]
     pub(crate) fn visible(&self) -> Vec<&Fact> {
         self.facts
             .iter()
+            .filter(|f| self.review_mode.active_passes(f.is_forgotten))
             .filter(|f| match age_in_days(&f.recorded_at) {
                 Some(age) => self.recency.matches(age),
                 // WHY: an unparseable timestamp only fails a constrained window.
@@ -1165,6 +1373,12 @@ impl FactListStore {
     #[must_use]
     pub(crate) fn health(&self) -> FactHealth {
         FactHealth::compute(&self.facts)
+    }
+
+    /// Server-facing value for the `include_forgotten` query parameter.
+    #[must_use]
+    pub(crate) fn include_forgotten(&self) -> bool {
+        self.review_mode.include_forgotten()
     }
 }
 
@@ -1515,6 +1729,16 @@ mod tests {
             recorded_at: "2026-06-10T00:00:00Z".to_string(),
             access_count: 0,
             is_forgotten: forgotten,
+            source_session_id: None,
+            valid_from: "2026-06-10T00:00:00Z".to_string(),
+            valid_to: "9999-01-01T00:00:00Z".to_string(),
+            stability_hours: 72.0,
+            superseded_by: None,
+            forgotten_at: None,
+            forget_reason: None,
+            last_accessed_at: None,
+            scope: None,
+            project_id: None,
         }
     }
 
@@ -1526,7 +1750,8 @@ mod tests {
             make_fact("c", 0.5, true),
         ];
         let health = FactHealth::compute(&facts);
-        assert_eq!(health.total, 2);
+        assert_eq!(health.active, 2);
+        assert_eq!(health.total, 3);
         assert_eq!(health.forgotten, 1);
         assert_eq!(health.low_confidence, 1);
         assert!((health.avg_confidence - 0.55).abs() < 1e-9);
@@ -1535,7 +1760,7 @@ mod tests {
     #[test]
     fn fact_list_store_filters_and_clear() {
         let mut store = FactListStore::default();
-        store.load(vec![make_fact("a", 0.9, false)], 1);
+        store.load(vec![make_fact("a", 0.9, false)], 1, 1);
         assert!(!store.has_active_filters());
 
         store.search_query = "x".to_string();
@@ -1547,5 +1772,97 @@ mod tests {
         store.clear_filters();
         assert!(!store.has_active_filters());
         assert_eq!(store.recency, FactRecency::All);
+    }
+
+    #[test]
+    fn fact_review_mode_filters_visible_facts() {
+        let mut store = FactListStore::default();
+        store.load(
+            vec![
+                make_fact("active", 0.9, false),
+                make_fact("forgotten", 0.5, true),
+            ],
+            1,
+            2,
+        );
+
+        store.review_mode = FactReviewMode::Active;
+        assert_eq!(store.visible().len(), 1);
+        assert!(!store.visible()[0].is_forgotten);
+
+        store.review_mode = FactReviewMode::Forgotten;
+        assert_eq!(store.visible().len(), 1);
+        assert!(store.visible()[0].is_forgotten);
+
+        store.review_mode = FactReviewMode::All;
+        assert_eq!(store.visible().len(), 2);
+    }
+
+    #[test]
+    fn fact_include_forgotten_matches_review_mode() {
+        let mut store = FactListStore::default();
+        assert!(!store.include_forgotten());
+
+        store.review_mode = FactReviewMode::Forgotten;
+        assert!(store.include_forgotten());
+
+        store.review_mode = FactReviewMode::All;
+        assert!(store.include_forgotten());
+    }
+
+    #[test]
+    fn fact_deserializes_from_full_nested_wire_shape() {
+        // WHY: pylon returns the full mneme::knowledge::Fact with flattened
+        // temporal/provenance/lifecycle/access sub-structs; ensure we preserve
+        // every field that reaches the desktop instead of silently narrowing.
+        let json = r#"{
+            "id": "fact_02",
+            "nous_id": "agent-1",
+            "content": "The operator prefers tabs over spaces",
+            "fact_type": "preference",
+            "tier": "verified",
+            "confidence": 0.92,
+            "sensitivity": "internal",
+            "visibility": "private",
+            "scope": "project",
+            "project_id": "acme.corp/website",
+            "valid_from": "2026-06-01T00:00:00Z",
+            "valid_to": "9999-01-01T00:00:00Z",
+            "recorded_at": "2026-06-01T12:00:00Z",
+            "source_session_id": "session-7",
+            "stability_hours": 8760.0,
+            "access_count": 4,
+            "last_accessed_at": "2026-06-10T08:00:00Z",
+            "is_forgotten": true,
+            "forgotten_at": "2026-06-11T00:00:00Z",
+            "forget_reason": "outdated",
+            "superseded_by": "fact_03"
+        }"#;
+        let fact: Fact = serde_json::from_str(json).expect("full fact parses");
+        assert_eq!(fact.id, "fact_02");
+        assert_eq!(fact.source_session_id.as_deref(), Some("session-7"));
+        assert_eq!(fact.valid_from, "2026-06-01T00:00:00Z");
+        assert_eq!(fact.valid_to, "9999-01-01T00:00:00Z");
+        assert!((fact.stability_hours - 8760.0).abs() < f64::EPSILON);
+        assert_eq!(
+            fact.last_accessed_at.as_deref(),
+            Some("2026-06-10T08:00:00Z")
+        );
+        assert_eq!(fact.scope, Some(MemoryScope::Project));
+        assert_eq!(fact.project_id.as_deref(), Some("acme.corp/website"));
+        assert!(fact.is_forgotten);
+        assert_eq!(fact.forgotten_at.as_deref(), Some("2026-06-11T00:00:00Z"));
+        assert_eq!(fact.forget_reason, Some(ForgetReason::Outdated));
+        assert_eq!(fact.superseded_by.as_deref(), Some("fact_03"));
+    }
+
+    #[test]
+    fn fact_scope_and_forget_reason_use_safe_fallbacks() {
+        let fact: Fact = serde_json::from_str(
+            r#"{"id":"f","fact_type":"weird","scope":"unknown","forget_reason":"unknown"}"#,
+        )
+        .expect("partial fact parses");
+        assert_eq!(fact.scope, Some(MemoryScope::User));
+        assert_eq!(fact.forget_reason, Some(ForgetReason::UserRequested));
     }
 }
