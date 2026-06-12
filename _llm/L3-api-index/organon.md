@@ -651,6 +651,12 @@ pub struct ToolRegistry {
 impl ToolRegistry {
     pub fn new () -> Self;
     pub fn register (&mut self, def: ToolDef, executor: Box<dyn ToolExecutor>) -> Result<()>;
+    pub fn register_with_call_capability (
+        &mut self,
+        def: ToolDef,
+        call_capability: ToolCallCapabilityRule,
+        executor: Box<dyn ToolExecutor>,
+    ) -> Result<()>;
     pub fn get_def (&self, name: &ToolName) -> Option<&ToolDef>;
     pub async fn execute (&self, input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult>;
     pub async fn execute_checked (
@@ -716,7 +722,15 @@ impl ToolRegistry {
     ) -> Vec<hermeneus::types::ToolDefinition>;
     pub fn reversibility (&self, name: &ToolName) -> Option<Reversibility>;
     pub fn approval_requirement (&self, name: &ToolName) -> Option<ApprovalRequirement>;
+    pub fn call_capability (&self, input: &ToolInput) -> Result<ToolCallCapability>;
+    pub fn permits_call (&self, input: &ToolInput, policy: &ToolGroupPolicy) -> Result<bool>;
+    pub fn approval_requirement_for_input (&self, input: &ToolInput) -> Result<ApprovalRequirement>;
     pub fn call_metadata (&self, name: &ToolName, dry_run: bool) -> Option<ToolCallMetadata>;
+    pub fn call_metadata_for_input (
+        &self,
+        input: &ToolInput,
+        dry_run: bool,
+    ) -> Result<ToolCallMetadata>;
     pub fn lazy_tool_catalog (&self) -> Vec<(ToolName, String)>;
     pub fn is_daemon_safe (&self, name: &ToolName) -> bool;
     pub fn daemon_safe_tools (&self) -> Vec<&ToolDef>;
@@ -1055,6 +1069,68 @@ impl ToolGroupPolicy {
     pub fn permits (&self, tool_groups: &[ToolGroupId]) -> bool;
     pub fn allowed_groups (&self) -> &[ToolGroupId];
     pub fn description (&self) -> String;
+}
+```
+
+```rust
+pub struct ToolCallCapability {
+    /// Tool groups required by this concrete call.
+    pub groups: Vec<ToolGroupId>,
+    /// Reversibility for this concrete call.
+    pub reversibility: Reversibility,
+}
+```
+
+```rust
+impl ToolCallCapability {
+    pub fn new (groups: Vec<ToolGroupId>, reversibility: Reversibility) -> Self;
+}
+```
+
+```rust
+pub struct ToolArgumentValueCapability {
+    /// Selector value from the tool input.
+    pub value: String,
+    /// Capability for calls carrying this selector value.
+    pub capability: ToolCallCapability,
+}
+```
+
+```rust
+pub enum ToolCallCapabilityRule {
+    /// Classify by an argument's string value, such as `action` or `op`.
+    ArgumentValue {
+        /// Argument name to read from the tool input.
+        argument: String,
+        /// Capabilities keyed by argument value.
+        values: Vec<ToolArgumentValueCapability>,
+    },
+    /// Classify by whether an argument is present.
+    ArgumentPresence {
+        /// Argument name to test in the tool input.
+        argument: String,
+        /// Capability when the argument is present and not null.
+        present: ToolCallCapability,
+        /// Capability when the argument is absent or null.
+        absent: ToolCallCapability,
+    },
+}
+```
+
+```rust
+impl ToolCallCapabilityRule {
+    pub fn argument_value <V, I> (argument: impl Into<String>, values: I) -> Self where
+        V: Into<String>,
+        I: IntoIterator<Item = (V, ToolCallCapability)>,;
+    pub fn argument_presence (
+        argument: impl Into<String>,
+        present: ToolCallCapability,
+        absent: ToolCallCapability,
+    ) -> Self;
+    pub fn classify (
+        &self,
+        arguments: &serde_json::Value,
+    ) -> std::result::Result<ToolCallCapability, String>;
 }
 ```
 
