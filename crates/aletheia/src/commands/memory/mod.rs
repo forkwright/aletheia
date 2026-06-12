@@ -146,37 +146,22 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
             );
         }
 
-        // WHY (#4165 D): load the resolved aletheia config so the dedup
-        // CLI honours the operator's `knowledge_dedup_*` knobs the same
-        // way the scheduled maintenance task does. A missing/invalid
-        // config falls back to the historical defaults — the same shape
-        // every prior CLI invocation used — so this is strictly additive.
-        let loaded_config = if matches!(action, Action::Dedup { .. } | Action::Reembed) {
-            Some(taxis::loader::load_config(&oikos))
-        } else {
-            None
-        };
+        let loaded_config = taxis::loader::load_config(&oikos);
         let dedup_tuning = loaded_config
             .as_ref()
-            .and_then(|result| result.as_ref().ok())
+            .ok()
             .map_or(mneme::dedup::DedupTuning::DEFAULT, |cfg| {
                 crate::knowledge_maintenance::tuning_from_behavior(&cfg.agents.defaults.behavior)
             });
-        let recovery_dim = loaded_config
-            .as_ref()
-            .and_then(|result| result.as_ref().ok())
-            .map_or_else(
-                || mneme::knowledge_store::KnowledgeConfig::default().dim,
-                |cfg| cfg.embedding.dimension,
-            );
+        let recovery_config = knowledge_config_from_loaded(&loaded_config, false);
 
         match action {
             // WHY: reembed/gc iterate every cohort store themselves, so they
             // must not pre-open the shared store like the other actions.
-            Action::Reembed => run_reembed(&oikos, recovery_dim, loaded_config.as_ref()),
-            Action::Gc => run_gc(&oikos, recovery_dim),
+            Action::Reembed => run_reembed(&oikos, &loaded_config),
+            Action::Gc => run_gc(&oikos, &recovery_config),
             store_action => {
-                let store = open_recovery_store(&knowledge_path, recovery_dim)?;
+                let store = open_recovery_store(&knowledge_path, &recovery_config)?;
                 run_store_action(&store, store_action, &dedup_tuning)
             }
         }
@@ -558,12 +543,22 @@ fn run_store_action(
 }
 
 #[cfg(feature = "recall")]
+#[derive(Debug, Clone)]
+struct RecoveryKnowledgeConfig {
+    dim: usize,
+    embedding_model: String,
+    allow_assumed_embedding_meta: bool,
+}
+
+#[cfg(feature = "recall")]
 fn open_recovery_store(
     path: &Path,
-    dim: usize,
+    config: &RecoveryKnowledgeConfig,
 ) -> Result<std::sync::Arc<mneme::knowledge_store::KnowledgeStore>> {
     let config = mneme::knowledge_store::KnowledgeConfig {
-        dim,
+        dim: config.dim,
+        embedding_model: config.embedding_model.clone(),
+        allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
         ..Default::default()
     };
     // NOTE: lock contention surfaces from the typed
@@ -575,6 +570,33 @@ fn open_recovery_store(
             path.display()
         ))
     })
+}
+
+#[cfg(feature = "recall")]
+fn knowledge_config_from_loaded(
+    loaded: &std::result::Result<taxis::config::AletheiaConfig, taxis::error::Error>,
+    allow_assumed_embedding_meta: bool,
+) -> RecoveryKnowledgeConfig {
+    let Some(config) = loaded.as_ref().ok() else {
+        let default = mneme::knowledge_store::KnowledgeConfig::default();
+        return RecoveryKnowledgeConfig {
+            dim: default.dim,
+            embedding_model: default.embedding_model,
+            allow_assumed_embedding_meta,
+        };
+    };
+    let embedding_config = mneme::embedding::EmbeddingConfig {
+        provider: config.embedding.provider.clone(),
+        model: config.embedding.model.clone(),
+        dimension: Some(config.embedding.dimension),
+        api_key: None,
+        base_url: None,
+    };
+    RecoveryKnowledgeConfig {
+        dim: config.embedding.dimension,
+        embedding_model: embedding_config.effective_model_name(),
+        allow_assumed_embedding_meta,
+    }
 }
 
 #[cfg(feature = "recall")]
@@ -601,18 +623,12 @@ fn recovery_store_paths(oikos: &taxis::oikos::Oikos) -> Result<Vec<PathBuf>> {
 #[cfg(feature = "recall")]
 fn run_reembed(
     oikos: &taxis::oikos::Oikos,
-    dim: usize,
-    loaded_config: Option<&std::result::Result<taxis::config::AletheiaConfig, taxis::error::Error>>,
+    loaded_config: &std::result::Result<taxis::config::AletheiaConfig, taxis::error::Error>,
 ) -> Result<()> {
     let config = match loaded_config {
-        Some(Ok(cfg)) => cfg,
-        Some(Err(err)) => {
+        Ok(cfg) => cfg,
+        Err(err) => {
             whatever!("failed to load instance config for memory reembed: {err}");
-        }
-        None => {
-            whatever!(
-                "failed to load instance config for memory reembed; the configured embedding provider is required"
-            );
         }
     };
     let embedding_config = mneme::embedding::EmbeddingConfig {
@@ -636,8 +652,9 @@ fn run_reembed(
 
     let store_count = stores.len();
     let mut total = 0usize;
+    let recovery_config = knowledge_config_from_loaded(loaded_config, true);
     for store_path in stores {
-        let store = open_recovery_store(&store_path, dim)?;
+        let store = open_recovery_store(&store_path, &recovery_config)?;
         let written = store
             .reembed_all(provider.as_ref())
             .with_whatever_context(|err| {
@@ -655,7 +672,7 @@ fn run_reembed(
 }
 
 #[cfg(feature = "recall")]
-fn run_gc(oikos: &taxis::oikos::Oikos, dim: usize) -> Result<()> {
+fn run_gc(oikos: &taxis::oikos::Oikos, config: &RecoveryKnowledgeConfig) -> Result<()> {
     let stores = recovery_store_paths(oikos)?;
     if stores.is_empty() {
         whatever!(
@@ -667,7 +684,7 @@ fn run_gc(oikos: &taxis::oikos::Oikos, dim: usize) -> Result<()> {
 
     let mut total = 0usize;
     for store_path in &stores {
-        let store = open_recovery_store(store_path, dim)?;
+        let store = open_recovery_store(store_path, config)?;
         let removed = store
             .remove_orphaned_entities()
             .with_whatever_context(|err| {

@@ -75,7 +75,23 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
         );
     }
 
-    let config = mneme::knowledge_store::KnowledgeConfig::default();
+    let config = taxis::loader::load_config(&oikos).ok().map_or_else(
+        mneme::knowledge_store::KnowledgeConfig::default,
+        |config| {
+            let embedding = mneme::embedding::EmbeddingConfig {
+                provider: config.embedding.provider.clone(),
+                model: config.embedding.model.clone(),
+                dimension: Some(config.embedding.dimension),
+                api_key: None,
+                base_url: None,
+            };
+            mneme::knowledge_store::KnowledgeConfig {
+                dim: config.embedding.dimension,
+                embedding_model: embedding.effective_model_name(),
+                ..Default::default()
+            }
+        },
+    );
     let store = mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
         .whatever_context("failed to open knowledge store")?;
 

@@ -406,7 +406,12 @@ impl RuntimeBuilder {
                 let resolved = resolve_nous(&self.config, &agent_def.id);
                 cohorts.insert(resolved.episteme_cohort.to_string());
             }
-            open_knowledge_stores(&self.oikos, cohorts, self.config.knowledge.admission_policy)?
+            open_knowledge_stores(
+                &self.oikos,
+                cohorts,
+                &self.config.embedding,
+                self.config.knowledge.admission_policy,
+            )?
         } else {
             std::collections::HashMap::new()
         };

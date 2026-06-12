@@ -23,6 +23,7 @@ fn make_structured_store(threshold: f64) -> Arc<KnowledgeStore> {
     KnowledgeStore::open_mem_with_config(KnowledgeConfig {
         dim: DIM,
         admission_policy: Box::new(StructuredAdmissionPolicy::new(config)),
+        ..Default::default()
     })
     .expect("open structured-policy store")
 }
@@ -31,6 +32,7 @@ fn make_default_store() -> Arc<KnowledgeStore> {
     KnowledgeStore::open_mem_with_config(KnowledgeConfig {
         dim: DIM,
         admission_policy: Box::new(DefaultAdmissionPolicy),
+        ..Default::default()
     })
     .expect("open default-policy store")
 }
@@ -163,6 +165,7 @@ fn concurrent_insert_same_fact_store_contains_one_row() {
         KnowledgeStore::open_mem_with_config(KnowledgeConfig {
             dim: DIM,
             admission_policy: Box::new(DefaultAdmissionPolicy),
+            ..Default::default()
         })
         .expect("open store"),
     );

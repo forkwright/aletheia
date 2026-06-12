@@ -124,7 +124,7 @@ fn missing_intermediate_stamp_is_detected_as_hole() {
 
 #[test]
 fn crash_mid_sequence_resume_applies_only_missing_tail() {
-    let store = make_store();
+    let store = make_store_allowing_assumed_meta();
     store
         .run_mut_query(
             r#"?[key] <- [["migration:13"]] :rm schema_version {key}"#,
@@ -199,9 +199,37 @@ fn make_store() -> std::sync::Arc<KnowledgeStore> {
     .expect("open in-memory knowledge store")
 }
 
+fn make_store_allowing_assumed_meta() -> std::sync::Arc<KnowledgeStore> {
+    KnowledgeStore::open_mem_with_config(KnowledgeConfig {
+        dim: 4,
+        allow_assumed_embedding_meta: true,
+        ..Default::default()
+    })
+    .expect("open in-memory knowledge store")
+}
+
+fn mock_config(model: &str) -> KnowledgeConfig {
+    KnowledgeConfig {
+        dim: 4,
+        embedding_model: model.to_owned(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn fresh_create_writes_embedding_meta() {
+    let store = KnowledgeStore::open_mem_with_config(mock_config("mock-embedding"))
+        .expect("open in-memory knowledge store");
+
+    let meta = store.embedding_meta().expect("read embedding metadata");
+
+    assert_eq!(meta.model, "mock-embedding");
+    assert_eq!(meta.dim, 4);
+}
+
 #[test]
 fn v14_migration_backfills_existing_fact_sensitivity_to_public() {
-    let store = make_store();
+    let store = make_store_allowing_assumed_meta();
     store
         .run_mut_query(
             "::fts drop facts:content_fts",
@@ -235,6 +263,87 @@ fn v14_migration_backfills_existing_fact_sensitivity_to_public() {
         store.schema_version().expect("schema version"),
         KnowledgeStore::SCHEMA_VERSION
     );
+}
+
+#[test]
+fn v15_migration_backfills_embedding_meta_as_assumed() {
+    let store = make_store_allowing_assumed_meta();
+    store
+        .run_mut_query("::remove embedding_meta", std::collections::BTreeMap::new())
+        .expect("remove embedding metadata relation");
+    store
+        .run_mut_query(
+            r#"?[key] <- [["migration:15"]] :rm schema_version {key}"#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("remove v15 stamp");
+    store
+        .stamp_schema_version(14, "test")
+        .expect("stamp v14 schema");
+
+    store.init_schema().expect("apply v15 migration");
+
+    let meta = store.embedding_meta().expect("read embedding metadata");
+    assert_eq!(meta.model, KnowledgeStore::ASSUMED_EMBEDDING_MODEL);
+    assert_eq!(meta.dim, 4);
+}
+
+#[test]
+fn reembed_all_updates_embedding_meta() {
+    let store = KnowledgeStore::open_mem_with_config(mock_config("old-model"))
+        .expect("open in-memory knowledge store");
+    let fact = make_fact(
+        "reembed-fact",
+        "alice",
+        "reembed updates embedding metadata",
+    );
+    store.insert_fact(&fact).expect("insert fact");
+    let provider = crate::embedding::MockEmbeddingProvider::new(4);
+
+    let written = store.reembed_all(&provider).expect("reembed facts");
+
+    assert_eq!(written, 1);
+    let meta = store.embedding_meta().expect("read embedding metadata");
+    assert_eq!(meta.model, "mock-embedding");
+    assert_eq!(meta.dim, 4);
+}
+
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn open_fjall_detects_embedding_drift() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("knowledge");
+    {
+        let _store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+            .expect("open original store");
+    }
+
+    let Err(err) = KnowledgeStore::open_fjall(&path, mock_config("other-model")) else {
+        panic!("embedding model drift should fail closed");
+    };
+
+    assert!(
+        matches!(err, crate::error::Error::EmbeddingDrift { .. }),
+        "expected embedding drift error, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("aletheia memory reembed"),
+        "error should direct operator to reembed, got: {err}"
+    );
+}
+
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn open_fjall_passes_matching_embedding_meta() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("knowledge");
+    {
+        let _store = KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+            .expect("open original store");
+    }
+
+    KnowledgeStore::open_fjall(&path, mock_config("mock-embedding"))
+        .expect("matching embedding metadata should open");
 }
 
 const V13_FACTS_DDL: &str = r":create facts {

@@ -15,8 +15,36 @@ impl KnowledgeStore {
         &self,
         provider: &dyn crate::embedding::EmbeddingProvider,
     ) -> crate::error::Result<usize> {
+        if crate::embedding::is_degraded_provider(provider) {
+            return Err(crate::error::EngineQuerySnafu {
+                message: "cannot re-embed facts with degraded embedding provider".to_owned(),
+            }
+            .build());
+        }
+        if provider.dimension() != self.dim {
+            return Err(crate::error::EmbeddingDimensionMismatchSnafu {
+                expected: self.dim,
+                actual: provider.dimension(),
+            }
+            .build());
+        }
         let facts = self.list_all_facts(i64::MAX)?;
         let written = self.backfill_fact_embeddings(&facts, provider);
+        let expected = u64::try_from(facts.len()).map_err(|err| {
+            crate::error::ConversionSnafu {
+                message: format!("fact count overflowed u64: {err}"),
+            }
+            .build()
+        })?;
+        if written != expected {
+            return Err(crate::error::EngineQuerySnafu {
+                message: format!(
+                    "re-embed incomplete: wrote {written} of {expected} fact embeddings"
+                ),
+            }
+            .build());
+        }
+        self.replace_embedding_meta(provider.model_name(), provider.dimension())?;
         usize::try_from(written).map_err(|err| {
             crate::error::ConversionSnafu {
                 message: format!("reembedded fact count overflowed usize: {err}"),

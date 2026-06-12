@@ -28,6 +28,8 @@
 //! embeddings { id: String => content: String, source_type: String, source_id: String,
 //!              nous_id: String, embedding: <F32; DIM>, created_at: String }
 //!
+//! embedding_meta { model: String => dim: Int }
+//!
 //! type_hierarchy { child_type: String, parent_type: String => created_at: String }
 //!
 //! derived_facts { entity_id: String, rule_id: String, derived_content: String =>
@@ -70,6 +72,12 @@ mod skills;
 mod tests;
 
 use tracing::instrument;
+
+/// Datalog DDL for the embedding metadata relation.
+pub const EMBEDDING_META_DDL: &str = r":create embedding_meta {
+    model: String =>
+    dim: Int
+}";
 
 /// Datalog DDL for initializing the knowledge schema.
 pub const KNOWLEDGE_DDL: &[&str] = &[
@@ -179,6 +187,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         confidence: Float,
         contributed_at: String
     }",
+    EMBEDDING_META_DDL,
 ];
 
 /// Datalog DDL for the entities relation. Dimension is parameterized so the
@@ -241,6 +250,16 @@ pub fn fts_ddl() -> &'static str {
         tokenizer: Simple,
         filters: [Lowercase, Stemmer('English'), Stopwords('en')]
     }"
+}
+
+#[cfg(feature = "mneme-engine")]
+/// Persisted embedding metadata for the knowledge store vector schema.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddingMeta {
+    /// Embedding model identifier persisted with the vector schema.
+    pub model: String,
+    /// Embedding vector dimension persisted with the vector schema.
+    pub dim: usize,
 }
 
 /// Re-export query builder types and pre-built query scripts.
@@ -455,6 +474,10 @@ pub struct SerendipityDiscoveryReport {
 pub struct KnowledgeConfig {
     /// Embedding dimension for the HNSW index.
     pub dim: usize,
+    /// Embedding model identifier expected by the persisted vector schema.
+    pub embedding_model: String,
+    /// Permit stores migrated with an unknown legacy embedding model.
+    pub allow_assumed_embedding_meta: bool,
     /// Admission policy for fact insertion. Default: [`DefaultAdmissionPolicy`](crate::admission::DefaultAdmissionPolicy).
     pub admission_policy: Box<dyn crate::admission::AdmissionPolicy>,
 }
@@ -464,6 +487,11 @@ impl std::fmt::Debug for KnowledgeConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KnowledgeConfig")
             .field("dim", &self.dim)
+            .field("embedding_model", &self.embedding_model)
+            .field(
+                "allow_assumed_embedding_meta",
+                &self.allow_assumed_embedding_meta,
+            )
             .field("admission_policy", &"<dyn AdmissionPolicy>")
             .finish()
     }
@@ -474,6 +502,8 @@ impl Default for KnowledgeConfig {
     fn default() -> Self {
         Self {
             dim: 384,
+            embedding_model: crate::embedding::DEFAULT_CANDLE_MODEL.to_owned(),
+            allow_assumed_embedding_meta: false,
             admission_policy: Box::new(crate::admission::DefaultAdmissionPolicy),
         }
     }
@@ -534,6 +564,8 @@ impl crate::query_rewrite::HasRrfScore for HybridResult {
 pub struct KnowledgeStore {
     db: std::sync::Arc<crate::engine::Db>,
     dim: usize,
+    embedding_model: String,
+    allow_assumed_embedding_meta: bool,
     /// Serializes read-modify-write access counter increments to prevent races.
     access_lock: std::sync::Mutex<()>,
     /// Serializes admission-check + insert so concurrent writers for the same
@@ -552,8 +584,9 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    pub(crate) const SCHEMA_VERSION: i64 = 14;
+    pub(crate) const SCHEMA_VERSION: i64 = 15;
     const MIN_SCHEMA_VERSION: i64 = 1;
+    pub(crate) const ASSUMED_EMBEDDING_MODEL: &'static str = "assumed";
 
     /// Open an in-memory knowledge store with default configuration.
     ///
@@ -583,6 +616,8 @@ impl KnowledgeStore {
         let store = Self {
             db: std::sync::Arc::new(db),
             dim: config.dim,
+            embedding_model: config.embedding_model,
+            allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
             access_lock: std::sync::Mutex::new(()),
             insert_lock: std::sync::Mutex::new(()),
             admission_policy: config.admission_policy,
@@ -617,6 +652,8 @@ impl KnowledgeStore {
         let store = Self {
             db: std::sync::Arc::new(db),
             dim: config.dim,
+            embedding_model: config.embedding_model,
+            allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
             access_lock: std::sync::Mutex::new(()),
             insert_lock: std::sync::Mutex::new(()),
             admission_policy: config.admission_policy,
@@ -752,6 +789,7 @@ impl KnowledgeStore {
             self.verify_schema_integrity(current_version)?;
             self.apply_pending_migrations(current_version)?;
             self.verify_schema_integrity(Self::SCHEMA_VERSION)?;
+            self.verify_embedding_meta()?;
             return Ok(());
         }
 
@@ -876,6 +914,7 @@ impl KnowledgeStore {
             })?;
 
         self.stamp_fresh_schema_versions()?;
+        self.write_configured_embedding_meta()?;
 
         Ok(())
     }
@@ -1070,6 +1109,105 @@ impl KnowledgeStore {
                 .build()
             })?;
         Ok(())
+    }
+
+    fn write_configured_embedding_meta(&self) -> crate::error::Result<()> {
+        self.replace_embedding_meta(&self.embedding_model, self.dim)
+    }
+
+    fn replace_embedding_meta(&self, model: &str, dim: usize) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        let dim = i64::try_from(dim).map_err(|err| {
+            crate::error::ConversionSnafu {
+                message: format!("embedding dimension overflowed i64: {err}"),
+            }
+            .build()
+        })?;
+        let mut params = BTreeMap::new();
+        params.insert("model".to_owned(), DataValue::Str(model.into()));
+        params.insert("dim".to_owned(), DataValue::from(dim));
+        self.db
+            .run(
+                r"?[model] := *embedding_meta{model}
+                  :rm embedding_meta {model}",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("embedding metadata clear failed: {e}"),
+                }
+                .build()
+            })?;
+        self.db
+            .run(
+                r"?[model, dim] <- [[$model, $dim]]
+                  :put embedding_meta {model => dim}",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("embedding metadata write failed: {e}"),
+                }
+                .build()
+            })?;
+        Ok(())
+    }
+
+    pub(crate) fn embedding_meta(&self) -> crate::error::Result<EmbeddingMeta> {
+        let rows = self.run_read(
+            r"?[model, dim] := *embedding_meta{model, dim}",
+            std::collections::BTreeMap::new(),
+        )?;
+        let row = rows.rows.into_iter().next().ok_or_else(|| {
+            crate::error::EngineQuerySnafu {
+                message: "embedding metadata row missing".to_owned(),
+            }
+            .build()
+        })?;
+        let model = marshal::extract_str(row.first().ok_or_else(|| {
+            crate::error::EngineQuerySnafu {
+                message: "embedding metadata model cell missing".to_owned(),
+            }
+            .build()
+        })?)?
+        .clone();
+        let dim_value = marshal::extract_int(row.get(1).ok_or_else(|| {
+            crate::error::EngineQuerySnafu {
+                message: "embedding metadata dimension cell missing".to_owned(),
+            }
+            .build()
+        })?)?;
+        let dim = usize::try_from(dim_value).map_err(|err| {
+            crate::error::ConversionSnafu {
+                message: format!("embedding metadata dimension was not usize: {err}"),
+            }
+            .build()
+        })?;
+        Ok(EmbeddingMeta { model, dim })
+    }
+
+    fn verify_embedding_meta(&self) -> crate::error::Result<()> {
+        let meta = self.embedding_meta()?;
+        if meta.model == Self::ASSUMED_EMBEDDING_MODEL
+            && self.allow_assumed_embedding_meta
+            && meta.dim == self.dim
+        {
+            return Ok(());
+        }
+        if meta.model == self.embedding_model && meta.dim == self.dim {
+            return Ok(());
+        }
+        Err(crate::error::EmbeddingDriftSnafu {
+            stored_model: meta.model,
+            stored_dim: meta.dim,
+            configured_model: self.embedding_model.clone(),
+            configured_dim: self.dim,
+        }
+        .build())
     }
 
     fn schema_integrity_error(message: impl Into<String>) -> crate::error::Error {

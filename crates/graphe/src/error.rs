@@ -117,6 +117,20 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Persisted embedding metadata does not match the configured provider.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display(
+        "embedding metadata drift detected: stored model '{stored_model}' dim {stored_dim}, configured model '{configured_model}' dim {configured_dim}; run `aletheia memory reembed` to rebuild embeddings before using recall"
+    ))]
+    EmbeddingDrift {
+        stored_model: String,
+        stored_dim: usize,
+        configured_model: String,
+        configured_dim: usize,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Spawned blocking task failed.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("spawned task failed: {source}"))]

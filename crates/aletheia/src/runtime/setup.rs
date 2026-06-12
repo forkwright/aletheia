@@ -587,6 +587,7 @@ impl LazyEmbeddingProvider {
 pub(super) fn open_knowledge_stores(
     oikos: &Oikos,
     cohorts: impl IntoIterator<Item = String>,
+    embedding: &EmbeddingSettings,
     admission_policy: taxis::config::AdmissionPolicyKind,
 ) -> Result<std::collections::HashMap<String, Arc<mneme::knowledge_store::KnowledgeStore>>> {
     let mut stores = std::collections::HashMap::new();
@@ -596,7 +597,7 @@ pub(super) fn open_knowledge_stores(
             std::fs::create_dir_all(parent)
                 .whatever_context("failed to CREATE knowledge store directory")?;
         }
-        let knowledge_config = build_knowledge_config(admission_policy);
+        let knowledge_config = build_knowledge_config(embedding, admission_policy, false);
         let store =
             match mneme::knowledge_store::KnowledgeStore::open_fjall(&kb_path, knowledge_config) {
                 Ok(s) => s,
@@ -614,7 +615,7 @@ pub(super) fn open_knowledge_stores(
                 }
             };
         mneme::trace_ingest::ensure_ops_schema(&store);
-        info!(cohort = %cohort, path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
+        info!(cohort = %cohort, path = %kb_path.display(), dim = embedding.dimension, "knowledge store opened (fjall)");
         stores.insert(cohort, store);
     }
     Ok(stores)
@@ -626,7 +627,9 @@ pub(super) fn open_knowledge_stores(
 /// episteme runtime trait object so neither crate depends on the other directly.
 #[cfg(feature = "recall")]
 pub(super) fn build_knowledge_config(
+    embedding: &EmbeddingSettings,
     kind: taxis::config::AdmissionPolicyKind,
+    allow_assumed_embedding_meta: bool,
 ) -> mneme::knowledge_store::KnowledgeConfig {
     let policy: Box<dyn mneme::admission::AdmissionPolicy> = match kind {
         taxis::config::AdmissionPolicyKind::Structured => {
@@ -637,9 +640,18 @@ pub(super) fn build_knowledge_config(
         // NOTE: Default and any future variants fall through to admit-all.
         _ => Box::new(mneme::admission::DefaultAdmissionPolicy),
     };
+    let embedding_config = EmbeddingConfig {
+        provider: embedding.provider.clone(),
+        model: embedding.model.clone(),
+        dimension: Some(embedding.dimension),
+        api_key: None,
+        base_url: None,
+    };
     mneme::knowledge_store::KnowledgeConfig {
+        dim: embedding.dimension,
+        embedding_model: embedding_config.effective_model_name(),
+        allow_assumed_embedding_meta,
         admission_policy: policy,
-        ..mneme::knowledge_store::KnowledgeConfig::default()
     }
 }
 

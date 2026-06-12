@@ -6,7 +6,8 @@ use tracing::instrument;
 #[cfg(any(test, feature = "test-support"))]
 use crate::embedding::MockEmbeddingProvider;
 use crate::embedding::{
-    DegradedEmbeddingProvider, EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult,
+    DEFAULT_MOCK_MODEL, DegradedEmbeddingProvider, EmbedFailedSnafu, EmbeddingProvider,
+    EmbeddingResult,
 };
 
 // ── MockEmbeddingProvider implementation ─────────────────────────────────────
@@ -52,12 +53,8 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         self.dim
     }
 
-    #[expect(
-        clippy::unnecessary_literal_bound,
-        reason = "trait method returns `&str` to support runtime-loaded model names; mock returns a literal"
-    )]
     fn model_name(&self) -> &str {
-        "mock-embedding"
+        DEFAULT_MOCK_MODEL
     }
 }
 

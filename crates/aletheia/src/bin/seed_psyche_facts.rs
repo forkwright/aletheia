@@ -108,7 +108,7 @@ fn run(args: Args) -> anyhow::Result<()> {
         Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
         MemoryScope, Visibility, far_future,
     };
-    use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+    use mneme::knowledge_store::KnowledgeStore;
 
     let facts_toml = std::fs::read_to_string(&args.facts_file)
         .map_err(|e| anyhow::anyhow!("failed to read facts file: {e}"))?;
@@ -128,7 +128,8 @@ fn run(args: Args) -> anyhow::Result<()> {
     std::fs::create_dir_all(&cohort_path)
         .map_err(|e| anyhow::anyhow!("failed to create cohort directory: {e}"))?;
 
-    let store = KnowledgeStore::open_fjall(&cohort_path, KnowledgeConfig::default())
+    let knowledge_config = knowledge_config_for_oikos(&oikos);
+    let store = KnowledgeStore::open_fjall(&cohort_path, knowledge_config)
         .map_err(|e| anyhow::anyhow!("failed to open knowledge store: {e}"))?;
 
     let now = jiff::Timestamp::now();
@@ -209,6 +210,29 @@ fn run(args: Args) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(feature = "recall")]
+fn knowledge_config_for_oikos(
+    oikos: &taxis::oikos::Oikos,
+) -> mneme::knowledge_store::KnowledgeConfig {
+    taxis::loader::load_config(oikos).ok().map_or_else(
+        mneme::knowledge_store::KnowledgeConfig::default,
+        |config| {
+            let embedding = mneme::embedding::EmbeddingConfig {
+                provider: config.embedding.provider.clone(),
+                model: config.embedding.model.clone(),
+                dimension: Some(config.embedding.dimension),
+                api_key: None,
+                base_url: None,
+            };
+            mneme::knowledge_store::KnowledgeConfig {
+                dim: config.embedding.dimension,
+                embedding_model: embedding.effective_model_name(),
+                ..Default::default()
+            }
+        },
+    )
 }
 
 #[cfg(feature = "recall")]
