@@ -28,6 +28,7 @@
 //! | `Speculative` | Low-confidence extrapolation |
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Epistemological tier of an evaluation finding.
 ///
@@ -60,6 +61,80 @@ impl std::fmt::Display for EvidenceLevel {
     }
 }
 
+/// Stable, deterministic hash of an input string.
+///
+/// Used to fingerprint fact/session content and query/snapshot sets without
+/// embedding the raw psyche-class content in durable reports.
+#[must_use]
+pub fn stable_hash(input: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for b in digest {
+        hex.push(hex_nibble(b >> 4));
+        hex.push(hex_nibble(b & 0x0f));
+    }
+    format!("sha256:{hex}")
+}
+
+fn hex_nibble(nibble: u8) -> char {
+    match nibble {
+        0..=9 => char::from(b'0' + nibble),
+        10..=15 => char::from(b'a' + (nibble - 10)),
+        _ => '?',
+    }
+}
+
+/// A reference to durable evidence, used in place of embedding raw fact or
+/// session content in reports.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EvidenceRef {
+    /// Reference to a fact by id and content hash.
+    Fact {
+        /// Stable fact identifier.
+        fact_id: String,
+        /// Hash of the fact content at audit time.
+        content_hash: String,
+    },
+    /// Reference to a session by id and turn-text hash.
+    Session {
+        /// Stable session identifier.
+        session_id: String,
+        /// Hash of the combined session turn text.
+        turn_hash: String,
+    },
+    /// Hash of the query/set that produced a finding.
+    Query {
+        /// Query hash.
+        query_hash: String,
+    },
+    /// Hash of the full snapshot used for the audit.
+    Snapshot {
+        /// Snapshot hash.
+        snapshot_hash: String,
+    },
+}
+
+/// Non-statistical support metadata for a finding.
+///
+/// Carries evidence refs and maturity flags so consumers can tell whether a
+/// finding came from a heuristic, stub, or fully-implemented check.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FindingSupport {
+    /// References to the evidence behind the finding.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_refs: Vec<EvidenceRef>,
+    /// `true` if the check that produced this finding is a stub.
+    #[serde(default)]
+    pub is_stub: bool,
+    /// `true` if the check that produced this finding is a heuristic.
+    #[serde(default)]
+    pub is_heuristic: bool,
+}
+
 /// Statistical metadata attached to a finding.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FindingStats {
@@ -73,6 +148,12 @@ pub struct FindingStats {
     pub ci: Option<[f64; 2]>,
     /// Sample sizes: `[n_a, n_b]`.
     pub sample_sizes: Option<[usize; 2]>,
+    /// Normalised rate (e.g. contradiction rate, stale rate) when applicable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate: Option<f64>,
+    /// Non-statistical support metadata (evidence refs, maturity flags).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support: Option<FindingSupport>,
 }
 
 impl FindingStats {
@@ -85,6 +166,8 @@ impl FindingStats {
             effect_value: None,
             ci: None,
             sample_sizes: None,
+            rate: None,
+            support: None,
         }
     }
 }

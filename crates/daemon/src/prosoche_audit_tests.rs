@@ -412,3 +412,109 @@ async fn audit_report_serde_round_trip() {
     assert_eq!(back.findings.len(), report.findings.len());
     assert_eq!(back.check_summary.len(), report.check_summary.len());
 }
+
+#[tokio::test]
+async fn report_provenance_records_check_versions_and_hashes() {
+    let dir = tempfile::tempdir().expect("create tempdir");
+    let runner = ProsocheAuditRunner::default_checks(dir.path());
+    let state = make_state("provenance-nous");
+    let report = runner.run_audit(&state).await;
+
+    let provenance = report.provenance.expect("provenance envelope");
+    assert_eq!(provenance.report_version, "1.1.0");
+    assert_eq!(provenance.checks.len(), 5);
+    assert!(provenance.source_query_hash.starts_with("sha256:"));
+    assert!(provenance.source_snapshot_hash.starts_with("sha256:"));
+    assert!(
+        provenance
+            .checks
+            .iter()
+            .any(|check| check.kind == ProsocheCheckKind::InstinctPatterns
+                && check.maturity == CheckMaturity::Stub)
+    );
+}
+
+#[tokio::test]
+async fn findings_carry_denominators_and_ref_only_support() {
+    let check = StalenessCheck::default();
+    let mut state = make_state("support-nous");
+    state.facts = vec![fact("sensitive-fact", "SECRET-PSYCHE-CONTENT", 120.0)];
+
+    let findings = check.check(&state).await;
+    let finding = findings.first().expect("stale fact finding");
+    assert_eq!(finding.stats.sample_sizes, Some([1, 1]));
+    assert_eq!(finding.stats.rate, Some(1.0));
+
+    let support = finding.stats.support.as_ref().expect("support metadata");
+    assert!(support.is_heuristic);
+    assert!(!support.is_stub);
+    assert!(support.evidence_refs.iter().any(|evidence| matches!(
+        evidence,
+        EvidenceRef::Fact {
+            fact_id,
+            content_hash
+        } if fact_id == "sensitive-fact" && content_hash.starts_with("sha256:")
+    )));
+}
+
+#[tokio::test]
+async fn persisted_report_does_not_copy_fact_or_session_content() {
+    let dir = tempfile::tempdir().expect("create tempdir");
+    let runner = ProsocheAuditRunner::default_checks(dir.path());
+    let mut state = make_state("privacy-nous");
+    state.facts = vec![fact("fact-secret", "SECRET-PSYCHE-CONTENT", 120.0)];
+    state.sessions = vec![SessionSnapshot {
+        session_id: "session-secret".to_owned(),
+        turn_count: 12,
+        error_count: 0,
+        completed: false,
+        turn_text: "VERY-SENSITIVE-SESSION-TURN".to_owned(),
+    }];
+
+    let report = runner.run_audit(&state).await;
+    let json = serde_json::to_string_pretty(&report).expect("serialize report");
+
+    assert!(!json.contains("SECRET-PSYCHE-CONTENT"));
+    assert!(!json.contains("VERY-SENSITIVE-SESSION-TURN"));
+    assert!(json.contains("sha256:"));
+    assert!(json.contains("evidence_refs"));
+}
+
+struct PanicCheck;
+
+impl ProsocheCheck for PanicCheck {
+    fn check<'a>(
+        &'a self,
+        _state: &'a ProsocheState,
+    ) -> Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
+        Box::pin(async move {
+            panic!("simulated prosoche check panic");
+        })
+    }
+
+    fn kind(&self) -> ProsocheCheckKind {
+        ProsocheCheckKind::Consistency
+    }
+}
+
+#[tokio::test]
+async fn check_failures_are_recorded_in_provenance() {
+    let dir = tempfile::tempdir().expect("create tempdir");
+    let runner = ProsocheAuditRunner::new(
+        vec![std::sync::Arc::new(PanicCheck)],
+        AuditStorage::new(dir.path()),
+    );
+    let state = make_state("failure-nous");
+
+    let report = runner.run_audit(&state).await;
+    let provenance = report.provenance.expect("provenance envelope");
+    assert_eq!(provenance.check_failures.len(), 1);
+    let failure = provenance
+        .check_failures
+        .first()
+        .expect("one failure recorded");
+    let summary = report.check_summary.first().expect("one summary row");
+    assert_eq!(failure.kind, ProsocheCheckKind::Consistency);
+    assert!(failure.reason.contains("panic"));
+    assert_eq!(summary.findings_count, 0);
+}
