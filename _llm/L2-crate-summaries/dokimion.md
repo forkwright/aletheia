@@ -1,23 +1,31 @@
 # dokimion
 
-**Purpose:** Behavioral eval framework - scenario-based API testing against a live instance.
+**Purpose:** Behavioral eval framework - scenario-based API testing against a live Aletheia instance.
 
 ## Key types
 
 | Type | Purpose |
 |------|---------|
-| `BenchmarkRunnerConfig` | Current public type or boundary; see L3/source for exact fields |
-| `BenchmarkDatasetConfig` | Current public type or boundary; see L3/source for exact fields |
-| `RunnerConfig` | Current public type or boundary; see L3/source for exact fields |
-| `ScenarioOutcome` | Current public type or boundary; see L3/source for exact fields |
+| `RunConfig` | Configuration for a scenario run (base URL, token, filter, timeout, JSON output) |
+| `RunReport` | Aggregated pass/fail/skip counts and per-scenario results |
+| `ScenarioRunner` | Runs behavioral scenarios against a live Aletheia instance |
+| `Scenario` | Trait implemented by each behavioral scenario |
+| `ScenarioMeta` | Metadata (id, description, category, auth/nous requirements) |
+| `ScenarioOutcome` | Pass / fail / skip result for a single scenario |
+| `ScenarioResult` | Pair of `ScenarioMeta` and `ScenarioOutcome` |
+| `EvalProvider` | Trait for scenario sources; `BuiltinProvider` and `CompositeProvider` implement it |
+| `EvalClient` | HTTP client for talking to the target instance during evaluation |
 
 ## Public API surface
 
-- `dokimion::benchmarks/baselines` - public items from `src/benchmarks/baselines.rs`
-- `dokimion::benchmarks/judge` - public items from `src/benchmarks/judge.rs`
-- `dokimion::benchmarks/locomo` - public items from `src/benchmarks/locomo.rs`
-- `dokimion::benchmarks/longmemeval` - public items from `src/benchmarks/longmemeval.rs`
-- `dokimion::benchmarks/metrics` - public items from `src/benchmarks/metrics.rs`
+- `dokimion::runner` - `RunConfig`, `RunReport`, `ScenarioRunner`
+- `dokimion::scenario` - `Scenario`, `ScenarioMeta`, `ScenarioOutcome`, `ScenarioResult`
+- `dokimion::provider` - `EvalProvider`, `BuiltinProvider`, `CompositeProvider`
+- `dokimion::client` - `EvalClient` (re-exported from `benchmarks`)
+- `dokimion::report` - `print_report`, `print_report_json`, `emit_eval_report`
+- `dokimion::persistence` - JSONL training-data output helpers
+- `dokimion::benchmarks` - LongMemEval / LoCoMo dataset loaders and baselines
+- `dokimion::error` - eval-specific `Error` and `Result`
 
 ## When to look here
 
@@ -26,4 +34,4 @@
 
 ## Recent changes
 
-RecallBenchmarkScenario was decoupled and scenario config now carries question_timeout, ISO-8601 helpers, and TriggerConfig.
+Scenario runner moved from benchmark-centric `RunnerConfig` / `BenchmarkRunnerConfig` to a generic `ScenarioRunner` / `RunConfig` model. Scenario filtering now supports `category_filter` in addition to substring filtering.
