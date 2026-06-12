@@ -88,7 +88,10 @@ mod tests {
         let mut c = Coordinator::new(2);
         c.record_spawn();
         c.record_spawn();
-        assert!(!c.can_spawn(), "at max_children, can_spawn must return false");
+        assert!(
+            !c.can_spawn(),
+            "at max_children, can_spawn must return false"
+        );
         assert_eq!(c.remaining_capacity(), 0);
     }
 

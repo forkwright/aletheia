@@ -111,7 +111,16 @@ mod tests {
     /// by IEEE 754; the else branch provably cannot be reached.
     #[test]
     fn f64_is_always_finite_nan_or_infinite() {
-        let samples: &[f64] = &[0.0, 1.5, -1.5, f64::MAX, f64::MIN_POSITIVE, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
+        let samples: &[f64] = &[
+            0.0,
+            1.5,
+            -1.5,
+            f64::MAX,
+            f64::MIN_POSITIVE,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ];
         for &f in samples {
             assert!(
                 f.is_finite() || f.is_nan() || f.is_infinite(),

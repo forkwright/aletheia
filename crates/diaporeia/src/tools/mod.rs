@@ -10,7 +10,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::service::RequestContext;
 use rmcp::{tool, tool_router};
-use snafu::{OptionExt as _, ResultExt as _};
+use snafu::{IntoError as _, OptionExt as _, ResultExt as _};
 use tracing::Instrument as _;
 
 use koina::http::BEARER_PREFIX;
@@ -18,10 +18,10 @@ use koina::id::SessionId;
 use symbolon::types::Role;
 
 use crate::error::{
-    BlackboardStoreSnafu, BlackboardStoreUnavailableSnafu, FactNotFoundSnafu, InvalidInputSnafu,
-    KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu, NoteStoreSnafu, NoteStoreUnavailableSnafu,
-    NousNotFoundSnafu, PipelineSnafu, RepomixPackSnafu, RepomixUnavailableSnafu,
-    SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
+    BlackboardStoreSnafu, BlackboardStoreUnavailableSnafu, DuplicateSessionSnafu, FactNotFoundSnafu,
+    InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu, NoteStoreSnafu,
+    NoteStoreUnavailableSnafu, NousNotFoundSnafu, PipelineSnafu, RepomixPackSnafu,
+    RepomixUnavailableSnafu, SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
 };
 use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
@@ -365,15 +365,37 @@ impl DiaporeiaServer {
         self.rate_limiter.check(Tier::Expensive)?;
         require_role(self, &context, Role::Operator, "session_create").await?;
         let session_key = params.session_key.as_deref().unwrap_or("main");
+
+        let nous_config = self
+            .state
+            .nous_manager
+            .get_config(&params.nous_id)
+            .context(NousNotFoundSnafu {
+                id: params.nous_id.clone(),
+            })
+            .map_err(rmcp::ErrorData::from)?;
+        let model = nous_config.generation.model.clone();
+
         // WHY: SessionId (UUID v4) is the canonical format. ULID here caused
         // 'invalid SessionId' when nous parsed the stored ID back (#2349).
         let session_id = SessionId::new().to_string();
 
+        let nous_id = params.nous_id.clone();
+        let session_key_owned = session_key.to_owned();
         let store = self.state.session_store.lock().await;
-        let session = store
-            .find_or_create_session(&session_id, &params.nous_id, session_key, None, None)
-            .context(SessionStoreSnafu {})
-            .map_err(rmcp::ErrorData::from)?;
+        let session = match store.create_session(&session_id, &nous_id, session_key, None, Some(&model)) {
+            Ok(session) => Ok(session),
+            Err(e) if e.is_unique_constraint_violation() => Err(rmcp::ErrorData::from(
+                DuplicateSessionSnafu {
+                    nous_id,
+                    session_key: session_key_owned,
+                }
+                .build(),
+            )),
+            Err(e) => Err(rmcp::ErrorData::from(
+                SessionStoreSnafu {}.into_error(e),
+            )),
+        }?;
 
         let json = serde_json::to_string_pretty(&serde_json::json!({
             "id": session.id,
@@ -2069,6 +2091,47 @@ mod tests {
             weight: 0.8,
             created_at: jiff::Timestamp::now(),
         }
+    }
+
+    #[test]
+    fn session_create_unknown_nous_maps_to_invalid_params() {
+        let err = NousNotFoundSnafu {
+            id: "ghost-nous".to_owned(),
+        }
+        .build();
+        let mcp: rmcp::ErrorData = err.into();
+        assert_eq!(
+            mcp.code,
+            rmcp::model::ErrorCode::INVALID_PARAMS,
+            "unknown nous_id must map to INVALID_PARAMS so clients see a parameter error"
+        );
+        assert!(
+            mcp.message.contains("ghost-nous"),
+            "error message must identify the missing nous id"
+        );
+    }
+
+    #[test]
+    fn session_create_duplicate_maps_to_conflict_code() {
+        let err = DuplicateSessionSnafu {
+            nous_id: "alice".to_owned(),
+            session_key: "main".to_owned(),
+        }
+        .build();
+        let mcp: rmcp::ErrorData = err.into();
+        assert_eq!(
+            mcp.code,
+            rmcp::model::ErrorCode(-32006),
+            "duplicate session must use error code -32006 (distinct from INVALID_PARAMS)"
+        );
+        assert!(
+            mcp.message.contains("main"),
+            "error message must include the session_key"
+        );
+        assert!(
+            mcp.message.contains("alice"),
+            "error message must include the nous_id"
+        );
     }
 
     #[test]

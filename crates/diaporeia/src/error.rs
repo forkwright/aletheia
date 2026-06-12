@@ -28,6 +28,17 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// A session with this (nous_id, session_key) pair already exists.
+    #[snafu(display(
+        "a session with key '{session_key}' already exists for agent '{nous_id}'"
+    ))]
+    DuplicateSession {
+        nous_id: String,
+        session_key: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Nous pipeline error.
     #[snafu(display("nous pipeline error: {message}"))]
     Pipeline {
@@ -183,6 +194,11 @@ impl From<Error> for rmcp::ErrorData {
             | Error::FactNotFound { .. }
             | Error::TemplateNotFound { .. }
             | Error::InvalidInput { .. } => rmcp::ErrorData::invalid_params(message, None),
+            // WHY: duplicate session is a conflict, not an invalid param — clients must
+            // choose a different session_key or use session_list to find the existing one.
+            Error::DuplicateSession { .. } => {
+                rmcp::ErrorData::new(rmcp::model::ErrorCode(-32006), message, None)
+            }
             // WHY: authorization failures return a clear message so clients can
             // distinguish access-denied from invalid-params.
             Error::Unauthorized { .. } => {
