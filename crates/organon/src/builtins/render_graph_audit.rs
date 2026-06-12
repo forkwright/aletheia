@@ -11,8 +11,9 @@ use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolTag,
 };
 
 struct RenderGraphAuditExecutor;
@@ -199,16 +200,28 @@ fn render_graph_audit_def() -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Workspace,
-        reversibility: Reversibility::FullyReversible,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read],
         tags: vec![ToolTag::Format],
     }
 }
 
+fn render_graph_audit_capability_rule() -> ToolCallCapabilityRule {
+    ToolCallCapabilityRule::argument_presence(
+        "out_path",
+        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+    )
+}
+
 /// Register the `render_graph_audit` tool.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(render_graph_audit_def(), Box::new(RenderGraphAuditExecutor))?;
+    registry.register_with_call_capability(
+        render_graph_audit_def(),
+        render_graph_audit_capability_rule(),
+        Box::new(RenderGraphAuditExecutor),
+    )?;
     Ok(())
 }
 
@@ -222,6 +235,7 @@ mod tests {
     use koina::id::{NousId, SessionId, ToolName};
 
     use super::*;
+    use crate::types::ApprovalRequirement;
 
     fn test_ctx(dir: &std::path::Path) -> ToolContext {
         ToolContext {
@@ -275,5 +289,40 @@ mod tests {
             assert!(result.is_error, "{out_path} must be rejected");
             assert!(result.content.text_summary().contains("invalid out_path"));
         }
+    }
+
+    #[test]
+    fn render_graph_audit_call_capability_requires_approval_when_out_path_present() {
+        let mut registry = ToolRegistry::new();
+        register(&mut registry).expect("register");
+
+        assert_eq!(
+            registry
+                .approval_requirement_for_input(&ToolInput {
+                    name: ToolName::from_static("render_graph_audit"),
+                    tool_use_id: "toolu_test".to_owned(),
+                    arguments: serde_json::json!({
+                        "data": {"summary": {"total": 0, "by_scope": {}}, "facts": []},
+                    }),
+                })
+                .expect("approval"),
+            ApprovalRequirement::None,
+            "no out_path means no disk write"
+        );
+
+        assert_eq!(
+            registry
+                .approval_requirement_for_input(&ToolInput {
+                    name: ToolName::from_static("render_graph_audit"),
+                    tool_use_id: "toolu_test".to_owned(),
+                    arguments: serde_json::json!({
+                        "data": {"summary": {"total": 0, "by_scope": {}}, "facts": []},
+                        "out_path": "/tmp/graph-audit.pdf",
+                    }),
+                })
+                .expect("approval"),
+            ApprovalRequirement::Required,
+            "out_path present means disk write"
+        );
     }
 }
