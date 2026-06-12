@@ -4,7 +4,7 @@ use std::io::Write as _;
 use taxis::validate::validate_section;
 
 use super::RuntimeBuilder;
-use super::validate::{validate_external_tools, validate_jwt};
+use super::validate::validate_jwt;
 use crate::error::Result;
 
 fn print_line(args: Arguments<'_>) {
@@ -63,6 +63,7 @@ impl RuntimeBuilder {
             "embedding",
             "channels",
             "bindings",
+            "tools",
         ] {
             if let Some(section_value) = config_value.get(section) {
                 match validate_section(section, section_value) {
@@ -88,10 +89,6 @@ impl RuntimeBuilder {
         }
 
         if !validate_jwt(&self.config) {
-            all_ok = false;
-        }
-
-        if !validate_external_tools(&self.oikos) {
             all_ok = false;
         }
 

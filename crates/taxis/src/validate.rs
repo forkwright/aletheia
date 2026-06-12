@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 
+use koina::id::ToolName;
 use serde_json::Value;
 use snafu::Snafu;
 
@@ -163,6 +164,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "tuning" => validate_tuning(value, &mut errors),
         "jwt" => validate_jwt(value, &mut errors),
         "providers" => validate_providers(value, &mut errors),
+        "tools" => validate_tools(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
         "packs" | "pricing" | "sandbox" | "logging" | "observability" | "mcp" | "localProvider"
         | "training" | "anthropic" | "promptAudit" | "dispatch" | "workspace" => {}
@@ -813,6 +815,91 @@ fn validate_tuning(value: &Value, errors: &mut Vec<String>) {
         errors.push(format!(
             "tuning.significanceThreshold must be between 0.1 and 10.0, got {threshold}"
         ));
+    }
+}
+
+/// Validate configured external tool declarations.
+const VALID_TOOL_KINDS: &[&str] = &["mcp", "http", "builtin"];
+const VALID_HTTP_METHODS: &[&str] = &["get", "post", "put", "delete", "patch"];
+
+fn validate_tools(value: &Value, errors: &mut Vec<String>) {
+    validate_tool_group(value, "required", errors);
+    validate_tool_group(value, "optional", errors);
+}
+
+fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
+    let Some(entries) = value.get(group).and_then(Value::as_object) else {
+        return;
+    };
+
+    for (name, entry) in entries {
+        if ToolName::new(name).is_err() {
+            errors.push(format!(
+                "tools.{group}.{name} is not a valid tool name (alphanumeric, hyphens, underscores, 1-128 chars)"
+            ));
+            continue;
+        }
+
+        let Some(kind) = entry.get("type").and_then(Value::as_str) else {
+            errors.push(format!("tools.{group}.{name}.type is required"));
+            continue;
+        };
+        if !VALID_TOOL_KINDS.contains(&kind) {
+            errors.push(format!(
+                "tools.{group}.{name}.type '{kind}' is invalid; must be one of: mcp, http, builtin"
+            ));
+            continue;
+        }
+
+        if let Some(method) = entry.get("method").and_then(Value::as_str)
+            && !VALID_HTTP_METHODS.contains(&method)
+        {
+            errors.push(format!(
+                "tools.{group}.{name}.method '{method}' is invalid; must be one of: get, post, put, delete, patch"
+            ));
+        }
+
+        match kind {
+            "http" => {
+                let Some(endpoint) = entry.get("endpoint").and_then(Value::as_str) else {
+                    errors.push(format!(
+                        "tools.{group}.{name}.endpoint is required for type 'http'"
+                    ));
+                    continue;
+                };
+                if endpoint.is_empty() {
+                    errors.push(format!("tools.{group}.{name}.endpoint must not be empty"));
+                } else if !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) {
+                    errors.push(format!(
+                        "tools.{group}.{name}.endpoint must use http:// or https://"
+                    ));
+                }
+            }
+            "mcp" => {
+                let has_endpoint = entry
+                    .get("endpoint")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.is_empty());
+                let has_command = entry
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.is_empty());
+                if !has_endpoint && !has_command {
+                    errors.push(format!(
+                        "tools.{group}.{name}: mcp tools require either endpoint or command"
+                    ));
+                }
+                if has_endpoint
+                    && let Some(endpoint) = entry.get("endpoint").and_then(Value::as_str)
+                    && !(endpoint.starts_with("http://") || endpoint.starts_with("https://"))
+                {
+                    errors.push(format!(
+                        "tools.{group}.{name}.endpoint must use http:// or https://"
+                    ));
+                }
+            }
+            _ => {}
+        }
     }
 }
 

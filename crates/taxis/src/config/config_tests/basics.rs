@@ -334,6 +334,69 @@ toolGroups = []
 }
 
 #[test]
+fn tools_config_deserializes_to_typed_config() {
+    let toml = r#"
+[tools.required.search]
+type = "http"
+endpoint = "https://example.com/search"
+method = "get"
+
+[tools.optional.local_mcp]
+type = "mcp"
+command = "local-mcp"
+args = ["--stdio"]
+"#;
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse config");
+
+    let search = config.tools.required.get("search").expect("search tool");
+    assert_eq!(search.kind, ExternalToolKind::Http);
+    assert_eq!(search.method, ExternalToolMethod::Get);
+    assert_eq!(
+        search.endpoint.as_deref(),
+        Some("https://example.com/search")
+    );
+
+    let local_mcp = config
+        .tools
+        .optional
+        .get("local_mcp")
+        .expect("local MCP tool");
+    assert_eq!(local_mcp.kind, ExternalToolKind::Mcp);
+    assert_eq!(local_mcp.command.as_deref(), Some("local-mcp"));
+    assert_eq!(local_mcp.args, vec!["--stdio"]);
+}
+
+#[test]
+fn tools_config_requires_type_at_deserialize_time() {
+    let toml = r#"
+[tools.optional.search]
+endpoint = "https://example.com/search"
+"#;
+    let err = toml::from_str::<AletheiaConfig>(toml)
+        .expect_err("missing tool type should fail deserialization");
+    assert!(
+        err.to_string().contains("missing field `type`"),
+        "error should mention missing type: {err}"
+    );
+}
+
+#[test]
+fn tools_config_rejects_unknown_entry_fields() {
+    let toml = r#"
+[tools.optional.search]
+type = "http"
+endpoint = "https://example.com/search"
+surprise = true
+"#;
+    let err = toml::from_str::<AletheiaConfig>(toml)
+        .expect_err("unknown tool field should fail deserialization");
+    assert!(
+        err.to_string().contains("unknown field"),
+        "error should mention unknown field: {err}"
+    );
+}
+
+#[test]
 fn resolve_merges_agent_overrides() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {

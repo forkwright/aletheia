@@ -194,6 +194,7 @@ impl RuntimeBuilder {
                 "channels",
                 "bindings",
                 "credential",
+                "tools",
             ] {
                 if let Some(section_value) = config_value.get(section) {
                     validate_section(section, section_value)
@@ -308,14 +309,13 @@ impl RuntimeBuilder {
             }
         }
 
-        let tools_config = crate::external_tools::load_tools_config(&self.oikos);
         let tool_manifest = crate::external_tools::register_external_tools(
-            &tools_config,
+            &self.config.tools,
             &mut tool_registry,
             &reqwest::Client::new(),
         )
         .await;
-        if tool_manifest.available_count() > 0 || !tools_config.required.is_empty() {
+        if tool_manifest.available_count() > 0 || !self.config.tools.required.is_empty() {
             info!(
                 available = tool_manifest.available_count(),
                 missing_required = tool_manifest.missing_required_count(),

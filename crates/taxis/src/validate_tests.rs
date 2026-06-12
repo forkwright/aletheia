@@ -392,6 +392,127 @@ fn accepts_valid_embedding() {
 }
 
 #[test]
+fn accepts_valid_external_http_tool() {
+    let section = json!({
+        "required": {
+            "search": {
+                "type": "http",
+                "endpoint": "http://localhost:3100",
+                "method": "post",
+                "description": "Search service"
+            }
+        },
+        "optional": {
+            "reader": {
+                "type": "http",
+                "endpoint": "https://example.com/api",
+                "method": "get"
+            }
+        }
+    });
+    assert!(
+        validate_section("tools", &section).is_ok(),
+        "valid external tools should be accepted"
+    );
+}
+
+#[test]
+fn rejects_http_tool_missing_endpoint() {
+    let section = json!({
+        "required": {
+            "bad": { "type": "http" }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "http tool without endpoint should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("endpoint")),
+        "error should mention endpoint: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_tool_missing_type() {
+    let section = json!({
+        "required": {
+            "bad": { "endpoint": "http://localhost:3100" }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(result.is_err(), "tool without type should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("type is required")),
+        "error should mention missing type: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_http_tool_non_http_url() {
+    let section = json!({
+        "required": {
+            "bad": { "type": "http", "endpoint": "ftp://example.com" }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "non-HTTP endpoint scheme should be rejected"
+    );
+}
+
+#[test]
+fn rejects_mcp_tool_without_endpoint_or_command() {
+    let section = json!({
+        "required": {
+            "bad": { "type": "mcp" }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "mcp tool without endpoint or command should be rejected"
+    );
+}
+
+#[test]
+fn rejects_invalid_tool_kind() {
+    let section = json!({
+        "required": {
+            "bad": { "type": "websocket" }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(result.is_err(), "invalid tool kind should be rejected");
+}
+
+#[test]
+fn rejects_invalid_http_method() {
+    let section = json!({
+        "required": {
+            "bad": { "type": "http", "endpoint": "http://localhost", "method": "trace" }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(result.is_err(), "invalid http method should be rejected");
+}
+
+#[test]
+fn rejects_invalid_tool_name() {
+    let section = json!({
+        "required": {
+            "bad name!": { "type": "builtin" }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(result.is_err(), "invalid tool name should be rejected");
+}
+
+#[test]
 fn rejects_invalid_signal_port() {
     let section = json!({
         "signal": {

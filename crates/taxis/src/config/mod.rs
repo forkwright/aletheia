@@ -6,6 +6,7 @@ mod feature_flags;
 mod gateway;
 mod maintenance;
 mod resolved;
+mod tools;
 
 pub use agents::{
     AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentToolGroupPolicy, AgentsConfig,
@@ -33,6 +34,7 @@ pub use maintenance::{
 pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,
 };
+pub use tools::{ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -215,6 +217,14 @@ pub struct AletheiaConfig {
     /// the log is a sovereignty feature — operators should be able to see
     /// what the system sent out without opting in.
     pub prompt_audit: PromptAuditSettings,
+    /// Runtime-bridged external tools (HTTP proxies and MCP clients).
+    ///
+    /// WHY configurable: deployments expose different external capabilities;
+    /// declaring them in config lets agents adapt without rebuilding the
+    /// binary. Owned by taxis so the section participates in the config
+    /// cascade, secret handling, and validation.
+    #[serde(default)]
+    pub tools: ExternalToolsConfig,
 }
 
 /// Sandbox enforcement level for tool execution.

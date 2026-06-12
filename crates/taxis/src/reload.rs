@@ -29,6 +29,10 @@ const RESTART_PREFIXES: &[&str] = &[
     "apiLimits.idempotencyCapacity",
     // WHY: the workspace file-API root is resolved into AppState at startup.
     "workspace.root",
+    // WHY: sandbox settings are captured into the tool registry at startup.
+    "sandbox",
+    // WHY: external tools are registered into the tool registry at startup.
+    "tools",
 ];
 
 /// Returns true if changing the given dotted field path requires a restart.
@@ -342,6 +346,30 @@ mod tests {
     }
 
     #[test]
+    fn sandbox_settings_require_restart() {
+        assert!(
+            requires_restart("sandbox.enabled"),
+            "sandbox.enabled should require restart"
+        );
+        assert!(
+            requires_restart("sandbox.enforcement"),
+            "sandbox.enforcement should require restart"
+        );
+    }
+
+    #[test]
+    fn external_tools_require_restart() {
+        assert!(
+            requires_restart("tools.required.search"),
+            "tools change should require restart"
+        );
+        assert!(
+            requires_restart("tools.optional.reader"),
+            "tools change should require restart"
+        );
+    }
+
+    #[test]
     fn channel_settings_require_restart() {
         assert!(
             requires_restart("channels.signal.enabled"),
@@ -574,6 +602,20 @@ mod tests {
         let mut staged = current.clone();
         staged.gateway.port = 9999;
         staged.provider_behavior.non_streaming_timeout_secs = 99;
+        staged.sandbox.enabled = !current.sandbox.enabled;
+        staged.tools.optional.insert(
+            "search".to_owned(),
+            crate::config::ExternalToolEntry {
+                kind: crate::config::ExternalToolKind::Http,
+                endpoint: Some("https://example.com/search".to_owned()),
+                command: None,
+                args: Vec::new(),
+                cwd: None,
+                env: std::collections::HashMap::new(),
+                description: None,
+                method: crate::config::ExternalToolMethod::Post,
+            },
+        );
         staged.agents.defaults.model_defaults.thinking_budget = 20_000;
 
         let diff = diff_configs(&current, &staged);
@@ -584,6 +626,11 @@ mod tests {
         assert_eq!(
             live.provider_behavior.non_streaming_timeout_secs,
             current.provider_behavior.non_streaming_timeout_secs
+        );
+        assert_eq!(live.sandbox.enabled, current.sandbox.enabled);
+        assert!(
+            live.tools.optional.is_empty(),
+            "tools changes should stay staged until restart"
         );
         assert_eq!(
             live.agents.defaults.model_defaults.thinking_budget,
