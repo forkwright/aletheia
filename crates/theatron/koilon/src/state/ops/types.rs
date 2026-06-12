@@ -1,5 +1,7 @@
 //! Type definitions for the operations pane state.
 
+use crate::id::ToolId;
+
 /// Which pane currently has keyboard focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
@@ -104,6 +106,7 @@ pub enum OpsAutoShow {
 #[derive(Debug, Clone)]
 pub(crate) struct OpsToolCall {
     pub(crate) name: String,
+    pub(crate) tool_id: Option<ToolId>,
     pub(crate) input_json: Option<String>,
     pub(crate) output: Option<String>,
     pub(crate) status: OpsToolStatus,

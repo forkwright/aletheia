@@ -1,5 +1,7 @@
 //! OpsState struct definition and methods.
 
+use crate::id::ToolId;
+
 use super::OpsDiffEntry;
 use super::helpers::{
     categorize_tool, extract_primary_arg, parse_diff_from_output, truncate_error,
@@ -181,12 +183,23 @@ impl OpsState {
 
     /// Start a new tool call.
     pub(crate) fn push_tool_start(&mut self, name: String, input_json: Option<String>) {
+        self.push_tool_start_with_id(name, None, input_json);
+    }
+
+    /// Start a new stream tool call with its lifecycle id.
+    pub(crate) fn push_tool_start_with_id(
+        &mut self,
+        name: String,
+        tool_id: Option<ToolId>,
+        input_json: Option<String>,
+    ) {
         let primary_arg = input_json
             .as_deref()
             .and_then(|j| extract_primary_arg(j, &name));
         let category = categorize_tool(&name);
         self.tool_calls.push(OpsToolCall {
             name,
+            tool_id,
             input_json,
             output: None,
             status: OpsToolStatus::Running,
@@ -207,26 +220,60 @@ impl OpsState {
         duration_ms: u64,
         output: Option<String>,
     ) {
-        let category = if let Some(tc) = self.tool_calls.iter_mut().rev().find(|t| t.name == name) {
-            tc.status = if is_error {
-                OpsToolStatus::Failed
-            } else {
-                OpsToolStatus::Complete
-            };
-            tc.duration_ms = Some(duration_ms);
-            if let Some(ref out) = output {
-                if is_error {
-                    tc.error_message = Some(truncate_error(out));
-                }
-                if let Some(diff) = parse_diff_from_output(out, name) {
-                    self.diffs.push(diff);
-                }
-            }
-            tc.output = output;
-            tc.category
-        } else {
+        let Some(idx) = self.tool_calls.iter().rposition(|t| t.name == name) else {
             return;
         };
+        self.complete_tool_at(idx, is_error, duration_ms, output);
+    }
+
+    /// Complete a stream tool call with result.
+    pub(crate) fn complete_tool_by_id(
+        &mut self,
+        tool_id: &ToolId,
+        is_error: bool,
+        duration_ms: u64,
+        output: Option<String>,
+    ) {
+        let Some(idx) = self
+            .tool_calls
+            .iter()
+            .rposition(|t| t.tool_id.as_ref().is_some_and(|id| id == tool_id))
+        else {
+            return;
+        };
+        self.complete_tool_at(idx, is_error, duration_ms, output);
+    }
+
+    fn complete_tool_at(
+        &mut self,
+        idx: usize,
+        is_error: bool,
+        duration_ms: u64,
+        output: Option<String>,
+    ) {
+        let name = self.tool_calls[idx].name.clone();
+        let category = self.tool_calls[idx].category;
+        let error_message = output
+            .as_ref()
+            .filter(|_| is_error)
+            .map(|out| truncate_error(out));
+        let diff = output
+            .as_ref()
+            .and_then(|out| parse_diff_from_output(out, &name));
+
+        let tc = &mut self.tool_calls[idx];
+        tc.status = if is_error {
+            OpsToolStatus::Failed
+        } else {
+            OpsToolStatus::Complete
+        };
+        tc.duration_ms = Some(duration_ms);
+        tc.error_message = error_message;
+        tc.output = output;
+
+        if let Some(diff) = diff {
+            self.diffs.push(diff);
+        }
         self.summary.record(category, is_error, duration_ms);
     }
 }
