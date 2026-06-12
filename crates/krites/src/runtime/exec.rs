@@ -156,7 +156,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
         let write_lock = self.obtain_relation_locks(write_lock_names.iter());
         let _write_lock_guards = if is_write {
-            Some(write_lock[0].read().unwrap_or_else(|e| e.into_inner()))
+            Some(write_lock[0].read())
         } else {
             None
         };

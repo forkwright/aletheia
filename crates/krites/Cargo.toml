@@ -58,9 +58,12 @@ lru = { version = "0.17", default-features = false }
 rustix = { workspace = true }
 snafu = { workspace = true }
 tracing = { workspace = true }
+parking_lot = { version = "0.12", default-features = false, features = ["arc_lock"] }
 
 # Storage backends
-fjall = { version = "3", default-features = false, features = ["lz4"], optional = true }
+# WHY: krites has a manual Sync boundary around fjall 3.1.4 transaction wrappers.
+# Re-check storage/fjall_backend.rs before changing this version.
+fjall = { version = "=3.1.4", default-features = false, features = ["lz4"], optional = true }
 
 # Hot-reload
 notify = { workspace = true, optional = true }

@@ -108,7 +108,13 @@ impl<'s> Storage<'s> for FjallStorage {
     }
 
     fn range_compact(&'s self, _lower: &[u8], _upper: &[u8]) -> Result<()> {
-        Ok(())
+        self.keyspace.inner().major_compact().map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "fjall",
+                message: format!("major compact: {e}"),
+            }
+            .build()
+        })
     }
 
     fn batch_put<'a>(
@@ -148,41 +154,33 @@ pub struct FjallWriteTx<'s> {
 }
 
 // SAFETY: `FjallReadTx` and `FjallWriteTx` borrow fjall internals that are not
-// currently marked `Sync` upstream, even though the contents they expose are
-// safe for shared access under the invariants below. The `StoreTx` trait takes
-// `&self` for read methods, which requires both wrappers to be `Sync` so the
-// outer `FjallTx` enum (carried across query worker threads via rayon) type-
-// checks. Asserting `Sync` manually is sound because:
+// currently marked `Sync` upstream, even though the public fjall API contract
+// permits the shared read access krites uses. The `StoreTx` trait takes `&self`
+// for read methods, and rayon shares `&SessionTx` while evaluating independent
+// rules in one query. Asserting `Sync` manually is sound under these invariants:
 //
 // 1. `FjallReadTx::snapshot` is `fjall::Snapshot`, an immutable point-in-time
-//    LSM view. Its public API is `Readable::get`/`contains_key`/`range`, all of
-//    which take `&self` and perform purely read-only work on frozen SSTable
-//    references + an MVCC key cap. There is no interior mutability, no shared
-//    buffer, and no state that changes across calls, so concurrent `&self`
-//    calls from multiple threads are race-free by construction.
+//    LSM view. Fjall documents snapshot repeatable reads, and its public
+//    `Readable::get`/`contains_key`/`range` methods take `&self` and return
+//    owned guards/iterators. Krites never mutates a snapshot.
 //
-// 2. `FjallWriteTx::tx` is `fjall::SingleWriterWriteTx`, which — as the name
-//    implies — is the exclusive writer handle for the database. It is obtained
-//    by `SingleWriterTxDatabase::write_tx`, a call that serializes writers
-//    through an internal mutex. The handle itself is therefore never shared
-//    with a concurrent writer at the fjall layer, and all mutating methods
-//    on `FjallWriteTx` (`put`, `del`, `del_range_from_persisted`, `commit`) go
-//    through `&mut self` on the outer `FjallTx`. The only `&self` path that
-//    touches the write tx is `StoreTx::get`, which calls `Readable::get` on
-//    the tx — a read-your-own-writes query that fjall implements against the
-//    tx's immutable memtable snapshot, with no observable mutation. Concurrent
-//    `&self` gets on the same write tx are therefore sound for the same reason
-//    as (1).
+// 2. `FjallWriteTx::tx` is `fjall::SingleWriterWriteTx` from fjall 3.1.4.
+//    Upstream stores a `MutexGuard` inside that type to serialize writers for
+//    the database. Krites never moves the write tx to another thread and never
+//    calls mutating fjall methods through `&self`; `put`, `del`,
+//    `del_range_from_persisted`, and `commit` require `&mut self` on the outer
+//    `FjallTx`. The only shared paths are `Readable::{get,contains_key,range}`,
+//    which fjall implements over the transaction's read-your-own-writes
+//    snapshot without requiring mutation.
 //
 // 3. Both wrappers carry a `&'s fjall::SingleWriterTxKeyspace`. The keyspace
 //    is a long-lived handle used only as a lookup key for reads; fjall already
 //    provides thread-safe access to the keyspace through its own internal
 //    synchronization.
 //
-// If fjall upstream adds `Sync` to its transaction types, these impls become
-// redundant and should be removed. Tracked implicitly in the fjall version
-// pin — any upgrade that surfaces native `Sync` will make the `#[expect]`
-// here unfulfilled and force cleanup.
+// If fjall upstream changes `SingleWriterWriteTx` internals or adds native
+// `Sync`, revisit this boundary before changing the exact fjall version pin in
+// `crates/krites/Cargo.toml`.
 #[expect(
     unsafe_code,
     reason = "fjall transaction types require manual Sync; soundness documented above"
@@ -343,10 +341,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         }
     }
 
-    #[expect(
-        clippy::result_large_err,
-        reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
-    )]
     fn range_scan_tuple<'a>(
         &'a self,
         lower: &[u8],
@@ -355,26 +349,13 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
     where
         's: 'a,
     {
+        use fjall::Readable;
         match self {
             FjallTx::Reader(r) => {
-                match fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper) {
-                    Ok(pairs) => Box::new(
-                        pairs
-                            .into_iter()
-                            .map(|(k, v)| Ok(decode_tuple_from_kv(&k, &v, None))),
-                    ),
-                    Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
-                }
+                fjall_range_tuple_iter(r.snapshot.range(r.keyspace, lower..upper))
             }
             FjallTx::Writer(w) => match w.tx_ref() {
-                Ok(tx) => match fjall_collect_range(tx, &w.keyspace, lower, upper) {
-                    Ok(pairs) => Box::new(
-                        pairs
-                            .into_iter()
-                            .map(|(k, v)| Ok(decode_tuple_from_kv(&k, &v, None))),
-                    ),
-                    Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
-                },
+                Ok(tx) => fjall_range_tuple_iter(tx.range(w.keyspace, lower..upper)),
                 Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
             },
         }
@@ -386,36 +367,17 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         upper: &[u8],
         valid_at: ValidityTs,
     ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a> {
+        use fjall::Readable;
         match self {
-            FjallTx::Reader(r) => {
-                match fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper) {
-                    Ok(pairs) => Box::new(
-                        CollectedSkipIterator {
-                            data: pairs,
-                            pos: 0,
-                            upper: upper.to_vec(),
-                            valid_at,
-                            next_bound: lower.to_vec(),
-                        }
-                        .map(Ok),
-                    ),
-                    Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
-                }
-            }
+            FjallTx::Reader(r) => fjall_skip_iter(
+                r.snapshot.range(r.keyspace, lower..upper),
+                lower.to_vec(),
+                valid_at,
+            ),
             FjallTx::Writer(w) => match w.tx_ref() {
-                Ok(tx) => match fjall_collect_range(tx, &w.keyspace, lower, upper) {
-                    Ok(pairs) => Box::new(
-                        CollectedSkipIterator {
-                            data: pairs,
-                            pos: 0,
-                            upper: upper.to_vec(),
-                            valid_at,
-                            next_bound: lower.to_vec(),
-                        }
-                        .map(Ok),
-                    ),
-                    Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
-                },
+                Ok(tx) => {
+                    fjall_skip_iter(tx.range(w.keyspace, lower..upper), lower.to_vec(), valid_at)
+                }
                 Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
             },
         }
@@ -429,18 +391,11 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
     where
         's: 'a,
     {
+        use fjall::Readable;
         match self {
-            FjallTx::Reader(r) => {
-                match fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper) {
-                    Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
-                    Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
-                }
-            }
+            FjallTx::Reader(r) => fjall_range_iter(r.snapshot.range(r.keyspace, lower..upper)),
             FjallTx::Writer(w) => match w.tx_ref() {
-                Ok(tx) => match fjall_collect_range(tx, &w.keyspace, lower, upper) {
-                    Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
-                    Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
-                },
+                Ok(tx) => fjall_range_iter(tx.range(w.keyspace, lower..upper)),
                 Err(e) => Box::new(std::iter::once(Err(crate::error::InternalError::from(e)))),
             },
         }
@@ -450,82 +405,94 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
     where
         's: 'a,
     {
+        use fjall::Readable;
         match self {
-            FjallTx::Reader(r) => {
-                fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper).map(|pairs| pairs.len())
-            }
-            FjallTx::Writer(w) => {
-                fjall_collect_range(w.tx_ref()?, &w.keyspace, lower, upper).map(|pairs| pairs.len())
-            }
+            FjallTx::Reader(r) => fjall_count_range(r.snapshot.range(r.keyspace, lower..upper)),
+            FjallTx::Writer(w) => fjall_count_range(w.tx_ref()?.range(w.keyspace, lower..upper)),
         }
     }
 }
 
-fn fjall_collect_range(
-    readable: &impl fjall::Readable,
-    keyspace: &impl AsRef<fjall::Keyspace>,
-    lower: &[u8],
-    upper: &[u8],
-) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
-    let mut results = Vec::new();
-    for guard in readable.range(keyspace, lower..upper) {
-        let (k, v) = guard.into_inner().map_err(|e| {
-            TransactionFailedSnafu {
-                backend: "fjall",
-                message: format!("range: {e}"),
-            }
-            .build()
-        })?;
-        results.push((k.to_vec(), v.to_vec()));
-    }
-    Ok(results)
+type RawRangeIterator<'a> = Box<dyn Iterator<Item = InternalResult<(Vec<u8>, Vec<u8>)>> + 'a>;
+type TupleRangeIterator<'a> = Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a>;
+
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+)]
+fn fjall_range_iter<'a>(iter: fjall::Iter) -> RawRangeIterator<'a> {
+    Box::new(iter.map(|guard| {
+        guard
+            .into_inner()
+            .map(|(k, v)| (k.to_vec(), v.to_vec()))
+            .map_err(|e| crate::error::InternalError::from(range_error(&e)))
+    }))
 }
 
-struct CollectedSkipIterator {
-    data: Vec<(Vec<u8>, Vec<u8>)>,
-    pos: usize,
-    upper: Vec<u8>,
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalResult is the engine-wide error type — cannot box without changing the trait contract"
+)]
+fn fjall_range_tuple_iter<'a>(iter: fjall::Iter) -> TupleRangeIterator<'a> {
+    Box::new(fjall_range_iter(iter).map(|res| res.map(|(k, v)| decode_tuple_from_kv(&k, &v, None))))
+}
+
+fn fjall_count_range(iter: fjall::Iter) -> Result<usize> {
+    let mut count = 0;
+    for guard in iter {
+        guard.key().map_err(|e| range_error(&e))?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+fn range_error(source: &fjall::Error) -> crate::storage::error::StorageError {
+    TransactionFailedSnafu {
+        backend: "fjall",
+        message: format!("range: {source}"),
+    }
+    .build()
+}
+
+fn fjall_skip_iter<'a>(
+    iter: fjall::Iter,
+    next_bound: Vec<u8>,
+    valid_at: ValidityTs,
+) -> TupleRangeIterator<'a> {
+    Box::new(StreamingSkipIterator {
+        iter,
+        valid_at,
+        next_bound,
+    })
+}
+
+struct StreamingSkipIterator {
+    // PERF: fjall 3.1.4 exposes bounded `range` iterators but no public seek
+    // method on `fjall::Iter`; skip scans therefore stream with bounded memory.
+    iter: fjall::Iter,
     valid_at: ValidityTs,
     next_bound: Vec<u8>,
 }
 
-impl Iterator for CollectedSkipIterator {
-    type Item = Tuple;
+impl Iterator for StreamingSkipIterator {
+    type Item = InternalResult<Tuple>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            // WHY: both indexings are guarded by an explicit `self.pos < self.data.len()`
-            // check that runs immediately before each access.
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "explicit bounds check on `self.pos < self.data.len()` immediately precedes each index"
-            )]
-            while self.pos < self.data.len() {
-                if self.data[self.pos].0.as_slice() >= self.next_bound.as_slice() {
-                    break;
-                }
-                self.pos += 1;
-            }
-            if self.pos >= self.data.len() {
-                return None;
+            let (candidate_key, candidate_val) = match self.iter.next()?.into_inner() {
+                Ok((k, v)) => (k.to_vec(), v.to_vec()),
+                Err(e) => return Some(Err(crate::error::InternalError::from(range_error(&e)))),
+            };
+            if candidate_key.as_slice() < self.next_bound.as_slice() {
+                continue;
             }
 
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "early-return on `self.pos >= self.data.len()` immediately above guarantees safety"
-            )]
-            let (ref candidate_key, ref candidate_val) = self.data[self.pos];
-            if candidate_key.as_slice() >= self.upper.as_slice() {
-                return None;
-            }
-
-            let (ret, nxt_bound) = check_key_for_validity(candidate_key, self.valid_at, None);
+            let (ret, nxt_bound) = check_key_for_validity(&candidate_key, self.valid_at, None);
             self.next_bound = nxt_bound;
-            self.pos += 1;
 
             if let Some(mut nk) = ret {
-                extend_tuple_from_v(&mut nk, candidate_val);
-                return Some(nk);
+                extend_tuple_from_v(&mut nk, &candidate_val);
+                return Some(Ok(nk));
             }
         }
     }
@@ -667,6 +634,76 @@ mod tests {
         assert_eq!(result.rows.len(), 4);
         assert_eq!(result.rows[0][0], DataValue::from(3));
         assert_eq!(result.rows[3][0], DataValue::from(6));
+
+        Ok(())
+    }
+
+    #[test]
+    fn range_scan_streams_first_result_before_counting_full_range() -> InternalResult<()> {
+        const ROWS: u32 = 10_000;
+
+        let (_dir, db) = setup_test_db()?;
+        let mut tx = db.db.transact(true)?;
+        for i in 0..ROWS {
+            let mut key = vec![0xfe];
+            key.extend_from_slice(&i.to_be_bytes());
+            tx.put(&key, &i.wrapping_mul(2).to_be_bytes())?;
+        }
+        tx.commit()?;
+
+        let tx = db.db.transact(false)?;
+        let lower = vec![0xfe, 0, 0, 0, 0];
+        let upper = vec![0xfe, 0xff];
+        let mut scan = tx.range_scan(&lower, &upper);
+        let first = scan
+            .next()
+            .unwrap_or_else(|| unreachable!("INVARIANT: seeded range is non-empty"))?;
+        assert_eq!(first.0, lower, "first range item should be available");
+        drop(scan);
+        assert_eq!(
+            tx.range_count(&lower, &upper)?,
+            usize::try_from(ROWS).unwrap_or_else(|_| unreachable!("INVARIANT: ROWS fits usize")),
+            "streaming count should still see the full range"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn compact_system_operation_invokes_fjall_compaction() -> InternalResult<()> {
+        const ROWS: u32 = 2_000;
+        const VALUE_BYTES: usize = 4_096;
+
+        let (_dir, db) = setup_test_db()?;
+        let value = vec![b'x'; VALUE_BYTES];
+        for i in 0..ROWS {
+            db.db
+                .keyspace
+                .insert(format!("compact:{i:08}").as_bytes(), value.clone())
+                .unwrap_or_else(|_| unreachable!("INVARIANT: fjall test insert should succeed"));
+        }
+        db.db
+            .db
+            .persist(fjall::PersistMode::SyncAll)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: fjall test persist should succeed"));
+        for i in 0..ROWS {
+            db.db
+                .keyspace
+                .remove(format!("compact:{i:08}").as_bytes())
+                .unwrap_or_else(|_| unreachable!("INVARIANT: fjall test remove should succeed"));
+        }
+        db.db
+            .db
+            .persist(fjall::PersistMode::SyncAll)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: fjall test persist should succeed"));
+
+        let before = db.db.keyspace.inner().disk_space();
+        db.run_script("::compact", Default::default(), ScriptMutability::Mutable)?;
+        let after = db.db.keyspace.inner().disk_space();
+        assert!(
+            after <= before,
+            "compaction should not increase disk usage: before={before}, after={after}"
+        );
 
         Ok(())
     }

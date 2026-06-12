@@ -20,6 +20,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use compact_str::CompactString;
+use crossbeam::channel::bounded;
 use itertools::Itertools;
 use serde_json::json;
 
@@ -524,6 +525,54 @@ fn when_multi_transaction_committed_all_rows_persisted() {
         db.run_default("?[a] := *a[a]").is_err(),
         "query after aborted tx should fail as relation was not committed"
     );
+}
+
+#[test]
+fn multi_transaction_write_guard_blocks_schema_mutation_until_commit() {
+    let db = DbInstance::default();
+    db.run_default(":create friends {fr: Int => to: Int}")
+        .expect("creating friends relation should succeed");
+
+    let tx = db.multi_transaction_test(true);
+    tx.run_script(
+        "?[fr, to] <- [[1, 2]] :put friends {fr => to}",
+        Default::default(),
+    )
+    .expect("multi-transaction put should succeed");
+
+    let (started_tx, started_rx) = bounded(1);
+    let (done_tx, done_rx) = bounded(1);
+    let db_for_schema = db.clone();
+    let schema_thread = std::thread::spawn(move || {
+        started_tx
+            .send(())
+            .expect("schema worker should signal start");
+        let created = db_for_schema
+            .run_default("::index create friends:by_to {to}")
+            .is_ok();
+        done_tx
+            .send(created)
+            .expect("schema worker should report completion");
+    });
+
+    started_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("schema worker should start");
+    assert!(
+        done_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+        "schema mutation should block while multi-transaction holds relation read guard"
+    );
+
+    tx.commit().expect("committing transaction should succeed");
+    assert!(
+        done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("schema mutation should finish after commit"),
+        "schema mutation should succeed after transaction releases guard"
+    );
+    schema_thread
+        .join()
+        .expect("schema worker should not panic");
 }
 
 #[test]

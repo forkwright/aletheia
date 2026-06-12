@@ -1187,7 +1187,7 @@ pub struct Db<S> {
     pub(crate) callback_count: Arc<AtomicU32>,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) event_callbacks: Arc<ShardedLock<EventCallbackRegistry>>,
-    pub(crate) relation_locks: Arc<ShardedLock<BTreeMap<CompactString, Arc<ShardedLock<()>>>>>,
+    pub(crate) relation_locks: Arc<ShardedLock<BTreeMap<CompactString, Arc<RwLock<()>>>>>,
     #[cfg(feature = "hot-reload")]
     pub(crate) rule_store: Option<Arc<arc_swap::ArcSwap<crate::hot_reload::RuleSet>>>,
 }

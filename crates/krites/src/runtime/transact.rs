@@ -164,6 +164,7 @@ use std::sync::atomic::Ordering;
 use compact_str::CompactString;
 use crossbeam::channel::{Receiver, Sender};
 use itertools::Itertools;
+use parking_lot::ArcRwLockReadGuard;
 
 use crate::data::functions::current_validity;
 use crate::data::relation::ColumnDef;
@@ -233,7 +234,10 @@ impl<'s, S: Storage<'s>> Db<S> {
         let ts = current_validity();
         let callback_targets = self.current_callback_targets();
         let mut callback_collector = BTreeMap::new();
-        let mut write_locks = BTreeMap::new();
+        let mut write_lock_guards: BTreeMap<
+            CompactString,
+            ArcRwLockReadGuard<parking_lot::RawRwLock, ()>,
+        > = BTreeMap::new();
 
         for payload in payloads {
             match payload {
@@ -286,14 +290,14 @@ impl<'s, S: Storage<'s>> Db<S> {
                         }
                     };
                     if let Some(write_lock_name) = p.needs_write_lock() {
-                        match write_locks.entry(write_lock_name) {
+                        match write_lock_guards.entry(write_lock_name) {
                             Entry::Vacant(e) => {
                                 // INVARIANT: obtain_relation_locks returns one lock per input name
                                 let lock = self
                                     .obtain_relation_locks(iter::once(e.key()))
                                     .pop()
                                     .unwrap_or_else(|| unreachable!("obtain_relation_locks returned empty vec for single input"));
-                                e.insert(lock);
+                                e.insert(lock.read_arc());
                             }
                             // NOTE: write lock already acquired for this relation
                             Entry::Occupied(_) => {}
@@ -388,10 +392,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     pub fn import_relations(&'s self, data: BTreeMap<String, NamedRows>) -> Result<()> {
         let rel_names = data.keys().map(CompactString::from).collect_vec();
         let locks = self.obtain_relation_locks(rel_names.iter());
-        let _guards = locks
-            .iter()
-            .map(|l| l.read().unwrap_or_else(|e| e.into_inner()))
-            .collect_vec();
+        let _guards = locks.iter().map(|l| l.read()).collect_vec();
 
         let cur_vld = current_validity();
 

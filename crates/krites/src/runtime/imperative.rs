@@ -350,19 +350,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
         let is_write = !write_lock_names.is_empty();
         let write_lock = self.obtain_relation_locks(write_lock_names.iter());
-        let _write_lock_guards = write_lock
-            .iter()
-            .map(|l| {
-                l.read().map_err(|_poison| {
-                    InvalidOperationSnafu {
-                        op: "imperative program",
-                        reason: "relation lock poisoned by prior panic",
-                    }
-                    .build()
-                    .into()
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let _write_lock_guards = write_lock.iter().map(|l| l.read()).collect::<Vec<_>>();
 
         let callback_targets = if is_write {
             self.current_callback_targets()
