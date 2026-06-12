@@ -109,10 +109,30 @@ pub struct KnowledgeConfig {
     /// Admission policy applied to every `insert_fact` call. Default: `default` (admit-all).
     ///
     /// Set to `structured` to activate the five-factor A-MAC gate
-    /// (`StructuredAdmissionPolicy`). Operators can tune the threshold and
-    /// min-confidence via `episteme::admission::StructuredAdmissionConfig`
-    /// defaults; those knobs are not yet surfaced in the TOML cascade.
+    /// (`StructuredAdmissionPolicy`). Use `admission_threshold`,
+    /// `admission_min_confidence`, and `admission_content_hash_dedup` to tune
+    /// the gate without recompiling.
     pub admission_policy: AdmissionPolicyKind,
+    /// Minimum combined A-MAC score for a fact to be admitted under the
+    /// `structured` policy (0.0..=1.0). Default: 0.3.
+    ///
+    /// Ignored when `admission_policy = "default"`.
+    pub admission_threshold: f64,
+    /// Minimum source confidence for a fact to pass the fast-reject gate under
+    /// the `structured` policy (0.0..=1.0). Default: 0.1.
+    ///
+    /// Facts whose `confidence` is below this value are rejected immediately
+    /// without computing the full five-factor score. Ignored when
+    /// `admission_policy = "default"`.
+    pub admission_min_confidence: f64,
+    /// Enable SHA-256 content-hash deduplication under the `structured` policy.
+    /// Default: `true`.
+    ///
+    /// When `true`, facts whose normalized content is identical to a previously
+    /// admitted fact are rejected with `low_novelty`. Disable if the knowledge
+    /// store already performs its own deduplication. Ignored when
+    /// `admission_policy = "default"`.
+    pub admission_content_hash_dedup: bool,
 }
 
 impl Default for KnowledgeConfig {
@@ -149,6 +169,9 @@ impl Default for KnowledgeConfig {
             recall_convergence_weight: 0.0,
             recall_serendipity_weight: 0.0,
             admission_policy: AdmissionPolicyKind::Default,
+            admission_threshold: 0.3,
+            admission_min_confidence: 0.1,
+            admission_content_hash_dedup: true,
         }
     }
 }

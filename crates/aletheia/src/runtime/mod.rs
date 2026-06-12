@@ -410,7 +410,7 @@ impl RuntimeBuilder {
                 &self.oikos,
                 cohorts,
                 &self.config.embedding,
-                self.config.knowledge.admission_policy,
+                &self.config.knowledge,
             )?
         } else {
             std::collections::HashMap::new()

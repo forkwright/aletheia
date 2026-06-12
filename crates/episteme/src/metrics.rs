@@ -12,6 +12,8 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
+use crate::admission::RejectionFactor;
+
 // ── Label sets ──────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
@@ -30,12 +32,29 @@ struct ProviderLabels {
     provider: String,
 }
 
+/// Labels for admission decisions: agent, fact type, outcome (admitted/rejected),
+/// and rejection reason (empty string for admitted facts).
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct AdmissionLabels {
+    nous_id: String,
+    fact_type: String,
+    outcome: String,
+    reason: String,
+}
+
 // ── Metric families ─────────────────────────────────────────────────────────
 
 static KNOWLEDGE_FACTS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
     LazyLock::new(Family::default);
 
 static KNOWLEDGE_EXTRACTIONS_TOTAL: LazyLock<Family<NousStatusLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+/// Admission decisions: labelled by agent, fact type, outcome, and reason.
+///
+/// `outcome` is `"admitted"` or `"rejected"`. For rejections, `reason` holds
+/// the [`RejectionFactor`] string. For admissions, `reason` is empty.
+static KNOWLEDGE_ADMISSION_TOTAL: LazyLock<Family<AdmissionLabels, Counter>> =
     LazyLock::new(Family::default);
 
 fn recall_duration_histogram() -> Histogram {
@@ -77,6 +96,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_embedding_duration_seconds",
         "Embedding computation duration in seconds",
         EMBEDDING_DURATION_SECONDS.clone(),
+    );
+    registry.register(
+        "aletheia_knowledge_admission",
+        "Total admission decisions by agent, fact type, outcome, and rejection reason",
+        KNOWLEDGE_ADMISSION_TOTAL.clone(),
     );
 }
 
@@ -127,6 +151,33 @@ pub(crate) fn record_embedding_duration(provider: &str, duration_secs: f64) {
             provider: provider.to_owned(),
         })
         .observe(duration_secs);
+}
+
+/// Record a fact rejection with its rejection factor and fact type.
+///
+/// `reason` is the [`RejectionFactor`] display string and is used as a
+/// Prometheus label so operators can slice rejection counts by cause.
+pub(crate) fn record_admission_rejected(nous_id: &str, fact_type: &str, factor: RejectionFactor) {
+    KNOWLEDGE_ADMISSION_TOTAL
+        .get_or_create(&AdmissionLabels {
+            nous_id: nous_id.to_owned(),
+            fact_type: fact_type.to_owned(),
+            outcome: "rejected".to_owned(),
+            reason: factor.to_string(),
+        })
+        .inc();
+}
+
+/// Record a successful admission (fact was admitted).
+pub(crate) fn record_admission_ok(nous_id: &str, fact_type: &str) {
+    KNOWLEDGE_ADMISSION_TOTAL
+        .get_or_create(&AdmissionLabels {
+            nous_id: nous_id.to_owned(),
+            fact_type: fact_type.to_owned(),
+            outcome: "admitted".to_owned(),
+            reason: String::new(),
+        })
+        .inc();
 }
 
 #[cfg(test)]
@@ -200,6 +251,32 @@ mod tests {
                 "aletheia_embedding_duration_seconds_count{provider=\"_test_provider\"} 1"
             ),
             "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_admission_decisions() {
+        let r = fresh_registry();
+        record_admission_rejected(
+            "_test_nous_admit",
+            "preference",
+            RejectionFactor::LowConfidence,
+        );
+        record_admission_ok("_test_nous_admit", "preference");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_knowledge_admission_total{nous_id=\"_test_nous_admit\",\
+                 fact_type=\"preference\",outcome=\"rejected\",reason=\"low_confidence\"} 1"
+            ),
+            "rejected label set missing; got: {out}"
+        );
+        assert!(
+            out.contains(
+                "aletheia_knowledge_admission_total{nous_id=\"_test_nous_admit\",\
+                 fact_type=\"preference\",outcome=\"admitted\",reason=\"\"} 1"
+            ),
+            "admitted label set missing; got: {out}"
         );
     }
 }

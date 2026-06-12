@@ -11,7 +11,14 @@
 //! The [`AdmissionPolicy`] trait defines the gate. [`KnowledgeStore::insert_fact`]
 //! calls `policy.should_admit()` before writing to the Datalog engine.
 //! [`DefaultAdmissionPolicy`] admits everything (preserving current behavior).
-//! [`StructuredAdmissionPolicy`] applies the five-factor decision.
+//! [`StructuredAdmissionPolicy`] applies the five-factor decision, including a
+//! content-hash novelty check that rejects exact duplicate fact content within
+//! the lifetime of the policy instance.
+
+use std::collections::HashSet;
+use std::sync::Mutex;
+
+use sha2::{Digest, Sha256};
 
 use crate::knowledge::Fact;
 
@@ -137,6 +144,13 @@ pub struct StructuredAdmissionConfig {
     pub min_confidence: f64,
     /// Maximum age in hours before a fact is considered stale. Default: 2160 (90 days).
     pub max_age_hours: f64,
+    /// SHA-256 content-hash deduplication: facts whose normalized content
+    /// hashes to a value already seen by this policy instance are rejected with
+    /// [`RejectionFactor::LowNovelty`]. Set to `false` to disable.
+    ///
+    /// Default: `true`. The hash set is bounded by the number of admitted facts
+    /// so memory growth tracks the knowledge graph itself.
+    pub content_hash_dedup: bool,
 }
 
 impl Default for StructuredAdmissionConfig {
@@ -145,6 +159,7 @@ impl Default for StructuredAdmissionConfig {
             threshold: 0.3,
             min_confidence: 0.1,
             max_age_hours: 2160.0,
+            content_hash_dedup: true,
         }
     }
 }
@@ -155,26 +170,95 @@ impl Default for StructuredAdmissionConfig {
 /// content type prior. The combined weighted score must exceed the configured
 /// threshold for admission.
 ///
+/// Novelty is checked via a SHA-256 content hash: if the normalized content of
+/// the incoming fact has been seen before (i.e., its hash is already in the
+/// internal set), it is scored as zero novelty and fast-rejected with
+/// [`RejectionFactor::LowNovelty`]. Admitted facts have their hash recorded so
+/// future duplicates are caught.
+///
 /// This is a heuristic gate — it catches obvious low-value insertions without
 /// requiring LLM evaluation. The weights and thresholds are tunable via
 /// [`StructuredAdmissionConfig`].
-#[derive(Debug, Clone)]
 pub struct StructuredAdmissionPolicy {
     config: StructuredAdmissionConfig,
+    /// SHA-256 hashes of content strings already admitted, used for exact-duplicate
+    /// detection. Guarded by a `Mutex` so the policy can implement `Sync` while
+    /// mutating the set on each call.
+    seen_hashes: Mutex<HashSet<[u8; 32]>>,
+}
+
+impl std::fmt::Debug for StructuredAdmissionPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StructuredAdmissionPolicy")
+            .field("config", &self.config)
+            .field("seen_hashes_count", &self.seen_hashes.lock().map_or(0, |g| g.len()))
+            .finish()
+    }
 }
 
 impl StructuredAdmissionPolicy {
     /// Create a new structured admission policy with the given configuration.
     pub fn new(config: StructuredAdmissionConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            seen_hashes: Mutex::new(HashSet::new()),
+        }
+    }
+
+    /// Compute the SHA-256 hash of normalized fact content.
+    ///
+    /// Normalization: trim leading/trailing whitespace and fold to lowercase so
+    /// that trivially equivalent statements are treated as duplicates.
+    fn content_hash(fact: &Fact) -> [u8; 32] {
+        let normalized = fact.content.trim().to_lowercase();
+        let digest = Sha256::digest(normalized.as_bytes());
+        let mut out = [0u8; 32];
+        for (dst, src) in out.iter_mut().zip(digest.iter()) {
+            *dst = *src;
+        }
+        out
+    }
+
+    /// Check whether `fact` is an exact duplicate of previously admitted content.
+    ///
+    /// Returns `true` if the content hash has been seen before (duplicate).
+    /// If `content_hash_dedup` is disabled in config, always returns `false`.
+    fn is_duplicate(&self, fact: &Fact) -> bool {
+        if !self.config.content_hash_dedup {
+            return false;
+        }
+        let hash = Self::content_hash(fact);
+        // INVARIANT: lock is never held across await points; no risk of deadlock here.
+        self.seen_hashes
+            .lock()
+            .map_or(false, |guard| guard.contains(&hash))
+    }
+
+    /// Record the content hash of an admitted fact.
+    ///
+    /// Must be called only after the fact has been decided as admitted so that
+    /// future identical content is caught as a duplicate.
+    fn record_admitted(&self, fact: &Fact) {
+        if !self.config.content_hash_dedup {
+            return;
+        }
+        let hash = Self::content_hash(fact);
+        if let Ok(mut guard) = self.seen_hashes.lock() {
+            guard.insert(hash);
+        }
     }
 
     /// Score a fact across all five factors.
+    ///
+    /// The `novelty` dimension is set to `0.0` if the fact is an exact
+    /// content-hash duplicate of a previously admitted fact, and `1.0`
+    /// otherwise. Duplicate detection via the hash set is a fast-reject path
+    /// that bypasses the full scoring pipeline in [`should_admit`].
     pub fn score(&self, fact: &Fact) -> AdmissionScores {
         AdmissionScores {
             utility: self.score_utility(fact),
             confidence: self.score_confidence(fact),
-            novelty: 1.0, // Novelty requires store query — default to fully novel
+            novelty: if self.is_duplicate(fact) { 0.0 } else { 1.0 },
             recency: self.score_recency(fact),
             type_prior: self.score_type_prior(fact),
         }
@@ -257,6 +341,11 @@ impl AdmissionPolicy for StructuredAdmissionPolicy {
     fn should_admit(&self, fact: &Fact) -> AdmissionDecision {
         // Fast-reject: confidence below floor
         if fact.provenance.confidence < self.config.min_confidence {
+            crate::metrics::record_admission_rejected(
+                &fact.nous_id,
+                &fact.fact_type,
+                RejectionFactor::LowConfidence,
+            );
             return AdmissionDecision::Reject(AdmissionRejection {
                 factor: RejectionFactor::LowConfidence,
                 reason: format!(
@@ -266,10 +355,28 @@ impl AdmissionPolicy for StructuredAdmissionPolicy {
             });
         }
 
+        // Fast-reject: exact content-hash duplicate
+        if self.is_duplicate(fact) {
+            crate::metrics::record_admission_rejected(
+                &fact.nous_id,
+                &fact.fact_type,
+                RejectionFactor::LowNovelty,
+            );
+            return AdmissionDecision::Reject(AdmissionRejection {
+                factor: RejectionFactor::LowNovelty,
+                reason: "content is an exact duplicate of a previously admitted fact".to_owned(),
+            });
+        }
+
         let scores = self.score(fact);
         let combined = scores.combined();
 
         if combined < self.config.threshold {
+            crate::metrics::record_admission_rejected(
+                &fact.nous_id,
+                &fact.fact_type,
+                RejectionFactor::BelowThreshold,
+            );
             return AdmissionDecision::Reject(AdmissionRejection {
                 factor: RejectionFactor::BelowThreshold,
                 reason: format!(
@@ -286,6 +393,9 @@ impl AdmissionPolicy for StructuredAdmissionPolicy {
             });
         }
 
+        // Fact is admitted: record its hash to catch future duplicates.
+        self.record_admitted(fact);
+        crate::metrics::record_admission_ok(&fact.nous_id, &fact.fact_type);
         AdmissionDecision::Admit
     }
 }
@@ -446,5 +556,182 @@ mod tests {
             scores_zero.combined().abs() < f64::EPSILON,
             "all 0.0 should combine to 0.0"
         );
+    }
+
+    // ── content-hash deduplication ──────────────────────────────────────────
+
+    #[test]
+    fn content_hash_dedup_rejects_exact_duplicate() {
+        let policy = StructuredAdmissionPolicy::new(StructuredAdmissionConfig::default());
+        let fact = make_fact(
+            "The user prefers snake_case naming conventions for Rust variables",
+            0.95,
+            "preference",
+        );
+
+        // First insertion: admitted.
+        assert!(
+            policy.should_admit(&fact).is_admitted(),
+            "first insertion of a high-quality fact must be admitted"
+        );
+
+        // Second insertion of identical content: rejected as duplicate.
+        let decision = policy.should_admit(&fact);
+        assert!(
+            !decision.is_admitted(),
+            "exact duplicate content must be rejected"
+        );
+        if let AdmissionDecision::Reject(r) = decision {
+            assert_eq!(
+                r.factor,
+                RejectionFactor::LowNovelty,
+                "duplicate must be rejected with LowNovelty"
+            );
+        }
+    }
+
+    #[test]
+    fn content_hash_dedup_normalizes_whitespace_and_case() {
+        let policy = StructuredAdmissionPolicy::new(StructuredAdmissionConfig::default());
+        let fact_a = make_fact(
+            "The user prefers snake_case naming for Rust",
+            0.95,
+            "preference",
+        );
+        // Same content but with leading/trailing whitespace and different case.
+        let fact_b = make_fact(
+            "  the user prefers snake_case naming for rust  ",
+            0.95,
+            "preference",
+        );
+
+        assert!(
+            policy.should_admit(&fact_a).is_admitted(),
+            "first fact admitted"
+        );
+        let decision = policy.should_admit(&fact_b);
+        assert!(
+            !decision.is_admitted(),
+            "case/whitespace-normalized duplicate must be rejected"
+        );
+        if let AdmissionDecision::Reject(r) = decision {
+            assert_eq!(r.factor, RejectionFactor::LowNovelty);
+        }
+    }
+
+    #[test]
+    fn content_hash_dedup_admits_distinct_content() {
+        let policy = StructuredAdmissionPolicy::new(StructuredAdmissionConfig::default());
+        let fact_a = make_fact(
+            "The user prefers snake_case naming conventions for Rust variables",
+            0.95,
+            "preference",
+        );
+        let fact_b = make_fact(
+            "The user prefers camelCase naming conventions for TypeScript",
+            0.95,
+            "preference",
+        );
+
+        assert!(
+            policy.should_admit(&fact_a).is_admitted(),
+            "first fact admitted"
+        );
+        assert!(
+            policy.should_admit(&fact_b).is_admitted(),
+            "distinct content must be admitted independently"
+        );
+    }
+
+    #[test]
+    fn content_hash_dedup_disabled_admits_duplicates() {
+        let config = StructuredAdmissionConfig {
+            content_hash_dedup: false,
+            ..Default::default()
+        };
+        let policy = StructuredAdmissionPolicy::new(config);
+        let fact = make_fact(
+            "The user prefers snake_case naming conventions for Rust variables",
+            0.95,
+            "preference",
+        );
+
+        assert!(policy.should_admit(&fact).is_admitted(), "first admitted");
+        assert!(
+            policy.should_admit(&fact).is_admitted(),
+            "with dedup disabled, duplicate must be admitted"
+        );
+    }
+
+    // ── threshold / min_confidence determinism ──────────────────────────────
+
+    #[test]
+    fn min_confidence_boundary_is_inclusive() {
+        // Exactly at the boundary: confidence == min_confidence must be admitted.
+        let config = StructuredAdmissionConfig {
+            min_confidence: 0.5,
+            threshold: 0.0, // Disable combined check so we isolate the confidence gate.
+            ..Default::default()
+        };
+        let policy = StructuredAdmissionPolicy::new(config);
+
+        let at_boundary = make_fact(
+            "The user prefers detailed explanations with examples and code snippets",
+            0.5,
+            "preference",
+        );
+        let below_boundary = make_fact(
+            "The user prefers detailed explanations with examples and code snippets extra words",
+            0.499,
+            "preference",
+        );
+
+        assert!(
+            policy.should_admit(&at_boundary).is_admitted(),
+            "confidence exactly at min_confidence must be admitted"
+        );
+        let decision = policy.should_admit(&below_boundary);
+        assert!(
+            !decision.is_admitted(),
+            "confidence below min_confidence must be rejected"
+        );
+        if let AdmissionDecision::Reject(r) = decision {
+            assert_eq!(r.factor, RejectionFactor::LowConfidence);
+        }
+    }
+
+    #[test]
+    fn structured_threshold_admits_above_and_rejects_below() {
+        // Use a high threshold with a well-scoring fact to verify the boundary.
+        let permissive = StructuredAdmissionConfig {
+            threshold: 0.01,
+            ..Default::default()
+        };
+        let strict = StructuredAdmissionConfig {
+            threshold: 0.99,
+            ..Default::default()
+        };
+
+        let policy_permissive = StructuredAdmissionPolicy::new(permissive);
+        let policy_strict = StructuredAdmissionPolicy::new(strict);
+
+        let fact = make_fact(
+            "The user prefers detailed explanations with examples and code snippets",
+            0.95,
+            "preference",
+        );
+
+        assert!(
+            policy_permissive.should_admit(&fact).is_admitted(),
+            "permissive threshold must admit high-quality fact"
+        );
+        let decision = policy_strict.should_admit(&fact);
+        assert!(
+            !decision.is_admitted(),
+            "strict threshold 0.99 must reject even a high-quality fact"
+        );
+        if let AdmissionDecision::Reject(r) = decision {
+            assert_eq!(r.factor, RejectionFactor::BelowThreshold);
+        }
     }
 }
