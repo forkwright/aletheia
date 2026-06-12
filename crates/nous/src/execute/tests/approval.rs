@@ -1,9 +1,4 @@
-//! Approval-guard integration tests for `dispatch_tools_streaming` (#3958, ADR-005).
-//!
-//! These exercise the gate at the dispatch layer directly because the streaming
-//! `execute_streaming` entry point requires a streaming-capable provider, which
-//! the workspace's `MockProvider` doesn't supply. The gate logic itself lives in
-//! `dispatch_tools_streaming` and is the unit under test.
+//! Approval-guard integration tests for shared tool dispatch (#3958, ADR-005).
 #![expect(
     clippy::indexing_slicing,
     reason = "test: indices valid after asserting `len`"
@@ -18,7 +13,7 @@ use tokio::sync::mpsc;
 
 use super::*;
 use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
-use crate::execute::dispatch::dispatch_tools_streaming;
+use crate::execute::dispatch::dispatch_tools;
 use crate::pipeline::LoopDetector;
 use crate::stream::TurnStreamEvent;
 
@@ -96,14 +91,14 @@ async fn reversibility_class_call_blocks_until_approved() {
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
 
-    let result = dispatch_tools_streaming(
+    let result = dispatch_tools(
         &tool_uses,
         &tools,
         &test_tool_ctx(),
         &mut loop_detector,
         &mut all_calls,
         1,
-        &event_tx,
+        Some(&event_tx),
         Some(&gate),
         0,
         None,
@@ -157,14 +152,14 @@ async fn reversibility_class_call_denied_skips_execution() {
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
 
-    let result = dispatch_tools_streaming(
+    let result = dispatch_tools(
         &tool_uses,
         &tools,
         &test_tool_ctx(),
         &mut loop_detector,
         &mut all_calls,
         1,
-        &event_tx,
+        Some(&event_tx),
         Some(&gate),
         0,
         None,
@@ -218,14 +213,14 @@ async fn mandatory_without_gate_defaults_to_denial() {
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
 
-    let result = dispatch_tools_streaming(
+    let result = dispatch_tools(
         &tool_uses,
         &tools,
         &test_tool_ctx(),
         &mut loop_detector,
         &mut all_calls,
         1,
-        &event_tx,
+        Some(&event_tx),
         None,
         0,
         None,
@@ -248,6 +243,60 @@ async fn mandatory_without_gate_defaults_to_denial() {
 }
 
 #[tokio::test]
+async fn batch_dispatch_mandatory_without_gate_matches_streaming_denial_record() {
+    let tools = make_registry_rev("exec", Reversibility::Irreversible);
+    let tool_uses = vec![(
+        "tool-1".to_owned(),
+        "exec".to_owned(),
+        serde_json::json!({}),
+    )];
+    let mut batch_detector = LoopDetector::new(3);
+    let mut batch_calls = Vec::new();
+    let mut streaming_detector = LoopDetector::new(3);
+    let mut streaming_calls = Vec::new();
+    let (event_tx, _event_rx) = mpsc::channel::<TurnStreamEvent>(64);
+
+    let batch_result = dispatch_tools(
+        &tool_uses,
+        &tools,
+        &test_tool_ctx(),
+        &mut batch_detector,
+        &mut batch_calls,
+        1,
+        None,
+        None,
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect("batch dispatch ok");
+
+    let streaming_result = dispatch_tools(
+        &tool_uses,
+        &tools,
+        &test_tool_ctx(),
+        &mut streaming_detector,
+        &mut streaming_calls,
+        1,
+        Some(&event_tx),
+        None,
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect("streaming dispatch ok");
+
+    assert_eq!(batch_result.blocks.len(), streaming_result.blocks.len());
+    assert_eq!(batch_calls.len(), streaming_calls.len());
+    assert_eq!(batch_calls[0].name, streaming_calls[0].name);
+    assert_eq!(batch_calls[0].input, streaming_calls[0].input);
+    assert_eq!(batch_calls[0].is_error, streaming_calls[0].is_error);
+    assert_eq!(batch_calls[0].result, streaming_calls[0].result);
+}
+
+#[tokio::test]
 async fn safe_call_proceeds_without_gate() {
     // FullyReversible → ApprovalRequirement::None → auto-approve, execute.
     let tools = make_registry_rev("read", Reversibility::FullyReversible);
@@ -261,14 +310,14 @@ async fn safe_call_proceeds_without_gate() {
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
 
-    let result = dispatch_tools_streaming(
+    let result = dispatch_tools(
         &tool_uses,
         &tools,
         &test_tool_ctx(),
         &mut loop_detector,
         &mut all_calls,
         1,
-        &event_tx,
+        Some(&event_tx),
         None,
         0,
         None,
@@ -306,14 +355,14 @@ async fn advisory_call_executes_without_approval_required_event() {
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
 
-    let _ = dispatch_tools_streaming(
+    let _ = dispatch_tools(
         &tool_uses,
         &tools,
         &test_tool_ctx(),
         &mut loop_detector,
         &mut all_calls,
         1,
-        &event_tx,
+        Some(&event_tx),
         None,
         0,
         None,
@@ -347,14 +396,14 @@ async fn gate_timeout_denies_mandatory_call() {
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
 
-    let result = dispatch_tools_streaming(
+    let result = dispatch_tools(
         &tool_uses,
         &tools,
         &test_tool_ctx(),
         &mut loop_detector,
         &mut all_calls,
         1,
-        &event_tx,
+        Some(&event_tx),
         Some(&gate),
         0,
         None,

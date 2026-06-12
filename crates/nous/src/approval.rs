@@ -1,6 +1,6 @@
 //! User approval gate for reversibility-class tool calls (#3958, ADR-005).
 //!
-//! The gate blocks `dispatch_tools_streaming` between `ToolApprovalRequired`
+//! The gate blocks shared tool dispatch between `ToolApprovalRequired`
 //! emission and `ToolStart` until the operator answers, or the timeout
 //! elapses (default-deny). The decision arrives over a `mpsc::Receiver`
 //! whose sender lives in the caller (e.g. pylon's per-session registry,

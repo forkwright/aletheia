@@ -145,7 +145,7 @@ fn make_tool_def(name: &str) -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Workspace,
-        reversibility: organon::types::Reversibility::Irreversible,
+        reversibility: organon::types::Reversibility::FullyReversible,
         auto_activate: false,
         groups: vec![organon::types::ToolGroupId::Read],
         tags: vec![],

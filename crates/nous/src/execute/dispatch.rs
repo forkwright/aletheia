@@ -64,13 +64,16 @@ fn record_stream_send_error<T>(
 }
 
 fn emit_approval_required(
-    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
     tool_id: &str,
     tool_name: &str,
     tool_input: &serde_json::Value,
     approval: ApprovalRequirement,
 ) {
+    let Some(stream_tx) = stream_tx else {
+        return;
+    };
     if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalRequired {
         turn_id: tool_ctx.turn_number.to_string(),
         tool_id: tool_id.to_owned(),
@@ -84,12 +87,15 @@ fn emit_approval_required(
 }
 
 fn emit_approval_resolved(
-    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
     tool_id: &str,
     tool_name: &str,
     decision: &str,
 ) {
+    let Some(stream_tx) = stream_tx else {
+        return;
+    };
     if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalResolved {
         tool_id: tool_id.to_owned(),
         decision: decision.to_owned(),
@@ -104,7 +110,7 @@ fn emit_approval_resolved(
 fn record_denied_call(
     all_tool_calls: &mut Vec<ToolCall>,
     tool_results: &mut Vec<ContentBlock>,
-    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
     tool_id: &str,
     tool_name: &str,
@@ -125,14 +131,56 @@ fn record_denied_call(
         content: ToolResultContent::Text(denial.clone()),
         is_error: Some(true),
     });
-    if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
-        tool_id: tool_id.to_owned(),
-        tool_name: tool_name.to_owned(),
-        result: denial,
-        is_error: true,
-        duration_ms: 0,
-    }) {
+    if let Some(stream_tx) = stream_tx
+        && let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
+            tool_id: tool_id.to_owned(),
+            tool_name: tool_name.to_owned(),
+            result: denial,
+            is_error: true,
+            duration_ms: 0,
+        })
+    {
         record_stream_send_error(tool_ctx, tool_name, "denied_tool_result", &e);
+    }
+}
+
+fn emit_tool_start(
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    tool_ctx: &ToolContext,
+    tool_id: &str,
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+) {
+    if let Some(stream_tx) = stream_tx
+        && let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolStart {
+            tool_id: tool_id.to_owned(),
+            tool_name: tool_name.to_owned(),
+            input: tool_input.clone(),
+        })
+    {
+        record_stream_send_error(tool_ctx, tool_name, "tool_start", &e);
+    }
+}
+
+fn emit_tool_result(
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    tool_ctx: &ToolContext,
+    tool_id: &str,
+    tool_name: &str,
+    result: String,
+    is_error: bool,
+    duration_ms: u64,
+) {
+    if let Some(stream_tx) = stream_tx
+        && let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
+            tool_id: tool_id.to_owned(),
+            tool_name: tool_name.to_owned(),
+            result,
+            is_error,
+            duration_ms,
+        })
+    {
+        record_stream_send_error(tool_ctx, tool_name, "tool_result", &e);
     }
 }
 
@@ -368,6 +416,7 @@ struct SingleToolOutcome {
 async fn dispatch_single_tool(
     tool_id: &str,
     tool_name: &str,
+    tool_name_id: ToolName,
     tool_input: &serde_json::Value,
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
@@ -375,14 +424,6 @@ async fn dispatch_single_tool(
     receipt_signer: Option<&organon::receipts::ReceiptSigner>,
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<SingleToolOutcome> {
-    let tool_name_id = ToolName::new(tool_name).map_err(|_err| {
-        error::PipelineStageSnafu {
-            stage: "execute",
-            message: format!("invalid tool name: {tool_name}"),
-        }
-        .build()
-    })?;
-
     // WHY(#3569): substitute secrets at the LAST moment before tool
     // execution. The original `tool_input` (with placeholders) is preserved
     // for persistence in the `ToolCall`; only the executor sees resolved
@@ -531,6 +572,10 @@ async fn dispatch_single_tool(
     clippy::too_many_arguments,
     reason = "dispatch needs tool uses, registry, context, detector, calls, iterations, limits, and receipt infra"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single approval-aware dispatch loop owns the full per-tool lifecycle"
+)]
 pub(super) async fn dispatch_tools(
     tool_uses: &[(String, String, serde_json::Value)],
     tools: &ToolRegistry,
@@ -538,70 +583,7 @@ pub(super) async fn dispatch_tools(
     loop_detector: &mut LoopDetector,
     all_tool_calls: &mut Vec<ToolCall>,
     iterations: u32,
-    max_tool_result_bytes: u32,
-    receipt_signer: Option<&organon::receipts::ReceiptSigner>,
-    receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
-) -> error::Result<DispatchResult> {
-    let mut tool_results: Vec<ContentBlock> = Vec::new();
-
-    for (tool_id, tool_name, tool_input) in tool_uses {
-        let outcome = dispatch_single_tool(
-            tool_id,
-            tool_name,
-            tool_input,
-            tools,
-            tool_ctx,
-            max_tool_result_bytes,
-            receipt_signer,
-            receipt_ledger,
-        )
-        .await?;
-
-        all_tool_calls.push(outcome.call);
-        tool_results.push(outcome.result_block);
-
-        let input_hash = simple_hash(tool_input);
-        match loop_detector.record(tool_name, &input_hash, outcome.is_error) {
-            LoopVerdict::Ok => {}
-            LoopVerdict::Warn { message, .. } => {
-                return Ok(DispatchResult {
-                    blocks: tool_results,
-                    loop_warning: Some(message),
-                });
-            }
-            LoopVerdict::Halt { pattern, .. } => {
-                return Err(error::LoopDetectedSnafu {
-                    iterations,
-                    pattern,
-                }
-                .build());
-            }
-        }
-    }
-
-    Ok(DispatchResult {
-        blocks: tool_results,
-        loop_warning: None,
-    })
-}
-
-/// Dispatch tool calls with streaming events emitted to the channel.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "streaming dispatch inherently needs context, detector, channel, and limit"
-)]
-#[expect(
-    clippy::too_many_lines,
-    reason = "streaming dispatch: sequential tool execution with error handling and event logging; splitting would scatter the per-tool lifecycle"
-)]
-pub(super) async fn dispatch_tools_streaming(
-    tool_uses: &[(String, String, serde_json::Value)],
-    tools: &ToolRegistry,
-    tool_ctx: &ToolContext,
-    loop_detector: &mut LoopDetector,
-    all_tool_calls: &mut Vec<ToolCall>,
-    iterations: u32,
-    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     approval_gate: Option<&ApprovalGate>,
     max_tool_result_bytes: u32,
     receipt_signer: Option<&organon::receipts::ReceiptSigner>,
@@ -618,38 +600,12 @@ pub(super) async fn dispatch_tools_streaming(
             .build()
         })?;
 
-        // WHY(#3569): substitute secrets at the LAST moment before tool
-        // execution. The original `tool_input` (with placeholders) is preserved
-        // for persistence in `all_tool_calls`; only the executor sees resolved
-        // values.
-        let mut substituted_args = tool_input.clone();
-        if let Some(services) = &tool_ctx.services
-            && let Err(e) = substitute_in_json(&mut substituted_args, &services.secret_vault)
-        {
-            all_tool_calls.push(ToolCall {
-                id: tool_id.clone(),
-                name: tool_name.clone(),
-                input: tool_input.clone(),
-                result: Some(format!("Tool error: {e}")),
-                is_error: true,
-                duration_ms: 0,
-                receipt: None,
-            });
-            tool_results.push(ContentBlock::ToolResult {
-                tool_use_id: tool_id.clone(),
-                content: ToolResultContent::text(format!("Tool error: {e}")),
-                is_error: Some(true),
-            });
-            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
-            continue;
-        }
-
         let approval = tools
             .approval_requirement(&tool_name_id)
             .unwrap_or(ApprovalRequirement::Mandatory);
 
-        // WHY(#3958, ADR-005): gate execution on operator approval. None/Advisory
-        // auto-resolve; Required/Mandatory block on the approval gate.
+        // WHY(#3958, ADR-005): one decision boundary protects streaming,
+        // fallback, and batch dispatch. Unknown future requirements block.
         match approval {
             ApprovalRequirement::None => {
                 emit_approval_resolved(stream_tx, tool_ctx, tool_id, tool_name, "auto_approved");
@@ -657,19 +613,10 @@ pub(super) async fn dispatch_tools_streaming(
             ApprovalRequirement::Advisory => {
                 emit_approval_resolved(stream_tx, tool_ctx, tool_id, tool_name, "advisory_auto");
             }
-            // WHY: ApprovalRequirement is #[non_exhaustive]; the Mandatory arm here
-            // also catches any future variant defined upstream, treating unknown
-            // requirements as "block" rather than silently auto-approving — the
-            // safer default given the design intent of this enum.
             ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
                 emit_approval_required(
                     stream_tx, tool_ctx, tool_id, tool_name, tool_input, approval,
                 );
-                // ADR-005 step 4: await operator decision.
-                // No gate wired:
-                //   - Mandatory → deny (silent execution is the bug we are fixing).
-                //   - Required  → approve (lenient for batch/test contexts where the
-                //     call is partially-reversible by reversibility metadata).
                 let choice = match approval_gate {
                     Some(gate) => gate.await_decision(tool_id).await,
                     None => match approval {
@@ -677,7 +624,7 @@ pub(super) async fn dispatch_tools_streaming(
                             warn!(
                                 tool = tool_name.as_str(),
                                 tool_id = tool_id.as_str(),
-                                "mandatory tool call with no approval gate wired — default-deny"
+                                "mandatory tool call with no approval gate wired - default-deny"
                             );
                             ApprovalChoice::Denied
                         }
@@ -706,169 +653,39 @@ pub(super) async fn dispatch_tools_streaming(
             }
         }
 
-        // WHY: distinguish buffer-full (performance problem, warn) from receiver-
-        // disconnected (expected client close, debug). Silent drops violate the
-        // streaming observability contract. (#3285)
-        if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolStart {
-            tool_id: tool_id.clone(),
-            tool_name: tool_name.clone(),
-            input: tool_input.clone(),
-        }) {
-            match e {
-                tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                    warn!(
-                        tool = tool_name.as_str(),
-                        "streaming event dropped: channel buffer full — client cannot keep up"
-                    );
-                    crate::metrics::record_stream_event_dropped(
-                        tool_ctx.nous_id.as_ref(),
-                        "buffer_full",
-                    );
-                }
-                tokio::sync::mpsc::error::TrySendError::Closed(_) => {
-                    debug!(
-                        tool = tool_name.as_str(),
-                        "streaming event dropped: receiver disconnected"
-                    );
-                    crate::metrics::record_stream_event_dropped(
-                        tool_ctx.nous_id.as_ref(),
-                        "disconnected",
-                    );
-                }
-            }
-        }
+        emit_tool_start(stream_tx, tool_ctx, tool_id, tool_name, tool_input);
 
-        let start = std::time::Instant::now();
-        let result = tools
-            .execute(
-                &ToolInput {
-                    name: tool_name_id,
-                    tool_use_id: tool_id.clone(),
-                    arguments: substituted_args,
-                },
+        let outcome = dispatch_single_tool(
+            tool_id,
+            tool_name,
+            tool_name_id,
+            tool_input,
+            tools,
+            tool_ctx,
+            max_tool_result_bytes,
+            receipt_signer,
+            receipt_ledger,
+        )
+        .await?;
+
+        all_tool_calls.push(outcome.call);
+        if let Some(call) = all_tool_calls.last()
+            && let Some(result) = call.result.clone()
+        {
+            emit_tool_result(
+                stream_tx,
                 tool_ctx,
-            )
-            .await;
-
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::as_conversions,
-            reason = "u128→u64: tool execution duration won't exceed u64::MAX milliseconds"
-        )]
-        let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
-
-        let (content, is_error) = match result {
-            Ok(mut r) => {
-                if let Some(ref mut d) = r.diagnostics {
-                    d.duration_ms = duration_ms;
-                    let diag_text = d.to_llm_text();
-                    r.content = inject_diagnostics(r.content, &diag_text);
-                }
-                (r.content, r.is_error)
-            }
-            Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
-        };
-
-        let content = truncate_tool_result(content, max_tool_result_bytes);
-
-        let (content, receipt) = if let Some(signer) = receipt_signer {
-            let ts = jiff::Timestamp::now();
-            let result_text = content.text_summary();
-            let receipt_str = signer.sign(tool_name, &tool_input.to_string(), &result_text, ts);
-            if let Some(ledger) = receipt_ledger {
-                let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
-                    tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
-                    poisoned.into_inner()
-                });
-                guard.record(
-                    receipt_str.clone(),
-                    tool_name.to_owned(),
-                    tool_input.to_string(),
-                    result_text.clone(),
-                    ts,
-                );
-            }
-            let tagged = match content {
-                ToolResultContent::Text(text) => {
-                    ToolResultContent::Text(format!("{text}\n\n[receipt:{receipt_str}]"))
-                }
-                ToolResultContent::Blocks(mut blocks) => {
-                    blocks.push(ToolResultBlock::Text {
-                        text: format!("\n\n[receipt:{receipt_str}]"),
-                    });
-                    ToolResultContent::Blocks(blocks)
-                }
-                // WHY: ToolResultContent is #[non_exhaustive]; forward-compatibility arm.
-                other => other,
-            };
-            (tagged, Some(receipt_str))
-        } else {
-            (content, None)
-        };
-
-        let result_summary = content.text_summary();
-
-        if is_error {
-            warn!(
-                tool = tool_name.as_str(),
-                tool_id = tool_id.as_str(),
-                duration_ms,
-                "tool execution failed"
+                &call.id,
+                &call.name,
+                result,
+                call.is_error,
+                call.duration_ms,
             );
-            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
-        } else {
-            debug!(tool = tool_name.as_str(), duration_ms, "tool executed");
         }
-
-        if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
-            tool_id: tool_id.clone(),
-            tool_name: tool_name.clone(),
-            result: result_summary.clone(),
-            is_error,
-            duration_ms,
-        }) {
-            match e {
-                tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                    warn!(
-                        tool = tool_name.as_str(),
-                        "streaming result dropped: channel buffer full — client cannot keep up"
-                    );
-                    crate::metrics::record_stream_event_dropped(
-                        tool_ctx.nous_id.as_ref(),
-                        "buffer_full",
-                    );
-                }
-                tokio::sync::mpsc::error::TrySendError::Closed(_) => {
-                    debug!(
-                        tool = tool_name.as_str(),
-                        "streaming result dropped: receiver disconnected"
-                    );
-                    crate::metrics::record_stream_event_dropped(
-                        tool_ctx.nous_id.as_ref(),
-                        "disconnected",
-                    );
-                }
-            }
-        }
-
-        all_tool_calls.push(ToolCall {
-            id: tool_id.clone(),
-            name: tool_name.clone(),
-            input: tool_input.clone(),
-            result: Some(result_summary),
-            is_error,
-            duration_ms,
-            receipt,
-        });
-
-        tool_results.push(ContentBlock::ToolResult {
-            tool_use_id: tool_id.clone(),
-            content,
-            is_error: Some(is_error),
-        });
+        tool_results.push(outcome.result_block);
 
         let input_hash = simple_hash(tool_input);
-        match loop_detector.record(tool_name, &input_hash, is_error) {
+        match loop_detector.record(tool_name, &input_hash, outcome.is_error) {
             LoopVerdict::Ok => {}
             LoopVerdict::Warn { message, .. } => {
                 return Ok(DispatchResult {
