@@ -95,25 +95,27 @@ Active windows restrict execution to time ranges (e.g., `active_window: Some((8,
 
 ### Built-in tasks
 
-| Task | Schedule | Purpose |
-|------|----------|---------|
-| Prosoche | Cron | Periodic attention check |
-| TraceRotation | Cron | Compress and rotate old trace files |
-| DriftDetection | Cron | Compare instance against template config |
-| DbSizeMonitor | Cron | Alert on database growth |
-| RetentionExecution | Cron | Execute data retention policy |
-| DecayRefresh | Cron | Refresh temporal decay scores |
-| EntityDedup | Cron | Merge duplicate knowledge graph entities |
-| GraphRecompute | Cron | Recompute PageRank, centrality |
-| EmbeddingRefresh | Cron | Re-embed stale entities |
-| KnowledgeGc | Cron | Orphan removal, expired edge pruning |
-| OpsFactExtraction | Cron/startup | Persist operational fact-extraction results for later recall/audit |
-| IndexMaintenance | Cron | Rebuild/optimize graph indexes |
-| GraphHealthCheck | Cron | Diagnostic health check |
-| SkillDecay | Cron | Retire stale skills |
-| SelfAudit | Cron | Self-assessment against quality metrics |
-| EvolutionSearch | Cron | Mutate and benchmark agent configs |
-| SelfReflection | Cron | Agent evaluates recent performance |
+| Task | Schedule | Status | Purpose |
+|------|----------|--------|---------|
+| Prosoche | Cron | Implemented | Periodic attention check |
+| TraceRotation | Cron | Implemented | Compress and rotate old trace files |
+| DriftDetection | Cron | Implemented | Compare instance against template config |
+| DbSizeMonitor | Cron | Implemented | Alert on database growth |
+| RetentionExecution | Cron | Opt-in (`maintenance.retention.enabled`) | Execute data retention policy |
+| DecayRefresh | Interval (4h) | Implemented, gated by `knowledge_maintenance_enabled` | Refresh temporal decay scores |
+| EntityDedup | Interval (6h) | Implemented, gated by `knowledge_maintenance_enabled` | Merge duplicate knowledge graph entities |
+| GraphRecompute | Interval (8h) | Implemented, gated by `knowledge_maintenance_enabled` | Recompute PageRank, centrality |
+| SkillDecay | Cron (06:00) | Implemented, gated by `knowledge_maintenance_enabled` | Retire stale skills |
+| DerivedFactsMaterialize | Interval (6h) | Implemented, gated by `knowledge_maintenance_enabled` | Materialize derived Datalog rules |
+| SerendipityDiscovery | Cron | Opt-in (`maintenance.knowledge_maintenance_serendipity.enabled`) | Discover unexpected knowledge connections |
+| OpsFactExtraction | Cron/startup | Implemented (requires knowledge executor) | Persist operational fact-extraction results for later recall/audit |
+| EmbeddingRefresh | Cron | **Not implemented** | Re-embed stale entities — blocked on EmbeddingProvider bridge |
+| KnowledgeGc | Cron | **Not implemented** | Orphan removal, expired edge pruning — no store contract |
+| IndexMaintenance | Cron | **Not implemented** | Rebuild/optimize graph indexes — no store contract |
+| GraphHealthCheck | Cron | **Not implemented** | Diagnostic health check — no diagnostic contract |
+| SelfAudit | Cron | **Not implemented** | Self-assessment against quality metrics |
+| EvolutionSearch | Cron | Opt-in (`maintenance.cron_tasks.evolution`) | Mutate and benchmark agent configs |
+| SelfReflection | Cron | Opt-in (`maintenance.cron_tasks.reflection`) | Agent evaluates recent performance |
 
 ### Failure handling
 

@@ -487,7 +487,23 @@ still belong under `agents.defaults.tool_timeouts`.
 
 ## maintenance
 
-Background maintenance tasks. All run automatically when the server is running, and can be triggered via `aletheia maintenance run <task>`.
+Background maintenance tasks. Some run automatically when the server is running; others are opt-in or not yet implemented. Tasks can also be triggered manually via `aletheia maintenance run <task>`.
+
+### Always-on maintenance (enabled by default)
+
+| Task | Config section | Default | Schedule |
+|------|----------------|---------|----------|
+| Trace rotation | `maintenance.trace_rotation` | `enabled = true` | Cron |
+| Drift detection | `maintenance.drift_detection` | `enabled = true` | Cron |
+| DB size monitoring | `maintenance.db_monitoring` | `enabled = true` | Cron |
+
+### Opt-in maintenance (disabled by default)
+
+| Task | Config section | Default | Schedule |
+|------|----------------|---------|----------|
+| Retention enforcement | `maintenance.retention` | `enabled = false` | Cron |
+| Knowledge maintenance | `maintenance.knowledge_maintenance_enabled` | `false` | see below |
+| Serendipity discovery | `maintenance.knowledge_maintenance_serendipity` | `enabled = false` | Cron |
 
 ### maintenance.trace_rotation
 
@@ -523,11 +539,40 @@ Background maintenance tasks. All run automatically when the server is running, 
 
 ### maintenance.knowledge_maintenance_enabled
 
+`knowledge_maintenance_enabled` is a top-level boolean switch (not a table) that
+gates all scheduled knowledge-maintenance tasks. It defaults to `false`.
+
+When set to `true` **and** a knowledge executor is available, the daemon
+registers the following implemented tasks (`crates/daemon/src/runner/registration.rs`):
+
+| Task ID | Cadence | Purpose |
+|---------|---------|---------|
+| `decay-refresh` | every 4 hours | Refresh temporal decay scores |
+| `entity-dedup` | every 6 hours | Merge duplicate knowledge graph entities |
+| `graph-recompute` | every 8 hours | Recompute PageRank / centrality scores |
+| `skill-decay` | daily at 06:00 | Retire stale skills |
+| `derived-facts-materialize` | every 6 hours | Materialize derived Datalog rules |
+
+The following tasks are **not implemented or scheduled** today; calling them
+via `aletheia maintenance run` returns an explicit "not scheduled" error
+(`crates/aletheia/src/knowledge_maintenance.rs`):
+
+- `embedding-refresh` — requires an `EmbeddingProvider` bridge.
+- `knowledge-gc` / edge pruning — no concrete store contract.
+- `index-maintenance` — no concrete store contract.
+- `graph-health-check` — no concrete diagnostic contract.
+
+### maintenance.knowledge_maintenance_serendipity
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `knowledge_maintenance_enabled` | bool | `false` | Whether background knowledge graph maintenance tasks run (entity deduplication, edge pruning, embedding refresh) |
+| `enabled` | bool | `false` | Whether serendipity discovery maintenance runs |
+| `cadence` | string | `"0 0 7 * * *"` | Cron expression for the task (daily at 07:00 UTC) |
 
 ```toml
+[maintenance]
+knowledge_maintenance_enabled = true
+
 [maintenance.trace_rotation]
 enabled = true
 max_age_days = 7
@@ -542,6 +587,10 @@ alert_threshold_mb = 1000
 
 [maintenance.retention]
 enabled = true
+
+[maintenance.knowledge_maintenance_serendipity]
+enabled = true
+cadence = "0 0 7 * * *"
 ```
 
 ---
