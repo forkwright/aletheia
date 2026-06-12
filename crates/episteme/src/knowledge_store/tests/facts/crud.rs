@@ -122,6 +122,88 @@ fn insert_fact_with_scope_and_visibility_roundtrips() {
 }
 
 #[test]
+fn insert_fact_with_each_sensitivity_roundtrips() {
+    let store = make_store();
+    for sensitivity in [
+        crate::knowledge::FactSensitivity::Public,
+        crate::knowledge::FactSensitivity::Internal,
+        crate::knowledge::FactSensitivity::Confidential,
+    ] {
+        let mut fact = make_fact(
+            &format!("f-{}", sensitivity.as_str()),
+            "agent-a",
+            &format!("{} sensitivity fact", sensitivity.as_str()),
+        );
+        fact.sensitivity = sensitivity;
+        store.insert_fact(&fact).expect("insert fact");
+
+        let results = store
+            .read_facts_by_id(fact.id.as_str())
+            .expect("read fact by id");
+        assert_eq!(results.len(), 1, "should retrieve inserted fact");
+        assert_eq!(
+            results[0].sensitivity, sensitivity,
+            "sensitivity should roundtrip through storage"
+        );
+    }
+}
+
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn sensitivity_survives_fjall_reopen_for_each_level() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let path = tempdir.path().join("knowledge.fjall").join("shared");
+
+    {
+        let store = KnowledgeStore::open_fjall(
+            &path,
+            KnowledgeConfig {
+                dim: crate::test_fixtures::DIM,
+                ..Default::default()
+            },
+        )
+        .expect("open fjall store");
+        for sensitivity in [
+            crate::knowledge::FactSensitivity::Public,
+            crate::knowledge::FactSensitivity::Internal,
+            crate::knowledge::FactSensitivity::Confidential,
+        ] {
+            let mut fact = make_fact(
+                &format!("f-reload-{}", sensitivity.as_str()),
+                "agent-a",
+                &format!("{} reload fact", sensitivity.as_str()),
+            );
+            fact.sensitivity = sensitivity;
+            store.insert_fact(&fact).expect("insert fact");
+        }
+    }
+
+    let reopened = KnowledgeStore::open_fjall(
+        &path,
+        KnowledgeConfig {
+            dim: crate::test_fixtures::DIM,
+            ..Default::default()
+        },
+    )
+    .expect("reopen fjall store");
+
+    for sensitivity in [
+        crate::knowledge::FactSensitivity::Public,
+        crate::knowledge::FactSensitivity::Internal,
+        crate::knowledge::FactSensitivity::Confidential,
+    ] {
+        let facts = reopened
+            .read_facts_by_id(&format!("f-reload-{}", sensitivity.as_str()))
+            .expect("read fact after reopen");
+        assert_eq!(facts.len(), 1, "reopened store should return fact");
+        assert_eq!(
+            facts[0].sensitivity, sensitivity,
+            "sensitivity should survive store reopen"
+        );
+    }
+}
+
+#[test]
 fn insert_multiple_facts_and_retrieve() {
     let store = make_store();
     for i in 0..5 {

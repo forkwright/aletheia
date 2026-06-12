@@ -166,6 +166,10 @@ fn test_field_names_match_schema() {
         "is_forgotten",
         "forgotten_at",
         "forget_reason",
+        "scope",
+        "project_id",
+        "visibility",
+        "sensitivity",
     ];
     let facts_enum_fields: Vec<&str> = [
         FactsField::Id,
@@ -185,6 +189,10 @@ fn test_field_names_match_schema() {
         FactsField::IsForgotten,
         FactsField::ForgottenAt,
         FactsField::ForgetReason,
+        FactsField::Scope,
+        FactsField::ProjectId,
+        FactsField::Visibility,
+        FactsField::Sensitivity,
     ]
     .iter()
     .map(|f| f.name())

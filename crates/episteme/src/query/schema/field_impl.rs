@@ -28,6 +28,7 @@ impl Field for FactsField {
             Self::Scope => "scope",
             Self::ProjectId => "project_id",
             Self::Visibility => "visibility",
+            Self::Sensitivity => "sensitivity",
         }
     }
 }

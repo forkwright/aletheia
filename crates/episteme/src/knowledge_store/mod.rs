@@ -16,7 +16,7 @@
 //!         access_count: Int, last_accessed_at: String, stability_hours: Float,
 //!         fact_type: String, is_forgotten: Bool, forgotten_at: String?,
 //!         forget_reason: String?, scope: String?, project_id: String?,
-//!         visibility: String }
+//!         visibility: String, sensitivity: String }
 //!
 //! entities { id: String => name: String, entity_type: String, aliases: String,
 //!            created_at: String, updated_at: String,
@@ -92,7 +92,8 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         forget_reason: String?,
         scope: String?,
         project_id: String?,
-        visibility: String default 'private'
+        visibility: String default 'private',
+        sensitivity: String default 'public'
     }",
     // WHY: index 1 is a sentinel — `init_schema` skips this entry and runs
     // the dim-parameterized `entities_ddl(self.dim)` instead so the relation
@@ -551,7 +552,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 13;
+    pub(crate) const SCHEMA_VERSION: i64 = 14;
     const MIN_SCHEMA_VERSION: i64 = 1;
 
     /// Open an in-memory knowledge store with default configuration.
@@ -1293,11 +1294,13 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
+                       is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                       visibility, sensitivity},
                 id = $id
         ";
         let mut params = BTreeMap::new();

@@ -86,8 +86,8 @@ l3_token_estimate = 20097
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "761c56e0dadb3ea1a720ac2fa2d162939ffe108cf949fa99e263711e54b73b88"
-l3_token_estimate = 32852
+source_hash = "73cf258de9eb529d9a50ceba2681ef891bf7b4e4417c4cff179337940c148a88"
+l3_token_estimate = 32868
 
 [[crates]]
 name = "gnosis"
@@ -110,7 +110,7 @@ l3_token_estimate = 13698
 [[crates]]
 name = "integration-tests"
 path = "crates/integration-tests"
-source_hash = "aac4c12699676af8fe21e93d34f89e949cb223964b97aad5e7db0e16b3231f2f"
+source_hash = "83f34cf41a2b7b27d6980b6e59a4286ba91274b9d3dbf5b26fa09735b8f77d68"
 l3_token_estimate = 1170
 
 [[crates]]
@@ -266,7 +266,7 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "6d5dbe440cc846a6ffe2f4a60639f700378f556c8df7576a61b4f30342d1de38"
+source_hash = "7daca293eb5f57e6ec3d1a908d8e7dc14081a494f61b65b1b45d365c8eecd22b"
 l3_token_estimate = 17977
 
 [[crates]]
