@@ -213,6 +213,32 @@ pub struct BenchmarkMetadata {
     pub evaluated_questions: usize,
     /// Per-question timeout in seconds.
     pub timeout_secs: u64,
+    /// SHA-256 hash of the dataset file, when the runner can read it.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub dataset_hash: Option<String>,
+    /// Git SHA of the build or invocation, when known.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub git_sha: Option<String>,
+}
+```
+
+```rust
+pub enum QuestionStatus {
+    /// The question produced an answer and was included in score denominators.
+    #[default]
+    Scored,
+    /// The benchmark pipeline failed before a scorable answer was available.
+    Error,
+    /// The benchmark question exceeded its configured timeout.
+    Timeout,
+    /// The model returned an empty answer.
+    NoAnswer,
+}
+```
+
+```rust
+impl QuestionStatus {
+    pub fn is_scored (self) -> bool;
 }
 ```
 
@@ -223,6 +249,12 @@ pub struct QuestionResult {
     pub id: String,
     /// Category.
     pub category: String,
+    /// Execution status for this question.
+    #[serde(default)]
+    pub status: QuestionStatus,
+    /// Error or timeout detail when the question was not scorable.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub error_message: Option<String>,
     /// The answer produced by aletheia.
     pub actual_answer: String,
     /// The expected answers (ground truth, may have multiple valid forms).
@@ -248,10 +280,21 @@ pub struct QuestionResult {
 pub struct BenchmarkReport {
     /// Benchmark name.
     pub benchmark: String,
-    /// Total questions scored.
+    /// Total questions attempted.
     pub total: usize,
+    /// Questions included in score denominators.
+    pub scored: usize,
+    /// Questions that failed before producing a scorable answer.
+    pub errors: usize,
+    /// Questions that exceeded the per-question timeout.
+    pub timeouts: usize,
+    /// Questions that returned an empty answer.
+    pub no_answers: usize,
     /// Per-question results.
     pub questions: Vec<QuestionResult>,
+    /// Shared provenance envelope for this benchmark run.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub provenance: Option<EvalProvenance>,
     /// System and run metadata.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<BenchmarkMetadata>,
@@ -289,6 +332,7 @@ impl BenchmarkReport {
         questions: Vec<QuestionResult>,
         metadata: BenchmarkMetadata,
     ) -> Self;
+    pub fn with_provenance (mut self, provenance: EvalProvenance) -> Self;
     pub fn with_statistics (mut self, n_resamples: usize) -> Self;
     pub fn exact_match_rate (&self) -> f64;
     pub fn mean_f1 (&self) -> f64;
@@ -350,6 +394,8 @@ pub struct BenchmarkRunnerConfig {
     /// When set, query the knowledge store after ingestion and compute
     /// Recall@k and NDCG@k against the expected answers.
     pub retrieval_k: Option<usize>,
+    /// Shared provenance envelope for the benchmark run.
+    pub provenance: EvalProvenance,
 }
 ```
 
@@ -678,6 +724,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct EvalRecord {
     /// ISO 8601 timestamp of when the evaluation was run.
     pub timestamp: String,
+    /// Stable identifier for the eval run.
+    pub eval_run_id: String,
+    /// Provenance envelope for the run.
+    pub provenance: EvalProvenance,
     /// Evaluation category (e.g., "health", "cognitive", "session").
     pub eval_type: String,
     // kanon:ignore RUST/primitive-for-domain-id — scenario_id for JSONL training data output, mirrors external scenario ids
@@ -692,6 +742,9 @@ pub struct EvalRecord {
     /// Error message or skip reason, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Structured sub-results for multi-probe scenarios.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub sub_results: Vec<crate::scenario::ScenarioSubResult>,
 }
 ```
 
@@ -722,6 +775,91 @@ pub fn append_jsonl (path: &Path, records: &[EvalRecord]) -> Result<()>
 > Returns `Json` if serialization of records or metadata fails.
 ```rust
 pub fn append_jsonl_stamped (path: &Path, report: &RunReport) -> Result<()>
+```
+
+## `src/provenance.rs`
+
+```rust
+pub struct EvalProvenance {
+    /// Stable identifier for this eval run.
+    // kanon:ignore RUST/primitive-for-domain-id — eval_run_id is an opaque external run handle, not an internal domain newtype
+    pub eval_run_id: String,
+    /// Schema version of this provenance envelope.
+    pub schema_version: u32,
+    /// Version of the `dokimion` crate that produced the run.
+    pub dokimion_version: String,
+    /// Git commit SHA of the running binary, when available.
+    pub git_sha: Option<String>,
+    /// ISO-8601 timestamp when the run started.
+    pub started_at: String,
+    /// ISO-8601 timestamp when the run finished, if known.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub finished_at: Option<String>,
+    /// CLI arguments with secret-bearing values redacted.
+    pub redacted_args: Vec<String>,
+    /// SHA-256 hash of the resolved run configuration.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub config_hash: Option<String>,
+    /// Base URL of the target instance.
+    pub target_base_url: String,
+    /// Target identity (e.g. version from `/api/health`), when available.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub target_identity: Option<String>,
+    /// Opaque model audit reference.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub model_ref: Option<String>,
+    /// Opaque provider audit reference.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub provider_ref: Option<String>,
+    /// Opaque prompt audit reference.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub prompt_ref: Option<String>,
+    /// Opaque tool-surface audit reference.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub tool_ref: Option<String>,
+    /// Opaque memory-system audit reference.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub memory_ref: Option<String>,
+    /// Hash of the scenario suite or benchmark dataset that was executed.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub scenario_suite_hash: Option<String>,
+}
+```
+
+```rust
+impl EvalProvenance {
+    pub fn new (eval_run_id: impl Into<String>, target_base_url: impl Into<String>) -> Self;
+    pub fn finished (mut self) -> Self;
+    pub fn with_git_sha (mut self, git_sha: impl Into<String>) -> Self;
+    pub fn with_redacted_args (mut self, args: &[String]) -> Self;
+    pub fn with_config_hash (mut self, hash: impl Into<String>) -> Self;
+    pub fn with_target_identity (mut self, identity: impl Into<String>) -> Self;
+    pub fn with_audit_refs (
+        mut self,
+        model: Option<String>,
+        provider: Option<String>,
+        prompt: Option<String>,
+        tool: Option<String>,
+        memory: Option<String>,
+    ) -> Self;
+    pub fn with_scenario_suite_hash (mut self, hash: impl Into<String>) -> Self;
+}
+```
+
+```rust
+pub fn generate_eval_run_id () -> String
+```
+
+```rust
+pub fn sha256_hex (bytes: &[u8]) -> String
+```
+
+```rust
+pub fn sha256_hex_str (s: &str) -> String
+```
+
+```rust
+pub fn redact_args (args: &[String]) -> Vec<String>
 ```
 
 ## `src/provider/provider_impl.rs`
@@ -800,6 +938,8 @@ pub struct RunConfig {
     pub timeout_secs: u64,
     /// Emit JSON instead of formatted output.
     pub json_output: bool,
+    /// Durable provenance envelope for this run.
+    pub provenance: EvalProvenance,
 }
 ```
 
@@ -816,6 +956,8 @@ pub struct RunReport {
     pub total_duration: Duration,
     /// Per-scenario results in run order.
     pub results: Vec<ScenarioResult>,
+    /// Durable provenance envelope for this run.
+    pub provenance: EvalProvenance,
 }
 ```
 
@@ -840,7 +982,19 @@ impl ScenarioRunner {
 
 > Boxed future returned by scenario `run` methods.
 ```rust
-pub type ScenarioFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
+pub type ScenarioFuture<'a> = Pin<Box<dyn Future<Output = ScenarioRunOutcome> + Send + 'a>>;
+```
+
+```rust
+pub enum ScenarioClassification {
+    /// A semantic assertion with explicit expected criteria.
+    #[default]
+    Assertive,
+    /// A lightweight health/sanity check that may lack explicit criteria.
+    Smoke,
+    /// An observational probe whose result is recorded but not asserted.
+    Informational,
+}
 ```
 
 ```rust
@@ -859,6 +1013,14 @@ pub struct ScenarioMeta {
     pub expected_contains: Option<&'static str>,
     /// Optional regex pattern that the response text must match.
     pub expected_pattern: Option<&'static str>,
+    /// Classification of the scenario's intent.
+    pub classification: ScenarioClassification,
+}
+```
+
+```rust
+impl ScenarioMeta {
+    pub fn criteria_summary (&self) -> Option<String>;
 }
 ```
 
@@ -892,11 +1054,50 @@ impl ScenarioOutcome {
 ```
 
 ```rust
+pub struct ScenarioSubResult {
+    /// Identifier for the sub-probe.
+    pub sub_id: String,
+    /// Classification of this sub-result.
+    pub classification: ScenarioClassification,
+    /// Whether the sub-probe passed.
+    pub passed: bool,
+    /// Human-readable criteria checked by the sub-probe.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub criteria: Option<String>,
+    /// Short excerpt or hash of the response evaluated.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub response_excerpt: Option<String>,
+    /// Identifiers of any violations detected.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub violation_ids: Vec<String>,
+}
+```
+
+```rust
+pub struct ScenarioRunOutcome {
+    /// Overall pass/fail result of the scenario.
+    pub result: Result<()>,
+    /// Optional structured sub-results for multi-probe scenarios.
+    pub sub_results: Vec<ScenarioSubResult>,
+}
+```
+
+```rust
+impl ScenarioRunOutcome {
+    pub fn pass () -> Self;
+    pub fn fail (error: Error) -> Self;
+    pub fn with_sub_results (mut self, sub_results: Vec<ScenarioSubResult>) -> Self;
+}
+```
+
+```rust
 pub struct ScenarioResult {
     /// Metadata describing the scenario.
     pub meta: ScenarioMeta,
     /// Outcome of the run.
     pub outcome: ScenarioOutcome,
+    /// Structured sub-results, when produced by multi-probe scenarios.
+    pub sub_results: Vec<ScenarioSubResult>,
 }
 ```
 

@@ -363,6 +363,17 @@ pub struct BackupEntry {
 }
 ```
 
+```rust
+pub struct FjallVerifyResult {
+    /// Per-partition key counts.
+    pub partition_counts: Vec<(String, usize)>,
+    /// First validation error encountered, if any.
+    pub first_error: Option<String>,
+    /// Total keys iterated across all partitions.
+    pub total_keys: usize,
+}
+```
+
 > Manages fjall knowledge store backups.
 ```rust
 pub struct FjallBackup {
@@ -375,6 +386,100 @@ impl FjallBackup {
     pub fn new (config: FjallBackupConfig) -> Self;
     pub fn create_backup (&self) -> error::Result<FjallBackupReport>;
     pub fn list_backups (&self) -> error::Result<Vec<BackupEntry>>;
+    pub fn verify_store (path: &Path) -> error::Result<FjallVerifyResult>;
+}
+```
+
+## `src/maintenance/instance_backup.rs`
+
+```rust
+pub struct InstanceBackupConfig {
+    /// Whether periodic whole-instance backups are enabled.
+    pub enabled: bool,
+    /// Path to the instance root directory.
+    pub instance_root: PathBuf,
+    /// Directory where timestamped backup sets are stored.
+    pub backup_dir: PathBuf,
+    /// Hours between automatic backups.
+    pub interval_hours: u64,
+    /// Maximum number of backup snapshots to retain.
+    pub retention_count: usize,
+}
+```
+
+```rust
+pub struct StoreEntry {
+    /// Logical store name, e.g. `knowledge.fjall` or `sessions.db`.
+    pub name: String,
+    /// Absolute source path the store was copied from.
+    pub source_path: PathBuf,
+    /// Relative backup path inside the backup set.
+    pub backup_path: PathBuf,
+    /// ISO 8601 snapshot timestamp.
+    pub snapshot_time: String,
+    /// Total bytes copied for this store.
+    pub byte_count: u64,
+    /// Verification status: `ok`, `missing`, or `error`.
+    pub status: String,
+}
+```
+
+```rust
+pub struct BackupManifest {
+    /// Manifest format version.
+    pub version: String,
+    /// ISO 8601 timestamp when the backup set was created.
+    pub created_at: String,
+    /// Absolute path to the instance root that was backed up.
+    pub source_root: PathBuf,
+    /// Required stores (must be present and verifiable for a valid set).
+    pub stores: Vec<StoreEntry>,
+    /// Optional data directories copied when present.
+    pub optional_stores: Vec<StoreEntry>,
+    /// Total bytes copied across all stores.
+    pub total_bytes: u64,
+}
+```
+
+```rust
+pub struct InstanceBackupReport {
+    /// Path to the created backup set directory.
+    pub backup_path: Option<PathBuf>,
+    /// Total bytes copied.
+    pub bytes_copied: u64,
+    /// Number of files copied.
+    pub files_copied: u32,
+    /// Number of old backups pruned.
+    pub backups_pruned: u32,
+}
+```
+
+```rust
+pub struct InstanceVerifyResult {
+    /// Loaded manifest.
+    pub manifest: Option<BackupManifest>,
+    /// Per-store verification outcomes: name, key count (or error message).
+    pub store_results: Vec<(String, std::result::Result<usize, String>)>,
+    /// Total keys iterated across all fjall stores.
+    pub total_keys: usize,
+    /// First error encountered, if any.
+    pub first_error: Option<String>,
+}
+```
+
+> Manages whole-instance backup sets.
+```rust
+pub struct InstanceBackup {
+    config: InstanceBackupConfig,
+}
+```
+
+```rust
+impl InstanceBackup {
+    pub fn new (config: InstanceBackupConfig) -> Self;
+    pub fn create_backup (&self) -> error::Result<InstanceBackupReport>;
+    pub fn list_backups (&self) -> error::Result<Vec<BackupEntry>>;
+    pub fn verify_backup (path: &Path) -> error::Result<InstanceVerifyResult>;
 }
 ```
 
@@ -487,6 +592,8 @@ pub struct MaintenanceConfig {
     pub knowledge_maintenance: KnowledgeMaintenanceConfig,
     /// Fjall knowledge store backup settings.
     pub fjall_backup: FjallBackupConfig,
+    /// Whole-instance backup settings.
+    pub instance_backup: InstanceBackupConfig,
     /// Runtime metrics hook for backup freshness alerting.
     pub backup_metrics: Option<Arc<dyn BackupMetricsRecorder>>,
     /// Directory where prosoche self-audit reports are written.
@@ -829,6 +936,19 @@ pub enum ProsocheCheckKind {
 ```
 
 ```rust
+pub enum CheckMaturity {
+    /// Check uses a well-defined algorithm but is not yet validated at scale.
+    Heuristic,
+    /// Check is an exploratory placeholder; semantics are not yet implemented.
+    Stub,
+    /// Check is intentionally lightweight and qualitative.
+    Exploratory,
+    /// Check is considered production-ready.
+    Established,
+}
+```
+
+```rust
 pub struct ProsocheState {
     /// The nous identity this audit is running for.
     // kanon:ignore RUST/primitive-for-domain-id — ProsocheState is an ephemeral audit input struct; nous_id is passed as &str from the runner and converted to String for serialization
@@ -847,6 +967,13 @@ pub struct ProsocheState {
     pub facts: Vec<FactSnapshot>,
     /// Current UTC timestamp (ISO 8601), set at audit start.
     pub checked_at: String,
+}
+```
+
+```rust
+impl ProsocheState {
+    pub fn source_query_hash (&self) -> String;
+    pub fn source_snapshot_hash (&self) -> String;
 }
 ```
 
@@ -877,7 +1004,8 @@ pub struct SessionSnapshot {
     pub completed: bool,
     /// Combined text of all user turns in this session.
     ///
-    /// Used for goal-alignment keyword matching.
+    /// Used for goal-alignment keyword matching. Only hashes of this value are
+    /// persisted in durable reports.
     pub turn_text: String,
 }
 ```
@@ -891,7 +1019,8 @@ pub struct SessionSnapshot {
 > # Implementation contract
 > 
 > - Checks MUST be stateless: all input is in [`ProsocheState`].
-> - Checks MUST NOT panic. Return an empty `Vec` on errors and log via `tracing`.
+> - Checks SHOULD NOT panic. The runner records task failures as `CheckFailure`
+>   entries and continues the remaining checks.
 > - Checks SHOULD log one `tracing::info!` per invocation with `findings_count`.
 > - Checks SHOULD be fast (<100ms). Long-running analysis belongs in a separate
 >   maintenance task, not a prosoche check.
@@ -908,6 +1037,33 @@ pub trait ProsocheCheck : Send + Sync {
         state: &'a ProsocheState,
     ) -> Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>>;
     fn kind (&self) -> ProsocheCheckKind;
+    fn metadata (&self, state: &ProsocheState) -> CheckProvenance; // default impl
+}
+```
+
+```rust
+pub struct CheckProvenance {
+    /// Which check this provenance describes.
+    pub kind: ProsocheCheckKind,
+    /// Semantic version of the check implementation.
+    pub version: String,
+    /// Maturity of the check implementation.
+    pub maturity: CheckMaturity,
+    /// Threshold parameters that influenced the check, if any.
+    pub thresholds: Value,
+    /// Human-readable sampling window description, if applicable.
+    pub sampling_window: Option<String>,
+    /// Hash of the inputs relevant to this check.
+    pub source_query_hash: String,
+}
+```
+
+```rust
+pub struct CheckFailure {
+    /// Which check failed.
+    pub kind: ProsocheCheckKind,
+    /// Human-readable failure reason.
+    pub reason: String,
 }
 ```
 
@@ -1001,6 +1157,29 @@ impl AuditStorage {
 ```
 
 ```rust
+pub struct ProsocheReportProvenance {
+    /// Report provenance schema version.
+    pub report_version: String,
+    /// Daemon version that produced the report.
+    pub daemon_version: String,
+    /// Source code SHA, if available at build time.
+    pub code_sha: Option<String>,
+    /// Build SHA, if available at build time.
+    pub build_sha: Option<String>,
+    /// Hash of the daemon config active at audit time, if available.
+    pub config_hash: Option<String>,
+    /// Hash of the source query (sorted ids and counts).
+    pub source_query_hash: String,
+    /// Hash of the full source snapshot (including content hashes).
+    pub source_snapshot_hash: String,
+    /// Per-check replay provenance.
+    pub checks: Vec<CheckProvenance>,
+    /// Checks that failed during the run.
+    pub check_failures: Vec<CheckFailure>,
+}
+```
+
+```rust
 pub struct AuditReport {
     /// ISO 8601 timestamp when this audit ran.
     pub audited_at: String,
@@ -1013,6 +1192,9 @@ pub struct AuditReport {
     pub check_summary: Vec<CheckSummary>,
     /// Provenance metadata (producer, schema version, counts).
     pub meta: ArtefactMeta,
+    /// Versioned replay provenance envelope.
+    #[serde(default)]
+    pub provenance: Option<ProsocheReportProvenance>,
 }
 ```
 
