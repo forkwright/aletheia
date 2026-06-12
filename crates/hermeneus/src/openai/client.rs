@@ -389,6 +389,9 @@ impl OpenAiProvider {
         let body = self.serialize_request(request, Some(true))?;
         let url = self.endpoint_url();
         let mut last_error: Option<error::Error> = None;
+        // WHY(#4887): once any content delta reaches on_event the caller has partial output;
+        // retrying would duplicate it. Track across attempts — once true, never retry.
+        let mut content_started = false;
 
         for attempt in 0..=self.config.max_retries {
             if attempt > 0 {
@@ -421,7 +424,20 @@ impl OpenAiProvider {
                 continue;
             }
 
-            let resp = self.parse_streaming_response(&mut response, on_event).await;
+            let mut tracking_event = |event: StreamEvent| {
+                if matches!(
+                    event,
+                    StreamEvent::TextDelta { .. }
+                        | StreamEvent::ThinkingDelta { .. }
+                        | StreamEvent::InputJsonDelta { .. }
+                ) {
+                    content_started = true;
+                }
+                on_event(event);
+            };
+            let resp = self
+                .parse_streaming_response(&mut response, &mut tracking_event)
+                .await;
 
             match resp {
                 Ok(mut resp) => {
@@ -431,8 +447,17 @@ impl OpenAiProvider {
                 }
                 Err(err) => {
                     self.health.record_error(&err);
-                    record_stream_failure(start, attempt, &self.config.name, request);
-                    return Err(err);
+                    if content_started {
+                        // WHY(#4887): content already delivered — retry would duplicate output.
+                        tracing::error!("SSE error after content started streaming — cannot retry");
+                        record_stream_failure(start, attempt, &self.config.name, request);
+                        return Err(err);
+                    }
+                    if !err.is_retryable() {
+                        record_stream_failure(start, attempt, &self.config.name, request);
+                        return Err(err);
+                    }
+                    last_error = Some(err);
                 }
             }
         }
