@@ -197,7 +197,9 @@ impl KimiProvider {
         let process_config = process::KimiProcessConfig {
             kimi_binary: &self.kimi_binary,
             cwd: &self.working_directory,
-            model: None,
+            // WHY(#4880): pass the resolved model explicitly so the subprocess
+            // CLI uses the same model that response attribution records.
+            model: Some(model),
             timeout: self.timeout,
         };
 
@@ -224,7 +226,9 @@ impl KimiProvider {
         let process_config = process::KimiProcessConfig {
             kimi_binary: &self.kimi_binary,
             cwd: &self.working_directory,
-            model: None,
+            // WHY(#4880): pass the resolved model so the streaming subprocess
+            // uses the same model recorded in response attribution.
+            model: Some(model),
             timeout: self.timeout,
         };
 
