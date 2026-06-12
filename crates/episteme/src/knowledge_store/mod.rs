@@ -552,6 +552,7 @@ pub struct KnowledgeStore {
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     const SCHEMA_VERSION: i64 = 13;
+    const MIN_SCHEMA_VERSION: i64 = 1;
 
     /// Open an in-memory knowledge store with default configuration.
     ///
@@ -745,54 +746,20 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         use crate::engine::ScriptMutability;
-        let already_initialized = self
-            .db
-            .run(
-                "?[v] := *schema_version{version: v}",
-                BTreeMap::new(),
-                ScriptMutability::Immutable,
-            )
-            .is_ok();
-
-        if already_initialized {
-            let current_version = self.schema_version().unwrap_or(0);
-            if current_version < 2 {
-                self.migrate_v1_to_v2()?;
-            }
-            if current_version < 3 {
-                self.migrate_v2_to_v3()?;
-            }
-            if current_version < 4 {
-                self.migrate_v3_to_v4()?;
-            }
-            if current_version < 5 {
-                self.migrate_v4_to_v5()?;
-            }
-            if current_version < 6 {
-                self.migrate_v5_to_v6()?;
-            }
-            if current_version < 7 {
-                self.migrate_v6_to_v7()?;
-            }
-            if current_version < 8 {
-                self.migrate_v7_to_v8()?;
-            }
-            if current_version < 9 {
-                self.migrate_v8_to_v9()?;
-            }
-            if current_version < 10 {
-                self.migrate_v9_to_v10()?;
-            }
-            if current_version < 11 {
-                self.migrate_v10_to_v11()?;
-            }
-            if current_version < 12 {
-                self.migrate_v11_to_v12()?;
-            }
-            if current_version < 13 {
-                self.migrate_v12_to_v13()?;
-            }
+        if self.schema_version_relation_exists()? {
+            let current_version = self.schema_version_for_startup()?;
+            self.verify_schema_integrity(current_version)?;
+            self.apply_pending_migrations(current_version)?;
+            self.verify_schema_integrity(Self::SCHEMA_VERSION)?;
             return Ok(());
+        }
+
+        let relations = self.relation_names()?;
+        if !relations.is_empty() {
+            return Err(Self::schema_integrity_error(format!(
+                "schema version corruption: schema_version relation is missing but store has relations {}; repair by restoring from backup or re-stamping only after verifying the schema version",
+                relations.join(", ")
+            )));
         }
 
         // WHY: skip KNOWLEDGE_DDL[1] — the entities relation needs a
@@ -907,29 +874,208 @@ impl KnowledgeStore {
                 .build()
             })?;
 
+        self.stamp_fresh_schema_versions()?;
+
+        Ok(())
+    }
+
+    fn schema_version_relation_exists(&self) -> crate::error::Result<bool> {
+        self.relation_names()
+            .map(|names| names.iter().any(|name| name == "schema_version"))
+    }
+
+    fn relation_names(&self) -> crate::error::Result<Vec<String>> {
+        let rows = self.run_read("::relations", std::collections::BTreeMap::new())?;
+        rows.rows
+            .into_iter()
+            .map(|row| {
+                row.first()
+                    .and_then(crate::engine::DataValue::get_str)
+                    .map(str::to_owned)
+                    .ok_or_else(|| {
+                        crate::error::EngineQuerySnafu {
+                            message: "schema relation listing returned a non-string relation name"
+                                .to_owned(),
+                        }
+                        .build()
+                    })
+            })
+            .collect()
+    }
+
+    fn schema_version_for_startup(&self) -> crate::error::Result<i64> {
+        self.schema_version().map_err(|err| {
+            Self::schema_integrity_error(format!(
+                "schema version corruption: schema_version relation is present but row 'schema' is missing; repair by restoring from backup or re-stamping only after verifying the applied schema version: {err}"
+            ))
+        })
+    }
+
+    fn verify_schema_integrity(&self, current_version: i64) -> crate::error::Result<()> {
+        if current_version < Self::MIN_SCHEMA_VERSION {
+            return Err(Self::schema_integrity_error(format!(
+                "schema version corruption: stored version {current_version} is below minimum {}; repair by restoring from backup or re-stamping only after verifying the schema version",
+                Self::MIN_SCHEMA_VERSION
+            )));
+        }
+        if current_version > Self::SCHEMA_VERSION {
+            return Err(crate::error::SchemaVersionSnafu {
+                expected: Self::SCHEMA_VERSION,
+                found: current_version,
+            }
+            .build());
+        }
+
+        for step in migration::MIGRATIONS {
+            if step.target_version > current_version {
+                break;
+            }
+            let stamp = self.migration_stamp_version(step.target_version)?;
+            match stamp {
+                Some(version) if version == step.target_version => {}
+                Some(version) => {
+                    return Err(Self::schema_integrity_error(format!(
+                        "schema version integrity hole: migration stamp for version {} recorded version {version}; repair by restoring from backup or re-stamping only after verifying migration v{} to v{} was applied",
+                        step.target_version,
+                        step.target_version - 1,
+                        step.target_version
+                    )));
+                }
+                None => {
+                    return Err(Self::schema_integrity_error(format!(
+                        "schema version integrity hole: store version {current_version} is missing migration stamp for version {}; repair by restoring from backup or re-stamping only after verifying migration v{} to v{} was applied",
+                        step.target_version,
+                        step.target_version - 1,
+                        step.target_version
+                    )));
+                }
+            }
+        }
+
+        tracing::info!(
+            current_version,
+            expected_version = Self::SCHEMA_VERSION,
+            "knowledge schema version integrity verified"
+        );
+        Ok(())
+    }
+
+    fn apply_pending_migrations(&self, current_version: i64) -> crate::error::Result<()> {
+        for step in migration::MIGRATIONS {
+            if step.target_version <= current_version {
+                continue;
+            }
+            tracing::info!(
+                current_version,
+                target_version = step.target_version,
+                expected_version = Self::SCHEMA_VERSION,
+                "applying pending knowledge schema migration"
+            );
+            (step.run)(self)?;
+            let stamped_version = self.schema_version()?;
+            if stamped_version != step.target_version {
+                return Err(crate::error::SchemaVersionSnafu {
+                    expected: step.target_version,
+                    found: stamped_version,
+                }
+                .build());
+            }
+        }
+        Ok(())
+    }
+
+    fn migration_stamp_key(version: i64) -> String {
+        format!("migration:{version}")
+    }
+
+    fn migration_stamp_version(&self, version: i64) -> crate::error::Result<Option<i64>> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
         let mut params = BTreeMap::new();
         params.insert(
             "key".to_owned(),
-            crate::engine::DataValue::Str("schema".into()),
+            DataValue::Str(Self::migration_stamp_key(version).into()),
         );
+        let rows = self.run_read(r"?[version] := *schema_version{key: $key, version}", params)?;
+        let Some(row) = rows.rows.into_iter().next() else {
+            return Ok(None);
+        };
+        marshal::extract_int(row.first().ok_or_else(|| {
+            crate::error::EngineQuerySnafu {
+                message: format!("migration stamp for version {version} is empty"),
+            }
+            .build()
+        })?)
+        .map(Some)
+    }
+
+    fn stamp_schema_version(&self, version: i64, context: &str) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        let mut params = BTreeMap::new();
+        params.insert("schema_key".to_owned(), DataValue::Str("schema".into()));
         params.insert(
-            "version".to_owned(),
-            crate::engine::DataValue::from(Self::SCHEMA_VERSION),
+            "stamp_key".to_owned(),
+            DataValue::Str(Self::migration_stamp_key(version).into()),
         );
+        params.insert("version".to_owned(), DataValue::from(version));
         self.db
             .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                r"?[key, version] <- [[$schema_key, $version], [$stamp_key, $version]]
+                  :put schema_version { key => version }",
                 params,
                 ScriptMutability::Mutable,
             )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
-                    message: e.to_string(),
+                    message: format!("{context} version write failed: {e}"),
                 }
                 .build()
             })?;
-
+        tracing::info!(
+            target_version = version,
+            "knowledge schema migration version stamped"
+        );
         Ok(())
+    }
+
+    fn stamp_fresh_schema_versions(&self) -> crate::error::Result<()> {
+        use crate::engine::ScriptMutability;
+
+        let mut rows = vec![format!(r#"["schema", {}]"#, Self::SCHEMA_VERSION)];
+        rows.extend(migration::MIGRATIONS.iter().map(|step| {
+            format!(
+                r#"["{}", {}]"#,
+                Self::migration_stamp_key(step.target_version),
+                step.target_version
+            )
+        }));
+        let script = format!(
+            "?[key, version] <- [{}] :put schema_version {{ key => version }}",
+            rows.join(", ")
+        );
+        self.db
+            .run(
+                &script,
+                std::collections::BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("fresh schema version stamp failed: {e}"),
+                }
+                .build()
+            })?;
+        Ok(())
+    }
+
+    fn schema_integrity_error(message: impl Into<String>) -> crate::error::Error {
+        crate::error::EngineQuerySnafu {
+            message: message.into(),
+        }
+        .build()
     }
 
     /// Query the stored schema version from the database.

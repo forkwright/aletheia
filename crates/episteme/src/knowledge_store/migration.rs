@@ -4,16 +4,68 @@
 )]
 use super::{KNOWLEDGE_DDL, KnowledgeStore, entities_ddl, fts_ddl};
 
+pub(super) struct MigrationStep {
+    pub(super) target_version: i64,
+    pub(super) run: fn(&KnowledgeStore) -> crate::error::Result<()>,
+}
+
+pub(super) const MIGRATIONS: &[MigrationStep] = &[
+    MigrationStep {
+        target_version: 2,
+        run: KnowledgeStore::migrate_v1_to_v2,
+    },
+    MigrationStep {
+        target_version: 3,
+        run: KnowledgeStore::migrate_v2_to_v3,
+    },
+    MigrationStep {
+        target_version: 4,
+        run: KnowledgeStore::migrate_v3_to_v4,
+    },
+    MigrationStep {
+        target_version: 5,
+        run: KnowledgeStore::migrate_v4_to_v5,
+    },
+    MigrationStep {
+        target_version: 6,
+        run: KnowledgeStore::migrate_v5_to_v6,
+    },
+    MigrationStep {
+        target_version: 7,
+        run: KnowledgeStore::migrate_v6_to_v7,
+    },
+    MigrationStep {
+        target_version: 8,
+        run: KnowledgeStore::migrate_v7_to_v8,
+    },
+    MigrationStep {
+        target_version: 9,
+        run: KnowledgeStore::migrate_v8_to_v9,
+    },
+    MigrationStep {
+        target_version: 10,
+        run: KnowledgeStore::migrate_v9_to_v10,
+    },
+    MigrationStep {
+        target_version: 11,
+        run: KnowledgeStore::migrate_v10_to_v11,
+    },
+    MigrationStep {
+        target_version: 12,
+        run: KnowledgeStore::migrate_v11_to_v12,
+    },
+    MigrationStep {
+        target_version: 13,
+        run: KnowledgeStore::migrate_v12_to_v13,
+    },
+];
+
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "migration is a single linear sequence"
-    )]
     pub(super) fn migrate_v1_to_v2(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v1 -> v2");
 
         let all_facts = self
@@ -109,21 +161,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v1->v2 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(2, "v1->v2")?;
 
         tracing::info!("knowledge schema migration v1 -> v2 complete");
         Ok(())
@@ -136,7 +174,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v2_to_v3(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v2 -> v3");
 
         let all_facts = self
@@ -241,21 +279,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v2->v3 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(3, "v2->v3")?;
 
         tracing::info!("knowledge schema migration v2 -> v3 complete");
         Ok(())
@@ -265,7 +289,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v3_to_v4(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v3 -> v4");
 
         // WHY: bounded range [3..6) to avoid creating relations from later migrations (causal_edges = index 6).
@@ -293,21 +317,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v3->v4 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(4, "v3->v4")?;
 
         tracing::info!("knowledge schema migration v3 -> v4 complete");
         Ok(())
@@ -316,7 +326,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v4_to_v5(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v4 -> v5");
 
         self.db
@@ -332,21 +342,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v4->v5 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(5, "v4->v5")?;
 
         tracing::info!("knowledge schema migration v4 -> v5 complete");
         Ok(())
@@ -356,7 +352,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v5_to_v6(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v5 -> v6");
 
         // KNOWLEDGE_DDL[6] is the causal_edges relation (index 6, zero-based).
@@ -369,21 +365,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v5->v6 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(6, "v5->v6")?;
 
         tracing::info!("knowledge schema migration v5 -> v6 complete");
         Ok(())
@@ -393,7 +375,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v6_to_v7(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v6 -> v7");
 
         let all_edges = self
@@ -459,21 +441,7 @@ impl KnowledgeStore {
                 })?;
         }
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v6->v7 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(7, "v6->v7")?;
 
         tracing::info!("knowledge schema migration v6 -> v7 complete");
         Ok(())
@@ -492,7 +460,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v8_to_v9(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v8 -> v9");
 
         self.db
@@ -508,21 +476,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v8->v9 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(9, "v8->v9")?;
 
         tracing::info!("knowledge schema migration v8 -> v9 complete");
         Ok(())
@@ -540,7 +494,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v7_to_v8(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v7 -> v8");
 
         // KNOWLEDGE_DDL[7] = type_hierarchy, [8] = derived_facts, [9] = defaults.
@@ -555,21 +509,7 @@ impl KnowledgeStore {
                 })?;
         }
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v7->v8 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(8, "v7->v8")?;
 
         tracing::info!("knowledge schema migration v7 -> v8 complete");
         Ok(())
@@ -582,7 +522,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v9_to_v10(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v9 -> v10");
 
         // KNOWLEDGE_DDL[10] = published_facts, [11] = provenance.
@@ -597,21 +537,7 @@ impl KnowledgeStore {
                 })?;
         }
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v9->v10 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(10, "v9->v10")?;
 
         tracing::info!("knowledge schema migration v9 -> v10 complete");
         Ok(())
@@ -630,7 +556,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v10_to_v11(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v10 -> v11");
 
         let all_facts = self
@@ -743,21 +669,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v10->v11 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(11, "v10->v11")?;
 
         tracing::info!("knowledge schema migration v10 -> v11 complete");
         Ok(())
@@ -775,7 +687,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v11_to_v12(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v11 -> v12");
 
         let all_facts = self
@@ -890,21 +802,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v11->v12 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(12, "v11->v12")?;
 
         tracing::info!("knowledge schema migration v11 -> v12 complete");
         Ok(())
@@ -928,7 +826,7 @@ impl KnowledgeStore {
     pub(super) fn migrate_v12_to_v13(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
-        use crate::engine::{DataValue, ScriptMutability};
+        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v12 -> v13");
 
         let all_entities = self
@@ -1002,21 +900,7 @@ impl KnowledgeStore {
                 })?;
         }
 
-        let mut params = BTreeMap::new();
-        params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
-        self.db
-            .run(
-                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v12->v13 version write failed: {e}"),
-                }
-                .build()
-            })?;
+        self.stamp_schema_version(13, "v12->v13")?;
 
         tracing::info!("knowledge schema migration v12 -> v13 complete");
         Ok(())
