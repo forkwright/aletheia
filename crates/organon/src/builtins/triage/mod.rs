@@ -31,7 +31,9 @@ use crate::types::{
 use prompt_gen::generate_prompt;
 use scoring::{compute_priority_score, score_relevance};
 
-use super::workspace::{extract_opt_f64, extract_opt_str, extract_opt_u64, extract_str};
+use super::workspace::{
+    extract_opt_f64, extract_opt_str, extract_opt_u64, extract_str, validate_path,
+};
 
 /// A parsed GitHub issue with extracted metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,8 +201,11 @@ impl ToolExecutor for IssueTriageExecutor {
                 pb.partial_cmp(&pa).unwrap_or(std::cmp::Ordering::Equal)
             });
 
-            let staging = std::path::Path::new(staging_dir);
-            if let Err(e) = tokio::fs::create_dir_all(staging).await {
+            let staging = match validate_path(staging_dir, ctx, &input.name) {
+                Ok(p) => p,
+                Err(e) => return Ok(ToolResult::error(e.to_string())),
+            };
+            if let Err(e) = tokio::fs::create_dir_all(&staging).await {
                 return Ok(ToolResult::error(format!(
                     "failed to create staging directory: {e}"
                 )));
@@ -262,15 +267,21 @@ impl ToolExecutor for IssueApproveExecutor {
             let queue_dir = extract_str(&input.arguments, "queue_dir", &input.name)?;
             let prompt_id = extract_str(&input.arguments, "prompt_id", &input.name)?;
 
-            let staging = std::path::Path::new(staging_dir);
-            let queue = std::path::Path::new(queue_dir);
+            let staging = match validate_path(staging_dir, ctx, &input.name) {
+                Ok(p) => p,
+                Err(e) => return Ok(ToolResult::error(e.to_string())),
+            };
+            let queue = match validate_path(queue_dir, ctx, &input.name) {
+                Ok(p) => p,
+                Err(e) => return Ok(ToolResult::error(e.to_string())),
+            };
 
-            let source = match find_staged_prompt(staging, prompt_id).await {
+            let source = match find_staged_prompt(&staging, prompt_id).await {
                 Ok(p) => p,
                 Err(msg) => return Ok(ToolResult::error(msg)),
             };
 
-            if let Err(e) = tokio::fs::create_dir_all(queue).await {
+            if let Err(e) = tokio::fs::create_dir_all(&queue).await {
                 return Ok(ToolResult::error(format!(
                     "failed to create queue directory: {e}"
                 )));
@@ -677,8 +688,8 @@ fn issue_triage_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
-        groups: vec![ToolGroupId::Read, ToolGroupId::Plan],
-        tags: vec![ToolTag::Verify, ToolTag::Plan],
+        groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Plan],
     }
 }
 
@@ -735,8 +746,8 @@ fn issue_approve_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
-        groups: vec![ToolGroupId::Verify, ToolGroupId::Plan],
-        tags: vec![ToolTag::Edit, ToolTag::Verify],
+        groups: vec![ToolGroupId::Edit],
+        tags: vec![ToolTag::Verify],
     }
 }
 

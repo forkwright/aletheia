@@ -9,7 +9,9 @@ use koina::id::{NousId, SessionId, ToolName};
 
 use super::*;
 use crate::testing::install_crypto_provider;
-use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolServices};
+use crate::types::{
+    ServerToolConfig, ToolContext, ToolGroupId, ToolGroupPolicy, ToolInput, ToolServices,
+};
 
 fn test_ctx() -> ToolContext {
     install_crypto_provider();
@@ -238,6 +240,112 @@ async fn approve_moves_staged_prompt_to_queue() {
     assert!(!prompt_path.exists(), "staged file should be removed");
     let queue_path = queue.path().join("42-test-issue.md");
     assert!(queue_path.exists(), "file should exist in queue");
+}
+
+#[tokio::test]
+async fn approve_rejects_out_of_workspace_staging_dir() {
+    let ctx = test_ctx();
+    let queue = tempfile::tempdir().expect("tempdir");
+
+    let executor = IssueApproveExecutor;
+    let input = ToolInput {
+        name: ToolName::new("issue_approve").expect("valid"),
+        tool_use_id: "toolu_4".to_owned(),
+        arguments: serde_json::json!({
+            "staging_dir": "/etc/aletheia-staging",
+            "queue_dir": queue.path().display().to_string(),
+            "prompt_id": "42"
+        }),
+    };
+
+    let result = executor.execute(&input, &ctx).await.expect("execute");
+    assert!(
+        result.is_error,
+        "should error for out-of-workspace staging_dir"
+    );
+    let summary = result.content.text_summary();
+    assert!(
+        summary.contains("outside allowed roots") || summary.contains("allowed roots"),
+        "error should mention allowed roots: {summary}"
+    );
+}
+
+#[tokio::test]
+async fn approve_rejects_out_of_workspace_queue_dir() {
+    let ctx = test_ctx();
+    let staging = tempfile::tempdir().expect("tempdir");
+
+    let executor = IssueApproveExecutor;
+    let input = ToolInput {
+        name: ToolName::new("issue_approve").expect("valid"),
+        tool_use_id: "toolu_5".to_owned(),
+        arguments: serde_json::json!({
+            "staging_dir": staging.path().display().to_string(),
+            "queue_dir": "/root/aletheia-queue",
+            "prompt_id": "42"
+        }),
+    };
+
+    let result = executor.execute(&input, &ctx).await.expect("execute");
+    assert!(
+        result.is_error,
+        "should error for out-of-workspace queue_dir"
+    );
+    let summary = result.content.text_summary();
+    assert!(
+        summary.contains("outside allowed roots") || summary.contains("allowed roots"),
+        "error should mention allowed roots: {summary}"
+    );
+}
+
+#[test]
+fn edit_tools_absent_from_read_only_and_verify_only_policy_surfaces() {
+    let mut registry = crate::registry::ToolRegistry::new();
+    register(&mut registry).expect("registration should succeed");
+
+    let read_only =
+        registry.definitions_for_policy(&ToolGroupPolicy::groups(vec![ToolGroupId::Read]));
+    let read_names: HashSet<&str> = read_only.iter().map(|d| d.name.as_str()).collect();
+    assert!(
+        read_names.contains("issue_scan"),
+        "issue_scan should be available under read-only"
+    );
+    assert!(
+        !read_names.contains("issue_triage"),
+        "issue_triage should not be available under read-only"
+    );
+    assert!(
+        !read_names.contains("issue_approve"),
+        "issue_approve should not be available under read-only"
+    );
+
+    let verify_only =
+        registry.definitions_for_policy(&ToolGroupPolicy::groups(vec![ToolGroupId::Verify]));
+    let verify_names: HashSet<&str> = verify_only.iter().map(|d| d.name.as_str()).collect();
+    assert!(
+        !verify_names.contains("issue_triage"),
+        "issue_triage should not be available under verify-only"
+    );
+    assert!(
+        !verify_names.contains("issue_approve"),
+        "issue_approve should not be available under verify-only"
+    );
+
+    let plan_only =
+        registry.definitions_for_policy(&ToolGroupPolicy::groups(vec![ToolGroupId::Plan]));
+    let plan_names: HashSet<&str> = plan_only.iter().map(|d| d.name.as_str()).collect();
+    assert!(
+        plan_names.contains("issue_scan"),
+        "issue_scan should be available under plan-only"
+    );
+    assert!(
+        !plan_names.contains("issue_triage"),
+        "issue_triage should not be available under plan-only"
+    );
+    assert!(
+        !plan_names.contains("issue_approve"),
+        "issue_approve should not be available under plan-only"
+    );
 }
 
 #[tokio::test]
