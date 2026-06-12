@@ -115,120 +115,102 @@ impl AgentStatusStore {
 
 // -- Service health -----------------------------------------------------------
 
-/// Result of the last run of a cron job.
+/// Aggregate health status derived from the server's `/api/health` response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
-pub enum JobResult {
+pub enum HealthStatus {
+    /// No health data has been loaded or the response was unparseable.
     #[default]
     Unknown,
-    Success,
-    Failure,
+    /// All subsystem checks pass.
+    Healthy,
+    /// One or more checks warn; no hard failures.
+    Degraded,
+    /// One or more checks fail or time out.
+    Unhealthy,
 }
 
-impl JobResult {
+impl HealthStatus {
     #[must_use]
-    pub(crate) fn dot_color(&self) -> &'static str {
-        match self {
-            Self::Unknown => "var(--text-muted)",
-            Self::Success => "var(--status-success)",
-            Self::Failure => "var(--status-error)",
+    pub(crate) fn from_status(status: &str) -> Self {
+        match status {
+            "healthy" | "pass" => Self::Healthy,
+            "degraded" | "warn" => Self::Degraded,
+            "unhealthy" | "fail" | "timeout" => Self::Unhealthy,
+            _ => Self::Unknown,
         }
     }
-}
 
-/// Status of a daemon task.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[non_exhaustive]
-pub enum TaskStatus {
-    #[default]
-    Running,
-    Stopped,
-    Failed,
-}
-
-impl TaskStatus {
     #[must_use]
     pub(crate) fn dot_color(&self) -> &'static str {
         match self {
-            Self::Running => "var(--status-success)",
-            Self::Stopped => "var(--text-muted)",
-            Self::Failed => "var(--status-error)",
+            Self::Healthy => "var(--status-success)",
+            Self::Degraded => "var(--status-warning)",
+            Self::Unhealthy => "var(--status-error)",
+            Self::Unknown => "var(--text-muted)",
         }
     }
 
     #[must_use]
     pub(crate) fn label(&self) -> &'static str {
         match self {
-            Self::Running => "running",
-            Self::Stopped => "stopped",
-            Self::Failed => "failed",
+            Self::Healthy => "healthy",
+            Self::Degraded => "degraded",
+            Self::Unhealthy => "unhealthy",
+            Self::Unknown => "unknown",
         }
     }
 }
 
-/// A single cron job entry in the service health panel.
+/// A single check row from the server's `/api/health` response.
 #[derive(Debug, Clone)]
-pub(crate) struct CronJobInfo {
+pub(crate) struct HealthCheckInfo {
     pub name: String,
-    pub schedule: String,
-    pub last_run: Option<String>,
-    #[expect(dead_code, reason = "deserialized from API but not yet rendered")]
-    pub next_run: Option<String>,
-    pub last_result: JobResult,
-}
-
-/// A single daemon task entry.
-#[derive(Debug, Clone)]
-pub(crate) struct DaemonTaskInfo {
-    pub name: String,
-    pub status: TaskStatus,
-    pub uptime: Option<String>,
-    pub restart_count: u32,
-}
-
-/// Trend direction for failure counts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[non_exhaustive]
-pub enum Trend {
-    Up,
-    Down,
-    #[default]
-    Stable,
-}
-
-impl Trend {
-    #[must_use]
-    pub(crate) fn indicator(&self) -> &'static str {
-        match self {
-            Self::Up => "\u{25b2}",     // ▲
-            Self::Down => "\u{25bc}",   // ▼
-            Self::Stable => "\u{2014}", // —
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn color(&self) -> &'static str {
-        match self {
-            Self::Up => "var(--status-error)",
-            Self::Down => "var(--status-success)",
-            Self::Stable => "var(--text-secondary)",
-        }
-    }
+    pub status: String,
+    pub message: Option<String>,
 }
 
 /// Aggregate service health data.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ServiceHealthStore {
-    pub cron_jobs: Vec<CronJobInfo>,
-    pub daemon_tasks: Vec<DaemonTaskInfo>,
-    pub failure_count: u32,
-    pub failure_trend: Trend,
+    /// Aggregate status reported by the server.
+    pub status: HealthStatus,
+    /// Individual subsystem checks.
+    pub checks: Vec<HealthCheckInfo>,
+    /// Reachability or parse error when health data could not be loaded.
+    pub error: Option<String>,
 }
 
 impl ServiceHealthStore {
     #[must_use]
     pub(crate) fn new() -> Self {
         Self::default()
+    }
+
+    /// Build store from a parsed health response.
+    pub(crate) fn from_response(response: skene::api::types::HealthResponse) -> Self {
+        Self {
+            status: HealthStatus::from_status(&response.status),
+            checks: response
+                .checks
+                .into_iter()
+                .map(|c| HealthCheckInfo {
+                    name: c.name,
+                    status: c.status,
+                    message: c.message,
+                })
+                .collect(),
+            error: None,
+        }
+    }
+
+    /// Build store for an unreachable or unparseable health response.
+    pub(crate) fn unreachable(message: String) -> Self {
+        Self {
+            status: HealthStatus::Unknown,
+            checks: Vec::new(),
+            error: Some(message),
+        }
     }
 }
 
@@ -259,6 +241,19 @@ pub(crate) struct FeatureFlag {
     pub description: String,
     pub enabled: bool,
     pub pending: bool,
+    /// Human-readable error from the last failed update. Kept visible until
+    /// a later update succeeds or the user refreshes the panel.
+    pub error: Option<String>,
+}
+
+/// Wire payload for a single feature flag entry sent to
+/// `PUT /api/v1/config/feature_flags`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FeatureFlagPayloadEntry {
+    pub key: String,
+    pub description: String,
+    pub enabled: bool,
 }
 
 /// Aggregate toggle state with optimistic update support.
@@ -268,6 +263,10 @@ pub(crate) struct ToggleStore {
     pub tool_toggles: Vec<ToolToggle>,
     pub feature_flags: Vec<FeatureFlag>,
     pub expanded_agent: Option<NousId>,
+    /// Paths returned by the last config update that require a server restart.
+    /// Surfaced in the feature-flag panel so operators know when a restart is
+    /// needed for a change to take effect.
+    pub restart_required: Vec<String>,
 }
 
 impl ToggleStore {
@@ -345,12 +344,43 @@ impl ToggleStore {
             })
     }
 
+    /// Build the complete `Vec<FeatureFlagPayloadEntry>` that must be sent to
+    /// `PUT /api/v1/config/feature_flags`. Sending the whole section preserves
+    /// every flag's state instead of PATCH-ing a single key.
+    #[must_use]
+    pub(crate) fn feature_flags_payload(&self) -> Vec<FeatureFlagPayloadEntry> {
+        self.feature_flags
+            .iter()
+            .map(|f| FeatureFlagPayloadEntry {
+                key: f.key.clone(),
+                description: f.description.clone(),
+                enabled: f.enabled,
+            })
+            .collect()
+    }
+
     /// Resolve an in-flight feature flag toggle.
-    pub(crate) fn resolve_feature(&mut self, key: &str, success: bool, prev: bool) {
+    ///
+    /// On failure the optimistic flip is *not* silently reverted; instead the
+    /// flag keeps its new state and `error` is populated so the UI can show a
+    /// visible failure state. On success the error is cleared.
+    pub(crate) fn resolve_feature(
+        &mut self,
+        key: &str,
+        success: bool,
+        _prev: bool,
+        error: Option<String>,
+        restart_required: Vec<String>,
+    ) {
+        self.restart_required = restart_required;
         if let Some(f) = self.feature_flags.iter_mut().find(|f| f.key == key) {
             f.pending = false;
-            if !success {
-                f.enabled = prev;
+            if success {
+                f.error = None;
+            } else {
+                // Keep the optimistic state (do not roll back) and surface the
+                // failure so the operator sees the write did not land.
+                f.error = error.or(Some("Update failed".to_string()));
             }
         }
     }
@@ -378,6 +408,7 @@ pub(crate) fn health_from_status(status: &str) -> HealthTier {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 
@@ -505,21 +536,6 @@ mod tests {
     }
 
     #[test]
-    fn trend_indicators() {
-        assert_eq!(Trend::Up.indicator(), "\u{25b2}");
-        assert_eq!(Trend::Down.indicator(), "\u{25bc}");
-        assert_eq!(Trend::Stable.indicator(), "\u{2014}");
-    }
-
-    #[test]
-    fn trend_colors() {
-        // WHY: Up = error (failures rising = bad), Down = success.
-        assert_eq!(Trend::Up.color(), "var(--status-error)");
-        assert_eq!(Trend::Down.color(), "var(--status-success)");
-        assert_eq!(Trend::Stable.color(), "var(--text-secondary)");
-    }
-
-    #[test]
     fn health_tier_dot_color() {
         assert_eq!(HealthTier::Healthy.dot_color(), "var(--status-success)");
         assert_eq!(HealthTier::Degraded.dot_color(), "var(--status-warning)");
@@ -539,34 +555,65 @@ mod tests {
     }
 
     #[test]
-    fn job_result_dot_color() {
-        assert_eq!(JobResult::Unknown.dot_color(), "var(--text-muted)");
-        assert_eq!(JobResult::Success.dot_color(), "var(--status-success)");
-        assert_eq!(JobResult::Failure.dot_color(), "var(--status-error)");
+    fn health_status_from_string() {
+        assert_eq!(HealthStatus::from_status("healthy"), HealthStatus::Healthy);
+        assert_eq!(HealthStatus::from_status("pass"), HealthStatus::Healthy);
+        assert_eq!(
+            HealthStatus::from_status("degraded"),
+            HealthStatus::Degraded
+        );
+        assert_eq!(HealthStatus::from_status("warn"), HealthStatus::Degraded);
+        assert_eq!(
+            HealthStatus::from_status("unhealthy"),
+            HealthStatus::Unhealthy
+        );
+        assert_eq!(HealthStatus::from_status("fail"), HealthStatus::Unhealthy);
+        assert_eq!(HealthStatus::from_status("unknown"), HealthStatus::Unknown);
     }
 
     #[test]
-    fn job_result_default_unknown() {
-        assert_eq!(JobResult::default(), JobResult::Unknown);
+    fn health_status_dot_color() {
+        assert_eq!(HealthStatus::Healthy.dot_color(), "var(--status-success)");
+        assert_eq!(HealthStatus::Degraded.dot_color(), "var(--status-warning)");
+        assert_eq!(HealthStatus::Unhealthy.dot_color(), "var(--status-error)");
+        assert_eq!(HealthStatus::Unknown.dot_color(), "var(--text-muted)");
     }
 
     #[test]
-    fn task_status_dot_color() {
-        assert_eq!(TaskStatus::Running.dot_color(), "var(--status-success)");
-        assert_eq!(TaskStatus::Stopped.dot_color(), "var(--text-muted)");
-        assert_eq!(TaskStatus::Failed.dot_color(), "var(--status-error)");
+    fn health_status_label() {
+        assert_eq!(HealthStatus::Healthy.label(), "healthy");
+        assert_eq!(HealthStatus::Degraded.label(), "degraded");
+        assert_eq!(HealthStatus::Unhealthy.label(), "unhealthy");
+        assert_eq!(HealthStatus::Unknown.label(), "unknown");
     }
 
     #[test]
-    fn task_status_label() {
-        assert_eq!(TaskStatus::Running.label(), "running");
-        assert_eq!(TaskStatus::Stopped.label(), "stopped");
-        assert_eq!(TaskStatus::Failed.label(), "failed");
+    fn service_health_store_from_response() {
+        let response = skene::api::types::HealthResponse {
+            status: "degraded".to_string(),
+            version: "0.13.1".to_string(),
+            git_sha: "abc123".to_string(),
+            uptime_seconds: 300,
+            checks: vec![skene::api::types::HealthCheck {
+                name: "providers".to_string(),
+                status: "warn".to_string(),
+                message: Some("no LLM providers registered".to_string()),
+            }],
+            data_dir: "/tmp/data".to_string(),
+        };
+        let store = ServiceHealthStore::from_response(response);
+        assert_eq!(store.status, HealthStatus::Degraded);
+        assert_eq!(store.checks.len(), 1);
+        assert_eq!(store.checks[0].name, "providers");
+        assert!(store.error.is_none());
     }
 
     #[test]
-    fn task_status_default_running() {
-        assert_eq!(TaskStatus::default(), TaskStatus::Running);
+    fn service_health_store_unreachable_keeps_error() {
+        let store = ServiceHealthStore::unreachable("connection refused".to_string());
+        assert_eq!(store.status, HealthStatus::Unknown);
+        assert!(store.checks.is_empty());
+        assert_eq!(store.error.as_deref(), Some("connection refused"));
     }
 
     #[test]
@@ -606,10 +653,9 @@ mod tests {
     #[test]
     fn service_health_store_default_empty() {
         let s = ServiceHealthStore::new();
-        assert!(s.cron_jobs.is_empty());
-        assert!(s.daemon_tasks.is_empty());
-        assert_eq!(s.failure_count, 0);
-        assert_eq!(s.failure_trend, Trend::Stable);
+        assert_eq!(s.status, HealthStatus::Unknown);
+        assert!(s.checks.is_empty());
+        assert!(s.error.is_none());
     }
 
     #[test]
@@ -678,6 +724,7 @@ mod tests {
             description: "Beta features".to_string(),
             enabled: false,
             pending: false,
+            error: None,
         });
         let prev = store.flip_feature("experimental");
         assert_eq!(prev, Some(false));
@@ -700,10 +747,25 @@ mod tests {
             description: String::new(),
             enabled: true,
             pending: true,
+            error: None,
         });
-        store.resolve_feature("k", false, false);
-        assert!(!store.feature_flags[0].enabled);
+        store.resolve_feature(
+            "k",
+            false,
+            false,
+            Some("server error".to_string()),
+            Vec::new(),
+        );
+        assert!(
+            store.feature_flags[0].enabled,
+            "failure must keep optimistic state"
+        );
         assert!(!store.feature_flags[0].pending);
+        assert_eq!(
+            store.feature_flags[0].error,
+            Some("server error".to_string()),
+            "failure must surface error"
+        );
     }
 
     #[test]
@@ -714,10 +776,16 @@ mod tests {
             description: String::new(),
             enabled: true,
             pending: true,
+            error: Some("old error".to_string()),
         });
-        store.resolve_feature("k", true, false);
+        store.resolve_feature("k", true, false, None, vec!["feature_flags.k".to_string()]);
         assert!(store.feature_flags[0].enabled);
         assert!(!store.feature_flags[0].pending);
+        assert!(
+            store.feature_flags[0].error.is_none(),
+            "success must clear error"
+        );
+        assert_eq!(store.restart_required, vec!["feature_flags.k".to_string()]);
     }
 
     #[test]
@@ -726,7 +794,7 @@ mod tests {
         // Should not panic when id is missing.
         store.resolve_agent(&nid("ghost"), true, false);
         store.resolve_tool(&nid("ghost"), "missing", true, false);
-        store.resolve_feature("missing", true, false);
+        store.resolve_feature("missing", true, false, None, Vec::new());
         assert!(store.agent_toggles.is_empty());
         assert!(store.tool_toggles.is_empty());
         assert!(store.feature_flags.is_empty());
@@ -736,5 +804,69 @@ mod tests {
     fn toggle_store_tools_for_agent_empty_when_none_match() {
         let store = ToggleStore::new();
         assert!(store.tools_for_agent(&nid("syn")).is_empty());
+    }
+
+    #[test]
+    fn feature_flags_payload_preserves_all_entries() {
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "alpha".to_string(),
+            description: "Alpha flag".to_string(),
+            enabled: true,
+            pending: false,
+            error: None,
+        });
+        store.feature_flags.push(FeatureFlag {
+            key: "beta".to_string(),
+            description: "Beta flag".to_string(),
+            enabled: false,
+            pending: false,
+            error: None,
+        });
+
+        let payload = store.feature_flags_payload();
+        assert_eq!(payload.len(), 2);
+        assert_eq!(payload[0].key, "alpha");
+        assert!(payload[0].enabled);
+        assert_eq!(payload[1].key, "beta");
+        assert!(!payload[1].enabled);
+    }
+
+    #[test]
+    fn feature_flags_payload_serializes_camel_case() {
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "alpha".to_string(),
+            description: "Alpha flag".to_string(),
+            enabled: true,
+            pending: false,
+            error: None,
+        });
+
+        let json = serde_json::to_value(store.feature_flags_payload()).unwrap();
+        let entry = json.as_array().unwrap()[0].as_object().unwrap();
+        assert!(entry.contains_key("key"));
+        assert!(entry.contains_key("description"));
+        assert!(entry.contains_key("enabled"));
+        assert!(!entry.contains_key("error"));
+        assert!(!entry.contains_key("pending"));
+    }
+
+    #[test]
+    fn toggle_store_resolve_feature_failure_without_error_gets_default_message() {
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "k".to_string(),
+            description: String::new(),
+            enabled: true,
+            pending: true,
+            error: None,
+        });
+        store.flip_feature("k");
+        store.resolve_feature("k", false, true, None, Vec::new());
+        assert_eq!(
+            store.feature_flags[0].error,
+            Some("Update failed".to_string())
+        );
     }
 }
