@@ -262,11 +262,6 @@ clock_skew_leeway_secs = 30
 | `http_port` | u16 | `8080` | signal-cli JSON-RPC port |
 | `cli_path` | string | -- | Path to signal-cli binary (auto-detected if unset) |
 | `auto_start` | bool | `true` | Auto-start receive loop |
-| `dm_policy` | string | `"contacts"` | DM access: `"contacts"` (known contacts only), `"open"` (anyone), `"allowlist"` |
-| `group_policy` | string | `"allowlist"` | Group access: `"open"`, `"allowlist"` |
-| `require_mention` | bool | `true` | Require @mention in groups |
-| `send_read_receipts` | bool | `true` | Send read receipts |
-| `text_chunk_limit` | u32 | `2000` | Max chars per outgoing message chunk |
 
 ```toml
 [channels.signal]
@@ -276,10 +271,10 @@ enabled = true
 account = "+15551234567"
 http_host = "localhost"
 http_port = 8080
-dm_policy = "contacts"
-group_policy = "allowlist"
-require_mention = true
+auto_start = true
 ```
+
+The following fields are **not implemented** in the current runtime: `dm_policy`, `group_policy`, `require_mention`, `send_read_receipts`, and `text_chunk_limit`. They are accepted by the typed config but are not read by `build_signal_provider`; inbound Signal routing and message handling are controlled by the channel bindings (see [bindings](#bindings)) and by signal-cli's own settings until these policy fields are wired.
 
 ---
 

@@ -235,7 +235,7 @@ nous_id = "pronoea"
 
 4. Restart the server. Send a message to your Signal number.
 
-See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for DM/group policies, allowlists, and multi-account setup.
+See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for the supported Signal account fields and multi-account setup. DM/group gating, mention requirements, read receipts, and message chunking are not enforced by the Aletheia runtime today; configure those behaviors in signal-cli directly.
 
 ---
 
