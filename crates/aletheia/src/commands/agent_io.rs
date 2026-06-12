@@ -296,7 +296,7 @@ fn export_knowledge(
     nous_id: &str,
 ) -> Result<Option<mneme::portability::KnowledgeExport>> {
     use mneme::knowledge_store::KnowledgeStore;
-    use mneme::portability::KnowledgeExport;
+    use mneme::portability::{FactEntityEdge, KnowledgeExport};
 
     let knowledge_path = knowledge_path_for_nous(oikos, nous_id);
     if !knowledge_path.exists() {
@@ -319,6 +319,12 @@ fn export_knowledge(
     let entities = store
         .list_entities_for_facts(&fact_ids)
         .with_whatever_context(|_| format!("failed to list entities for '{nous_id}'"))?;
+    let fact_entity_edges = store
+        .list_fact_entity_edges_for_facts(&fact_ids)
+        .with_whatever_context(|_| format!("failed to list fact/entity links for '{nous_id}'"))?
+        .into_iter()
+        .map(|(fact_id, entity_id)| FactEntityEdge { fact_id, entity_id })
+        .collect();
     let entity_ids: std::collections::HashSet<String> = entities
         .iter()
         .map(|entity| entity.id.as_str().to_owned())
@@ -335,6 +341,7 @@ fn export_knowledge(
         facts,
         entities,
         relationships,
+        fact_entity_edges,
     }))
 }
 
@@ -429,14 +436,15 @@ fn import_knowledge(
             .insert_relationship(rel)
             .with_whatever_context(|_| format!("import rel {:?} -> {:?}", rel.src, rel.dst))?;
     }
-    for fact in &knowledge.facts {
-        for entity in &knowledge.entities {
-            store
-                .insert_fact_entity(&fact.id, &entity.id)
-                .with_whatever_context(|_| {
-                    format!("import fact/entity link {:?} -> {:?}", fact.id, entity.id)
-                })?;
-        }
+    for edge in &knowledge.fact_entity_edges {
+        store
+            .insert_fact_entity(&edge.fact_id, &edge.entity_id)
+            .with_whatever_context(|_| {
+                format!(
+                    "import fact/entity link {:?} -> {:?}",
+                    edge.fact_id, edge.entity_id
+                )
+            })?;
     }
 
     if let Some(provider) = embedding_provider.as_ref() {
@@ -471,7 +479,9 @@ fn import_knowledge(
     reason = "agent export assembles config, workspace, sessions, messages, and notes into one portability file"
 )]
 pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
-    use mneme::portability::{AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo};
+    use mneme::portability::{
+        AgentFile, ExportedMessage, ExportedNote, ExportedSession, ExportedUsageRecord, NousInfo,
+    };
 
     let oikos = super::resolve_oikos(instance_root)?;
     let config =
@@ -529,8 +539,24 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
                 token_estimate: msg.token_estimate,
                 is_distilled: msg.is_distilled,
                 created_at: msg.created_at,
+                tool_call_id: msg.tool_call_id,
+                tool_name: msg.tool_name,
             })
             .collect();
+
+        let usage_records = store
+            .get_usage_for_session(&session.id)
+            .with_whatever_context(|_| format!("failed to read usage for {}", session.id))?
+            .into_iter()
+            .map(|record| ExportedUsageRecord {
+                turn_seq: record.turn_seq,
+                input_tokens: record.input_tokens,
+                output_tokens: record.output_tokens,
+                cache_read_tokens: record.cache_read_tokens,
+                cache_write_tokens: record.cache_write_tokens,
+                model: record.model,
+            })
+            .collect::<Vec<_>>();
 
         let notes = store
             .get_notes(&session.id)
@@ -571,6 +597,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             distillation_priming: None,
             notes,
             messages,
+            usage_records: Some(usage_records),
         });
     }
 
@@ -1000,8 +1027,8 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                         seq: msg.seq,
                         role,
                         content: msg.content.clone(),
-                        tool_call_id: None,
-                        tool_name: None,
+                        tool_call_id: msg.tool_call_id.clone(),
+                        tool_name: msg.tool_name.clone(),
                         token_estimate: msg.token_estimate,
                         is_distilled: msg.is_distilled,
                         created_at: msg.created_at.clone(),
@@ -1012,6 +1039,27 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                             msg.seq, session.id
                         )
                     })?;
+            }
+
+            if let Some(usage_records) = &session.usage_records {
+                for record in usage_records {
+                    store
+                        .record_usage(&mneme::types::UsageRecord {
+                            session_id: imported.id.clone(),
+                            turn_seq: record.turn_seq,
+                            input_tokens: record.input_tokens,
+                            output_tokens: record.output_tokens,
+                            cache_read_tokens: record.cache_read_tokens,
+                            cache_write_tokens: record.cache_write_tokens,
+                            model: record.model.clone(),
+                        })
+                        .with_whatever_context(|_| {
+                            format!(
+                                "failed to import usage record turn {} into session {}",
+                                record.turn_seq, session.id
+                            )
+                        })?;
+                }
             }
 
             if let Some(ws) = &session.working_state {
@@ -1537,7 +1585,8 @@ mod tests {
     use std::fmt::Write as _;
 
     use mneme::portability::{
-        AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo, WorkspaceData,
+        AgentFile, ExportedMessage, ExportedNote, ExportedSession, ExportedUsageRecord, NousInfo,
+        WorkspaceData,
     };
 
     use super::*;
@@ -1776,16 +1825,28 @@ mod tests {
                         token_estimate: 50,
                         is_distilled: false,
                         created_at: "2026-03-05T10:00:00Z".to_owned(),
+                        tool_call_id: None,
+                        tool_name: None,
                     },
                     ExportedMessage {
-                        role: "assistant".to_owned(),
-                        content: "hi there".to_owned(),
+                        role: "tool_result".to_owned(),
+                        content: "tool output".to_owned(),
                         seq: 2,
-                        token_estimate: 100,
+                        token_estimate: 25,
                         is_distilled: false,
                         created_at: "2026-03-05T10:00:01Z".to_owned(),
+                        tool_call_id: Some("call-1".to_owned()),
+                        tool_name: Some("read_file".to_owned()),
                     },
                 ],
+                usage_records: Some(vec![ExportedUsageRecord {
+                    turn_seq: 1,
+                    input_tokens: 50,
+                    output_tokens: 100,
+                    cache_read_tokens: 3,
+                    cache_write_tokens: 4,
+                    model: Some("claude-sonnet-4-6".to_owned()),
+                }]),
             }],
             memory: None,
             knowledge: None,
@@ -1841,7 +1902,25 @@ workspace = "nous/{agent_id}"
             .append_message(&session.id, Role::User, "hello", None, None, 5)
             .unwrap();
         store
-            .append_message(&session.id, Role::Assistant, "hi", None, None, 7)
+            .append_message(
+                &session.id,
+                Role::ToolResult,
+                "tool output",
+                Some("call-export"),
+                Some("read_file"),
+                7,
+            )
+            .unwrap();
+        store
+            .record_usage(&mneme::types::UsageRecord {
+                session_id: session.id.clone(),
+                turn_seq: 1,
+                input_tokens: 5,
+                output_tokens: 7,
+                cache_read_tokens: 2,
+                cache_write_tokens: 3,
+                model: Some("mock-model".to_owned()),
+            })
             .unwrap();
         store
             .add_note(&session.id, "alice", "task", "remember this")
@@ -1869,6 +1948,21 @@ workspace = "nous/{agent_id}"
         );
         assert_eq!(exported.sessions.len(), 1);
         assert_eq!(exported.sessions[0].messages.len(), 2);
+        assert_eq!(
+            exported.sessions[0].messages[1].tool_call_id.as_deref(),
+            Some("call-export")
+        );
+        assert_eq!(
+            exported.sessions[0].messages[1].tool_name.as_deref(),
+            Some("read_file")
+        );
+        let usage_records = exported.sessions[0]
+            .usage_records
+            .as_ref()
+            .expect("usage records exported");
+        assert_eq!(usage_records.len(), 1);
+        assert_eq!(usage_records[0].input_tokens, 5);
+        assert_eq!(usage_records[0].cache_write_tokens, 3);
         assert_eq!(exported.sessions[0].notes.len(), 1);
     }
 
@@ -2027,6 +2121,10 @@ workspace = "nous/{agent_id}"
     /// WHY(#4163): import preserves per-message `seq`, `is_distilled`, and
     /// `created_at` via [`insert_message_raw`].
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "regression test exercises full export/import metadata fidelity"
+    )]
     fn import_preserves_message_metadata_4163_d() {
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
@@ -2041,10 +2139,28 @@ workspace = "nous/{agent_id}"
             .append_message(&session.id, Role::User, "msg one", None, None, 10)
             .unwrap();
         source_store
-            .append_message(&session.id, Role::Assistant, "msg two", None, None, 20)
+            .append_message(
+                &session.id,
+                Role::ToolResult,
+                "msg two",
+                Some("call-meta"),
+                Some("read_file"),
+                20,
+            )
             .unwrap();
         source_store
             .append_message(&session.id, Role::User, "msg three", None, None, 30)
+            .unwrap();
+        source_store
+            .record_usage(&mneme::types::UsageRecord {
+                session_id: session.id.clone(),
+                turn_seq: 1,
+                input_tokens: 40,
+                output_tokens: 20,
+                cache_read_tokens: 1,
+                cache_write_tokens: 2,
+                model: Some("mock-model".to_owned()),
+            })
             .unwrap();
         // Distill seqs 1 and 2 so the export includes both distilled and
         // non-distilled messages.
@@ -2127,7 +2243,21 @@ workspace = "nous/{agent_id}"
                 "#4163/D: token_estimate must be preserved for seq {}",
                 src.seq
             );
+            assert_eq!(
+                dst.tool_call_id, src.tool_call_id,
+                "#4799: tool_call_id must be preserved for seq {}",
+                src.seq
+            );
+            assert_eq!(
+                dst.tool_name, src.tool_name,
+                "#4799: tool_name must be preserved for seq {}",
+                src.seq
+            );
         }
+        let usage_records = dest_store.get_usage_for_session(&session.id).unwrap();
+        assert_eq!(usage_records.len(), 1, "#4799: usage record imported");
+        assert_eq!(usage_records[0].input_tokens, 40);
+        assert_eq!(usage_records[0].cache_write_tokens, 2);
     }
 
     /// WHY(#4163): regression — `export_agent` must read session history via
@@ -2339,7 +2469,7 @@ workspace = "nous/{agent_id}"
         let history = store.get_history(&sessions[0].id, None).unwrap();
         assert_eq!(history.len(), 2, "two messages should be imported");
         assert_eq!(history[0].content, "hello");
-        assert_eq!(history[1].content, "hi there");
+        assert_eq!(history[1].content, "tool output");
     }
 
     #[test]
@@ -2743,6 +2873,22 @@ workspace = "nous/{agent_id}"
         assert_eq!(dest_rel.relation, "powers");
         assert!((dest_rel.weight - 1.0).abs() < f64::EPSILON);
 
+        let dest_edges = store
+            .list_fact_entity_edges_for_facts(std::slice::from_ref(&dest_fact.id))
+            .unwrap();
+        let mut dest_edge_pairs: Vec<(&str, &str)> = dest_edges
+            .iter()
+            .map(|(fact_id, entity_id)| (fact_id.as_str(), entity_id.as_str()))
+            .collect();
+        dest_edge_pairs.sort_unstable();
+        assert_eq!(
+            dest_edge_pairs,
+            vec![
+                ("fact-rt-001", "entity-rt-001"),
+                ("fact-rt-001", "entity-rt-002")
+            ]
+        );
+
         // NOTE: HNSW vectors are covered by the #4399 regression below.
     }
 
@@ -2818,6 +2964,15 @@ workspace = "nous/{agent_id}"
 
         assert_eq!(knowledge.facts.len(), 1);
         assert_eq!(knowledge.facts[0].id.as_str(), "agent-export-alice-fact");
+        assert_eq!(knowledge.fact_entity_edges.len(), 1);
+        assert_eq!(
+            knowledge.fact_entity_edges[0].fact_id.as_str(),
+            "agent-export-alice-fact"
+        );
+        assert_eq!(
+            knowledge.fact_entity_edges[0].entity_id.as_str(),
+            "agent-export-alice-entity"
+        );
         assert!(entity_ids.contains(&"agent-export-alice-entity"));
         assert!(
             !entity_ids.contains(&"agent-export-bob-entity"),

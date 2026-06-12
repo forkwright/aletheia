@@ -95,6 +95,8 @@ pub struct ExportedSession {
     pub distillation_priming: Option<serde_json::Value>,
     pub notes: Vec<ExportedNote>,
     pub messages: Vec<ExportedMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_records: Option<Vec<ExportedUsageRecord>>,
 }
 
 /// Single message within an exported session.
@@ -111,6 +113,10 @@ pub struct ExportedMessage {
     pub token_estimate: i64,
     pub is_distilled: bool,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
 }
 
 /// Agent note that survives distillation.
@@ -124,6 +130,23 @@ pub struct ExportedNote {
     pub category: String,
     pub content: String,
     pub created_at: String,
+}
+
+/// Durable token usage record for a single turn.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
+pub struct ExportedUsageRecord {
+    pub turn_seq: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_write_tokens: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 /// Optional memory data (vectors and/or knowledge graph).
@@ -175,6 +198,21 @@ pub struct KnowledgeExport {
     pub entities: Vec<crate::knowledge::Entity>,
     /// All relationships between entities.
     pub relationships: Vec<crate::knowledge::Relationship>,
+    /// Exact fact-to-entity links that should be restored on import.
+    #[serde(default)]
+    pub fact_entity_edges: Vec<FactEntityEdge>,
+}
+
+/// A single fact-to-entity link from the knowledge graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
+pub struct FactEntityEdge {
+    pub fact_id: crate::id::FactId,
+    pub entity_id: crate::id::EntityId,
 }
 
 #[cfg(test)]
@@ -225,16 +263,28 @@ mod tests {
                         token_estimate: 50,
                         is_distilled: false,
                         created_at: "2026-03-05T10:00:00Z".to_owned(),
+                        tool_call_id: None,
+                        tool_name: None,
                     },
                     ExportedMessage {
-                        role: "assistant".to_owned(),
-                        content: "hi there".to_owned(),
+                        role: "tool_result".to_owned(),
+                        content: "tool output".to_owned(),
                         seq: 2,
-                        token_estimate: 100,
+                        token_estimate: 15,
                         is_distilled: false,
                         created_at: "2026-03-05T10:00:01Z".to_owned(),
+                        tool_call_id: Some("call-1".to_owned()),
+                        tool_name: Some("read_file".to_owned()),
                     },
                 ],
+                usage_records: Some(vec![ExportedUsageRecord {
+                    turn_seq: 1,
+                    input_tokens: 65,
+                    output_tokens: 100,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
+                    model: Some("claude-sonnet-4-6".to_owned()),
+                }]),
             }],
             memory: None,
             knowledge: None,
@@ -369,5 +419,67 @@ mod tests {
             mem.get("graph").is_none(),
             "graph should be omitted when None"
         );
+    }
+
+    #[test]
+    fn message_preserves_tool_call_id_and_tool_name() {
+        let original = sample_agent_file();
+        let json = serde_json::to_string(&original).expect("AgentFile is serializable");
+        let restored: AgentFile = serde_json::from_str(&json).expect("round-trip JSON is valid");
+        let messages = &restored.sessions[0].messages;
+        assert_eq!(messages[0].tool_call_id, None);
+        assert_eq!(messages[0].tool_name, None);
+        assert_eq!(
+            messages[1].tool_call_id.as_deref(),
+            Some("call-1"),
+            "tool_call_id must round-trip"
+        );
+        assert_eq!(
+            messages[1].tool_name.as_deref(),
+            Some("read_file"),
+            "tool_name must round-trip"
+        );
+    }
+
+    #[test]
+    fn session_preserves_usage_records() {
+        let original = sample_agent_file();
+        let json = serde_json::to_string(&original).expect("AgentFile is serializable");
+        let restored: AgentFile = serde_json::from_str(&json).expect("round-trip JSON is valid");
+        let records = restored.sessions[0]
+            .usage_records
+            .as_ref()
+            .expect("usage_records should be present");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].turn_seq, 1);
+        assert_eq!(records[0].input_tokens, 65);
+        assert_eq!(records[0].output_tokens, 100);
+        assert_eq!(records[0].model.as_deref(), Some("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn knowledge_export_round_trips_fact_entity_edges() {
+        let original = KnowledgeExport {
+            facts: vec![],
+            entities: vec![],
+            relationships: vec![],
+            fact_entity_edges: vec![FactEntityEdge {
+                fact_id: crate::id::FactId::new("fact-1").expect("valid fact id"),
+                entity_id: crate::id::EntityId::new("entity-1").expect("valid entity id"),
+            }],
+        };
+        let json = serde_json::to_string(&original).expect("KnowledgeExport is serializable");
+        let restored: KnowledgeExport =
+            serde_json::from_str(&json).expect("round-trip JSON is valid");
+        assert_eq!(restored.fact_entity_edges.len(), 1);
+        assert_eq!(restored.fact_entity_edges[0].fact_id.as_str(), "fact-1");
+        assert_eq!(restored.fact_entity_edges[0].entity_id.as_str(), "entity-1");
+    }
+
+    #[test]
+    fn knowledge_export_deserializes_without_fact_entity_edges() {
+        let json = r#"{"facts":[],"entities":[],"relationships":[]}"#;
+        let restored: KnowledgeExport = serde_json::from_str(json).expect("legacy JSON is valid");
+        assert!(restored.fact_entity_edges.is_empty());
     }
 }
