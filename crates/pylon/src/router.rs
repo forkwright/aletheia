@@ -136,6 +136,14 @@ pub fn build_router_with(
         .route("/sessions/{id}/messages", post(sessions::send_message))
         // WHY(#3958, ADR-005): operator-decision pass-through for the approval gate.
         .route("/sessions/{id}/approvals", post(sessions::resolve_approval))
+        .route(
+            "/turns/{turn_id}/tools/{tool_id}/approve",
+            post(sessions::approve_tool),
+        )
+        .route(
+            "/turns/{turn_id}/tools/{tool_id}/deny",
+            post(sessions::deny_tool),
+        )
         // WHY(#3276): reconnect to an in-flight or recently-completed turn's SSE stream.
         .route(
             "/sessions/{session_id}/turns/{turn_id}/events",

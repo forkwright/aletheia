@@ -3,7 +3,7 @@
 //! The gate blocks shared tool dispatch between `ToolApprovalRequired`
 //! emission and `ToolStart` until the operator answers, or the timeout
 //! elapses (default-deny). The decision arrives over a `mpsc::Receiver`
-//! whose sender lives in the caller (e.g. pylon's per-session registry,
+//! whose sender lives in the caller (e.g. pylon's per-turn registry,
 //! koilon's overlay handler).
 
 use std::sync::Arc;
