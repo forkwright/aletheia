@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-06-12T19:30:15Z"
+generated_at = "2026-06-08T17:46:24Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "f72fcc72562a29b3b2917e6d1cf2f4c912aaa52f875af9c1049d7070342414c6"
+source_hash = "1399ceefd69019f492852f3d880fae832c33c7d0d6f35f6a8203b4046572bff8"
 l3_token_estimate = 167
 
 [[crates]]
@@ -80,8 +80,8 @@ l3_token_estimate = 13338
 [[crates]]
 name = "energeia"
 path = "crates/energeia"
-source_hash = "81cfac96cc55b71ba8fc0d8d60af9fbe5519232e60ca9158f9553fc294808f9e"
-l3_token_estimate = 20097
+source_hash = "c276fa4ed9bdc8f7a85d3f3cb9b40b5a2522d187c123745518f8ec43efcc30d5"
+l3_token_estimate = 20179
 
 [[crates]]
 name = "episteme"
@@ -116,7 +116,7 @@ l3_token_estimate = 1170
 [[crates]]
 name = "koilon"
 path = "crates/theatron/koilon"
-source_hash = "169396b1c021b9020de77a289345cc00084ddec448b4ad175709d51b56d2580e"
+source_hash = "6c8410193ef521d636f1fb836317f456023399e3564492c1cf91989a84abcd24"
 l3_token_estimate = 11631
 
 [[crates]]
@@ -158,7 +158,7 @@ l3_token_estimate = 12441
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "f24650f9cc81f8ecc69f0ac56ff4f486254601debf7cba61b1145ed5a3a66766"
+source_hash = "657b6708c9ed381d7248fcc78009483313d70d1ba3457e938d60963d48db9970"
 l3_token_estimate = 12871
 
 [[crates]]
@@ -284,13 +284,13 @@ l3_token_estimate = 7072
 [[crates]]
 name = "taxis"
 path = "crates/taxis"
-source_hash = "ed9a4b3b007cbb89079ac445284648b3cb44c38cbac351983dbffb79b28622d7"
-l3_token_estimate = 24546
+source_hash = "7e532b86d56a79864c7091982a000ca476205144860168dfe7faa3a88e8ae9bb"
+l3_token_estimate = 24571
 
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "81e31a97d8d605a6c331600068198fa46b1fddccd34be01af56a0029e34c465a"
+source_hash = "34c41b4bd0d8efafe28bc2ce78d480e6a0029b51e51e7cfc08b7801b6c91606c"
 l3_token_estimate = 22337
 
 [[crates]]

@@ -128,7 +128,8 @@ pub(crate) fn ConnectView(
             if *user_edited_url.peek() {
                 return;
             }
-            let mut discovery_config = skene::discovery::DiscoveryConfig::from_env_and_known_hosts();
+            let mut discovery_config =
+                skene::discovery::DiscoveryConfig::from_env_and_known_hosts();
             if let Some(url) = persisted_url {
                 discovery_config.base_urls.push(url);
             }

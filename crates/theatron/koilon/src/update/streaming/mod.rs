@@ -81,7 +81,7 @@ pub(crate) fn handle_stream_tool_start(
     let clean_name = sanitize_for_display(&tool_name).into_owned();
     app.connection.streaming_tool_calls.push(ToolCallInfo {
         name: clean_name.clone(),
-        tool_id: Some(tool_id),
+        tool_id: Some(tool_id.clone()),
         duration_ms: None,
         is_error: false,
         output: None,
@@ -89,7 +89,7 @@ pub(crate) fn handle_stream_tool_start(
     let input_json = input.map(|v| v.to_string());
     app.layout
         .ops
-        .push_tool_start(clean_name.clone(), input_json);
+        .push_tool_start_with_id(clean_name.clone(), Some(tool_id), input_json);
     if let Some(ref agent_id) = app.dashboard.focused_agent
         && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
@@ -114,7 +114,7 @@ pub(crate) fn handle_stream_tool_result(
         .streaming_tool_calls
         .iter_mut()
         .rev()
-        .find(|t| t.name == tool_name)
+        .find(|t| t.tool_id.as_ref().is_some_and(|id| id == &tool_id))
     {
         tc.duration_ms = Some(duration_ms);
         tc.is_error = is_error;
@@ -122,11 +122,11 @@ pub(crate) fn handle_stream_tool_result(
     }
     // WHY: Auto-expand failed tool cards so errors are immediately visible.
     if is_error {
-        app.interaction.tool_expanded.insert(tool_id);
+        app.interaction.tool_expanded.insert(tool_id.clone());
     }
     app.layout
         .ops
-        .complete_tool(&tool_name, is_error, duration_ms, result);
+        .complete_tool_by_id(&tool_id, is_error, duration_ms, result);
     if let Some(ref agent_id) = app.dashboard.focused_agent
         && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {

@@ -99,6 +99,65 @@ fn tool_result_error_flag() {
 }
 
 #[test]
+fn tool_result_matches_duplicate_tool_names_by_id() {
+    let mut app = test_app();
+
+    let first_id = ToolId::from("tool-1".to_string());
+    let second_id = ToolId::from("tool-2".to_string());
+    handle_stream_tool_start(&mut app, "read_file".to_string(), first_id.clone(), None);
+    handle_stream_tool_start(&mut app, "read_file".to_string(), second_id.clone(), None);
+
+    handle_stream_tool_result(
+        &mut app,
+        "read_file".to_string(),
+        first_id,
+        false,
+        125,
+        Some("first result".to_string()),
+    );
+
+    assert_eq!(
+        app.connection.streaming_tool_calls[0].duration_ms,
+        Some(125)
+    );
+    assert_eq!(
+        app.connection.streaming_tool_calls[0].output.as_deref(),
+        Some("first result")
+    );
+    assert!(app.connection.streaming_tool_calls[1].duration_ms.is_none());
+    assert_eq!(
+        app.layout.ops.tool_calls[0].status,
+        crate::state::ops::OpsToolStatus::Complete
+    );
+    assert_eq!(
+        app.layout.ops.tool_calls[1].status,
+        crate::state::ops::OpsToolStatus::Running
+    );
+
+    handle_stream_tool_result(
+        &mut app,
+        "read_file".to_string(),
+        second_id,
+        false,
+        200,
+        Some("second result".to_string()),
+    );
+
+    assert_eq!(
+        app.connection.streaming_tool_calls[1].duration_ms,
+        Some(200)
+    );
+    assert_eq!(
+        app.connection.streaming_tool_calls[1].output.as_deref(),
+        Some("second result")
+    );
+    assert_eq!(
+        app.layout.ops.tool_calls[1].status,
+        crate::state::ops::OpsToolStatus::Complete
+    );
+}
+
+#[test]
 fn tool_approval_opens_overlay() {
     let mut app = test_app();
 

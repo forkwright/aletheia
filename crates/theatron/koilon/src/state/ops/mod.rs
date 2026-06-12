@@ -81,6 +81,7 @@ mod tests {
         state.thinking.text = "some thinking".to_string();
         state.tool_calls.push(OpsToolCall {
             name: "test".to_string(),
+            tool_id: None,
             input_json: None,
             output: None,
             status: OpsToolStatus::Running,

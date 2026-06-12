@@ -621,6 +621,9 @@ pub struct DispatchSpecConfig {
     /// Maximum turns per initial session.
     #[serde(default)]
     pub max_turns: Option<u32>,
+    /// Maximum total dispatch cost in USD.
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
 }
 ```
 

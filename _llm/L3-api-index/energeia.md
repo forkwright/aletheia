@@ -1209,6 +1209,11 @@ impl Orchestrator {
         prompts: &[PromptSpec],
     ) -> Result<DispatchResult>;
     pub fn dry_run (&self, prompts: &[PromptSpec]) -> Result<DryRunResult>;
+    pub fn dry_run_with_spec (
+        &self,
+        spec: &DispatchSpec,
+        prompts: &[PromptSpec],
+    ) -> Result<DryRunResult>;
 }
 ```
 
@@ -2586,6 +2591,8 @@ pub struct DispatchSpec {
     pub max_parallel: Option<u32>,
     /// Maximum turns per initial session. `None` delegates to engine defaults.
     pub max_turns: Option<u32>,
+    /// Maximum total cost in USD for this dispatch. `None` uses orchestrator defaults.
+    pub budget_usd: Option<f64>,
 }
 ```
 
@@ -2599,6 +2606,7 @@ impl DispatchSpec {
         max_parallel: Option<u32>,
     ) -> Self;
     pub fn with_max_turns (mut self, max_turns: Option<u32>) -> Self;
+    pub fn with_budget_usd (mut self, budget_usd: Option<f64>) -> Self;
 }
 ```
 

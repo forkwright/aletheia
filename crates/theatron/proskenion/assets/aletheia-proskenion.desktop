@@ -3,6 +3,6 @@ Type=Application
 Name=Aletheia
 Comment=Aletheia AI Assistant
 Exec=proskenion
-Icon=aletheia
+Icon=aletheia-proskenion
 Terminal=false
 Categories=Utility;Development;

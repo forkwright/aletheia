@@ -27,6 +27,8 @@ pub struct DispatchSpec {
     pub max_parallel: Option<u32>,
     /// Maximum turns per initial session. `None` delegates to engine defaults.
     pub max_turns: Option<u32>,
+    /// Maximum total cost in USD for this dispatch. `None` uses orchestrator defaults.
+    pub budget_usd: Option<f64>,
 }
 
 /// Raw deserialization type for [`DispatchSpec`].
@@ -38,6 +40,8 @@ struct DispatchSpecRaw {
     max_parallel: Option<u32>,
     #[serde(default)]
     max_turns: Option<u32>,
+    #[serde(default)]
+    budget_usd: Option<f64>,
 }
 
 impl From<DispatchSpecRaw> for DispatchSpec {
@@ -48,6 +52,7 @@ impl From<DispatchSpecRaw> for DispatchSpec {
             dag_ref: raw.dag_ref,
             max_parallel: raw.max_parallel,
             max_turns: raw.max_turns,
+            budget_usd: raw.budget_usd,
         }
     }
 }
@@ -64,6 +69,7 @@ impl DispatchSpec {
             dag_ref: None,
             max_parallel: None,
             max_turns: None,
+            budget_usd: None,
         }
     }
 
@@ -81,6 +87,7 @@ impl DispatchSpec {
             dag_ref,
             max_parallel,
             max_turns: None,
+            budget_usd: None,
         }
     }
 
@@ -88,6 +95,13 @@ impl DispatchSpec {
     #[must_use]
     pub fn with_max_turns(mut self, max_turns: Option<u32>) -> Self {
         self.max_turns = max_turns;
+        self
+    }
+
+    /// Set the total cost budget in USD.
+    #[must_use]
+    pub fn with_budget_usd(mut self, budget_usd: Option<f64>) -> Self {
+        self.budget_usd = budget_usd;
         self
     }
 }
@@ -413,12 +427,14 @@ mod tests {
             dag_ref: None,
             max_parallel: Some(2),
             max_turns: Some(7),
+            budget_usd: Some(12.5),
         };
         let json = serde_json::to_string(&spec).unwrap();
         let deserialized: DispatchSpec = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.prompt_numbers, vec![1, 2, 3]);
         assert_eq!(deserialized.max_parallel, Some(2));
         assert_eq!(deserialized.max_turns, Some(7));
+        assert_eq!(deserialized.budget_usd, Some(12.5));
     }
 
     #[test]

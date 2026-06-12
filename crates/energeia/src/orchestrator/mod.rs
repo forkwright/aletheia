@@ -160,6 +160,39 @@ impl Orchestrator {
     /// Returns [`Error::Preflight`] if the prompt set is empty or the DAG
     /// is invalid.
     pub fn dry_run(&self, prompts: &[PromptSpec]) -> Result<DryRunResult> {
+        self.dry_run_inner(None, prompts)
+    }
+
+    /// Dry-run with a dispatch spec: build DAG, compute frontier, and include
+    /// per-dispatch limits in the returned plan.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Preflight`] if the prompt set is empty or the DAG
+    /// is invalid.
+    pub fn dry_run_with_spec(
+        &self,
+        spec: &DispatchSpec,
+        prompts: &[PromptSpec],
+    ) -> Result<DryRunResult> {
+        self.dry_run_inner(Some(spec), prompts)
+    }
+
+    fn dry_run_inner(
+        &self,
+        spec: Option<&DispatchSpec>,
+        prompts: &[PromptSpec],
+    ) -> Result<DryRunResult> {
+        if spec.is_some_and(|s| {
+            s.budget_usd
+                .is_some_and(|budget| !budget.is_finite() || budget <= 0.0)
+        }) {
+            return error::PreflightSnafu {
+                reason: "budget_usd must be greater than 0",
+            }
+            .fail();
+        }
+
         if prompts.is_empty() {
             return error::PreflightSnafu {
                 reason: "no prompts to dispatch",
@@ -195,13 +228,19 @@ impl Orchestrator {
             .collect();
 
         let total_prompts = prompts.len();
-        let max_concurrent = self.config.max_concurrent;
+        let max_concurrent = spec
+            .and_then(|s| s.max_parallel)
+            .map_or(self.config.max_concurrent, |p| {
+                p.min(self.config.max_concurrent)
+            });
 
         Ok(DryRunResult {
             groups,
             total_prompts,
             max_concurrent,
-            budget_usd: self.config.default_budget_usd,
+            budget_usd: spec
+                .and_then(|s| s.budget_usd)
+                .or(self.config.default_budget_usd),
             budget_turns: self.config.default_budget_turns,
         })
     }

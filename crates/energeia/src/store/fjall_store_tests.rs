@@ -23,6 +23,7 @@ fn sample_dispatch_spec() -> DispatchSpec {
         dag_ref: None,
         max_parallel: Some(2),
         max_turns: None,
+        budget_usd: None,
     }
 }
 

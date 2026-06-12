@@ -51,12 +51,14 @@ jitterSecs = 0
 [dispatchSpec]
 promptNumbers = [1, 2]
 project = "aletheia"
+budgetUsd = 4.25
 "#;
         let parsed: CronTaskConfig = toml::from_str(toml).expect("valid cron task config");
         assert!(
             parsed.enabled,
             "omitted `enabled` should default to true so configured tasks actually run"
         );
+        assert_eq!(parsed.dispatch_spec.budget_usd, Some(4.25));
     }
 
     #[test]
@@ -97,4 +99,7 @@ pub struct DispatchSpecConfig {
     /// Maximum turns per initial session.
     #[serde(default)]
     pub max_turns: Option<u32>,
+    /// Maximum total dispatch cost in USD.
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
 }

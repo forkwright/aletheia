@@ -219,6 +219,7 @@ mod tests {
             dag_ref: None,
             max_parallel: None,
             max_turns: None,
+            budget_usd: None,
         }
     }
 

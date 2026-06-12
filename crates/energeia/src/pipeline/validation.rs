@@ -93,7 +93,23 @@ impl PipelineStage for ValidationStage {
         }
 
         // 4. Budget is configured and greater than zero.
-        let has_positive_budget = ctx.config.default_budget_usd.is_some_and(|v| v > 0.0)
+        if ctx
+            .spec
+            .budget_usd
+            .is_some_and(|budget| !budget.is_finite() || budget <= 0.0)
+        {
+            return PreflightSnafu {
+                reason: "budget_usd must be greater than 0",
+            }
+            .fail()
+            .context(StageSnafu { stage: self.name() });
+        }
+
+        let has_positive_budget = ctx
+            .spec
+            .budget_usd
+            .is_some_and(|v| v.is_finite() && v > 0.0)
+            || ctx.config.default_budget_usd.is_some_and(|v| v > 0.0)
             || ctx.config.default_budget_turns.is_some_and(|v| v > 0);
 
         if !has_positive_budget {
@@ -327,6 +343,50 @@ mod tests {
         assert_eq!(err.stage(), "validation");
         assert!(
             err.to_string().contains("budget must be greater than 0"),
+            "msg: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn spec_budget_satisfies_budget_gate() {
+        let temp_dir = TempDir::new().unwrap();
+        let project = temp_dir.path().to_str().unwrap().to_owned();
+        let prompts = vec![valid_prompt()];
+        let mut ctx = make_context(
+            prompts,
+            OrchestratorConfig::default(),
+            project,
+            #[cfg(feature = "storage-fjall")]
+            None,
+        );
+        ctx.spec.budget_usd = Some(2.5);
+
+        let stage = ValidationStage;
+        stage.run(&mut ctx).await.expect("validation should pass");
+    }
+
+    #[tokio::test]
+    async fn non_positive_spec_budget_rejected() {
+        let prompts = vec![valid_prompt()];
+        let mut ctx = make_context(
+            prompts,
+            valid_config(),
+            ".".to_owned(),
+            #[cfg(feature = "storage-fjall")]
+            None,
+        );
+        ctx.spec.budget_usd = Some(0.0);
+
+        let stage = ValidationStage;
+        let err = stage
+            .run(&mut ctx)
+            .await
+            .expect_err("should fail on non-positive budget");
+
+        assert_eq!(err.stage(), "validation");
+        assert!(
+            err.to_string()
+                .contains("budget_usd must be greater than 0"),
             "msg: {err}"
         );
     }
