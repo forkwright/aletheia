@@ -36,6 +36,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [bindings](#bindings)
 - [embedding](#embedding)
 - [credential](#credential)
+- [providers](#providers)
 - [provider capability matrix](#provider-capability-matrix)
 - [data](#data)
 - [nous_behavior](#nous_behavior)
@@ -343,16 +344,55 @@ claude_code_credentials = "~/.claude/.credentials.json"
 
 ---
 
-## provider capability matrix
+## providers
 
-Aletheia can route completions through either the native Anthropic provider or seat-bridged CLI providers. The seat-bridged providers run the CLI's own agentic loop, so `request.tools` are not translated into Aletheia tool execution.
+`[[providers]]` entries declare available LLM providers declaratively. The runtime registers them in list order; model routing picks the first provider that advertises the requested model. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and registered in `crates/aletheia/src/runtime/setup.rs`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Operator-facing label, must be unique across the list. |
+| `providerType` | string | yes | `anthropic`, `openai`, `openai-compatible`, `claude-code`, or `codex-oauth`. |
+| `apiFamily` | string | no | For `openai`: `responses` (default) or `chat-completions`. For `openai-compatible`: `chat-completions` (default). Ignored for other kinds. |
+| `baseUrl` | string | no | HTTP base URL. Required for `openai-compatible`; optional for `anthropic` (defaults to `https://api.anthropic.com`); ignored for subprocess adapters. |
+| `apiKeyEnv` | string | no | Environment variable holding the API key. Read at startup via `std::env::var`. Optional for loopback providers without auth. |
+| `deploymentTarget` | string | no | `cloud` (default), `local-hosted`, or `embedded`. Drives the fact-sensitivity filter and air-gapped mode. |
+| `models` | string[] | no | Model identifiers this provider advertises. The first provider in list order claiming a model wins. |
+
+```toml
+[[providers]]
+name = "anthropic-cloud"
+providerType = "anthropic"
+apiKeyEnv = "ANTHROPIC_API_KEY"
+deploymentTarget = "cloud"
+models = ["claude-sonnet-4-6"]
+
+[[providers]]
+name = "openai-cloud"
+providerType = "openai"
+apiKeyEnv = "OPENAI_API_KEY"
+apiFamily = "responses"
+deploymentTarget = "cloud"
+models = ["gpt-5.3-codex"]
+
+[[providers]]
+name = "local-llama"
+providerType = "openai-compatible"
+baseUrl = "http://127.0.0.1:8088/v1"
+deploymentTarget = "embedded"
+models = ["llama3.1-70b"]
+```
+
+### Provider capability matrix
 
 | Provider path | Credential source | Simple chat + recall | Aletheia organon tool-loop | Notes |
 |---|---|---|---|---|
-| Native Anthropic provider | `ANTHROPIC_API_KEY` | yes | yes | Serializes `request.tools` and parses `ToolUse` blocks. |
-| Claude Code subprocess (`cc`) | Local Claude Code OAuth seat; no API key | yes | no | Runs `claude -p`; tools stay inside the CLI's own loop. |
-| Codex subprocess (`codex`) | Local Codex seat; no API key | yes | no | Runs `codex exec`; tools stay inside the CLI's own loop. |
-| Kimi subprocess (`kimi`) | Local Kimi seat; no API key | yes | no | Runs `kimi`; tools stay inside the CLI's own loop. |
+| Native Anthropic provider | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` | yes | yes | Messages API. Declarative `anthropic` entries require `apiKeyEnv` to avoid double-registering the first-party provider. |
+| OpenAI cloud (`openai`) | `OPENAI_API_KEY` | yes | yes | First-party `/v1/responses` by default; set `apiFamily = "chat-completions"` for the legacy endpoint. |
+| OpenAI-compatible local/third-party (`openai-compatible`) | Optional (`apiKeyEnv`) | yes | yes | `/v1/chat/completions` wire format for llama.cpp, ollama, vllm, and compatible proxies. |
+| Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); registered via the credential chain, declarative entries are accepted but skipped by the registry to avoid duplicates. |
+| Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); registered via the credential chain, declarative entries are accepted but do not change startup behavior. |
+
+The `aletheia add-nous` scaffolding command currently validates only `anthropic` and `openai` provider strings and checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Other provider kinds must be configured manually in `aletheia.toml`.
 
 ---
 

@@ -184,29 +184,21 @@ Current provider families:
 | Provider family | Config type | Wire/runtime shape | Deployment target |
 |-----------------|-------------|--------------------|-------------------|
 | Anthropic cloud | `anthropic` | Anthropic Messages API | `cloud` |
-| Claude Code | `claude-code` | `claude` CLI subprocess adapter | operator-local process, with provider egress controlled by Claude Code |
-| OpenAI-compatible local/third-party | `openai-compatible` | `/v1/chat/completions` HTTP wire format | explicit per provider: usually `embedded` or `localhosted` |
-| OpenAI cloud | `openai` | currently `/v1/chat/completions`; target state is OpenAI Responses API | `cloud` |
+| Claude Code | `claude-code` | `claude` CLI subprocess adapter (feature-gated `cc-provider`) | operator-local process, with provider egress controlled by Claude Code |
+| OpenAI-compatible local/third-party | `openai-compatible` | `/v1/chat/completions` HTTP wire format | explicit per provider: usually `embedded` or `local-hosted` |
+| OpenAI cloud | `openai` | `/v1/responses` by default; `apiFamily = "chat-completions"` selects the legacy endpoint | `cloud` |
+| Codex OAuth | `codex-oauth` | `codex` CLI subprocess adapter (feature-gated `codex-provider`) | operator-local process |
 
-Codex routing decision, recorded 2026-05-22: Codex/OpenAI cloud model access
-should move to a first-class OpenAI Responses API provider path. The existing
-OpenAI-compatible Chat Completions provider remains valid for local servers
-such as llama.cpp, ollama, and vllm, but it is not the preferred long-term
-Codex path because Codex Chat Completions support is deprecated upstream. A
-dedicated Codex CLI adapter is deferred until Aletheia has a concrete need for
-Codex-specific session, tool, or local-environment semantics that Responses
-does not cover.
+`crates/hermeneus/src/openai/client.rs` implements both `/v1/responses` and
+`/v1/chat/completions`, selected per provider via `apiFamily`. The
+`openai-compatible` kind is reserved for local/proxy servers (llama.cpp,
+ollama, vllm) and always uses chat completions.
 
-Planned Responses-backed config shape after the provider lands:
-
-```toml
-[[providers]]
-name = "openai-codex"
-providerType = "openai"
-apiKeyEnv = "OPENAI_API_KEY"
-deploymentTarget = "cloud"
-models = ["gpt-5.3-codex"]
-```
+Declarative `[[providers]]` entries are the supported configuration surface;
+see `docs/CONFIGURATION.md#providers` for the full field reference. Subprocess
+adapters (`claude-code`, `codex-oauth`) are primarily registered through their
+credential-chain feature paths; declarative entries for those kinds are
+accepted but currently do not alter startup behavior.
 
 Local OpenAI-compatible servers continue to use the Chat Completions-compatible
 shape:
