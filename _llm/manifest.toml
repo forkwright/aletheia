@@ -5,7 +5,7 @@
 # preserves them verbatim across regeneration. See _llm/README.md.
 
 version = 1
-generated_at = "2026-06-12T21:25:31Z"
+generated_at = "2026-06-12T19:30:15Z"
 
 [levels.L3]
 path = "L3-api-index"
@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "04a4c978a1c8d5ffda9e5d975fa2b6aa446482d59b66ab54f1a2caa4ec349178"
+source_hash = "f72fcc72562a29b3b2917e6d1cf2f4c912aaa52f875af9c1049d7070342414c6"
 l3_token_estimate = 167
 
 [[crates]]
@@ -110,7 +110,7 @@ l3_token_estimate = 13465
 [[crates]]
 name = "integration-tests"
 path = "crates/integration-tests"
-source_hash = "38d05a0e2ea1e6328b2d2c51abe8c1894ff37b38dd666fd76b6dc1c3ddb3c252"
+source_hash = "5e97d185c72ca92824fc33ff608828b2004d64427e9afe0b7ceb0e7179824604"
 l3_token_estimate = 1170
 
 [[crates]]
@@ -146,14 +146,14 @@ l3_token_estimate = 51
 [[crates]]
 name = "nous"
 path = "crates/nous"
-source_hash = "198cf202565e1b66a0c64f03a1c7e8b7b48ea38c75ca37656c2755dd26d4c4db"
+source_hash = "61ba2a2a6ef7bd2e978d6eb66ff096f23766ee7248ed89a726cc1958ff2e4435"
 l3_token_estimate = 34616
 
 [[crates]]
 name = "oikonomos"
 path = "crates/daemon"
-source_hash = "1e84fe74df5fd494fbed552e962702c2068272d2ef70cb6f89611d45c965c776"
-l3_token_estimate = 12375
+source_hash = "6449288a79adce6b57b43268dd2aa670f7a95fd8ef34bda8a99364fb67b36e46"
+l3_token_estimate = 12441
 
 [[crates]]
 name = "organon"
@@ -266,8 +266,8 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "a9df2534f915a7af0edeae25dcb1bbb8a9e016d222af7200298fb4449f8dc99c"
-l3_token_estimate = 18697
+source_hash = "47c8a2ef5f039117fdf71e14c8600a2abdcbc2ca9ba077ae946f8551dbe61d5b"
+l3_token_estimate = 18881
 
 [[crates]]
 name = "skene"
