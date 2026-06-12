@@ -35,12 +35,17 @@ are `auto`, `api-key`, and `claude-code`; the Anthropic provider also reads
 
 Tool access is fail-closed. The `toolGroups` field accepts `"all"`, `"deny"`,
 or a list of group names. Missing `toolGroups`, `"deny"`, and `[]` all deny
-grouped tools. Normal agents should use an explicit list such as:
+grouped tools. Starter configs use the named `least-privilege-starter` profile:
 
 ```toml
 [agents.defaults]
-toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
+toolGroups = ["read", "plan", "verify"]
 ```
+
+Trusted single-operator deployments can opt into the named `full-power-local`
+profile by setting `toolGroups` to `["read", "edit", "command", "mcp",
+"spawn_subtask", "plan", "verify"]` after reviewing the file-editing, local
+process, external MCP, and subtask-delegation risks.
 
 The recognized group names are `read`, `edit`, `command`, `mcp`,
 `spawn_subtask`, `plan`, and `verify`.
