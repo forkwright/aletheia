@@ -1,26 +1,26 @@
-// kanon:ignore RUST/file-too-long — cohesive tool registry: config parsing, MCP client, HTTP proxy, and schema conversion are interdependent
+// kanon:ignore RUST/file-too-long — cohesive tool registry: MCP client, HTTP proxy, and schema conversion are interdependent
 //! Pluggable external tool registry: config-driven tool discovery and execution.
 //!
-//! Reads the `[tools]` section from `aletheia.toml` and registers external tool
-//! executors into the [`ToolRegistry`]. HTTP tools remain thin POST proxies.
-//! MCP entries are server registrations: Aletheia connects to the external MCP
-//! server, discovers tools via `tools/list`, registers each discovered tool in
-//! organon, and routes execution back through `tools/call`.
+//! The `[tools]` config is owned by `taxis` and consumed from
+//! [`AletheiaConfig::tools`](taxis::config::AletheiaConfig). This module
+//! registers external tool executors into the [`ToolRegistry`]. HTTP tools are
+//! thin proxies using the configured method. MCP entries are server
+//! registrations: Aletheia connects to the external MCP server, discovers tools
+//! via `tools/list`, registers each discovered tool in organon, and routes
+//! execution back through `tools/call`.
 //!
 //! WHY: Different deployments have different MCP servers available. One
-//! deployment might expose Semantic Scholar + `PubMed` + an internal MCP
-//! server, while another exposes none. This module lets operators declare
-//! available tools per-deployment without hardcoded tool assumptions.
+//! deployment might expose Semantic Scholar + `PubMed` + an internal MCP server,
+//! while another exposes none. This module lets operators declare available
+//! tools per-deployment without hardcoded tool assumptions.
 
-use std::collections::HashMap;
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 
 #[cfg(feature = "mcp")]
 use diaporeia::client::{ExternalMcpClient, StdioMcpServerConfig};
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tracing::{info, warn};
 
 use koina::id::ToolName;
@@ -31,57 +31,9 @@ use organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolInput, ToolResult, ToolTag,
 };
-use taxis::oikos::Oikos;
-
-// ── Config types ──────────���─────────────────────────────────────────────────
-
-/// Root config for the `[tools]` section of `aletheia.toml`.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub(crate) struct ExternalToolsConfig {
-    /// Tools that every deployment must have. Startup warns if unavailable.
-    pub required: HashMap<String, ExternalToolEntry>,
-    /// Tools that are deployment-specific. Registered if available.
-    pub optional: HashMap<String, ExternalToolEntry>,
-}
-
-/// A single external tool declaration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct ExternalToolEntry {
-    /// Transport type for this tool.
-    #[serde(rename = "type")]
-    pub kind: ExternalToolKind,
-    /// HTTP endpoint URL for `mcp` and `http` tool types.
-    #[serde(default)]
-    pub endpoint: Option<String>,
-    /// Stdio MCP server command. For `type = "mcp"`, defaults to the config key.
-    #[serde(default)]
-    pub command: Option<String>,
-    /// Stdio MCP server command arguments.
-    #[serde(default)]
-    pub args: Vec<String>,
-    /// Stdio MCP server working directory.
-    #[serde(default)]
-    pub cwd: Option<PathBuf>,
-    /// Extra environment for stdio MCP server processes.
-    #[serde(default)]
-    pub env: HashMap<String, String>,
-    /// Human-readable description sent to the LLM.
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-/// Transport/execution strategy for an external tool.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum ExternalToolKind {
-    /// Model Context Protocol server.
-    Mcp,
-    /// Generic HTTP POST endpoint.
-    Http,
-    /// Reference to a built-in tool (documentation only, not re-registered).
-    Builtin,
-}
+pub(crate) use taxis::config::{
+    ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
+};
 
 // ── Tool manifest ───────────────────────────────────────────────────────────
 
@@ -127,45 +79,6 @@ pub(crate) struct ToolManifestEntry {
     pub available: bool,
     /// Description sent to the LLM.
     pub description: String,
-}
-
-// ── Config loader ─────────────���─────────────────────────────────────────────
-
-/// Load the `[tools]` section from `aletheia.toml`.
-///
-/// Returns [`ExternalToolsConfig::default()`] if the file does not exist or
-/// has no `[tools]` section. This makes external tools purely opt-in.
-#[must_use]
-pub(crate) fn load_tools_config(oikos: &Oikos) -> ExternalToolsConfig {
-    let toml_path = oikos.config().join("aletheia.toml");
-    let Ok(content) = std::fs::read_to_string(&toml_path) else {
-        return ExternalToolsConfig::default();
-    };
-
-    // WHY: parse the full TOML and extract only the [tools] table rather than
-    // deserializing the entire config.  This avoids coupling to AletheiaConfig
-    // and keeps the external tools config self-contained in the binary crate.
-    let table: toml::Value = match toml::from_str(&content) {
-        Ok(v) => v,
-        Err(e) => {
-            warn!(error = %e, "failed to parse aletheia.toml for [tools] section");
-            return ExternalToolsConfig::default();
-        }
-    };
-
-    match table.get("tools") {
-        Some(tools_value) => {
-            // NOTE: clone is cheap here -- the tools section is small
-            match tools_value.clone().try_into::<ExternalToolsConfig>() {
-                Ok(config) => config,
-                Err(e) => {
-                    warn!(error = %e, "failed to deserialize [tools] config section");
-                    ExternalToolsConfig::default()
-                }
-            }
-        }
-        None => ExternalToolsConfig::default(),
-    }
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
@@ -279,6 +192,7 @@ async fn register_single_tool(
         endpoint,
         client: http_client.clone(),
         kind: entry.kind,
+        method: entry.method,
     };
 
     match registry.register(tool_def, Box::new(executor)) {
@@ -640,13 +554,28 @@ fn external_tool_schema() -> InputSchema {
 
 /// Thin HTTP proxy executor for external tools.
 ///
-/// Forwards tool calls to the configured endpoint as JSON POST requests.
-/// The response body is returned as the tool result text.
+/// Forwards tool calls to the configured endpoint using the configured HTTP
+/// method. The response body is returned as the tool result text.
 struct ExternalToolExecutor {
     name: String,
     endpoint: String,
     client: reqwest::Client,
     kind: ExternalToolKind,
+    method: ExternalToolMethod,
+}
+
+impl ExternalToolExecutor {
+    /// Build a [`reqwest::Method`] from the configured method.
+    #[must_use]
+    fn reqwest_method(&self) -> reqwest::Method {
+        match self.method {
+            ExternalToolMethod::Get => reqwest::Method::GET,
+            ExternalToolMethod::Put => reqwest::Method::PUT,
+            ExternalToolMethod::Delete => reqwest::Method::DELETE,
+            ExternalToolMethod::Patch => reqwest::Method::PATCH,
+            _ => reqwest::Method::POST,
+        }
+    }
 }
 
 impl ToolExecutor for ExternalToolExecutor {
@@ -662,13 +591,19 @@ impl ToolExecutor for ExternalToolExecutor {
                 "arguments": input.arguments,
             });
 
-            let response = self
+            let method = self.reqwest_method();
+            let mut builder = self
                 .client
-                .post(&self.endpoint)
-                .json(&payload)
-                .timeout(std::time::Duration::from_secs(30))
-                .send()
-                .await;
+                .request(method, &self.endpoint)
+                .timeout(std::time::Duration::from_secs(30));
+            if matches!(
+                self.method,
+                ExternalToolMethod::Post | ExternalToolMethod::Put | ExternalToolMethod::Patch
+            ) {
+                builder = builder.json(&payload);
+            }
+
+            let response = builder.send().await;
 
             match response {
                 Ok(resp) => {
@@ -774,8 +709,9 @@ mod tests {
             command: None,
             args: Vec::new(),
             cwd: None,
-            env: HashMap::new(),
+            env: std::collections::HashMap::new(),
             description: description.map(ToOwned::to_owned),
+            method: ExternalToolMethod::default(),
         }
     }
 
@@ -1055,10 +991,13 @@ done
     }
 
     #[test]
-    fn load_from_nonexistent_path_returns_default() {
-        let oikos = taxis::oikos::Oikos::from_root("/nonexistent/path");
-        let config = load_tools_config(&oikos);
-        assert!(config.required.is_empty());
-        assert!(config.optional.is_empty());
+    fn http_method_defaults_to_post() {
+        let toml_str = r#"
+[optional]
+search = { type = "http", endpoint = "http://localhost:3100" }
+"#;
+        let config: ExternalToolsConfig = toml::from_str(toml_str).expect("valid config");
+        let entry = config.optional.get("search").expect("search entry");
+        assert_eq!(entry.method, ExternalToolMethod::Post);
     }
 }

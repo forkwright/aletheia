@@ -83,8 +83,8 @@ An abstraction with only one creation path is a mesh with a single root. If that
 2. **Thesauros domain packs** - `crates/aletheia/src/runtime/mod.rs:358`
    `thesauros::tools::register_pack_tools` validates pack manifest tool definitions and registers them into the same `ToolRegistry`.
 
-3. **External tools config** - `crates/aletheia/src/runtime/mod.rs:312`
-   `external_tools::register_external_tools` reads the `[tools]` section from `aletheia.toml` and registers configured HTTP tools, plus MCP tools when the binary is built with MCP support, into the same `ToolRegistry`.
+3. **External tools config** - `crates/taxis/src/config/tools.rs` and `crates/aletheia/src/runtime/mod.rs`
+   The `[tools]` section is owned by `taxis`, validated with the rest of `AletheiaConfig`, and consumed from `config.tools` at runtime. `external_tools::register_external_tools` registers configured HTTP tools, plus MCP tools when the binary is built with MCP support, into the same `ToolRegistry`.
 
 ### Non-equivalent ground
 

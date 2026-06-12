@@ -14,13 +14,14 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | Data | 1 | 0 |
 | Maintenance | 26 | 0 |
 | Pricing | 2 | 0 |
-| Sandbox | 8 | 0 |
+| Sandbox | 0 | 8 |
+| Tools | 0 | 2 |
 | Credential | 4 | 0 |
 | Logging | 5 | 0 |
 | MCP | 3 | 0 |
 | Local Provider | 4 | 0 |
 | Packs | 1 | 0 |
-| **Total** | **102** | **13** |
+| **Total** | **94** | **23** |
 
 ---
 
@@ -175,15 +176,22 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 
 | Config path | Hot/Cold | Reason |
 |-------------|----------|--------|
-| `sandbox.enabled` | Hot | Sandbox toggle read per-tool-execution |
-| `sandbox.enforcement` | Hot | Enforcement mode read per-tool-execution |
-| `sandbox.allowedRoot` | Hot | Root path read per-tool-execution |
-| `sandbox.extraReadPaths` | Hot | Extra paths read per-tool-execution |
-| `sandbox.extraWritePaths` | Hot | Extra paths read per-tool-execution |
-| `sandbox.extraExecPaths` | Hot | Extra paths read per-tool-execution |
-| `sandbox.egress` | Hot | Egress policy read per-tool-execution |
-| `sandbox.egressAllowlist` | Hot | Allowlist read per-tool-execution |
-| `sandbox.nprocLimit` | Hot | Process limit read per-tool-execution |
+| `sandbox.enabled` | **Cold** | Sandbox config is copied into registered tool executors at startup |
+| `sandbox.enforcement` | **Cold** | Enforcement mode is captured by the tool registry at startup |
+| `sandbox.allowedRoot` | **Cold** | Root path is captured by the tool registry at startup |
+| `sandbox.extraReadPaths` | **Cold** | Extra paths are captured by the tool registry at startup |
+| `sandbox.extraWritePaths` | **Cold** | Extra paths are captured by the tool registry at startup |
+| `sandbox.extraExecPaths` | **Cold** | Extra paths are captured by the tool registry at startup |
+| `sandbox.egress` | **Cold** | Egress policy is captured by the tool registry at startup |
+| `sandbox.egressAllowlist` | **Cold** | Allowlist is captured by the tool registry at startup |
+| `sandbox.nprocLimit` | **Cold** | Process limit is captured by the tool registry at startup |
+
+### Tools (`tools`)
+
+| Config path | Hot/Cold | Reason |
+|-------------|----------|--------|
+| `tools.required` | **Cold** | External tools are registered into the tool registry at startup |
+| `tools.optional` | **Cold** | External tools are registered into the tool registry at startup |
 
 ### Credential (`credential`)
 
@@ -246,6 +254,8 @@ const RESTART_PREFIXES: &[&str] = &[
     "gateway.csrf",
     "gateway.bodyLimit",
     "channels",
+    "sandbox",
+    "tools",
 ];
 ```
 
@@ -262,6 +272,8 @@ All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `
 | `gateway.csrf` | Cold ✅ | CSRF middleware |
 | `gateway.bodyLimit` | Cold ✅ | Axum body limit |
 | `channels` | Cold ✅ | Channel transport lifecycle |
+| `sandbox` | Cold ✅ | Tool registry captures sandbox config at startup |
+| `tools` | Cold ✅ | Tool registry captures external tool config at startup |
 
 ### Cold field detail: `gateway.csrf`
 
@@ -270,6 +282,14 @@ All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `
 ### Cold field detail: `channels`
 
 **Note:** The `channels` prefix covers the entire messaging transport configuration. Signal accounts and their connection parameters are established at server startup. Changes to any channel settings require a restart to re-initialize the transport connections.
+
+### Cold field detail: `sandbox`
+
+**Note:** The `sandbox` prefix is cold because the runtime copies `config.sandbox` into an `organon::sandbox::SandboxConfig` while building the tool registry. Hot reload only rebuilds actor `NousConfig` values, not the registry or the sandbox config captured by registered tools. A process restart is required to apply sandbox policy changes.
+
+### Cold field detail: `tools`
+
+**Note:** The `tools` prefix is cold because external tool entries are registered into the `ToolRegistry` at startup. Adding, removing, or changing an external tool configuration requires a process restart to rebuild the registry.
 
 ---
 
@@ -280,7 +300,6 @@ All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `
 - **Agent settings**: Model selection, token budgets, thinking settings, tool iterations, recall parameters
 - **Rate limiting**: All gateway and MCP rate limit settings
 - **Maintenance schedules**: Trace rotation, drift detection, DB monitoring thresholds
-- **Sandbox policies**: Enforcement mode, egress rules, path allowances
 - **Logging**: Log levels, retention, redaction settings
 
 ### Requires process restart (cold changes)
@@ -290,6 +309,8 @@ All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `
 - **CSRF protection**: Enabling/disabling CSRF middleware
 - **Request limits**: Body size limits (Axum router configuration)
 - **Channel transports**: Signal messenger configuration and account settings
+- **Sandbox policies**: Enforcement mode, egress rules, path allowances
+- **External tool registrations**: `[tools.required]` and `[tools.optional]` entries
 
 ---
 

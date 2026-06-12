@@ -2,7 +2,6 @@
 
 use koina::system::{Environment, RealSystem};
 use taxis::config::AletheiaConfig;
-use taxis::oikos::Oikos;
 
 /// Validate JWT key configuration. Returns `true` if valid.
 pub(super) fn validate_jwt(config: &AletheiaConfig) -> bool {
@@ -36,37 +35,4 @@ pub(super) fn validate_jwt(config: &AletheiaConfig) -> bool {
         println!("  [pass] {jwt_check_label} (auth mode '{auth_mode}' -- JWT not required)");
     }
     true
-}
-
-/// Validate external tools configuration. Returns `true` if valid.
-pub(super) fn validate_external_tools(oikos: &Oikos) -> bool {
-    let tools_config = crate::external_tools::load_tools_config(oikos);
-    let total = tools_config.required.len() + tools_config.optional.len();
-    if total == 0 {
-        return true;
-    }
-
-    let mut tools_ok = true;
-    for (name, entry) in &tools_config.required {
-        if entry.kind == crate::external_tools::ExternalToolKind::Http && entry.endpoint.is_none() {
-            // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
-            println!("  [FAIL] tools.required.{name}: missing endpoint");
-            tools_ok = false;
-        }
-    }
-    for (name, entry) in &tools_config.optional {
-        if entry.kind == crate::external_tools::ExternalToolKind::Http && entry.endpoint.is_none() {
-            // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
-            println!("  [warn] tools.optional.{name}: missing endpoint");
-        }
-    }
-    if tools_ok {
-        // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
-        println!(
-            "  [pass] tools ({} required, {} optional)",
-            tools_config.required.len(),
-            tools_config.optional.len()
-        );
-    }
-    tools_ok
 }
