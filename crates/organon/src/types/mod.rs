@@ -12,6 +12,8 @@ pub use services::{
 };
 
 use indexmap::IndexMap;
+use serde::de::{self, Deserializer, SeqAccess, Visitor};
+use serde::ser::{SerializeSeq as _, Serializer};
 use serde::{Deserialize, Serialize};
 
 pub use hermeneus::types::{DocumentSource, ImageSource, ToolResultBlock, ToolResultContent};
@@ -42,6 +44,23 @@ pub enum ToolGroupId {
     Verify,
 }
 
+impl std::str::FromStr for ToolGroupId {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value {
+            "read" => Ok(Self::Read),
+            "edit" => Ok(Self::Edit),
+            "command" => Ok(Self::Command),
+            "mcp" => Ok(Self::Mcp),
+            "spawn_subtask" => Ok(Self::SpawnSubtask),
+            "plan" => Ok(Self::Plan),
+            "verify" => Ok(Self::Verify),
+            other => Err(format!("unknown tool group: {other}")),
+        }
+    }
+}
+
 impl std::fmt::Display for ToolGroupId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -53,6 +72,132 @@ impl std::fmt::Display for ToolGroupId {
             Self::Plan => f.write_str("plan"),
             Self::Verify => f.write_str("verify"),
         }
+    }
+}
+
+/// Explicit role policy for tool-group gating.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ToolGroupPolicy {
+    /// Every registered tool is permitted, including tools with no group metadata.
+    AllowAll {
+        /// Human-readable reason for granting every tool group.
+        reason: String,
+    },
+    /// Tools are permitted when their declared groups intersect this list.
+    Groups(Vec<ToolGroupId>),
+    /// No grouped tools are permitted.
+    #[default]
+    DenyAll,
+}
+
+impl ToolGroupPolicy {
+    /// Build an explicit group policy, treating an empty list as deny-all.
+    #[must_use]
+    pub fn groups(groups: Vec<ToolGroupId>) -> Self {
+        if groups.is_empty() {
+            Self::DenyAll
+        } else {
+            Self::Groups(groups)
+        }
+    }
+
+    /// Returns true when the policy permits a tool with the given groups.
+    #[must_use]
+    pub fn permits(&self, tool_groups: &[ToolGroupId]) -> bool {
+        match self {
+            Self::AllowAll { .. } => true,
+            Self::Groups(allowed) => {
+                !tool_groups.is_empty() && tool_groups.iter().any(|group| allowed.contains(group))
+            }
+            Self::DenyAll => false,
+        }
+    }
+
+    /// The concrete allowed groups, if this is a group policy.
+    #[must_use]
+    pub fn allowed_groups(&self) -> &[ToolGroupId] {
+        match self {
+            Self::Groups(groups) => groups,
+            Self::AllowAll { .. } | Self::DenyAll => &[],
+        }
+    }
+
+    /// Human-readable policy text for denial messages and prompts.
+    #[must_use]
+    pub fn description(&self) -> String {
+        match self {
+            Self::AllowAll { reason } => format!("all ({reason})"),
+            Self::Groups(groups) => groups
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", "),
+            Self::DenyAll => "deny".to_owned(),
+        }
+    }
+}
+
+impl Serialize for ToolGroupPolicy {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::AllowAll { .. } => serializer.serialize_str("all"),
+            Self::DenyAll => serializer.serialize_str("deny"),
+            Self::Groups(groups) => {
+                let mut seq = serializer.serialize_seq(Some(groups.len()))?;
+                for group in groups {
+                    seq.serialize_element(group)?;
+                }
+                seq.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolGroupPolicy {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct PolicyVisitor;
+
+        impl<'de> Visitor<'de> for PolicyVisitor {
+            type Value = ToolGroupPolicy;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(r#""all", "deny", or a list of tool group names"#)
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "all" => Ok(ToolGroupPolicy::AllowAll {
+                        reason: "explicit tool_groups = \"all\"".to_owned(),
+                    }),
+                    "deny" => Ok(ToolGroupPolicy::DenyAll),
+                    other => Err(E::custom(format!(
+                        "unknown tool group policy {other:?}; expected \"all\", \"deny\", or a list"
+                    ))),
+                }
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut groups = Vec::new();
+                while let Some(group) = seq.next_element()? {
+                    groups.push(group);
+                }
+                Ok(ToolGroupPolicy::groups(groups))
+            }
+        }
+
+        deserializer.deserialize_any(PolicyVisitor)
     }
 }
 

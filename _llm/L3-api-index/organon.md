@@ -658,21 +658,30 @@ impl ToolRegistry {
         input: &ToolInput,
         ctx: &ToolContext,
         role: &str,
-        allowed_groups: &[ToolGroupId],
+        policy: &ToolGroupPolicy,
     ) -> Result<ToolResult>;
     pub fn definitions (&self) -> Vec<&ToolDef>;
     pub fn definitions_for_category (&self, category: ToolCategory) -> Vec<&ToolDef>;
     pub fn definitions_for_tags (&self, tags: &[ToolTag]) -> Vec<&ToolDef>;
     pub fn definitions_for_groups (&self, allowed_groups: &[ToolGroupId]) -> Vec<&ToolDef>;
+    pub fn definitions_for_policy (&self, policy: &ToolGroupPolicy) -> Vec<&ToolDef>;
     pub fn to_hermeneus_tools (&self) -> Vec<hermeneus::types::ToolDefinition>;
     pub fn to_hermeneus_tools_for_groups (
         &self,
         allowed_groups: &[ToolGroupId],
     ) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_for_policy (
+        &self,
+        policy: &ToolGroupPolicy,
+    ) -> Vec<hermeneus::types::ToolDefinition>;
     pub fn to_hermeneus_tools_summaries (&self) -> Vec<hermeneus::types::ToolDefinition>;
     pub fn to_hermeneus_tools_summaries_for_groups (
         &self,
         allowed_groups: &[ToolGroupId],
+    ) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_summaries_for_policy (
+        &self,
+        policy: &ToolGroupPolicy,
     ) -> Vec<hermeneus::types::ToolDefinition>;
     pub fn to_hermeneus_tools_summaries_filtered (
         // kanon:ignore RUST/pub-visibility
@@ -684,6 +693,11 @@ impl ToolRegistry {
         active: &HashSet<ToolName>,
         allowed_groups: &[ToolGroupId],
     ) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_summaries_filtered_for_policy (
+        &self,
+        active: &HashSet<ToolName>,
+        policy: &ToolGroupPolicy,
+    ) -> Vec<hermeneus::types::ToolDefinition>;
     pub fn schema_byte_sizes (&self) -> (usize, usize);
     pub fn to_hermeneus_tools_filtered (
         // kanon:ignore RUST/pub-visibility
@@ -694,6 +708,11 @@ impl ToolRegistry {
         &self,
         active: &HashSet<ToolName>,
         allowed_groups: &[ToolGroupId],
+    ) -> Vec<hermeneus::types::ToolDefinition>;
+    pub fn to_hermeneus_tools_filtered_for_policy (
+        &self,
+        active: &HashSet<ToolName>,
+        policy: &ToolGroupPolicy,
     ) -> Vec<hermeneus::types::ToolDefinition>;
     pub fn reversibility (&self, name: &ToolName) -> Option<Reversibility>;
     pub fn approval_requirement (&self, name: &ToolName) -> Option<ApprovalRequirement>;
@@ -1012,6 +1031,30 @@ pub enum ToolGroupId {
     Plan,
     /// Tests, lint, fmt, and verification tools (`lint_report`, `verify_report`, ...).
     Verify,
+}
+```
+
+```rust
+pub enum ToolGroupPolicy {
+    /// Every registered tool is permitted, including tools with no group metadata.
+    AllowAll {
+        /// Human-readable reason for granting every tool group.
+        reason: String,
+    },
+    /// Tools are permitted when their declared groups intersect this list.
+    Groups(Vec<ToolGroupId>),
+    /// No grouped tools are permitted.
+    #[default]
+    DenyAll,
+}
+```
+
+```rust
+impl ToolGroupPolicy {
+    pub fn groups (groups: Vec<ToolGroupId>) -> Self;
+    pub fn permits (&self, tool_groups: &[ToolGroupId]) -> bool;
+    pub fn allowed_groups (&self) -> &[ToolGroupId];
+    pub fn description (&self) -> String;
 }
 ```
 

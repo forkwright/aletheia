@@ -533,6 +533,12 @@ Every nous agent runs under a role that determines which tools it can call and w
 
 Enforcement happens twice: the tool list sent to the LLM is filtered to the allowlist, and any tool call in the response outside the allowlist is blocked before execution.
 
+Tool-group policy is explicit and fail-closed. In agent config, `toolGroups`
+accepts `"all"`, `"deny"`, or a list such as `["read", "verify"]`; absent or
+empty values deny all grouped tools. In `roles.toml`, `tool_groups` uses the
+same values. Use `"all"` only for admin/full-access roles with a documented
+reason in the change record.
+
 ### Roles in logs
 
 Span fields are set at spawn time. To find role-related activity:

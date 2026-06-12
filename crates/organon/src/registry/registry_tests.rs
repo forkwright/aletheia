@@ -655,7 +655,7 @@ fn definitions_for_groups_filters_by_intersection() {
     multi_def.groups = vec![ToolGroupId::Read, ToolGroupId::Command];
     reg.register(multi_def, e3).expect("register");
 
-    let read_only = reg.definitions_for_groups(&[ToolGroupId::Read]);
+    let read_only = reg.definitions_for_policy(&ToolGroupPolicy::groups(vec![ToolGroupId::Read]));
     let names: Vec<&str> = read_only.iter().map(|d| d.name.as_str()).collect();
     assert!(names.contains(&"read"), "read should be in read-only set");
     assert!(
@@ -667,7 +667,10 @@ fn definitions_for_groups_filters_by_intersection() {
         "exec should be in read-only set (has Read)"
     );
 
-    let edit_cmd = reg.definitions_for_groups(&[ToolGroupId::Edit, ToolGroupId::Command]);
+    let edit_cmd = reg.definitions_for_policy(&ToolGroupPolicy::groups(vec![
+        ToolGroupId::Edit,
+        ToolGroupId::Command,
+    ]));
     let names: Vec<&str> = edit_cmd.iter().map(|d| d.name.as_str()).collect();
     assert!(
         !names.contains(&"read"),
@@ -684,7 +687,7 @@ fn definitions_for_groups_filters_by_intersection() {
 }
 
 #[test]
-fn definitions_for_groups_empty_fallback() {
+fn definitions_for_groups_empty_list_denies_all() {
     let mut reg = ToolRegistry::new();
     let (e1, _) = mock_executor("ok");
     let mut def = make_def("read", ToolCategory::Workspace);
@@ -692,22 +695,22 @@ fn definitions_for_groups_empty_fallback() {
     reg.register(def, e1).expect("register");
 
     let all = reg.definitions_for_groups(&[]);
-    assert_eq!(all.len(), 1, "empty allowed groups should return all tools");
+    assert!(all.is_empty(), "empty allowed groups should deny all tools");
 }
 
 #[test]
-fn definitions_for_groups_ignores_tools_with_empty_groups() {
+fn definitions_for_groups_denies_tools_with_empty_groups() {
     let mut reg = ToolRegistry::new();
     let (e1, _) = mock_executor("ok");
     let mut def = make_def("legacy", ToolCategory::Workspace);
     def.groups = vec![];
     reg.register(def, e1).expect("register");
 
-    let filtered = reg.definitions_for_groups(&[ToolGroupId::Read]);
+    let filtered = reg.definitions_for_policy(&ToolGroupPolicy::groups(vec![ToolGroupId::Read]));
     assert_eq!(
         filtered.len(),
-        1,
-        "tools with empty groups should always be included"
+        0,
+        "tools with empty groups should be denied under group policies"
     );
 }
 
@@ -725,7 +728,12 @@ async fn execute_checked_allows_tool_in_group() {
         arguments: serde_json::json!({}),
     };
     let result = reg
-        .execute_checked(&input, &mock_ctx(), "coder", &[ToolGroupId::Read])
+        .execute_checked(
+            &input,
+            &mock_ctx(),
+            "coder",
+            &ToolGroupPolicy::groups(vec![ToolGroupId::Read]),
+        )
         .await
         .expect("execute_checked should succeed");
     assert_eq!(result.content.text_summary(), "hello");
@@ -748,7 +756,12 @@ async fn execute_checked_denies_tool_outside_group() {
         arguments: serde_json::json!({}),
     };
     let err = reg
-        .execute_checked(&input, &mock_ctx(), "explorer", &[ToolGroupId::Read])
+        .execute_checked(
+            &input,
+            &mock_ctx(),
+            "explorer",
+            &ToolGroupPolicy::groups(vec![ToolGroupId::Read]),
+        )
         .await
         .expect_err("execute_checked should fail for out-of-group tool");
     assert!(
@@ -758,7 +771,7 @@ async fn execute_checked_denies_tool_outside_group() {
 }
 
 #[tokio::test]
-async fn execute_checked_legacy_empty_groups_allows_all() {
+async fn execute_checked_empty_groups_denies_all() {
     let mut reg = ToolRegistry::new();
     let (exec, _) = mock_executor("hello");
     let mut def = make_def("write", ToolCategory::Workspace);
@@ -770,10 +783,75 @@ async fn execute_checked_legacy_empty_groups_allows_all() {
         tool_use_id: "toolu_1".to_owned(),
         arguments: serde_json::json!({}),
     };
-    // Empty allowed_groups is legacy fallback — should allow the tool
-    let result = reg
-        .execute_checked(&input, &mock_ctx(), "legacy", &[])
+    let err = reg
+        .execute_checked(&input, &mock_ctx(), "legacy", &ToolGroupPolicy::DenyAll)
         .await
-        .expect("execute_checked should succeed with empty allowed groups");
+        .expect_err("execute_checked should fail with deny-all policy");
+    assert!(
+        err.to_string().contains("tool group violation"),
+        "error should mention tool group violation: {err}"
+    );
+}
+
+#[tokio::test]
+async fn execute_checked_allow_all_grants_tool() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _) = mock_executor("hello");
+    let mut def = make_def("write", ToolCategory::Workspace);
+    def.groups = vec![ToolGroupId::Edit];
+    reg.register(def, exec).expect("register");
+
+    let input = ToolInput {
+        name: ToolName::from_static("write"),
+        tool_use_id: "toolu_1".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let result = reg
+        .execute_checked(
+            &input,
+            &mock_ctx(),
+            "admin",
+            &ToolGroupPolicy::AllowAll {
+                reason: "test admin".to_owned(),
+            },
+        )
+        .await
+        .expect("execute_checked should succeed with allow-all policy");
     assert_eq!(result.content.text_summary(), "hello");
+}
+
+#[test]
+fn presentation_matches_execution_policy() {
+    let mut reg = ToolRegistry::new();
+    let (read_exec, _) = mock_executor("read");
+    let (edit_exec, _) = mock_executor("edit");
+    let (empty_exec, _) = mock_executor("empty");
+
+    let mut read_def = make_def("read", ToolCategory::Workspace);
+    read_def.groups = vec![ToolGroupId::Read];
+    reg.register(read_def, read_exec).expect("register read");
+
+    let mut edit_def = make_def("edit", ToolCategory::Workspace);
+    edit_def.groups = vec![ToolGroupId::Edit];
+    reg.register(edit_def, edit_exec).expect("register edit");
+
+    let mut empty_def = make_def("empty", ToolCategory::Workspace);
+    empty_def.groups = vec![];
+    reg.register(empty_def, empty_exec).expect("register empty");
+
+    let policy = ToolGroupPolicy::groups(vec![ToolGroupId::Read]);
+    let presented: Vec<_> = reg
+        .to_hermeneus_tools_for_policy(&policy)
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect();
+    let executable: Vec<_> = reg
+        .definitions()
+        .into_iter()
+        .filter(|def| policy.permits(&def.groups))
+        .map(|def| def.name.as_str().to_owned())
+        .collect();
+
+    assert_eq!(presented, executable);
+    assert_eq!(presented, vec!["read"]);
 }

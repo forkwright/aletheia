@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use eidos::id::FactId;
 use eidos::knowledge::MemoryScope;
+use serde::de::{self, Deserializer, SeqAccess, Visitor};
+use serde::ser::{SerializeSeq as _, Serializer};
 use serde::{Deserialize, Serialize};
 
 use super::{AgencyLevel, BookkeepingProviderKind, CompactionStrategyKind};
@@ -18,6 +20,84 @@ pub struct AgentsConfig {
     pub defaults: AgentDefaults,
     /// Individual agent definitions; merged with `defaults` at resolution time.
     pub list: Vec<NousDefinition>,
+}
+
+/// Tool-group policy configured for a nous agent.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum AgentToolGroupPolicy {
+    /// All tool groups are permitted.
+    AllowAll,
+    /// Only tools with one of these groups are permitted.
+    Groups(Vec<String>),
+    /// No tool groups are permitted.
+    #[default]
+    DenyAll,
+}
+
+impl Serialize for AgentToolGroupPolicy {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::AllowAll => serializer.serialize_str("all"),
+            Self::DenyAll => serializer.serialize_str("deny"),
+            Self::Groups(groups) => {
+                let mut seq = serializer.serialize_seq(Some(groups.len()))?;
+                for group in groups {
+                    seq.serialize_element(group)?;
+                }
+                seq.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentToolGroupPolicy {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct PolicyVisitor;
+
+        impl<'de> Visitor<'de> for PolicyVisitor {
+            type Value = AgentToolGroupPolicy;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(r#""all", "deny", or a list of tool group names"#)
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "all" => Ok(AgentToolGroupPolicy::AllowAll),
+                    "deny" => Ok(AgentToolGroupPolicy::DenyAll),
+                    other => Err(E::custom(format!(
+                        "unknown tool group policy {other:?}; expected \"all\", \"deny\", or a list"
+                    ))),
+                }
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut groups = Vec::new();
+                while let Some(group) = seq.next_element()? {
+                    groups.push(group);
+                }
+                if groups.is_empty() {
+                    Ok(AgentToolGroupPolicy::DenyAll)
+                } else {
+                    Ok(AgentToolGroupPolicy::Groups(groups))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(PolicyVisitor)
+    }
 }
 
 /// Per-factor scoring weights for the recall pipeline.
@@ -213,6 +293,8 @@ pub struct AgentDefaults {
     pub max_tool_iterations: u32,
     /// Filesystem paths the agent is permitted to access.
     pub allowed_roots: Vec<String>,
+    /// Default tool-group policy for agents. Missing or empty configuration denies all groups.
+    pub tool_groups: AgentToolGroupPolicy,
     /// Prompt caching configuration.
     pub caching: CachingConfig,
     /// Recall pipeline settings applied to all agents unless overridden.
@@ -231,6 +313,7 @@ impl Default for AgentDefaults {
             agency: AgencyLevel::Standard,
             max_tool_iterations: d::MAX_TOOL_ITERATIONS,
             allowed_roots: Vec::new(),
+            tool_groups: AgentToolGroupPolicy::DenyAll,
             caching: CachingConfig::default(),
             recall: RecallSettings::default(),
             history_budget_ratio: d::HISTORY_BUDGET_RATIO,
@@ -327,6 +410,9 @@ pub struct NousDefinition {
     /// Tool allowlist override; when `None`, all tools are enabled.
     #[serde(default)]
     pub tool_allowlist: Option<Vec<String>>,
+    /// Tool-group policy override; when `None`, inherits from [`AgentDefaults::tool_groups`].
+    #[serde(default)]
+    pub tool_groups: Option<AgentToolGroupPolicy>,
     /// Named recall behavior profile; when `None`, resolves to [`RecallProfile::Default`].
     #[serde(default)]
     pub recall_profile: Option<RecallProfile>,
@@ -352,6 +438,7 @@ impl Default for NousDefinition {
             episteme_cohort: None,
             recall: None,
             tool_allowlist: None,
+            tool_groups: None,
             recall_profile: None,
             behavior: None,
         }

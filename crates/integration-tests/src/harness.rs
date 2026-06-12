@@ -21,6 +21,7 @@ use mneme::store::SessionStore;
 use nous::config::{NousConfig, PipelineConfig};
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
+use organon::types::ToolGroupPolicy;
 use pylon::router::build_router;
 use pylon::state::AppState;
 use symbolon::auth::{AuthConfig, AuthFacade};
@@ -250,6 +251,9 @@ impl TestHarness {
             recall: nous::recall::RecallConfig {
                 min_score: 0.0,
                 ..nous::recall::RecallConfig::default()
+            },
+            tool_groups: ToolGroupPolicy::AllowAll {
+                reason: "integration test harness".to_owned(),
             },
             ..NousConfig::default()
         };

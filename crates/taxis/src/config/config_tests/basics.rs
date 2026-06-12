@@ -282,6 +282,55 @@ fn resolve_uses_defaults_for_unknown_agent() {
         resolved.domains.is_empty(),
         "unknown agent should have no domains"
     );
+    assert_eq!(
+        resolved.tool_groups,
+        AgentToolGroupPolicy::DenyAll,
+        "unknown agent should default to deny-all tool policy"
+    );
+}
+
+#[test]
+fn tool_groups_accepts_explicit_policies() {
+    let toml = r#"
+[agents.defaults]
+toolGroups = "all"
+
+[[agents.list]]
+id = "restricted"
+workspace = "/tmp/restricted"
+toolGroups = ["read", "verify"]
+"#;
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse config");
+    assert_eq!(
+        config.agents.defaults.tool_groups,
+        AgentToolGroupPolicy::AllowAll
+    );
+    assert_eq!(
+        config.agents.list[0].tool_groups,
+        Some(AgentToolGroupPolicy::Groups(vec![
+            "read".to_owned(),
+            "verify".to_owned()
+        ]))
+    );
+
+    let resolved = resolve_nous(&config, "restricted");
+    assert_eq!(
+        resolved.tool_groups,
+        AgentToolGroupPolicy::Groups(vec!["read".to_owned(), "verify".to_owned()])
+    );
+}
+
+#[test]
+fn empty_tool_groups_deserializes_to_deny_all() {
+    let toml = r"
+[agents.defaults]
+toolGroups = []
+";
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse config");
+    assert_eq!(
+        config.agents.defaults.tool_groups,
+        AgentToolGroupPolicy::DenyAll
+    );
 }
 
 #[test]

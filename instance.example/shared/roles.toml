@@ -16,6 +16,7 @@
 
 [coder]
 version = 1
+tool_groups = ["read", "edit", "command", "verify"]
 behaviors = [
     "Read relevant files before making changes",
     "Make the specified changes precisely",
@@ -34,6 +35,7 @@ constraints = [
 
 [researcher]
 version = 1
+tool_groups = ["read", "mcp", "plan"]
 behaviors = [
     "Cite sources for every claim",
     "Distinguish fact from inference",
@@ -51,6 +53,7 @@ constraints = [
 
 [reviewer]
 version = 1
+tool_groups = ["read", "verify", "mcp"]
 behaviors = [
     "Provide specific findings with file paths and line numbers",
     "Categorize issues by severity (error, warning, info)",
@@ -67,6 +70,7 @@ constraints = [
 
 [explorer]
 version = 1
+tool_groups = ["read", "plan"]
 behaviors = [
     "Use grep/find before reading whole files",
     "Include file paths and line numbers for every finding",
@@ -81,6 +85,7 @@ constraints = [
 
 [runner]
 version = 1
+tool_groups = ["read", "command", "verify"]
 behaviors = [
     "Run exactly the commands requested",
     "Capture exit codes, stdout, and stderr",

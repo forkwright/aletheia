@@ -360,6 +360,80 @@ async fn single_tool_iteration() {
 }
 
 #[tokio::test]
+async fn deny_all_tool_policy_blocks_tool_dispatch() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    ));
+
+    let tools = make_registry_with("exec", Box::new(EchoExecutor));
+    let mut config = test_config();
+    config.tool_groups = organon::types::ToolGroupPolicy::DenyAll;
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    assert_eq!(result.content, "Done!");
+    assert!(
+        result.tool_calls.is_empty(),
+        "deny-all policy should block dispatch before execution"
+    );
+}
+
+#[tokio::test]
+async fn empty_tool_def_groups_are_blocked_before_dispatch() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("legacy", "toolu_1", serde_json::json!({})),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    ));
+
+    let mut def = make_tool_def("legacy");
+    def.groups = Vec::new();
+    let mut tools = ToolRegistry::new();
+    tools
+        .register(def, Box::new(EchoExecutor))
+        .expect("register");
+    let mut config = test_config();
+    config.tool_groups =
+        organon::types::ToolGroupPolicy::groups(vec![organon::types::ToolGroupId::Read]);
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    assert_eq!(result.content, "Done!");
+    assert!(
+        result.tool_calls.is_empty(),
+        "tools with empty group metadata should not dispatch under group policy"
+    );
+}
+
+#[tokio::test]
 async fn multi_tool_iteration() {
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(

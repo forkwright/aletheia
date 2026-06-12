@@ -1047,13 +1047,12 @@ pub struct NousConfig {
     /// during ephemeral sub-agent spawning.
     #[serde(default)]
     pub tool_allowlist: Option<Vec<String>>,
-    /// Allowed tool groups for role-based gating.
+    /// Tool-group policy for role-based gating.
     ///
-    /// When non-empty, only tools whose `groups` intersect this list are
-    /// visible to the LLM and executable.  Empty means all tools (legacy
-    /// fallback).  Populated from `RoleContract.tool_groups`.
+    /// Only tools permitted by this policy are visible to the LLM and
+    /// executable. Absent or empty configuration resolves to deny-all.
     #[serde(default)]
-    pub tool_groups: Vec<organon::types::ToolGroupId>,
+    pub tool_groups: organon::types::ToolGroupPolicy,
     /// Turn-level hook configuration.
     #[serde(default)]
     pub hooks: HookConfig,
@@ -3042,9 +3041,9 @@ pub struct RoleContract {
     pub behaviors: Vec<String>,
     /// Constraints: what this role MUST NOT do.
     pub constraints: Vec<String>,
-    /// Allowed tool groups.  Empty means all tools (legacy fallback).
+    /// Tool-group policy. Missing or empty configuration denies all tools.
     #[serde(default)]
-    pub tool_groups: Vec<ToolGroupId>,
+    pub tool_groups: ToolGroupPolicy,
 }
 ```
 
@@ -3106,8 +3105,8 @@ pub struct RoleTemplate {
     pub system_prompt: &'static str,
     /// Tool access restrictions.
     pub tool_policy: ToolPolicy,
-    /// Allowed tool groups for role-based gating.
-    pub tool_groups: Vec<organon::types::ToolGroupId>,
+    /// Tool-group policy for role-based gating.
+    pub tool_groups: organon::types::ToolGroupPolicy,
     /// Preferred model identifier.
     pub model: &'static str,
 }

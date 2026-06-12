@@ -843,7 +843,7 @@ async fn tool_group_gating_denies_calls_outside_allowed_groups() {
             model: "mock-model".to_owned(),
             ..Default::default()
         },
-        tool_groups: vec![ToolGroupId::Read],
+        tool_groups: organon::types::ToolGroupPolicy::groups(vec![ToolGroupId::Read]),
         limits: nous::config::NousLimits {
             max_tool_iterations: 1,
             ..Default::default()

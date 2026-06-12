@@ -17,6 +17,7 @@ maxToolResultBytes = 32768
 agency = "standard"
 maxToolIterations = 200
 allowedRoots = []
+toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
 historyBudgetRatio = 0.6
 
 [agents.defaults.model]

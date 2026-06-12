@@ -5,7 +5,8 @@ use tracing::warn;
 
 use mneme::workspace::ProjectId;
 use nous::config::{NousConfig, PipelineConfig};
-use taxis::config::{AletheiaConfig, resolve_nous};
+use organon::types::{ToolGroupId, ToolGroupPolicy};
+use taxis::config::{AgentToolGroupPolicy, AletheiaConfig, resolve_nous};
 use taxis::oikos::Oikos;
 
 fn resolve_config_path(oikos: &Oikos, configured: &str) -> PathBuf {
@@ -48,6 +49,33 @@ fn detect_project_id(workspace: &Path) -> Option<ProjectId> {
 
     let remote = String::from_utf8(output.stdout).ok()?;
     ProjectId::from_git_remote(remote).ok()
+}
+
+fn resolve_tool_group_policy(agent_id: &str, policy: &AgentToolGroupPolicy) -> ToolGroupPolicy {
+    match policy {
+        AgentToolGroupPolicy::AllowAll => ToolGroupPolicy::AllowAll {
+            reason: "explicit agents toolGroups = \"all\"".to_owned(),
+        },
+        AgentToolGroupPolicy::DenyAll => ToolGroupPolicy::DenyAll,
+        AgentToolGroupPolicy::Groups(names) => {
+            let mut groups = Vec::with_capacity(names.len());
+            for name in names {
+                match name.parse::<ToolGroupId>() {
+                    Ok(group) => groups.push(group),
+                    Err(error) => {
+                        warn!(
+                            agent = %agent_id,
+                            group = %name,
+                            error = %error,
+                            "invalid tool group in agent config; denying all tool groups"
+                        );
+                        return ToolGroupPolicy::DenyAll;
+                    }
+                }
+            }
+            ToolGroupPolicy::groups(groups)
+        }
+    }
 }
 
 pub(super) fn build_nous_runtime_config(
@@ -132,7 +160,7 @@ pub(super) fn build_nous_runtime_config(
         recall: resolved.recall.into(),
         recall_profile: resolved.recall_profile.into(),
         tool_allowlist: None,
-        tool_groups: Vec::new(),
+        tool_groups: resolve_tool_group_policy(agent_id, &resolved.tool_groups),
         hooks: nous::config::HookConfig::default(),
         behavior: resolved.behavior,
     };

@@ -8,8 +8,8 @@ mod maintenance;
 mod resolved;
 
 pub use agents::{
-    AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentsConfig, CachingConfig,
-    ModelSpec, NousDefinition, RecallProfile, RecallSettings, RecallWeights,
+    AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentToolGroupPolicy, AgentsConfig,
+    CachingConfig, ModelSpec, NousDefinition, RecallProfile, RecallSettings, RecallWeights,
 };
 pub use behavior::{
     AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig,
