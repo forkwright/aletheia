@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Aletheia">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="16" x2="104" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2F2B24"/>
+      <stop offset="1" stop-color="#151411"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="34" y1="98" x2="94" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B08E5C"/>
+      <stop offset="1" stop-color="#F0D7A2"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="108" height="108" rx="20" fill="url(#bg)"/>
+  <path d="M32 96 60 30c1.5-3.5 6.5-3.5 8 0l28 66H82l-6-15H52l-6 15H32Zm25-28h14L64 49l-7 19Z" fill="url(#mark)"/>
+  <circle cx="64" cy="28" r="5" fill="#F0D7A2"/>
+  <circle cx="35" cy="96" r="5" fill="#9A7B4F"/>
+  <circle cx="93" cy="96" r="5" fill="#9A7B4F"/>
+  <path d="M40 91 56 75M88 91 72 75M61 34 50 60M67 34 78 60" fill="none" stroke="#F0D7A2" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+</svg>
