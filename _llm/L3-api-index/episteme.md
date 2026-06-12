@@ -2359,7 +2359,8 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         forget_reason: String?,
         scope: String?,
         project_id: String?,
-        visibility: String default 'private'
+        visibility: String default 'private',
+        sensitivity: String default 'public'
     }",
     // WHY: index 1 is a sentinel — `init_schema` skips this entry and runs
     // the dim-parameterized `entities_ddl(self.dim)` instead so the relation
@@ -2921,6 +2922,7 @@ pub enum FactsField {
     Scope,
     ProjectId,
     Visibility,
+    Sensitivity,
 }
 ```
 

@@ -71,9 +71,9 @@ impl KnowledgeStore {
         let mut results = rows_to_recall_results(rows)?;
 
         // WHY: Semantic search returns from the embeddings relation, which does
-        // not carry scope or visibility. Hydrate these fields from the facts
-        // table for fact-type results so downstream quota and visibility
-        // filters see accurate values.
+        // not carry scope, visibility, or sensitivity. Hydrate these fields from
+        // the facts table for fact-type results so downstream filters see
+        // accurate values.
         self.hydrate_recall_scope_visibility(&mut results);
 
         // WHY: Filter out forgotten facts; the HNSW index does not carry is_forgotten.
@@ -235,7 +235,7 @@ impl KnowledgeStore {
         }
     }
 
-    /// Hydrate recall results with `scope`, `project_id`, and `visibility` from the `facts` relation.
+    /// Hydrate recall results with `scope`, `project_id`, `visibility`, and `sensitivity`.
     ///
     /// Semantic search returns from the `embeddings` relation, which does not
     /// carry these fields. This enrichment looks them up from `facts` for
@@ -244,8 +244,8 @@ impl KnowledgeStore {
     fn hydrate_recall_scope_visibility(&self, results: &mut [crate::knowledge::RecallResult]) {
         for result in results.iter_mut().filter(|r| r.source_type == "fact") {
             let script = r"
-                ?[scope, project_id, visibility] :=
-                    *facts{id: $fid, scope, project_id, visibility}
+                ?[scope, project_id, visibility, sensitivity] :=
+                    *facts{id: $fid, scope, project_id, visibility, sensitivity}
             ";
             let mut params = std::collections::BTreeMap::new();
             params.insert(
@@ -286,6 +286,13 @@ impl KnowledgeStore {
                         .parse::<crate::knowledge::Visibility>()
                         .unwrap_or_default();
                 }
+                if let Some(sensitivity_str) = row.get(3).and_then(|v| v.get_str())
+                    && !sensitivity_str.is_empty()
+                {
+                    result.sensitivity = sensitivity_str
+                        .parse::<crate::knowledge::FactSensitivity>()
+                        .unwrap_or_default();
+                }
             }
         }
     }
@@ -296,6 +303,10 @@ impl KnowledgeStore {
     /// additional active facts linked to entities in those clusters. Adds
     /// new results with a neutral distance of 1.0, deduplicating by `source_id`.
     /// Limits expansion to at most `k` additional results.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "cluster expansion keeps query, hydration, and append logic together"
+    )]
     fn expand_recall_by_cluster(
         &self,
         results: &mut Vec<crate::knowledge::RecallResult>,
@@ -348,10 +359,11 @@ impl KnowledgeStore {
 
         for cluster_id in context_clusters {
             let script = r"
-                ?[fact_id, content, nous_id] :=
+                ?[fact_id, content, nous_id, sensitivity, scope, project_id, visibility] :=
                     *graph_scores{entity_id, score_type: 'cluster', cluster_id: $cid},
                     *fact_entities{fact_id: fid, entity_id},
-                    *facts{id: fid, content, nous_id, is_forgotten, superseded_by},
+                    *facts{id: fid, content, nous_id, is_forgotten, superseded_by,
+                           sensitivity, scope, project_id, visibility},
                     is_forgotten == false,
                     is_null(superseded_by),
                     fact_id = fid
@@ -383,17 +395,36 @@ impl KnowledgeStore {
                     .and_then(|v| v.get_str())
                     .unwrap_or("")
                     .to_owned();
+                let sensitivity = row
+                    .get(3)
+                    .and_then(|v| v.get_str())
+                    .and_then(|s| s.parse::<crate::knowledge::FactSensitivity>().ok())
+                    .unwrap_or_default();
+                let scope = row
+                    .get(4)
+                    .and_then(|v| v.get_str())
+                    .filter(|s| !s.is_empty())
+                    .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
+                let project_id = row
+                    .get(5)
+                    .and_then(|v| v.get_str())
+                    .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok());
+                let visibility = row
+                    .get(6)
+                    .and_then(|v| v.get_str())
+                    .and_then(|s| s.parse::<crate::knowledge::Visibility>().ok())
+                    .unwrap_or_default();
                 results.push(crate::knowledge::RecallResult {
                     content,
                     distance: 1.0,
                     source_type: "fact".to_owned(),
                     source_id: fact_id.to_owned(),
                     nous_id,
-                    sensitivity: crate::knowledge::FactSensitivity::Public,
+                    sensitivity,
                     graph_importance: 0.0,
-                    scope: None,
-                    project_id: None,
-                    visibility: crate::knowledge::Visibility::Private,
+                    scope,
+                    project_id,
+                    visibility,
                     source_count: 0,
                 });
                 added += 1;

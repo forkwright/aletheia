@@ -357,6 +357,78 @@ async fn get_entity_missing_returns_404() {
     }
 }
 
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn update_sensitivity_handler_persists_to_fact_list_path() {
+    use std::sync::Arc;
+
+    use axum::Json;
+    use axum::extract::{Path, State};
+    use symbolon::types::Role;
+
+    use crate::extract::Claims;
+    use crate::state::KnowledgeState;
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let fact = make_fact("fact-sensitive", "Alice handles payroll", 0.95);
+    store.insert_fact(&fact).unwrap();
+
+    let config = taxis::config::AletheiaConfig::default();
+    let state = KnowledgeState {
+        knowledge_store: Some(Arc::clone(&store)),
+        config: Arc::new(tokio::sync::RwLock::new(config)),
+        event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
+    };
+    let claims = Claims {
+        sub: "alice".to_owned(),
+        role: Role::Operator,
+        nous_id: None,
+    };
+
+    let response = match update_sensitivity(
+        State(state.clone()),
+        claims,
+        Path("fact-sensitive".to_owned()),
+        Json(UpdateSensitivityRequest {
+            sensitivity: "confidential".to_owned(),
+        }),
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(error) => panic!("update sensitivity: {error:?}"),
+    };
+
+    assert_eq!(response.0["status"], "updated");
+    assert_eq!(response.0["sensitivity"], "confidential");
+
+    let listed = match list_facts(
+        State(state),
+        Query(FactsQuery {
+            nous_id: Some("test-nous".to_owned()),
+            sort: "confidence".to_owned(),
+            order: "desc".to_owned(),
+            filter: None,
+            fact_type: None,
+            tier: None,
+            limit: 10,
+            offset: 0,
+            include_forgotten: false,
+        }),
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(error) => panic!("list facts: {error:?}"),
+    };
+
+    assert_eq!(listed.0.facts.len(), 1);
+    assert_eq!(
+        listed.0.facts[0].sensitivity,
+        mneme::knowledge::FactSensitivity::Confidential
+    );
+}
+
 #[test]
 fn default_limit_is_capped_at_max() {
     let config = taxis::config::ApiLimitsConfig::default();

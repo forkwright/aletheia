@@ -209,10 +209,9 @@ fn fresh_store_migrates_to_current_schema() {
 
     let store = KnowledgeStore::open_mem().expect("open_mem should succeed");
     let v = store.schema_version().expect("read schema version");
-    // #4165 Path A bumped to v13 to add the nullable `name_embedding`
-    // column on the entities relation.
     assert_eq!(
-        v, 13,
+        v,
+        KnowledgeStore::SCHEMA_VERSION,
         "fresh store should initialize at the current schema version"
     );
 

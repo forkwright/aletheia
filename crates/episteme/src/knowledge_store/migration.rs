@@ -58,6 +58,10 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
         target_version: 13,
         run: KnowledgeStore::migrate_v12_to_v13,
     },
+    MigrationStep {
+        target_version: 14,
+        run: KnowledgeStore::migrate_v13_to_v14,
+    },
 ];
 
 #[cfg(feature = "mneme-engine")]
@@ -903,6 +907,142 @@ impl KnowledgeStore {
         self.stamp_schema_version(13, "v12->v13")?;
 
         tracing::info!("knowledge schema migration v12 -> v13 complete");
+        Ok(())
+    }
+
+    /// Migrate v13 → v14: add `sensitivity` to `facts`.
+    ///
+    /// Existing rows predate durable sensitivity storage, so the migration
+    /// backfills the documented default (`public`) explicitly. Runtime
+    /// sensitivity edits and recall filtering then hydrate from the facts
+    /// relation instead of reconstructing protected facts as public after a
+    /// restart.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "migration is a single linear sequence"
+    )]
+    pub(super) fn migrate_v13_to_v14(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::ScriptMutability;
+        tracing::info!("migrating knowledge schema v13 -> v14");
+
+        let all_facts = self
+            .db
+            .run(
+                r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+                    superseded_by, source_session_id, recorded_at,
+                    access_count, last_accessed_at, stability_hours, fact_type,
+                    is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+                    *facts{id, valid_from, content, nous_id, confidence, tier,
+                           valid_to, superseded_by, source_session_id, recorded_at,
+                           access_count, last_accessed_at, stability_hours, fact_type,
+                           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v13->v14 read facts: {e}"),
+                }
+                .build()
+            })?;
+
+        let _ = self.db.run(
+            "::fts drop facts:content_fts",
+            BTreeMap::new(),
+            ScriptMutability::Mutable,
+        );
+
+        self.db
+            .run("::remove facts", BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v13->v14 remove facts: {e}"),
+                }
+                .build()
+            })?;
+
+        self.db
+            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v13->v14 recreate facts: {e}"),
+                }
+                .build()
+            })?;
+
+        for row in &all_facts.rows {
+            let script = r"
+                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+                  superseded_by, source_session_id, recorded_at,
+                  access_count, last_accessed_at, stability_hours, fact_type,
+                  is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                  visibility, sensitivity] <- [[
+                    $id, $valid_from, $content, $nous_id, $confidence, $tier, $valid_to,
+                    $superseded_by, $source_session_id, $recorded_at,
+                    $access_count, $last_accessed_at, $stability_hours, $fact_type,
+                    $is_forgotten, $forgotten_at, $forget_reason, $scope, $project_id,
+                    $visibility, 'public'
+                ]]
+                :put facts {id, valid_from => content, nous_id, confidence, tier,
+                            valid_to, superseded_by, source_session_id, recorded_at,
+                            access_count, last_accessed_at, stability_hours, fact_type,
+                            is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                            visibility, sensitivity}
+            ";
+            let mut params = BTreeMap::new();
+            for (i, name) in [
+                "id",
+                "valid_from",
+                "content",
+                "nous_id",
+                "confidence",
+                "tier",
+                "valid_to",
+                "superseded_by",
+                "source_session_id",
+                "recorded_at",
+                "access_count",
+                "last_accessed_at",
+                "stability_hours",
+                "fact_type",
+                "is_forgotten",
+                "forgotten_at",
+                "forget_reason",
+                "scope",
+                "project_id",
+                "visibility",
+            ]
+            .iter()
+            .enumerate()
+            {
+                if let Some(val) = row.get(i) {
+                    params.insert((*name).to_owned(), val.clone());
+                }
+            }
+            self.db
+                .run(script, params, ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v13->v14 reinsert fact: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        self.db
+            .run(fts_ddl(), BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v13->v14 recreate FTS: {e}"),
+                }
+                .build()
+            })?;
+
+        self.stamp_schema_version(14, "v13->v14")?;
+
+        tracing::info!("knowledge schema migration v13 -> v14 complete");
         Ok(())
     }
 }

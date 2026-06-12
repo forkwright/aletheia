@@ -265,6 +265,28 @@ impl KnowledgeStore {
         );
         params.insert(String::from("old_forgotten_at"), DataValue::Null);
         params.insert(String::from("old_forget_reason"), DataValue::Null);
+        params.insert(
+            String::from("old_scope"),
+            old_fact
+                .scope
+                .as_ref()
+                .map_or(DataValue::Null, |s| DataValue::Str(s.as_str().into())),
+        );
+        params.insert(
+            String::from("old_project_id"),
+            old_fact
+                .project_id
+                .as_ref()
+                .map_or(DataValue::Null, |id| DataValue::Str(id.as_str().into())),
+        );
+        params.insert(
+            String::from("old_visibility"),
+            DataValue::Str(old_fact.visibility.as_str().into()),
+        );
+        params.insert(
+            String::from("old_sensitivity"),
+            DataValue::Str(old_fact.sensitivity.as_str().into()),
+        );
 
         params.insert(
             String::from("new_content"),
@@ -296,6 +318,28 @@ impl KnowledgeStore {
         params.insert(
             String::from("fact_type"),
             DataValue::Str(new_fact.fact_type.as_str().into()),
+        );
+        params.insert(
+            String::from("scope"),
+            new_fact
+                .scope
+                .as_ref()
+                .map_or(DataValue::Null, |s| DataValue::Str(s.as_str().into())),
+        );
+        params.insert(
+            String::from("project_id"),
+            new_fact
+                .project_id
+                .as_ref()
+                .map_or(DataValue::Null, |id| DataValue::Str(id.as_str().into())),
+        );
+        params.insert(
+            String::from("visibility"),
+            DataValue::Str(new_fact.visibility.as_str().into()),
+        );
+        params.insert(
+            String::from("sensitivity"),
+            DataValue::Str(new_fact.sensitivity.as_str().into()),
         );
 
         self.run_mut(&queries::supersede_fact(), params)
@@ -413,11 +457,12 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       scope, project_id, visibility},
+                       scope, project_id, visibility, sensitivity},
                 id = $id,
                 is_forgotten = true,
                 forgotten_at = $now,
@@ -425,7 +470,8 @@ impl KnowledgeStore {
             :put facts {id, valid_from => content, nous_id, confidence, tier,
                         valid_to, superseded_by, source_session_id, recorded_at,
                         access_count, last_accessed_at, stability_hours, fact_type,
-                        is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}
+                        is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                        visibility, sensitivity}
         ";
         let mut params = std::collections::BTreeMap::new();
         params.insert(
@@ -471,11 +517,12 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       scope, project_id, visibility},
+                       scope, project_id, visibility, sensitivity},
                 id = $id,
                 is_forgotten = false,
                 forgotten_at = null,
@@ -483,7 +530,8 @@ impl KnowledgeStore {
             :put facts {id, valid_from => content, nous_id, confidence, tier,
                         valid_to, superseded_by, source_session_id, recorded_at,
                         access_count, last_accessed_at, stability_hours, fact_type,
-                        is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}
+                        is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                        visibility, sensitivity}
         ";
         let mut params = std::collections::BTreeMap::new();
         params.insert(
@@ -727,11 +775,13 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}
+                       is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                       visibility, sensitivity}
             :order -recorded_at
             :limit $limit
         ";
@@ -878,18 +928,6 @@ impl KnowledgeStore {
     ///
     /// Returns the updated fact. Errors if no fact with the given ID exists.
     ///
-    /// # Note on persistence
-    ///
-    /// The current `facts` Datalog schema does not carry a sensitivity
-    /// column; this method round-trips the Rust-side [`Fact`] struct, so
-    /// the sensitivity survives for the in-memory flow through
-    /// [`read_facts_by_id`] → mutate → [`insert_fact`] but is not yet
-    /// persisted across restarts. A follow-up schema migration will lift
-    /// it to the store (tracked in #3413).
-    ///
-    /// [`Fact`]: crate::knowledge::Fact
-    /// [`read_facts_by_id`]: Self::read_facts_by_id
-    /// [`insert_fact`]: Self::insert_fact
     #[instrument(skip(self))]
     pub(crate) fn update_sensitivity(
         &self,
@@ -969,11 +1007,13 @@ impl KnowledgeStore {
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
                 *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
+                       is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                       visibility, sensitivity},
                 nous_id == $nous_id,
                 fact_type == $fact_type,
                 is_forgotten == false

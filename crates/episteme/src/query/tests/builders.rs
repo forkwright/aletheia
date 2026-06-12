@@ -24,15 +24,15 @@ fn test_builder_matches_upsert_fact() {
     ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
       superseded_by, source_session_id, recorded_at,
       access_count, last_accessed_at, stability_hours, fact_type,
-      is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] <- [[$id, $valid_from,
+      is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity] <- [[$id, $valid_from,
       $content, $nous_id, $confidence, $tier, $valid_to, $superseded_by,
       $source_session_id, $recorded_at,
       $access_count, $last_accessed_at, $stability_hours, $fact_type,
-      $is_forgotten, $forgotten_at, $forget_reason, $scope, $project_id, $visibility]]
+      $is_forgotten, $forgotten_at, $forget_reason, $scope, $project_id, $visibility, $sensitivity]]
     :put facts {id, valid_from => content, nous_id, confidence, tier,
                 valid_to, superseded_by, source_session_id, recorded_at,
                 access_count, last_accessed_at, stability_hours, fact_type,
-                is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}
+                is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity}
 ";
     let built = queries::upsert_fact();
     assert_eq!(
@@ -49,7 +49,7 @@ fn test_builder_matches_current_facts() {
         *facts{id, valid_from, content, nous_id, confidence, tier,
                valid_to, superseded_by, recorded_at,
                access_count, last_accessed_at, stability_hours, fact_type,
-               is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
+               is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity},
         nous_id = $nous_id,
         valid_from <= $now,
         valid_to > $now,
@@ -69,8 +69,8 @@ fn test_builder_matches_current_facts() {
 #[test]
 fn test_builder_matches_facts_at_time() {
     let original = r"
-    ?[id, content, confidence, tier] :=
-        *facts{id, valid_from, content, confidence, tier, valid_to, is_forgotten, scope, project_id, visibility},
+    ?[id, content, confidence, tier, sensitivity] :=
+        *facts{id, valid_from, content, confidence, tier, valid_to, sensitivity, is_forgotten, scope, project_id, visibility},
         valid_from <= $time,
         valid_to > $time,
         is_forgotten == false
@@ -89,20 +89,20 @@ fn test_builder_matches_supersede_fact() {
     ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
       superseded_by, source_session_id, recorded_at,
       access_count, last_accessed_at, stability_hours, fact_type,
-      is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] <- [
+      is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity] <- [
         [$old_id, $old_valid_from, $old_content, $nous_id, $old_confidence,
          $old_tier, $now, $new_id, $old_source, $old_recorded,
          $old_access_count, $old_last_accessed_at, $old_stability_hours, $old_fact_type,
-         $old_is_forgotten, $old_forgotten_at, $old_forget_reason, $old_scope, $old_project_id, $old_visibility],
+         $old_is_forgotten, $old_forgotten_at, $old_forget_reason, $old_scope, $old_project_id, $old_visibility, $old_sensitivity],
         [$new_id, $now, $new_content, $nous_id, $new_confidence,
          $new_tier, "9999-12-31", null, $source_session_id, $now,
          0, "", $stability_hours, $fact_type,
-         false, null, null, $scope, $project_id, $visibility]
+         false, null, null, $scope, $project_id, $visibility, $sensitivity]
     ]
     :put facts {id, valid_from => content, nous_id, confidence, tier,
                 valid_to, superseded_by, source_session_id, recorded_at,
                 access_count, last_accessed_at, stability_hours, fact_type,
-                is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}
+                is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity}
 "#;
     let built = queries::supersede_fact();
     assert_eq!(
@@ -167,11 +167,11 @@ fn test_builder_matches_full_current_facts() {
     let original = r"
 ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id,
   access_count, last_accessed_at, stability_hours, fact_type,
-  is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+  is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity] :=
     *facts{id, valid_from, content, nous_id, confidence, tier,
            valid_to, superseded_by, source_session_id, recorded_at,
            access_count, last_accessed_at, stability_hours, fact_type,
-           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
+           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity},
     nous_id = $nous_id,
     valid_from <= $now,
     valid_to > $now,

@@ -207,7 +207,7 @@ fn schema_version_queryable() {
     .expect("open_mem");
     let version = store.schema_version().expect("version");
     // NOTE: pins `KnowledgeStore::SCHEMA_VERSION`; bump when a migration lands.
-    assert_eq!(version, 13);
+    assert_eq!(version, 14);
 }
 
 // Verify ordering of multiple facts by confidence (descending).

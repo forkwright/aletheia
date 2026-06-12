@@ -60,11 +60,13 @@ impl KnowledgeStore {
         let script = r"?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                    superseded_by, source_session_id, recorded_at,
                    access_count, last_accessed_at, stability_hours, fact_type,
-                   is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
+                   is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                   visibility, sensitivity},
             nous_id = $nous_id,
             fact_type = 'skill',
             is_null(superseded_by),
@@ -113,12 +115,14 @@ impl KnowledgeStore {
             ?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
                 candidates[id, _score],
                 *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                        superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
+                       is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                       visibility, sensitivity},
                 nous_id = $nous_id,
                 fact_type = 'skill',
                 is_null(superseded_by),
@@ -167,11 +171,13 @@ impl KnowledgeStore {
         let script = r"?[id, content, confidence, tier, recorded_at, nous_id,
               valid_from, valid_to, superseded_by, source_session_id,
               access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
                    superseded_by, source_session_id, recorded_at,
                    access_count, last_accessed_at, stability_hours, fact_type,
-                   is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility},
+                   is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                   visibility, sensitivity},
             nous_id = $nous_id,
             fact_type = 'skill_pending',
             is_null(superseded_by),

@@ -22,6 +22,10 @@ fn ddl_templates_are_valid_strings() {
     let fts = fts_ddl();
     assert!(fts.contains("content_fts"));
     assert!(fts.contains("bm25") || fts.contains("Simple"));
+    assert!(
+        KNOWLEDGE_DDL[0].contains("sensitivity: String default 'public'"),
+        "facts DDL should persist sensitivity with documented default"
+    );
 }
 
 #[cfg(feature = "mneme-engine")]

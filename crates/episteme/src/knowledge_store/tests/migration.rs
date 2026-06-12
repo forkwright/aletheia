@@ -132,6 +132,12 @@ fn crash_mid_sequence_resume_applies_only_missing_tail() {
         )
         .expect("remove v13 stamp");
     store
+        .run_mut_query(
+            r#"?[key] <- [["migration:14"]] :rm schema_version {key}"#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("remove v14 stamp");
+    store
         .stamp_schema_version(12, "test")
         .expect("stamp partial migration state");
 
@@ -149,6 +155,13 @@ fn crash_mid_sequence_resume_applies_only_missing_tail() {
             .expect("read v13 stamp")
             .expect("v13 stamp present"),
         13
+    );
+    assert_eq!(
+        store
+            .migration_stamp_version(14)
+            .expect("read v14 stamp")
+            .expect("v14 stamp present"),
+        14
     );
 }
 
@@ -185,3 +198,78 @@ fn make_store() -> std::sync::Arc<KnowledgeStore> {
     })
     .expect("open in-memory knowledge store")
 }
+
+#[test]
+fn v14_migration_backfills_existing_fact_sensitivity_to_public() {
+    let store = make_store();
+    store
+        .run_mut_query(
+            "::fts drop facts:content_fts",
+            std::collections::BTreeMap::new(),
+        )
+        .expect("drop facts FTS index");
+    store
+        .run_mut_query("::remove facts", std::collections::BTreeMap::new())
+        .expect("remove current facts relation");
+    store
+        .run_mut_query(V13_FACTS_DDL, std::collections::BTreeMap::new())
+        .expect("create v13 facts relation");
+    store
+        .run_mut_query(INSERT_V13_FACT, std::collections::BTreeMap::new())
+        .expect("insert v13 fact");
+    store
+        .stamp_schema_version(13, "test")
+        .expect("stamp v13 schema");
+
+    store.init_schema().expect("apply v14 migration");
+
+    let facts = store.read_facts_by_id("f-v13").expect("read migrated fact");
+    assert_eq!(facts.len(), 1, "migration should preserve the fact row");
+    let fact = facts.first().expect("migrated fact present");
+    assert_eq!(
+        fact.sensitivity,
+        crate::knowledge::FactSensitivity::Public,
+        "v14 migration must explicitly backfill the documented default"
+    );
+    assert_eq!(
+        store.schema_version().expect("schema version"),
+        KnowledgeStore::SCHEMA_VERSION
+    );
+}
+
+const V13_FACTS_DDL: &str = r":create facts {
+    id: String, valid_from: String =>
+    content: String,
+    nous_id: String,
+    confidence: Float,
+    tier: String,
+    valid_to: String,
+    superseded_by: String?,
+    source_session_id: String?,
+    recorded_at: String,
+    access_count: Int,
+    last_accessed_at: String,
+    stability_hours: Float,
+    fact_type: String,
+    is_forgotten: Bool default false,
+    forgotten_at: String?,
+    forget_reason: String?,
+    scope: String?,
+    project_id: String?,
+    visibility: String default 'private'
+}";
+
+const INSERT_V13_FACT: &str = r#"
+?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by,
+  source_session_id, recorded_at, access_count, last_accessed_at,
+  stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason,
+  scope, project_id, visibility] <- [[
+    "f-v13", "2026-01-01T00:00:00Z", "legacy fact", "alice", 0.8,
+    "inferred", "9999-12-31", null, null, "2026-01-01T00:00:00Z",
+    0, "", 720.0, "knowledge", false, null, null, null, null, "private"
+]]
+:put facts {id, valid_from => content, nous_id, confidence, tier, valid_to,
+            superseded_by, source_session_id, recorded_at, access_count,
+            last_accessed_at, stability_hours, fact_type, is_forgotten,
+            forgotten_at, forget_reason, scope, project_id, visibility}
+"#;

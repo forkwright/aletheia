@@ -71,6 +71,7 @@ pub enum FactsField {
     Scope,
     ProjectId,
     Visibility,
+    Sensitivity,
 }
 
 /// Fields in the `entities` relation.

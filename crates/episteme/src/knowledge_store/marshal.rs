@@ -112,6 +112,10 @@ pub(super) fn fact_to_params(
         "visibility".to_owned(),
         DataValue::Str(fact.visibility.as_str().into()),
     );
+    p.insert(
+        "sensitivity".to_owned(),
+        DataValue::Str(fact.sensitivity.as_str().into()),
+    );
     p
 }
 
@@ -392,6 +396,7 @@ pub(super) fn rows_to_facts(
             .unwrap_or_default()
             .parse::<crate::knowledge::Visibility>()
             .unwrap_or_default();
+        let sensitivity = parse_fact_sensitivity(row.get(20));
 
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         let superseded_by_id = superseded_by
@@ -434,7 +439,7 @@ pub(super) fn rows_to_facts(
                 access_count,
                 last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
             },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+            sensitivity,
         });
     }
     Ok(out)
@@ -555,6 +560,7 @@ pub(super) fn rows_to_raw_facts(
             .unwrap_or_default()
             .parse::<crate::knowledge::Visibility>()
             .unwrap_or_default();
+        let sensitivity = parse_fact_sensitivity(row.get(20));
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         let superseded_by_id = superseded_by
             .map(crate::id::FactId::new)
@@ -592,7 +598,7 @@ pub(super) fn rows_to_raw_facts(
                 access_count,
                 last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
             },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+            sensitivity,
         });
     }
     Ok(out)
@@ -630,6 +636,7 @@ pub(super) fn rows_to_facts_partial(
             .build()
         })?)?;
         let tier = parse_epistemic_tier(&tier_str);
+        let sensitivity = parse_fact_sensitivity(row.get(4));
 
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         out.push(Fact {
@@ -661,7 +668,7 @@ pub(super) fn rows_to_facts_partial(
                 access_count: 0,
                 last_accessed_at: None,
             },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+            sensitivity,
         });
     }
     Ok(out)
@@ -725,16 +732,14 @@ pub(super) fn rows_to_recall_results(
             .get(8)
             .and_then(|v| extract_str(v).ok())
             .unwrap_or_default();
+        let sensitivity = parse_fact_sensitivity(row.get(9));
         out.push(RecallResult {
             content,
             distance,
             source_type,
             source_id,
             nous_id,
-            // WHY (#3404, #3413): embeddings relation does not carry
-            // sensitivity; `search_vectors` hydrates it from the facts
-            // table before results reach the recall scorer.
-            sensitivity: crate::knowledge::FactSensitivity::Public,
+            sensitivity,
             graph_importance: 0.0,
             scope,
             project_id,
@@ -944,6 +949,16 @@ pub(super) fn extract_bool(val: &crate::engine::DataValue) -> crate::error::Resu
         }
         .build()),
     }
+}
+
+#[cfg(feature = "mneme-engine")]
+fn parse_fact_sensitivity(
+    val: Option<&crate::engine::DataValue>,
+) -> crate::knowledge::FactSensitivity {
+    val.and_then(|v| extract_str(v).ok())
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<crate::knowledge::FactSensitivity>().ok())
+        .unwrap_or_default()
 }
 
 #[cfg(feature = "mneme-engine")]
