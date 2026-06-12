@@ -249,7 +249,7 @@ pub struct UpdateSensitivityRequest {
 }
 
 /// Search query parameters.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
@@ -267,7 +267,7 @@ fn default_search_limit() -> usize {
 }
 
 /// Search result item.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
@@ -282,13 +282,104 @@ pub struct SearchResult {
 }
 
 /// Search response wrapper.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[expect(
     missing_docs,
     reason = "response struct fields are self-documenting by name"
 )]
 pub struct SearchResponse {
     pub results: Vec<SearchResult>,
+}
+
+/// Explain query parameters.
+#[derive(Debug, Deserialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct ExplainQuery {
+    pub q: String,
+    #[serde(default)]
+    pub nous_id: Option<String>,
+    #[serde(default = "default_search_limit")]
+    pub limit: usize,
+}
+
+/// Per-factor score breakdown exposed for debugging.
+#[derive(Debug, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct FactorScoreBreakdown {
+    pub vector_similarity: f64,
+    pub decay: f64,
+    pub relevance: f64,
+    pub epistemic_tier: f64,
+    pub access_frequency: f64,
+    pub relationship_proximity: f64,
+    pub graph_importance: f64,
+}
+
+/// Candidate decision reported by the explain endpoint.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ExplainDecision {
+    /// Included in the returned result set.
+    Selected,
+    /// Removed because it did not meet a hard gate.
+    Dropped,
+    /// Removed by a policy filter such as forgetting or visibility.
+    Filtered,
+}
+
+/// Single candidate in an explain response.
+#[derive(Debug, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct ExplainCandidate {
+    pub id: String,
+    pub content: String,
+    pub confidence: f64,
+    pub tier: String,
+    pub fact_type: String,
+    pub score: f64,
+    pub decision: ExplainDecision,
+    pub reasons: Vec<String>,
+    pub factors: FactorScoreBreakdown,
+}
+
+/// Recall weights reported by the explain endpoint.
+#[derive(Debug, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct RecallWeightsView {
+    pub vector_similarity: f64,
+    pub decay: f64,
+    pub relevance: f64,
+    pub epistemic_tier: f64,
+    pub access_frequency: f64,
+    pub relationship_proximity: f64,
+    pub graph_importance: f64,
+}
+
+/// Explain response exposing the candidate set, factor scores, weights, and
+/// selection/drop reasons.
+#[derive(Debug, Serialize, ToSchema)]
+#[expect(
+    missing_docs,
+    reason = "response struct fields are self-documenting by name"
+)]
+pub struct ExplainResponse {
+    pub query: String,
+    pub weights: RecallWeightsView,
+    pub total_candidates: usize,
+    pub selected: Vec<ExplainCandidate>,
+    pub dropped: Vec<ExplainCandidate>,
 }
 
 /// Similar fact entry.

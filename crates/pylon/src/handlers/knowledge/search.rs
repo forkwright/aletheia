@@ -1,17 +1,79 @@
-//! Knowledge search and timeline handlers.
+//! Knowledge search, explain, and timeline handlers.
 
 use axum::Json;
 use axum::extract::{Query, State};
 
-use crate::error::ApiError;
+use crate::error::{ApiError, BadRequestSnafu};
 use crate::state::KnowledgeState;
 
 #[cfg(feature = "knowledge-store")]
 use super::SimilarFact;
 use super::{
-    EntityRelationship, FactsQuery, SearchQuery, SearchResponse, SearchResult, TimelineEvent,
-    TimelineQuery, TimelineResponse, default_order, default_sort,
+    EntityRelationship, ExplainCandidate, ExplainDecision, ExplainQuery, ExplainResponse,
+    FactorScoreBreakdown, FactsQuery, RecallWeightsView, SearchQuery, SearchResponse, SearchResult,
+    TimelineEvent, TimelineQuery, TimelineResponse, default_order, default_sort,
 };
+
+/// Score a fact stream using the same multi-factor recall engine as the turn
+/// recall pipeline and produce a full explanation.
+async fn score_facts_for_query(
+    state: &KnowledgeState,
+    q: &str,
+    nous_id: Option<&str>,
+    limit: usize,
+    now: jiff::Timestamp,
+) -> Result<mneme::recall::explain::RecallExplanation, ApiError> {
+    let max_search_limit = state.config.read().await.api_limits.max_search_limit;
+    if limit > max_search_limit {
+        return Err(BadRequestSnafu {
+            message: format!("limit must not exceed {max_search_limit}"),
+        }
+        .build());
+    }
+
+    // WHY(#1252): the caller-supplied nous_id must reach get_stored_facts - a
+    // hardcoded nous_id: None makes the store return empty for agent-scoped facts.
+    let facts_query = FactsQuery {
+        nous_id: nous_id.map(ToOwned::to_owned),
+        sort: default_sort(),
+        order: default_order(),
+        filter: None,
+        fact_type: None,
+        tier: None,
+        limit: 10_000,
+        offset: 0,
+        include_forgotten: true,
+    };
+    let all_facts = get_stored_facts(state, &facts_query);
+    let engine = build_recall_engine(state).await;
+
+    Ok(mneme::recall::explain::explain_recall(
+        &engine,
+        &all_facts,
+        q,
+        nous_id,
+        now,
+        limit.min(max_search_limit),
+    ))
+}
+
+async fn build_recall_engine(state: &KnowledgeState) -> mneme::recall::RecallEngine {
+    let config_weights = &state.config.read().await.agents.defaults.recall.weights;
+    let weights = mneme::recall::RecallWeights {
+        vector_similarity: 0.30,
+        decay: config_weights.decay,
+        relevance: config_weights.relevance,
+        epistemic_tier: config_weights.epistemic_tier,
+        relationship_proximity: config_weights.relationship_proximity,
+        access_frequency: config_weights.access_frequency,
+        graph_importance: config_weights.graph_importance,
+        serendipity: 0.0,
+        surprise: 0.0,
+        evidence_coverage: 0.0,
+        convergence: 0.0,
+    };
+    mneme::recall::RecallEngine::with_weights(weights)
+}
 
 /// GET /api/v1/knowledge/search
 #[utoipa::path(
@@ -23,7 +85,8 @@ use super::{
         ("limit" = Option<usize>, Query, description = "Maximum results (default: 20)"),
     ),
     responses(
-        (status = 200, description = "Search results ranked by relevance"),
+        (status = 200, description = "Search results ranked by relevance", body = SearchResponse),
+        (status = 400, description = "Invalid query or limit", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -35,77 +98,132 @@ use super::{
 /// side effects beyond not returning a response.
 pub async fn search(
     State(state): State<KnowledgeState>,
-    Query(mut query): Query<SearchQuery>,
+    Query(query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError> {
     if query.q.trim().is_empty() {
-        return Err(crate::error::BadRequestSnafu {
+        return Err(BadRequestSnafu {
             message: "search query 'q' must not be empty",
         }
         .build());
     }
 
-    let max_search_limit = state.config.read().await.api_limits.max_search_limit;
-    if query.limit > max_search_limit {
-        return Err(crate::error::BadRequestSnafu {
-            message: format!("limit must not exceed {max_search_limit}"),
-        }
-        .build());
-    }
-    query.limit = query.limit.min(max_search_limit);
+    let explanation = score_facts_for_query(
+        &state,
+        &query.q,
+        query.nous_id.as_deref(),
+        query.limit,
+        jiff::Timestamp::now(),
+    )
+    .await?;
 
-    // WHY(#1252): the caller-supplied nous_id must reach get_stored_facts — a
-    // hardcoded nous_id: None makes the store return empty for agent-scoped facts.
-    let facts_query = FactsQuery {
-        nous_id: query.nous_id.clone(),
-        sort: default_sort(),
-        order: default_order(),
-        filter: None,
-        fact_type: None,
-        tier: None,
-        limit: 10_000,
-        offset: 0,
-        include_forgotten: false,
-    };
-    let all_facts = get_stored_facts(&state, &facts_query);
-    let query_lower = query.q.to_lowercase();
-    let query_terms: Vec<&str> = query_lower.split_whitespace().collect();
-
-    let mut results: Vec<SearchResult> = all_facts
-        .iter()
-        .filter(|f| !f.lifecycle.is_forgotten)
-        .filter_map(|f| {
-            let content_lower = f.content.to_lowercase();
-            // NOTE: Simple BM25-like scoring: term frequency weighted by confidence.
-            let mut score = 0.0_f64;
-            for term in &query_terms {
-                if content_lower.contains(term) {
-                    score += 1.0;
-                }
-            }
-            if score > 0.0 {
-                score *= f.provenance.confidence;
-                Some(SearchResult {
-                    id: f.id.to_string(),
-                    content: f.content.clone(),
-                    confidence: f.provenance.confidence,
-                    tier: f.provenance.tier.as_str().to_string(),
-                    fact_type: f.fact_type.clone(),
-                    score,
-                })
-            } else {
-                None
-            }
+    let results: Vec<SearchResult> = explanation
+        .candidates
+        .into_iter()
+        .filter(|c| c.decision == mneme::recall::explain::CandidateDecision::Selected)
+        .map(|c| SearchResult {
+            id: c.result.source_id,
+            content: c.result.content,
+            confidence: c.confidence,
+            tier: c.tier,
+            fact_type: c.fact_type,
+            score: c.result.score,
         })
         .collect();
 
-    results.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    results.truncate(query.limit);
-
     Ok(Json(SearchResponse { results }))
+}
+
+/// GET /api/v1/knowledge/search/explain
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/search/explain",
+    params(
+        ("q" = String, Query, description = "Search query text"),
+        ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
+        ("limit" = Option<usize>, Query, description = "Maximum results (default: 20)"),
+    ),
+    responses(
+        (status = 200, description = "Explainable recall scoring report", body = ExplainResponse),
+        (status = 400, description = "Invalid query or limit", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+pub async fn explain(
+    State(state): State<KnowledgeState>,
+    Query(query): Query<ExplainQuery>,
+) -> Result<Json<ExplainResponse>, ApiError> {
+    if query.q.trim().is_empty() {
+        return Err(BadRequestSnafu {
+            message: "search query 'q' must not be empty",
+        }
+        .build());
+    }
+
+    let explanation = score_facts_for_query(
+        &state,
+        &query.q,
+        query.nous_id.as_deref(),
+        query.limit,
+        jiff::Timestamp::now(),
+    )
+    .await?;
+
+    let mut selected = Vec::new();
+    let mut dropped = Vec::new();
+
+    for candidate in explanation.candidates {
+        let item = ExplainCandidate {
+            id: candidate.result.source_id,
+            content: candidate.result.content,
+            confidence: candidate.confidence,
+            tier: candidate.tier,
+            fact_type: candidate.fact_type,
+            score: candidate.result.score,
+            decision: match candidate.decision {
+                mneme::recall::explain::CandidateDecision::Selected => ExplainDecision::Selected,
+                mneme::recall::explain::CandidateDecision::Dropped => ExplainDecision::Dropped,
+                mneme::recall::explain::CandidateDecision::Filtered => ExplainDecision::Filtered,
+            },
+            reasons: candidate.reasons,
+            factors: FactorScoreBreakdown {
+                vector_similarity: candidate.result.factors.vector_similarity,
+                decay: candidate.result.factors.decay,
+                relevance: candidate.result.factors.relevance,
+                epistemic_tier: candidate.result.factors.epistemic_tier,
+                access_frequency: candidate.result.factors.access_frequency,
+                relationship_proximity: candidate.result.factors.relationship_proximity,
+                graph_importance: candidate.result.factors.graph_importance,
+            },
+        };
+
+        if matches!(item.decision, ExplainDecision::Selected) {
+            selected.push(item);
+        } else {
+            dropped.push(item);
+        }
+    }
+
+    Ok(Json(ExplainResponse {
+        query: query.q,
+        weights: RecallWeightsView {
+            vector_similarity: explanation.weights.vector_similarity,
+            decay: explanation.weights.decay,
+            relevance: explanation.weights.relevance,
+            epistemic_tier: explanation.weights.epistemic_tier,
+            access_frequency: explanation.weights.access_frequency,
+            relationship_proximity: explanation.weights.relationship_proximity,
+            graph_importance: explanation.weights.graph_importance,
+        },
+        total_candidates: selected.len() + dropped.len(),
+        selected,
+        dropped,
+    }))
 }
 
 /// GET /api/v1/knowledge/timeline

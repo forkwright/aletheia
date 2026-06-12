@@ -87,7 +87,8 @@ pub mod error {
 pub mod portability {
     pub use graphe::portability::{
         AGENT_FILE_VERSION, AgentFile, ExportedMessage, ExportedNote, ExportedSession,
-        ExportedVector, GraphData, KnowledgeExport, MemoryData, NousInfo, WorkspaceData,
+        ExportedUsageRecord, ExportedVector, FactEntityEdge, GraphData, KnowledgeExport,
+        MemoryData, NousInfo, WorkspaceData,
     };
 }
 
@@ -224,6 +225,13 @@ pub mod recall {
         FactorScores, ProjectRecallScope, RecallEngine, RecallWeights, ScoredResult,
         filter_by_cohort_visibility, filter_by_project_scope, filter_by_visibility,
     };
+
+    /// Explainable recall scoring helpers for HTTP search surfaces.
+    pub mod explain {
+        pub use episteme::recall::explain::{
+            CandidateDecision, ExplainedCandidate, RecallExplanation, explain_recall,
+        };
+    }
 
     /// Optional reranker implementations and trait.
     #[cfg(feature = "reranker")]

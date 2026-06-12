@@ -93,6 +93,7 @@ pub fn build_router_with(
             get(knowledge::entity_relationships),
         )
         .route("/entities/{id}/flag", post(knowledge::flag_entity))
+        .route("/search/explain", get(knowledge::explain))
         .route("/search", get(knowledge::search))
         .route("/timeline", get(knowledge::timeline))
         .route("/check", get(knowledge::check_graph_health))
