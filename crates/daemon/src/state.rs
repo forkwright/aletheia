@@ -42,9 +42,10 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// Reserved child-agent concurrency limit.
+    /// Maximum concurrent child agents.
     ///
-    /// The current runtime stores this value but does not spawn child agents.
+    /// The `Coordinator` enforces this cap via `can_spawn()` before each
+    /// child-agent dispatch. Defaults to 3.
     #[serde(default = "default_max_children")]
     pub max_children: usize,
 
