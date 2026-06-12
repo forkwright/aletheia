@@ -4,7 +4,7 @@
 //! `repomix` npm binary. Walks crate directories, strips comments, collapses
 //! whitespace, and emits structured output that fits provider context windows.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -46,6 +46,20 @@ pub(crate) struct PackResult {
     pub raw_bytes: usize,
     pub packed_bytes: usize,
     pub estimated_tokens: usize,
+}
+
+#[derive(Debug)]
+struct WorkspacePackages {
+    root: PathBuf,
+    package_dirs: HashMap<String, PathBuf>,
+    deps_by_package: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug)]
+struct PackedFile {
+    canonical_path: PathBuf,
+    display_path: PathBuf,
+    content: String,
 }
 
 /// List all built-in repomix templates.
@@ -110,20 +124,24 @@ pub(crate) fn pack(
     max_tokens: u32,
 ) -> Result<PackResult, crate::error::Error> {
     let template = get_template(template_name)?;
+    for crate_name in crate_names {
+        validate_package_name(crate_name)?;
+    }
 
-    let mut files: Vec<(PathBuf, String)> = Vec::new();
+    let workspace = WorkspacePackages::load(workspace_root)?;
+    let mut files: Vec<PackedFile> = Vec::new();
 
     for crate_name in crate_names {
-        let crate_dir = find_crate_dir(workspace_root, crate_name)?;
+        let crate_dir = workspace.package_dir(crate_name)?;
         let src_dir = crate_dir.join("src");
         if src_dir.is_dir() {
-            walk_rs_files(&src_dir, &mut files)?;
+            walk_rs_files(&workspace.root, &src_dir, &mut files)?;
         }
 
         if template.include_deps && template.dep_scope != DepScope::None {
-            let deps = resolve_workspace_deps(workspace_root, crate_name)?;
+            let deps = workspace.workspace_deps(crate_name)?;
             for dep in deps {
-                let dep_dir = find_crate_dir(workspace_root, &dep)?;
+                let dep_dir = workspace.package_dir(&dep)?;
                 let dep_src = dep_dir.join("src");
                 if !dep_src.is_dir() {
                     continue;
@@ -133,18 +151,25 @@ pub(crate) fn pack(
                         for entry in ["lib.rs", "prelude.rs"] {
                             let p = dep_src.join(entry);
                             if p.is_file() {
-                                let content = std::fs::read_to_string(&p).map_err(|e| {
+                                let canonical = canonicalize_contained_path(&workspace.root, &p)?;
+                                let display_path =
+                                    workspace_relative_path(&workspace.root, &canonical)?;
+                                let content = std::fs::read_to_string(&canonical).map_err(|e| {
                                     RepomixPackSnafu {
-                                        message: format!("read {}: {e}", p.display()),
+                                        message: format!("read {}: {e}", canonical.display()),
                                     }
                                     .build()
                                 })?;
-                                files.push((p, content));
+                                files.push(PackedFile {
+                                    canonical_path: canonical,
+                                    display_path,
+                                    content,
+                                });
                             }
                         }
                     }
                     DepScope::Full => {
-                        walk_rs_files(&dep_src, &mut files)?;
+                        walk_rs_files(&workspace.root, &dep_src, &mut files)?;
                     }
                     DepScope::None => {}
                 }
@@ -154,7 +179,7 @@ pub(crate) fn pack(
 
     // Deduplicate by path (cross_crate may overlap with deps).
     let mut seen = HashSet::new();
-    files.retain(|(p, _)| seen.insert(p.clone()));
+    files.retain(|file| seen.insert(file.canonical_path.clone()));
 
     let mut packed = String::new();
     packed.push_str("<packed_context>\n");
@@ -177,9 +202,10 @@ pub(crate) fn pack(
     let footer_len = "</packed_context>\n".len();
     let mut budget = max_bytes.saturating_sub(header_len + footer_len);
 
-    for (path, content) in &files {
+    for file in &files {
+        let content = file.content.as_str();
         let compressed = compress(content);
-        let entry = format_file_entry(path, &compressed);
+        let entry = format_file_entry(&file.display_path, &compressed);
         let entry_bytes = entry.len();
         raw_bytes += content.len();
 
@@ -230,110 +256,187 @@ pub(crate) fn detect_workspace_root() -> Option<PathBuf> {
     None
 }
 
-fn find_crate_dir(workspace_root: &Path, crate_name: &str) -> Result<PathBuf, crate::error::Error> {
-    // Standard aletheia layout: crates/{name}/
-    let standard = workspace_root.join("crates").join(crate_name);
-    if standard.is_dir() {
-        return Ok(standard);
-    }
-    // Try workspace members by scanning Cargo.toml
-    let cargo_toml = workspace_root.join("Cargo.toml");
-    if cargo_toml.exists()
-        && let Ok(content) = std::fs::read_to_string(&cargo_toml)
-    {
-        // Very naive parser: look for "name" in member paths
-        for line in content.lines() {
-            if (line.contains("crates/") || line.contains("projects/"))
-                && let Some(path_str) = extract_quoted(line)
+impl WorkspacePackages {
+    fn load(workspace_root: &Path) -> Result<Self, crate::error::Error> {
+        let root = std::fs::canonicalize(workspace_root).map_err(|e| {
+            RepomixPackSnafu {
+                message: format!("canonicalize workspace root: {e}"),
+            }
+            .build()
+        })?;
+        let manifest_path = root.join("Cargo.toml");
+        let metadata = cargo_metadata::MetadataCommand::new()
+            .manifest_path(&manifest_path)
+            .exec()
+            .map_err(|e| {
+                RepomixPackSnafu {
+                    message: format!("load Cargo workspace metadata: {e}"),
+                }
+                .build()
+            })?;
+
+        let workspace_member_ids: HashSet<String> = metadata
+            .workspace_members
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        let mut package_dirs = HashMap::new();
+        let mut name_by_id = HashMap::new();
+
+        for package in &metadata.packages {
+            let package_id = package.id.to_string();
+            if !workspace_member_ids.contains(&package_id) {
+                continue;
+            }
+            let manifest_dir = package.manifest_path.parent().ok_or_else(|| {
+                RepomixPackSnafu {
+                    message: format!("package '{}' manifest has no parent", package.name),
+                }
+                .build()
+            })?;
+            let package_dir = canonicalize_contained_path(&root, manifest_dir.as_std_path())?;
+            if package_dirs
+                .insert(package.name.clone(), package_dir)
+                .is_some()
             {
-                let candidate = workspace_root.join(path_str).join(crate_name);
-                if candidate.is_dir() {
-                    return Ok(candidate);
+                return Err(RepomixPackSnafu {
+                    message: format!("duplicate workspace package name '{}'", package.name),
                 }
+                .build());
+            }
+            name_by_id.insert(package_id, package.name.clone());
+        }
+
+        let mut deps_by_package = HashMap::new();
+        if let Some(resolve) = &metadata.resolve {
+            for node in &resolve.nodes {
+                let node_id = node.id.to_string();
+                let Some(package_name) = name_by_id.get(&node_id) else {
+                    continue;
+                };
+                let deps = node
+                    .dependencies
+                    .iter()
+                    .filter_map(|dep| name_by_id.get(&dep.to_string()).cloned())
+                    .collect();
+                deps_by_package.insert(package_name.clone(), deps);
             }
         }
+
+        Ok(Self {
+            root,
+            package_dirs,
+            deps_by_package,
+        })
     }
-    // Fallback: search one level deep under workspace root
-    if let Ok(entries) = std::fs::read_dir(workspace_root) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let candidate = path.join(crate_name);
-                if candidate.is_dir() {
-                    return Ok(candidate);
+
+    fn package_dir(&self, package_name: &str) -> Result<&Path, crate::error::Error> {
+        self.package_dirs
+            .get(package_name)
+            .map(PathBuf::as_path)
+            .ok_or_else(|| {
+                RepomixPackSnafu {
+                    message: format!("Cargo package not found in workspace: '{package_name}'"),
                 }
-            }
-        }
+                .build()
+            })
     }
-    Err(RepomixPackSnafu {
-        message: format!("crate directory not found for '{crate_name}'"),
+
+    fn workspace_deps(&self, package_name: &str) -> Result<Vec<String>, crate::error::Error> {
+        self.package_dir(package_name)?;
+        Ok(self
+            .deps_by_package
+            .get(package_name)
+            .cloned()
+            .unwrap_or_default())
     }
-    .build())
 }
 
-fn extract_quoted(line: &str) -> Option<String> {
-    let mut chars = line.chars();
-    while let Some(c) = chars.next() {
-        if c == '"' || c == '\'' {
-            let quote = c;
-            let mut s = String::new();
-            for c2 in chars.by_ref() {
-                if c2 == quote {
-                    return Some(s);
-                }
-                s.push(c2);
-            }
+fn validate_package_name(package_name: &str) -> Result<(), crate::error::Error> {
+    if package_name.is_empty() {
+        return Err(RepomixPackSnafu {
+            message: "crate name must not be empty".to_owned(),
         }
+        .build());
     }
-    None
+    if Path::new(package_name).is_absolute() {
+        return Err(RepomixPackSnafu {
+            message: format!("crate name must be a Cargo package name, not a path: {package_name}"),
+        }
+        .build());
+    }
+    if package_name.contains("..") {
+        return Err(RepomixPackSnafu {
+            message: format!("crate name must not contain '..': {package_name}"),
+        }
+        .build());
+    }
+    if package_name.contains('/') || package_name.contains('\\') {
+        return Err(RepomixPackSnafu {
+            message: format!("crate name must not contain path separators: {package_name}"),
+        }
+        .build());
+    }
+    if !package_name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(RepomixPackSnafu {
+            message: format!("crate name contains invalid characters: {package_name}"),
+        }
+        .build());
+    }
+    Ok(())
 }
 
-fn resolve_workspace_deps(
+fn canonicalize_contained_path(
     workspace_root: &Path,
-    crate_name: &str,
-) -> Result<Vec<String>, crate::error::Error> {
-    let crate_dir = find_crate_dir(workspace_root, crate_name)?;
-    let cargo_toml = crate_dir.join("Cargo.toml");
-    let content = std::fs::read_to_string(&cargo_toml).map_err(|e| {
+    path: &Path,
+) -> Result<PathBuf, crate::error::Error> {
+    let canonical = std::fs::canonicalize(path).map_err(|e| {
         RepomixPackSnafu {
-            message: format!("read {}: {e}", cargo_toml.display()),
+            message: format!("canonicalize {}: {e}", path.display()),
         }
         .build()
     })?;
-
-    let mut deps = Vec::new();
-    let mut in_deps = false;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed == "[dependencies]" || trimmed.starts_with("[dependencies.") {
-            in_deps = true;
-            continue;
+    if !canonical.starts_with(workspace_root) {
+        return Err(RepomixPackSnafu {
+            message: format!(
+                "resolved path escapes workspace root: {}",
+                canonical.display()
+            ),
         }
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            in_deps = false;
-            continue;
-        }
-        if in_deps {
-            // NOTE: naive `key = value` parse; quoted keys and inline tables
-            // are out of scope for dependency-name extraction.
-            if let Some(eq) = trimmed.find('=')
-                && let Some(key_slice) = trimmed.get(..eq)
-            {
-                let key = key_slice.trim();
-                // WHY: a `path` key marks a workspace-local dependency; registry
-                // deps are excluded.
-                if trimmed.contains("path") {
-                    deps.push(key.to_owned());
-                }
-            }
-        }
+        .build());
     }
-    Ok(deps)
+    Ok(canonical)
 }
 
-fn walk_rs_files(dir: &Path, out: &mut Vec<(PathBuf, String)>) -> Result<(), crate::error::Error> {
+fn workspace_relative_path(
+    workspace_root: &Path,
+    path: &Path,
+) -> Result<PathBuf, crate::error::Error> {
+    path.strip_prefix(workspace_root)
+        .map(Path::to_path_buf)
+        .map_err(|_strip_err| {
+            RepomixPackSnafu {
+                message: format!("resolved path escapes workspace root: {}", path.display()),
+            }
+            .build()
+        })
+}
+
+fn walk_rs_files(
+    workspace_root: &Path,
+    dir: &Path,
+    out: &mut Vec<PackedFile>,
+) -> Result<(), crate::error::Error> {
     let mut stack = vec![dir.to_path_buf()];
+    let mut seen_dirs = HashSet::new();
     while let Some(current) = stack.pop() {
+        let current = canonicalize_contained_path(workspace_root, &current)?;
+        if !seen_dirs.insert(current.clone()) {
+            continue;
+        }
         let entries = std::fs::read_dir(&current).map_err(|e| {
             RepomixPackSnafu {
                 message: format!("read directory {}: {e}", current.display()),
@@ -341,17 +444,22 @@ fn walk_rs_files(dir: &Path, out: &mut Vec<(PathBuf, String)>) -> Result<(), cra
             .build()
         })?;
         for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "rs") {
-                let content = std::fs::read_to_string(&path).map_err(|e| {
+            let canonical = canonicalize_contained_path(workspace_root, &entry.path())?;
+            if canonical.is_dir() {
+                stack.push(canonical);
+            } else if canonical.extension().is_some_and(|e| e == "rs") {
+                let display_path = workspace_relative_path(workspace_root, &canonical)?;
+                let content = std::fs::read_to_string(&canonical).map_err(|e| {
                     RepomixPackSnafu {
-                        message: format!("read {}: {e}", path.display()),
+                        message: format!("read {}: {e}", canonical.display()),
                     }
                     .build()
                 })?;
-                out.push((path, content));
+                out.push(PackedFile {
+                    canonical_path: canonical,
+                    display_path,
+                    content,
+                });
             }
         }
     }
@@ -359,11 +467,8 @@ fn walk_rs_files(dir: &Path, out: &mut Vec<(PathBuf, String)>) -> Result<(), cra
 }
 
 fn format_file_entry(path: &Path, compressed: &str) -> String {
-    format!(
-        "<file path=\"{}\">\n{}\n</file>\n",
-        path.display(),
-        compressed
-    )
+    let display_path = path.to_string_lossy().replace('\\', "/");
+    format!("<file path=\"{display_path}\">\n{compressed}\n</file>\n")
 }
 
 /// Remove comments and collapse whitespace to approximate tree-sitter compression.
@@ -450,6 +555,32 @@ fn compress(source: &str) -> String {
 mod tests {
     use super::*;
 
+    fn write_workspace(root: &Path, members: &[&str]) {
+        let members = members
+            .iter()
+            .map(|member| format!("    \"{member}\","))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(
+            root.join("Cargo.toml"),
+            format!("[workspace]\nresolver = \"2\"\nmembers = [\n{members}\n]\n"),
+        )
+        .unwrap();
+    }
+
+    fn write_crate(root: &Path, member: &str, package_name: &str, extra_manifest: &str, lib: &str) {
+        let package = root.join(member);
+        std::fs::create_dir_all(package.join("src")).unwrap();
+        std::fs::write(
+            package.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"{package_name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n{extra_manifest}"
+            ),
+        )
+        .unwrap();
+        std::fs::write(package.join("src/lib.rs"), lib).unwrap();
+    }
+
     #[test]
     fn list_templates_has_three_builtins() {
         let list = list_templates();
@@ -492,31 +623,28 @@ mod tests {
     #[test]
     fn pack_respects_max_tokens() {
         let dir = tempfile::tempdir().unwrap();
-        let crates = dir.path().join("crates");
-        let test_crate = crates.join("alpha");
-        std::fs::create_dir_all(test_crate.join("src")).unwrap();
-        std::fs::write(
-            test_crate.join("Cargo.toml"),
-            "[package]\nname = \"alpha\"\n",
-        )
-        .unwrap();
-        std::fs::write(
-            test_crate.join("src/lib.rs"),
+        write_workspace(dir.path(), &["crates/alpha"]);
+        write_crate(
+            dir.path(),
+            "crates/alpha",
+            "alpha",
+            "",
             "// lib\npub fn add(a: i32, b: i32) -> i32 { a + b }\n",
-        )
-        .unwrap();
+        );
 
         let result = pack(dir.path(), &["alpha".to_owned()], "single_crate", 10).unwrap();
         assert!(result.packed.contains("<packed_context>"));
         assert!(result.packed.contains("add(a: i32"));
-        assert!(result.files_included >= 1);
-        // WHY: the XML wrapper + `<file path="...">` header embed the full
-        // tempdir path, which varies by platform (macOS uses longer
-        // `/var/folders/...` paths). Bound is platform-tolerant; what we really
-        // verify is that the budget is respected (= much smaller than the
-        // unlimited case) and the structured wrapper is intact.
+        assert!(result.packed.contains("crates/alpha/src/lib.rs"));
         assert!(
-            result.estimated_tokens <= 120,
+            !result
+                .packed
+                .contains(dir.path().to_string_lossy().as_ref()),
+            "packed output must not expose absolute workspace paths"
+        );
+        assert!(result.files_included >= 1);
+        assert!(
+            result.estimated_tokens <= 80,
             "tokens: {}",
             result.estimated_tokens
         );
@@ -525,22 +653,97 @@ mod tests {
     #[test]
     fn pack_with_workspace_deps() {
         let dir = tempfile::tempdir().unwrap();
-        let crates = dir.path().join("crates");
-        let alpha = crates.join("alpha");
-        let beta = crates.join("beta");
-        std::fs::create_dir_all(alpha.join("src")).unwrap();
-        std::fs::create_dir_all(beta.join("src")).unwrap();
-        std::fs::write(
-            alpha.join("Cargo.toml"),
-            "[package]\nname = \"alpha\"\n[dependencies]\nbeta = { path = \"../beta\" }\n",
-        )
-        .unwrap();
-        std::fs::write(alpha.join("src/lib.rs"), "pub fn a() {}\n").unwrap();
-        std::fs::write(beta.join("Cargo.toml"), "[package]\nname = \"beta\"\n").unwrap();
-        std::fs::write(beta.join("src/lib.rs"), "pub fn b() {}\n").unwrap();
+        write_workspace(dir.path(), &["crates/alpha", "crates/beta"]);
+        write_crate(
+            dir.path(),
+            "crates/alpha",
+            "alpha",
+            "\n[dependencies]\nbeta = { path = \"../beta\" }\n",
+            "pub fn a() {}\n",
+        );
+        write_crate(dir.path(), "crates/beta", "beta", "", "pub fn b() {}\n");
 
         let result = pack(dir.path(), &["alpha".to_owned()], "crate_with_deps", 1000).unwrap();
         assert!(result.packed.contains("fn a()"));
         assert!(result.packed.contains("fn b()"));
+    }
+
+    #[test]
+    fn pack_rejects_absolute_crate_name() {
+        let err = pack(
+            Path::new("/missing-workspace"),
+            &["/tmp/alpha".to_owned()],
+            "single_crate",
+            1000,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("not a path"));
+    }
+
+    #[test]
+    fn pack_rejects_parent_segment_crate_name() {
+        let err = pack(
+            Path::new("/missing-workspace"),
+            &["alpha..beta".to_owned()],
+            "single_crate",
+            1000,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("must not contain '..'"));
+    }
+
+    #[test]
+    fn pack_rejects_separator_injection_crate_name() {
+        let err = pack(
+            Path::new("/missing-workspace"),
+            &["crates/alpha".to_owned()],
+            "single_crate",
+            1000,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("path separators"));
+    }
+
+    #[test]
+    fn pack_rejects_backslash_separator_injection_crate_name() {
+        let err = pack(
+            Path::new("/missing-workspace"),
+            &["crates\\alpha".to_owned()],
+            "single_crate",
+            1000,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("path separators"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn pack_rejects_symlinked_package_escape() {
+        let workspace = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        write_workspace(workspace.path(), &["crates/escape"]);
+        write_crate(
+            outside.path(),
+            "",
+            "escape",
+            "",
+            "pub fn outside_workspace() {}\n",
+        );
+        std::fs::create_dir_all(workspace.path().join("crates")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), workspace.path().join("crates/escape")).unwrap();
+
+        let err = pack(
+            workspace.path(),
+            &["escape".to_owned()],
+            "single_crate",
+            1000,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("escapes workspace root"));
     }
 }

@@ -2103,6 +2103,28 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// A resolved instance path escaped the instance root.
+    #[snafu(display(
+        "instance path escapes root: {} is outside {}",
+        path.display(),
+        root.display()
+    ))]
+    PathOutsideRoot {
+        path: PathBuf,
+        root: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A path could not be canonicalized for containment checking.
+    #[snafu(display("failed to resolve instance path: {}", path.display()))]
+    ResolvePath {
+        path: PathBuf,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// The primary key file is invalid (wrong length, bad hex).
     #[snafu(display("invalid primary key at {}: {reason}", path.display()))]
     InvalidPrimaryKey {
@@ -2220,6 +2242,11 @@ impl Oikos {
     pub fn shared (&self) -> PathBuf;
     pub fn nous_dir (&self, id: &str) -> PathBuf;
     pub fn nous_file (&self, id: &str, filename: &str) -> PathBuf;
+    pub fn contained_nous_file (
+        &self,
+        id: &NousId,
+        filename: &str,
+    ) -> crate::error::Result<PathBuf>;
     pub fn config (&self) -> PathBuf;
     pub fn credentials (&self) -> PathBuf;
     pub fn data (&self) -> PathBuf;

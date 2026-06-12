@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use snafu::{ResultExt, ensure};
 
+use koina::id::NousId;
 use koina::system::{Environment, RealSystem};
 
 /// The oikos: resolved instance paths.
@@ -158,6 +159,20 @@ impl Oikos {
     #[must_use]
     pub fn nous_file(&self, id: &str, filename: &str) -> PathBuf {
         self.nous_dir(id).join(filename)
+    }
+
+    /// A canonical file path within a validated agent workspace.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be resolved or the resolved path is
+    /// outside the instance root.
+    pub fn contained_nous_file(
+        &self,
+        id: &NousId,
+        filename: &str,
+    ) -> crate::error::Result<PathBuf> {
+        self.canonical_path_under_root(self.nous_file(id.as_str(), filename))
     }
 
     /// The config directory.
@@ -357,6 +372,23 @@ impl Oikos {
         let _ = std::fs::remove_file(&test_file);
         Ok(())
     }
+
+    fn canonical_path_under_root(&self, path: PathBuf) -> crate::error::Result<PathBuf> {
+        use crate::error::{PathOutsideRootSnafu, ResolvePathSnafu};
+
+        let root = std::fs::canonicalize(&self.root).context(ResolvePathSnafu {
+            path: self.root.clone(),
+        })?;
+        let canonical = std::fs::canonicalize(&path).context(ResolvePathSnafu { path })?;
+        ensure!(
+            canonical.starts_with(&root),
+            PathOutsideRootSnafu {
+                path: canonical.clone(),
+                root
+            }
+        );
+        Ok(canonical)
+    }
 }
 
 #[cfg(test)]
@@ -364,6 +396,12 @@ impl Oikos {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use std::io::Write as _;
+
+    fn write_test_file(path: &Path, contents: &[u8]) {
+        let mut file = std::fs::File::create(path).unwrap();
+        file.write_all(contents).unwrap();
+    }
 
     #[test]
     fn oikos_path_structure() {
@@ -508,6 +546,43 @@ mod tests {
             oikos.nous_file("demiurge", "SOUL.md"),
             PathBuf::from("/srv/instance/nous/demiurge/SOUL.md"),
             "nous file path for demiurge"
+        );
+    }
+
+    #[test]
+    fn contained_nous_file_accepts_file_inside_root() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file = dir.path().join("nous/alice/SOUL.md");
+        std::fs::create_dir_all(file.parent().expect("file parent")).unwrap();
+        write_test_file(&file, b"# Alice\n");
+
+        let oikos = Oikos::from_root(dir.path());
+        let nous_id = NousId::new("alice").expect("valid nous id");
+        let resolved = oikos
+            .contained_nous_file(&nous_id, "SOUL.md")
+            .expect("contained file resolves");
+
+        assert_eq!(resolved, std::fs::canonicalize(file).unwrap());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn contained_nous_file_rejects_symlink_escape() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let outside = tempfile::tempdir().expect("create outside temp dir");
+        let outside_file = outside.path().join("SOUL.md");
+        write_test_file(&outside_file, b"# Escape\n");
+        let link = dir.path().join("nous/alice/SOUL.md");
+        std::fs::create_dir_all(link.parent().expect("link parent")).unwrap();
+        std::os::unix::fs::symlink(&outside_file, &link).unwrap();
+
+        let oikos = Oikos::from_root(dir.path());
+        let nous_id = NousId::new("alice").expect("valid nous id");
+        let err = oikos.contained_nous_file(&nous_id, "SOUL.md").unwrap_err();
+
+        assert!(
+            matches!(err, crate::error::Error::PathOutsideRoot { .. }),
+            "expected PathOutsideRoot, got {err:?}"
         );
     }
 
