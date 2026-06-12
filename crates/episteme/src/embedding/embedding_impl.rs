@@ -4,10 +4,9 @@
 use tracing::instrument;
 
 #[cfg(any(test, feature = "test-support"))]
-use crate::embedding::MockEmbeddingProvider;
+use crate::embedding::{DEFAULT_MOCK_MODEL, MockEmbeddingProvider};
 use crate::embedding::{
-    DEFAULT_MOCK_MODEL, DegradedEmbeddingProvider, EmbedFailedSnafu, EmbeddingProvider,
-    EmbeddingResult,
+    DegradedEmbeddingProvider, EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult,
 };
 
 // ── MockEmbeddingProvider implementation ─────────────────────────────────────

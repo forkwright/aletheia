@@ -23,7 +23,9 @@ fn ddl_templates_are_valid_strings() {
     assert!(fts.contains("content_fts"));
     assert!(fts.contains("bm25") || fts.contains("Simple"));
     assert!(
-        KNOWLEDGE_DDL[0].contains("sensitivity: String default 'public'"),
+        KNOWLEDGE_DDL
+            .first()
+            .is_some_and(|ddl| ddl.contains("sensitivity: String default 'public'")),
         "facts DDL should persist sensitivity with documented default"
     );
 }
