@@ -55,6 +55,9 @@ pub struct AnthropicProvider {
     cc_profile: Option<super::cc_profile::CcProfile>,
     /// Per-request timeout for non-streaming completions.
     non_streaming_timeout: Duration,
+    /// Default retry delay in milliseconds for SSE stream errors (rate-limit,
+    /// overload). Configurable via `providerBehavior.sseDefaultRetryMs` (#4886).
+    sse_retry_ms: u64,
     /// Prompt cache policy (#3410). When `Disabled`, all `cache_control`
     /// markers are scrubbed before the wire request is built so operator
     /// content never enters Anthropic's prompt cache.
@@ -210,6 +213,7 @@ impl AnthropicProvider {
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
             non_streaming_timeout: NON_STREAMING_TIMEOUT,
+            sse_retry_ms: super::error::SSE_DEFAULT_RETRY_MS,
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
             model_refs: model_refs(config),
@@ -267,6 +271,7 @@ impl AnthropicProvider {
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
             non_streaming_timeout: NON_STREAMING_TIMEOUT,
+            sse_retry_ms: super::error::SSE_DEFAULT_RETRY_MS,
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
             model_refs: model_refs(config),
@@ -296,8 +301,7 @@ impl AnthropicProvider {
     ) -> Result<Self> {
         let mut this = Self::with_credential_provider(provider, config)?;
         this.non_streaming_timeout = behavior.non_streaming_timeout;
-        // TODO(#2183): thread sse_retry_ms through the SSE error mapper
-        // once it supports per-instance configuration.
+        this.sse_retry_ms = behavior.sse_retry_ms;
         Ok(this)
     }
 
@@ -429,20 +433,25 @@ impl AnthropicProvider {
             let mut accumulator = StreamAccumulator::new();
             let mut content_started = false;
 
-            let stream_result = parse_sse_response(&mut response, &mut accumulator, &mut |event| {
-                if matches!(
-                    event,
-                    StreamEvent::TextDelta { .. }
-                        | StreamEvent::ThinkingDelta { .. }
-                        | StreamEvent::InputJsonDelta { .. }
-                ) {
-                    if ttft.is_none() {
-                        ttft = Some(start.elapsed());
+            let stream_result = parse_sse_response(
+                &mut response,
+                &mut accumulator,
+                &mut |event| {
+                    if matches!(
+                        event,
+                        StreamEvent::TextDelta { .. }
+                            | StreamEvent::ThinkingDelta { .. }
+                            | StreamEvent::InputJsonDelta { .. }
+                    ) {
+                        if ttft.is_none() {
+                            ttft = Some(start.elapsed());
+                        }
+                        content_started = true;
                     }
-                    content_started = true;
-                }
-                on_event(event);
-            })
+                    on_event(event);
+                },
+                self.sse_retry_ms,
+            )
             .await;
 
             match stream_result {

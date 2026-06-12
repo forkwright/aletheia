@@ -59,6 +59,7 @@ pub(crate) fn parse_sse_stream(
     mut reader: impl std::io::BufRead,
     accumulator: &mut StreamAccumulator,
     on_event: &mut impl FnMut(StreamEvent),
+    sse_retry_ms: u64,
 ) -> Result<()> {
     let mut current_event_type = String::new();
     let mut current_data = String::new();
@@ -91,7 +92,7 @@ pub(crate) fn parse_sse_stream(
                     }
                     .build()
                 })?;
-                accumulator.process_event(event, on_event)?;
+                accumulator.process_event(event, on_event, sse_retry_ms)?;
             }
             current_event_type.clear();
             current_data.clear();
@@ -132,6 +133,10 @@ fn sse_field_value<'a>(line: &'a str, field: &str) -> Option<&'a str> {
 /// before parsing: each event is processed as soon as the final byte of its
 /// `data:` line is received.
 ///
+/// `sse_retry_ms` is the configured fallback retry delay threaded into
+/// [`map_sse_error`](super::error::map_sse_error) for rate-limit/overload
+/// events (#4886).
+///
 /// Uses lossy UTF-8 so proxy-injected non-UTF-8 bytes produce replacement
 /// characters (`\u{FFFD}`) rather than aborting the stream.
 #[tracing::instrument(skip_all)]
@@ -139,6 +144,7 @@ pub(crate) async fn parse_sse_response(
     response: &mut Response,
     accumulator: &mut StreamAccumulator,
     on_event: &mut impl FnMut(StreamEvent),
+    sse_retry_ms: u64,
 ) -> Result<()> {
     // WHY: Pre-allocated buffer for the current line; SSE lines are short.
     let mut line_buf: Vec<u8> = Vec::with_capacity(256);
@@ -169,7 +175,7 @@ pub(crate) async fn parse_sse_response(
                                 }
                                 .build()
                             })?;
-                        accumulator.process_event(event, on_event)?;
+                        accumulator.process_event(event, on_event, sse_retry_ms)?;
                     }
                     current_event_type.clear();
                     current_data.clear();
@@ -208,7 +214,7 @@ mod tests {
         let reader = std::io::Cursor::new(sse_text);
         let mut acc = StreamAccumulator::new();
         let mut events = Vec::new();
-        parse_sse_stream(reader, &mut acc, &mut |e| events.push(e)).unwrap();
+        parse_sse_stream(reader, &mut acc, &mut |e| events.push(e), 1000).unwrap();
         let response = acc.finish();
         (events, response)
     }
@@ -422,7 +428,7 @@ data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\
 
         let reader = std::io::Cursor::new(sse);
         let mut acc = StreamAccumulator::new();
-        let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
+        let result = parse_sse_stream(reader, &mut acc, &mut |_| {}, 1000);
         assert!(result.is_err());
     }
 
@@ -437,7 +443,7 @@ data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\
 
         let reader = std::io::Cursor::new(sse);
         let mut acc = StreamAccumulator::new();
-        let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
+        let result = parse_sse_stream(reader, &mut acc, &mut |_| {}, 1000);
         let err = result.unwrap_err();
         assert!(
             matches!(err, Error::RateLimited { .. }),
@@ -454,7 +460,7 @@ data: this is not valid json\n\
 
         let reader = std::io::Cursor::new(sse);
         let mut acc = StreamAccumulator::new();
-        let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
+        let result = parse_sse_stream(reader, &mut acc, &mut |_| {}, 1000);
         assert!(
             result.is_err(),
             "malformed JSON data should produce an error"
@@ -472,7 +478,7 @@ data: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"messag
 
         let reader = std::io::Cursor::new(sse);
         let mut acc = StreamAccumulator::new();
-        let err = parse_sse_stream(reader, &mut acc, &mut |_| {}).expect_err("should error");
+        let err = parse_sse_stream(reader, &mut acc, &mut |_| {}, 1000).expect_err("should error");
         assert!(
             matches!(err, Error::ApiError { status: 0, .. }),
             "expected ApiError, got: {err:?}"

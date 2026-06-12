@@ -86,6 +86,7 @@ impl StreamAccumulator {
         &mut self,
         event: WireStreamEvent,
         on_event: &mut impl FnMut(StreamEvent),
+        sse_retry_ms: u64,
     ) -> Result<()> {
         match event {
             WireStreamEvent::MessageStart { message } => {
@@ -249,7 +250,7 @@ impl StreamAccumulator {
                 // NOTE: Final event or keepalive -- nothing to accumulate.
             }
             WireStreamEvent::Error { error } => {
-                return Err(super::super::error::map_sse_error(error));
+                return Err(super::super::error::map_sse_error(error, sse_retry_ms));
             }
         }
         Ok(())
@@ -423,9 +424,13 @@ mod tests {
     fn accumulator_captures_message_metadata() {
         let mut acc = StreamAccumulator::new();
         let mut events = Vec::new();
-        acc.process_event(start_event("msg_01", "claude-opus"), &mut |e| {
-            events.push(e);
-        })
+        acc.process_event(
+            start_event("msg_01", "claude-opus"),
+            &mut |e| {
+                events.push(e);
+            },
+            1000,
+        )
         .expect("process should succeed");
 
         let response = acc.finish();
@@ -439,7 +444,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_02", "claude-opus"), &mut on_event)
+        acc.process_event(start_event("msg_02", "claude-opus"), &mut on_event, 1000)
             .expect("start");
         acc.process_event(
             WireStreamEvent::ContentBlockStart {
@@ -449,6 +454,7 @@ mod tests {
                 },
             },
             &mut on_event,
+            1000,
         )
         .expect("block start");
         acc.process_event(
@@ -459,6 +465,7 @@ mod tests {
                 0,
             ),
             &mut on_event,
+            1000,
         )
         .expect("delta 1");
         acc.process_event(
@@ -469,14 +476,16 @@ mod tests {
                 0,
             ),
             &mut on_event,
+            1000,
         )
         .expect("delta 2");
         acc.process_event(
             WireStreamEvent::ContentBlockStop { index: 0 },
             &mut on_event,
+            1000,
         )
         .expect("block stop");
-        acc.process_event(stop_event("end_turn", 42), &mut on_event)
+        acc.process_event(stop_event("end_turn", 42), &mut on_event, 1000)
             .expect("message stop");
 
         let response = acc.finish();
@@ -493,7 +502,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_03", "claude-opus"), &mut on_event)
+        acc.process_event(start_event("msg_03", "claude-opus"), &mut on_event, 1000)
             .expect("start");
         acc.process_event(
             WireStreamEvent::ContentBlockStart {
@@ -504,6 +513,7 @@ mod tests {
                 },
             },
             &mut on_event,
+            1000,
         )
         .expect("tool start");
         acc.process_event(
@@ -514,6 +524,7 @@ mod tests {
                 0,
             ),
             &mut on_event,
+            1000,
         )
         .expect("delta 1");
         acc.process_event(
@@ -524,9 +535,10 @@ mod tests {
                 0,
             ),
             &mut on_event,
+            1000,
         )
         .expect("delta 2");
-        acc.process_event(stop_event("tool_use", 5), &mut on_event)
+        acc.process_event(stop_event("tool_use", 5), &mut on_event, 1000)
             .expect("stop");
 
         let response = acc.finish();
@@ -547,7 +559,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_04", "claude-opus"), &mut on_event)
+        acc.process_event(start_event("msg_04", "claude-opus"), &mut on_event, 1000)
             .expect("start");
         acc.process_event(
             WireStreamEvent::ContentBlockStart {
@@ -558,9 +570,10 @@ mod tests {
                 },
             },
             &mut on_event,
+            1000,
         )
         .expect("tool start");
-        acc.process_event(stop_event("tool_use", 2), &mut on_event)
+        acc.process_event(stop_event("tool_use", 2), &mut on_event, 1000)
             .expect("stop");
 
         let response = acc.finish();
@@ -580,7 +593,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_05", "claude-opus"), &mut on_event)
+        acc.process_event(start_event("msg_05", "claude-opus"), &mut on_event, 1000)
             .expect("start");
         acc.process_event(
             WireStreamEvent::ContentBlockStart {
@@ -591,6 +604,7 @@ mod tests {
                 },
             },
             &mut on_event,
+            1000,
         )
         .expect("tool start");
         acc.process_event(
@@ -601,9 +615,10 @@ mod tests {
                 0,
             ),
             &mut on_event,
+            1000,
         )
         .expect("delta");
-        acc.process_event(stop_event("tool_use", 3), &mut on_event)
+        acc.process_event(stop_event("tool_use", 3), &mut on_event, 1000)
             .expect("stop");
 
         let response = acc.finish();
@@ -623,7 +638,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_06", "claude-opus"), &mut on_event)
+        acc.process_event(start_event("msg_06", "claude-opus"), &mut on_event, 1000)
             .expect("start");
         acc.process_event(
             WireStreamEvent::ContentBlockStart {
@@ -633,6 +648,7 @@ mod tests {
                 },
             },
             &mut on_event,
+            1000,
         )
         .expect("block start");
         acc.process_event(
@@ -643,6 +659,7 @@ mod tests {
                 0,
             ),
             &mut on_event,
+            1000,
         )
         .expect("thinking");
         acc.process_event(
@@ -653,9 +670,10 @@ mod tests {
                 0,
             ),
             &mut on_event,
+            1000,
         )
         .expect("signature");
-        acc.process_event(stop_event("end_turn", 10), &mut on_event)
+        acc.process_event(stop_event("end_turn", 10), &mut on_event, 1000)
             .expect("stop");
 
         let response = acc.finish();
@@ -679,7 +697,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_07", "claude-opus"), &mut on_event)
+        acc.process_event(start_event("msg_07", "claude-opus"), &mut on_event, 1000)
             .expect("start");
         acc.process_event(
             WireStreamEvent::ContentBlockStart {
@@ -689,9 +707,10 @@ mod tests {
                 },
             },
             &mut on_event,
+            1000,
         )
         .expect("block 2");
-        acc.process_event(stop_event("end_turn", 5), &mut on_event)
+        acc.process_event(stop_event("end_turn", 5), &mut on_event, 1000)
             .expect("stop");
 
         let response = acc.finish();
@@ -707,7 +726,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_08", "claude-opus"), &mut on_event)
+        acc.process_event(start_event("msg_08", "claude-opus"), &mut on_event, 1000)
             .expect("start");
         // First message_delta sends some cache_creation tokens
         acc.process_event(
@@ -722,6 +741,7 @@ mod tests {
                 },
             },
             &mut on_event,
+            1000,
         )
         .expect("delta");
 
@@ -746,6 +766,7 @@ mod tests {
                 },
             },
             &mut on_event,
+            1000,
         );
         assert!(result.is_err(), "error event should propagate as Err");
     }
@@ -755,11 +776,11 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_09", "claude-opus"), &mut on_event)
+        acc.process_event(start_event("msg_09", "claude-opus"), &mut on_event, 1000)
             .expect("start");
-        acc.process_event(WireStreamEvent::Ping {}, &mut on_event)
+        acc.process_event(WireStreamEvent::Ping {}, &mut on_event, 1000)
             .expect("ping");
-        acc.process_event(WireStreamEvent::MessageStop {}, &mut on_event)
+        acc.process_event(WireStreamEvent::MessageStop {}, &mut on_event, 1000)
             .expect("message stop");
 
         let response = acc.finish();
@@ -770,7 +791,7 @@ mod tests {
     #[test]
     fn accumulator_finish_without_stop_defaults_to_end_turn() {
         let mut acc = StreamAccumulator::new();
-        acc.process_event(start_event("msg_10", "claude-opus"), &mut |_| {})
+        acc.process_event(start_event("msg_10", "claude-opus"), &mut |_| {}, 1000)
             .expect("start");
         let response = acc.finish();
         assert_eq!(response.stop_reason, StopReason::EndTurn);
@@ -781,7 +802,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_11", "claude-opus"), &mut on_event)
+        acc.process_event(start_event("msg_11", "claude-opus"), &mut on_event, 1000)
             .expect("start");
         // No ContentBlockStart — delta references non-existent index
         acc.process_event(
@@ -792,6 +813,7 @@ mod tests {
                 0,
             ),
             &mut on_event,
+            1000,
         )
         .expect("orphan delta should not error");
 

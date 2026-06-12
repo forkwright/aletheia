@@ -103,11 +103,12 @@ fn extract_retry_after(response: &Response) -> Option<u64> {
         .map(|secs| secs * 1000)
 }
 
-// TODO(#2183): SSE error events carry no retry-after header. This hardcoded
-// value is used when the stream reports overload/rate-limit inside a 200
-// response body. Consider parsing a retry delay from the SSE event payload
-// if Anthropic adds one, or deriving from the exponential backoff schedule.
-const SSE_DEFAULT_RETRY_MS: u64 = 1000;
+/// Default retry delay for SSE stream rate-limit and overload errors.
+///
+/// Used as the fallback when `providerBehavior.sseDefaultRetryMs` is not
+/// configured. Exposed `pub(crate)` so `AnthropicProvider` can use it as the
+/// field default when constructing from config without a behavior override.
+pub(crate) const SSE_DEFAULT_RETRY_MS: u64 = 1000;
 
 /// Map an SSE stream error event to a hermeneus error.
 ///
@@ -115,10 +116,16 @@ const SSE_DEFAULT_RETRY_MS: u64 = 1000;
 /// The error type string determines retryability:
 /// - `overloaded_error` / `rate_limit_error` → `RateLimited` (retryable)
 /// - Everything else → `ApiError` (not retried)
-pub(crate) fn map_sse_error(detail: super::wire::WireErrorDetail) -> crate::error::Error {
+///
+/// `sse_retry_ms` is the configured fallback delay for rate-limit/overload
+/// errors when no Retry-After header is present (#4886).
+pub(crate) fn map_sse_error(
+    detail: super::wire::WireErrorDetail,
+    sse_retry_ms: u64,
+) -> crate::error::Error {
     match detail.error_type.as_str() {
         "overloaded_error" | "rate_limit_error" => crate::error::RateLimitedSnafu {
-            retry_after_ms: SSE_DEFAULT_RETRY_MS,
+            retry_after_ms: sse_retry_ms,
         }
         .build(),
         _ => crate::error::ApiSnafu {
@@ -136,12 +143,12 @@ mod tests {
     use crate::error::Error;
 
     #[test]
-    fn overloaded_error_maps_to_rate_limited() {
+    fn overloaded_error_maps_to_rate_limited_with_default_delay() {
         let detail = super::super::wire::WireErrorDetail {
             error_type: "overloaded_error".to_owned(),
             message: "Overloaded".to_owned(),
         };
-        let err = map_sse_error(detail);
+        let err = map_sse_error(detail, SSE_DEFAULT_RETRY_MS);
         assert!(
             matches!(
                 err,
@@ -150,7 +157,27 @@ mod tests {
                     ..
                 }
             ),
-            "expected RateLimited, got: {err:?}"
+            "expected RateLimited with 1000ms, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn overloaded_error_maps_to_rate_limited_with_configured_delay() {
+        // WHY(#4886): verify the configured delay is honored, not the hardcoded default.
+        let detail = super::super::wire::WireErrorDetail {
+            error_type: "overloaded_error".to_owned(),
+            message: "Overloaded".to_owned(),
+        };
+        let err = map_sse_error(detail, 5000);
+        assert!(
+            matches!(
+                err,
+                Error::RateLimited {
+                    retry_after_ms: 5000,
+                    ..
+                }
+            ),
+            "expected RateLimited with 5000ms, got: {err:?}"
         );
     }
 
@@ -160,7 +187,7 @@ mod tests {
             error_type: "rate_limit_error".to_owned(),
             message: "Rate limited".to_owned(),
         };
-        let err = map_sse_error(detail);
+        let err = map_sse_error(detail, SSE_DEFAULT_RETRY_MS);
         assert!(matches!(err, Error::RateLimited { .. }));
     }
 
@@ -170,7 +197,7 @@ mod tests {
             error_type: "invalid_request_error".to_owned(),
             message: "bad input".to_owned(),
         };
-        let err = map_sse_error(detail);
+        let err = map_sse_error(detail, SSE_DEFAULT_RETRY_MS);
         assert!(
             matches!(err, Error::ApiError { status: 0, .. }),
             "expected ApiError, got: {err:?}"
