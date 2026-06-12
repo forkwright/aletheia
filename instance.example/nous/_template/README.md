@@ -6,18 +6,21 @@ This directory is the reference template for new Aletheia agents. Copy it with `
 
 ```text
 {agent-id}/
-├── SOUL.md          # Identity, voice, principles
+├── SOUL.md          # Identity, voice, principles (required)
 ├── IDENTITY.md      # Runtime-required: name and emoji
+├── USER.md          # Operator profile and preferences
+├── AGENTS.md        # Operational rules, delegation, output quality
 ├── GOALS.md         # Active and completed goals
 ├── MEMORY.md        # Curated operational memory
-├── AGENTS.md        # Operational rules, delegation, output quality
 ├── CONTEXT.md       # Session-scoped state (runtime-written)
 ├── PROSOCHE.md      # Attention and heartbeat directives
 ├── TOOLS.md         # Tool inventory (auto-generated)
-├── USER.md          # Operator profile (learned from conversation)
-├── VOICE.md         # Operator writing style (learned from conversation)
-└── USER.md          # Operator profile and preferences
+├── CHECKLIST.md     # Work procedures and checklists
+└── VOICE.md         # Operator writing-style exemplars
 ```
+
+`WORKFLOWS.md` is also scaffolded but is **not loaded by the runtime bootstrap**
+today; keep it as operator reference if useful.
 
 ## What goes where
 
@@ -25,11 +28,15 @@ This directory holds **identity and session memory only**. All working files go 
 
 | Content | Location |
 |---------|----------|
-| Identity files (SOUL, GOALS, etc.) | `nous/{id}/` |
+| Identity files (SOUL, GOALS, MEMORY, etc.) | `nous/{id}/` |
 | Session logs | `nous/{id}/memory/YYYY-MM-DD.md` |
 | Project work, drafts, specs | `theke/projects/{name}/` |
 | Research | `theke/research/` |
 | Agent scratch space | `theke/nous/{id}/` |
+
+Although `aletheia add-nous` creates `workspace/drafts/` and `workspace/scripts/`
+under `nous/{id}/`, those directories are not part of the runtime bootstrap. Use
+`theke/` for shared, discoverable work.
 
 See `instance.example/README.md` for the full file organization guide.
 

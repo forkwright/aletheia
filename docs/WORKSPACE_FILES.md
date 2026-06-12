@@ -1,6 +1,6 @@
 # Workspace files reference
 
-Each nous has a workspace directory (`instance/nous/<name>/`) with up to 10 markdown files. These files define its identity, hold its memory, and supply runtime context. The bootstrap system (`crates/nous/src/bootstrap/`) reads these files, applies token budgeting, and assembles them into the system prompt for each API call. For shared tools available to all agents, see [shared/TOOLS-INFRASTRUCTURE.md](../shared/TOOLS-INFRASTRUCTURE.md).
+Each nous has a workspace directory (`instance/nous/<name>/`) with up to 11 markdown files. These files define its identity, hold its memory, and supply runtime context. The bootstrap system (`crates/nous/src/bootstrap/`) reads these files, applies token budgeting, and assembles them into the system prompt for each API call. For shared tools available to all agents, see [shared/TOOLS-INFRASTRUCTURE.md](../shared/TOOLS-INFRASTRUCTURE.md).
 
 ---
 
@@ -8,15 +8,24 @@ Each nous has a workspace directory (`instance/nous/<name>/`) with up to 10 mark
 
 | File | Priority | Required | Source | Purpose |
 |------|----------|----------|--------|---------|
-| SOUL.md | 1 | Yes | Hand-written | Core identity, principles, communication style, boundaries |
-| USER.md | 2 | No | Hand-written | Operator profile, preferences, goals, constraints |
-| AGENTS.md | 3 | No | Hand-written | Other nous in the system, collaboration protocols, routing |
-| GOALS.md | 4 | No | Hand-written | Active, completed, and deferred goals |
-| TOOLS.md | 5 | No | Auto-generated | Tool inventory and profiles. Regenerated when tool set changes |
-| MEMORY.md | 6 | No | Nous-maintained | Long-term curated knowledge: facts, preferences, patterns, lessons |
-| IDENTITY.md | 7 | No | Hand-written | Minimal metadata: name, emoji. Parsed as frontmatter |
-| PROSOCHE.md | 8 | No | Auto-generated | Adaptive attention directives from the prosoche daemon |
-| CONTEXT.md | 9 | No | Runtime-written | Transient session-scoped state, cleared at session boundaries |
+| `SOUL.md` | 1 | Yes | Hand-written | Core identity, principles, communication style, boundaries |
+| `VOICE.md` | 2 | No | Hand-written | Operator writing-style exemplars, near the top of the system prompt |
+| `USER.md` | 3 | No | Hand-written | Operator profile, preferences, goals, constraints |
+| `AGENTS.md` | 4 | No | Hand-written | Other nous in the system, collaboration protocols, routing |
+| `GOALS.md` | 5 | No | Hand-written | Active, completed, and deferred goals |
+| `TOOLS.md` | 6 | No | Auto-generated | Tool inventory and profiles. Regenerated when tool set changes |
+| `CHECKLIST.md` | 7 | No | Hand-written | Work procedures and checklists, loaded for coding tasks |
+| `MEMORY.md` | 8 | No | Nous-maintained | Long-term curated knowledge: facts, preferences, patterns, lessons |
+| `IDENTITY.md` | 9 | No | Hand-written | Minimal metadata: name, emoji. Parsed as frontmatter |
+| `PROSOCHE.md` | 10 | No | Auto-generated | Adaptive attention directives from the prosoche daemon |
+| `CONTEXT.md` | 11 | No | Runtime-written | Transient session-scoped state, cleared at session boundaries |
+
+### Files scaffolded but not loaded
+
+`WORKFLOWS.md` is created by `aletheia init` and `aletheia add-nous`, but the
+bootstrap runtime (`crates/nous/src/bootstrap/mod.rs`) has no `WORKFLOWS` file
+spec. It is safe to keep as operator reference, but it is not injected into the
+system prompt today.
 
 ---
 
@@ -24,8 +33,13 @@ Each nous has a workspace directory (`instance/nous/<name>/`) with up to 10 mark
 
 Files are loaded in strict priority order (1 = highest). The priority number determines two things:
 
-1. **System prompt ordering.** Lower priority number = earlier in the system prompt. SOUL.md is always first.
-2. **Drop order under budget pressure.** When total tokens exceed the budget, the loader drops files from the bottom (highest priority number) first. CONTEXT.md and PROSOCHE.md are dropped before MEMORY.md, which is dropped before TOOLS.md, and so on. SOUL.md is the last file that would ever be dropped.
+1. **System prompt ordering.** Lower priority number = earlier in the system prompt. `SOUL.md` is always first.
+2. **Drop order under budget pressure.** When total tokens exceed the budget, the loader drops files from the bottom (highest priority number) first. `CONTEXT.md` and `PROSOCHE.md` are dropped before `MEMORY.md`, which is dropped before `TOOLS.md`, and so on. `SOUL.md` is the last file that would ever be dropped.
+
+Files are also split into two load tiers:
+
+- **Always-loaded (identity tier):** `SOUL.md`, `VOICE.md`, `USER.md`, `IDENTITY.md`, `PROSOCHE.md`.
+- **Conditionally-loaded (operational tier):** `AGENTS.md`, `GOALS.md`, `TOOLS.md`, `CHECKLIST.md`, `MEMORY.md`, `CONTEXT.md`. The task hint selects which operational files are included (coding loads `TOOLS.md`, `CHECKLIST.md`, `MEMORY.md`; research loads `GOALS.md`, `CONTEXT.md`, `MEMORY.md`; planning loads `GOALS.md`, `AGENTS.md`, `CONTEXT.md`).
 
 If a file does not exist in the workspace directory, it is silently skipped. Empty files are also skipped.
 
@@ -35,24 +49,24 @@ If a file does not exist in the workspace directory, it is silently skipped. Emp
 
 Only one file is truly required for a nous to function:
 
-- **SOUL.md** - Without it, the nous has no identity or behavioral guidance. The actor fails to spawn if this file is missing from the cascade.
+- **`SOUL.md`** - Without it, the nous has no identity or behavioral guidance. The actor fails to spawn if this file is missing from the cascade.
 
-All other files are optional. A minimal nous needs only SOUL.md. In practice, most nous also have IDENTITY.md (for display name and routing), AGENTS.md (for multi-agent coordination), and MEMORY.md (for session continuity).
+All other files are optional. A minimal nous needs only `SOUL.md`. In practice, most nous also have `IDENTITY.md` (for display name and routing), `AGENTS.md` (for multi-agent coordination), and `MEMORY.md` (for session continuity).
 
 ---
 
 ## Hand-written vs auto-generated
 
 **Hand-written by the operator:**
-- SOUL.md, USER.md, AGENTS.md, IDENTITY.md, GOALS.md
+- `SOUL.md`, `VOICE.md`, `USER.md`, `AGENTS.md`, `GOALS.md`, `CHECKLIST.md`, `IDENTITY.md`
 
 **Maintained by the nous itself:**
-- MEMORY.md - The nous reads and updates this file across sessions to build persistent knowledge. The template instructs the nous: "Your workspace files are your memory. Update them proactively."
+- `MEMORY.md` - The nous reads and updates this file across sessions to build persistent knowledge. The template instructs the nous: "Your workspace files are your memory. Update them proactively."
 
 **Auto-generated by the runtime:**
-- TOOLS.md - Auto-generated by the runtime when the tool set changes. Do not edit manually.
-- PROSOCHE.md - Written by the prosoche daemon based on calendar signals, pending tasks, and cross-nous messages.
-- CONTEXT.md - Written by the runtime with transient session state. Cleared or overwritten at session boundaries.
+- `TOOLS.md` - Auto-generated by the runtime when the tool set changes. Do not edit manually.
+- `PROSOCHE.md` - Written by the prosoche daemon based on calendar signals, pending tasks, and cross-nous messages.
+- `CONTEXT.md` - Written by the runtime with transient session state. Cleared or overwritten at session boundaries.
 
 ---
 
@@ -83,7 +97,7 @@ Because all workspace files are concatenated into one block, any change to any f
 
 ## Additional injection points
 
-Beyond the 9 workspace files, the bootstrap accepts extra sections via `assemble_with_extra()`. Domain packs (loaded by `thesauros`) provide additional context and tool overlays as `BootstrapSection` values that participate in the same priority sorting and token budget as workspace files.
+Beyond the 11 workspace files, the bootstrap accepts extra sections via `assemble_with_extra()`. Domain packs (loaded by `thesauros`) provide additional context and tool overlays as `BootstrapSection` values that participate in the same priority sorting and token budget as workspace files.
 
 ---
 
@@ -93,7 +107,7 @@ Agent workspaces (`instance/nous/{id}/`) hold **identity files and session memor
 
 ### What stays in `nous/{id}/`
 
-- Bootstrap files: SOUL.md, USER.md, AGENTS.md, GOALS.md, TOOLS.md, MEMORY.md, IDENTITY.md, PROSOCHE.md, CONTEXT.md
+- Bootstrap files: `SOUL.md`, `VOICE.md`, `USER.md`, `AGENTS.md`, `GOALS.md`, `TOOLS.md`, `CHECKLIST.md`, `MEMORY.md`, `IDENTITY.md`, `PROSOCHE.md`, `CONTEXT.md`
 - Session logs: `memory/YYYY-MM-DD.md`
 
 ### What goes in `theke/`
@@ -113,5 +127,13 @@ Files organized by **subject**, not by agent. This prevents:
 - Duplication across agents
 - Files that can't be found because you don't know which agent created them
 - Maintenance overhead from managing N separate file trees
+
+### Scaffold drift note
+
+`aletheia add-nous` currently creates `nous/{id}/workspace/drafts/` and
+`nous/{id}/workspace/scripts/` even though the file-location rule above says
+working files belong in `theke/`. Those directories are created by the scaffold
+but are not part of the runtime bootstrap. If you use them, treat them as a
+private workspace; if you want shared/discoverable work, place it in `theke/`.
 
 The `_example/AGENTS.md` template includes this rule, so every newly scaffolded agent learns it during onboarding. See `instance.example/README.md` for the full directory structure.

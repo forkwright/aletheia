@@ -38,9 +38,11 @@ The `nous/{id}/` directory separates durable startup state from shared work in `
 | `GOALS.md` | Active, deferred, and completed objectives | Planning and prioritization |
 | `MEMORY.md` | Curated long-lived notes | Continuity across sessions |
 | `PROSOCHE.md` | Attention checks and recurring review prompts | Heartbeat and self-checks |
-| `WORKFLOWS.md` | Repeatable procedures | Task execution |
+| `CHECKLIST.md` | Work procedures and checklists | Coding tasks |
+| `VOICE.md` | Operator writing-style exemplars | Anchoring output style |
+| `WORKFLOWS.md` | Repeatable procedures | **Not loaded by the runtime today**; safe to keep as operator reference |
 
-Keep project drafts, research, references, and deliverables in `theke/` so every agent can find and reuse them. Keep `nous/{id}/` focused on identity, operator knowledge, agent guidance, memory, and goals.
+Keep project drafts, research, references, and deliverables in `theke/` so every agent can find and reuse them. Keep `nous/{id}/` focused on identity, operator knowledge, agent guidance, memory, and goals. Although `aletheia add-nous` creates a `workspace/` subdirectory with `drafts/` and `scripts/`, those directories are not part of the runtime bootstrap; prefer `theke/` for shared work.
 
 ## Renaming
 
