@@ -92,6 +92,35 @@ fn load_config_env_var_overrides_toml_value() {
 }
 
 #[test]
+fn load_config_env_var_preserves_numeric_looking_string_leaf() {
+    let mut jail = EnvJail::new();
+    let root = seed_instance(&jail).to_path_buf();
+    jail.set_env("ALETHEIA_AGENTS__DEFAULTS__MODEL__PRIMARY", "+05550100123");
+
+    let oikos = Oikos::from_root(&root);
+    let config = load_config(&oikos).unwrap();
+    assert_eq!(
+        config.agents.defaults.model_defaults.model.primary,
+        "+05550100123"
+    );
+}
+
+#[test]
+fn load_config_env_var_type_error_names_applied_var() {
+    let mut jail = EnvJail::new();
+    let root = seed_instance(&jail).to_path_buf();
+    jail.set_env("ALETHEIA_GATEWAY__TLS__ENABLED", "definitely-not-bool");
+
+    let oikos = Oikos::from_root(&root);
+    let err = load_config(&oikos).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("ALETHEIA_GATEWAY__TLS__ENABLED"),
+        "error should name the env var applied before deserialization failed: {msg}"
+    );
+}
+
+#[test]
 fn load_config_parses_camel_case_keys() {
     let jail = EnvJail::new();
     let root = seed_instance(&jail);

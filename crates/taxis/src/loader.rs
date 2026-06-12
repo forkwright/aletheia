@@ -108,10 +108,10 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
     }
 
     // Tier 3: environment variables, ALETHEIA_ prefix, `__` splitting nested keys.
-    apply_env_overlay(&mut root, "ALETHEIA_", "__");
+    let applied_env_vars = apply_env_overlay(&mut root, "ALETHEIA_", "__");
 
     serde_json::from_value::<AletheiaConfig>(root).context(ConfigLoadSnafu {
-        reason: "deserialize merged config",
+        reason: deserialize_reason(&applied_env_vars),
     })
 }
 
@@ -136,11 +136,15 @@ fn deep_merge(dst: &mut JsonValue, src: JsonValue) {
 /// by `separator` to build the nested path. Keys are lowercased to match
 /// serde `rename_all = "camelCase"` output (which lowercases single words).
 ///
-/// Values are parsed as: bool (`true`/`false`), integer, float (if containing
-/// `.`), otherwise string. This preserves the pre-#3447 figment autotyping
+/// Known leaves are coerced to the existing JSON leaf type in the
+/// defaults-plus-TOML tree. Unknown paths keep the pre-#3447 figment autotyping
 /// contract so operators can keep writing `ALETHEIA_GATEWAY__PORT=9000` without quoting.
-fn apply_env_overlay(root: &mut JsonValue, prefix: &str, separator: &str) {
-    for (key, value) in std::env::vars() {
+fn apply_env_overlay(root: &mut JsonValue, prefix: &str, separator: &str) -> Vec<String> {
+    let mut applied = Vec::new();
+    let mut vars: Vec<_> = std::env::vars().collect();
+    vars.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+    for (key, value) in vars {
         let Some(rest) = key.strip_prefix(prefix) else {
             continue;
         };
@@ -148,7 +152,55 @@ fn apply_env_overlay(root: &mut JsonValue, prefix: &str, separator: &str) {
         if path.iter().any(String::is_empty) {
             continue;
         }
-        set_path(root, &path, parse_env_value(&value));
+        let parsed = get_path(root, &path).map_or_else(
+            || parse_env_value(&value),
+            |existing| coerce_env_value(&value, existing),
+        );
+        set_path(root, &path, parsed);
+        applied.push(key);
+    }
+    applied
+}
+
+fn deserialize_reason(applied_env_vars: &[String]) -> String {
+    if applied_env_vars.is_empty() {
+        "deserialize merged config".to_owned()
+    } else {
+        format!(
+            "deserialize merged config after applying {}",
+            applied_env_vars.join(", ")
+        )
+    }
+}
+
+fn get_path<'a>(root: &'a JsonValue, path: &[String]) -> Option<&'a JsonValue> {
+    let mut cursor = root;
+    for segment in path {
+        let map = cursor.as_object()?;
+        let key = matching_key(map, segment)?;
+        cursor = map.get(key)?;
+    }
+    Some(cursor)
+}
+
+fn matching_key<'a>(map: &'a serde_json::Map<String, JsonValue>, segment: &str) -> Option<&'a str> {
+    if let Some((key, _)) = map.get_key_value(segment) {
+        return Some(key.as_str());
+    }
+    map.keys()
+        .find(|key| key.eq_ignore_ascii_case(segment))
+        .map(String::as_str)
+}
+
+fn coerce_env_value(raw: &str, existing: &JsonValue) -> JsonValue {
+    match existing {
+        JsonValue::Bool(_) => match raw.trim() {
+            "true" => JsonValue::Bool(true),
+            "false" => JsonValue::Bool(false),
+            _ => JsonValue::String(raw.to_owned()),
+        },
+        JsonValue::Number(_) | JsonValue::Array(_) | JsonValue::Object(_) => parse_env_value(raw),
+        JsonValue::String(_) | JsonValue::Null => JsonValue::String(raw.to_owned()),
     }
 }
 
@@ -194,7 +246,8 @@ fn set_path(root: &mut JsonValue, path: &[String], value: JsonValue) {
                 *cursor = JsonValue::Object(serde_json::Map::new());
             }
             if let Some(map) = cursor.as_object_mut() {
-                map.insert(segment.clone(), value);
+                let key = matching_key(map, segment).map_or_else(|| segment.clone(), str::to_owned);
+                map.insert(key, value);
             }
             return;
         }
@@ -204,8 +257,9 @@ fn set_path(root: &mut JsonValue, path: &[String], value: JsonValue) {
         let Some(map) = cursor.as_object_mut() else {
             return;
         };
+        let key = matching_key(map, segment).map_or_else(|| segment.clone(), str::to_owned);
         cursor = map
-            .entry(segment.clone())
+            .entry(key)
             .or_insert_with(|| JsonValue::Object(serde_json::Map::new()));
     }
 }
@@ -500,6 +554,21 @@ mod tests {
         assert_eq!(
             config.gateway.port, 7777,
             "env var should override toml port"
+        );
+    }
+
+    #[test]
+    fn env_overlay_preserves_unknown_path_autotyping() {
+        let mut jail = EnvJail::new();
+        jail.set_env("_TAXIS_TEST_UNKNOWN__PORT", "5555");
+        let mut root = serde_json::json!({});
+
+        let applied = apply_env_overlay(&mut root, "_TAXIS_TEST_", "__");
+
+        assert_eq!(applied, vec!["_TAXIS_TEST_UNKNOWN__PORT"]);
+        assert_eq!(
+            root.get("unknown").and_then(|value| value.get("port")),
+            Some(&serde_json::json!(5555))
         );
     }
 

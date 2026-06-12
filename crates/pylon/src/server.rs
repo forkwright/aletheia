@@ -46,6 +46,14 @@ pub struct ServerConfig {
 )]
 #[non_exhaustive]
 pub enum ServerError {
+    /// Configuration could not be loaded at startup.
+    #[snafu(display("failed to load config from {}: {source}", path.display()))]
+    Config {
+        path: PathBuf,
+        #[snafu(source(from(taxis::error::Error, Box::new)))]
+        source: Box<taxis::error::Error>,
+    },
+
     /// Failed to open or initialize the session store.
     #[snafu(display("failed to open session store: {source}"))]
     SessionStore { source: mneme::error::Error },
@@ -87,6 +95,7 @@ pub enum ServerError {
 /// # Errors
 ///
 /// Returns [`ServerError::Validation`] if the instance directory layout is invalid.
+/// Returns [`ServerError::Config`] if the config cascade cannot be loaded.
 /// Returns [`ServerError::SessionStore`] if the session database cannot be opened.
 /// Returns [`ServerError::Bind`] if the server cannot bind to the configured address.
 /// Returns [`ServerError::Serve`] if the HTTP server encounters a fatal I/O error.
@@ -105,6 +114,10 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;
     let oikos = Arc::new(oikos);
+
+    let config_path = oikos.config().join("aletheia.toml");
+    let aletheia_config =
+        taxis::loader::load_config(&oikos).context(ConfigSnafu { path: config_path })?;
 
     let session_store = SessionStore::open(&oikos.sessions_db()).context(SessionStoreSnafu)?;
     let session_store = Arc::new(Mutex::new(session_store));
@@ -131,11 +144,6 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         .spawn(nous_config, PipelineConfig::default())
         .await
         .context(NousSpawnSnafu)?;
-
-    let aletheia_config = taxis::loader::load_config(&oikos).unwrap_or_else(|e| {
-        tracing::warn!("failed to load config, using defaults: {e}");
-        AletheiaConfig::default()
-    });
 
     // WHY: Emit a loud warning when authentication is disabled so operators
     // see the consequence in every log aggregator, not just buried in the
@@ -581,5 +589,38 @@ mod tests {
     fn server_error_tls_not_compiled_display() {
         let err: ServerError = TlsNotCompiledSnafu.build();
         assert!(err.to_string().contains("TLS"));
+    }
+
+    #[tokio::test]
+    async fn run_fails_on_malformed_config() {
+        let instance = tempfile::tempdir().unwrap_or_else(|e| panic!("create tempdir: {e}"));
+        for dir in ["config", "data", "nous"] {
+            let path = instance.path().join(dir);
+            std::fs::create_dir_all(&path)
+                .unwrap_or_else(|e| panic!("create {}: {e}", path.display()));
+        }
+        let config_path = instance.path().join("config").join("aletheia.toml");
+        koina::fs::write_restricted(&config_path, b"[gateway\nport = 9999\n")
+            .unwrap_or_else(|e| panic!("write {}: {e}", config_path.display()));
+
+        let config = ServerConfig {
+            bind_addr: "127.0.0.1:0".to_owned(),
+            instance_path: instance.path().to_path_buf(),
+            security: make_security(),
+        };
+
+        let err = match run(config).await {
+            Ok(()) => panic!("malformed config should stop startup"),
+            Err(err) => err,
+        };
+
+        let ServerError::Config { path, source } = err else {
+            panic!("expected config error, got {err}");
+        };
+        assert_eq!(path, config_path);
+        assert!(
+            source.to_string().contains("failed to parse TOML config"),
+            "source should preserve parse failure: {source}"
+        );
     }
 }
