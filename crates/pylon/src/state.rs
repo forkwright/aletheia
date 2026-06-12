@@ -82,11 +82,11 @@ pub struct AppState {
     pub metrics_registry: MetricsRegistry,
     /// In-process broadcast bus for domain events.
     pub event_bus: Arc<EventBus>,
-    /// Per-session approval-decision sender registry (#3958, ADR-005).
+    /// Per-turn approval-decision sender registry (#3958, ADR-005).
     ///
-    /// Populated by the streaming handler at turn start, drained by the
-    /// `POST /api/v1/sessions/{session_id}/approvals` handler, and removed
-    /// when the turn ends.
+    /// Populated by the streaming handler when tool approvals are requested,
+    /// drained by approval handlers keyed by turn and tool id, and removed when
+    /// the turn ends.
     pub approval_registry: Arc<ApprovalRegistry>,
 }
 

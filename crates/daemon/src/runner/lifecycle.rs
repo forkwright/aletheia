@@ -2,9 +2,10 @@
 
 use std::time::{Duration, Instant};
 
+use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
-use crate::execution::execute_action;
+use crate::execution::{ExecutionContext, execute_action_with_cancel};
 use crate::schedule::Schedule;
 
 use super::systemd::{sd_notify_watchdog, sd_watchdog_interval};
@@ -66,7 +67,12 @@ impl TaskRunner {
         // on the Tokio executor with no observer to collect their results.
         let in_flight_count = self.in_flight.len();
         for (task_id, in_flight) in self.in_flight.drain() {
-            tracing::debug!(task_id = %task_id, "aborting in-flight task on shutdown");
+            tracing::debug!(
+                task_id = %task_id,
+                cancelled = true,
+                "cancelling in-flight task on shutdown"
+            );
+            in_flight.cancel.cancel();
             in_flight.handle.abort();
         }
         if in_flight_count > 0 {
@@ -158,16 +164,22 @@ impl TaskRunner {
                 nous_id = %nous_id,
             );
 
+            let task_cancel = CancellationToken::new();
+            let task_cancel_child = task_cancel.child_token();
+
             let handle = tokio::spawn(
                 async move {
-                    execute_action(
+                    execute_action_with_cancel(
                         &action,
-                        &nous_id,
-                        bridge.as_deref(),
-                        maintenance.as_ref(),
-                        retention_executor,
-                        knowledge_executor,
-                        &daemon_behavior,
+                        ExecutionContext {
+                            nous_id: &nous_id,
+                            bridge: bridge.as_deref(),
+                            maintenance: maintenance.as_ref(),
+                            retention_executor,
+                            knowledge_executor,
+                            daemon_behavior: &daemon_behavior,
+                            cancel: task_cancel_child,
+                        },
                     )
                     .await
                 }
@@ -178,6 +190,7 @@ impl TaskRunner {
                 task_id,
                 InFlightTask {
                     handle,
+                    cancel: task_cancel,
                     started_at: Instant::now(),
                     timeout,
                     warned: false,

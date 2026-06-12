@@ -130,6 +130,7 @@ async fn in_flight_reported_in_status() {
         "inflight-task".to_owned(),
         InFlightTask {
             handle,
+            cancel: CancellationToken::new(),
             started_at: Instant::now(),
             timeout: Duration::from_mins(5),
             warned: false,

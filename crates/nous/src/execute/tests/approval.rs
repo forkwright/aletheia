@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 
 use super::*;
 use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
-use crate::execute::dispatch::dispatch_tools;
+use crate::execute::dispatch::{ToolDispatchPolicy, dispatch_tools};
 use crate::pipeline::LoopDetector;
 use crate::stream::TurnStreamEvent;
 
@@ -28,7 +28,7 @@ fn tool_def_with(name: &str, rev: Reversibility) -> ToolDef {
         },
         category: ToolCategory::Workspace,
         reversibility: rev,
-        auto_activate: false,
+        auto_activate: true,
         groups: vec![organon::types::ToolGroupId::Read],
         tags: vec![],
     }
@@ -90,6 +90,7 @@ async fn reversibility_class_call_blocks_until_approved() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests();
 
     let result = dispatch_tools(
         &tool_uses,
@@ -100,6 +101,7 @@ async fn reversibility_class_call_blocks_until_approved() {
         1,
         Some(&event_tx),
         Some(&gate),
+        &policy,
         0,
         None,
         None,
@@ -151,6 +153,7 @@ async fn reversibility_class_call_denied_skips_execution() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests();
 
     let result = dispatch_tools(
         &tool_uses,
@@ -161,6 +164,7 @@ async fn reversibility_class_call_denied_skips_execution() {
         1,
         Some(&event_tx),
         Some(&gate),
+        &policy,
         0,
         None,
         None,
@@ -212,6 +216,7 @@ async fn mandatory_without_gate_defaults_to_denial() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests();
 
     let result = dispatch_tools(
         &tool_uses,
@@ -222,6 +227,7 @@ async fn mandatory_without_gate_defaults_to_denial() {
         1,
         Some(&event_tx),
         None,
+        &policy,
         0,
         None,
         None,
@@ -255,6 +261,7 @@ async fn batch_dispatch_mandatory_without_gate_matches_streaming_denial_record()
     let mut streaming_detector = LoopDetector::new(3);
     let mut streaming_calls = Vec::new();
     let (event_tx, _event_rx) = mpsc::channel::<TurnStreamEvent>(64);
+    let policy = ToolDispatchPolicy::allow_all_for_tests();
 
     let batch_result = dispatch_tools(
         &tool_uses,
@@ -265,6 +272,7 @@ async fn batch_dispatch_mandatory_without_gate_matches_streaming_denial_record()
         1,
         None,
         None,
+        &policy,
         0,
         None,
         None,
@@ -281,6 +289,7 @@ async fn batch_dispatch_mandatory_without_gate_matches_streaming_denial_record()
         1,
         Some(&event_tx),
         None,
+        &policy,
         0,
         None,
         None,
@@ -309,6 +318,7 @@ async fn safe_call_proceeds_without_gate() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests();
 
     let result = dispatch_tools(
         &tool_uses,
@@ -319,6 +329,7 @@ async fn safe_call_proceeds_without_gate() {
         1,
         Some(&event_tx),
         None,
+        &policy,
         0,
         None,
         None,
@@ -354,6 +365,7 @@ async fn advisory_call_executes_without_approval_required_event() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests();
 
     let _ = dispatch_tools(
         &tool_uses,
@@ -364,6 +376,7 @@ async fn advisory_call_executes_without_approval_required_event() {
         1,
         Some(&event_tx),
         None,
+        &policy,
         0,
         None,
         None,
@@ -395,6 +408,7 @@ async fn gate_timeout_denies_mandatory_call() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests();
 
     let result = dispatch_tools(
         &tool_uses,
@@ -405,6 +419,7 @@ async fn gate_timeout_denies_mandatory_call() {
         1,
         Some(&event_tx),
         Some(&gate),
+        &policy,
         0,
         None,
         None,

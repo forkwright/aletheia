@@ -514,9 +514,9 @@ pub async fn stream_turn(
     let (turn_tx, turn_rx) = mpsc::channel::<(u64, PylonTurnStreamEvent)>(32);
     let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
 
-    // WHY(#3958, ADR-005): create the approval channel and register the sender
-    // so `POST /api/v1/sessions/{session_id}/approvals` can route the operator's
-    // decision into the nous-side gate. The guard removes the entry when the
+    // WHY(#3958, ADR-005): create the approval channel and a turn guard so
+    // tool_approval_required events can register exact `(turn_id, tool_id)`
+    // senders. The guard removes only this turn's pending keys when the
     // streaming task ends; the gate itself defaults-deny on timeout, so a
     // dropped client connection denies pending Mandatory tool calls rather
     // than letting them block the pipeline indefinitely.
@@ -526,8 +526,7 @@ pub async fn stream_turn(
     ));
     let approval_guard = state
         .approval_registry
-        .register(session_id.clone(), approval_tx)
-        .await;
+        .register_turn(session_id.clone(), turn_id.clone());
 
     // WHY(#3276): Create a turn buffer so events survive client disconnection.
     let turn_buf = state
@@ -545,7 +544,7 @@ pub async fn stream_turn(
     let seq = record_turn_event(&buf_handle, &start_event).await;
     let _ = turn_tx.send((seq, start_event)).await;
 
-    let sid = session_id;
+    let sid = session_id.clone();
     let aid = agent_id;
 
     let turn_span = tracing::info_span!(
@@ -562,6 +561,10 @@ pub async fn stream_turn(
     // arrives at the TUI before the final text_delta events).
     let bridge_tx = turn_tx.clone();
     let bridge_buf = buf_handle.clone();
+    let approval_registry = Arc::clone(&state.approval_registry);
+    let approval_session_id = session_id.clone();
+    let approval_turn_id = turn_id.clone();
+    let approval_tx_for_bridge = approval_tx.clone();
     let bridge_handle = tokio::spawn(
         async move {
             while let Some(event) = nous_rx.recv().await {
@@ -582,14 +585,24 @@ pub async fn stream_turn(
                         input,
                     },
                     TurnStreamEvent::ToolApprovalRequired {
-                        turn_id,
+                        turn_id: _nous_turn_id,
                         tool_id,
                         tool_name,
                         input,
                         risk,
                         reason,
                     } => PylonTurnStreamEvent::ToolApprovalRequired {
-                        turn_id,
+                        turn_id: {
+                            approval_registry
+                                .register_tool(
+                                    &approval_session_id,
+                                    &approval_turn_id,
+                                    tool_id.clone(),
+                                    approval_tx_for_bridge.clone(),
+                                )
+                                .await;
+                            approval_turn_id.clone()
+                        },
                         tool_name,
                         tool_id,
                         input,

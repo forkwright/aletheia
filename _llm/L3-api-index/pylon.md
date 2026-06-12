@@ -9,27 +9,37 @@ For implementation context, read the source directly (`L4`).
 
 ```rust
 pub struct ApprovalRegistry {
-    inner: Mutex<HashMap<String, mpsc::Sender<ApprovalDecision>>>,
+    inner: Mutex<HashMap<ApprovalKey, ApprovalEntry>>,
 }
 ```
 
 ```rust
 impl ApprovalRegistry {
     pub fn new () -> Self;
-    pub async fn register (
-        self: &Arc<Self>,
-        session_id: String,
+    pub fn register_turn (self: &Arc<Self>, session_id: String, turn_id: String) -> Guard;
+    pub async fn register_tool (
+        &self,
+        session_id: &str,
+        turn_id: &str,
+        tool_id: String,
         sender: mpsc::Sender<ApprovalDecision>,
-    ) -> Guard;
-    pub async fn try_send (&self, session_id: &str, decision: ApprovalDecision) -> bool;
+    );
+    pub async fn try_send (
+        &self,
+        session_id: Option<&str>,
+        turn_id: &str,
+        tool_id: &str,
+        decision: ApprovalDecision,
+    ) -> bool;
 }
 ```
 
-> RAII guard that unregisters the session's sender when dropped.
+> RAII guard that unregisters a turn's pending senders when dropped.
 ```rust
 pub struct Guard {
     registry: Arc<ApprovalRegistry>,
     session_id: Option<String>,
+    turn_id: Option<String>,
 }
 ```
 
@@ -1407,6 +1417,8 @@ pub struct OpsToolsResponse {
 
 ```rust
 pub struct ApprovalRequest {
+    /// The `turn_id` from the matching `message_start` or `tool_approval_required` event.
+    pub turn_id: String,
     /// The `tool_use_id` from the matching `tool_approval_required` event.
     pub tool_id: String,
     /// `"approved"` or `"denied"`.
@@ -1427,6 +1439,22 @@ pub async fn resolve (
     claims: Claims,
     Path(session_id): Path<String>,
     Json(body): Json<ApprovalRequest>,
+) -> Result<impl IntoResponse, ApiError>
+```
+
+```rust
+pub async fn approve_tool (
+    State(state): State<SessionsState>,
+    claims: Claims,
+    Path((turn_id, tool_id)): Path<(String, String)>,
+) -> Result<impl IntoResponse, ApiError>
+```
+
+```rust
+pub async fn deny_tool (
+    State(state): State<SessionsState>,
+    claims: Claims,
+    Path((turn_id, tool_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError>
 ```
 
@@ -2396,11 +2424,11 @@ pub struct AppState {
     pub metrics_registry: MetricsRegistry,
     /// In-process broadcast bus for domain events.
     pub event_bus: Arc<EventBus>,
-    /// Per-session approval-decision sender registry (#3958, ADR-005).
+    /// Per-turn approval-decision sender registry (#3958, ADR-005).
     ///
-    /// Populated by the streaming handler at turn start, drained by the
-    /// `POST /api/v1/sessions/{session_id}/approvals` handler, and removed
-    /// when the turn ends.
+    /// Populated by the streaming handler when tool approvals are requested,
+    /// drained by approval handlers keyed by turn and tool id, and removed when
+    /// the turn ends.
     pub approval_registry: Arc<ApprovalRegistry>,
 }
 ```

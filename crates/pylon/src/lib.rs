@@ -2,7 +2,7 @@
 #![deny(missing_docs)]
 //! Pylon (πυλών): "gateway." Routes HTTP and SSE requests to the agent pipeline.
 
-/// Per-session approval-decision sender registry (#3958, ADR-005).
+/// Per-turn approval-decision sender registry (#3958, ADR-005).
 pub mod approval_registry;
 /// Service discovery file writer (Tailscale IP + file-based announcement).
 pub mod discovery;

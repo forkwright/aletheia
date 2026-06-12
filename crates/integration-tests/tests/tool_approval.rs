@@ -65,7 +65,7 @@ fn irreversible_tool_def() -> ToolDef {
         },
         category: ToolCategory::Workspace,
         reversibility: Reversibility::Irreversible,
-        auto_activate: false,
+        auto_activate: true,
         groups: vec![ToolGroupId::Edit],
         tags: vec![],
     }
@@ -185,23 +185,24 @@ fn text_response(text: &str) -> CompletionResponse {
 }
 
 // ── HTTP helpers ──
-/// Read from a `TcpStream` until `session_id` is found in a `message_start`
-/// SSE event, then send it over the channel and continue reading the rest.
+/// Read from a `TcpStream` until `session_id` and `turn_id` are found in a
+/// `message_start` SSE event, then send them over the channel and continue
+/// reading the rest.
 ///
 /// WHY: `stream_turn` resolves the `session_id` internally from `(nous_id,
-/// session_key)`. To know the exact ID registered in the `approval_registry`,
-/// we must read the first SSE event (`message_start` carries `session_id`).
-async fn read_sse_and_extract_session_id(
+/// session_key)`. To know the exact IDs registered in the `approval_registry`,
+/// we must read the first SSE event.
+async fn read_sse_and_extract_turn_ids(
     stream: &mut TcpStream,
-    session_id_tx: tokio::sync::oneshot::Sender<String>,
+    turn_ids_tx: tokio::sync::oneshot::Sender<(String, String)>,
 ) -> (u16, String) {
     // Read the full response — we need it all.  The approval gate blocks the
     // turn, so the connection stays open until we POST the approval.  The
-    // session_id_tx is sent as soon as we parse message_start from the
+    // turn_ids_tx is sent as soon as we parse message_start from the
     // buffered bytes; the main task receives it and sends the approval POST.
     let mut buf = Vec::new();
     let mut sent_id = false;
-    let mut session_id_tx = Some(session_id_tx);
+    let mut turn_ids_tx = Some(turn_ids_tx);
 
     loop {
         let mut chunk = [0u8; 1024];
@@ -211,23 +212,34 @@ async fn read_sse_and_extract_session_id(
         }
         buf.extend_from_slice(&chunk[..n]);
 
-        // Try to extract session_id once we have the header + first SSE event.
+        // Try to extract turn ids once we have the header + first SSE event.
         if !sent_id {
             let so_far = String::from_utf8_lossy(&buf);
             if let Some((_head, body)) = so_far.split_once("\r\n\r\n") {
-                // Look for session_id in message_start event data.
+                // Look for session_id and turn_id in message_start event data.
                 for line in body.lines() {
                     if let Some(data) = line.strip_prefix("data: ") {
                         let parsed = serde_json::from_str::<serde_json::Value>(data)
                             .ok()
                             .and_then(|val| {
-                                val.get("session_id")
-                                    .and_then(serde_json::Value::as_str)
-                                    .map(ToOwned::to_owned)
+                                if val.get("type").and_then(serde_json::Value::as_str)
+                                    != Some("message_start")
+                                {
+                                    return None;
+                                }
+                                let session_id = val
+                                    .get("session_id")
+                                    .and_then(serde_json::Value::as_str)?
+                                    .to_owned();
+                                let turn_id = val
+                                    .get("turn_id")
+                                    .and_then(serde_json::Value::as_str)?
+                                    .to_owned();
+                                Some((session_id, turn_id))
                             });
-                        if let Some(sid) = parsed {
-                            if let Some(tx) = session_id_tx.take() {
-                                let _ = tx.send(sid);
+                        if let Some(turn_ids) = parsed {
+                            if let Some(tx) = turn_ids_tx.take() {
+                                let _ = tx.send(turn_ids);
                             }
                             sent_id = true;
                             break;
@@ -324,15 +336,14 @@ async fn approval_required_approved_tool_executes() {
     let (base_url, token, harness) = harness.start_tcp_server().await;
     let addr = &base_url; // e.g. "http://127.0.0.1:PORT"
 
-    // WHY: Use a oneshot channel to receive the session_id from the SSE
-    // stream's `message_start` event. `stream_turn` resolves the session_id
-    // internally; we must read the first SSE event to know which id was
-    // registered in the approval_registry.
+    // WHY: Use a oneshot channel to receive the session and turn IDs from the
+    // SSE stream's `message_start` event. `stream_turn` resolves the session id
+    // internally; the approval registry routes by turn/tool.
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
         .expect("reqwest client");
-    let (session_id_tx, session_id_rx) = tokio::sync::oneshot::channel::<String>();
+    let (turn_ids_tx, turn_ids_rx) = tokio::sync::oneshot::channel::<(String, String)>();
 
     let stream_addr = addr.strip_prefix("http://").unwrap_or(addr).to_owned();
     let stream_token = token.clone();
@@ -360,14 +371,14 @@ async fn approval_required_approved_tool_executes() {
              {body_json}",
         );
         stream.write_all(request.as_bytes()).await.expect("write");
-        read_sse_and_extract_session_id(&mut stream, session_id_tx).await
+        read_sse_and_extract_turn_ids(&mut stream, turn_ids_tx).await
     });
 
-    // Wait for session_id from the first SSE event (`message_start`).
-    let session_id = tokio::time::timeout(Duration::from_secs(10), session_id_rx)
+    // Wait for ids from the first SSE event (`message_start`).
+    let (session_id, turn_id) = tokio::time::timeout(Duration::from_secs(10), turn_ids_rx)
         .await
-        .expect("timeout waiting for session_id from SSE stream")
-        .expect("session_id oneshot closed");
+        .expect("timeout waiting for turn ids from SSE stream")
+        .expect("turn ids oneshot closed");
 
     // Poll until the approval gate blocks the turn, then approve.
     // WHY: The gate is registered before the turn task starts, but the pipeline
@@ -380,6 +391,7 @@ async fn approval_required_approved_tool_executes() {
                 .post(format!("{addr}/api/v1/sessions/{session_id}/approvals"))
                 .bearer_auth(&token)
                 .json(&serde_json::json!({
+                    "turn_id": turn_id,
                     "tool_id": tool_id,
                     "decision": "approved"
                 }))
@@ -468,7 +480,7 @@ async fn approval_required_denied_tool_does_not_execute() {
         .timeout(Duration::from_secs(30))
         .build()
         .expect("reqwest client");
-    let (session_id_tx, session_id_rx) = tokio::sync::oneshot::channel::<String>();
+    let (turn_ids_tx, turn_ids_rx) = tokio::sync::oneshot::channel::<(String, String)>();
 
     let stream_addr = addr.strip_prefix("http://").unwrap_or(addr).to_owned();
     let stream_token = token.clone();
@@ -492,14 +504,14 @@ async fn approval_required_denied_tool_does_not_execute() {
              {body_json}",
         );
         stream.write_all(request.as_bytes()).await.expect("write");
-        read_sse_and_extract_session_id(&mut stream, session_id_tx).await
+        read_sse_and_extract_turn_ids(&mut stream, turn_ids_tx).await
     });
 
-    // Wait for session_id from the first SSE event, then deny.
-    let session_id = tokio::time::timeout(Duration::from_secs(10), session_id_rx)
+    // Wait for ids from the first SSE event, then deny.
+    let (session_id, turn_id) = tokio::time::timeout(Duration::from_secs(10), turn_ids_rx)
         .await
-        .expect("timeout waiting for session_id from SSE stream")
-        .expect("session_id oneshot closed");
+        .expect("timeout waiting for turn ids from SSE stream")
+        .expect("turn ids oneshot closed");
 
     // Poll until the approval gate blocks, then deny.
     // WHY: same retry logic as approve — pipeline must reach gate before we can
@@ -509,6 +521,7 @@ async fn approval_required_denied_tool_does_not_execute() {
             .post(format!("{addr}/api/v1/sessions/{session_id}/approvals"))
             .bearer_auth(&token)
             .json(&serde_json::json!({
+                "turn_id": turn_id,
                 "tool_id": tool_id,
                 "decision": "denied"
             }))
@@ -594,6 +607,7 @@ async fn approvals_with_no_active_turn_returns_404() {
         ))
         .bearer_auth(&token)
         .json(&serde_json::json!({
+            "turn_id": "turn-ghost",
             "tool_id": "tu-ghost",
             "decision": "approved"
         }))
@@ -631,6 +645,7 @@ async fn approvals_with_invalid_decision_returns_422() {
         .post(format!("{addr}/api/v1/sessions/any-session/approvals"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
+            "turn_id": "turn-bad",
             "tool_id": "tu-bad",
             "decision": "maybe"
         }))
@@ -667,6 +682,7 @@ async fn approvals_unauthenticated_returns_401() {
         .post(format!("{addr}/api/v1/sessions/any-session/approvals"))
         // NOTE: no bearer token
         .json(&serde_json::json!({
+            "turn_id": "turn-unauth",
             "tool_id": "tu-unauth",
             "decision": "approved"
         }))

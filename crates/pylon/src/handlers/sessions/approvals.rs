@@ -1,10 +1,10 @@
 //! Tool approval decision endpoint (#3958, ADR-005).
 //!
-//! `POST /api/v1/sessions/{session_id}/approvals` routes the operator's
-//! decision (from the proskenion overlay or koilon TUI) into the nous-side
-//! approval gate. The gate is registered by the streaming handler at turn
-//! start; this handler is a thin pass-through that looks up the session
-//! sender and forwards the decision.
+//! `POST /api/v1/sessions/{session_id}/approvals` and
+//! `POST /api/v1/turns/{turn_id}/tools/{tool_id}/{approve,deny}` route the
+//! operator's decision into the nous-side approval gate. The streaming handler
+//! registers each pending approval by turn and tool id; session id is context
+//! for the session-scoped route, not the lookup key.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -25,6 +25,8 @@ use crate::state::SessionsState;
 /// Operator decision payload for a pending tool approval.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ApprovalRequest {
+    /// The `turn_id` from the matching `message_start` or `tool_approval_required` event.
+    pub turn_id: String,
     /// The `tool_use_id` from the matching `tool_approval_required` event.
     pub tool_id: String,
     /// `"approved"` or `"denied"`.
@@ -85,7 +87,9 @@ pub async fn resolve(
     let routed = state
         .approval_registry
         .try_send(
-            &session_id,
+            Some(&session_id),
+            &body.turn_id,
+            &body.tool_id,
             ApprovalDecision {
                 tool_id: body.tool_id.clone(),
                 choice,
@@ -99,8 +103,103 @@ pub async fn resolve(
 
     info!(
         session_id = session_id.as_str(),
+        turn_id = body.turn_id.as_str(),
         tool_id = body.tool_id.as_str(),
         decision = body.decision.as_str(),
+        "approval decision routed"
+    );
+    Ok((StatusCode::OK, Json(ApprovalResponse { routed })))
+}
+
+/// `POST /api/v1/turns/{turn_id}/tools/{tool_id}/approve` — approve a pending tool.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Stateless lookup-and-send.
+#[utoipa::path(
+    post,
+    path = "/api/v1/turns/{turn_id}/tools/{tool_id}/approve",
+    params(
+        ("turn_id" = String, Path, description = "Turn id from the streaming turn"),
+        ("tool_id" = String, Path, description = "Tool use id from the approval request"),
+    ),
+    responses(
+        (status = 200, description = "Decision routed", body = ApprovalResponse),
+        (status = 404, description = "No active approval for turn/tool", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+#[instrument(skip(state, claims))]
+pub async fn approve_tool(
+    State(state): State<SessionsState>,
+    claims: Claims,
+    Path((turn_id, tool_id)): Path<(String, String)>,
+) -> Result<impl IntoResponse, ApiError> {
+    resolve_path_decision(state, claims, turn_id, tool_id, ApprovalChoice::Approved).await
+}
+
+/// `POST /api/v1/turns/{turn_id}/tools/{tool_id}/deny` — deny a pending tool.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Stateless lookup-and-send.
+#[utoipa::path(
+    post,
+    path = "/api/v1/turns/{turn_id}/tools/{tool_id}/deny",
+    params(
+        ("turn_id" = String, Path, description = "Turn id from the streaming turn"),
+        ("tool_id" = String, Path, description = "Tool use id from the approval request"),
+    ),
+    responses(
+        (status = 200, description = "Decision routed", body = ApprovalResponse),
+        (status = 404, description = "No active approval for turn/tool", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+#[instrument(skip(state, claims))]
+pub async fn deny_tool(
+    State(state): State<SessionsState>,
+    claims: Claims,
+    Path((turn_id, tool_id)): Path<(String, String)>,
+) -> Result<impl IntoResponse, ApiError> {
+    resolve_path_decision(state, claims, turn_id, tool_id, ApprovalChoice::Denied).await
+}
+
+async fn resolve_path_decision(
+    state: SessionsState,
+    claims: Claims,
+    turn_id: String,
+    tool_id: String,
+    choice: ApprovalChoice,
+) -> Result<impl IntoResponse, ApiError> {
+    require_role(&claims, Role::Operator)?;
+
+    let routed = state
+        .approval_registry
+        .try_send(
+            None,
+            &turn_id,
+            &tool_id,
+            ApprovalDecision {
+                tool_id: tool_id.clone(),
+                choice,
+            },
+        )
+        .await;
+
+    if !routed {
+        return SessionNotFoundSnafu {
+            id: format!("{turn_id}/{tool_id}"),
+        }
+        .fail();
+    }
+
+    info!(
+        turn_id = turn_id.as_str(),
+        tool_id = tool_id.as_str(),
+        decision = choice.as_wire_str(),
         "approval decision routed"
     );
     Ok((StatusCode::OK, Json(ApprovalResponse { routed })))

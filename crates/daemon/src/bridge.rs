@@ -3,6 +3,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use tokio_util::sync::CancellationToken;
+
 use crate::runner::ExecutionResult;
 
 /// Allows daemon tasks to send prompts to a nous actor without the daemon
@@ -18,6 +20,22 @@ pub trait DaemonBridge: Send + Sync {
         session_key: &str,
         prompt: &str,
     ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>>;
+
+    /// Send a prompt with a cancellation token that the bridge should propagate
+    /// into the actor turn.
+    ///
+    /// The default implementation ignores the token and delegates to
+    /// [`Self::send_prompt`], preserving behavior for existing bridges that do
+    /// not yet support turn-scoped cancellation.
+    fn send_prompt_with_cancel(
+        &self,
+        nous_id: &str,
+        session_key: &str,
+        prompt: &str,
+        _cancel: CancellationToken,
+    ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
+        self.send_prompt(nous_id, session_key, prompt)
+    }
 }
 
 mod bridge_impl;

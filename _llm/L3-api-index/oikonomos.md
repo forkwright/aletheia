@@ -27,6 +27,13 @@ pub trait DaemonBridge : Send + Sync {
         session_key: &str,
         prompt: &str,
     ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>>;
+    fn send_prompt_with_cancel (
+        &self,
+        nous_id: &str,
+        session_key: &str,
+        prompt: &str,
+        _cancel: CancellationToken,
+    ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>>; // default impl
 }
 ```
 

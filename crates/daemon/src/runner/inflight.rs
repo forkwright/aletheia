@@ -49,8 +49,10 @@ impl TaskRunner {
                     task_id = %task_id,
                     elapsed_secs = elapsed.as_secs(),
                     timeout_secs = in_flight.timeout.as_secs(),
+                    cancelled = true,
                     "hung task detected  -  cancelling (exceeded 2x timeout)"
                 );
+                in_flight.cancel.cancel();
                 in_flight.handle.abort();
 
                 self.in_flight.remove(&task_id);
@@ -156,6 +158,7 @@ impl TaskRunner {
         let bridge = self.bridge.clone();
         let nous_id = self.nous_id.clone();
         let task_id_owned = task_id.to_owned();
+        let cancel = self.shutdown.child_token();
 
         // WHY: spawn as a detached task. Self-prompt execution should not block
         // the main scheduler loop. Failures are logged but do not affect the
@@ -169,10 +172,11 @@ impl TaskRunner {
                     prompt_len = follow_up.len(),
                     "dispatching self-prompt from follow-up"
                 );
-                let result = crate::self_prompt::execute_self_prompt(
+                let result = crate::self_prompt::execute_self_prompt_with_cancel(
                     &nous_id,
                     &follow_up,
                     bridge.as_deref(),
+                    cancel,
                 )
                 .await;
                 match result {
