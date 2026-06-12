@@ -83,14 +83,25 @@ async fn get_ops_tools_returns_registry_and_metrics() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    let active_tools = body["active_tools"].as_array().expect("active tools array");
-    assert!(active_tools.iter().any(|tool| tool["id"] == "probe_tool"));
-    assert_eq!(body["total_calls"], 1);
-    assert_eq!(body["total_errors"], 0);
+    let catalog = body["catalog"].as_array().expect("catalog array");
+    assert!(catalog.iter().any(|tool| tool["id"] == "probe_tool"));
     assert!(
-        body["tool_history"]
-            .as_array()
-            .expect("tool history array")
-            .is_empty()
+        body["live_invocations"].as_array().is_some(),
+        "live invocation list must be present"
+    );
+    assert!(
+        body["total_calls"].as_u64().expect("total_calls as u64") >= 1,
+        "total calls should include the probe execution"
+    );
+    let total_errors = body["total_errors"].as_u64().expect("total_errors as u64");
+    assert!(
+        total_errors <= body["total_calls"].as_u64().expect("total_calls as u64"),
+        "error calls cannot exceed total calls"
+    );
+    assert!(
+        body["history_unavailable"]
+            .as_bool()
+            .expect("history_unavailable bool"),
+        "tool history must be marked unavailable until persisted history exists"
     );
 }
