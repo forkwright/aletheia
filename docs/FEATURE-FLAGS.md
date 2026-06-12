@@ -275,19 +275,28 @@ cargo build -p aletheia --no-default-features
 ```
 
 This drops:
-- `tui` (ratatui, crossterm)
-- `recall` / `storage-fjall` / `mneme-engine` (fjall, krites, Datalog)
+- `tui` (koilon terminal dashboard: ratatui, crossterm)
+- `recall` (knowledge-store wiring in nous/pylon and extraction persistence)
 - `embed-candle` (candle ML stack)
 - `cc-provider` (Claude Code CLI delegation)
+
+It does **not** produce an engine-free binary: `aletheia` depends on
+`mneme` with default features, so `mneme-engine` (krites, Datalog) stays
+linked, and the binary depends on `fjall` unconditionally.
+`--no-default-features` removes the recall wiring, ML stack, TUI, and CC
+provider — not the storage/engine code.
 
 You can then opt back in selectively:
 
 ```bash
-# HTTP API only, no knowledge store, no TUI
+# Minimal headless: HTTP API only, no recall wiring, no ML, no TUI
 cargo build -p aletheia --no-default-features --features tls
 
 # Add keyring auth but still skip ML
 cargo build -p aletheia --no-default-features --features tls,keyring
+
+# Full headless: everything except the TUI
+cargo build -p aletheia --no-default-features --features recall,storage-fjall,embed-candle,cc-provider,tls
 ```
 
 ### "I want full functionality"
