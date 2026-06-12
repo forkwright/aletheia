@@ -5,7 +5,10 @@ use snafu::prelude::*;
 
 use koina::secret::SecretString;
 
-use super::error::{ApiError, AuthSnafu, HttpSnafu, Result, ServerSnafu};
+use super::error::{
+    ApiError, AuthSnafu, HttpSnafu, RateLimitedSnafu, Result, ServerSnafu, parse_pylon_error_body,
+    parse_retry_after_secs,
+};
 use super::types::{
     Agent, AgentsResponse, AuthMode, DailyResponse, HealthResponse, HistoryMessage,
     HistoryResponse, LoginResponse, NousTool, NousToolsResponse, Session, SessionsResponse,
@@ -917,27 +920,35 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Consumes a response, returning it unchanged if 2xx, or a `Server` error with a
-    /// human-readable message extracted from the body. Falls back to "{status} {reason}".
+    /// Consumes a response, returning it unchanged if 2xx.
+    ///
+    /// On non-2xx:
+    /// - 429 → [`ApiError::RateLimited`] with `retry_after_secs` parsed
+    ///   from the `Retry-After` header (delta-seconds form only).
+    /// - Other → [`ApiError::Server`] with the human-readable message
+    ///   extracted from the canonical pylon envelope
+    ///   `{error:{code,message,...}}`; falls back to `"{status} {reason}"`
+    ///   when the envelope is absent or malformed.
     async fn check_status(resp: Response, operation: &'static str) -> Result<Response> {
         if resp.status().is_success() {
             return Ok(resp);
         }
         let status = resp.status();
+
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            let retry_after_secs = parse_retry_after_secs(resp.headers());
+            return RateLimitedSnafu {
+                operation,
+                retry_after_secs,
+            }
+            .fail();
+        }
+
         let reason = status.canonical_reason().unwrap_or("Unknown");
         // kanon:ignore RUST/no-result-unwrap-or-default — empty body on text() failure is acceptable; status code is the primary error signal
         let body = resp.text().await.unwrap_or_default();
-        let message = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-            json.get("message")
-                .or_else(|| json.get("error"))
-                .and_then(|v| v.as_str())
-                .map_or_else(
-                    || format!("{} {}", status.as_u16(), reason),
-                    std::string::ToString::to_string,
-                )
-        } else {
-            format!("{} {}", status.as_u16(), reason)
-        };
+        let message = parse_pylon_error_body(&body)
+            .map_or_else(|| format!("{} {}", status.as_u16(), reason), |d| d.message);
         ServerSnafu {
             operation,
             status: status.as_u16(),

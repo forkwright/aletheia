@@ -1,0 +1,55 @@
+# WHY: malformed YAML in .github/ (e.g. a broken pre-commit config that silently
+# failed yamllint) was discoverable only at runtime. Catch invalid YAML at PR
+# time so broken verification configs never land. See #4929.
+name: YAML Validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  yaml-validate:
+    name: validate YAML configs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Validate workflow and config YAML files
+        run: |
+          python3 - <<'EOF'
+          import sys, yaml, glob, pathlib
+
+          patterns = [
+              ".github/workflows/*.yml",
+              ".github/dependabot.yml",
+          ]
+          files = []
+          for pattern in patterns:
+              files.extend(glob.glob(pattern))
+
+          errors = []
+          for f in sorted(files):
+              try:
+                  yaml.safe_load(pathlib.Path(f).read_text())
+              except yaml.YAMLError as e:
+                  errors.append(f"{f}: {e}")
+
+          if errors:
+              for e in errors:
+                  print(e, file=sys.stderr)
+              sys.exit(1)
+
+          print(f"All {len(files)} YAML file(s) valid")
+          EOF

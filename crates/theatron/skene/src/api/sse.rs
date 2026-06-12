@@ -3,6 +3,10 @@
 //! Provides cross-session awareness: agent status changes, session lifecycle,
 //! and memory distillation progress. Auto-reconnects with exponential backoff
 //! (1s to 30s) and treats 30s of silence as a stale connection.
+//!
+//! The connection tracks the last received SSE event ID and sends it as
+//! `Last-Event-ID` on reconnect, enabling the server to replay missed events
+//! per RFC 7541 § 9.2.4.
 
 use futures_util::StreamExt;
 use reqwest::Client;
@@ -43,14 +47,16 @@ impl SseConnection {
         let handle = tokio::spawn(
             async move {
                 let mut backoff_secs: u64 = 1;
+                // WHY: tracked per RFC 7541 § 9.2.4; sent as Last-Event-ID on
+                // reconnect so the server can replay missed events.
+                let mut last_event_id: Option<String> = None;
 
                 loop {
-                    let resp = match client
-                        .get(&url)
-                        .header("Accept", "text/event-stream")
-                        .send()
-                        .await
-                    {
+                    let mut req = client.get(&url).header("Accept", "text/event-stream");
+                    if let Some(ref id) = last_event_id {
+                        req = req.header("Last-Event-ID", id.as_str());
+                    }
+                    let resp = match req.send().await {
                         Ok(resp) => resp,
                         Err(e) => {
                             tracing::error!("SSE connection failed: {e}");
@@ -113,6 +119,11 @@ impl SseConnection {
                             }
                         };
 
+                        // Track the last event ID for Last-Event-ID on reconnect.
+                        if let Some(id) = event.id.clone() {
+                            last_event_id = Some(id);
+                        }
+
                         if let Some(parsed) = parse_sse_event(&event.event, &event.data)
                             && tx.send(parsed).await.is_err()
                         {
@@ -151,12 +162,22 @@ fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> 
     })
 }
 
+/// Parse a raw SSE event into a domain `SseEvent`.
+///
+/// Returns `None` only when `data` is empty or contains only a comment.
+/// All other failure modes are surfaced as typed variants:
+/// - [`SseEvent::DecodeError`] for JSON parse failures
+/// - [`SseEvent::UnknownEvent`] for unrecognized event types
 fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
     let json: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(event_type, error = %e, "failed to parse SSE event JSON");
-            return None;
+            return Some(SseEvent::DecodeError {
+                event_type: event_type.to_string(),
+                raw_data: data.to_string(),
+                error: e.to_string(),
+            });
         }
     };
 
@@ -234,7 +255,10 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
         }),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
-            None
+            Some(SseEvent::UnknownEvent {
+                event_type: other.to_string(),
+                raw_data: data.to_string(),
+            })
         }
     }
 }
@@ -267,23 +291,45 @@ mod tests {
     }
 
     #[test]
-    fn parse_invalid_json_returns_none() {
+    fn invalid_json_returns_decode_error() {
         let result = parse_sse_event("turn:before", "not json");
-        assert!(result.is_none());
+        if let Some(SseEvent::DecodeError {
+            event_type,
+            raw_data,
+            error,
+        }) = result
+        {
+            assert_eq!(event_type, "turn:before");
+            assert_eq!(raw_data, "not json");
+            assert!(!error.is_empty());
+        } else {
+            panic!("expected DecodeError, got {result:?}");
+        }
     }
 
     #[test]
-    fn parse_missing_field_returns_none() {
+    fn missing_field_returns_none() {
+        // Missing required fields still return None (logged via tracing::warn).
+        // Typed missing-field errors are a follow-on improvement.
         let data = r#"{"nousId":"syn"}"#;
         let result = parse_sse_event("turn:before", data);
         assert!(result.is_none());
     }
 
     #[test]
-    fn parse_unknown_event_returns_none() {
+    fn unknown_event_returns_unknown_event() {
         let data = r#"{"foo":"bar"}"#;
         let result = parse_sse_event("custom:unknown", data);
-        assert!(result.is_none());
+        if let Some(SseEvent::UnknownEvent {
+            event_type,
+            raw_data,
+        }) = result
+        {
+            assert_eq!(event_type, "custom:unknown");
+            assert_eq!(raw_data, data);
+        } else {
+            panic!("expected UnknownEvent, got {result:?}");
+        }
     }
 
     #[test]
