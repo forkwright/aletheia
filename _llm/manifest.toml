@@ -266,7 +266,7 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "b1da2c8f3d7d846346eede85fb296b651c69816631aabaa16584fb46f5ae9a08"
+source_hash = "9789c2d0e619396b0339dbd947f424fd6200d4d433fcfeeb6655fa2c0b008ed4"
 l3_token_estimate = 17603
 
 [[crates]]

@@ -1442,7 +1442,7 @@ pub async fn events (
 ```rust
 pub async fn reconnect_turn (
     State(state): State<SessionsState>,
-    _claims: Claims,
+    claims: Claims,
     headers: axum::http::HeaderMap,
     axum::extract::Path((session_id, turn_id)): axum::extract::Path<(String, String)>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError>
