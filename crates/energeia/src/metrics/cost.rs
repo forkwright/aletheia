@@ -331,6 +331,7 @@ mod tests {
             dag_ref: None,
             max_parallel: Some(2),
             max_turns: None,
+            budget_usd: None,
         }
     }
 
@@ -399,6 +400,7 @@ mod tests {
                     dag_ref: None,
                     max_parallel: None,
                     max_turns: None,
+                    budget_usd: None,
                 },
             )
             .unwrap();
@@ -411,6 +413,7 @@ mod tests {
                     dag_ref: None,
                     max_parallel: None,
                     max_turns: None,
+                    budget_usd: None,
                 },
             )
             .unwrap();

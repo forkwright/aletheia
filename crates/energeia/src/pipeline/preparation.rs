@@ -98,7 +98,7 @@ impl PipelineStage for PreparationStage {
         }
 
         ctx.budget = Some(Arc::new(Budget::new(
-            cfg.default_budget_usd,
+            ctx.spec.budget_usd.or(cfg.default_budget_usd),
             cfg.default_budget_turns,
             cfg.max_duration
                 .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
@@ -292,6 +292,33 @@ mod tests {
 
         assert_eq!(ctx.max_concurrent, 2);
         assert_eq!(ctx.engine_config().options.max_turns, Some(7));
+    }
+
+    #[tokio::test]
+    async fn preparation_prefers_spec_budget_over_config_default() {
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "first".to_owned(),
+            depends_on: vec![],
+            context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            worktree: crate::prompt::WorktreePolicy::default(),
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do first".to_owned(),
+            prompt_components: None,
+        }];
+        let config = OrchestratorConfig::default().default_budget_usd(10.0);
+        let mut ctx = make_context_with_config(prompts, config);
+        ctx.spec.budget_usd = Some(2.5);
+
+        let stage = PreparationStage;
+        stage
+            .run(&mut ctx)
+            .await
+            .expect("preparation should succeed");
+
+        assert_eq!(ctx.budget().max_cost_usd, Some(2.5));
     }
 
     #[tokio::test]

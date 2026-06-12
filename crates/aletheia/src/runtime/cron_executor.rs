@@ -127,6 +127,7 @@ fn dispatch_spec_from_config(cfg: &DispatchSpecConfig) -> DispatchSpec {
     spec.dag_ref.clone_from(&cfg.dag_ref);
     spec.max_parallel = cfg.max_parallel;
     spec.max_turns = cfg.max_turns;
+    spec.budget_usd = cfg.budget_usd;
     spec
 }
 

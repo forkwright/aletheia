@@ -118,6 +118,7 @@ fn sample_dispatch_spec(prompt_numbers: Vec<u32>) -> DispatchSpec {
         dag_ref: None,
         max_parallel: None,
         max_turns: None,
+        budget_usd: None,
     }
 }
 
@@ -261,6 +262,33 @@ async fn dispatch_budget_exceeded_aborts() {
 }
 
 #[tokio::test]
+async fn dispatch_spec_budget_overrides_default_budget() {
+    let engine = Arc::new(MockEngine::new(vec![success_outcome("s1", 0.20, 10)]));
+    let qa = Arc::new(MockQaGate::passing());
+    let config = OrchestratorConfig::new()
+        .max_concurrent(4)
+        .default_budget_usd(10.0);
+
+    let orchestrator = Orchestrator::new(engine, qa, config);
+    let prompts = vec![
+        sample_prompt_spec(1, vec![]),
+        sample_prompt_spec(2, vec![1]),
+    ];
+    let mut spec = sample_dispatch_spec(vec![1, 2]);
+    spec.budget_usd = Some(0.15);
+
+    let result = orchestrator.dispatch(spec, &prompts).await.unwrap();
+
+    assert!(result.aborted);
+    let o2 = result
+        .outcomes
+        .iter()
+        .find(|o| o.prompt_number == 2)
+        .unwrap();
+    assert_eq!(o2.status, SessionStatus::Skipped);
+}
+
+#[tokio::test]
 async fn dispatch_respects_external_cancel_token() {
     let engine = Arc::new(MockEngine::new(vec![]));
     let qa = Arc::new(MockQaGate::passing());
@@ -367,6 +395,26 @@ fn dry_run_returns_execution_plan() {
 
     assert_eq!(plan.groups[2].prompts.len(), 1);
     assert_eq!(plan.groups[2].prompts[0].number, 4);
+}
+
+#[test]
+fn dry_run_with_spec_reports_budget_override() {
+    let engine = Arc::new(MockEngine::new(vec![]));
+    let qa = Arc::new(MockQaGate::passing());
+    let config = OrchestratorConfig::new()
+        .max_concurrent(4)
+        .default_budget_usd(10.0);
+
+    let orchestrator = Orchestrator::new(engine, qa, config);
+    let prompts = vec![sample_prompt_spec(1, vec![])];
+    let mut spec = sample_dispatch_spec(vec![1]);
+    spec.budget_usd = Some(1.25);
+    spec.max_parallel = Some(2);
+
+    let plan = orchestrator.dry_run_with_spec(&spec, &prompts).unwrap();
+
+    assert_eq!(plan.max_concurrent, 2);
+    assert_eq!(plan.budget_usd, Some(1.25));
 }
 
 #[test]

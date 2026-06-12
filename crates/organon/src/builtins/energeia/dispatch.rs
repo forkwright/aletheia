@@ -19,7 +19,7 @@ use crate::types::{
     ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
-use super::shared::{opt_bool, opt_u64, require_str, to_json_text};
+use super::shared::{opt_bool, opt_f64, opt_u64, require_str, to_json_text};
 
 // ── dromeus (δρομεύς — runner) ─────────────────────────────────────────────
 
@@ -128,6 +128,16 @@ impl ToolExecutor for DromeusExecutor {
             if project.trim().is_empty() {
                 return Ok(ToolResult::error("missing required field 'project'"));
             }
+            let budget_usd = match opt_f64(args, "budget_usd") {
+                Ok(Some(value)) if value > 0.0 => Some(value),
+                Ok(Some(_)) => {
+                    return Ok(ToolResult::error(
+                        "field 'budget_usd' must be greater than 0",
+                    ));
+                }
+                Ok(None) => None,
+                Err(e) => return Ok(ToolResult::error(e)),
+            };
             let dry_run = opt_bool(args, "dry_run").unwrap_or(false);
 
             // WHY: spec is a JSON array of PromptSpec objects. Callers build the
@@ -141,20 +151,21 @@ impl ToolExecutor for DromeusExecutor {
                 }
             };
 
-            if dry_run {
-                return match orchestrator.dry_run(&prompts) {
-                    Ok(plan) => Ok(to_json_text(&plan)),
-                    Err(e) => Ok(ToolResult::error(format!("dromeus: dry_run failed: {e}"))),
-                };
-            }
-
             let prompt_numbers: Vec<u32> = prompts.iter().map(|p| p.number).collect();
             let mut dispatch_spec =
                 energeia::types::DispatchSpec::new(project.to_owned(), prompt_numbers);
+            dispatch_spec.budget_usd = budget_usd;
             dispatch_spec.max_parallel =
                 opt_u64(args, "max_parallel").and_then(|v| u32::try_from(v).ok());
             dispatch_spec.max_turns =
                 opt_u64(args, "max_turns").and_then(|v| u32::try_from(v).ok());
+
+            if dry_run {
+                return match orchestrator.dry_run_with_spec(&dispatch_spec, &prompts) {
+                    Ok(plan) => Ok(to_json_text(&plan)),
+                    Err(e) => Ok(ToolResult::error(format!("dromeus: dry_run failed: {e}"))),
+                };
+            }
 
             match orchestrator.dispatch(dispatch_spec, &prompts).await {
                 Ok(result) => Ok(to_json_text(&result)),

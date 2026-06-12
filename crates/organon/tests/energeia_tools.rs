@@ -338,6 +338,73 @@ fn dromeus_schema_exposes_parallel_and_turn_limits() {
         dromeus.input_schema.properties.contains_key("max_turns"),
         "dromeus should expose per-session turn budget separately"
     );
+    assert!(
+        dromeus.input_schema.properties.contains_key("budget_usd"),
+        "dromeus should expose dispatch cost budget"
+    );
+}
+
+#[tokio::test]
+async fn dromeus_dry_run_threads_budget_usd() {
+    let (_tmp, services) = setup();
+    let ctx = make_ctx();
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, Some(services.as_ref())).expect("register");
+
+    let spec = serde_json::json!([
+        {
+            "number": 1,
+            "description": "implement task 1",
+            "depends_on": [],
+            "acceptance_criteria": [],
+            "blast_radius": [],
+            "body": "Do the task"
+        }
+    ]);
+    let input = make_input(
+        "dromeus",
+        serde_json::json!({
+            "spec": spec.to_string(),
+            "project": "acme/test",
+            "budget_usd": 1.25,
+            "dry_run": true
+        }),
+    );
+
+    let result = registry.execute(&input, &ctx).await.unwrap();
+
+    assert_non_error(&result, "dromeus budget dry_run");
+    let json = result_json(&result);
+    assert_eq!(json["budget_usd"], serde_json::json!(1.25));
+}
+
+#[tokio::test]
+async fn dromeus_rejects_non_positive_budget_usd() {
+    let (_tmp, services) = setup();
+    let ctx = make_ctx();
+    let mut registry = ToolRegistry::new();
+    register(&mut registry, Some(services.as_ref())).expect("register");
+
+    let input = make_input(
+        "dromeus",
+        serde_json::json!({
+            "spec": "[]",
+            "project": "acme/test",
+            "budget_usd": 0
+        }),
+    );
+
+    let result = registry.execute(&input, &ctx).await.unwrap();
+
+    assert!(result.is_error, "zero budget must be rejected");
+    assert!(
+        result
+            .content
+            .text_summary()
+            .contains("budget_usd' must be greater than 0"),
+        "unexpected error: {:?}",
+        result.content
+    );
 }
 
 #[test]

@@ -21,6 +21,7 @@ fn dispatch_spec_serde_roundtrip_basic() {
     assert!(deserialized.dag_ref.is_none());
     assert!(deserialized.max_parallel.is_none());
     assert!(deserialized.max_turns.is_none());
+    assert!(deserialized.budget_usd.is_none());
 }
 
 #[test]
@@ -31,7 +32,8 @@ fn dispatch_spec_serde_with_dag_ref() {
         "project": "test-proj",
         "dag_ref": "dag.yaml",
         "max_parallel": 8,
-        "max_turns": 12
+        "max_turns": 12,
+        "budget_usd": 5.75
     }"#;
     let spec: DispatchSpec = serde_json::from_str(json).expect("deserialize");
 
@@ -40,6 +42,7 @@ fn dispatch_spec_serde_with_dag_ref() {
     assert_eq!(spec.dag_ref, Some("dag.yaml".to_owned()));
     assert_eq!(spec.max_parallel, Some(8));
     assert_eq!(spec.max_turns, Some(12));
+    assert_eq!(spec.budget_usd, Some(5.75));
 }
 
 #[test]
@@ -52,6 +55,7 @@ project: yaml-test
 dag_ref: prompts/dag.yaml
 max_parallel: 4
 max_turns: 9
+budget_usd: 3.5
 ";
     let spec: DispatchSpec = serde_yaml::from_str(yaml).expect("deserialize from yaml");
 
@@ -60,6 +64,7 @@ max_turns: 9
     assert_eq!(spec.dag_ref, Some("prompts/dag.yaml".to_owned()));
     assert_eq!(spec.max_parallel, Some(4));
     assert_eq!(spec.max_turns, Some(9));
+    assert_eq!(spec.budget_usd, Some(3.5));
 }
 
 // ── AgentOptions builder chaining + serde ──

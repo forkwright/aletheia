@@ -53,6 +53,21 @@ pub(super) fn opt_u64(args: &serde_json::Value, field: &str) -> Option<u64> {
     args.get(field).and_then(serde_json::Value::as_u64)
 }
 
+/// Extract an optional finite f64 field from tool arguments.
+pub(super) fn opt_f64(
+    args: &serde_json::Value,
+    field: &str,
+) -> std::result::Result<Option<f64>, String> {
+    match args.get(field) {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(value) => value
+            .as_f64()
+            .filter(|number| number.is_finite())
+            .map(Some)
+            .ok_or_else(|| format!("field '{field}' must be a finite number")),
+    }
+}
+
 /// Extract an optional bool field from tool arguments.
 pub(super) fn opt_bool(args: &serde_json::Value, field: &str) -> Option<bool> {
     args.get(field).and_then(serde_json::Value::as_bool)
