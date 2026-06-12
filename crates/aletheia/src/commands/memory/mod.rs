@@ -112,7 +112,12 @@ pub(crate) enum ExportFormat {
     Json,
 }
 
-pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBuf>) -> Result<()> {
+pub(crate) async fn run(
+    action: Action,
+    url: &str,
+    token: Option<&str>,
+    instance_root: Option<&PathBuf>,
+) -> Result<()> {
     validate_action(&action)?;
 
     // WHY: the knowledge store uses an exclusive fjall lock; opening it while the
@@ -120,7 +125,7 @@ pub(crate) async fn run(action: Action, url: &str, instance_root: Option<&PathBu
     // route 'check' through the HTTP API instead of direct store access.
     if is_server_running(url).await? {
         match action {
-            Action::Check { json } => return run_check_via_api(url, json).await,
+            Action::Check { json } => return run_check_via_api(url, json, token).await,
             _ => {
                 whatever!(
                     "The server at {url} is running and holds an exclusive lock on the knowledge store.\n  \
@@ -443,11 +448,24 @@ async fn is_server_running(url: &str) -> Result<bool> {
 }
 
 /// Run the graph health check via the server's HTTP API.
-async fn run_check_via_api(url: &str, json: bool) -> Result<()> {
+async fn run_check_via_api(url: &str, json: bool, token: Option<&str>) -> Result<()> {
     let endpoint = format!("{url}/api/v1/knowledge/check");
-    let resp = reqwest::get(&endpoint)
+    let mut request = reqwest::Client::new().get(&endpoint);
+    if let Some(t) = token {
+        request = request.header("Authorization", format!("Bearer {t}"));
+    }
+    let resp = request
+        .send()
         .await
         .whatever_context("failed to connect to server")?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        whatever!("authentication failed: API token required or invalid");
+    }
+
+    if resp.status() == reqwest::StatusCode::FORBIDDEN {
+        whatever!("authorization failed: token lacks required permissions");
+    }
 
     if resp.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE {
         whatever!("knowledge store is not enabled on the running server");
