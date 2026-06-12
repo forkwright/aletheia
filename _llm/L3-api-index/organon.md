@@ -432,6 +432,31 @@ pub fn expand_file_refs_in_json (
 
 ## `src/metrics.rs`
 
+```rust
+pub struct LiveInvocation {
+    /// Stable invocation identifier.
+    pub id: u64,
+    /// Tool name being executed.
+    pub tool_name: String,
+    /// When the invocation started.
+    pub started_at: Instant,
+}
+```
+
+```rust
+pub struct ActiveInvocationGuard {
+    id: u64,
+}
+```
+
+```rust
+pub fn track_invocation (tool_name: &str) -> ActiveInvocationGuard
+```
+
+```rust
+pub fn live_invocations () -> Vec<LiveInvocation>
+```
+
 > Register this crate's metrics with the shared registry.
 ```rust
 pub fn register (registry: &mut Registry)

@@ -1364,35 +1364,42 @@ pub async fn tools (
 ## `src/handlers/ops_dto.rs`
 
 ```rust
-pub struct ActiveTool {
+pub struct ToolCatalogEntry {
     /// Tool display name.
     pub name: String,
+    /// Tool description.
+    pub description: String,
     /// Tool identifier used by the registry.
     pub id: String,
 }
 ```
 
 ```rust
-pub struct ToolHistoryEntry {
-    /// Tool name.
-    pub name: String,
-    /// Whether the call ended in an error outcome.
-    pub is_error: bool,
-    /// Call duration in milliseconds.
-    pub duration_ms: u64,
+pub struct LiveInvocationEntry {
+    /// Invocation identifier.
+    pub id: u64,
+    /// Tool name being invoked.
+    pub tool_name: String,
+    /// Elapsed time since the invocation started, in milliseconds.
+    pub elapsed_ms: u64,
 }
 ```
 
 ```rust
 pub struct OpsToolsResponse {
-    /// Currently active tool registry entries.
-    pub active_tools: Vec<ActiveTool>,
-    /// Historical tool calls, if the runtime has a history source.
-    pub tool_history: Vec<ToolHistoryEntry>,
+    /// Tool definitions from the live registry catalog.
+    pub catalog: Vec<ToolCatalogEntry>,
+    /// Currently-running tool invocations.
+    pub live_invocations: Vec<LiveInvocationEntry>,
     /// Total recorded tool calls from organon metrics.
     pub total_calls: u64,
     /// Total recorded error calls from organon metrics.
     pub total_errors: u64,
+    /// Whether chronological tool-call history is unavailable.
+    ///
+    /// The current runtime does not persist a per-call history, so this is
+    /// `true` until a history store is added.
+    pub history_unavailable: bool,
 }
 ```
 
