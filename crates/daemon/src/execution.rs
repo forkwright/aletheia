@@ -13,8 +13,8 @@ use crate::bridge::DaemonBridge;
 use crate::cron::{evolution, graph_cleanup, reflection};
 use crate::error::{self, Result};
 use crate::maintenance::{
-    DbMonitor, DriftDetector, FjallBackupConfig, KnowledgeMaintenanceExecutor, MaintenanceConfig,
-    RetentionExecutor, TraceRotator,
+    DbMonitor, DriftDetector, InstanceBackup, InstanceBackupConfig, KnowledgeMaintenanceExecutor,
+    MaintenanceConfig, RetentionExecutor, TraceRotator,
 };
 use crate::probe::{ProbeAuditSummary, ProbeSet, build_probe_audit_prompt};
 use crate::prosoche::ProsocheCheck;
@@ -465,17 +465,17 @@ pub(crate) async fn execute_builtin_with_behavior(
             })
         }
         BuiltinTask::FjallBackup => {
-            let config =
-                maintenance.map_or_else(FjallBackupConfig::default, |m| m.fjall_backup.clone());
+            let config = maintenance
+                .map_or_else(InstanceBackupConfig::default, |m| m.instance_backup.clone());
             let backup_metrics = maintenance.and_then(|m| m.backup_metrics.clone());
             let started = Instant::now();
             let backup_result = tokio::task::spawn_blocking(move || {
-                let _span = tracing::info_span!("fjall_backup").entered();
-                crate::maintenance::FjallBackup::new(config).create_backup()
+                let _span = tracing::info_span!("instance_backup").entered();
+                InstanceBackup::new(config).create_backup()
             })
             .await
             .context(error::BlockingJoinSnafu {
-                context: "fjall backup",
+                context: "whole-instance backup",
             })?;
             let duration_secs = started.elapsed().as_secs_f64();
             let report = match backup_result {
@@ -499,7 +499,7 @@ pub(crate) async fn execute_builtin_with_behavior(
                 files = report.files_copied,
                 bytes = report.bytes_copied,
                 pruned = report.backups_pruned,
-                "maintenance: fjall backup complete"
+                "maintenance: whole-instance backup complete"
             );
             Ok(ExecutionResult {
                 success: true,

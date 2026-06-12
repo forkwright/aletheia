@@ -15,7 +15,7 @@ What Aletheia stores, where it lives, and how to control it.
 | Credentials | `instance/config/credentials/` | Various | API keys, OAuth tokens |
 | Signal data | `instance/signal/` | signal-cli | Phone account, contacts, message state |
 | Logs | `instance/logs/` | Text | Runtime logs |
-| Backups | `instance/data/backups/fjall/` | fjall | Point-in-time knowledge store snapshots |
+| Backups | `instance/data/backups/instance/` | Local files | Whole-instance backup sets with manifest, knowledge, sessions, config, and workspace data |
 | Archives | `instance/data/archive/` | JSON | Retained session exports before deletion |
 
 ## Storage locations
@@ -29,7 +29,7 @@ instance/
 ├── data/
 │   ├── sessions.db          # Session store (fjall LSM-tree; .db suffix is historical)
 │   ├── engine/              # Knowledge graph (embedded Datalog engine)
-│   ├── backups/fjall/       # Knowledge store snapshots (fjall)
+│   ├── backups/instance/    # Whole-instance backup sets
 │   └── archive/sessions/    # Archived session JSON files
 ├── nous/{id}/               # Per-agent workspaces
 ├── shared/                  # Cross-agent shared resources
@@ -77,7 +77,17 @@ When `archiveBeforeDelete` is true, each session is exported to `instance/data/a
 aletheia backup
 ```
 
-Creates a point-in-time fjall backup of the knowledge store at `instance/data/backups/fjall/{timestamp}/` using a file-level snapshot (safe while running). The session store (`sessions.db`) has no built-in backup command; stop the service and copy the directory if you need a session backup.
+Creates a local whole-instance backup set at `instance/data/backups/instance/{timestamp}/`.
+Each set includes `manifest.json`, `stores/knowledge.fjall`, `stores/sessions.db`,
+`config/`, and present workspace directories (`workspace/nous`, `workspace/shared`,
+`workspace/theke`). Optional local data such as archives and prompt/prosoche audit
+logs is copied when present. The command does not upload data to cloud storage.
+
+Verify a set before relying on it for recovery:
+
+```bash
+aletheia backup verify instance/data/backups/instance/<timestamp>
+```
 
 ### List backups
 

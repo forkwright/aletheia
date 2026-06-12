@@ -106,9 +106,10 @@ journalctl --user -u aletheia-health --since "30 minutes ago"
 
 ## Backup automation
 
-## Backup automation
-
-The daemon's `FjallBackup` maintenance task creates periodic file-level snapshots of the knowledge store (`knowledge.fjall`). Configure it in `instance/config/aletheia.toml`:
+The daemon's backup maintenance task creates local whole-instance backup sets.
+Each set contains `manifest.json`, `stores/knowledge.fjall`, `stores/sessions.db`,
+configuration, workspace directories, and optional local audit/archive data when
+present. Configure it in `instance/config/aletheia.toml`:
 
 ```toml
 [maintenance.backup]
@@ -120,7 +121,7 @@ retention_count = 7
 ## Manual backup
 
 ```bash
-aletheia backup          # create a fjall snapshot
+aletheia backup          # create an instance backup set
 aletheia backup --list   # list snapshots
 ```
 
@@ -134,10 +135,10 @@ aletheia backup --list   # list snapshots
 
 ## Manual restore
 
-Backups are fjall directory snapshots. To inspect a snapshot:
+Backups are local instance backup sets. To inspect and verify a set:
 
 ```bash
-aletheia backup verify /path/to/snapshot
+aletheia backup verify instance/data/backups/instance/<timestamp>
 ```
 
 ---
@@ -357,7 +358,7 @@ journalctl --user -u aletheia --since "1 hour ago" | grep -E "latency|slow|timeo
 
 ```bash
 aletheia backup
-# Writes instance/data/backups/fjall/<timestamp>/
+# Writes instance/data/backups/instance/<timestamp>/
 ```
 
 ## List available backups
@@ -369,11 +370,20 @@ aletheia backup --list --json    # machine-readable
 
 ## Restore from backup
 
-Restoring requires a complete fjall snapshot. The backup command only covers the knowledge store (`knowledge.fjall`). For the session store (`sessions.db`), stop the service and copy the directory.
+Restoring requires a complete instance backup set. Always stop the service,
+verify the set, move live stores aside, then copy both required stores back.
 
 ```bash
 systemctl --user stop aletheia
-cp -a instance/data/backups/fjall/<timestamp> instance/data/knowledge.fjall
+BACKUP=instance/data/backups/instance/<timestamp>
+aletheia backup verify "$BACKUP"
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+mv instance/data/knowledge.fjall "instance/data/knowledge.fjall.pre-restore.$STAMP"
+mv instance/data/sessions.db     "instance/data/sessions.db.pre-restore.$STAMP"
+cp -a "$BACKUP/stores/knowledge.fjall" instance/data/knowledge.fjall
+cp -a "$BACKUP/stores/sessions.db"     instance/data/sessions.db
+cp -a "$BACKUP/config/." instance/config/ 2>/dev/null || true
+cp -a "$BACKUP/workspace/." instance/ 2>/dev/null || true
 systemctl --user start aletheia
 aletheia health
 ```
@@ -392,7 +402,7 @@ No built-in JSON export exists since the SQLite-to-fjall migration (#3446). Arch
 ## Verify backup integrity
 
 ```bash
-aletheia backup verify instance/data/backups/fjall/<timestamp>
+aletheia backup verify instance/data/backups/instance/<timestamp>
 ```
 
 ---

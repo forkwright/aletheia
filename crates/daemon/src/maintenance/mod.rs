@@ -11,6 +11,8 @@ pub(crate) mod db_monitor;
 pub(crate) mod drift_detection;
 /// Fjall knowledge store file-level backup with timestamped snapshots.
 pub mod fjall_backup;
+/// Whole-instance backup set covering knowledge, sessions, config, and workspace data.
+pub mod instance_backup;
 /// Knowledge graph maintenance bridge trait and report types.
 pub(crate) mod knowledge;
 /// Prompt audit log retention pruning (#3411).
@@ -22,7 +24,11 @@ pub(crate) mod trace_rotation;
 
 pub use db_monitor::{DbInfo, DbMonitor, DbMonitoringConfig, DbSizeReport, DbStatus};
 pub use drift_detection::{DriftDetectionConfig, DriftDetector, DriftReport};
-pub use fjall_backup::{FjallBackup, FjallBackupConfig, FjallBackupReport};
+pub use fjall_backup::{FjallBackup, FjallBackupConfig, FjallBackupReport, FjallVerifyResult};
+pub use instance_backup::{
+    BackupManifest, InstanceBackup, InstanceBackupConfig, InstanceBackupReport,
+    InstanceVerifyResult, StoreEntry,
+};
 pub use knowledge::{
     AutoDreamConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor, MaintenanceReport,
     SerendipityMaintenanceConfig,
@@ -78,6 +84,8 @@ pub struct MaintenanceConfig {
     pub knowledge_maintenance: KnowledgeMaintenanceConfig,
     /// Fjall knowledge store backup settings.
     pub fjall_backup: FjallBackupConfig,
+    /// Whole-instance backup settings.
+    pub instance_backup: InstanceBackupConfig,
     /// Runtime metrics hook for backup freshness alerting.
     pub backup_metrics: Option<Arc<dyn BackupMetricsRecorder>>,
     /// Directory where prosoche self-audit reports are written.
@@ -105,6 +113,7 @@ impl Default for MaintenanceConfig {
             retention: RetentionConfig::default(),
             knowledge_maintenance: KnowledgeMaintenanceConfig::default(),
             fjall_backup: FjallBackupConfig::default(),
+            instance_backup: InstanceBackupConfig::default(),
             backup_metrics: None,
             prosoche_audit_dir: root.join("data").join("prosoche-audits"),
             cron: crate::cron::CronConfig::default(),
