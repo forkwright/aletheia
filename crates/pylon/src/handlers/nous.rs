@@ -411,7 +411,19 @@ pub async fn recover(
         .get(&id)
         .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?;
 
+    let actor_lifecycle = handle
+        .status()
+        .await
+        .map(|s| s.lifecycle.to_string())
+        .ok();
+
     let recovered = handle.recover().await.map_err(|e| {
+        tracing::warn!(
+            nous_id = %id,
+            actor_lifecycle = actor_lifecycle.as_deref().unwrap_or("unknown"),
+            error = %e,
+            "nous recovery failed"
+        );
         crate::error::InternalSnafu {
             message: format!("recover failed: {e}"),
         }
