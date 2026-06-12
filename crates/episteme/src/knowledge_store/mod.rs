@@ -103,7 +103,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         visibility: String default 'private',
         sensitivity: String default 'public'
     }",
-    // WHY: index 1 is a sentinel — `init_schema` skips this entry and runs
+    // WHY: index 1 is a sentinel - `init_schema` skips this entry and runs
     // the dim-parameterized `entities_ddl(self.dim)` instead so the relation
     // carries a `name_embedding: <F32; DIM>?` column for the dedup pipeline
     // (#4165 Path A). The literal here documents the pre-v13 shape but is
@@ -152,25 +152,25 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         confidence: Float,
         created_at: String
     }",
-    // Index 7 — type_hierarchy (added in schema v8)
+    // Index 7 - type_hierarchy (added in schema v8)
     r":create type_hierarchy {
         child_type: String, parent_type: String =>
         created_at: String
     }",
-    // Index 8 — derived_facts (added in schema v8)
+    // Index 8 - derived_facts (added in schema v8)
     r":create derived_facts {
         entity_id: String, rule_id: String, derived_content: String =>
         confidence: Float,
         materialized_at: String
     }",
-    // Index 9 — defaults (added in schema v8)
+    // Index 9 - defaults (added in schema v8)
     r":create defaults {
         entity_id: String, tag: String =>
         default_content: String,
         confidence: Float,
         created_at: String
     }",
-    // Index 10 — published_facts (added in schema v10)
+    // Index 10 - published_facts (added in schema v10)
     r":create published_facts {
         id: String =>
         original_fact_id: String,
@@ -180,7 +180,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         contested_by: String,
         contest_reason: String?
     }",
-    // Index 11 — provenance (added in schema v10)
+    // Index 11 - provenance (added in schema v10)
     r":create provenance {
         published_fact_id: String, contributor: String =>
         contribution_type: String,
@@ -188,6 +188,14 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         contributed_at: String
     }",
     EMBEDDING_META_DDL,
+    // Index 13 - entity_flags (added in schema v16)
+    r":create entity_flags {
+        entity_id: String =>
+        reason: String,
+        severity: String,
+        flagged_by: String,
+        flagged_at: String
+    }",
 ];
 
 /// Datalog DDL for the entities relation. Dimension is parameterized so the
@@ -584,7 +592,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    pub(crate) const SCHEMA_VERSION: i64 = 15;
+    pub(crate) const SCHEMA_VERSION: i64 = 16;
     const MIN_SCHEMA_VERSION: i64 = 1;
     pub(crate) const ASSUMED_EMBEDDING_MODEL: &'static str = "assumed";
 

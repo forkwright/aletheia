@@ -727,6 +727,31 @@ pub(crate) fn put_pending_merge() -> String {
         .build_script()
 }
 
+/// Insert or update an entity review flag.
+/// Params: `$entity_id`, `$reason`, `$severity`, `$flagged_by`, `$flagged_at`.
+#[must_use]
+pub(crate) fn upsert_entity_flag() -> String {
+    use EntityFlagsField::*;
+    QueryBuilder::new()
+        .put(Relation::EntityFlags)
+        .keys(&[EntityId])
+        .values(&[Reason, Severity, FlaggedBy, FlaggedAt])
+        .done()
+        .build_script()
+}
+
+/// Remove an entity review flag.
+/// Params: `$entity_id`.
+#[must_use]
+pub(crate) fn rm_entity_flag() -> String {
+    use EntityFlagsField::EntityId;
+    QueryBuilder::new()
+        .rm(Relation::EntityFlags)
+        .keys(&[EntityId])
+        .done()
+        .build_script()
+}
+
 /// Insert or update a causal edge.
 /// Params: `$cause`, `$effect`, `$ordering`, `$relationship_type`, `$confidence`, `$created_at`.
 #[must_use]

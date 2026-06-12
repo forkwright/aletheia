@@ -66,6 +66,10 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
         target_version: 15,
         run: KnowledgeStore::migrate_v14_to_v15,
     },
+    MigrationStep {
+        target_version: 16,
+        run: KnowledgeStore::migrate_v15_to_v16,
+    },
 ];
 
 #[cfg(feature = "mneme-engine")]
@@ -1084,6 +1088,43 @@ impl KnowledgeStore {
         self.stamp_schema_version(15, "v14->v15")?;
 
         tracing::info!("knowledge schema migration v14 -> v15 complete");
+        Ok(())
+    }
+
+    /// Migrate v15 -> v16: add entity review flags relation.
+    pub(super) fn migrate_v15_to_v16(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::ScriptMutability;
+        tracing::info!("migrating knowledge schema v15 -> v16");
+
+        if !self
+            .relation_names()?
+            .iter()
+            .any(|name| name == "entity_flags")
+        {
+            self.db
+                .run(
+                    r":create entity_flags {
+                        entity_id: String =>
+                        reason: String,
+                        severity: String,
+                        flagged_by: String,
+                        flagged_at: String
+                    }",
+                    BTreeMap::new(),
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v15->v16 create entity_flags: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+        self.stamp_schema_version(16, "v15->v16")?;
+
+        tracing::info!("knowledge schema migration v15 -> v16 complete");
         Ok(())
     }
 }

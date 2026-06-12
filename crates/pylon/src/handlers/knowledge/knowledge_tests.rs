@@ -6,6 +6,14 @@
 
 use super::*;
 
+#[cfg(feature = "knowledge-store")]
+use axum::http::StatusCode;
+use symbolon::types::Role;
+
+use crate::event_bus::EventBus;
+use crate::extract::Claims;
+use crate::state::KnowledgeState;
+
 fn make_fact(id: &str, content: &str, confidence: f64) -> mneme::knowledge::Fact {
     use mneme::id::FactId;
     use mneme::knowledge::{
@@ -515,4 +523,435 @@ fn sort_facts_with_uppercase_order() {
     sort_facts(&mut facts, "confidence", "desc");
     assert_eq!(facts[0].id.as_str(), "b");
     assert_eq!(facts[1].id.as_str(), "a");
+}
+
+fn operator_claims() -> Claims {
+    Claims {
+        sub: "alice".to_owned(),
+        role: Role::Operator,
+        nous_id: None,
+    }
+}
+
+fn readonly_claims() -> Claims {
+    Claims {
+        sub: "bob".to_owned(),
+        role: Role::Readonly,
+        nous_id: None,
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+fn knowledge_state_with_store(
+    store: std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+) -> KnowledgeState {
+    KnowledgeState {
+        #[cfg(feature = "knowledge-store")]
+        knowledge_store: Some(store),
+        config: std::sync::Arc::new(tokio::sync::RwLock::new(
+            taxis::config::AletheiaConfig::default(),
+        )),
+        event_bus: std::sync::Arc::new(EventBus::new(16)),
+    }
+}
+
+fn knowledge_state_without_store() -> KnowledgeState {
+    KnowledgeState {
+        #[cfg(feature = "knowledge-store")]
+        knowledge_store: None,
+        config: std::sync::Arc::new(tokio::sync::RwLock::new(
+            taxis::config::AletheiaConfig::default(),
+        )),
+        event_bus: std::sync::Arc::new(EventBus::new(16)),
+    }
+}
+
+#[tokio::test]
+async fn flag_entity_insufficient_role_returns_403() {
+    let state = knowledge_state_without_store();
+    let err = flag_entity(
+        State(state),
+        readonly_claims(),
+        Path("entity-a".to_owned()),
+        Json(FlagRequest {
+            reason: "test".to_owned(),
+            severity: FlagSeverity::Low,
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ApiError::Forbidden { .. }),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn flag_entity_empty_reason_returns_400() {
+    let state = knowledge_state_without_store();
+    let err = flag_entity(
+        State(state),
+        operator_claims(),
+        Path("entity-a".to_owned()),
+        Json(FlagRequest {
+            reason: "   ".to_owned(),
+            severity: FlagSeverity::Low,
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ApiError::BadRequest { .. }),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn flag_entity_no_store_returns_503() {
+    let state = knowledge_state_without_store();
+    let err = flag_entity(
+        State(state),
+        operator_claims(),
+        Path("entity-a".to_owned()),
+        Json(FlagRequest {
+            reason: "missing store".to_owned(),
+            severity: FlagSeverity::Low,
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ApiError::ServiceUnavailable { .. }),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn flag_entity_missing_entity_returns_404() {
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let state = knowledge_state_with_store(store);
+    let err = flag_entity(
+        State(state),
+        operator_claims(),
+        Path("missing-entity".to_owned()),
+        Json(FlagRequest {
+            reason: "not found".to_owned(),
+            severity: FlagSeverity::Medium,
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ApiError::NotFound { .. }),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn flag_entity_persists_review_data() {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use mneme::engine::DataValue;
+    use mneme::id::EntityId;
+    use mneme::knowledge::Entity;
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let now = jiff::Timestamp::UNIX_EPOCH;
+    let entity = Entity {
+        id: EntityId::new("entity-a").unwrap(),
+        name: "A".to_owned(),
+        entity_type: "concept".to_owned(),
+        aliases: Vec::new(),
+        created_at: now,
+        updated_at: now,
+    };
+    store.insert_entity(&entity).unwrap();
+
+    let state = knowledge_state_with_store(Arc::clone(&store));
+    let response = flag_entity(
+        State(state),
+        operator_claims(),
+        Path("entity-a".to_owned()),
+        Json(FlagRequest {
+            reason: "duplicate name".to_owned(),
+            severity: FlagSeverity::High,
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response, StatusCode::NO_CONTENT);
+
+    let mut params = BTreeMap::new();
+    params.insert(
+        "entity_id".to_owned(),
+        DataValue::Str("entity-a".to_owned().into()),
+    );
+    let rows = store
+        .run_query(
+            r"?[reason, severity, flagged_by] :=
+                *entity_flags{entity_id, reason, severity, flagged_by, flagged_at},
+                entity_id = $entity_id",
+            params,
+        )
+        .unwrap();
+    assert_eq!(rows.row_count(), 1);
+    assert_eq!(rows.get_string(0, "reason").unwrap(), "duplicate name");
+    assert_eq!(rows.get_string(0, "severity").unwrap(), "high");
+    assert_eq!(rows.get_string(0, "flagged_by").unwrap(), "alice");
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn merge_entities_transfers_facts_and_removes_merged() {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use mneme::engine::DataValue;
+    use mneme::id::{EntityId, FactId};
+    use mneme::knowledge::Entity;
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let now = jiff::Timestamp::UNIX_EPOCH;
+    let canonical_id = EntityId::new("entity-a").unwrap();
+    let merged_id = EntityId::new("entity-b").unwrap();
+    for entity in [
+        Entity {
+            id: canonical_id.clone(),
+            name: "A".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+        Entity {
+            id: merged_id.clone(),
+            name: "B".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+    ] {
+        store.insert_entity(&entity).unwrap();
+    }
+
+    let fact = make_fact("fact-b", "fact owned by b", 0.9);
+    store.insert_fact(&fact).unwrap();
+    store
+        .insert_fact_entity(&FactId::new("fact-b").unwrap(), &merged_id)
+        .unwrap();
+
+    let state = knowledge_state_with_store(Arc::clone(&store));
+    let response = merge_entities(
+        State(state),
+        operator_claims(),
+        Json(MergeRequest {
+            canonical_id: "entity-a".to_owned(),
+            merged_id: "entity-b".to_owned(),
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response, StatusCode::NO_CONTENT);
+
+    let entities = store.list_entities().unwrap();
+    assert!(entities.iter().any(|e| e.id.as_str() == "entity-a"));
+    assert!(!entities.iter().any(|e| e.id.as_str() == "entity-b"));
+
+    let mut params = BTreeMap::new();
+    params.insert(
+        "fact_id".to_owned(),
+        DataValue::Str("fact-b".to_owned().into()),
+    );
+    let rows = store
+        .run_query(
+            r"?[entity_id] := *fact_entities{fact_id, entity_id}, fact_id = $fact_id",
+            params,
+        )
+        .unwrap();
+    assert_eq!(rows.row_count(), 1);
+    assert_eq!(rows.get_string(0, "entity_id").unwrap(), "entity-a");
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn merge_entities_missing_canonical_returns_404() {
+    use mneme::id::EntityId;
+    use mneme::knowledge::Entity;
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let now = jiff::Timestamp::UNIX_EPOCH;
+    store
+        .insert_entity(&Entity {
+            id: EntityId::new("entity-b").unwrap(),
+            name: "B".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        })
+        .unwrap();
+
+    let state = knowledge_state_with_store(store);
+    let err = merge_entities(
+        State(state),
+        operator_claims(),
+        Json(MergeRequest {
+            canonical_id: "entity-a".to_owned(),
+            merged_id: "entity-b".to_owned(),
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ApiError::NotFound { .. }),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn merge_entities_same_id_returns_400() {
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let state = knowledge_state_with_store(store);
+    let err = merge_entities(
+        State(state),
+        operator_claims(),
+        Json(MergeRequest {
+            canonical_id: "entity-a".to_owned(),
+            merged_id: "entity-a".to_owned(),
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ApiError::BadRequest { .. }),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn merge_entities_no_store_returns_503() {
+    let state = knowledge_state_without_store();
+    let err = merge_entities(
+        State(state),
+        operator_claims(),
+        Json(MergeRequest {
+            canonical_id: "entity-a".to_owned(),
+            merged_id: "entity-b".to_owned(),
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, ApiError::ServiceUnavailable { .. }),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn delete_entity_removes_relationships_and_flags() {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use mneme::engine::DataValue;
+    use mneme::id::EntityId;
+    use mneme::knowledge::{Entity, Relationship};
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let now = jiff::Timestamp::UNIX_EPOCH;
+    let entity_a = EntityId::new("entity-a").unwrap();
+    let entity_b = EntityId::new("entity-b").unwrap();
+    for entity in [
+        Entity {
+            id: entity_a.clone(),
+            name: "A".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+        Entity {
+            id: entity_b.clone(),
+            name: "B".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+    ] {
+        store.insert_entity(&entity).unwrap();
+    }
+    store
+        .insert_relationship(&Relationship {
+            src: entity_a.clone(),
+            dst: entity_b.clone(),
+            relation: "depends_on".to_owned(),
+            weight: 0.8,
+            created_at: now,
+        })
+        .unwrap();
+    store
+        .flag_entity(&entity_b, "review", "low", "alice")
+        .unwrap();
+
+    let state = knowledge_state_with_store(Arc::clone(&store));
+    let response = delete_entity(State(state), operator_claims(), Path("entity-b".to_owned()))
+        .await
+        .unwrap();
+    assert_eq!(response, StatusCode::NO_CONTENT);
+
+    let entities = store.list_entities().unwrap();
+    assert!(!entities.iter().any(|e| e.id.as_str() == "entity-b"));
+
+    let mut params = BTreeMap::new();
+    params.insert(
+        "entity_id".to_owned(),
+        DataValue::Str("entity-b".to_owned().into()),
+    );
+    let rows = store
+        .run_query(
+            r"?[entity_id] := *entity_flags{entity_id, reason, severity, flagged_by, flagged_at}, entity_id = $entity_id",
+            params,
+        )
+        .unwrap();
+    assert_eq!(rows.row_count(), 0);
+
+    let rows = store
+        .run_query(
+            r"?[src, dst] := *relationships{src, dst}, src = 'entity-a', dst = 'entity-b'",
+            BTreeMap::new(),
+        )
+        .unwrap();
+    assert_eq!(rows.row_count(), 0);
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn delete_entity_missing_returns_404() {
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let state = knowledge_state_with_store(store);
+    let err = delete_entity(State(state), operator_claims(), Path("missing".to_owned()))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ApiError::NotFound { .. }),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn delete_entity_no_store_returns_503() {
+    let state = knowledge_state_without_store();
+    let err = delete_entity(State(state), operator_claims(), Path("entity-a".to_owned()))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ApiError::ServiceUnavailable { .. }),
+        "unexpected error: {err:?}"
+    );
 }
