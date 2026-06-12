@@ -46,27 +46,41 @@ pub(crate) fn key_file_path(credential_path: &Path) -> PathBuf {
 /// # Errors
 ///
 /// Returns an `io::Error` if the key file cannot be read or written.
-pub(crate) fn load_or_create_key(credential_path: &Path) -> std::io::Result<[u8; KEY_LEN]> {
+/// Load an existing encryption key for the given credential file.
+///
+/// # Errors
+///
+/// Returns an `io::Error` if the key file is missing, unreadable, or has the
+/// wrong length. This function never creates a key file.
+pub(crate) fn load_key(credential_path: &Path) -> std::io::Result<[u8; KEY_LEN]> {
     let key_path = key_file_path(credential_path);
 
-    if key_path.exists() {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
-        )]
-        let bytes = std::fs::read(&key_path)?;
-        let key: [u8; KEY_LEN] = bytes.try_into().map_err(|_ignored| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "encryption key file has wrong length (expected 32 bytes)",
-            )
-        })?;
-        return Ok(key);
-    }
-
-    let key = generate_key();
-    write_key_file(&key_path, &key)?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
+    )]
+    let bytes = std::fs::read(&key_path)?;
+    let key: [u8; KEY_LEN] = bytes.try_into().map_err(|_ignored| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "encryption key file has wrong length (expected 32 bytes)",
+        )
+    })?;
     Ok(key)
+}
+
+#[cfg(test)]
+pub(crate) fn load_or_create_key(credential_path: &Path) -> std::io::Result<[u8; KEY_LEN]> {
+    match load_key(credential_path) {
+        Ok(key) => Ok(key),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            let key = generate_key();
+            let key_path = key_file_path(credential_path);
+            write_key_file(&key_path, &key)?;
+            Ok(key)
+        }
+        Err(source) => Err(source),
+    }
 }
 
 /// Load an existing key or generate one without persisting.
@@ -76,23 +90,13 @@ pub(crate) fn load_or_create_key(credential_path: &Path) -> std::io::Result<[u8;
 pub(crate) fn load_or_generate_key(
     credential_path: &Path,
 ) -> std::io::Result<([u8; KEY_LEN], bool)> {
-    let key_path = key_file_path(credential_path);
-    if key_path.exists() {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "symbolon credential storage writes configuration files; synchronous I/O is required in CLI/init contexts"
-        )]
-        let bytes = std::fs::read(&key_path)?;
-        let key: [u8; KEY_LEN] = bytes.try_into().map_err(|_ignored| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "encryption key file has wrong length (expected 32 bytes)",
-            )
-        })?;
-        Ok((key, false))
-    } else {
-        let key = generate_key();
-        Ok((key, true))
+    match load_key(credential_path) {
+        Ok(key) => Ok((key, false)),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            let key = generate_key();
+            Ok((key, true))
+        }
+        Err(source) => Err(source),
     }
 }
 
@@ -110,7 +114,20 @@ pub(crate) fn prepare_key_file(
     if let Some(parent) = key_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+
+    #[cfg(unix)]
+    let mut f = {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)?
+    };
+    #[cfg(not(unix))]
     let mut f = std::fs::File::create(&tmp)?;
+
     f.write_all(key)?;
     f.flush()?;
     f.sync_all()?;
@@ -242,18 +259,34 @@ fn generate_key() -> [u8; KEY_LEN] {
 }
 
 /// Write the encryption key to disk with restrictive permissions.
+#[cfg(test)]
 fn write_key_file(path: &Path, key: &[u8; KEY_LEN]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
     let tmp = path.with_extension("key.tmp");
+
+    #[cfg(unix)]
+    let mut f = {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)?
+    };
+    #[cfg(not(unix))]
     let mut f = std::fs::File::create(&tmp)?;
+
     f.write_all(key)?;
     f.flush()?;
     f.sync_all()?;
     std::fs::rename(&tmp, path)?;
 
+    // WHY: mode was set atomically at open time on Unix; this defends against
+    // platforms where the temp-file mode did not survive rename.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -344,5 +377,36 @@ mod tests {
         let key1 = load_or_create_key(&cred_path).unwrap();
         let key2 = load_or_create_key(&cred_path).unwrap();
         assert_eq!(key1, key2, "same key file must yield the same key twice");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn key_file_created_with_restrictive_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred_path = dir.path().join("creds.json");
+
+        let key = load_or_create_key(&cred_path).unwrap();
+        assert_ne!(key, [0u8; KEY_LEN], "key must be non-zero");
+
+        let key_path = key_file_path(&cred_path);
+        let metadata = std::fs::metadata(&key_path).unwrap();
+        let mode = metadata.permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "key file must be created with restrictive permissions"
+        );
+    }
+
+    #[test]
+    fn load_key_returns_error_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred_path = dir.path().join("creds.json");
+
+        let err = load_key(&cred_path).unwrap_err();
+        assert_eq!(
+            err.kind(),
+            std::io::ErrorKind::NotFound,
+            "load_key must report a missing key file"
+        );
     }
 }

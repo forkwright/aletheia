@@ -267,3 +267,83 @@ fn lock_uses_sidecar_file_not_credential_path() {
         "credential file itself must not be created by lock acquisition"
     );
 }
+
+// ── load hardening (#4873) ──
+
+#[test]
+fn load_missing_key_does_not_auto_create() {
+    // WHY: deleting the sidecar key for an encrypted credential must not cause
+    // `load` to silently generate a new key and then fail decryption.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("encrypted.json");
+
+    let cred = CredentialFile {
+        token: SecretString::from("sk-test-key-missing"),
+        refresh_token: None,
+        expires_at: None,
+        scopes: None,
+        subscription_type: None,
+    };
+    cred.save(&path).expect("save encrypted credential");
+
+    let key_path = path.with_extension("json.key");
+    assert!(key_path.exists(), "key file must exist after save");
+    std::fs::remove_file(&key_path).expect("delete key file");
+
+    let loaded = CredentialFile::load(&path);
+    assert!(
+        loaded.is_none(),
+        "loading an encrypted credential without its key must fail"
+    );
+    assert!(
+        !key_path.exists(),
+        "load must not create a new key file when the original is missing"
+    );
+}
+
+#[test]
+fn load_shared_lock_allows_concurrent_save_race() {
+    // WHY: smoke test that holding a shared lock during load does not deadlock
+    // with save's exclusive lock and that concurrent save/load cycles do not
+    // corrupt the credential file.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("race.json");
+
+    let initial = CredentialFile {
+        token: SecretString::from("sk-initial"),
+        refresh_token: None,
+        expires_at: None,
+        scopes: None,
+        subscription_type: None,
+    };
+    initial.save(&path).expect("save initial credential");
+
+    let iterations = 50;
+    let path_save = path.clone();
+    let saver = thread::spawn(move || {
+        for i in 0..iterations {
+            let cred = CredentialFile {
+                token: SecretString::from(format!("sk-save-{i}")),
+                refresh_token: None,
+                expires_at: None,
+                scopes: None,
+                subscription_type: None,
+            };
+            cred.save(&path_save).expect("concurrent save");
+        }
+    });
+
+    for _ in 0..iterations {
+        // Any individual load may race with a save and return None; the goal is
+        // that it never panics and that the file remains valid after the final save.
+        let _ = CredentialFile::load(&path);
+    }
+
+    saver.join().expect("saver thread");
+
+    let final_cred = CredentialFile::load(&path).expect("final load after race");
+    assert!(
+        final_cred.token.expose_secret().starts_with("sk-save-"),
+        "final credential must reflect one of the saver writes"
+    );
+}

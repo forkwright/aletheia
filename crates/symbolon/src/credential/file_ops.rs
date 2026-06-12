@@ -6,9 +6,11 @@ use koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
+use std::time::{Duration, SystemTime};
+
 use crate::encrypt::{
-    ENCRYPTED_SENTINEL, commit_key_file, decrypt, encrypt, load_or_create_key,
-    load_or_generate_key, prepare_key_file,
+    ENCRYPTED_SENTINEL, commit_key_file, decrypt, encrypt, load_key, load_or_generate_key,
+    prepare_key_file,
 };
 
 use super::unix_epoch_ms;
@@ -98,7 +100,9 @@ impl CredentialFile {
             return None;
         }
 
-        // WHY: orphaned .json.tmp files from crashed writes waste disk and confuse operators
+        // WHY: orphaned .json.tmp files from crashed writes waste disk and confuse operators.
+        // Cleanup must happen under an exclusive lock and only for files old enough that a
+        // concurrent writer is unlikely to still be holding the lock.
         let tmp = path.with_extension("json.tmp");
         if tmp.exists() {
             // WHY: validate derived tmp path before filesystem operations
@@ -108,18 +112,20 @@ impl CredentialFile {
                 warn!(error = %e, path = %tmp.display(), "temp file path validation failed");
                 return None;
             }
-            if let Err(e) = std::fs::remove_file(&tmp) {
-                warn!(error = %e, path = %tmp.display(), "failed to clean up orphaned temp file");
-            } else {
-                debug!(path = %tmp.display(), "cleaned up orphaned temp file");
-            }
+            cleanup_orphaned_temp_file(path, &tmp);
         }
+
+        // WHY: hold a shared advisory lock while reading so concurrent saves cannot
+        // observe or mutate the credential file halfway through a write.
+        let _lock = CredentialFileLock::shared(path).ok()?;
 
         let contents = std::fs::read_to_string(path).ok()?;
 
         let json = if let Some(encoded) = contents.strip_prefix(ENCRYPTED_SENTINEL) {
             // WHY: encrypted files must be decrypted before JSON parsing.
-            let key = load_or_create_key(path)
+            // `load` never creates a missing key file; that would produce a
+            // confusing decrypt failure instead of a clear "key missing" error.
+            let key = load_key(path)
                 // SAFETY: logging file path and error kind, not credential value
                 .map_err(|e| tracing::warn!(error = %e, path = %path.display(), "failed to load encryption key")) // kanon:ignore SECURITY/credential-logging -- logs error on decrypt failure, not the credential
                 .ok()?;
@@ -266,6 +272,53 @@ impl CredentialFile {
     }
 }
 
+/// Maximum age for a `.json.tmp` file before it is treated as an orphan and
+/// removed during load.
+const ORPHAN_TEMP_AGE_THRESHOLD: Duration = Duration::from_secs(60);
+
+/// Remove an orphaned credential temp file, but only under an exclusive lock and
+/// only when the file is older than [`ORPHAN_TEMP_AGE_THRESHOLD`].
+fn cleanup_orphaned_temp_file(credential_path: &Path, tmp: &Path) {
+    if !is_temp_orphaned(tmp, ORPHAN_TEMP_AGE_THRESHOLD) {
+        return;
+    }
+
+    match CredentialFileLock::exclusive(credential_path) {
+        Ok(_lock) => {
+            // Re-check age after acquiring the lock; a concurrent writer may
+            // have recycled the temp file in the meantime.
+            if !is_temp_orphaned(tmp, ORPHAN_TEMP_AGE_THRESHOLD) {
+                return;
+            }
+            match std::fs::remove_file(tmp) {
+                Ok(()) => debug!(path = %tmp.display(), "cleaned up orphaned temp file"),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    debug!(path = %tmp.display(), "orphaned temp file already removed");
+                }
+                Err(e) => warn!(error = %e, path = %tmp.display(), "failed to clean up orphaned temp file"),
+            }
+        }
+        Err(e) => warn!(error = %e, path = %tmp.display(), "skipped orphaned temp cleanup; could not acquire exclusive lock"),
+    }
+}
+
+/// Whether `tmp` exists and its mtime is older than `max_age`.
+fn is_temp_orphaned(tmp: &Path, max_age: Duration) -> bool {
+    let Ok(metadata) = std::fs::metadata(tmp) else {
+        return false;
+    };
+    let Some(age) = metadata
+        .modified()
+        .ok()
+        .and_then(|mtime| SystemTime::now().duration_since(mtime).ok())
+    else {
+        // If we cannot determine the age, err on the side of leaving the file
+        // alone; a fresh temp file from an in-flight writer must not be deleted.
+        return false;
+    };
+    age > max_age
+}
+
 /// Advisory file lock for credential read-modify-write cycles.
 ///
 /// Uses `flock()` via `rustix` on a `.lock` sidecar file. The lock file is
@@ -276,22 +329,23 @@ pub(super) struct CredentialFileLock {
 
 impl CredentialFileLock {
     /// Acquire a shared (read) lock on the credential file.
-    // WHY: exercised only under `#[cfg(test)]`; non-test builds must still
-    // see this as intentionally-unused public-API surface.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "available for load() callers that need consistency"
-        )
-    )]
     pub(super) fn shared(credential_path: &Path) -> std::io::Result<Self> {
-        Self::lock(credential_path, rustix::fs::FlockOperation::LockShared)
+        let lock_path = credential_path.with_extension("json.lock");
+        Self::lock_path(&lock_path, rustix::fs::FlockOperation::LockShared)
     }
 
     /// Acquire an exclusive (write) lock on the credential file.
     pub(super) fn exclusive(credential_path: &Path) -> std::io::Result<Self> {
-        Self::lock(credential_path, rustix::fs::FlockOperation::LockExclusive)
+        let lock_path = credential_path.with_extension("json.lock");
+        Self::lock_path(&lock_path, rustix::fs::FlockOperation::LockExclusive)
+    }
+
+    /// Acquire an exclusive lock on an arbitrary lock-file path.
+    ///
+    /// Used for provider-wide rotations where a single lock must cover both the
+    /// primary and backup credential files.
+    pub(super) fn exclusive_at(lock_path: &Path) -> std::io::Result<Self> {
+        Self::lock_path(lock_path, rustix::fs::FlockOperation::LockExclusive)
     }
 
     #[cfg(unix)]
@@ -299,15 +353,14 @@ impl CredentialFileLock {
         unsafe_code,
         reason = "BorrowedFd::borrow_raw requires unsafe; fd is valid for File's lifetime"
     )]
-    fn lock(credential_path: &Path, op: rustix::fs::FlockOperation) -> std::io::Result<Self> {
+    fn lock_path(lock_path: &Path, op: rustix::fs::FlockOperation) -> std::io::Result<Self> {
         use std::os::unix::io::AsRawFd;
 
-        let lock_path = credential_path.with_extension("json.lock");
         let file = std::fs::OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
-            .open(&lock_path)?;
+            .open(lock_path)?;
         // WHY: flock is advisory but sufficient when all writers cooperate
         rustix::fs::flock(
             unsafe { rustix::fd::BorrowedFd::borrow_raw(file.as_raw_fd()) },
@@ -318,13 +371,21 @@ impl CredentialFileLock {
     }
 
     #[cfg(not(unix))]
-    fn lock(credential_path: &Path, _op: rustix::fs::FlockOperation) -> std::io::Result<Self> {
-        let lock_path = credential_path.with_extension("json.lock");
+    #[expect(
+        dead_code,
+        reason = "lock_path stub on non-Unix opens the sidecar for consistency but does not implement advisory locking"
+    )]
+    fn lock_path(lock_path: &Path, _op: rustix::fs::FlockOperation) -> std::io::Result<Self> {
+        // WHY: advisory file locking is not implemented on non-Unix targets.
+        // The sidecar file is still created so that callers can treat lock
+        // acquisition as a uniform operation, but this is intentionally a no-op
+        // stub. All production deployments that rely on this behavior run on
+        // Unix-like systems.
         let file = std::fs::OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
-            .open(&lock_path)?;
+            .open(lock_path)?;
         Ok(Self { _file: file })
     }
 }
