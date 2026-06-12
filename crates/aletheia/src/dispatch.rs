@@ -397,6 +397,7 @@ mod tests {
             None,
             tool_services,
             taxis::config::NousBehaviorConfig::default(),
+            taxis::config::ToolLimitsConfig::default(),
         )
     }
 
@@ -416,6 +417,7 @@ mod tests {
             None,
             tool_services,
             taxis::config::NousBehaviorConfig::default(),
+            taxis::config::ToolLimitsConfig::default(),
         )
     }
 
@@ -436,6 +438,7 @@ mod tests {
             None,
             None,
             taxis::config::NousBehaviorConfig::default(),
+            taxis::config::ToolLimitsConfig::default(),
         )
     }
 

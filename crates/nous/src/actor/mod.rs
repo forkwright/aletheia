@@ -192,6 +192,7 @@ impl NousActor {
         active_turn: Arc<AtomicBool>,
         turn_started_at_ms: Arc<AtomicU64>,
         nous_behavior: taxis::config::NousBehaviorConfig,
+        tool_config: Arc<taxis::config::ToolLimitsConfig>,
         audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
         router: Option<Arc<dyn Router>>,
     ) -> Self {
@@ -229,9 +230,7 @@ impl NousActor {
                 tool_services,
                 embedding_provider,
                 candidate_tracker: Arc::new(mneme::skills::CandidateTracker::new()),
-                tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-                // WHY: default TTL (60s) until wired to operator config; TTL-zero
-                // would disable the cache, so default ensures the happy path benefits.
+                tool_config,
                 bootstrap_cache: Arc::new(BootstrapFileCache::with_ttl_secs(
                     nous_behavior.bootstrap_cache_ttl_secs,
                 )),
@@ -408,11 +407,13 @@ impl NousActor {
                         NousMessage::ReloadConfig {
                             mut config,
                             mut pipeline_config,
+                            tool_config,
                             reply,
                         } => {
                             config.apply_recall_profile(&mut pipeline_config);
                             self.config = *config;
                             self.pipeline_config = *pipeline_config;
+                            self.services.tool_config = Arc::new(*tool_config);
                             // kanon:ignore RUST/no-silent-result-swallow — oneshot receiver may have dropped; no recovery possible
                             let _ = reply.send(());
                         }

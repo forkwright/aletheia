@@ -4,7 +4,7 @@ use tokio_util::sync::CancellationToken;
 
 use hermeneus::provider::LlmProvider;
 use hermeneus::test_utils::MockProvider;
-use hermeneus::types::{CompletionRequest, CompletionResponse};
+use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::*;
 
@@ -31,6 +31,26 @@ fn test_config() -> NousConfig {
     }
 }
 
+fn test_config_with_tools(workspace: std::path::PathBuf) -> NousConfig {
+    NousConfig {
+        workspace: workspace.clone(),
+        allowed_roots: vec![workspace],
+        tool_groups: organon::types::ToolGroupPolicy::AllowAll {
+            reason: "tool limit regression test".to_owned(),
+        },
+        hooks: crate::config::HookConfig {
+            cost_control_enabled: false,
+            scope_enforcement_enabled: false,
+            correction_hooks_enabled: false,
+            audit_logging_enabled: false,
+            self_audit_enabled: false,
+            working_checkpoint_enabled: false,
+            ..crate::config::HookConfig::default()
+        },
+        ..test_config()
+    }
+}
+
 fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
@@ -52,6 +72,279 @@ fn test_providers() -> Arc<ProviderRegistry> {
         MockProvider::new("Hello from actor!").models(&["test-model"]),
     ));
     Arc::new(providers)
+}
+
+fn mock_tool_response(
+    tool_name: &str,
+    tool_id: &str,
+    input: serde_json::Value,
+) -> CompletionResponse {
+    CompletionResponse {
+        id: format!("resp-{tool_id}"),
+        model: "test-model".to_owned(),
+        stop_reason: StopReason::ToolUse,
+        content: vec![ContentBlock::ToolUse {
+            id: tool_id.to_owned(),
+            name: tool_name.to_owned(),
+            input,
+        }],
+        usage: Usage {
+            input_tokens: 10,
+            output_tokens: 5,
+            ..Usage::default()
+        },
+        cost_usd: None,
+        duration_ms: None,
+    }
+}
+
+fn mock_text_response(text: &str) -> CompletionResponse {
+    CompletionResponse {
+        id: "resp-final".to_owned(),
+        model: "test-model".to_owned(),
+        stop_reason: StopReason::EndTurn,
+        content: vec![ContentBlock::Text {
+            text: text.to_owned(),
+            citations: None,
+        }],
+        usage: Usage {
+            input_tokens: 10,
+            output_tokens: 5,
+            ..Usage::default()
+        },
+        cost_usd: None,
+        duration_ms: None,
+    }
+}
+
+fn tool_response_provider(tool_name: &str, input: serde_json::Value) -> Arc<ProviderRegistry> {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            mock_tool_response(tool_name, "tool-1", input),
+            mock_text_response("done"),
+        ])
+        .models(&["test-model"]),
+    ));
+    Arc::new(providers)
+}
+
+fn builtins_registry() -> Arc<ToolRegistry> {
+    let mut tools = ToolRegistry::new();
+    organon::builtins::register_all(&mut tools).expect("register builtins");
+    Arc::new(tools)
+}
+
+struct RecordingMessenger;
+
+impl organon::types::MessageService for RecordingMessenger {
+    fn send_message(
+        &self,
+        _to: &str,
+        _text: &str,
+        _from_nous: &str,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::result::Result<(), String>> + Send + '_>,
+    > {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+fn tool_services_with_messenger() -> Arc<organon::types::ToolServices> {
+    organon::testing::install_crypto_provider();
+    Arc::new(organon::types::ToolServices {
+        cross_nous: None,
+        messenger: Some(Arc::new(RecordingMessenger)),
+        note_store: None,
+        blackboard_store: None,
+        spawn: None,
+        planning: None,
+        knowledge: None,
+        working_checkpoint_store: None,
+        http_client: reqwest::Client::new(),
+        secret_vault: hermeneus::secret::SecretVault::new(),
+        lazy_tool_catalog: Vec::new(),
+        server_tool_config: organon::types::ServerToolConfig::default(),
+    })
+}
+
+async fn run_tool_with_limits(
+    tool_name: &str,
+    input: serde_json::Value,
+    tool_limits: taxis::config::ToolLimitsConfig,
+    tool_services: Option<Arc<organon::types::ToolServices>>,
+) -> crate::pipeline::TurnResult {
+    let (dir, oikos) = test_oikos();
+    let config = test_config_with_tools(oikos.nous_dir("test-agent"));
+    let (handle, join, _active_turn, _turn_started_at_ms) = spawn(
+        config,
+        PipelineConfig::default(),
+        tool_response_provider(tool_name, input),
+        builtins_registry(),
+        oikos,
+        None,
+        None,
+        None,
+        #[cfg(feature = "knowledge-store")]
+        None,
+        tool_services,
+        Vec::new(),
+        None,
+        None,
+        CancellationToken::new(),
+        taxis::config::NousBehaviorConfig::default(),
+        Arc::new(tool_limits),
+        None,
+        None,
+    );
+
+    let result = handle.send_turn("main", "run tool").await.expect("turn");
+    handle.shutdown().await.expect("shutdown");
+    join.await.expect("actor join");
+    drop(dir);
+    result
+}
+
+#[tokio::test]
+async fn configured_max_write_bytes_limits_workspace_write_tool() {
+    let tool_limits = taxis::config::ToolLimitsConfig {
+        max_write_bytes: 5,
+        ..taxis::config::ToolLimitsConfig::default()
+    };
+    let result = run_tool_with_limits(
+        "write",
+        serde_json::json!({
+            "path": "limited.txt",
+            "content": "abcdef"
+        }),
+        tool_limits,
+        None,
+    )
+    .await;
+
+    let call = result.tool_calls.first().expect("tool call");
+    let output = call.result.as_deref().expect("tool output");
+    assert!(
+        call.is_error,
+        "write should be rejected by configured limit"
+    );
+    assert!(
+        output.contains("max 5 bytes"),
+        "write output should mention configured limit: {output}"
+    );
+}
+
+#[tokio::test]
+async fn configured_subprocess_timeout_limits_workspace_exec_tool() {
+    let tool_limits = taxis::config::ToolLimitsConfig {
+        subprocess_timeout_secs: 1,
+        ..taxis::config::ToolLimitsConfig::default()
+    };
+    let result = run_tool_with_limits(
+        "exec",
+        serde_json::json!({
+            "command": "sleep 2",
+            "timeout": 60_000
+        }),
+        tool_limits,
+        None,
+    )
+    .await;
+
+    let call = result.tool_calls.first().expect("tool call");
+    let output = call.result.as_deref().expect("tool output");
+    assert!(call.is_error, "exec should time out at configured cap");
+    assert!(
+        output.contains("timed out after 1000ms"),
+        "exec output should mention configured timeout: {output}"
+    );
+}
+
+#[tokio::test]
+async fn configured_message_max_len_limits_message_tool() {
+    let tool_limits = taxis::config::ToolLimitsConfig {
+        message_max_len: 5,
+        ..taxis::config::ToolLimitsConfig::default()
+    };
+    let result = run_tool_with_limits(
+        "message",
+        serde_json::json!({
+            "to": "u:alice",
+            "text": "abcdef"
+        }),
+        tool_limits,
+        Some(tool_services_with_messenger()),
+    )
+    .await;
+
+    let call = result.tool_calls.first().expect("tool call");
+    let output = call.result.as_deref().expect("tool output");
+    assert!(
+        call.is_error,
+        "message should be rejected by configured limit"
+    );
+    assert!(
+        output.contains("5 character limit"),
+        "message output should mention configured limit: {output}"
+    );
+}
+
+#[tokio::test]
+async fn reload_config_updates_tool_limits_for_existing_actor() {
+    let (dir, oikos) = test_oikos();
+    let config = test_config_with_tools(oikos.nous_dir("test-agent"));
+    let (handle, join, _active_turn, _turn_started_at_ms) = spawn(
+        config.clone(),
+        PipelineConfig::default(),
+        tool_response_provider(
+            "write",
+            serde_json::json!({
+                "path": "reloaded.txt",
+                "content": "abcdef"
+            }),
+        ),
+        builtins_registry(),
+        oikos,
+        None,
+        None,
+        None,
+        #[cfg(feature = "knowledge-store")]
+        None,
+        None,
+        Vec::new(),
+        None,
+        None,
+        CancellationToken::new(),
+        taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
+        None,
+        None,
+    );
+    let tool_limits = taxis::config::ToolLimitsConfig {
+        max_write_bytes: 5,
+        ..taxis::config::ToolLimitsConfig::default()
+    };
+    handle
+        .reload_config(
+            config,
+            PipelineConfig::default(),
+            tool_limits,
+            crate::handle::DEFAULT_SEND_TIMEOUT,
+        )
+        .await
+        .expect("reload");
+
+    let result = handle.send_turn("main", "run tool").await.expect("turn");
+    handle.shutdown().await.expect("shutdown");
+    join.await.expect("actor join");
+    drop(dir);
+
+    let call = result.tool_calls.first().expect("tool call");
+    let output = call.result.as_deref().expect("tool output");
+    assert!(
+        output.contains("max 5 bytes"),
+        "reloaded write output should mention configured limit: {output}"
+    );
 }
 
 fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::TempDir) {
@@ -78,6 +371,7 @@ fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::Tem
         None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
     );
@@ -141,6 +435,7 @@ fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile
         None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
     );
@@ -173,6 +468,7 @@ fn spawn_test_actor_with_store(
         None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
     );
@@ -219,6 +515,7 @@ fn make_test_actor(
         active_turn,
         turn_started_at_ms,
         taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
     );
@@ -300,6 +597,7 @@ fn spawn_test_actor_with_cross() -> (
         Some(cross_tx.clone()),
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
     );
@@ -332,6 +630,7 @@ fn spawn_test_actor_with_router(
         None,
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         router,
     );
@@ -369,6 +668,7 @@ fn spawn_panicking_actor_with_cross() -> (
         Some(cross_tx.clone()),
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
     );

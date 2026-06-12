@@ -57,6 +57,7 @@ pub struct SpawnServiceImpl {
     router: Option<Arc<crate::cross::CrossNousRouter>>,
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
+    tool_config: Arc<taxis::config::ToolLimitsConfig>,
     tool_services: OnceLock<Arc<ToolServices>>,
 }
 
@@ -78,6 +79,8 @@ pub struct InheritedSpawnServices {
     pub audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     /// Empirical routing backend shared with parent actors.
     pub empirical_router: Option<Arc<dyn aletheia_routing::Router>>,
+    /// Tool execution limits inherited from deployment config.
+    pub tool_config: Arc<taxis::config::ToolLimitsConfig>,
 }
 
 impl SpawnServiceImpl {
@@ -100,6 +103,7 @@ impl SpawnServiceImpl {
             router: None,
             audit_log: None,
             empirical_router: None,
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
             tool_services: OnceLock::new(),
         }
     }
@@ -117,6 +121,7 @@ impl SpawnServiceImpl {
         self.router = services.router;
         self.audit_log = services.audit_log;
         self.empirical_router = services.empirical_router;
+        self.tool_config = services.tool_config;
         self
     }
 
@@ -244,6 +249,7 @@ impl SpawnService for SpawnServiceImpl {
         let router = self.router.clone();
         let audit_log = self.audit_log.clone();
         let empirical_router = self.empirical_router.clone();
+        let tool_config = Arc::clone(&self.tool_config);
 
         let span = tracing::info_span!(
             "spawn_sub_agent",
@@ -296,6 +302,7 @@ impl SpawnService for SpawnServiceImpl {
                     cross_tx,
                     ephemeral_cancel,
                     taxis::config::NousBehaviorConfig::default(),
+                    tool_config,
                     audit_log,
                     empirical_router,
                 );
@@ -452,6 +459,7 @@ mod tests {
             router: None,
             audit_log: None,
             empirical_router: Some(router),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
         });
 
         let result = svc

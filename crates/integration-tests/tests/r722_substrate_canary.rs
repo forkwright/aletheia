@@ -352,6 +352,7 @@ async fn identity_continuity_pins_top_three_facts_and_late_injects_anchor() {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let mut config = NousConfig {
@@ -508,6 +509,7 @@ async fn reflection_stage_runs_without_error_even_when_store_unavailable() {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let mut config = NousConfig {
@@ -834,6 +836,7 @@ async fn tool_group_gating_denies_calls_outside_allowed_groups() {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     // Coder role: only Read group allowed.
@@ -931,6 +934,7 @@ async fn spawn_class_isolation_truncates_co_occurring_tool_uses() {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let config = NousConfig {
@@ -998,6 +1002,7 @@ async fn consecutive_mistake_brake_fires_at_configured_limit() {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let config = NousConfig {
@@ -1416,6 +1421,7 @@ async fn skill_always_vs_lazy_partitioning_in_system_prompt() {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
 
     let config = NousConfig {

@@ -134,6 +134,7 @@ async fn router_rejects_expired_bearer_token() {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     ));
 
     // WHY: zero access_ttl plus zero clock-skew leeway guarantees that

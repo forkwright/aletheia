@@ -330,6 +330,7 @@ impl NousHandle {
         &self,
         config: NousConfig,
         pipeline_config: PipelineConfig,
+        tool_config: taxis::config::ToolLimitsConfig,
         timeout: Duration,
     ) -> error::Result<()> {
         let (tx, rx) = oneshot::channel();
@@ -337,6 +338,7 @@ impl NousHandle {
             NousMessage::ReloadConfig {
                 config: Box::new(config),
                 pipeline_config: Box::new(pipeline_config),
+                tool_config: Box::new(tool_config),
                 reply: tx,
             },
             timeout,

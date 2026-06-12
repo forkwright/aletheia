@@ -45,6 +45,7 @@ async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
         None,
         None,
         taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
     );
     let config = taxis::config::AletheiaConfig::default();
 

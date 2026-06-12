@@ -92,6 +92,7 @@ impl StateBuilder {
             None,
             None,
             taxis::config::NousBehaviorConfig::default(),
+            taxis::config::ToolLimitsConfig::default(),
         ));
 
         let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
