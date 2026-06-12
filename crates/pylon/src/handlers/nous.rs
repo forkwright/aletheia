@@ -542,6 +542,15 @@ pub async fn create(
 
     result?;
 
+    state.event_bus.publish(crate::event_bus::DomainEvent::new(
+        "nous.lifecycle",
+        serde_json::json!({
+            "nous_id": id_for_response,
+            "event": "created",
+            "restart_required": true,
+        }),
+    ));
+
     Ok((
         StatusCode::CREATED,
         Json(CreateAgentResponse {
@@ -943,5 +952,40 @@ mod tests {
         write_agent_config(&oikos, "bob", "Bob", "claude-sonnet-4-6").unwrap();
         let result = write_agent_config(&oikos, "bob", "Bob", "claude-sonnet-4-6");
         assert!(result.is_err(), "duplicate agent should return an error");
+    }
+
+    #[test]
+    fn create_agent_response_restart_required_is_true() {
+        let resp = CreateAgentResponse {
+            id: "alice".to_owned(),
+            name: "Alice".to_owned(),
+            model: "claude-sonnet-4-6".to_owned(),
+            restart_required: true,
+        };
+        assert!(
+            resp.restart_required,
+            "newly created agents always require restart"
+        );
+    }
+
+    #[test]
+    fn recover_response_serializes() {
+        let resp = RecoverResponse {
+            id: "alice".to_owned(),
+            recovered: true,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["id"], "alice");
+        assert_eq!(json["recovered"], true);
+    }
+
+    #[test]
+    fn recover_response_not_recovered_serializes() {
+        let resp = RecoverResponse {
+            id: "alice".to_owned(),
+            recovered: false,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["recovered"], false);
     }
 }
