@@ -2,16 +2,13 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::components::timeline::{
     Timeline, TimelineBlock, TimelineDependencyLine, phase_positions,
 };
-use crate::state::connection::ConnectionConfig;
-use crate::state::planning::{
-    Phase, Roadmap, RoadmapStore, phase_border_color, phase_status_color,
-};
+use crate::state::planning::{Phase, RoadmapStore, phase_border_color, phase_status_color};
 
 #[derive(Debug, Clone)]
+#[expect(dead_code, reason = "roadmap route is pending B23 backend work")]
 enum FetchState {
     Loading,
     Loaded(RoadmapStore),
@@ -68,55 +65,14 @@ const PIXELS_PER_DAY: f64 = 4.0;
 
 /// Roadmap timeline view for a planning project.
 ///
-/// Fetches from `GET /api/planning/projects/{project_id}/roadmap`.
+/// Shows roadmap data when the pylon roadmap API exists.
 /// Renders phases as timeline blocks with dependency arrows.
 #[component]
 pub(crate) fn RoadmapView(project_id: String) -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
-    let mut fetch_state = use_signal(|| FetchState::Loading);
-    let mut fetch_trigger = use_signal(|| 0u32);
+    let _ = &project_id;
+    let mut fetch_state = use_signal(|| FetchState::NotAvailable);
     let mut zoom = use_signal(|| 1.0f64);
     let mut selected_phase = use_signal(|| None::<usize>);
-
-    let project_id_effect = project_id.clone();
-
-    use_effect(move || {
-        let _ = *fetch_trigger.read();
-        let cfg = config.read().clone();
-        let pid = project_id_effect.clone();
-        fetch_state.set(FetchState::Loading);
-
-        spawn(async move {
-            let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/planning/projects/{pid}/roadmap",
-                cfg.server_url.trim_end_matches('/')
-            );
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => match resp.json::<Roadmap>().await {
-                    Ok(roadmap) => {
-                        fetch_state.set(FetchState::Loaded(RoadmapStore {
-                            roadmap: Some(roadmap),
-                        }));
-                    }
-                    Err(e) => {
-                        fetch_state.set(FetchState::Error(format!("parse error: {e}")));
-                    }
-                },
-                Ok(resp) if resp.status().as_u16() == 404 => {
-                    fetch_state.set(FetchState::NotAvailable);
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    fetch_state.set(FetchState::Error(format!("server returned {status}")));
-                }
-                Err(e) => {
-                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
-                }
-            }
-        });
-    });
 
     rsx! {
         div {
@@ -128,8 +84,7 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| {
-                        let next = *fetch_trigger.peek() + 1;
-                        fetch_trigger.set(next);
+                        fetch_state.set(FetchState::NotAvailable);
                     },
                     "Refresh"
                 }

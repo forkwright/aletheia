@@ -11,6 +11,7 @@ use crate::state::discussion::{
 
 /// Fetch state for discussions, with a 404 variant for unavailable endpoints.
 #[derive(Debug, Clone)]
+#[expect(dead_code, reason = "discussion routes are pending B23 backend work")]
 enum DiscussionFetchState {
     Loading,
     Loaded(Vec<Discussion>),
@@ -161,54 +162,8 @@ const ERROR_STYLE: &str =
 /// Discussion panel listing all discussions for a project.
 #[component]
 pub(crate) fn DiscussionView(project_id: String) -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
-    let mut fetch_state = use_signal(|| DiscussionFetchState::Loading);
+    let mut fetch_state = use_signal(|| DiscussionFetchState::NotAvailable);
     let mut fetch_trigger = use_signal(|| 0u32);
-
-    let project_id_effect = project_id.clone();
-    use_effect(move || {
-        let _trigger = *fetch_trigger.read();
-        let cfg = config.read().clone();
-        let pid = project_id_effect.clone();
-        fetch_state.set(DiscussionFetchState::Loading);
-
-        spawn(async move {
-            let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/planning/projects/{pid}/discussions",
-                cfg.server_url.trim_end_matches('/')
-            );
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<Vec<Discussion>>().await {
-                        Ok(discussions) => {
-                            fetch_state.set(DiscussionFetchState::Loaded(discussions));
-                        }
-                        Err(e) => {
-                            fetch_state
-                                .set(DiscussionFetchState::Error(format!("parse error: {e}")));
-                        }
-                    }
-                }
-                // WHY: 404 means discussions endpoint not available on this pylon version.
-                Ok(resp) if resp.status().as_u16() == 404 => {
-                    fetch_state.set(DiscussionFetchState::NotAvailable);
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    fetch_state.set(DiscussionFetchState::Error(format!(
-                        "server returned {status}"
-                    )));
-                }
-                Err(e) => {
-                    fetch_state.set(DiscussionFetchState::Error(format!(
-                        "connection error: {e}"
-                    )));
-                }
-            }
-        });
-    });
 
     rsx! {
         div {
@@ -218,7 +173,7 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
                 h3 { style: "font-size: var(--text-md); margin: 0; color: var(--text-primary);", "Discussions" }
                 button {
                     style: "{REFRESH_BTN}",
-                    onclick: move |_| fetch_trigger.set(fetch_trigger() + 1),
+                    onclick: move |_| fetch_state.set(DiscussionFetchState::NotAvailable),
                     "Refresh"
                 }
             }
@@ -326,7 +281,7 @@ fn DiscussionCard(
         spawn(async move {
             let client = authenticated_client(&cfg);
             let url = format!(
-                "{}/api/planning/projects/{pid}/discussions/{did}/answer",
+                "{}/api/v1/planning/projects/{pid}/discussions/{did}/answer",
                 cfg.server_url.trim_end_matches('/')
             );
             let req = DiscussionAnswerRequest {
@@ -362,7 +317,7 @@ fn DiscussionCard(
             let client = authenticated_client(&cfg);
             // WHY: reopen is POST to the same answer endpoint with empty body.
             let url = format!(
-                "{}/api/planning/projects/{pid}/discussions/{did}/reopen",
+                "{}/api/v1/planning/projects/{pid}/discussions/{did}/reopen",
                 cfg.server_url.trim_end_matches('/')
             );
             match client.post(&url).send().await {

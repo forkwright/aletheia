@@ -75,7 +75,7 @@ pub struct RequirementVerification {
 /// Full verification result for a project.
 ///
 /// Wire format consumed by the desktop `VerificationView` and served
-/// by pylon's `GET /api/planning/projects/{id}/verification`.
+/// by pylon's `GET /api/v1/planning/projects/{id}/verification`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProjectVerificationResult {
     /// Project identifier.

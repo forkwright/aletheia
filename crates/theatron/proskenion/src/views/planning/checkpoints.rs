@@ -2,13 +2,11 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::components::checkpoint_card::CheckpointCard;
 use crate::state::checkpoints::{Checkpoint, CheckpointStore};
-use crate::state::connection::ConnectionConfig;
-use crate::state::events::EventState;
 
 #[derive(Debug, Clone)]
+#[expect(dead_code, reason = "checkpoint routes are pending B23 backend work")]
 enum FetchState {
     Loading,
     Loaded(CheckpointStore),
@@ -65,78 +63,13 @@ const PLACEHOLDER_STYLE: &str = "\
 
 /// Checkpoint approval list for a planning project.
 ///
-/// Fetches from `GET /api/planning/projects/{project_id}/checkpoints`.
-/// Pending gates appear at the top of the list. Subscribes to SSE
-/// `checkpoint:created` and `checkpoint:updated` events for real-time
-/// refresh via [`EventState::checkpoint_revisions`].
+/// Shows checkpoints when the pylon checkpoint API exists.
+/// Pending gates appear at the top of the list once checkpoint routes land.
 #[component]
 pub(crate) fn CheckpointsView(project_id: String) -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
-    let event_state: Signal<EventState> = use_context();
-    let mut fetch_state = use_signal(|| FetchState::Loading);
+    let mut fetch_state = use_signal(|| FetchState::NotAvailable);
     // WHY: incrementing this signal causes the fetch effect to re-run.
     let mut fetch_trigger = use_signal(|| 0u32);
-    // WHY: tracks the last-seen SSE revision so the effect only fires
-    // on genuinely new checkpoint events, not on every EventState update.
-    let mut last_seen_revision = use_signal(|| 0u64);
-
-    // WHY: Re-fetch when an SSE checkpoint event arrives for this project.
-    let project_id_sse = project_id.clone();
-    use_effect(move || {
-        let state = event_state.read();
-        let current_rev = state
-            .checkpoint_revisions
-            .get(&project_id_sse)
-            .copied()
-            .unwrap_or(0);
-        if current_rev > *last_seen_revision.peek() {
-            last_seen_revision.set(current_rev);
-            let next = *fetch_trigger.peek() + 1;
-            fetch_trigger.set(next);
-        }
-    });
-
-    let project_id_effect = project_id.clone();
-
-    // Re-runs on mount and whenever fetch_trigger changes.
-    use_effect(move || {
-        let _ = *fetch_trigger.read();
-        let cfg = config.read().clone();
-        let pid = project_id_effect.clone();
-        fetch_state.set(FetchState::Loading);
-
-        spawn(async move {
-            let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/planning/projects/{pid}/checkpoints",
-                cfg.server_url.trim_end_matches('/')
-            );
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<Vec<Checkpoint>>().await {
-                        Ok(checkpoints) => {
-                            fetch_state.set(FetchState::Loaded(CheckpointStore { checkpoints }));
-                        }
-                        Err(e) => {
-                            fetch_state.set(FetchState::Error(format!("parse error: {e}")));
-                        }
-                    }
-                }
-                // WHY: 404 means checkpoint endpoint not yet on this pylon version.
-                Ok(resp) if resp.status().as_u16() == 404 => {
-                    fetch_state.set(FetchState::NotAvailable);
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    fetch_state.set(FetchState::Error(format!("server returned {status}")));
-                }
-                Err(e) => {
-                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
-                }
-            }
-        });
-    });
 
     let project_id_card = project_id.clone();
 
@@ -149,8 +82,7 @@ pub(crate) fn CheckpointsView(project_id: String) -> Element {
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| {
-                        let next = *fetch_trigger.peek() + 1;
-                        fetch_trigger.set(next);
+                        fetch_state.set(FetchState::NotAvailable);
                     },
                     "Refresh"
                 }

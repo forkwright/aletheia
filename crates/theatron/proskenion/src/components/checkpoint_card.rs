@@ -226,7 +226,7 @@ pub(crate) fn CheckpointCard(
         spawn(async move {
             let client = authenticated_client(&cfg);
             let url = format!(
-                "{}/api/planning/projects/{pid}/checkpoints/{cid}/action",
+                "{}/api/v1/planning/projects/{pid}/checkpoints/{cid}/action",
                 cfg.server_url.trim_end_matches('/')
             );
             let req = CheckpointActionRequest {
@@ -266,7 +266,7 @@ pub(crate) fn CheckpointCard(
         spawn(async move {
             let client = authenticated_client(&cfg);
             let url = format!(
-                "{}/api/planning/projects/{pid}/checkpoints/{cid}/action",
+                "{}/api/v1/planning/projects/{pid}/checkpoints/{cid}/action",
                 cfg.server_url.trim_end_matches('/')
             );
             let req = CheckpointActionRequest {

@@ -11,6 +11,7 @@ use crate::state::planning::{
 use crate::views::planning::category_proposal::CategoryProposalCard;
 
 #[derive(Debug, Clone)]
+#[expect(dead_code, reason = "requirements routes are pending B23 backend work")]
 enum FetchState {
     Loading,
     Loaded(RequirementStore),
@@ -165,12 +166,12 @@ const PLACEHOLDER_STYLE: &str = "\
 
 /// Requirements table view for a planning project.
 ///
-/// Fetches from `GET /api/planning/projects/{project_id}/requirements`.
+/// Shows requirements when the pylon requirements API exists.
 /// Provides category tabs, inline editing, search, and filter controls.
 #[component]
 pub(crate) fn RequirementsView(project_id: String) -> Element {
     let config: Signal<ConnectionConfig> = use_context();
-    let mut fetch_state = use_signal(|| FetchState::Loading);
+    let mut fetch_state = use_signal(|| FetchState::NotAvailable);
     let mut fetch_trigger = use_signal(|| 0u32);
     let mut active_category = use_signal(|| RequirementCategory::V1);
     let mut search_query = use_signal(String::new);
@@ -178,75 +179,6 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
     let mut priority_filter = use_signal(|| None::<RequirementPriority>);
     let mut editing: Signal<EditingField> = use_signal(|| None);
     let mut edit_value = use_signal(String::new);
-
-    let project_id_effect = project_id.clone();
-
-    use_effect(move || {
-        let _ = *fetch_trigger.read();
-        let cfg = config.read().clone();
-        let pid = project_id_effect.clone();
-        fetch_state.set(FetchState::Loading);
-
-        spawn(async move {
-            let client = authenticated_client(&cfg);
-            let base = cfg.server_url.trim_end_matches('/');
-
-            let req_url = format!("{base}/api/planning/projects/{pid}/requirements");
-            let prop_url = format!("{base}/api/planning/projects/{pid}/proposals");
-
-            let (reqs_result, props_result) =
-                tokio::join!(client.get(&req_url).send(), client.get(&prop_url).send(),);
-
-            let requirements = match reqs_result {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<Vec<Requirement>>().await {
-                        Ok(r) => r,
-                        Err(e) => {
-                            fetch_state.set(FetchState::Error(format!("parse error: {e}")));
-                            return;
-                        }
-                    }
-                }
-                Ok(resp) if resp.status().as_u16() == 404 => {
-                    fetch_state.set(FetchState::NotAvailable);
-                    return;
-                }
-                Ok(resp) => {
-                    fetch_state.set(FetchState::Error(format!(
-                        "server returned {}",
-                        resp.status()
-                    )));
-                    return;
-                }
-                Err(e) => {
-                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
-                    return;
-                }
-            };
-
-            // WHY: Proposals endpoint may not exist yet; treat 404 as empty.
-            let proposals = match props_result {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<Vec<CategoryProposal>>().await {
-                        Ok(proposals) => proposals,
-                        Err(err) => {
-                            tracing::warn!(
-                                error = %err,
-                                "failed to parse planning category proposals"
-                            );
-                            Vec::new()
-                        }
-                    }
-                }
-                _ => Vec::new(),
-            };
-
-            fetch_state.set(FetchState::Loaded(RequirementStore {
-                requirements,
-                proposals,
-            }));
-        });
-    });
 
     rsx! {
         div {
@@ -258,8 +190,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                 button {
                     style: "{REFRESH_BTN}",
                     onclick: move |_| {
-                        let next = *fetch_trigger.peek() + 1;
-                        fetch_trigger.set(next);
+                        fetch_state.set(FetchState::NotAvailable);
                     },
                     "Refresh"
                 }
@@ -606,7 +537,7 @@ fn send_edit(
     spawn(async move {
         let client = authenticated_client(&cfg);
         let url = format!(
-            "{}/api/planning/projects/{pid}/requirements/{rid}",
+            "{}/api/v1/planning/projects/{pid}/requirements/{rid}",
             cfg.server_url.trim_end_matches('/')
         );
 
@@ -649,7 +580,7 @@ fn send_category_change(
     spawn(async move {
         let client = authenticated_client(&cfg);
         let url = format!(
-            "{}/api/planning/projects/{pid}/requirements/{rid}",
+            "{}/api/v1/planning/projects/{pid}/requirements/{rid}",
             cfg.server_url.trim_end_matches('/')
         );
 

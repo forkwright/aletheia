@@ -57,7 +57,7 @@ const REJECT_BTN: &str = "\
 
 /// Inline proposal card displayed when an agent proposes a category change.
 ///
-/// Sends action to `POST /api/planning/projects/{project_id}/proposals/{proposal_id}`.
+/// Sends action to `POST /api/v1/planning/projects/{project_id}/proposals/{proposal_id}`.
 #[component]
 pub(crate) fn CategoryProposalCard(
     proposal: CategoryProposal,
@@ -160,7 +160,7 @@ fn send_proposal_action(
     spawn(async move {
         let client = authenticated_client(&cfg);
         let url = format!(
-            "{}/api/planning/projects/{pid}/proposals/{prop_id}",
+            "{}/api/v1/planning/projects/{pid}/proposals/{prop_id}",
             cfg.server_url.trim_end_matches('/')
         );
 

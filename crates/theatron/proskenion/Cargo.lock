@@ -2792,6 +2792,7 @@ dependencies = [
  "prometheus-client",
  "rand 0.10.1",
  "regex",
+ "reqwest",
  "rustix",
  "serde",
  "serde_json",

@@ -2,9 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::components::option_card::OptionCard;
-use crate::state::connection::ConnectionConfig;
 use crate::state::discussion::{Discussion, DiscussionStatus, DiscussionStore};
 
 /// Expanded discussion detail view.
@@ -16,46 +14,8 @@ pub(crate) fn DiscussionDetailView(
     discussion_id: String,
     on_back: EventHandler<()>,
 ) -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
-    let mut discussion = use_signal(|| None::<Discussion>);
-    let mut error = use_signal(|| None::<String>);
-    let fetch_trigger = use_signal(|| 0u32);
-
-    let project_id_effect = project_id.clone();
-    let discussion_id_effect = discussion_id.clone();
-
-    use_effect(move || {
-        let _trigger = *fetch_trigger.read();
-        let cfg = config.read().clone();
-        let pid = project_id_effect.clone();
-        let did = discussion_id_effect.clone();
-        discussion.set(None);
-        error.set(None);
-
-        spawn(async move {
-            let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/planning/projects/{pid}/discussions/{did}",
-                cfg.server_url.trim_end_matches('/')
-            );
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => match resp.json::<Discussion>().await {
-                    Ok(disc) => discussion.set(Some(disc)),
-                    Err(e) => {
-                        error.set(Some(format!("parse error: {e}")));
-                    }
-                },
-                Ok(resp) => {
-                    let status = resp.status();
-                    error.set(Some(format!("server returned {status}")));
-                }
-                Err(e) => {
-                    error.set(Some(format!("connection error: {e}")));
-                }
-            }
-        });
-    });
+    let _ = (&project_id, &discussion_id);
+    let discussion = use_signal(|| None::<Discussion>);
 
     rsx! {
         div {
@@ -67,10 +27,10 @@ pub(crate) fn DiscussionDetailView(
                 "<- Back to discussions"
             }
 
-            if let Some(err) = error.read().as_ref() {
+            if discussion.read().is_none() {
                 div {
-                    style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--status-error);",
-                    "Error: {err}"
+                    style: "display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-secondary);",
+                    "Discussion details not available"
                 }
             } else if let Some(disc) = discussion.read().as_ref() {
                 div { style: "font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text-primary); margin-bottom: var(--space-2);", "{disc.question}" }

@@ -2,14 +2,13 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::components::plan_card::PlanCard;
 use crate::components::wave_band::WaveBand;
-use crate::state::connection::ConnectionConfig;
 use crate::state::execution::{ExecutionState, ExecutionStore};
 
 /// Fetch state for execution data.
 #[derive(Debug, Clone)]
+#[expect(dead_code, reason = "execution route is pending B23 backend work")]
 enum ExecutionFetchState {
     Loading,
     Loaded(ExecutionState),
@@ -71,67 +70,11 @@ const PLACEHOLDER_STYLE: &str = "\
     color: var(--text-muted);\
 ";
 
-/// Polling interval for execution state updates (10 seconds).
-const POLL_INTERVAL_MS: u64 = 10_000;
-
 /// Execution view with wave-based progress and plan visualization.
 #[component]
 pub(crate) fn ExecutionView(project_id: String) -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
-    let mut fetch_state = use_signal(|| ExecutionFetchState::Loading);
-    let mut fetch_trigger = use_signal(|| 0u32);
-
-    // Fetch execution state on mount and when trigger changes.
-    let project_id_effect = project_id.clone();
-    use_effect(move || {
-        let _trigger = *fetch_trigger.read();
-        let cfg = config.read().clone();
-        let pid = project_id_effect.clone();
-        fetch_state.set(ExecutionFetchState::Loading);
-
-        spawn(async move {
-            let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/planning/projects/{pid}/execution",
-                cfg.server_url.trim_end_matches('/')
-            );
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<ExecutionState>().await {
-                        Ok(state) => fetch_state.set(ExecutionFetchState::Loaded(state)),
-                        Err(e) => {
-                            fetch_state
-                                .set(ExecutionFetchState::Error(format!("parse error: {e}")));
-                        }
-                    }
-                }
-                // WHY: 404 means execution endpoint not available on this pylon version.
-                Ok(resp) if resp.status().as_u16() == 404 => {
-                    fetch_state.set(ExecutionFetchState::NotAvailable);
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    fetch_state.set(ExecutionFetchState::Error(format!(
-                        "server returned {status}"
-                    )));
-                }
-                Err(e) => {
-                    fetch_state.set(ExecutionFetchState::Error(format!("connection error: {e}")));
-                }
-            }
-        });
-    });
-
-    // Polling fallback: re-fetch every 10 seconds.
-    use_effect(move || {
-        spawn(async move {
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_millis(POLL_INTERVAL_MS)).await;
-                fetch_trigger.set(fetch_trigger() + 1);
-            }
-        });
-    });
+    let _ = &project_id;
+    let mut fetch_state = use_signal(|| ExecutionFetchState::NotAvailable);
 
     rsx! {
         div {
@@ -141,7 +84,7 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
                 h3 { style: "font-size: var(--text-md); margin: 0; color: var(--text-primary);", "Execution" }
                 button {
                     style: "{REFRESH_BTN}",
-                    onclick: move |_| fetch_trigger.set(fetch_trigger() + 1),
+                    onclick: move |_| fetch_state.set(ExecutionFetchState::NotAvailable),
                     "Refresh"
                 }
             }

@@ -2,12 +2,11 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::app::Route;
-use crate::state::connection::ConnectionConfig;
 use crate::state::planning::{Project, ProjectStore, status_badge_style, status_label};
 
 #[derive(Debug, Clone)]
+#[expect(dead_code, reason = "project-list route is pending B23 backend work")]
 enum FetchState {
     Loading,
     Loaded(ProjectStore),
@@ -110,47 +109,14 @@ const PLACEHOLDER_STYLE: &str = "\
 
 /// Project dashboard -- the default `/planning` view.
 ///
-/// Fetches projects from `GET /api/planning/projects` and displays a card grid.
-/// Clicking a card navigates to the project detail view.
+/// Displays the planning project list when the pylon project-list API exists.
 #[component]
 pub(crate) fn Planning() -> Element {
-    let config: Signal<ConnectionConfig> = use_context();
     let nav = use_navigator();
-    let mut fetch_state = use_signal(|| FetchState::Loading);
+    let mut fetch_state = use_signal(|| FetchState::NotAvailable);
 
     let mut do_refresh = move || {
-        let cfg = config.read().clone();
-        fetch_state.set(FetchState::Loading);
-
-        spawn(async move {
-            let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/planning/projects",
-                cfg.server_url.trim_end_matches('/')
-            );
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => match resp.json::<Vec<Project>>().await {
-                    Ok(projects) => {
-                        fetch_state.set(FetchState::Loaded(ProjectStore { projects }));
-                    }
-                    Err(e) => {
-                        fetch_state.set(FetchState::Error(format!("parse error: {e}")));
-                    }
-                },
-                // WHY: 404 means planning endpoint not available on this pylon version.
-                Ok(resp) if resp.status().as_u16() == 404 => {
-                    fetch_state.set(FetchState::NotAvailable);
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    fetch_state.set(FetchState::Error(format!("server returned {status}")));
-                }
-                Err(e) => {
-                    fetch_state.set(FetchState::Error(format!("connection error: {e}")));
-                }
-            }
-        });
+        fetch_state.set(FetchState::NotAvailable);
     };
 
     use_effect(move || {
