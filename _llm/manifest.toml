@@ -62,7 +62,7 @@ l3_token_estimate = 7702
 [[crates]]
 name = "diaporeia"
 path = "crates/diaporeia"
-source_hash = "b237d33ac2de51af65c61a4c57a479f0febbd7f173197e96c3f1898241673d9d"
+source_hash = "2a653b9d8730c6ca8f047f249dca139827131cb815e26461ed30d906e5b709b7"
 l3_token_estimate = 2544
 
 [[crates]]
@@ -146,7 +146,7 @@ l3_token_estimate = 51
 [[crates]]
 name = "nous"
 path = "crates/nous"
-source_hash = "a694f7f16434f53d3399aefeaf9ac18bdfde353b1f734137130d8a8e11f86a91"
+source_hash = "d79ef6cd859dc4ee71015596f07fde1b8754dc9aa4d1baffa720070b863da6e5"
 l3_token_estimate = 34616
 
 [[crates]]
@@ -284,8 +284,8 @@ l3_token_estimate = 7072
 [[crates]]
 name = "taxis"
 path = "crates/taxis"
-source_hash = "2bd8fc30dfeefc2cf7b0bff307fe98efdc377c0abf5628ccacc564e98d0833b3"
-l3_token_estimate = 23836
+source_hash = "71461afb192fae84c67bfd8196e8196e3286c1ab3cc60682043f1693e824f878"
+l3_token_estimate = 24024
 
 [[crates]]
 name = "theatron"
