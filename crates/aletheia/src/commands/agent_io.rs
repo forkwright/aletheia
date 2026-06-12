@@ -294,14 +294,16 @@ fn export_knowledge(
         .filter(|f| f.nous_id == nous_id)
         .collect();
 
-    // Entities and relationships are workspace-global today (no nous_id
-    // column). We round-trip the full set so a faithful restore reproduces
-    // the source's graph view.
+    let fact_ids: Vec<mneme::id::FactId> = facts.iter().map(|fact| fact.id.clone()).collect();
     let entities = store
-        .list_entities()
+        .list_entities_for_facts(&fact_ids)
         .with_whatever_context(|_| format!("failed to list entities for '{nous_id}'"))?;
+    let entity_ids: std::collections::HashSet<String> = entities
+        .iter()
+        .map(|entity| entity.id.as_str().to_owned())
+        .collect();
     let relationships = store
-        .list_all_relationships()
+        .list_relationships_between_entities(&entity_ids)
         .with_whatever_context(|_| format!("failed to list relationships for '{nous_id}'"))?;
 
     if facts.is_empty() && entities.is_empty() && relationships.is_empty() {
@@ -397,6 +399,15 @@ fn import_knowledge(
         store
             .insert_relationship(rel)
             .with_whatever_context(|_| format!("import rel {:?} -> {:?}", rel.src, rel.dst))?;
+    }
+    for fact in &knowledge.facts {
+        for entity in &knowledge.entities {
+            store
+                .insert_fact_entity(&fact.id, &entity.id)
+                .with_whatever_context(|_| {
+                    format!("import fact/entity link {:?} -> {:?}", fact.id, entity.id)
+                })?;
+        }
     }
 
     if let Some(provider) = embedding_provider.as_ref() {
@@ -1491,6 +1502,7 @@ pub(crate) async fn guard_knowledge_lock(url: &str) -> Result<()> {
     clippy::indexing_slicing,
     reason = "test: vec indices valid after len assertions"
 )]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::HashMap;
     use std::fmt::Write as _;
@@ -2454,6 +2466,86 @@ workspace = "nous/{agent_id}"
     }
 
     #[cfg(feature = "recall")]
+    fn sample_fact(id: &str, nous_id: &str, content: &str) -> mneme::knowledge::Fact {
+        use mneme::knowledge::{
+            EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+            FactTemporal, Visibility, far_future, parse_timestamp,
+        };
+
+        Fact {
+            id: mneme::id::FactId::new(id).unwrap(),
+            nous_id: nous_id.to_owned(),
+            content: content.to_owned(),
+            fact_type: "test".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            temporal: FactTemporal {
+                valid_from: parse_timestamp("2026-01-01T00:00:00Z").unwrap(),
+                valid_to: far_future(),
+                recorded_at: parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            },
+            provenance: FactProvenance {
+                confidence: 0.95,
+                tier: EpistemicTier::Verified,
+                source_session_id: None,
+                stability_hours: 720.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
+        }
+    }
+
+    #[cfg(feature = "recall")]
+    fn sample_entity(id: &str, name: &str) -> mneme::knowledge::Entity {
+        mneme::knowledge::Entity {
+            id: mneme::id::EntityId::new(id).unwrap(),
+            name: name.to_owned(),
+            entity_type: "topic".to_owned(),
+            aliases: vec![],
+            created_at: mneme::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            updated_at: mneme::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+        }
+    }
+
+    #[cfg(feature = "recall")]
+    fn link_fact_entity(
+        store: &mneme::knowledge_store::KnowledgeStore,
+        fact_id: &str,
+        entity_id: &str,
+    ) {
+        let script = r"
+            ?[fact_id, entity_id, created_at] <- [[$fact_id, $entity_id, $created_at]]
+            :put fact_entities {fact_id, entity_id => created_at}
+        ";
+        let mut params = std::collections::BTreeMap::new();
+        params.insert(
+            "fact_id".to_owned(),
+            mneme::engine::DataValue::Str(fact_id.into()),
+        );
+        params.insert(
+            "entity_id".to_owned(),
+            mneme::engine::DataValue::Str(entity_id.into()),
+        );
+        params.insert(
+            "created_at".to_owned(),
+            mneme::engine::DataValue::Str("2026-03-01T00:00:00Z".into()),
+        );
+        store
+            .run_mut_query(script, params)
+            .expect("link fact to entity");
+    }
+
+    #[cfg(feature = "recall")]
     fn seed_typed_knowledge(oikos: &Oikos, nous_id: &str) {
         use mneme::id::{EntityId, FactId};
         use mneme::knowledge::{
@@ -2530,6 +2622,8 @@ workspace = "nous/{agent_id}"
         store.insert_entity(&entity1).unwrap();
         store.insert_entity(&entity2).unwrap();
         store.insert_relationship(&relationship).unwrap();
+        link_fact_entity(&store, fact.id.as_str(), entity1.id.as_str());
+        link_fact_entity(&store, fact.id.as_str(), entity2.id.as_str());
     }
 
     /// WHY(#4163): typed knowledge (Fact, Entity, Relationship) round-trips
@@ -2621,6 +2715,89 @@ workspace = "nous/{agent_id}"
         assert!((dest_rel.weight - 1.0).abs() < f64::EPSILON);
 
         // NOTE: HNSW vectors are covered by the #4399 regression below.
+    }
+
+    #[cfg(feature = "recall")]
+    #[test]
+    fn export_agent_scopes_knowledge_graph_to_exported_facts() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let knowledge_path = knowledge_path_for_nous(&source_oikos, "alice");
+        let parent = knowledge_path.parent().unwrap();
+        std::fs::create_dir_all(parent).unwrap();
+        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
+            &knowledge_path,
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .unwrap();
+
+        let alice_fact = {
+            let mut fact = sample_fact("agent-export-alice-fact", "alice", "alice fact");
+            fact.visibility = mneme::knowledge::Visibility::Private;
+            fact
+        };
+        let bob_fact = {
+            let mut fact = sample_fact("agent-export-bob-fact", "bob", "bob fact");
+            fact.visibility = mneme::knowledge::Visibility::Private;
+            fact
+        };
+        let alice_entity = sample_entity("agent-export-alice-entity", "Alice Entity");
+        let bob_entity = sample_entity("agent-export-bob-entity", "Bob Entity");
+
+        store.insert_fact(&alice_fact).unwrap();
+        store.insert_fact(&bob_fact).unwrap();
+        store.insert_entity(&alice_entity).unwrap();
+        store.insert_entity(&bob_entity).unwrap();
+        link_fact_entity(&store, alice_fact.id.as_str(), alice_entity.id.as_str());
+        link_fact_entity(&store, bob_fact.id.as_str(), bob_entity.id.as_str());
+        store
+            .insert_relationship(&mneme::knowledge::Relationship {
+                src: alice_entity.id.clone(),
+                dst: bob_entity.id.clone(),
+                relation: "crosses".to_owned(),
+                weight: 0.9,
+                created_at: mneme::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            })
+            .unwrap();
+        drop(store);
+
+        let export_path = source.path().join("alice-scoped.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(export_path).unwrap()).unwrap();
+        let knowledge = exported.knowledge.expect("knowledge export present");
+        let entity_ids: Vec<&str> = knowledge
+            .entities
+            .iter()
+            .map(|entity| entity.id.as_str())
+            .collect();
+
+        assert_eq!(knowledge.facts.len(), 1);
+        assert_eq!(knowledge.facts[0].id.as_str(), "agent-export-alice-fact");
+        assert!(entity_ids.contains(&"agent-export-alice-entity"));
+        assert!(
+            !entity_ids.contains(&"agent-export-bob-entity"),
+            "foreign entity must not be exported"
+        );
+        assert!(
+            knowledge.relationships.is_empty(),
+            "relationship touching a foreign entity must not be exported"
+        );
     }
 
     /// #4399 / ADR-006 v2 — import must rebuild the HNSW index from restored facts.

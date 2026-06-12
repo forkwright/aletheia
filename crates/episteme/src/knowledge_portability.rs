@@ -1,8 +1,6 @@
 //! Knowledge graph export/import for agent portability.
 
 #[cfg(feature = "mneme-engine")]
-use snafu::ResultExt;
-#[cfg(feature = "mneme-engine")]
 use tracing::{info, instrument, warn};
 
 #[cfg(feature = "mneme-engine")]
@@ -10,26 +8,39 @@ use crate::error::Result;
 
 /// Build a `KnowledgeExport` from the knowledge store.
 ///
-/// Queries all facts, entities, and relationships for the given nous.
+/// Queries scoped facts plus only graph data reachable from those facts.
 /// Returns `None` if the store is empty or the query fails.
 #[cfg(feature = "mneme-engine")]
 #[instrument(skip(store))]
-#[expect(dead_code, reason = "knowledge export for agent portability")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "knowledge export for agent portability")
+)]
 pub(crate) fn export_knowledge(
     nous_id: &str,
     store: &crate::knowledge_store::KnowledgeStore,
 ) -> Option<graphe::portability::KnowledgeExport> {
     // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot: missing data on any leg yields an empty list (then the caller short-circuits to None below) rather than blocking the export.
+    let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
     let facts = store
-        .query_facts(nous_id, "9999-01-01T00:00:00Z", 100_000)
+        .query_facts(nous_id, &now, 100_000)
         .ok()
         .unwrap_or_default();
 
-    // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot; see WHY above.
-    let entities = query_all_entities(store).unwrap_or_default();
+    let fact_ids: Vec<crate::id::FactId> = facts.iter().map(|fact| fact.id.clone()).collect();
 
     // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot; see WHY above.
-    let relationships = query_all_relationships(store).unwrap_or_default();
+    let entities = store.list_entities_for_facts(&fact_ids).unwrap_or_default();
+
+    let entity_ids: std::collections::HashSet<String> = entities
+        .iter()
+        .map(|entity| entity.id.as_str().to_owned())
+        .collect();
+
+    // kanon:ignore RUST/no-result-unwrap-or-default — best-effort portability snapshot; see WHY above.
+    let relationships = store
+        .list_relationships_between_entities(&entity_ids)
+        .unwrap_or_default();
 
     if facts.is_empty() && entities.is_empty() && relationships.is_empty() {
         return None;
@@ -48,92 +59,6 @@ pub(crate) fn export_knowledge(
         entities,
         relationships,
     })
-}
-
-#[cfg(feature = "mneme-engine")]
-fn query_all_entities(
-    store: &crate::knowledge_store::KnowledgeStore,
-) -> Result<Vec<crate::knowledge::Entity>> {
-    use std::collections::BTreeMap;
-
-    let script = r"?[id, name, entity_type, aliases, created_at, updated_at] := *entities{id, name, entity_type, aliases, created_at, updated_at}";
-    let rows = store.run_query(script, BTreeMap::new())?;
-
-    let mut entities = Vec::new();
-    for i in 0..rows.row_count() {
-        let Some(id_str) = rows.get_string(i, "id") else {
-            continue;
-        };
-        let id = crate::id::EntityId::new(&id_str).context(crate::error::InvalidIdSnafu)?;
-        let name = rows.get_string(i, "name").unwrap_or_default();
-        let entity_type = rows.get_string(i, "entity_type").unwrap_or_default();
-        let aliases_str = rows.get_string(i, "aliases").unwrap_or_default();
-        let aliases = if aliases_str.is_empty() {
-            vec![]
-        } else {
-            aliases_str
-                .split(',')
-                .map(|s: &str| s.trim().to_owned())
-                .collect()
-        };
-        let created_at = crate::knowledge::parse_timestamp(
-            &rows.get_string(i, "created_at").unwrap_or_default(),
-        )
-        .unwrap_or_else(jiff::Timestamp::now);
-        let updated_at = crate::knowledge::parse_timestamp(
-            &rows.get_string(i, "updated_at").unwrap_or_default(),
-        )
-        .unwrap_or_else(jiff::Timestamp::now);
-
-        entities.push(crate::knowledge::Entity {
-            id,
-            name,
-            entity_type,
-            aliases,
-            created_at,
-            updated_at,
-        });
-    }
-
-    Ok(entities)
-}
-
-#[cfg(feature = "mneme-engine")]
-fn query_all_relationships(
-    store: &crate::knowledge_store::KnowledgeStore,
-) -> Result<Vec<crate::knowledge::Relationship>> {
-    use std::collections::BTreeMap;
-
-    let script = r"?[src, dst, relation, weight, created_at] := *relationships{src, dst, relation, weight, created_at}";
-    let rows = store.run_query(script, BTreeMap::new())?;
-
-    let mut relationships = Vec::new();
-    for i in 0..rows.row_count() {
-        let Some(src_str) = rows.get_string(i, "src") else {
-            continue;
-        };
-        let src = crate::id::EntityId::new(&src_str).context(crate::error::InvalidIdSnafu)?;
-        let Some(dst_str) = rows.get_string(i, "dst") else {
-            continue;
-        };
-        let dst = crate::id::EntityId::new(&dst_str).context(crate::error::InvalidIdSnafu)?;
-        let relation = rows.get_string(i, "relation").unwrap_or_default();
-        let weight = rows.get_f64(i, "weight").unwrap_or(0.0);
-        let created_at = crate::knowledge::parse_timestamp(
-            &rows.get_string(i, "created_at").unwrap_or_default(),
-        )
-        .unwrap_or_else(jiff::Timestamp::now);
-
-        relationships.push(crate::knowledge::Relationship {
-            src,
-            dst,
-            relation,
-            weight,
-            created_at,
-        });
-    }
-
-    Ok(relationships)
 }
 
 /// Import knowledge graph data from a `KnowledgeExport` into a knowledge store.
@@ -173,6 +98,18 @@ pub(crate) fn import_knowledge(
         }
         result.facts_imported += 1;
     }
+    for fact in &knowledge.facts {
+        for entity in &knowledge.entities {
+            if let Err(e) = store.insert_fact_entity(&fact.id, &entity.id) {
+                warn!(
+                    fact_id = %fact.id,
+                    entity_id = %entity.id,
+                    error = %e,
+                    "failed to import fact/entity link"
+                );
+            }
+        }
+    }
 
     info!(
         facts = result.facts_imported,
@@ -198,7 +135,14 @@ pub struct KnowledgeImportResult {
 
 #[cfg(all(test, feature = "mneme-engine"))]
 mod tests {
+    #![expect(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test assertions"
+    )]
+
     use super::*;
+    use crate::test_fixtures::{make_entity, make_fact, make_relationship, make_store};
 
     #[test]
     fn knowledge_import_result_default_starts_at_zero() {
@@ -229,6 +173,55 @@ mod tests {
         assert_eq!(
             result.relationships_imported, 2,
             "relationships_imported should preserve 2"
+        );
+    }
+
+    #[test]
+    fn export_knowledge_includes_only_entities_reachable_from_exported_facts() {
+        let store = make_store();
+        let alice_fact = make_fact("export-alice-fact", "alice", "alice scoped fact");
+        let bob_fact = make_fact("export-bob-fact", "bob", "bob scoped fact");
+        let alice_entity = make_entity("export-alice-entity", "Alice Entity", "topic");
+        let bob_entity = make_entity("export-bob-entity", "Bob Entity", "topic");
+
+        store.insert_fact(&alice_fact).expect("insert alice fact");
+        store.insert_fact(&bob_fact).expect("insert bob fact");
+        store
+            .insert_entity(&alice_entity)
+            .expect("insert alice entity");
+        store.insert_entity(&bob_entity).expect("insert bob entity");
+        store
+            .insert_fact_entity(&alice_fact.id, &alice_entity.id)
+            .expect("link alice entity");
+        store
+            .insert_fact_entity(&bob_fact.id, &bob_entity.id)
+            .expect("link bob entity");
+        store
+            .insert_relationship(&make_relationship(
+                "export-alice-entity",
+                "export-bob-entity",
+                "knows",
+                0.8,
+            ))
+            .expect("insert cross-nous relationship");
+
+        let exported = export_knowledge("alice", &store).expect("knowledge export");
+        let entity_ids: Vec<&str> = exported
+            .entities
+            .iter()
+            .map(|entity| entity.id.as_str())
+            .collect();
+
+        assert_eq!(exported.facts.len(), 1);
+        assert_eq!(exported.facts[0].id.as_str(), "export-alice-fact");
+        assert!(entity_ids.contains(&"export-alice-entity"));
+        assert!(
+            !entity_ids.contains(&"export-bob-entity"),
+            "foreign entity must not appear in scoped export"
+        );
+        assert!(
+            exported.relationships.is_empty(),
+            "relationship to a foreign entity must not appear in scoped export"
         );
     }
 }

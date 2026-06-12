@@ -24,6 +24,7 @@ impl VectorSearch for MockVectorSearch {
         _query_vec: Vec<f32>,
         _k: usize,
         _ef: usize,
+        _requester_nous_id: &str,
     ) -> error::Result<Vec<KnowledgeRecallResult>> {
         Ok(self.results.clone())
     }
@@ -54,6 +55,7 @@ impl VectorSearch for CycledMockSearch {
         _query_vec: Vec<f32>,
         _k: usize,
         _ef: usize,
+        _requester_nous_id: &str,
     ) -> error::Result<Vec<KnowledgeRecallResult>> {
         let idx = self.call_index.fetch_add(1, Ordering::Relaxed);
         Ok(self.cycles.get(idx).cloned().unwrap_or_default())

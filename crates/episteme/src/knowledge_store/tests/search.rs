@@ -5,8 +5,8 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use crate::knowledge::EmbeddedChunk;
-use crate::test_fixtures::{make_fact, make_store, test_ts};
+use crate::knowledge::{EmbeddedChunk, Visibility};
+use crate::test_fixtures::{make_entity, make_fact, make_store, test_ts};
 fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> EmbeddedChunk {
     EmbeddedChunk {
         id: crate::id::EmbeddingId::new(id).expect("valid test id"),
@@ -17,6 +17,24 @@ fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> Em
         embedding: vec![0.5, 0.5, 0.5, 0.5],
         created_at: test_ts("2026-03-01T00:00:00Z"),
     }
+}
+
+fn make_visible_fact(
+    id: &str,
+    nous_id: &str,
+    content: &str,
+    visibility: Visibility,
+) -> crate::knowledge::Fact {
+    let mut fact = make_fact(id, nous_id, content);
+    fact.visibility = visibility;
+    fact
+}
+
+fn result_ids(results: &[crate::knowledge::RecallResult]) -> Vec<&str> {
+    results
+        .iter()
+        .map(|result| result.source_id.as_str())
+        .collect()
 }
 
 /// #3380 integration: when the real embedding provider fails to initialize,
@@ -115,6 +133,205 @@ fn insert_embedding_and_search() {
     assert_eq!(results[0].content, "Rust memory safety");
     assert_eq!(results[0].source_type, "fact");
     assert_eq!(results[0].source_id, "f1");
+}
+
+#[test]
+fn scoped_visible_fact_query_hides_foreign_private_and_keeps_shared() {
+    let store = make_store();
+    store
+        .insert_fact(&make_visible_fact(
+            "alice-private",
+            "alice",
+            "alice private recall secret",
+            Visibility::Private,
+        ))
+        .expect("insert alice private");
+    store
+        .insert_fact(&make_visible_fact(
+            "alice-shared",
+            "alice",
+            "alice shared recall note",
+            Visibility::Shared,
+        ))
+        .expect("insert alice shared");
+
+    let visible = store
+        .query_visible_facts("bob", "2026-06-01T00:00:00Z", 10)
+        .expect("query visible facts");
+    let ids: Vec<&str> = visible.iter().map(|fact| fact.id.as_str()).collect();
+
+    assert!(
+        !ids.contains(&"alice-private"),
+        "foreign private fact must be hidden from direct visible fact query"
+    );
+    assert!(
+        ids.contains(&"alice-shared"),
+        "shared fact must remain visible across nouses"
+    );
+}
+
+#[test]
+fn scoped_bm25_hides_foreign_private_and_keeps_shared() {
+    let store = make_store();
+    store
+        .insert_fact(&make_visible_fact(
+            "bm25-private",
+            "alice",
+            "cross nous telescope topic private",
+            Visibility::Private,
+        ))
+        .expect("insert private");
+    store
+        .insert_fact(&make_visible_fact(
+            "bm25-shared",
+            "alice",
+            "cross nous telescope topic shared",
+            Visibility::Shared,
+        ))
+        .expect("insert shared");
+
+    let results = store
+        .search_text_for_recall_scoped("telescope topic", 10, "bob")
+        .expect("scoped bm25");
+    let ids = result_ids(&results);
+
+    assert!(!ids.contains(&"bm25-private"));
+    assert!(ids.contains(&"bm25-shared"));
+}
+
+#[test]
+fn scoped_vector_search_hides_foreign_private_and_keeps_shared() {
+    let store = make_store();
+    for (id, visibility) in [
+        ("vec-private", Visibility::Private),
+        ("vec-shared", Visibility::Shared),
+    ] {
+        store
+            .insert_fact(&make_visible_fact(
+                id,
+                "alice",
+                &format!("{id} semantic recall"),
+                visibility,
+            ))
+            .expect("insert fact");
+        let mut chunk = make_embedding(
+            &format!("emb-{id}"),
+            &format!("{id} semantic recall"),
+            id,
+            "alice",
+        );
+        chunk.embedding = vec![1.0, 0.0, 0.0, 0.0];
+        store.insert_embedding(&chunk).expect("insert embedding");
+    }
+
+    let results = store
+        .search_vectors_scoped(vec![1.0, 0.0, 0.0, 0.0], 10, 20, "bob")
+        .expect("scoped vector search");
+    let ids = result_ids(&results);
+
+    assert!(!ids.contains(&"vec-private"));
+    assert!(ids.contains(&"vec-shared"));
+}
+
+#[test]
+fn scoped_hybrid_search_hides_foreign_private_and_keeps_shared() {
+    let store = make_store();
+    for (id, visibility) in [
+        ("hybrid-private", Visibility::Private),
+        ("hybrid-shared", Visibility::Shared),
+    ] {
+        store
+            .insert_fact(&make_visible_fact(
+                id,
+                "alice",
+                &format!("hybrid anchor {id}"),
+                visibility,
+            ))
+            .expect("insert fact");
+        let mut chunk = make_embedding(
+            &format!("emb-{id}"),
+            &format!("hybrid anchor {id}"),
+            id,
+            "alice",
+        );
+        chunk.embedding = vec![1.0, 0.0, 0.0, 0.0];
+        store.insert_embedding(&chunk).expect("insert embedding");
+    }
+
+    let results = store
+        .search_hybrid_scoped(
+            &crate::knowledge_store::HybridQuery {
+                text: "hybrid anchor".to_owned(),
+                embedding: vec![1.0, 0.0, 0.0, 0.0],
+                seed_entities: Vec::new(),
+                limit: 10,
+                ef: 20,
+            },
+            "bob",
+        )
+        .expect("scoped hybrid search");
+    let ids: Vec<&str> = results.iter().map(|result| result.id.as_str()).collect();
+
+    assert!(!ids.contains(&"hybrid-private"));
+    assert!(ids.contains(&"hybrid-shared"));
+}
+
+#[test]
+fn scoped_cluster_expansion_hides_foreign_private_cluster_mates() {
+    let store = make_store();
+    let shared = make_visible_fact(
+        "cluster-shared",
+        "alice",
+        "cluster anchor visible",
+        Visibility::Shared,
+    );
+    let private = make_visible_fact(
+        "cluster-private",
+        "alice",
+        "cluster hidden private",
+        Visibility::Private,
+    );
+    store.insert_fact(&shared).expect("insert shared");
+    store.insert_fact(&private).expect("insert private");
+
+    let shared_entity = make_entity("entity-cluster-shared", "Shared Anchor", "topic");
+    let private_entity = make_entity("entity-cluster-private", "Private Anchor", "topic");
+    store
+        .insert_entity(&shared_entity)
+        .expect("insert shared entity");
+    store
+        .insert_entity(&private_entity)
+        .expect("insert private entity");
+    store
+        .insert_fact_entity(&shared.id, &shared_entity.id)
+        .expect("link shared");
+    store
+        .insert_fact_entity(&private.id, &private_entity.id)
+        .expect("link private");
+
+    store
+        .run_mut_query(
+            r#"
+            ?[entity_id, score_type, score, cluster_id, updated_at] <- [
+                ["entity-cluster-shared", "cluster", 0.0, 7, "2026-06-01T00:00:00Z"],
+                ["entity-cluster-private", "cluster", 0.0, 7, "2026-06-01T00:00:00Z"]
+            ]
+            :put graph_scores { entity_id, score_type => score, cluster_id, updated_at }
+            "#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("seed cluster scores");
+
+    let results = store
+        .search_text_for_recall_scoped("cluster anchor visible", 10, "bob")
+        .expect("scoped bm25 with cluster expansion");
+    let ids = result_ids(&results);
+
+    assert!(ids.contains(&"cluster-shared"));
+    assert!(
+        !ids.contains(&"cluster-private"),
+        "cluster expansion must not add foreign private facts"
+    );
 }
 
 #[test]

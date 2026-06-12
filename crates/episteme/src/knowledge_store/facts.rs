@@ -1,6 +1,6 @@
 use tracing::instrument;
 
-use super::marshal::{extract_str, fact_to_params, rows_to_facts};
+use super::marshal::{extract_str, fact_to_params, rows_to_facts, scoped_visibility_rules};
 use super::{KnowledgeStore, queries};
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
@@ -365,6 +365,55 @@ impl KnowledgeStore {
         rows_to_facts(rows, nous_id)
     }
 
+    /// Query current facts visible to a requesting nous at a given time.
+    ///
+    /// The requester can read its own facts plus `Shared` and `Published`
+    /// facts from the same store. Foreign `Private`, `Restricted`, and future
+    /// unknown visibility values remain hidden.
+    #[instrument(skip(self))]
+    pub fn query_visible_facts(
+        &self,
+        requester_nous_id: &str,
+        now: &str,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let script = format!(
+            r"
+            {visible}
+            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+              superseded_by, source_session_id, recorded_at,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
+                visible_fact[id],
+                *facts{{id, valid_from, content, nous_id, confidence, tier,
+                       valid_to, superseded_by, source_session_id, recorded_at,
+                       access_count, last_accessed_at, stability_hours, fact_type,
+                       is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                       visibility, sensitivity}},
+                valid_from <= $now,
+                valid_to > $now,
+                is_null(superseded_by),
+                is_forgotten == false
+            :order -recorded_at
+            :limit $limit
+            ",
+            visible = scoped_visibility_rules()
+        );
+        let mut params = BTreeMap::new();
+        params.insert(
+            String::from("requester_nous_id"),
+            DataValue::Str(requester_nous_id.into()),
+        );
+        params.insert(String::from("now"), DataValue::Str(now.into()));
+        params.insert(String::from("limit"), DataValue::from(limit));
+        let rows = self.run_read(&script, params)?;
+        super::marshal::rows_to_raw_facts(rows)
+    }
+
     /// Point-in-time fact query.
     #[instrument(skip(self))]
     #[cfg_attr(
@@ -645,6 +694,77 @@ impl KnowledgeStore {
     ) -> crate::error::Result<std::collections::HashSet<String>> {
         let ids: Vec<&str> = results.iter().map(|r| r.id.as_str()).collect();
         self.query_forgotten_ids(&ids)
+    }
+
+    /// Read a fact by ID only when visible to the requester.
+    pub fn read_visible_facts_by_id(
+        &self,
+        fact_id: &str,
+        requester_nous_id: &str,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let script = format!(
+            r"
+            {visible}
+            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+              superseded_by, source_session_id, recorded_at,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] :=
+                visible_fact[id],
+                id == $fact_id,
+                *facts{{id, valid_from, content, nous_id, confidence, tier,
+                       valid_to, superseded_by, source_session_id, recorded_at,
+                       access_count, last_accessed_at, stability_hours, fact_type,
+                       is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                       visibility, sensitivity}}
+            ",
+            visible = scoped_visibility_rules()
+        );
+        let mut params = BTreeMap::new();
+        params.insert(String::from("fact_id"), DataValue::Str(fact_id.into()));
+        params.insert(
+            String::from("requester_nous_id"),
+            DataValue::Str(requester_nous_id.into()),
+        );
+        let rows = self.run_read(&script, params)?;
+        super::marshal::rows_to_raw_facts(rows)
+    }
+
+    pub(super) fn visible_fact_ids_for_entity(
+        &self,
+        entity_id: &str,
+        requester_nous_id: &str,
+    ) -> crate::error::Result<Vec<String>> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let script = format!(
+            r"
+            {visible}
+            ?[fact_id] :=
+                *fact_entities{{fact_id, entity_id: $entity_id}},
+                visible_fact[fact_id],
+                *facts{{id: fact_id, is_forgotten, superseded_by}},
+                is_forgotten == false,
+                is_null(superseded_by)
+            ",
+            visible = scoped_visibility_rules()
+        );
+        let mut params = BTreeMap::new();
+        params.insert(String::from("entity_id"), DataValue::Str(entity_id.into()));
+        params.insert(
+            String::from("requester_nous_id"),
+            DataValue::Str(requester_nous_id.into()),
+        );
+        let rows = self.run_read(&script, params)?;
+        Ok(rows
+            .rows
+            .iter()
+            .filter_map(|row| row.first().and_then(|v| v.get_str()).map(str::to_owned))
+            .collect())
     }
 
     /// Query facts valid at a specific point in time.
@@ -1052,6 +1172,23 @@ impl KnowledgeStore {
         tokio::task::spawn_blocking(move || this.query_facts(&nous_id, &now, limit))
             .await
             .context(crate::error::JoinSnafu)?
+    }
+
+    /// Async `query_visible_facts`: wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self))]
+    pub async fn query_visible_facts_async(
+        self: &std::sync::Arc<Self>,
+        requester_nous_id: String,
+        now: String,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || {
+            this.query_visible_facts(&requester_nous_id, &now, limit)
+        })
+        .await
+        .context(crate::error::JoinSnafu)?
     }
 }
 

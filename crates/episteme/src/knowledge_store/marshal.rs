@@ -772,7 +772,26 @@ pub(super) fn sanitize_fts_query(raw: &str) -> String {
 }
 
 #[cfg(feature = "mneme-engine")]
+pub(super) fn scoped_visibility_rules() -> &'static str {
+    r"
+    visible_fact[id] := *facts{id, nous_id: $requester_nous_id}
+    visible_fact[id] := *facts{id, visibility: 'shared'}
+    visible_fact[id] := *facts{id, visibility: 'published'}
+"
+}
+
+#[cfg(feature = "mneme-engine")]
 pub(super) fn build_hybrid_query(q: &super::HybridQuery) -> String {
+    build_hybrid_query_inner(q, false)
+}
+
+#[cfg(feature = "mneme-engine")]
+pub(super) fn build_scoped_hybrid_query(q: &super::HybridQuery) -> String {
+    build_hybrid_query_inner(q, true)
+}
+
+#[cfg(feature = "mneme-engine")]
+fn build_hybrid_query_inner(q: &super::HybridQuery, scoped: bool) -> String {
     use super::queries;
 
     // WHY: When the message has no full-text terms (e.g. an emoji- or
@@ -782,6 +801,8 @@ pub(super) fn build_hybrid_query(q: &super::HybridQuery) -> String {
     // `$query_text` param is then left unbound by the caller.
     let bm25_rule = if sanitize_fts_query(&q.text).is_empty() {
         "bm25[id, score] <- []".to_owned()
+    } else if scoped {
+        "bm25_raw[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}\n    bm25[id, score] := bm25_raw[id, score], visible_fact[id]".to_owned()
     } else {
         "bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}".to_owned()
     };
@@ -795,17 +816,37 @@ pub(super) fn build_hybrid_query(q: &super::HybridQuery) -> String {
             .map(|s| format!("[\"{}\"]", s.as_str().replace('"', "\\\"")))
             .collect();
         let seeds_inline = seed_data.join(", ");
-        format!(
-            "seed_list[e] <- [{seeds_inline}]\n        \
-             graph_raw[id, score] := seed_list[seed], *relationships{{src: seed, dst: id, weight: score}}\n        \
-             graph_raw[id, score] := seed_list[seed], *relationships{{src: seed, dst: mid, weight: _w}}, \
-             *relationships{{src: mid, dst: id, weight}}, score = weight * 0.5\n        \
-             graph[id, sum(score)] := graph_raw[id, score]"
-        )
+        if scoped {
+            format!(
+                "seed_list[e] <- [{seeds_inline}]\n        \
+                 graph_entity[eid, score] := seed_list[seed], *relationships{{src: seed, dst: eid, weight: score}}\n        \
+                 graph_entity[eid, score] := seed_list[seed], *relationships{{src: seed, dst: mid, weight: _w}}, \
+                 *relationships{{src: mid, dst: eid, weight}}, score = weight * 0.5\n        \
+                 graph_raw[id, score] := graph_entity[eid, score], *fact_entities{{fact_id: id, entity_id: eid}}\n        \
+                 graph[id, sum(score)] := graph_raw[id, score], visible_fact[id]"
+            )
+        } else {
+            format!(
+                "seed_list[e] <- [{seeds_inline}]\n        \
+                 graph_raw[id, score] := seed_list[seed], *relationships{{src: seed, dst: id, weight: score}}\n        \
+                 graph_raw[id, score] := seed_list[seed], *relationships{{src: seed, dst: mid, weight: _w}}, \
+                 *relationships{{src: mid, dst: id, weight}}, score = weight * 0.5\n        \
+                 graph[id, sum(score)] := graph_raw[id, score]"
+            )
+        }
     };
-    queries::HYBRID_SEARCH_BASE
+    let mut script = queries::HYBRID_SEARCH_BASE
         .replace("{BM25_RULE}", &bm25_rule)
-        .replace("{GRAPH_RULES}", &graph_rules)
+        .replace("{GRAPH_RULES}", &graph_rules);
+    if scoped {
+        script = script.replace(
+            "vec[id, score] :=\n        ~embeddings:semantic_idx{id | query: $query_vec, k: $k, ef: $ef, bind_distance: raw_dist},\n        score = 1.0 - raw_dist",
+            "vec_raw[source_id, score] :=\n        ~embeddings:semantic_idx{id, source_type, source_id | query: $query_vec, k: $k, ef: $ef, bind_distance: raw_dist},\n        source_type == 'fact',\n        score = 1.0 - raw_dist\n\n    vec[id, score] := vec_raw[id, score], visible_fact[id]",
+        );
+        format!("{}\n{script}", scoped_visibility_rules())
+    } else {
+        script
+    }
 }
 
 #[cfg(feature = "mneme-engine")]

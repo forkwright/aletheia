@@ -79,11 +79,7 @@ impl KnowledgeStore {
 
     /// Insert a fact-entity mapping.
     #[instrument(skip(self))]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "entity operations for knowledge store")
-    )]
-    pub(crate) fn insert_fact_entity(
+    pub fn insert_fact_entity(
         &self,
         fact_id: &crate::id::FactId,
         entity_id: &crate::id::EntityId,
@@ -148,6 +144,32 @@ impl KnowledgeStore {
         Ok(entities)
     }
 
+    /// List entities reachable from the supplied fact IDs.
+    ///
+    /// Used by portability/export paths so a scoped fact export cannot carry
+    /// graph nodes that belong only to other nouses in the same cohort store.
+    pub fn list_entities_for_facts(
+        &self,
+        fact_ids: &[crate::id::FactId],
+    ) -> crate::error::Result<Vec<crate::knowledge::Entity>> {
+        use std::collections::BTreeMap;
+
+        if fact_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let fact_id_list = quoted_id_list(fact_ids.iter().map(crate::id::FactId::as_str));
+        let script = format!(
+            r"?[id, name, entity_type, aliases, created_at, updated_at] :=
+                *fact_entities{{fact_id, entity_id: id}},
+                fact_id in [{fact_id_list}],
+                *entities{{id, name, entity_type, aliases, created_at, updated_at}}
+            :order name"
+        );
+        let rows = self.run_read(&script, BTreeMap::new())?;
+        parse_entities(&rows)
+    }
+
     /// List all relationships in the knowledge graph.
     ///
     /// Used by agent portability export (issue #4163) to round-trip the full
@@ -186,6 +208,29 @@ impl KnowledgeStore {
             });
         }
         Ok(relationships)
+    }
+
+    /// List relationships whose endpoints are both in `entity_ids`.
+    pub fn list_relationships_between_entities(
+        &self,
+        entity_ids: &std::collections::HashSet<String>,
+    ) -> crate::error::Result<Vec<crate::knowledge::Relationship>> {
+        use std::collections::BTreeMap;
+
+        if entity_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let entity_id_list = quoted_id_list(entity_ids.iter().map(String::as_str));
+        let script = format!(
+            r"?[src, dst, relation, weight, created_at] :=
+                *relationships{{src, dst, relation, weight, created_at}},
+                src in [{entity_id_list}],
+                dst in [{entity_id_list}]
+            :order src"
+        );
+        let rows = self.run_read(&script, BTreeMap::new())?;
+        parse_relationships(&rows)
     }
 
     /// Build a serendipity-ready graph snapshot from the current store.
@@ -1204,4 +1249,76 @@ impl KnowledgeStore {
         params.insert("created_at".to_owned(), DataValue::Str(now.into()));
         self.run_mut(&queries::put_pending_merge(), params)
     }
+}
+
+#[cfg(feature = "mneme-engine")]
+fn quoted_id_list<'a>(ids: impl Iterator<Item = &'a str>) -> String {
+    ids.map(|id| format!("'{}'", id.replace('\'', "''")))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg(feature = "mneme-engine")]
+fn parse_entities(
+    rows: &crate::engine::NamedRows,
+) -> crate::error::Result<Vec<crate::knowledge::Entity>> {
+    let mut entities = Vec::new();
+    for row in &rows.rows {
+        if row.len() < 6 {
+            continue;
+        }
+        let aliases_str = extract_str(&row[3])?;
+        let aliases: Vec<String> = if aliases_str.is_empty() {
+            Vec::new()
+        } else {
+            aliases_str
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .collect()
+        };
+        let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
+            .unwrap_or_else(jiff::Timestamp::now);
+        let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row[5])?)
+            .unwrap_or_else(jiff::Timestamp::now);
+
+        let id = crate::id::EntityId::new(extract_str(&row[0])?)
+            .context(crate::error::InvalidIdSnafu)?;
+        entities.push(crate::knowledge::Entity {
+            id,
+            name: extract_str(&row[1])?,
+            entity_type: extract_str(&row[2])?,
+            aliases,
+            created_at,
+            updated_at,
+        });
+    }
+    Ok(entities)
+}
+
+#[cfg(feature = "mneme-engine")]
+fn parse_relationships(
+    rows: &crate::engine::NamedRows,
+) -> crate::error::Result<Vec<crate::knowledge::Relationship>> {
+    let mut relationships = Vec::new();
+    for row in &rows.rows {
+        if row.len() < 5 {
+            continue;
+        }
+        let src = crate::id::EntityId::new(extract_str(&row[0])?)
+            .context(crate::error::InvalidIdSnafu)?;
+        let dst = crate::id::EntityId::new(extract_str(&row[1])?)
+            .context(crate::error::InvalidIdSnafu)?;
+        let relation = extract_str(&row[2])?;
+        let weight = extract_float(&row[3])?;
+        let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
+            .unwrap_or_else(jiff::Timestamp::now);
+        relationships.push(crate::knowledge::Relationship {
+            src,
+            dst,
+            relation,
+            weight,
+            created_at,
+        });
+    }
+    Ok(relationships)
 }
