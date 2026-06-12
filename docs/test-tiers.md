@@ -29,8 +29,8 @@ DNS lookup for HuggingFace, so these tests are gated behind a dedicated
 
 - `--features test-core`: fast deterministic gate, no external network.
 - `--features test-core,online-tests`: adds the HuggingFace-network candle
-  tests. Enable via the `online-tests` PR label, the weekly schedule, or
-  `workflow_dispatch` in `.github/workflows/ci.yml`.
+  tests. No CI workflow currently enables `online-tests` — run this tier
+  locally or manually when validating the candle download path.
 - `--features test-full`: everything, including `online-tests`.
 
 ## Usage
@@ -66,9 +66,17 @@ must declare the feature even if empty.
 
 ## CI configuration
 
-The sharded test workflow (`.github/workflows/test-sharded.yml`) runs with
-`--features test-core` by default. The feature-isolation matrix in `rust.yml`
-verifies that `test-core` compiles cleanly.
+The PR gate (`.github/workflows/gate-attestation.yml`) enforces the
+**test-core** tier: `cargo nextest run --workspace --features test-core`,
+after CI-exact fmt and clippy. The release pipeline
+(`.github/workflows/release.yml`) additionally runs
+`cargo test --workspace --exclude proskenion` and a `feature-check` matrix
+that compiles a set of optional per-crate features (aletheia `mcp` /
+provider features / `energeia`, organon `computer-use` / `bookkeeper` /
+`energeia` / `z3`, hermeneus provider features) one at a time.
+
+No workflow currently exercises the `online-tests` or `test-full` tiers;
+they are local/manual tiers.
 
 ## Adding gated tests
 

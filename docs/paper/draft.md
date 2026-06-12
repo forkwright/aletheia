@@ -9,7 +9,7 @@
 
 Aletheia is a persistent agent runtime that embeds knowledge graph, vector search, full-text retrieval, and kernel-level sandboxing in a single Rust binary. Three design choices distinguish it from existing memory systems.
 
-First, it uses Datalog as the knowledge graph substrate instead of property graphs, which enables recursive inference and rule-based reasoning within the recall pipeline. Second, it integrates Landlock LSM, seccomp BPF, and Linux network namespaces into the agent tool loop, providing sandboxing comparable to OpenAI Codex and NVIDIA OpenShell but without external orchestration. Third, it scores memory recall with six signals - vector similarity, BM25 full-text, graph intelligence, temporal decay, epistemic tier, and access frequency - combined through a tunable weighted formula.
+First, it uses Datalog as the knowledge graph substrate instead of property graphs, which enables recursive inference and rule-based reasoning within the recall pipeline. Second, it integrates Landlock LSM, seccomp BPF, and Linux network namespaces into the agent tool loop, providing sandboxing comparable to OpenAI Codex and NVIDIA OpenShell but without external orchestration. Third, it scores memory recall with eleven signals - vector similarity, temporal decay, nous relevance, epistemic tier, relationship proximity, access frequency, graph importance, serendipity, Bayesian surprise, evidence coverage, and convergence - combined through a tunable weighted formula.
 
 The system runs as one self-contained process with zero external services. This paper describes the architecture, evaluates the recall pipeline against published benchmarks, and compares Aletheia to Zep, Letta, Hindsight, and Mem0.
 
@@ -21,13 +21,13 @@ Long-term memory is the central problem in agent architecture. Without it, every
 
 The research community has produced several memory systems. Zep [1] pairs property graphs with vector search. MemGPT [2] uses hierarchical memory with explicit management operations. Hindsight [3] provides an upper bound by showing the full conversation at query time. Mem0 [4] layers a memory store over existing LLM APIs. These systems advance the state of the art, but each leaves a gap: none uses Datalog for the knowledge substrate, none integrates kernel-level sandboxing into the agent loop, and none combines more than three signals for recall scoring.
 
-Aletheia closes these gaps. It is a production agent runtime built in Rust with 48 workspace crates and a single-binary deployment model. Its memory subsystem (mneme) embeds a Datalog engine (krites) with HNSW vector indexes, full-text search, and graph algorithms. Tool execution (organon) runs built-in and external tools inside a Landlock + seccomp + netns sandbox. Recall (episteme) fuses six scoring signals through operator-tunable weights.
+Aletheia closes these gaps. It is a production agent runtime built in Rust with 48 workspace crates and a single-binary deployment model. Its memory subsystem (mneme) embeds a Datalog engine (krites) with HNSW vector indexes, full-text search, and graph algorithms. Tool execution (organon) can sandbox external child-process tools with Landlock + seccomp + netns on Linux; built-in tools run in-process, and the compiled default is permissive logging until operators opt into enforcement (Section 3.3). Recall (episteme) fuses eleven scoring signals through operator-tunable weights.
 
 This paper makes four contributions:
 
 1. **Datalog as a knowledge graph substrate for agent memory.** We show that Datalog's recursive queries and rule-based inference provide expressiveness that property graphs cannot match, and we quantify the overhead.
-2. **Kernel-level sandbox integration in a persistent agent server.** We describe how Landlock, seccomp, and network namespaces apply to every tool execution without containers or root privileges.
-3. **6-factor multi-signal recall scoring.** We present a weighted combination of vector similarity, BM25, graph intelligence, temporal decay, epistemic tier, and access frequency, with per-nous tunable weights.
+2. **Kernel-level sandbox integration in a persistent agent server.** We describe how Landlock, seccomp, and network namespaces apply to external tool processes without containers or root privileges.
+3. **11-factor multi-signal recall scoring.** We present a weighted combination of vector similarity, temporal decay, nous relevance, epistemic tier, relationship proximity, access frequency, graph importance, serendipity, Bayesian surprise, evidence coverage, and convergence, with per-nous tunable weights.
 4. **Single-binary architectural sovereignty.** We demonstrate that the full stack - KG, vectors, BM25, agent loop, sandbox, and SSE streaming - runs in one process with no external dependencies.
 
 ---
@@ -42,7 +42,7 @@ This paper makes four contributions:
 | Letta | Custom memory graph | HNSW (embedded) | None | 2 (vector, recency) | Python package |
 | Hindsight | None (full context) | None | None | 1 (exact match) | Research prototype |
 | Mem0 | Key-value + metadata | pgvector | None | 2 (vector, metadata) | Cloud API |
-| **Aletheia** | **Datalog** | **HNSW (embedded)** | **Landlock + seccomp + netns** | **6 (vector, BM25, graph, decay, tier, frequency)** | **Single binary** |
+| **Aletheia** | **Datalog** | **HNSW (embedded)** | **Landlock + seccomp + netns** | **11 (see Section 3.4)** | **Single binary** |
 
 **Zep** [1] stores entities and relationships in Neo4j and vector embeddings in Qdrant. It extracts facts with an LLM and links them into a property graph. Recall uses vector similarity plus graph traversal. Zep requires two external services and a Python backend.
 
@@ -166,18 +166,23 @@ The compiled default is `enabled = true` with `enforcement = "permissive"` and `
 
 Comparison to alternatives: OpenAI Codex [5] uses a similar sandbox but inside a containerized environment with heavier orchestration. NVIDIA OpenShell [6] applies seccomp and namespaces but focuses on shell command isolation. Aletheia's sandbox is lighter (no containers, no root) and integrated directly into the agent turn loop.
 
-### 3.4 6-factor recall scoring (episteme)
+### 3.4 11-factor recall scoring (episteme)
 
-The recall engine (`episteme::RecallEngine`) scores memory candidates with six factors. Each factor produces a value in [0.0, 1.0]. The final score is a weighted sum:
+The recall engine (`episteme::RecallEngine`) scores memory candidates with eleven factors (`RecallWeights`). Each factor produces a value in [0.0, 1.0]. The final score is a weighted sum:
 
 | Factor | Weight (default) | Description |
 |---|---|---|
-| Vector similarity | 0.35 | Cosine distance from HNSW search |
+| Vector similarity | 0.30 | Cosine distance from HNSW search |
 | Temporal decay | 0.20 | FSRS power-law decay from last access |
 | Nous relevance | 0.15 | Own memories rank higher than shared or other |
-| Epistemic tier | 0.15 | Verified (1.0) > inferred (0.6) > assumed (0.3) |
+| Epistemic tier | 0.10 | Verified (1.0) > inferred (0.6) > assumed (0.3) |
 | Relationship proximity | 0.10 | Graph distance from query context entities |
+| Graph importance | 0.10 | `PageRank` importance: facts about hub entities rank higher |
 | Access frequency | 0.05 | Log-scaled access count |
+| Serendipity | 0.0 (inert) | Unexpectedness: graph obscurity (`1 - PageRank`) blended with semantic-distance novelty |
+| Bayesian surprise | 0.0 (inert) | Topic-shift signal (EM-LLM) |
+| Evidence coverage | 0.0 (inert) | Evidence-gap coverage from `MemR3` iterative retrieval |
+| Convergence | 0.0 (inert) | `log(1 + source_count)`: facts assembled from more independent observations rank higher |
 
 **Vector similarity.** HNSW approximate search returns candidates in O(log n) time. Cosine distance converts to similarity with `1 - distance / 2`.
 
@@ -190,6 +195,10 @@ The recall engine (`episteme::RecallEngine`) scores memory candidates with six f
 **Relationship proximity.** Graph BFS computes hops from query context entities. Same entity or direct neighbor = 1.0, 2-hop = 0.5, 3-hop = 0.25, and so on. When `PageRank` and `Louvain` are active, same-cluster facts receive a floor of 0.3 even without a direct path.
 
 **Access frequency.** Logarithmic scaling: `ln(1 + count) / ln(1 + max_count)`. This prevents frequently accessed facts from dominating while still rewarding salience.
+
+**Graph importance.** Background Datalog jobs compute `PageRank` over the relationship graph; facts about hub entities receive a boost proportional to their importance score.
+
+**Serendipity, Bayesian surprise, evidence coverage, convergence.** Four further factors ship with weight 0.0 (inert — existing ranking behavior preserved) and activate when given a positive weight in config. Serendipity blends graph obscurity (`1 - PageRank`) with semantic-distance novelty. Bayesian surprise scores topic shifts per candidate (EM-LLM). Evidence coverage scores how well a candidate's fact ID appears in the evidence-gap tracker's answered set (`MemR3` iterative retrieval). Convergence scores `log(1 + source_count)` from the fact-multiplicity side-index, so consolidated facts confirmed by more independent observations rank higher; legacy facts score 0 here, so enabling the weight never regresses them.
 
 Weights are tunable per agent via the oikos config cascade. The engine skips expensive graph operations when the relationship proximity weight is zero.
 
@@ -326,7 +335,7 @@ This matters for persistent agents. A long-running agent server that executes hu
 
 ### 6.1 Limitations
 
-- **Datalog expressiveness vs familiarity.** Datalog is powerful but unfamiliar to most practitioners. The generated-query layer hides complexity, but advanced use cases require learning a new language.
+- **Datalog expressiveness vs familiarity.** Datalog is expressive but unfamiliar to most practitioners. The generated-query layer hides complexity, but advanced use cases require learning a new language.
 - **Linux-only sandbox.** Landlock and seccomp are Linux kernel interfaces. macOS and Windows builds compile but run without sandbox enforcement.
 - **Benchmark results pending.** The runner is complete but live runs against LongMemEval and LoCoMo have not yet been executed.
 - **Embedding model.** Current default is BAAI/bge-small-en-v1.5 (384 dims). Larger models would improve retrieval quality at the cost of memory and compute.
@@ -344,7 +353,7 @@ This matters for persistent agents. A long-running agent server that executes hu
 
 We recommend a two-stage publication strategy:
 
-1. **arXiv preprint** - immediate. Establishes priority for the Datalog substrate, sandbox integration, and 6-factor recall. The system is running in production; the contributions are mature enough to claim.
+1. **arXiv preprint** - immediate. Establishes priority for the Datalog substrate, sandbox integration, and 11-factor recall. The system is running in production; the contributions are mature enough to claim.
 
 2. **Conference submission** - follow within 6 months. Two tracks are appropriate:
    - **Systems:** OSDI, SOSP, EuroSys, or ATC for the single-binary architecture, sandbox design, and embedded database contributions.
@@ -356,7 +365,7 @@ The agent-specific venues (AAMAS, agent workshops) are also suitable if the eval
 
 ## 8. Conclusion
 
-Aletheia demonstrates that three unconventional design choices - Datalog for knowledge representation, kernel-level sandboxing in the agent loop, and 6-factor recall scoring - combine into a deployable persistent agent runtime. The system runs as a single binary with no external services, making it suitable for sovereign deployments where data never leaves the operator's machine. The benchmark runner is ready; live evaluation will quantify the recall quality against published baselines. We invite the research community to inspect the open-source implementation and reproduce the results.
+Aletheia demonstrates that three unconventional design choices - Datalog for knowledge representation, kernel-level sandboxing in the agent loop, and 11-factor recall scoring - combine into a deployable persistent agent runtime. The system runs as a single binary with no external services, making it suitable for sovereign deployments where data never leaves the operator's machine. The benchmark runner is ready; live evaluation will quantify the recall quality against published baselines. We invite the research community to inspect the open-source implementation and reproduce the results.
 
 ---
 
@@ -373,28 +382,39 @@ Aletheia demonstrates that three unconventional design choices - Datalog for kno
 
 ---
 
-## Appendix A: 6-factor scoring formula
+## Appendix A: 11-factor scoring formula
 
 Given a recall candidate, compute raw factor scores:
 
 ```
 vector_similarity = 1 - cosine_distance / 2
-decay = (1 + (19/81) * age_hours / stability)^(-0.5)
-relevance = 1.0 if own memory, 0.5 if shared, 0.3 if other
-tier = 1.0 if verified, 0.6 if inferred, 0.3 if assumed
-proximity = 1.0 if 0-1 hops, 0.5 if 2 hops, 0.25 if 3 hops, ...
-frequency = ln(1 + access_count) / ln(1 + max_count)
+decay             = (1 + (19/81) * age_hours / stability)^(-0.5)
+relevance         = 1.0 if own memory, 0.5 if shared, 0.3 if other
+tier              = 1.0 if verified, 0.6 if inferred, 0.3 if assumed
+proximity         = 1.0 if 0-1 hops, 0.5 if 2 hops, 0.25 if 3 hops, ...
+frequency         = ln(1 + access_count) / ln(1 + max_count)
+graph_importance  = PageRank score of the fact's entities
+serendipity       = blend of graph obscurity (1 - PageRank) and
+                    semantic-distance novelty
+surprise          = Bayesian surprise (topic-shift) per candidate (EM-LLM)
+evidence_coverage = coverage of the fact ID in the evidence-gap tracker's
+                    answered set (MemR3)
+convergence       = log(1 + source_count) from the fact-multiplicity
+                    side-index
 ```
 
-Final weighted score:
+Final weighted score (weighted sum over all eleven factors, normalized by the
+sum of the weights):
 
 ```
-score = (vector_similarity * w1 + decay * w2 + relevance * w3
-         + tier * w4 + proximity * w5 + frequency * w6)
-        / (w1 + w2 + w3 + w4 + w5 + w6)
+score = sum(factor_i * w_i, i = 1..11) / sum(w_i, i = 1..11)
 ```
 
-Default weights: `w1=0.35, w2=0.20, w3=0.15, w4=0.15, w5=0.10, w6=0.05`.
+Default weights (`RecallWeights::default`): vector_similarity `0.30`, decay
+`0.20`, relevance `0.15`, epistemic_tier `0.10`, relationship_proximity
+`0.10`, access_frequency `0.05`, graph_importance `0.10`; serendipity,
+surprise, evidence_coverage, and convergence default to `0.0` (inert until
+given a positive weight in config).
 
 ---
 

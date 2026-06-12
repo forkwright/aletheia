@@ -47,13 +47,17 @@ See [QUICKSTART.md](QUICKSTART.md) for standard install instructions (prebuilt b
 
 ### Headless build (no TUI)
 
-The TUI (terminal dashboard) is compiled in by default. To build without it (useful for servers, containers, or minimal footprints), disable the `tui` feature:
+The TUI (terminal dashboard) is compiled in by default. `--no-default-features` disables more than the TUI — the default set is `tui`, `recall`, `storage-fjall`, `embed-candle`, `cc-provider` — so pick the recipe that matches what you need:
 
 ```bash
-cargo build --release --no-default-features --features tls
+# Full headless: all default functionality except the TUI
+cargo build --release -p aletheia --no-default-features --features recall,storage-fjall,embed-candle,cc-provider,tls
+
+# Minimal headless: HTTP API only — also drops recall wiring, candle ML, and the Claude Code provider
+cargo build --release -p aletheia --no-default-features --features tls
 ```
 
-The headless binary accepts all the same CLI flags and API endpoints. The `aletheia status` command falls back to a plain-text summary when TUI is absent.
+Either way the Datalog engine and fjall storage code remain linked (`mneme` is a default-features dependency and `fjall` is unconditional). The headless binary accepts all the same CLI flags and API endpoints. The `aletheia status` command falls back to a plain-text summary when TUI is absent.
 
 ### Shell completions
 

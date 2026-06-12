@@ -21,8 +21,8 @@ Standalone stdio MCP server exposing Aletheia's nous local knowledge store to ex
 
 ### Environment variables
 
-- `ALETHEIA_ROOT` - instance root directory (default: `./instance`). The knowledge store is opened at `<root>/data/knowledge.fjall`.
-- `ALETHEIA_MEMORY_MCP_STORE` - override the store path directly.
+- `ALETHEIA_ROOT` - instance root directory (default: `./instance`). The knowledge store is opened at `<root>/data/knowledge.fjall/shared` (the shared episteme cohort).
+- `ALETHEIA_MEMORY_MCP_STORE` - override the store path directly; use this to target a different cohort, e.g. `<root>/data/knowledge.fjall/<cohort>`. The resolved path is surfaced by `nous_stats`.
 - `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` - capability token for write tools. If unset, write tools are not registered.
 - `RUST_LOG` - tracing filter (default: `info`). Logs go to stderr; stdout is JSON-RPC only.
 
