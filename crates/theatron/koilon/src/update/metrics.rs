@@ -9,10 +9,23 @@ pub(crate) async fn handle_open(app: &mut App) {
     app.layout.metrics.scroll_offset = 0;
     app.layout.metrics.selected_agent = 0;
 
-    // WHY: Fire a health check each time the metrics view opens so the badge
-    // reflects current server state rather than the startup snapshot.
+    // WHY: Fire a detailed health check each time the metrics view opens so the
+    // badge and check list reflect current server state rather than the startup
+    // snapshot. Reachability failures and unparseable responses are stored
+    // separately from the parsed backend health.
     let client = app.client.clone();
-    app.layout.metrics.api_healthy = Some(client.health().await.unwrap_or(false));
+    match client.health_details().await {
+        Ok(resp) => {
+            app.layout.metrics.api_healthy = Some(resp.status == "healthy");
+            app.layout.metrics.health = Some(resp);
+            app.layout.metrics.health_error = None;
+        }
+        Err(err) => {
+            app.layout.metrics.api_healthy = Some(false);
+            app.layout.metrics.health = None;
+            app.layout.metrics.health_error = Some(err.to_string());
+        }
+    }
 }
 
 /// Close the metrics dashboard and return to the previous view.

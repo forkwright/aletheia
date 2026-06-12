@@ -14,7 +14,7 @@ use crate::theme::Theme;
 const HEADER_MIN_WIDTH: u16 = 60;
 /// Height of the top summary section (uptime + tokens + cache).
 const SUMMARY_HEIGHT: u16 = 4;
-/// Height of the service health row.
+/// Minimum height of the service health row.
 const HEALTH_HEIGHT: u16 = 3;
 /// Height of the sparkline section (label + chart).
 const SPARKLINE_HEIGHT: u16 = 3;
@@ -33,7 +33,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(SUMMARY_HEIGHT),
-            Constraint::Length(HEALTH_HEIGHT),
+            Constraint::Min(HEALTH_HEIGHT),
             Constraint::Length(SPARKLINE_HEIGHT),
             Constraint::Min(TABLE_MIN_HEIGHT),
             Constraint::Length(STATUS_BAR_HEIGHT),
@@ -116,40 +116,82 @@ fn render_summary(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 fn render_health(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let metrics = &app.layout.metrics;
 
-    let (api_icon, api_style, api_label) = match metrics.api_healthy {
-        Some(true) => ("●", theme.style_success(), "API online"),
-        Some(false) => ("●", theme.style_error(), "API offline"),
-        None => ("○", theme.style_muted(), "API unknown"),
-    };
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("Health  ", theme.style_dim().add_modifier(Modifier::BOLD)),
+    ]));
 
-    // NOTE: SSE connection status serves as the websocket/streaming service indicator.
-    let (sse_icon, sse_style, sse_label) = if app.connection.sse_connected {
-        ("●", theme.style_success(), "Events live")
-    } else {
-        ("●", theme.style_error(), "Events disconnected")
-    };
+    match (&metrics.health, &metrics.health_error) {
+        (Some(health), _) => {
+            let (status_style, _status_label) =
+                health_status_style_and_label(theme, &health.status);
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("●", status_style),
+                Span::raw(" "),
+                Span::styled(format!("Aggregate: {}", health.status), status_style),
+                Span::raw("    "),
+                Span::styled(format!("{} checks", health.checks.len()), theme.style_dim()),
+            ]));
+            for check in &health.checks {
+                let (check_style, check_label) =
+                    health_status_style_and_label(theme, &check.status);
+                let mut spans = vec![
+                    Span::raw("    "),
+                    Span::styled("●", check_style),
+                    Span::raw(" "),
+                    Span::styled(format!("{:<22}", check.name), theme.style_fg()),
+                    Span::raw(" "),
+                    Span::styled(check_label, check_style),
+                ];
+                if let Some(ref message) = check.message {
+                    spans.push(Span::raw(" - "));
+                    spans.push(Span::styled(message.as_str(), theme.style_dim()));
+                }
+                lines.push(Line::from(spans));
+            }
+        }
+        (None, Some(err)) => {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("●", theme.style_error()),
+                Span::raw(" "),
+                Span::styled("Health unavailable", theme.style_error()),
+                Span::raw(" - "),
+                Span::styled(err.as_str(), theme.style_dim()),
+            ]));
+        }
+        (None, None) => {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("○", theme.style_muted()),
+                Span::raw(" "),
+                Span::styled("Health not loaded yet", theme.style_muted()),
+            ]));
+        }
+    }
 
-    let lines = vec![
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("Services  ", theme.style_dim().add_modifier(Modifier::BOLD)),
-        ]),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled(api_icon, api_style),
-            Span::raw(" "),
-            Span::styled(api_label, theme.style_fg()),
-            Span::raw("    "),
-            Span::styled(sse_icon, sse_style),
-            Span::raw(" "),
-            Span::styled(sse_label, theme.style_fg()),
-        ]),
-        Line::raw(""),
-    ];
+    lines.push(Line::raw(""));
 
     let block = Block::default().borders(Borders::NONE);
-    let paragraph = Paragraph::new(lines).block(block);
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
+}
+
+/// Map a health status string to a style and short label.
+fn health_status_style_and_label<'a>(
+    theme: &Theme,
+    status: &'a str,
+) -> (ratatui::style::Style, &'a str) {
+    match status {
+        "healthy" | "pass" => (theme.style_success(), "pass"),
+        "degraded" | "warn" => (theme.style_warning(), "warn"),
+        "unhealthy" | "fail" | "timeout" => (theme.style_error(), status),
+        _ => (theme.style_muted(), status),
+    }
 }
 
 fn render_sparkline(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
