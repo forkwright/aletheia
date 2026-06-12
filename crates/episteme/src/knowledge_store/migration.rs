@@ -2,7 +2,7 @@
     clippy::indexing_slicing,
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
-use super::{KNOWLEDGE_DDL, KnowledgeStore, entities_ddl, fts_ddl};
+use super::{EMBEDDING_META_DDL, KNOWLEDGE_DDL, KnowledgeStore, entities_ddl, fts_ddl};
 
 pub(super) struct MigrationStep {
     pub(super) target_version: i64,
@@ -61,6 +61,10 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep {
         target_version: 14,
         run: KnowledgeStore::migrate_v13_to_v14,
+    },
+    MigrationStep {
+        target_version: 15,
+        run: KnowledgeStore::migrate_v14_to_v15,
     },
 ];
 
@@ -1043,6 +1047,43 @@ impl KnowledgeStore {
         self.stamp_schema_version(14, "v13->v14")?;
 
         tracing::info!("knowledge schema migration v13 -> v14 complete");
+        Ok(())
+    }
+
+    /// Migrate v14 → v15: persist embedding schema metadata.
+    ///
+    /// Existing stores did not record the embedding model that produced their
+    /// vectors. The migration writes the explicit `assumed` marker instead of
+    /// guessing a provider name, forcing normal startup to ask the operator for
+    /// a re-embed before recall uses unknown vectors.
+    pub(super) fn migrate_v14_to_v15(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::ScriptMutability;
+        tracing::info!("migrating knowledge schema v14 -> v15");
+
+        if !self
+            .relation_names()?
+            .iter()
+            .any(|name| name == "embedding_meta")
+        {
+            self.db
+                .run(
+                    EMBEDDING_META_DDL,
+                    BTreeMap::new(),
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v14->v15 create embedding_meta: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+        self.replace_embedding_meta(Self::ASSUMED_EMBEDDING_MODEL, self.dim)?;
+        self.stamp_schema_version(15, "v14->v15")?;
+
+        tracing::info!("knowledge schema migration v14 -> v15 complete");
         Ok(())
     }
 }

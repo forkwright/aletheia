@@ -11,6 +11,15 @@
 use snafu::Snafu;
 use tracing::instrument;
 
+/// Default model name reported by the mock provider.
+pub const DEFAULT_MOCK_MODEL: &str = "mock-embedding";
+/// Default model repo used by the candle provider.
+pub const DEFAULT_CANDLE_MODEL: &str = "BAAI/bge-small-en-v1.5";
+/// Default model name used by OpenAI-compatible embedding endpoints.
+pub const DEFAULT_OPENAI_COMPAT_MODEL: &str = "default";
+/// Default model name used by Voyage embeddings.
+pub const DEFAULT_VOYAGE_MODEL: &str = "voyage-3-lite";
+
 /// Errors from embedding operations.
 #[derive(Debug, Snafu)]
 #[expect(
@@ -136,8 +145,6 @@ mod candle_provider {
     }
 
     impl CandelProvider {
-        /// Default `HuggingFace` model repo for `BGE-small-en-v1.5`.
-        const DEFAULT_REPO: &str = "BAAI/bge-small-en-v1.5";
         /// Create a provider with the given model repo, or the default (`BAAI/bge-small-en-v1.5`).
         ///
         /// Model files are downloaded to the `HuggingFace` cache on first use.
@@ -147,7 +154,7 @@ mod candle_provider {
         /// Returns `EmbeddingError::InitFailed` if model download or initialization fails.
         #[instrument]
         pub(crate) fn new(model_repo: Option<&str>) -> EmbeddingResult<Self> {
-            let repo_id = model_repo.unwrap_or(Self::DEFAULT_REPO);
+            let repo_id = model_repo.unwrap_or(super::DEFAULT_CANDLE_MODEL);
             let device = Device::Cpu;
 
             let api = hf_hub::api::sync::Api::new().map_err(|e| {
@@ -447,6 +454,23 @@ impl Default for EmbeddingConfig {
     }
 }
 
+impl EmbeddingConfig {
+    /// Return the model identifier the provider will report for this config.
+    #[must_use]
+    pub fn effective_model_name(&self) -> String {
+        if let Some(model) = self.model.as_ref().filter(|model| !model.is_empty()) {
+            return model.clone();
+        }
+        match self.provider.as_str() {
+            "mock" => DEFAULT_MOCK_MODEL.to_owned(),
+            "candle" => DEFAULT_CANDLE_MODEL.to_owned(),
+            "openai-compat" => DEFAULT_OPENAI_COMPAT_MODEL.to_owned(),
+            "voyage" => DEFAULT_VOYAGE_MODEL.to_owned(),
+            provider => provider.to_owned(),
+        }
+    }
+}
+
 /// A no-op embedding provider used in degraded mode when the real provider fails to load.
 ///
 /// Every `embed` call returns an error so callers that require embeddings (recall, search)
@@ -512,7 +536,10 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
                 .as_deref()
                 .unwrap_or("http://127.0.0.1:5005/v1")
                 .to_owned();
-            let model = config.model.clone().unwrap_or_else(|| "default".to_owned());
+            let model = config
+                .model
+                .clone()
+                .unwrap_or_else(|| DEFAULT_OPENAI_COMPAT_MODEL.to_owned());
             let dim = config.dimension.unwrap_or(384);
             let cfg = OpenAiCompatConfig {
                 base_url,
@@ -527,7 +554,7 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
             let model = config
                 .model
                 .clone()
-                .unwrap_or_else(|| "voyage-3-lite".to_owned());
+                .unwrap_or_else(|| DEFAULT_VOYAGE_MODEL.to_owned());
             let dim = config.dimension.unwrap_or(1024);
             let api_key = config.api_key.clone().or_else(|| {
                 std::env::var("VOYAGE_API_KEY")

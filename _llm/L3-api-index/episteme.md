@@ -964,6 +964,26 @@ impl OpenAiEmbeddingProvider {
 
 ## `src/embedding.rs`
 
+> Default model name reported by the mock provider.
+```rust
+pub const DEFAULT_MOCK_MODEL: &str = "mock-embedding";
+```
+
+> Default model repo used by the candle provider.
+```rust
+pub const DEFAULT_CANDLE_MODEL: &str = "BAAI/bge-small-en-v1.5";
+```
+
+> Default model name used by OpenAI-compatible embedding endpoints.
+```rust
+pub const DEFAULT_OPENAI_COMPAT_MODEL: &str = "default";
+```
+
+> Default model name used by Voyage embeddings.
+```rust
+pub const DEFAULT_VOYAGE_MODEL: &str = "voyage-3-lite";
+```
+
 ```rust
 pub enum EmbeddingError {
     /// The embedding model failed to initialize.
@@ -1044,6 +1064,12 @@ pub struct EmbeddingConfig {
     pub api_key: Option<koina::secret::SecretString>,
     /// Base URL for OpenAI-compatible endpoints (e.g. `http://127.0.0.1:5005/v1`).
     pub base_url: Option<String>,
+}
+```
+
+```rust
+impl EmbeddingConfig {
+    pub fn effective_model_name (&self) -> String;
 }
 ```
 
@@ -2367,6 +2393,14 @@ impl KnowledgeStore {
 
 ## `src/knowledge_store/mod.rs`
 
+> Datalog DDL for the embedding metadata relation.
+```rust
+pub const EMBEDDING_META_DDL: &str = r":create embedding_meta {
+    model: String =>
+    dim: Int
+}";
+```
+
 > Datalog DDL for initializing the knowledge schema.
 ```rust
 pub const KNOWLEDGE_DDL: &[&str] = &[
@@ -2476,6 +2510,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         confidence: Float,
         contributed_at: String
     }",
+    EMBEDDING_META_DDL,
 ];
 ```
 
@@ -2493,6 +2528,15 @@ pub fn hnsw_ddl (dim: usize) -> String
 
 ```rust
 pub fn fts_ddl () -> &'static str
+```
+
+```rust
+pub struct EmbeddingMeta {
+    /// Embedding model identifier persisted with the vector schema.
+    pub model: String,
+    /// Embedding vector dimension persisted with the vector schema.
+    pub dim: usize,
+}
 ```
 
 ```rust
@@ -2545,6 +2589,10 @@ pub struct SerendipityDiscoveryReport {
 pub struct KnowledgeConfig {
     /// Embedding dimension for the HNSW index.
     pub dim: usize,
+    /// Embedding model identifier expected by the persisted vector schema.
+    pub embedding_model: String,
+    /// Permit stores migrated with an unknown legacy embedding model.
+    pub allow_assumed_embedding_meta: bool,
     /// Admission policy for fact insertion. Default: [`DefaultAdmissionPolicy`](crate::admission::DefaultAdmissionPolicy).
     pub admission_policy: Box<dyn crate::admission::AdmissionPolicy>,
 }
@@ -2585,6 +2633,8 @@ pub struct HybridResult {
 pub struct KnowledgeStore {
     db: std::sync::Arc<crate::engine::Db>,
     dim: usize,
+    embedding_model: String,
+    allow_assumed_embedding_meta: bool,
     /// Serializes read-modify-write access counter increments to prevent races.
     access_lock: std::sync::Mutex<()>,
     /// Serializes admission-check + insert so concurrent writers for the same

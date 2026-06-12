@@ -98,7 +98,11 @@ pub(crate) async fn run(
         }
     };
 
-    let knowledge_config = KnowledgeConfig::default();
+    let knowledge_config = KnowledgeConfig {
+        dim: config.embedding.dimension,
+        embedding_model: embedding_config.effective_model_name(),
+        ..Default::default()
+    };
     let knowledgedb = if dry_run {
         KnowledgeStore::open_mem_with_config(knowledge_config)
             .whatever_context("failed to open in-memory knowledge store")?

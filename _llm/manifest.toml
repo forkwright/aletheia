@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "2617902368ad1c040fb60a4fbf550e8658e3743615b73dcad20da29ea9e6f9d7"
+source_hash = "34e2feca7d2ef18773ab0ffe3b039b925e63d393ca8784c0c0e40b8e7cb30b2e"
 l3_token_estimate = 167
 
 [[crates]]
@@ -86,8 +86,8 @@ l3_token_estimate = 20097
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "4913f6e978dc610c7ab85759d35a3db392f8eb56f2f75cda216400ca707b86a4"
-l3_token_estimate = 33655
+source_hash = "02f797fa0bd19322a12f8546fdb3058d942e1c04d102a701672d4be1a4a836ca"
+l3_token_estimate = 33980
 
 [[crates]]
 name = "gnosis"
@@ -98,8 +98,8 @@ l3_token_estimate = 1107
 [[crates]]
 name = "graphe"
 path = "crates/graphe"
-source_hash = "9626496f5263430277a8248469ecbd13c3b3218ccc3979f364c6d90e9791dcbb"
-l3_token_estimate = 5222
+source_hash = "c87dd1918beae56db96528a8381dd8c2154bd78da734718751f01769e12ea7d6"
+l3_token_estimate = 5367
 
 [[crates]]
 name = "hermeneus"
@@ -110,7 +110,7 @@ l3_token_estimate = 13698
 [[crates]]
 name = "integration-tests"
 path = "crates/integration-tests"
-source_hash = "83f34cf41a2b7b27d6980b6e59a4286ba91274b9d3dbf5b26fa09735b8f77d68"
+source_hash = "0ab54fc1087d4b8758c852ec53721e1a2aaa995c12ba40c739c0bd5d13599f1c"
 l3_token_estimate = 1170
 
 [[crates]]

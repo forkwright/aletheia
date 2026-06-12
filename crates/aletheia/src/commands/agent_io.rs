@@ -264,6 +264,27 @@ fn knowledge_path_for_nous(oikos: &Oikos, nous_id: &str) -> PathBuf {
     oikos.knowledge_cohort_db(cohort.as_ref())
 }
 
+#[cfg(feature = "recall")]
+fn knowledge_config_for_oikos(oikos: &Oikos) -> mneme::knowledge_store::KnowledgeConfig {
+    taxis::loader::load_config(oikos).ok().map_or_else(
+        mneme::knowledge_store::KnowledgeConfig::default,
+        |config| {
+            let embedding = mneme::embedding::EmbeddingConfig {
+                provider: config.embedding.provider.clone(),
+                model: config.embedding.model.clone(),
+                dimension: Some(config.embedding.dimension),
+                api_key: None,
+                base_url: None,
+            };
+            mneme::knowledge_store::KnowledgeConfig {
+                dim: config.embedding.dimension,
+                embedding_model: embedding.effective_model_name(),
+                ..Default::default()
+            }
+        },
+    )
+}
+
 /// Enumerate the agent's typed knowledge from the live store.
 ///
 /// Returns `None` when the `recall` feature is disabled or when the
@@ -282,7 +303,7 @@ fn export_knowledge(
         return Ok(None);
     }
 
-    let config = mneme::knowledge_store::KnowledgeConfig::default();
+    let config = knowledge_config_for_oikos(oikos);
     let Ok(store) = KnowledgeStore::open_fjall(&knowledge_path, config) else {
         return Ok(None);
     };
@@ -351,6 +372,14 @@ fn import_knowledge(
         .as_ref()
         .map_or_else(KnowledgeConfig::default, |config| KnowledgeConfig {
             dim: config.embedding.dimension,
+            embedding_model: EmbeddingConfig {
+                provider: config.embedding.provider.clone(),
+                model: config.embedding.model.clone(),
+                dimension: Some(config.embedding.dimension),
+                api_key: None,
+                base_url: None,
+            }
+            .effective_model_name(),
             ..Default::default()
         });
 
@@ -1088,7 +1117,7 @@ pub(crate) fn seed_skills(instance_root: Option<&PathBuf>, args: &SeedSkillsArgs
 
         let oikos = super::resolve_oikos(instance_root)?;
         let knowledge_path = knowledge_path_for_nous(&oikos, nous_id);
-        let config = mneme::knowledge_store::KnowledgeConfig::default();
+        let config = knowledge_config_for_oikos(&oikos);
         let store =
             KnowledgeStore::open_fjall(&knowledge_path, config).with_whatever_context(|_| {
                 format!(
@@ -1223,7 +1252,7 @@ pub(crate) async fn export_skills(
         };
         let knowledge_path = knowledge_path_for_nous(&oikos, &args.nous_id);
 
-        let config = mneme::knowledge_store::KnowledgeConfig::default();
+        let config = knowledge_config_for_oikos(&oikos);
         let store =
             KnowledgeStore::open_fjall(&knowledge_path, config).with_whatever_context(|_| {
                 format!(
@@ -1313,7 +1342,7 @@ pub(crate) async fn review_skills(
         };
         let knowledge_path = knowledge_path_for_nous(&oikos, &args.nous_id);
 
-        let config = mneme::knowledge_store::KnowledgeConfig::default();
+        let config = knowledge_config_for_oikos(&oikos);
         let store =
             KnowledgeStore::open_fjall(&knowledge_path, config).with_whatever_context(|_| {
                 format!(
@@ -2854,6 +2883,7 @@ workspace = "nous/{agent_id}"
             &knowledge_path,
             mneme::knowledge_store::KnowledgeConfig {
                 dim: 4,
+                embedding_model: "mock-embedding".to_owned(),
                 ..Default::default()
             },
         )
