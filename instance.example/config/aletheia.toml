@@ -13,7 +13,7 @@
 # --- Gateway ---
 [gateway]
 port = 18789
-bind = "lan"              # lan | localhost | auto
+bind = "localhost"        # localhost | lan | auto
 
 [gateway.auth]
 mode = "token"            # token | jwt | none

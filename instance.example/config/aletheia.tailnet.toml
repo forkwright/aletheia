@@ -1,0 +1,27 @@
+# Aletheia Tailnet Gateway Reference
+#
+# Copy these settings into config/aletheia.toml only after choosing an
+# authenticated network exposure posture for a private LAN or tailnet.
+
+[gateway]
+port = 18789
+bind = "lan"
+
+[gateway.auth]
+mode = "token"
+# mode = "jwt"
+# WARNING: Do not use mode = "none" with bind = "lan" unless a separate
+# network control plane enforces access and ALETHEIA_ALLOW_AUTH_NONE_LAN=1 is
+# set intentionally for that deployment.
+
+[gateway.tls]
+enabled = true
+certPath = "config/tls/tailnet-cert.pem"
+keyPath = "config/tls/tailnet-key.pem"
+
+[gateway.cors]
+# Replace this with the exact dashboard origin served on the tailnet.
+allowedOrigins = ["https://aletheia.tailnet.example"]
+
+[gateway.csrf]
+enabled = true
