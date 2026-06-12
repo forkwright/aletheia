@@ -1839,57 +1839,6 @@ pub struct ChatState {
 pub fn run (verbose: bool)
 ```
 
-## `proskenion/src/services/config.rs`
-
-```rust
-pub enum ConfigError {
-    /// No platform config directory could be determined.
-    #[snafu(display("failed to determine config directory"))]
-    NoConfigDir,
-
-    /// Failed to create the config directory.
-    #[snafu(display("failed to create config directory {}: {source}", path.display()))]
-    CreateDir {
-        /// Directory path that could not be created.
-        path: PathBuf,
-        /// Underlying I/O error.
-        source: std::io::Error,
-    },
-
-    /// Failed to read the config file from disk.
-    #[snafu(display("failed to read config file {}: {source}", path.display()))]
-    ReadFile {
-        /// File path that could not be read.
-        path: PathBuf,
-        /// Underlying I/O error.
-        source: std::io::Error,
-    },
-
-    /// Failed to write the config file to disk.
-    #[snafu(display("failed to write config file {}: {source}", path.display()))]
-    WriteFile {
-        /// File path that could not be written.
-        path: PathBuf,
-        /// Underlying I/O error.
-        source: std::io::Error,
-    },
-
-    /// Failed to parse the TOML config content.
-    #[snafu(display("failed to parse config: {source}"))]
-    Parse {
-        /// Underlying TOML deserialization error.
-        source: toml::de::Error,
-    },
-
-    /// Failed to serialize config to TOML.
-    #[snafu(display("failed to serialize config: {source}"))]
-    Serialize {
-        /// Underlying TOML serialization error.
-        source: toml::ser::Error,
-    },
-}
-```
-
 ## `proskenion/src/services/connection.rs`
 
 > Errors from connection attempts to a pylon server.
@@ -3219,12 +3168,26 @@ pub struct DiscoveryConfig {
     pub lan_hostnames: Vec<String>,
     /// Tailscale IPs to probe directly.
     pub tailscale_ips: Vec<String>,
+    /// Base URLs discovered from environment variables.
+    env_base_urls: Vec<String>,
+    /// LAN hostnames discovered from environment variables.
+    env_lan_hostnames: Vec<String>,
+    /// Tailscale IPs discovered from environment variables.
+    env_tailscale_ips: Vec<String>,
+    /// Base URLs read from the known-hosts file.
+    known_hosts_base_urls: Vec<String>,
+    /// LAN hostnames read from the known-hosts file.
+    known_hosts_lan_hostnames: Vec<String>,
+    /// Tailscale IPs read from the known-hosts file.
+    known_hosts_tailscale_ips: Vec<String>,
 }
 ```
 
 ```rust
 impl DiscoveryConfig {
     pub fn new () -> Self;
+    pub fn from_env () -> Self;
+    pub fn from_env_and_known_hosts () -> Self;
     pub fn with_lan_hostnames <I, S> (mut self, hostnames: I) -> Self where
         I: IntoIterator<Item = S>,
         S: Into<String>,;
@@ -3234,6 +3197,7 @@ impl DiscoveryConfig {
     pub fn with_base_urls <I, S> (mut self, urls: I) -> Self where
         I: IntoIterator<Item = S>,
         S: Into<String>,;
+    pub fn with_known_hosts_file <P: AsRef<Path>> (mut self, path: P) -> Self;
 }
 ```
 
