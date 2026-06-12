@@ -38,7 +38,7 @@ l3_token_estimate = 1409
 [[crates]]
 name = "aletheia-memory-mcp"
 path = "crates/aletheia-memory-mcp"
-source_hash = "daefbe1b09b0d5e3f30ac98b6761ea1f5f53f4224e4d3c1e022154eb442d1ea1"
+source_hash = "cc0f0461e304d82b49f999d0e121ee0532cf825fa7ad50ecf36880e42bf38499"
 l3_token_estimate = 1309
 
 [[crates]]
