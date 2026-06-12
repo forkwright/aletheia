@@ -18,6 +18,8 @@
 
 /// Runtime configuration read/write.
 pub mod config;
+/// Operator credential management.
+pub mod credentials;
 /// Domain event subscription and discovery.
 pub mod events;
 /// System health and readiness check.

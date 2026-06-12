@@ -1,7 +1,4 @@
 //! Credential management panel: display, validate, rotate, add, and remove credentials.
-//!
-//! NOTE: keep `CredentialApiEntry` and related request types local until
-//! pylon exposes `/api/system/credentials`.
 
 use dioxus::prelude::*;
 
@@ -12,7 +9,26 @@ use crate::state::credentials::{
 };
 use crate::state::fetch::FetchState;
 
-// ── API types (local until pylon implements the endpoint) ──
+const CREDENTIALS_PATH: &str = "/api/v1/system/credentials";
+
+fn credentials_url(base: &str) -> String {
+    format!("{}{}", base.trim_end_matches('/'), CREDENTIALS_PATH)
+}
+
+fn credential_url(base: &str, id: &str) -> String {
+    format!("{}/{id}", credentials_url(base))
+}
+
+fn credential_validate_url(base: &str, id: &str) -> String {
+    format!("{}/{id}/validate", credentials_url(base))
+}
+
+fn credential_rotate_url(base: &str, provider: &str) -> String {
+    let encoded = form_urlencoded::byte_serialize(provider.as_bytes()).collect::<String>();
+    format!("{}/rotate?provider={encoded}", credentials_url(base))
+}
+
+// ── API types ──
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct CredentialsListResponse {
@@ -310,10 +326,7 @@ pub(crate) fn CredentialsView() -> Element {
 
         spawn(async move {
             let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/system/credentials",
-                cfg.server_url.trim_end_matches('/')
-            );
+            let url = credentials_url(&cfg.server_url);
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
                     match resp.json::<CredentialsListResponse>().await {
@@ -373,10 +386,7 @@ pub(crate) fn CredentialsView() -> Element {
 
         spawn(async move {
             let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/system/credentials",
-                cfg.server_url.trim_end_matches('/')
-            );
+            let url = credentials_url(&cfg.server_url);
             match client.post(&url).json(&payload).send().await {
                 Ok(resp) if resp.status().is_success() => {
                     add_provider.set(String::new());
@@ -556,11 +566,7 @@ fn CredentialCard(
 
             spawn(async move {
                 let client = authenticated_client(&cfg);
-                let url = format!(
-                    "{}/api/system/credentials/{}/validate",
-                    cfg.server_url.trim_end_matches('/'),
-                    id_v
-                );
+                let url = credential_validate_url(&cfg.server_url, &id_v);
                 match client.post(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
                         is_validating.set(false);
@@ -590,12 +596,7 @@ fn CredentialCard(
 
             spawn(async move {
                 let client = authenticated_client(&cfg);
-                let encoded = form_urlencoded::byte_serialize(prov.as_bytes()).collect::<String>();
-                let url = format!(
-                    "{}/api/system/credentials/rotate?provider={}",
-                    cfg.server_url.trim_end_matches('/'),
-                    encoded
-                );
+                let url = credential_rotate_url(&cfg.server_url, &prov);
                 match client.post(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
                         on_change.call(());
@@ -622,11 +623,7 @@ fn CredentialCard(
 
             spawn(async move {
                 let client = authenticated_client(&cfg);
-                let url = format!(
-                    "{}/api/system/credentials/{}",
-                    cfg.server_url.trim_end_matches('/'),
-                    id_r
-                );
+                let url = credential_url(&cfg.server_url, &id_r);
                 match client.delete(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
                         on_change.call(());
@@ -780,5 +777,32 @@ fn CredentialCard(
                 div { style: "color: var(--status-error); font-size: var(--text-xs); margin-top: var(--space-2);", "{err}" }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn credentials_urls_use_versioned_system_api() {
+        let base = "http://localhost:8080/";
+
+        assert_eq!(
+            credentials_url(base),
+            "http://localhost:8080/api/v1/system/credentials"
+        );
+        assert_eq!(
+            credential_url(base, "anthropic:backup"),
+            "http://localhost:8080/api/v1/system/credentials/anthropic:backup"
+        );
+        assert_eq!(
+            credential_validate_url(base, "anthropic:primary"),
+            "http://localhost:8080/api/v1/system/credentials/anthropic:primary/validate"
+        );
+        assert_eq!(
+            credential_rotate_url(base, "open ai"),
+            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open+ai"
+        );
     }
 }

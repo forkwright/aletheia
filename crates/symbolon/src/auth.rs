@@ -12,7 +12,10 @@ use crate::error::{self, Result};
 use crate::jwt::{JwtConfig, JwtManager};
 use crate::password;
 use crate::store::AuthStore;
-use crate::types::{Action, ApiKeyRecord, Claims, Role, TokenKind, TokenPair};
+use crate::types::{
+    Action, ApiKeyRecord, Claims, ManagedCredential, ManagedCredentialRole, Role, TokenKind,
+    TokenPair,
+};
 use crate::util::days_to_date;
 
 /// Configuration for the auth service.
@@ -221,6 +224,49 @@ impl AuthService {
         api_key::list(&self.store)
     }
 
+    /// List managed provider credentials from an instance credential directory.
+    ///
+    /// Returned records never contain raw secret material.
+    pub fn list_credentials(&self, root: &Path) -> Result<Vec<ManagedCredential>> {
+        crate::credential::admin::list(root)
+    }
+
+    /// Store a managed provider credential.
+    ///
+    /// The raw key is written encrypted at rest and is not returned.
+    pub fn add_credential(
+        &self,
+        root: &Path,
+        provider: &str,
+        key: &SecretString,
+        role: ManagedCredentialRole,
+    ) -> Result<ManagedCredential> {
+        crate::credential::admin::add(root, provider, key, role)
+    }
+
+    /// Validate a managed provider credential using local secret-file semantics.
+    ///
+    /// The response never contains raw secret material.
+    pub fn validate_credential(&self, root: &Path, id: &str) -> Result<ManagedCredential> {
+        crate::credential::admin::validate(root, id)
+    }
+
+    /// Swap a provider's primary and backup credentials.
+    ///
+    /// The returned records never contain raw secret material.
+    pub fn rotate_credentials(
+        &self,
+        root: &Path,
+        provider: &str,
+    ) -> Result<Vec<ManagedCredential>> {
+        crate::credential::admin::rotate(root, provider)
+    }
+
+    /// Remove a managed provider credential and its sidecar files.
+    pub fn remove_credential(&self, root: &Path, id: &str) -> Result<()> {
+        crate::credential::admin::remove(root, id)
+    }
+
     /// Check if claims authorize the given action. Returns `Ok(())` if allowed.
     pub fn authorize(&self, claims: &Claims, action: &Action) -> Result<()> {
         if is_authorized(claims, action) {
@@ -250,7 +296,7 @@ fn is_authorized(claims: &Claims, action: &Action) -> bool {
                 claims.nous_id.as_ref().is_some_and(|own| own == nous_id)
             }
             Action::ReadDashboard => true,
-            Action::ManageAgents | Action::ManageUsers => false,
+            Action::ManageAgents | Action::ManageUsers | Action::ManageCredentials => false,
         },
         Role::Readonly => matches!(action, Action::ReadDashboard),
     }

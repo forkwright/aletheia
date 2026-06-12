@@ -8,6 +8,10 @@ use snafu::Snafu;
 // kanon:ignore RUST/no-debug-derive-on-public-types -- WHY: error enum; Debug is required by std::error::Error and Result ergonomics. Variants carry only error messages, RBAC identity metadata (role, action, entity, id), paths, and source errors — never plaintext credentials or tokens.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
+#[expect(
+    missing_docs,
+    reason = "Snafu variant fields are documented by variant prose and display strings"
+)]
 #[non_exhaustive]
 pub enum Error {
     /// JWT token is malformed or has an invalid signature.
@@ -123,4 +127,4 @@ pub enum Error {
 }
 
 /// Convenience alias for `Result` with symbolon's [`Error`] type.
-pub(crate) type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;

@@ -64,6 +64,21 @@ impl AuthService {
     ) -> Result<(String, ApiKeyRecord)>;
     pub fn revoke_api_key (&self, key_id: &str) -> Result<()>;
     pub fn list_api_keys (&self) -> Result<Vec<ApiKeyRecord>>;
+    pub fn list_credentials (&self, root: &Path) -> Result<Vec<ManagedCredential>>;
+    pub fn add_credential (
+        &self,
+        root: &Path,
+        provider: &str,
+        key: &SecretString,
+        role: ManagedCredentialRole,
+    ) -> Result<ManagedCredential>;
+    pub fn validate_credential (&self, root: &Path, id: &str) -> Result<ManagedCredential>;
+    pub fn rotate_credentials (
+        &self,
+        root: &Path,
+        provider: &str,
+    ) -> Result<Vec<ManagedCredential>>;
+    pub fn remove_credential (&self, root: &Path, id: &str) -> Result<()>;
     pub fn authorize (&self, claims: &Claims, action: &Action) -> Result<()>;
 }
 ```
@@ -733,6 +748,11 @@ pub enum Error {
 }
 ```
 
+> Convenience alias for `Result` with symbolon's [`Error`] type.
+```rust
+pub type Result<T> = std::result::Result<T, Error>;
+```
+
 ## `src/jwt.rs`
 
 > Default clock skew leeway applied to JWT expiration checks.
@@ -870,8 +890,59 @@ pub enum Action {
     ManageAgents,
     /// Manage user accounts.
     ManageUsers,
+    /// Manage provider credential files.
+    ManageCredentials,
     /// Read the dashboard (metrics, status).
     ReadDashboard,
+}
+```
+
+```rust
+pub enum ManagedCredentialRole {
+    /// Active credential used by provider resolution.
+    Primary,
+    /// Standby credential used for operator-controlled rotation.
+    Backup,
+}
+```
+
+```rust
+impl ManagedCredentialRole {
+    pub fn as_str (self) -> &'static str;
+}
+```
+
+```rust
+pub enum ManagedCredentialStatus {
+    /// Credential loaded and has not expired locally.
+    Valid,
+    /// Credential is expired or locally unusable.
+    Expired,
+    /// Credential has not been tested.
+    Untested,
+}
+```
+
+```rust
+impl ManagedCredentialStatus {
+    pub fn as_str (self) -> &'static str;
+}
+```
+
+```rust
+pub struct ManagedCredential {
+    /// Stable identifier in `{provider}:{role}` form.
+    pub id: String,
+    /// Provider name associated with the credential.
+    pub provider: String,
+    /// Role of this credential for its provider.
+    pub role: ManagedCredentialRole,
+    /// Redacted key preview, never raw credential material.
+    pub redacted_preview: String,
+    /// Local validation status.
+    pub status: ManagedCredentialStatus,
+    /// Last validation timestamp, when this response was produced by validation.
+    pub last_validated: Option<String>,
 }
 ```
 

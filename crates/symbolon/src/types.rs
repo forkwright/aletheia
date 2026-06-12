@@ -115,6 +115,8 @@ pub enum Action {
     ManageAgents,
     /// Manage user accounts.
     ManageUsers,
+    /// Manage provider credential files.
+    ManageCredentials,
     /// Read the dashboard (metrics, status).
     ReadDashboard,
 }
@@ -126,9 +128,93 @@ impl std::fmt::Display for Action {
             Self::WriteSession { nous_id } => write!(f, "write session (nous: {nous_id})"),
             Self::ManageAgents => f.write_str("manage agents"),
             Self::ManageUsers => f.write_str("manage users"),
+            Self::ManageCredentials => f.write_str("manage credentials"),
             Self::ReadDashboard => f.write_str("read dashboard"),
         }
     }
+}
+
+/// Credential role within a provider's local file set.
+// kanon:ignore RUST/no-debug-derive-on-public-types — role enum contains no secret data; Debug is safe
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ManagedCredentialRole {
+    /// Active credential used by provider resolution.
+    Primary,
+    /// Standby credential used for operator-controlled rotation.
+    Backup,
+}
+
+impl ManagedCredentialRole {
+    /// Stable wire string for the role.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Primary => "primary",
+            Self::Backup => "backup",
+        }
+    }
+}
+
+impl std::fmt::Display for ManagedCredentialRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for ManagedCredentialRole {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "primary" => Ok(Self::Primary),
+            "backup" => Ok(Self::Backup),
+            other => Err(format!("unknown credential role: {other}")),
+        }
+    }
+}
+
+/// Credential usability status reported to operators.
+// kanon:ignore RUST/no-debug-derive-on-public-types — status enum contains no secret data; Debug is safe
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ManagedCredentialStatus {
+    /// Credential loaded and has not expired locally.
+    Valid,
+    /// Credential is expired or locally unusable.
+    Expired,
+    /// Credential has not been tested.
+    Untested,
+}
+
+impl ManagedCredentialStatus {
+    /// Stable wire string for the status.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Valid => "valid",
+            Self::Expired => "expired",
+            Self::Untested => "untested",
+        }
+    }
+}
+
+/// Secret-safe credential metadata for operator APIs.
+// kanon:ignore RUST/no-debug-derive-on-public-types — redacted_preview is masked; raw secret material is never stored in this type
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedCredential {
+    /// Stable identifier in `{provider}:{role}` form.
+    pub id: String,
+    /// Provider name associated with the credential.
+    pub provider: String,
+    /// Role of this credential for its provider.
+    pub role: ManagedCredentialRole,
+    /// Redacted key preview, never raw credential material.
+    pub redacted_preview: String,
+    /// Local validation status.
+    pub status: ManagedCredentialStatus,
+    /// Last validation timestamp, when this response was produced by validation.
+    pub last_validated: Option<String>,
 }
 
 /// Stored user record.

@@ -15,7 +15,7 @@ pub mod credential;
 /// AES-256-GCM encryption for credential files at rest.
 pub(crate) mod encrypt;
 /// Symbolon-specific error types and result alias.
-pub(crate) mod error;
+pub mod error;
 /// JWT token issuance, validation, and refresh.
 pub mod jwt;
 /// Prometheus metric definitions for authentication and authorization.

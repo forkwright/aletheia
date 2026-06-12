@@ -1,5 +1,6 @@
 //! Credential provider implementations for LLM API key resolution.
 
+pub(crate) mod admin;
 mod file_ops;
 #[cfg(feature = "keyring")]
 mod keyring_provider;
