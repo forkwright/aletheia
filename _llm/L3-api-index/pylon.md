@@ -1613,6 +1613,22 @@ pub async fn file_content (
 ```
 
 ```rust
+pub async fn write_file_content (
+    State(state): State<WorkspaceState>,
+    _claims: Claims,
+    Json(request): Json<WriteContentRequest>,
+) -> Result<Json<WriteContentResponse>, ApiError>
+```
+
+```rust
+pub async fn open_file (
+    State(state): State<WorkspaceState>,
+    _claims: Claims,
+    Json(request): Json<OpenRequest>,
+) -> Result<Json<OpenResponse>, ApiError>
+```
+
+```rust
 pub async fn file_diff (
     State(state): State<WorkspaceState>,
     Query(query): Query<DiffQuery>,
@@ -1690,6 +1706,48 @@ pub struct SearchResult {
     pub line: usize,
     /// Match snippet or filename preview.
     pub snippet: String,
+}
+```
+
+```rust
+pub struct WriteContentRequest {
+    /// Workspace-relative file path to write.
+    pub path: String,
+    /// New file content, UTF-8 text.
+    pub content: String,
+    /// Optional optimistic-concurrency guard: the last-known mtime in
+    /// milliseconds since the Unix epoch. When present and the on-disk mtime
+    /// differs, the write is rejected with 409 so a concurrent edit is not
+    /// clobbered.
+    #[serde(default)]
+    pub if_match_mtime_ms: Option<i64>,
+}
+```
+
+```rust
+pub struct WriteContentResponse {
+    /// Workspace-relative path that was written, using forward slashes.
+    pub path: String,
+    /// New file size in bytes after the write.
+    pub size: u64,
+    /// New file mtime in milliseconds since the Unix epoch.
+    pub mtime_ms: i64,
+}
+```
+
+```rust
+pub struct OpenRequest {
+    /// Workspace-relative file path to open.
+    pub path: String,
+}
+```
+
+```rust
+pub struct OpenResponse {
+    /// Whether the open request was dispatched to the system handler.
+    pub ok: bool,
+    /// Workspace-relative path that was opened, using forward slashes.
+    pub path: String,
 }
 ```
 

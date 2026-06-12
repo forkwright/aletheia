@@ -588,6 +588,586 @@ pub(crate) fn format_page_rank(value: f64) -> String {
     format!("{value:.4}")
 }
 
+// ── Facts: the default memory surface (Direction B) ──
+//
+// WHY: the operator's live store is ~104 facts / ~0 entities, so the
+// entity-first browser lands on "No entities found". Facts are what the
+// agent actually remembers; this model mirrors the flat JSON the
+// `/api/v1/knowledge/facts` route serializes from `mneme::knowledge::Fact`
+// (its `temporal`/`provenance`/`lifecycle`/`access` sub-structs are
+// `#[serde(flatten)]`, so the wire fields are flat at the top level).
+
+/// Classification of a remembered fact (drives decay + a readable badge).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum FactType {
+    Identity,
+    Preference,
+    Skill,
+    Relationship,
+    Event,
+    Task,
+    Observation,
+    Audit,
+    Verification,
+    Operational,
+    Other(String),
+}
+
+impl FactType {
+    /// Classify a raw server string, case-insensitively.
+    ///
+    /// WHY: `fact_type` is free-form text server-side; an unknown value maps
+    /// to `Other` so a single odd row never fails the whole list parse.
+    #[must_use]
+    pub(crate) fn from_raw(raw: &str) -> Self {
+        match raw.to_ascii_lowercase().as_str() {
+            "identity" => Self::Identity,
+            "preference" => Self::Preference,
+            "skill" => Self::Skill,
+            "relationship" => Self::Relationship,
+            "event" => Self::Event,
+            "task" => Self::Task,
+            "observation" => Self::Observation,
+            "audit" => Self::Audit,
+            "verification" => Self::Verification,
+            "operational" => Self::Operational,
+            _ => Self::Other(raw.to_string()),
+        }
+    }
+
+    /// Fixed fact types offered as filter chips, in display order.
+    pub(crate) const FILTERABLE: &[Self] = &[
+        Self::Preference,
+        Self::Skill,
+        Self::Identity,
+        Self::Event,
+        Self::Task,
+        Self::Observation,
+    ];
+
+    /// Wire value sent to the `fact_type` query parameter.
+    #[must_use]
+    pub(crate) fn wire(&self) -> &str {
+        match self {
+            Self::Identity => "identity",
+            Self::Preference => "preference",
+            Self::Skill => "skill",
+            Self::Relationship => "relationship",
+            Self::Event => "event",
+            Self::Task => "task",
+            Self::Observation => "observation",
+            Self::Audit => "audit",
+            Self::Verification => "verification",
+            Self::Operational => "operational",
+            Self::Other(s) => s.as_str(),
+        }
+    }
+
+    /// Human-readable label.
+    #[must_use]
+    pub(crate) fn label(&self) -> &str {
+        match self {
+            Self::Identity => "Identity",
+            Self::Preference => "Preference",
+            Self::Skill => "Skill",
+            Self::Relationship => "Relationship",
+            Self::Event => "Event",
+            Self::Task => "Task",
+            Self::Observation => "Observation",
+            Self::Audit => "Audit",
+            Self::Verification => "Verification",
+            Self::Operational => "Operational",
+            Self::Other(s) => s.as_str(),
+        }
+    }
+
+    /// Badge accent color token for this fact type.
+    #[must_use]
+    pub(crate) fn color(&self) -> &'static str {
+        match self {
+            Self::Identity => "var(--accent)",
+            Self::Preference => "var(--status-info)",
+            Self::Skill => "var(--status-success)",
+            Self::Relationship => "#9A7BD0",
+            Self::Event => "var(--status-warning)",
+            Self::Task => "#C08A4A",
+            Self::Observation => "var(--text-muted)",
+            Self::Audit => "#7A8AA0",
+            Self::Verification => "#5A9A8A",
+            Self::Operational => "var(--text-secondary)",
+            Self::Other(_) => "var(--text-secondary)",
+        }
+    }
+}
+
+/// Epistemic trust tier — how a fact was established.
+///
+/// WHY: this is the stated-vs-inferred axis. What the operator *told* the
+/// agent (`Verified`) must visually outrank what it *guessed* (`Assumed`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FactTier {
+    Verified,
+    Reflected,
+    Inferred,
+    Assumed,
+    Training,
+    Unknown,
+}
+
+impl FactTier {
+    /// Classify a raw server string, case-insensitively.
+    #[must_use]
+    pub(crate) fn from_raw(raw: &str) -> Self {
+        match raw.to_ascii_lowercase().as_str() {
+            "verified" => Self::Verified,
+            "reflected" => Self::Reflected,
+            "inferred" => Self::Inferred,
+            "assumed" => Self::Assumed,
+            "training" => Self::Training,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Tiers offered as filter chips. Only `verified`/`inferred`/`assumed`
+    /// are accepted by the route's `tier` parameter.
+    pub(crate) const FILTERABLE: &[Self] = &[Self::Verified, Self::Inferred, Self::Assumed];
+
+    /// Wire value sent to the `tier` query parameter.
+    #[must_use]
+    pub(crate) fn wire(self) -> &'static str {
+        match self {
+            Self::Verified => "verified",
+            Self::Reflected => "reflected",
+            Self::Inferred => "inferred",
+            Self::Assumed => "assumed",
+            Self::Training => "training",
+            Self::Unknown => "",
+        }
+    }
+
+    /// Human-readable label.
+    #[must_use]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Verified => "Verified",
+            Self::Reflected => "Reflected",
+            Self::Inferred => "Inferred",
+            Self::Assumed => "Assumed",
+            Self::Training => "Training",
+            Self::Unknown => "Unknown",
+        }
+    }
+
+    /// Badge color token.
+    #[must_use]
+    pub(crate) fn color(self) -> &'static str {
+        match self {
+            Self::Verified => "var(--status-success)",
+            Self::Reflected => "var(--status-info)",
+            Self::Inferred => "var(--status-warning)",
+            Self::Assumed => "var(--status-error)",
+            Self::Training => "var(--text-muted)",
+            Self::Unknown => "var(--text-muted)",
+        }
+    }
+
+    /// Whether the operator (or ground truth) stated this fact, as opposed to
+    /// the agent inferring it. Drives the accent border + solid glyph.
+    #[must_use]
+    pub(crate) fn is_stated(self) -> bool {
+        matches!(self, Self::Verified | Self::Reflected)
+    }
+
+    /// Provenance glyph: solid for stated facts, dotted-ring for guessed.
+    #[must_use]
+    pub(crate) fn glyph(self) -> &'static str {
+        if self.is_stated() {
+            "\u{25cf}"
+        } else {
+            "\u{25cc}"
+        }
+    }
+}
+
+/// Data-sovereignty sensitivity — gates which providers may receive a fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FactSensitivity {
+    Public,
+    Internal,
+    Confidential,
+}
+
+impl FactSensitivity {
+    /// Classify a raw server string; unknown values fall back to `Public`
+    /// (the serde default on the server side).
+    #[must_use]
+    pub(crate) fn from_raw(raw: &str) -> Self {
+        match raw.to_ascii_lowercase().as_str() {
+            "internal" => Self::Internal,
+            "confidential" => Self::Confidential,
+            _ => Self::Public,
+        }
+    }
+
+    /// All variants in escalating-restriction order, for the change dialog.
+    pub(crate) const ALL: &[Self] = &[Self::Public, Self::Internal, Self::Confidential];
+
+    /// Wire value for the sensitivity mutation body.
+    #[must_use]
+    pub(crate) fn wire(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Internal => "internal",
+            Self::Confidential => "confidential",
+        }
+    }
+
+    /// Human-readable label.
+    #[must_use]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Public => "Public",
+            Self::Internal => "Internal",
+            Self::Confidential => "Confidential",
+        }
+    }
+
+    /// Badge color token — more restrictive reads more urgent.
+    #[must_use]
+    pub(crate) fn color(self) -> &'static str {
+        match self {
+            Self::Public => "var(--text-muted)",
+            Self::Internal => "var(--status-warning)",
+            Self::Confidential => "var(--status-error)",
+        }
+    }
+}
+
+/// Visibility — how broadly a fact may be shared across agents/sessions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FactVisibility {
+    Private,
+    Shared,
+    Restricted,
+    Published,
+}
+
+impl FactVisibility {
+    /// Classify a raw server string; unknown values fall back to `Private`.
+    #[must_use]
+    pub(crate) fn from_raw(raw: &str) -> Self {
+        match raw.to_ascii_lowercase().as_str() {
+            "shared" => Self::Shared,
+            "restricted" => Self::Restricted,
+            "published" => Self::Published,
+            _ => Self::Private,
+        }
+    }
+
+    /// Human-readable label.
+    #[must_use]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Private => "Private",
+            Self::Shared => "Shared",
+            Self::Restricted => "Restricted",
+            Self::Published => "Published",
+        }
+    }
+
+    /// Badge color token — broader sharing reads more notable.
+    #[must_use]
+    pub(crate) fn color(self) -> &'static str {
+        match self {
+            Self::Private => "var(--text-muted)",
+            Self::Shared => "var(--status-info)",
+            Self::Restricted => "var(--status-warning)",
+            Self::Published => "var(--status-error)",
+        }
+    }
+}
+
+/// A remembered fact. Mirrors the flat JSON served by `/knowledge/facts`.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(from = "FactRaw")]
+pub(crate) struct Fact {
+    /// Stable fact identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — mirrors the server-side string FactId from the knowledge API
+    pub id: String,
+    /// Agent (nous) that owns this fact.
+    pub nous_id: String,
+    /// Human-readable statement — the row headline.
+    pub content: String,
+    /// Classification.
+    pub fact_type: FactType,
+    /// Epistemic trust tier.
+    pub tier: FactTier,
+    /// Confidence in `[0.0, 1.0]`.
+    pub confidence: f64,
+    /// Data-sovereignty classification.
+    pub sensitivity: FactSensitivity,
+    /// Sharing visibility.
+    pub visibility: FactVisibility,
+    /// System recording time (ISO 8601).
+    pub recorded_at: String,
+    /// Number of recalls.
+    pub access_count: u32,
+    /// Whether the fact has been forgotten (soft-deleted).
+    pub is_forgotten: bool,
+}
+
+/// Raw wire shape for [`Fact`]; tolerant of missing fields.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct FactRaw {
+    id: String,
+    #[serde(default)]
+    nous_id: String,
+    #[serde(default)]
+    content: String,
+    #[serde(default)]
+    fact_type: String,
+    #[serde(default)]
+    tier: String,
+    #[serde(default)]
+    confidence: f64,
+    #[serde(default)]
+    sensitivity: String,
+    #[serde(default)]
+    visibility: String,
+    #[serde(default)]
+    recorded_at: String,
+    #[serde(default)]
+    access_count: u32,
+    #[serde(default)]
+    is_forgotten: bool,
+}
+
+impl From<FactRaw> for Fact {
+    fn from(raw: FactRaw) -> Self {
+        Self {
+            fact_type: FactType::from_raw(&raw.fact_type),
+            tier: FactTier::from_raw(&raw.tier),
+            sensitivity: FactSensitivity::from_raw(&raw.sensitivity),
+            visibility: FactVisibility::from_raw(&raw.visibility),
+            id: raw.id,
+            nous_id: raw.nous_id,
+            content: raw.content,
+            confidence: raw.confidence,
+            recorded_at: raw.recorded_at,
+            access_count: raw.access_count,
+            is_forgotten: raw.is_forgotten,
+        }
+    }
+}
+
+/// Sort field for the fact list. Maps directly to the route's `sort` param.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum FactSort {
+    /// Highest confidence first.
+    #[default]
+    Confidence,
+    /// Most recently recorded first.
+    Recency,
+    /// Most-recalled first.
+    AccessCount,
+}
+
+impl FactSort {
+    /// All sort options in display order.
+    pub(crate) const ALL: &[Self] = &[Self::Confidence, Self::Recency, Self::AccessCount];
+
+    /// Wire value for the `sort` query parameter.
+    #[must_use]
+    pub(crate) fn wire(self) -> &'static str {
+        match self {
+            Self::Confidence => "confidence",
+            Self::Recency => "recency",
+            Self::AccessCount => "access_count",
+        }
+    }
+
+    /// Human-readable label.
+    #[must_use]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Confidence => "Confidence",
+            Self::Recency => "Most recent",
+            Self::AccessCount => "Most recalled",
+        }
+    }
+}
+
+/// Recency window filter applied client-side over `recorded_at`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum FactRecency {
+    /// No recency constraint.
+    #[default]
+    All,
+    /// Recorded within the last 7 days.
+    Week,
+    /// Recorded within the last 30 days.
+    Month,
+    /// Older than 30 days (stale).
+    Stale,
+}
+
+impl FactRecency {
+    /// All windows in display order.
+    pub(crate) const ALL: &[Self] = &[Self::All, Self::Week, Self::Month, Self::Stale];
+
+    /// Human-readable label.
+    #[must_use]
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::All => "Any age",
+            Self::Week => "Last 7d",
+            Self::Month => "Last 30d",
+            Self::Stale => "Stale >30d",
+        }
+    }
+
+    /// Whether a fact aged `age_days` satisfies this window.
+    #[must_use]
+    pub(crate) fn matches(self, age_days: u64) -> bool {
+        match self {
+            Self::All => true,
+            Self::Week => age_days <= 7,
+            Self::Month => age_days <= 30,
+            Self::Stale => age_days > 30,
+        }
+    }
+}
+
+/// Number of seconds in a day, for age computation.
+const SECS_PER_DAY: u64 = 86_400;
+
+/// Age of an ISO timestamp in whole days from now. Returns `None` when the
+/// timestamp is empty or unparseable.
+#[must_use]
+pub(crate) fn age_in_days(recorded_at: &str) -> Option<u64> {
+    let ts = crate::state::sessions::parse_iso_to_unix(recorded_at)?;
+    if ts == 0 {
+        return None;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    Some(now.saturating_sub(ts) / SECS_PER_DAY)
+}
+
+/// At-a-glance health of the memory store, computed from the loaded facts.
+///
+/// WHY: folds the stranded `/meta` "Memory Health" view into an always-on
+/// strip above the list, so "is my memory healthy?" is answered in place.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct FactHealth {
+    /// Total active (non-forgotten) facts.
+    pub total: usize,
+    /// Active facts older than 30 days.
+    pub stale: usize,
+    /// Active facts with confidence below 0.4.
+    pub low_confidence: usize,
+    /// Facts marked forgotten (soft-deleted but recoverable).
+    pub forgotten: usize,
+    /// Mean confidence across active facts.
+    pub avg_confidence: f64,
+}
+
+impl FactHealth {
+    /// Compute the strip from the currently loaded facts.
+    #[must_use]
+    pub(crate) fn compute(facts: &[Fact]) -> Self {
+        let active: Vec<&Fact> = facts.iter().filter(|f| !f.is_forgotten).collect();
+        let total = active.len();
+        let forgotten = facts.len() - total;
+        let stale = active
+            .iter()
+            .filter(|f| age_in_days(&f.recorded_at).is_some_and(|d| d > 30))
+            .count();
+        let low_confidence = active.iter().filter(|f| f.confidence < 0.4).count();
+        let avg_confidence = if total > 0 {
+            active.iter().map(|f| f.confidence).sum::<f64>() / total as f64
+        } else {
+            0.0
+        };
+        Self {
+            total,
+            stale,
+            low_confidence,
+            forgotten,
+            avg_confidence,
+        }
+    }
+}
+
+/// Paginated fact list with sort and filter state (default memory surface).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FactListStore {
+    /// All loaded facts (the strip + filters derive from these).
+    pub facts: Vec<Fact>,
+    /// Total facts reported by the server.
+    pub total: usize,
+    /// Current sort field.
+    pub sort: FactSort,
+    /// Free-text content filter.
+    pub search_query: String,
+    /// Active fact-type chips (empty = all types).
+    pub type_filter: Vec<FactType>,
+    /// Active trust-tier chips (empty = all tiers).
+    pub tier_filter: Vec<FactTier>,
+    /// Recency window.
+    pub recency: FactRecency,
+}
+
+impl FactListStore {
+    /// Maximum facts fetched per request (the store is ~hundreds of facts).
+    pub(crate) const FETCH_LIMIT: usize = 500;
+
+    /// Replace the fact list with fresh data.
+    pub(crate) fn load(&mut self, facts: Vec<Fact>, total: usize) {
+        self.facts = facts;
+        self.total = total;
+    }
+
+    /// Reset all filters and search.
+    pub(crate) fn clear_filters(&mut self) {
+        self.search_query.clear();
+        self.type_filter.clear();
+        self.tier_filter.clear();
+        self.recency = FactRecency::All;
+    }
+
+    /// Whether any filter or search is active.
+    #[must_use]
+    pub(crate) fn has_active_filters(&self) -> bool {
+        !self.search_query.is_empty()
+            || !self.type_filter.is_empty()
+            || !self.tier_filter.is_empty()
+            || self.recency != FactRecency::All
+    }
+
+    /// Facts passing the in-memory recency window (type/tier/search are pushed
+    /// to the server, but recency is computed client-side over `recorded_at`).
+    #[must_use]
+    pub(crate) fn visible(&self) -> Vec<&Fact> {
+        self.facts
+            .iter()
+            .filter(|f| match age_in_days(&f.recorded_at) {
+                Some(age) => self.recency.matches(age),
+                // WHY: an unparseable timestamp only fails a constrained window.
+                None => self.recency == FactRecency::All,
+            })
+            .collect()
+    }
+
+    /// Health strip derived from the loaded facts.
+    #[must_use]
+    pub(crate) fn health(&self) -> FactHealth {
+        FactHealth::compute(&self.facts)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -831,5 +1411,141 @@ mod tests {
     fn relationship_direction_arrows() {
         assert_eq!(RelationshipDirection::Outgoing.arrow(), "→");
         assert_eq!(RelationshipDirection::Incoming.arrow(), "←");
+    }
+
+    // ── Facts ──
+
+    #[test]
+    fn fact_deserializes_from_flat_wire_shape() {
+        // WHY: mirror the flattened JSON the /knowledge/facts route emits.
+        let json = r#"{
+            "id": "fact_01",
+            "nous_id": "agent-1",
+            "content": "The operator prefers tabs over spaces",
+            "fact_type": "preference",
+            "tier": "verified",
+            "confidence": 0.92,
+            "sensitivity": "internal",
+            "visibility": "private",
+            "recorded_at": "2026-06-01T00:00:00Z",
+            "access_count": 4,
+            "is_forgotten": false
+        }"#;
+        let fact: Fact = serde_json::from_str(json).expect("fact parses");
+        assert_eq!(fact.id, "fact_01");
+        assert_eq!(fact.fact_type, FactType::Preference);
+        assert_eq!(fact.tier, FactTier::Verified);
+        assert_eq!(fact.sensitivity, FactSensitivity::Internal);
+        assert_eq!(fact.visibility, FactVisibility::Private);
+        assert!((fact.confidence - 0.92).abs() < f64::EPSILON);
+        assert_eq!(fact.access_count, 4);
+        assert!(!fact.is_forgotten);
+    }
+
+    #[test]
+    fn fact_tolerates_unknown_and_missing_fields() {
+        let fact: Fact =
+            serde_json::from_str(r#"{"id":"f","fact_type":"weird"}"#).expect("partial fact parses");
+        assert_eq!(fact.fact_type, FactType::Other("weird".to_string()));
+        assert_eq!(fact.tier, FactTier::Unknown);
+        // Server-side serde defaults: sensitivity=public, visibility=private.
+        assert_eq!(fact.sensitivity, FactSensitivity::Public);
+        assert_eq!(fact.visibility, FactVisibility::Private);
+        assert!(fact.content.is_empty());
+    }
+
+    #[test]
+    fn fact_tier_stated_vs_inferred_rank() {
+        assert!(FactTier::Verified.is_stated());
+        assert!(FactTier::Reflected.is_stated());
+        assert!(!FactTier::Inferred.is_stated());
+        assert!(!FactTier::Assumed.is_stated());
+        assert_eq!(FactTier::Verified.glyph(), "\u{25cf}");
+        assert_eq!(FactTier::Assumed.glyph(), "\u{25cc}");
+    }
+
+    #[test]
+    fn fact_type_filter_chips_have_labels_colors_and_wire() {
+        for ft in FactType::FILTERABLE {
+            assert!(!ft.label().is_empty());
+            assert!(!ft.color().is_empty());
+            assert!(!ft.wire().is_empty());
+        }
+    }
+
+    #[test]
+    fn fact_tier_filter_chips_map_to_route_params() {
+        for tier in FactTier::FILTERABLE {
+            assert!(!tier.wire().is_empty());
+        }
+    }
+
+    #[test]
+    fn fact_sort_and_recency_labels() {
+        for s in FactSort::ALL {
+            assert!(!s.label().is_empty());
+            assert!(!s.wire().is_empty());
+        }
+        for r in FactRecency::ALL {
+            assert!(!r.label().is_empty());
+        }
+    }
+
+    #[test]
+    fn fact_recency_window_matches() {
+        assert!(FactRecency::All.matches(999));
+        assert!(FactRecency::Week.matches(7));
+        assert!(!FactRecency::Week.matches(8));
+        assert!(FactRecency::Month.matches(30));
+        assert!(!FactRecency::Month.matches(31));
+        assert!(FactRecency::Stale.matches(31));
+        assert!(!FactRecency::Stale.matches(30));
+    }
+
+    fn make_fact(id: &str, confidence: f64, forgotten: bool) -> Fact {
+        Fact {
+            id: id.to_string(),
+            nous_id: "agent".to_string(),
+            content: format!("fact {id}"),
+            fact_type: FactType::Observation,
+            tier: FactTier::Inferred,
+            confidence,
+            sensitivity: FactSensitivity::Public,
+            visibility: FactVisibility::Private,
+            recorded_at: "2026-06-10T00:00:00Z".to_string(),
+            access_count: 0,
+            is_forgotten: forgotten,
+        }
+    }
+
+    #[test]
+    fn fact_health_counts_and_average() {
+        let facts = vec![
+            make_fact("a", 0.9, false),
+            make_fact("b", 0.2, false),
+            make_fact("c", 0.5, true),
+        ];
+        let health = FactHealth::compute(&facts);
+        assert_eq!(health.total, 2);
+        assert_eq!(health.forgotten, 1);
+        assert_eq!(health.low_confidence, 1);
+        assert!((health.avg_confidence - 0.55).abs() < 1e-9);
+    }
+
+    #[test]
+    fn fact_list_store_filters_and_clear() {
+        let mut store = FactListStore::default();
+        store.load(vec![make_fact("a", 0.9, false)], 1);
+        assert!(!store.has_active_filters());
+
+        store.search_query = "x".to_string();
+        store.type_filter = vec![FactType::Skill];
+        store.tier_filter = vec![FactTier::Verified];
+        store.recency = FactRecency::Week;
+        assert!(store.has_active_filters());
+
+        store.clear_filters();
+        assert!(!store.has_active_filters());
+        assert_eq!(store.recency, FactRecency::All);
     }
 }

@@ -7,6 +7,88 @@ use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 
 use crate::state::connection::ConnectionConfig;
 
+/// Outcome of a workspace file save against `PUT /api/v1/workspace/files/content`.
+///
+/// WHY: the viewer renders distinct UX per failure class -- a 413 is "split
+/// the note", a 409 is "reload before saving", a transport error is
+/// retryable. Mapping the wire status to a typed result keeps that branching
+/// declarative at the call site instead of re-deriving it from raw codes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SaveOutcome {
+    /// Write succeeded.
+    Saved,
+    /// File exceeds the server's size cap (HTTP 413).
+    TooLarge,
+    /// File changed on disk since it was loaded (HTTP 409).
+    Conflict,
+    /// Any other failure, carrying a human-readable description.
+    Failed(String),
+}
+
+/// Persist `content` to the workspace file at `path` (relative to the vault
+/// root) via the workspace content write endpoint.
+///
+/// The server resolves `path` through its path-escape guard; the client only
+/// ever holds workspace-relative paths. Returns a [`SaveOutcome`] mapping the
+/// HTTP result to the UX-relevant cases.
+pub(crate) async fn save_workspace_file(
+    config: &ConnectionConfig,
+    path: &str,
+    content: &str,
+) -> SaveOutcome {
+    let client = authenticated_client(config);
+    let base = config.server_url.trim_end_matches('/');
+    let url = format!("{base}/api/v1/workspace/files/content");
+    let body = serde_json::json!({ "path": path, "content": content });
+
+    match client.put(&url).json(&body).send().await {
+        Ok(resp) if resp.status().is_success() => SaveOutcome::Saved,
+        Ok(resp) if resp.status().as_u16() == 413 => SaveOutcome::TooLarge,
+        Ok(resp) if resp.status().as_u16() == 409 => SaveOutcome::Conflict,
+        Ok(resp) => {
+            let status = resp.status();
+            let detail = resp.text().await.unwrap_or_default();
+            if detail.is_empty() {
+                SaveOutcome::Failed(format!("server returned {status}"))
+            } else {
+                SaveOutcome::Failed(format!("server returned {status}: {}", detail.trim()))
+            }
+        }
+        Err(e) => SaveOutcome::Failed(format!("connection error: {e}")),
+    }
+}
+
+/// Ask the server to open the workspace file at `path` in the operator's
+/// default application via `POST /api/v1/workspace/open`.
+///
+/// WHY: the client never learns the absolute vault root, so opening with the
+/// host's default app is a server-side action over the relative path (the
+/// binary and the vault are co-located). Returns `Ok` on success or an
+/// `Err` carrying a human-readable description.
+pub(crate) async fn open_workspace_file(
+    config: &ConnectionConfig,
+    path: &str,
+) -> Result<(), String> {
+    let client = authenticated_client(config);
+    let base = config.server_url.trim_end_matches('/');
+    let url = format!("{base}/api/v1/workspace/open");
+    let body = serde_json::json!({ "path": path });
+
+    match client.post(&url).json(&body).send().await {
+        Ok(resp) if resp.status().is_success() => Ok(()),
+        Ok(resp) => {
+            let status = resp.status();
+            let detail = resp.text().await.unwrap_or_default();
+            if detail.is_empty() {
+                Err(format!("server returned {status}"))
+            } else {
+                Err(format!("server returned {status}: {}", detail.trim()))
+            }
+        }
+        Err(e) => Err(format!("connection error: {e}")),
+    }
+}
+
 /// Build a `reqwest::Client` with the Bearer token from `config` attached
 /// as a default header. Views should call this instead of `Client::new()`
 /// so that all API requests carry the auth token.

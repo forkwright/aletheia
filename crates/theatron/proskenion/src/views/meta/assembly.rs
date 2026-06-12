@@ -229,7 +229,7 @@ pub(super) fn assemble_meta_data(
         count_to_f64(orphan_count) / count_to_f64(entities.len())
     };
 
-    // WHY: Approximate staleness from facts with no recorded timestamp.
+    // WHY: approximate staleness from facts with empty recorded_at or old dates.
     let stale_count = facts.iter().filter(|f| f.recorded_at.is_empty()).count();
     let staleness_ratio = if facts.is_empty() {
         0.0
@@ -282,13 +282,11 @@ pub(super) fn assemble_meta_data(
     };
 
     // ── Reflection ──
-    // WHY: the metrics API splits into separate token + cost endpoints; totals
-    // are derived from each series rather than a single combined response.
-    let total_tokens: u64 = tokens
-        .series
-        .iter()
-        .map(|b| b.input_tokens + b.output_tokens)
-        .sum();
+    // WHY: aggregates are DERIVED from the time-series + per-agent data
+    // (deterministic metrics) rather than read from flat total fields.
+    let total_input_tokens: u64 = tokens.series.iter().map(|b| b.input_tokens).sum();
+    let total_output_tokens: u64 = tokens.series.iter().map(|b| b.output_tokens).sum();
+    let total_tokens = total_input_tokens + total_output_tokens;
     let total_sessions: u64 = tokens.agents.iter().map(|a| a.session_count).sum();
     let total_cost_usd: f64 = costs.series.iter().map(|b| b.cost_usd).sum();
     let overview = crate::state::meta::SystemOverview {

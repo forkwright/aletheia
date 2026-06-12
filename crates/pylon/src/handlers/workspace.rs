@@ -9,16 +9,37 @@ use std::path::{Component, Path, PathBuf};
 use tokio::process::Command;
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NotFoundSnafu, UserFacingSnafu};
+use crate::extract::Claims;
 use crate::state::WorkspaceState;
 
 #[path = "workspace_dto.rs"]
 mod workspace_dto;
 pub use workspace_dto::{
-    ContentQuery, DiffQuery, FileEntry, FilesQuery, GitStatusEntry, SearchQuery, SearchResult,
+    ContentQuery, DiffQuery, FileEntry, FilesQuery, GitStatusEntry, OpenRequest, OpenResponse,
+    SearchQuery, SearchResult, WriteContentRequest, WriteContentResponse,
 };
 
 const CONTENT_LIMIT_BYTES: u64 = 2 * 1024 * 1024;
 const SEARCH_LIMIT_CAP: usize = 1000;
+
+/// Maximum byte length accepted by the workspace write endpoint.
+///
+/// WHY: the write target is the operator's live ~9 GB restic-backed theke
+/// vault; a generous-but-bounded cap keeps a single note write from being a
+/// memory or disk abuse vector while comfortably exceeding any real markdown
+/// note.
+const WRITE_LIMIT_BYTES: usize = 10 * 1024 * 1024;
+
+/// File extensions the workspace write endpoint is allowed to create or
+/// overwrite.
+///
+/// WHY: the editor surface is a markdown/plain-text vault editor. Restricting
+/// writes to known text formats stops the endpoint from being used to drop
+/// binaries, scripts, or dotfiles into the vault.
+const WRITABLE_EXTENSIONS: &[&str] = &[
+    "md", "markdown", "mdx", "txt", "text", "rst", "org", "csv", "tsv", "json", "toml", "yaml",
+    "yml",
+];
 
 /// GET /api/v1/workspace/files
 #[utoipa::path(
@@ -212,6 +233,175 @@ pub async fn file_content(
     Ok(([(header::CONTENT_TYPE, content_type)], bytes).into_response())
 }
 
+/// PUT /api/v1/workspace/files/content
+///
+/// Writes UTF-8 text content back to a file in the workspace vault.
+///
+/// SAFETY: the write target is the operator's live, restic-backed theke vault.
+/// The write is atomic — content lands in a sibling temp file that is fsynced
+/// and then renamed over the destination — so a crash or partial write never
+/// leaves the vault with a truncated note. The path is validated through the
+/// same escape guard as every read endpoint, the extension must be a known
+/// text format, the body is size-capped, and an optional `if_match_mtime_ms`
+/// guard rejects writes that would clobber a concurrent edit.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. If the future is dropped after the temp file is written but
+/// before the rename, the temp file is removed on the next failure path or
+/// left as inert orphaned content under a hidden name; the destination is
+/// never observed in a half-written state.
+#[utoipa::path(
+    put,
+    path = "/api/v1/workspace/files/content",
+    request_body = WriteContentRequest,
+    responses(
+        (status = 200, description = "File written", body = WriteContentResponse),
+        (status = 400, description = "Invalid workspace path or extension", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 409, description = "Concurrent modification conflict", body = crate::error::ErrorResponse),
+        (status = 413, description = "Content too large", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn write_file_content(
+    State(state): State<WorkspaceState>,
+    _claims: Claims,
+    Json(request): Json<WriteContentRequest>,
+) -> Result<Json<WriteContentResponse>, ApiError> {
+    if request.content.len() > WRITE_LIMIT_BYTES {
+        return Err(UserFacingSnafu {
+            status: StatusCode::PAYLOAD_TOO_LARGE,
+            code: "payload_too_large".to_owned(),
+            message: format!(
+                "content exceeds the {WRITE_LIMIT_BYTES} byte write limit: {}",
+                request.path
+            ),
+            retry_after_secs: None,
+        }
+        .build());
+    }
+
+    let target = resolve_workspace_write_target(&state.workspace_root, &request.path)?;
+
+    // WHY: inspect the existing target before the extension gate so a directory
+    // or symlink target is rejected for what it *is*, not incidentally for its
+    // (missing) extension. A symlink target could redirect the write outside
+    // the guarded tree even though the link itself lives under the root.
+    if let Ok(existing) = std::fs::symlink_metadata(&target) {
+        if existing.is_dir() {
+            return Err(BadRequestSnafu {
+                message: format!("path is a directory, not a file: {}", request.path),
+            }
+            .build());
+        }
+        if existing.file_type().is_symlink() {
+            return Err(BadRequestSnafu {
+                message: format!("refusing to write through a symlink: {}", request.path),
+            }
+            .build());
+        }
+        if let Some(expected) = request.if_match_mtime_ms {
+            let current = file_mtime_ms(&existing)?;
+            if current != expected {
+                return Err(ApiError::Conflict {
+                    message: format!(
+                        "file changed since last read (expected mtime {expected}, found {current}): {}",
+                        request.path
+                    ),
+                    location: snafu::location!(),
+                });
+            }
+        }
+    } else if request.if_match_mtime_ms.is_some() {
+        // WHY: caller expected an existing file to match an mtime, but the file
+        // is gone — surface that as a conflict rather than silently creating it.
+        return Err(ApiError::Conflict {
+            message: format!(
+                "file no longer exists but an mtime match was required: {}",
+                request.path
+            ),
+            location: snafu::location!(),
+        });
+    }
+
+    require_writable_extension(&target, &request.path)?;
+
+    let metadata = atomic_write(&target, request.content.as_bytes())?;
+
+    Ok(Json(WriteContentResponse {
+        path: relative_workspace_path(&state.workspace_root, &target)?,
+        size: metadata.len(),
+        mtime_ms: file_mtime_ms(&metadata)?,
+    }))
+}
+
+/// POST /api/v1/workspace/open
+///
+/// Opens a workspace file in the system default application via `xdg-open`
+/// (through the `opener` crate). Used for non-markdown files (PDFs, images,
+/// canvas, etc.) the in-app viewer does not render.
+///
+/// SAFETY: the path is resolved through the same escape guard as every read
+/// endpoint, so only files that genuinely live inside the workspace root can
+/// be opened. The client only ever knows workspace-relative paths.
+#[utoipa::path(
+    post,
+    path = "/api/v1/workspace/open",
+    request_body = OpenRequest,
+    responses(
+        (status = 200, description = "Open dispatched", body = OpenResponse),
+        (status = 400, description = "Invalid workspace path", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 404, description = "Workspace file not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn open_file(
+    State(state): State<WorkspaceState>,
+    _claims: Claims,
+    Json(request): Json<OpenRequest>,
+) -> Result<Json<OpenResponse>, ApiError> {
+    let resolved = resolve_workspace_file(&state.workspace_root, &request.path)?;
+    let metadata = std::fs::symlink_metadata(&resolved).map_err(|_err| {
+        NotFoundSnafu {
+            path: request.path.clone(),
+        }
+        .build()
+    })?;
+    if metadata.is_dir() {
+        return Err(BadRequestSnafu {
+            message: format!("path is a directory, not a file: {}", request.path),
+        }
+        .build());
+    }
+
+    let open_path = resolved.clone();
+    let relative = relative_workspace_path(&state.workspace_root, &resolved)?;
+
+    // WHY: `opener::open` spawns a blocking subprocess (xdg-open); run it off
+    // the async reactor so the handler does not block the executor.
+    tokio::task::spawn_blocking(move || opener::open(&open_path))
+        .await
+        .map_err(|e| {
+            InternalSnafu {
+                message: format!("open task panicked: {e}"),
+            }
+            .build()
+        })?
+        .map_err(|e| {
+            InternalSnafu {
+                message: format!("failed to open workspace file: {e}"),
+            }
+            .build()
+        })?;
+
+    Ok(Json(OpenResponse {
+        ok: true,
+        path: relative,
+    }))
+}
+
 /// GET /api/v1/workspace/diff
 #[utoipa::path(
     get,
@@ -344,6 +534,152 @@ fn resolve_workspace_file(root: &Path, path: &str) -> Result<PathBuf, ApiError> 
         .build());
     }
     Ok(canonical)
+}
+
+/// Resolve a workspace-relative path to an absolute write destination.
+///
+/// Unlike [`resolve_workspace_file`], the destination file need not already
+/// exist (the editor must be able to create new notes). The escape guard is
+/// preserved by canonicalizing the **parent** directory — which must exist and
+/// resolves any symlinks in the directory chain — and confirming it stays
+/// under the workspace root before re-joining the final filename.
+fn resolve_workspace_write_target(root: &Path, path: &str) -> Result<PathBuf, ApiError> {
+    let relative = normalize_relative_path(path)?;
+
+    let file_name = relative.file_name().ok_or_else(|| {
+        BadRequestSnafu {
+            message: format!("workspace path must name a file: {path}"),
+        }
+        .build()
+    })?;
+
+    let joined = root.join(&relative);
+    let parent = joined.parent().unwrap_or(root);
+
+    let canonical_parent = std::fs::canonicalize(parent).map_err(|_err| {
+        NotFoundSnafu {
+            path: path.to_owned(),
+        }
+        .build()
+    })?;
+    if !canonical_parent.starts_with(root) {
+        return Err(BadRequestSnafu {
+            message: format!("path escapes the workspace root: {path}"),
+        }
+        .build());
+    }
+
+    Ok(canonical_parent.join(file_name))
+}
+
+/// Reject write paths whose extension is not a known text format.
+fn require_writable_extension(absolute: &Path, original: &str) -> Result<(), ApiError> {
+    let allowed = absolute
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|ext| WRITABLE_EXTENSIONS.contains(&ext.as_str()));
+
+    if allowed {
+        Ok(())
+    } else {
+        Err(BadRequestSnafu {
+            message: format!(
+                "workspace writes are limited to text files ({}): {original}",
+                WRITABLE_EXTENSIONS.join(", ")
+            ),
+        }
+        .build())
+    }
+}
+
+/// Atomically write `bytes` to `dest` via a sibling temp file + fsync + rename.
+///
+/// INVARIANT: `dest` is never observed in a partially-written state. On any
+/// failure the temp file is removed so no orphan or partial artifact is left
+/// in the vault.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "atomic vault write needs a synchronous open(parent) to fsync the directory entry after rename; tokio::fs offers no parent-dir sync and the cost is one bounded local syscall"
+)]
+fn atomic_write(dest: &Path, bytes: &[u8]) -> Result<std::fs::Metadata, ApiError> {
+    use std::io::Write as _;
+
+    let parent = dest.parent().ok_or_else(|| {
+        InternalSnafu {
+            message: format!("write target has no parent directory: {}", dest.display()),
+        }
+        .build()
+    })?;
+
+    let file_name = dest.file_name().map_or_else(
+        || "file".to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    let unique = koina::ulid::Ulid::new();
+    let tmp_path = parent.join(format!(".{file_name}.{unique}.tmp"));
+
+    // WARNING: every early return below MUST clean up `tmp_path`, or a failed
+    // write leaves an orphan dotfile in the operator's vault.
+    let write_result = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&tmp_path)?;
+        file.write_all(bytes)?;
+        file.flush()?;
+        // WHY: fsync the file data before rename so the rename does not expose
+        // an empty or short file if the machine loses power mid-write.
+        file.sync_all()?;
+        Ok(())
+    })();
+
+    if let Err(e) = write_result {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(InternalSnafu {
+            message: format!(
+                "failed to stage workspace write for {}: {e}",
+                dest.display()
+            ),
+        }
+        .build());
+    }
+
+    if let Err(e) = std::fs::rename(&tmp_path, dest) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(InternalSnafu {
+            message: format!(
+                "failed to commit workspace write for {}: {e}",
+                dest.display()
+            ),
+        }
+        .build());
+    }
+
+    // WHY: fsync the directory so the rename itself is durable; a crash after a
+    // successful rename could otherwise lose the directory entry update.
+    if let Ok(dir) = std::fs::File::open(parent) {
+        let _ = dir.sync_all();
+    }
+
+    std::fs::metadata(dest).map_err(|e| {
+        InternalSnafu {
+            message: format!("failed to stat written file {}: {e}", dest.display()),
+        }
+        .build()
+    })
+}
+
+/// Extract a file mtime as milliseconds since the Unix epoch.
+fn file_mtime_ms(metadata: &std::fs::Metadata) -> Result<i64, ApiError> {
+    let modified = metadata.modified().map_err(|e| {
+        InternalSnafu {
+            message: format!("failed to read file mtime: {e}"),
+        }
+        .build()
+    })?;
+    let millis = modified
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or(0);
+    Ok(millis)
 }
 
 fn normalize_relative_path(path: &str) -> Result<PathBuf, ApiError> {

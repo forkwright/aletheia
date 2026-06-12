@@ -115,7 +115,7 @@ fn client_commands() -> Vec<Command> {
         },
         Command {
             name: "files".to_string(),
-            description: "Switch to Theke view".to_string(),
+            description: "Switch to Theke (vault) view".to_string(),
             usage: "/files".to_string(),
             source: CommandSource::Client,
             agent_specific: false,

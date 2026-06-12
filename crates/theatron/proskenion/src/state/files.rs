@@ -137,6 +137,28 @@ pub(crate) fn is_binary_content(bytes: &[u8]) -> bool {
         .is_some_and(|slice| slice.contains(&0))
 }
 
+/// Lowercased file extension, or empty string when the path has none.
+///
+/// WHY: a bare `rsplit('.')` treats a dotfile (`.gitignore`) or an
+/// extensionless name as having the whole name as its "extension". Guard on
+/// a `.` that is neither leading nor trailing so detection matches intent.
+fn extension_of(path: &str) -> String {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() => ext.to_ascii_lowercase(),
+        _ => String::new(),
+    }
+}
+
+/// Whether `path` names a Markdown document.
+///
+/// WHY: the Theke vault is an Obsidian markdown store -- a `.md` note must
+/// default to the rendered reading view, not raw syntect source. The viewer
+/// branches on this to mount the in-tree `Markdown` component.
+pub(crate) fn is_markdown_path(path: &str) -> bool {
+    matches!(extension_of(path).as_str(), "md" | "markdown")
+}
+
 /// Derive a unicode icon for a file based on extension.
 pub(crate) fn file_icon(path: &str, is_dir: bool) -> &'static str {
     if is_dir {
@@ -236,5 +258,26 @@ mod tests {
     #[test]
     fn file_icon_returns_crab_for_rust() {
         assert_eq!(file_icon("main.rs", false), "\u{1F980}");
+    }
+
+    #[test]
+    fn is_markdown_path_matches_md_extensions() {
+        assert!(is_markdown_path("notes/today.md"));
+        assert!(is_markdown_path("README.MD"));
+        assert!(is_markdown_path("doc.markdown"));
+    }
+
+    #[test]
+    fn is_markdown_path_rejects_non_md() {
+        assert!(!is_markdown_path("main.rs"));
+        assert!(!is_markdown_path("data.json"));
+        assert!(!is_markdown_path("notes/archive.md.bak"));
+    }
+
+    #[test]
+    fn is_markdown_path_rejects_extensionless_and_dotfiles() {
+        assert!(!is_markdown_path("LICENSE"));
+        assert!(!is_markdown_path(".gitignore"));
+        assert!(!is_markdown_path("dir.md/file"));
     }
 }
