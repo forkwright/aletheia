@@ -18,9 +18,9 @@ use koina::id::SessionId;
 use symbolon::types::Role;
 
 use crate::error::{
-    BlackboardStoreSnafu, BlackboardStoreUnavailableSnafu, DuplicateSessionSnafu, FactNotFoundSnafu,
-    InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu, NoteStoreSnafu,
-    NoteStoreUnavailableSnafu, NousNotFoundSnafu, PipelineSnafu, RepomixPackSnafu,
+    BlackboardStoreSnafu, BlackboardStoreUnavailableSnafu, DuplicateSessionSnafu,
+    FactNotFoundSnafu, InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu,
+    NoteStoreSnafu, NoteStoreUnavailableSnafu, NousNotFoundSnafu, PipelineSnafu, RepomixPackSnafu,
     RepomixUnavailableSnafu, SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
 };
 use crate::rate_limit::Tier;
@@ -383,19 +383,18 @@ impl DiaporeiaServer {
         let nous_id = params.nous_id.clone();
         let session_key_owned = session_key.to_owned();
         let store = self.state.session_store.lock().await;
-        let session = match store.create_session(&session_id, &nous_id, session_key, None, Some(&model)) {
-            Ok(session) => Ok(session),
-            Err(e) if e.is_unique_constraint_violation() => Err(rmcp::ErrorData::from(
-                DuplicateSessionSnafu {
-                    nous_id,
-                    session_key: session_key_owned,
-                }
-                .build(),
-            )),
-            Err(e) => Err(rmcp::ErrorData::from(
-                SessionStoreSnafu {}.into_error(e),
-            )),
-        }?;
+        let session =
+            match store.create_session(&session_id, &nous_id, session_key, None, Some(&model)) {
+                Ok(session) => Ok(session),
+                Err(e) if e.is_unique_constraint_violation() => Err(rmcp::ErrorData::from(
+                    DuplicateSessionSnafu {
+                        nous_id,
+                        session_key: session_key_owned,
+                    }
+                    .build(),
+                )),
+                Err(e) => Err(rmcp::ErrorData::from(SessionStoreSnafu {}.into_error(e))),
+            }?;
 
         let json = serde_json::to_string_pretty(&serde_json::json!({
             "id": session.id,

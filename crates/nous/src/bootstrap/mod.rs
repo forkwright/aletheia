@@ -517,7 +517,10 @@ const DEFAULT_OUTPUT_STYLE: &str = "\
 #[derive(Debug, Clone, Deserialize)]
 struct LlmManifest {
     #[serde(default)]
-    #[expect(dead_code, reason = "deserialized for schema completeness; not yet consumed")]
+    #[expect(
+        dead_code,
+        reason = "deserialized for schema completeness; not yet consumed"
+    )]
     version: u32,
     #[serde(default)]
     levels: HashMap<String, LlmLevel>,
@@ -529,7 +532,10 @@ struct LlmManifest {
 struct LlmLevel {
     path: String,
     #[serde(default)]
-    #[expect(dead_code, reason = "deserialized for schema completeness; not yet consumed")]
+    #[expect(
+        dead_code,
+        reason = "deserialized for schema completeness; not yet consumed"
+    )]
     generator: String,
 }
 

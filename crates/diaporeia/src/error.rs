@@ -29,9 +29,7 @@ pub enum Error {
     },
 
     /// A session with this (nous_id, session_key) pair already exists.
-    #[snafu(display(
-        "a session with key '{session_key}' already exists for agent '{nous_id}'"
-    ))]
+    #[snafu(display("a session with key '{session_key}' already exists for agent '{nous_id}'"))]
     DuplicateSession {
         nous_id: String,
         session_key: String,

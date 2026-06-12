@@ -191,7 +191,10 @@ impl std::fmt::Debug for StructuredAdmissionPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StructuredAdmissionPolicy")
             .field("config", &self.config)
-            .field("seen_hashes_count", &self.seen_hashes.lock().map_or(0, |g| g.len()))
+            .field(
+                "seen_hashes_count",
+                &self.seen_hashes.lock().map_or(0, |g| g.len()),
+            )
             .finish()
     }
 }

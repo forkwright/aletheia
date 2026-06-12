@@ -411,11 +411,7 @@ pub async fn recover(
         .get(&id)
         .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?;
 
-    let actor_lifecycle = handle
-        .status()
-        .await
-        .map(|s| s.lifecycle.to_string())
-        .ok();
+    let actor_lifecycle = handle.status().await.map(|s| s.lifecycle.to_string()).ok();
 
     let recovered = handle.recover().await.map_err(|e| {
         tracing::warn!(
