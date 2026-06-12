@@ -41,22 +41,22 @@ pub struct HistoryResult {
     pub messages_loaded: usize,
     /// Total tokens consumed by loaded history.
     pub tokens_consumed: i64,
-    /// Whether history was truncated to fit budget.
+    /// Whether the `max_messages` count limit dropped eligible messages from
+    /// the token-budget window. Sessions limited by the token budget rather
+    /// than the count cap report `false` here; inspect `tokens_consumed`
+    /// relative to the budget for token-budget observability.
     pub truncated: bool,
 }
 
 /// Load conversation history and append the current user message.
 ///
-/// Retrieves the most recent messages from the session store that fit within
-/// the given token budget, converts them to [`PipelineMessage`]s, and appends
-/// the current user message at the end.
+/// Delegates token-budget enforcement to the store's `get_history_with_budget`
+/// API so only the most recent messages fitting within `available` tokens are
+/// fetched from storage — O(budget-tokens) rather than O(total-session-messages).
+/// A `max_messages` count cap is then applied in memory on the budgeted result.
 ///
 /// System-role messages are always skipped (they're in the system prompt).
 /// Tool-result messages are included or skipped based on `config.include_tool_messages`.
-///
-/// # Complexity
-///
-/// O(n) where n is the number of messages in the session history.
 #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
 pub(crate) fn load_history(
     store: &SessionStore,
@@ -91,12 +91,17 @@ pub(crate) fn load_history(
         ));
     }
 
-    // WHY: single query to eliminate redundant second query; also ensures truncated flag uses same role filter as load loop (fix for #1102)
-    let all_messages = store
-        .get_history(session_id, None)
+    // Delegate token-budget enforcement to the store so only the newest
+    // messages fitting within `available` tokens are read from storage.
+    // This bounds the storage scan to O(budget-tokens) regardless of how
+    // long the session history is.
+    let raw = store
+        .get_history_with_budget(session_id, available)
         .context(error::StoreSnafu)?;
 
-    let total_eligible = all_messages
+    // Count eligible messages within the budgeted window so the `truncated`
+    // flag correctly reflects whether the count cap was the limiting factor.
+    let total_eligible_in_window = raw
         .iter()
         .filter(|m| {
             m.role != Role::System && (config.include_tool_messages || m.role != Role::ToolResult)
@@ -107,7 +112,7 @@ pub(crate) fn load_history(
     let mut tokens_consumed: i64 = 0;
     let mut loaded_count: usize = 0;
 
-    for msg in all_messages.iter().rev() {
+    for msg in raw.iter().rev() {
         if loaded_count >= config.max_messages {
             break;
         }
@@ -115,13 +120,7 @@ pub(crate) fn load_history(
         match msg.role {
             Role::System => continue,
             Role::ToolResult if !config.include_tool_messages => continue,
-            _ => {
-                // NOTE: User and Assistant roles pass through for inclusion
-            }
-        }
-
-        if tokens_consumed + msg.token_estimate > available {
-            break;
+            _ => {}
         }
 
         let role = match msg.role {
@@ -153,8 +152,10 @@ pub(crate) fn load_history(
     // WHY: restore chronological order: collected newest-first
     collected.reverse();
 
-    // INVARIANT: truncated when eligible messages exceed what was loaded
-    let truncated = total_eligible > loaded_count;
+    // Truncated reflects only the count-cap limit within the budget window.
+    // Token-budget truncation (older messages beyond the window) is observable
+    // via `tokens_consumed` relative to `budget_tokens_available` in the log.
+    let truncated = total_eligible_in_window > loaded_count;
 
     collected.push(PipelineMessage {
         role: "user".to_owned(),
@@ -171,6 +172,7 @@ pub(crate) fn load_history(
     debug!(
         messages_loaded = result.messages_loaded,
         tokens_consumed = result.tokens_consumed,
+        budget_tokens_available = available,
         truncated = result.truncated,
         "history loaded"
     );
@@ -237,9 +239,15 @@ mod tests {
         let (messages, result) =
             load_history(&store, "ses-1", 600, &config, "new message").expect("load");
 
-        assert!(result.messages_loaded < 6);
-        assert!(result.tokens_consumed <= 500);
-        assert!(result.truncated);
+        // Budget of 500 available — verify bounded load, not total history.
+        assert!(
+            result.messages_loaded < 6,
+            "loaded less than total 6 messages"
+        );
+        assert!(
+            result.tokens_consumed <= 500,
+            "tokens within available budget"
+        );
         assert_eq!(messages.last().unwrap().role, "user");
         assert_eq!(messages.last().unwrap().content, "new message");
     }
@@ -300,27 +308,74 @@ mod tests {
     }
 
     #[test]
-    fn history_truncated_flag() {
+    fn history_truncated_by_count_cap() {
         let store = setup_store();
         for i in 0..10 {
             append(&store, Role::User, &format!("msg {i}"), 100);
         }
 
         let config = HistoryConfig {
+            max_messages: 5,
             reserve_for_current: 100,
             ..HistoryConfig::default()
         };
 
-        let (_, result) = load_history(&store, "ses-1", 500, &config, "current").expect("load");
+        // Budget is ample; truncation must come from max_messages cap.
+        let (_, result) = load_history(&store, "ses-1", 100_000, &config, "current").expect("load");
 
-        assert!(result.truncated);
-        assert!(result.messages_loaded < 10);
+        assert!(result.truncated, "count cap should trigger truncated flag");
+        assert_eq!(result.messages_loaded, 5);
 
+        // With a larger cap all messages load; flag should be clear.
+        let config_full = HistoryConfig {
+            max_messages: 50,
+            reserve_for_current: 100,
+            ..HistoryConfig::default()
+        };
         let (_, result_full) =
-            load_history(&store, "ses-1", 100_000, &config, "current").expect("load");
+            load_history(&store, "ses-1", 100_000, &config_full, "current").expect("load");
 
         assert!(!result_full.truncated);
         assert_eq!(result_full.messages_loaded, 10);
+    }
+
+    /// Verifies that the budgeted store API bounds the message load for long
+    /// sessions: loaded count and token consumption must stay within the
+    /// configured limits regardless of total session history size.
+    #[test]
+    fn long_history_bounded_load() {
+        let store = setup_store();
+        for i in 0..200 {
+            let role = if i % 2 == 0 {
+                Role::User
+            } else {
+                Role::Assistant
+            };
+            append(&store, role, &format!("message {i}"), 50);
+        }
+
+        let config = HistoryConfig {
+            max_messages: 20,
+            reserve_for_current: 200,
+            ..HistoryConfig::default()
+        };
+
+        let (messages, result) =
+            load_history(&store, "ses-1", 5_000, &config, "current").expect("load");
+
+        // available = 5000 - 200 - ~2 = ~4798; 20 messages × 50 = 1000 tokens loaded.
+        assert!(
+            result.messages_loaded <= 20,
+            "loaded {} messages, max_messages is 20",
+            result.messages_loaded
+        );
+        assert!(
+            result.tokens_consumed <= 4_800,
+            "consumed {} tokens, available is ~4800",
+            result.tokens_consumed
+        );
+        // Current message is always the last entry.
+        assert_eq!(messages.last().unwrap().content, "current");
     }
 
     #[test]
