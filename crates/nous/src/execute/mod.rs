@@ -21,11 +21,12 @@ use hermeneus::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
     ThinkingConfig, ToolResultContent,
 };
-use koina::id::ToolName;
 use organon::registry::ToolRegistry;
-use organon::types::{ToolContext, ToolGroupPolicy, ToolInput};
+use organon::types::ToolContext;
 
-use self::dispatch::{DispatchResult, build_messages, classify_signals, dispatch_tools};
+use self::dispatch::{
+    DispatchResult, ToolDispatchPolicy, build_messages, classify_signals, dispatch_tools,
+};
 use self::resolve::{
     process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
     resolve_turn_model,
@@ -38,51 +39,6 @@ use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult, ToolResult
 use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
-
-fn apply_tool_group_policy(
-    tool_uses: Vec<(String, String, serde_json::Value)>,
-    tools: &ToolRegistry,
-    policy: &ToolGroupPolicy,
-    denied_blocks: &mut Vec<ContentBlock>,
-) -> Vec<(String, String, serde_json::Value)> {
-    let mut allowed = Vec::with_capacity(tool_uses.len());
-    for (id, name, input) in tool_uses {
-        let denial = match ToolName::new(name.as_str()) {
-            Ok(tool_name) => {
-                let tool_input = ToolInput {
-                    name: tool_name,
-                    tool_use_id: id.clone(),
-                    arguments: input.clone(),
-                };
-                match tools.permits_call(&tool_input, policy) {
-                    Ok(true) => None,
-                    Ok(false) => Some(format!(
-                        "Tool '{name}' is not in your allowed tool groups. Policy: {}",
-                        policy.description()
-                    )),
-                    Err(e) => Some(format!("Tool '{name}' call rejected by group policy: {e}")),
-                }
-            }
-            Err(_err) => Some(format!("Invalid tool name: {name}")),
-        };
-
-        if let Some(message) = denial {
-            warn!(
-                tool = %name,
-                tool_use_id = %id,
-                "tool call denied by group policy"
-            );
-            denied_blocks.push(ContentBlock::ToolResult {
-                tool_use_id: id,
-                content: ToolResultContent::Text(message),
-                is_error: Some(true),
-            });
-        } else {
-            allowed.push((id, name, input));
-        }
-    }
-    allowed
-}
 
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
@@ -195,16 +151,12 @@ async fn execute_with_dispatch(
         }
 
         let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
-        #[cfg(feature = "deferred-schemas")]
-        let mut tool_defs =
-            tools.to_hermeneus_tools_summaries_filtered_for_policy(&active, &config.tool_groups);
-        #[cfg(not(feature = "deferred-schemas"))]
-        let mut tool_defs =
-            tools.to_hermeneus_tools_filtered_for_policy(&active, &config.tool_groups);
-
-        if let Some(allowlist) = &config.tool_allowlist {
-            tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
-        }
+        let dispatch_policy = ToolDispatchPolicy::new(
+            config.tool_allowlist.as_deref(),
+            &config.tool_groups,
+            Arc::clone(&active),
+        );
+        let tool_defs = dispatch_policy.tool_definitions(tools);
 
         let tool_count = tool_defs.len();
         let bytes_serialized = serde_json::to_string(&tool_defs).map_or(0, |s| s.len());
@@ -321,35 +273,12 @@ async fn execute_with_dispatch(
             cache_breakpoint: false,
         });
 
-        // WHY: belt-and-suspenders enforcement of role tool restrictions at execution time,
-        // in addition to the presentation-level filtering above
-        let effective_tool_uses: Vec<_> = if let Some(allowlist) = &config.tool_allowlist {
-            let (allowed, denied): (Vec<_>, Vec<_>) = extracted
-                .tool_uses
-                .into_iter()
-                .partition(|(_, name, _)| allowlist.iter().any(|a| a == name));
-
-            for (id, name, _) in &denied {
-                warn!(tool = %name, tool_use_id = %id, "tool call denied by role policy");
-                denied_blocks.push(ContentBlock::ToolResult {
-                    tool_use_id: id.clone(),
-                    content: ToolResultContent::Text(format!(
-                        "Tool '{name}' is not available for this role. Available tools: {}",
-                        allowlist.join(", ")
-                    )),
-                    is_error: Some(true),
-                });
-            }
-
-            allowed
-        } else {
-            extracted.tool_uses
-        };
-
-        let effective_tool_uses = apply_tool_group_policy(
-            effective_tool_uses,
+        let effective_tool_uses = dispatch_policy.filter_tool_uses(
+            extracted.tool_uses,
             tools,
-            &config.tool_groups,
+            tool_ctx,
+            stream_tx,
+            &mut all_tool_calls,
             &mut denied_blocks,
         );
 
@@ -396,6 +325,7 @@ async fn execute_with_dispatch(
             iterations,
             stream_tx,
             approval_gate,
+            &dispatch_policy,
             config.limits.max_tool_result_bytes,
             Some(&session.receipt_signer),
             Some(&*session.receipt_ledger),
@@ -562,11 +492,6 @@ pub async fn execute_streaming(
             budget_tokens: config.generation.thinking_budget,
         });
 
-    let mut tool_defs = tools.to_hermeneus_tools_for_policy(&config.tool_groups);
-    if let Some(allowlist) = &config.tool_allowlist {
-        tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
-    }
-
     // WHY: hoist config server_tools Vec into Arc once per turn (#3389).
     let config_server_tools: Arc<Vec<ServerToolDefinition>> = Arc::new(config.server_tools.clone());
 
@@ -587,7 +512,13 @@ pub async fn execute_streaming(
 
         // WHY: derive server tools on each iteration so enable_tool activations take effect.
         // resolve_active_server_tools reuses the hoisted Arc when no dynamic changes occurred.
-        let (_active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
+        let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
+        let dispatch_policy = ToolDispatchPolicy::new(
+            config.tool_allowlist.as_deref(),
+            &config.tool_groups,
+            Arc::clone(&active),
+        );
+        let tool_defs = dispatch_policy.tool_definitions(tools);
 
         let request = CompletionRequest {
             model: turn_model.clone(),
@@ -679,34 +610,12 @@ pub async fn execute_streaming(
             cache_breakpoint: false,
         });
 
-        // WHY: belt-and-suspenders enforcement of role tool restrictions at execution time
-        let effective_tool_uses: Vec<_> = if let Some(allowlist) = &config.tool_allowlist {
-            let (allowed, denied): (Vec<_>, Vec<_>) = extracted
-                .tool_uses
-                .into_iter()
-                .partition(|(_, name, _)| allowlist.iter().any(|a| a == name));
-
-            for (id, name, _) in &denied {
-                warn!(tool = %name, tool_use_id = %id, "tool call denied by role policy");
-                denied_blocks.push(ContentBlock::ToolResult {
-                    tool_use_id: id.clone(),
-                    content: ToolResultContent::Text(format!(
-                        "Tool '{name}' is not available for this role. Available tools: {}",
-                        allowlist.join(", ")
-                    )),
-                    is_error: Some(true),
-                });
-            }
-
-            allowed
-        } else {
-            extracted.tool_uses
-        };
-
-        let effective_tool_uses = apply_tool_group_policy(
-            effective_tool_uses,
+        let effective_tool_uses = dispatch_policy.filter_tool_uses(
+            extracted.tool_uses,
             tools,
-            &config.tool_groups,
+            tool_ctx,
+            Some(stream_tx),
+            &mut all_tool_calls,
             &mut denied_blocks,
         );
 
@@ -752,6 +661,7 @@ pub async fn execute_streaming(
             iterations,
             Some(stream_tx),
             approval_gate,
+            &dispatch_policy,
             config.limits.max_tool_result_bytes,
             Some(&session.receipt_signer),
             Some(&*session.receipt_ledger),

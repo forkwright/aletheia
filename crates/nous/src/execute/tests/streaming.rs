@@ -1,8 +1,46 @@
 //! Streaming execute tests.
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+
+use hermeneus::provider::LlmProvider;
 
 use super::*;
 use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
+
+struct StreamingMockProvider {
+    inner: MockProvider,
+}
+
+impl StreamingMockProvider {
+    fn with_responses(responses: Vec<CompletionResponse>) -> Self {
+        Self {
+            inner: MockProvider::with_responses(responses).models(&["test-model"]),
+        }
+    }
+}
+
+impl LlmProvider for StreamingMockProvider {
+    fn complete<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.inner.complete(request)
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        self.inner.supported_models()
+    }
+
+    fn name(&self) -> &'static str {
+        "streaming-test"
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+}
 
 #[tokio::test]
 async fn streaming_falls_back_to_non_streaming_for_mock() {
@@ -101,6 +139,79 @@ async fn streaming_tool_events_emitted() {
         tool_result_count, 1,
         "fallback dispatch should emit the same ToolResult event as streaming dispatch"
     );
+}
+
+#[tokio::test]
+async fn streaming_denies_unadvertised_lazy_tool_before_execution() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(StreamingMockProvider::with_responses(vec![
+        make_tool_response("lazy_exec", "toolu_1", serde_json::json!({"input": "test"})),
+        make_text_response("Done!"),
+    ])));
+
+    let executions = Arc::new(AtomicUsize::new(0));
+    let mut def = make_tool_def("lazy_exec");
+    def.auto_activate = false;
+    let mut tools = ToolRegistry::new();
+    tools
+        .register(
+            def,
+            Box::new(CountingExecutor::new(Arc::clone(&executions))),
+        )
+        .expect("register");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+    let result = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming");
+
+    assert_eq!(result.content, "Done!");
+    assert_eq!(
+        executions.load(Ordering::SeqCst),
+        0,
+        "streaming lazy denial must not run executor"
+    );
+    assert_eq!(result.tool_calls.len(), 1);
+    let call = result
+        .tool_calls
+        .first()
+        .expect("tool call should be recorded");
+    assert!(call.is_error);
+    assert!(
+        call.result
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not active")
+    );
+
+    drop(tx);
+    let mut tool_start = 0;
+    let mut tool_result = 0;
+    while let Ok(event) = rx.try_recv() {
+        match event {
+            TurnStreamEvent::ToolStart { .. } => tool_start += 1,
+            TurnStreamEvent::ToolResult {
+                result, is_error, ..
+            } => {
+                tool_result += 1;
+                assert!(is_error);
+                assert!(result.contains("not active"));
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(tool_start, 0, "inactive lazy tool must not start");
+    assert_eq!(tool_result, 1, "inactive lazy denial must emit one result");
 }
 
 #[tokio::test]

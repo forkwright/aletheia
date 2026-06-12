@@ -4,6 +4,7 @@
     reason = "test: vec indices are valid after asserting len"
 )]
 //! Core execute loop tests.
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use hermeneus::error as llm_error;
@@ -360,6 +361,58 @@ async fn single_tool_iteration() {
 }
 
 #[tokio::test]
+async fn unadvertised_lazy_tool_is_denied_before_execution() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("lazy_exec", "toolu_1", serde_json::json!({"input": "test"})),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    ));
+
+    let executions = Arc::new(AtomicUsize::new(0));
+    let mut def = make_tool_def("lazy_exec");
+    def.auto_activate = false;
+    let mut tools = ToolRegistry::new();
+    tools
+        .register(
+            def,
+            Box::new(CountingExecutor::new(Arc::clone(&executions))),
+        )
+        .expect("register");
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    assert_eq!(result.content, "Done!");
+    assert_eq!(
+        executions.load(Ordering::SeqCst),
+        0,
+        "unadvertised lazy tool executor must not run"
+    );
+    assert_eq!(result.tool_calls.len(), 1);
+    assert!(result.tool_calls[0].is_error);
+    assert!(
+        result.tool_calls[0]
+            .result
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not active"),
+        "lazy denial should be recorded in tool history"
+    );
+}
+
+#[tokio::test]
 async fn deny_all_tool_policy_blocks_tool_dispatch() {
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(
@@ -387,9 +440,15 @@ async fn deny_all_tool_policy_blocks_tool_dispatch() {
     .expect("execute");
 
     assert_eq!(result.content, "Done!");
+    assert_eq!(result.tool_calls.len(), 1);
+    assert!(result.tool_calls[0].is_error);
     assert!(
-        result.tool_calls.is_empty(),
-        "deny-all policy should block dispatch before execution"
+        result.tool_calls[0]
+            .result
+            .as_deref()
+            .unwrap_or_default()
+            .contains("allowed tool groups"),
+        "deny-all policy should be recorded as a dispatch denial"
     );
 }
 
@@ -427,9 +486,15 @@ async fn empty_tool_def_groups_are_blocked_before_dispatch() {
     .expect("execute");
 
     assert_eq!(result.content, "Done!");
+    assert_eq!(result.tool_calls.len(), 1);
+    assert!(result.tool_calls[0].is_error);
     assert!(
-        result.tool_calls.is_empty(),
-        "tools with empty group metadata should not dispatch under group policy"
+        result.tool_calls[0]
+            .result
+            .as_deref()
+            .unwrap_or_default()
+            .contains("allowed tool groups"),
+        "group policy denial should be recorded in tool history"
     );
 }
 

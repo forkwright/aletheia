@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
 use hermeneus::provider::ProviderRegistry;
@@ -44,6 +45,32 @@ impl ToolExecutor for ErrorExecutor {
         _ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async { Ok(ToolResult::error("tool failed")) })
+    }
+}
+
+struct CountingExecutor {
+    executions: Arc<AtomicUsize>,
+}
+
+impl CountingExecutor {
+    fn new(executions: Arc<AtomicUsize>) -> Self {
+        Self { executions }
+    }
+}
+
+impl ToolExecutor for CountingExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async {
+            self.executions.fetch_add(1, Ordering::SeqCst);
+            Ok(ToolResult::text(format!(
+                "executed: {}",
+                input.name.as_str()
+            )))
+        })
     }
 }
 
@@ -146,7 +173,7 @@ fn make_tool_def(name: &str) -> ToolDef {
         },
         category: ToolCategory::Workspace,
         reversibility: organon::types::Reversibility::FullyReversible,
-        auto_activate: false,
+        auto_activate: true,
         groups: vec![organon::types::ToolGroupId::Read],
         tags: vec![],
     }

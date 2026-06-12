@@ -1,18 +1,20 @@
 // kanon:ignore RUST/file-too-long — provider dispatch loop; extraction into submodules tracked in #3752
 //! Dispatch helpers: tool execution, signal classification, message conversion.
 
+use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use tracing::{debug, warn};
 
 use tokio::sync::mpsc;
 
 use hermeneus::secret::substitute_in_json;
-use hermeneus::types::{ContentBlock, ToolResultBlock, ToolResultContent};
+use hermeneus::types::{ContentBlock, ToolDefinition, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
 use organon::registry::ToolRegistry;
-use organon::types::{ApprovalRequirement, ToolContext, ToolInput};
+use organon::types::{ApprovalRequirement, ToolContext, ToolGroupPolicy, ToolInput};
 
 use crate::approval::{ApprovalChoice, ApprovalGate};
 use crate::error;
@@ -25,6 +27,180 @@ pub(super) struct DispatchResult {
     pub blocks: Vec<ContentBlock>,
     /// Loop warning message to inject into conversation, if detected.
     pub loop_warning: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ToolDispatchPolicy {
+    allowlist: Option<Vec<String>>,
+    group_policy: ToolGroupPolicy,
+    active_tools: Arc<HashSet<ToolName>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ToolPolicyDenial {
+    Allowlist { available: String },
+    Group { message: String },
+    Inactive,
+}
+
+impl ToolPolicyDenial {
+    fn message(&self, tool_name: &str) -> String {
+        match self {
+            Self::Allowlist { available } => {
+                format!(
+                    "Tool '{tool_name}' is not available for this role. Available tools: {available}"
+                )
+            }
+            Self::Group { message } => message.clone(),
+            Self::Inactive => {
+                format!(
+                    "Tool '{tool_name}' is not active for this turn. Use enable_tool before calling it."
+                )
+            }
+        }
+    }
+
+    const fn log_reason(&self) -> &'static str {
+        match self {
+            Self::Allowlist { .. } => "role policy",
+            Self::Group { .. } => "group policy",
+            Self::Inactive => "activation policy",
+        }
+    }
+}
+
+impl ToolDispatchPolicy {
+    pub(super) fn new(
+        allowlist: Option<&[String]>,
+        group_policy: &ToolGroupPolicy,
+        active_tools: Arc<HashSet<ToolName>>,
+    ) -> Self {
+        Self {
+            allowlist: allowlist.map(<[String]>::to_vec),
+            group_policy: group_policy.clone(),
+            active_tools,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn allow_all_for_tests() -> Self {
+        Self {
+            allowlist: None,
+            group_policy: ToolGroupPolicy::AllowAll {
+                reason: "execute test helper".to_owned(),
+            },
+            active_tools: Arc::new(HashSet::new()),
+        }
+    }
+
+    pub(super) fn tool_definitions(&self, tools: &ToolRegistry) -> Vec<ToolDefinition> {
+        #[cfg(feature = "deferred-schemas")]
+        let mut tool_defs = tools.to_hermeneus_tools_summaries_filtered_for_policy(
+            &self.active_tools,
+            &self.group_policy,
+        );
+        #[cfg(not(feature = "deferred-schemas"))]
+        let mut tool_defs =
+            tools.to_hermeneus_tools_filtered_for_policy(&self.active_tools, &self.group_policy);
+
+        if let Some(allowlist) = &self.allowlist {
+            tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
+        }
+
+        tool_defs
+    }
+
+    pub(super) fn filter_tool_uses(
+        &self,
+        tool_uses: Vec<(String, String, serde_json::Value)>,
+        tools: &ToolRegistry,
+        tool_ctx: &ToolContext,
+        stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+        all_tool_calls: &mut Vec<ToolCall>,
+        denied_blocks: &mut Vec<ContentBlock>,
+    ) -> Vec<(String, String, serde_json::Value)> {
+        let mut allowed = Vec::with_capacity(tool_uses.len());
+        for (id, name, input) in tool_uses {
+            if let Some(denial) = self.denial_for(tools, &id, &name, &input) {
+                warn!(
+                    tool = %name,
+                    tool_use_id = %id,
+                    reason = denial.log_reason(),
+                    "tool call denied by dispatch policy"
+                );
+                record_denied_call(
+                    all_tool_calls,
+                    denied_blocks,
+                    stream_tx,
+                    tool_ctx,
+                    DeniedToolCall {
+                        id: &id,
+                        name: &name,
+                        input: &input,
+                        message: denial.message(&name),
+                    },
+                );
+            } else {
+                allowed.push((id, name, input));
+            }
+        }
+        allowed
+    }
+
+    fn denial_for(
+        &self,
+        tools: &ToolRegistry,
+        tool_id: &str,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+    ) -> Option<ToolPolicyDenial> {
+        if let Some(allowlist) = &self.allowlist
+            && !allowlist.iter().any(|allowed| allowed == tool_name)
+        {
+            return Some(ToolPolicyDenial::Allowlist {
+                available: allowlist.join(", "),
+            });
+        }
+
+        let Ok(tool_name_id) = ToolName::new(tool_name) else {
+            return Some(ToolPolicyDenial::Group {
+                message: format!("Invalid tool name: {tool_name}"),
+            });
+        };
+
+        let call_input = ToolInput {
+            name: tool_name_id.clone(),
+            tool_use_id: tool_id.to_owned(),
+            arguments: tool_input.clone(),
+        };
+        match tools.permits_call(&call_input, &self.group_policy) {
+            Ok(true) => {}
+            Ok(false) => {
+                return Some(ToolPolicyDenial::Group {
+                    message: format!(
+                        "Tool '{tool_name}' is not in your allowed tool groups. Policy: {}",
+                        self.group_policy.description()
+                    ),
+                });
+            }
+            Err(e) => {
+                return Some(ToolPolicyDenial::Group {
+                    message: format!("Tool '{tool_name}' call rejected by group policy: {e}"),
+                });
+            }
+        }
+
+        let def = tools.get_def(&tool_name_id)?;
+
+        if !def.auto_activate
+            && !self.active_tools.contains(&def.name)
+            && def.name.as_str() != "enable_tool"
+        {
+            return Some(ToolPolicyDenial::Inactive);
+        }
+
+        None
+    }
 }
 
 fn approval_risk(approval: ApprovalRequirement) -> &'static str {
@@ -104,43 +280,47 @@ fn emit_approval_resolved(
     }
 }
 
-/// Record a user-denied tool call: append a synthetic `ToolResult` block for the
+/// Record a denied tool call: append a synthetic `ToolResult` block for the
 /// model, push it on `all_tool_calls` for observability, and emit a `ToolResult`
 /// stream event so the frontend records the denial outcome.
+struct DeniedToolCall<'a> {
+    id: &'a str,
+    name: &'a str,
+    input: &'a serde_json::Value,
+    message: String,
+}
+
 fn record_denied_call(
     all_tool_calls: &mut Vec<ToolCall>,
     tool_results: &mut Vec<ContentBlock>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
-    tool_id: &str,
-    tool_name: &str,
-    tool_input: &serde_json::Value,
+    denied: DeniedToolCall<'_>,
 ) {
-    let denial = format!("Tool '{tool_name}' execution denied by user.");
     all_tool_calls.push(ToolCall {
-        id: tool_id.to_owned(),
-        name: tool_name.to_owned(),
-        input: tool_input.clone(),
-        result: Some(denial.clone()),
+        id: denied.id.to_owned(),
+        name: denied.name.to_owned(),
+        input: denied.input.clone(),
+        result: Some(denied.message.clone()),
         is_error: true,
         duration_ms: 0,
         receipt: None,
     });
     tool_results.push(ContentBlock::ToolResult {
-        tool_use_id: tool_id.to_owned(),
-        content: ToolResultContent::Text(denial.clone()),
+        tool_use_id: denied.id.to_owned(),
+        content: ToolResultContent::Text(denied.message.clone()),
         is_error: Some(true),
     });
     if let Some(stream_tx) = stream_tx
         && let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
-            tool_id: tool_id.to_owned(),
-            tool_name: tool_name.to_owned(),
-            result: denial,
+            tool_id: denied.id.to_owned(),
+            tool_name: denied.name.to_owned(),
+            result: denied.message,
             is_error: true,
             duration_ms: 0,
         })
     {
-        record_stream_send_error(tool_ctx, tool_name, "denied_tool_result", &e);
+        record_stream_send_error(tool_ctx, denied.name, "denied_tool_result", &e);
     }
 }
 
@@ -569,6 +749,7 @@ pub(super) async fn dispatch_tools(
     iterations: u32,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     approval_gate: Option<&ApprovalGate>,
+    policy: &ToolDispatchPolicy,
     max_tool_result_bytes: u32,
     receipt_signer: Option<&organon::receipts::ReceiptSigner>,
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
@@ -576,6 +757,28 @@ pub(super) async fn dispatch_tools(
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
     for (tool_id, tool_name, tool_input) in tool_uses {
+        if let Some(denial) = policy.denial_for(tools, tool_id, tool_name, tool_input) {
+            warn!(
+                tool = %tool_name,
+                tool_id = %tool_id,
+                reason = denial.log_reason(),
+                "tool call denied by dispatch policy"
+            );
+            record_denied_call(
+                all_tool_calls,
+                &mut tool_results,
+                stream_tx,
+                tool_ctx,
+                DeniedToolCall {
+                    id: tool_id,
+                    name: tool_name,
+                    input: tool_input,
+                    message: denial.message(tool_name),
+                },
+            );
+            continue;
+        }
+
         let tool_name_id = ToolName::new(tool_name.as_str()).map_err(|_err| {
             error::PipelineStageSnafu {
                 stage: "execute",
@@ -687,9 +890,12 @@ pub(super) async fn dispatch_tools(
                         &mut tool_results,
                         stream_tx,
                         tool_ctx,
-                        tool_id,
-                        tool_name,
-                        tool_input,
+                        DeniedToolCall {
+                            id: tool_id,
+                            name: tool_name,
+                            input: tool_input,
+                            message: format!("Tool '{tool_name}' execution denied by user."),
+                        },
                     );
                     continue;
                 }
