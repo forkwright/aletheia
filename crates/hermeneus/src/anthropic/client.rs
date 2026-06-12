@@ -17,14 +17,15 @@ use koina::secret::SecretString;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{
-    DeploymentTarget, LlmProvider, ModelPricing, PromptCacheMode, ProviderConfig, leak_models,
+    DeploymentTarget, LlmProvider, MatchKind, ModelPricing, PromptCacheMode, ProviderConfig,
+    leak_models,
 };
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
 use super::wire::WireRequest;
 
-use crate::models::{DEFAULT_API_VERSION, DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES, SUPPORTED_MODELS};
+use crate::models::{DEFAULT_API_VERSION, DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES};
 
 use super::pricing::{backoff_delay, estimate_cost_with_cache};
 
@@ -66,6 +67,8 @@ pub struct AnthropicProvider {
     /// catalog by default; an operator-declared compatible endpoint claims
     /// exactly its configured model list instead.
     model_refs: &'static [&'static str],
+    /// Whether `model_refs` came from operator configuration.
+    has_operator_model_refs: bool,
     /// Where this instance's traffic terminates, for the recall
     /// sensitivity filter (#3404, #3413).
     deployment_target: DeploymentTarget,
@@ -106,7 +109,7 @@ fn instance_name(config: &ProviderConfig) -> String {
 /// for compatible endpoints, or the first-party catalog when unset.
 fn model_refs(config: &ProviderConfig) -> &'static [&'static str] {
     if config.models.is_empty() {
-        SUPPORTED_MODELS
+        koina::models::provider_models(koina::models::ModelProvider::Anthropic)
     } else {
         leak_models(&config.models)
     }
@@ -210,6 +213,7 @@ impl AnthropicProvider {
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
             model_refs: model_refs(config),
+            has_operator_model_refs: !config.models.is_empty(),
             deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
@@ -266,6 +270,7 @@ impl AnthropicProvider {
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
             model_refs: model_refs(config),
+            has_operator_model_refs: !config.models.is_empty(),
             deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
@@ -1002,6 +1007,20 @@ impl LlmProvider for AnthropicProvider {
 
     fn supported_models(&self) -> &[&str] {
         self.model_refs
+    }
+
+    fn supports_model(&self, model: &str) -> bool {
+        self.match_specificity(model).is_some()
+    }
+
+    fn match_specificity(&self, model: &str) -> Option<MatchKind> {
+        if self.has_operator_model_refs && self.model_refs.contains(&model) {
+            Some(MatchKind::Exact)
+        } else if model.starts_with("claude-") {
+            Some(MatchKind::CatchAll)
+        } else {
+            None
+        }
     }
 
     fn name(&self) -> &str {

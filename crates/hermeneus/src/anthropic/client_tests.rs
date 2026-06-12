@@ -14,7 +14,7 @@ use super::*;
 use crate::anthropic::pricing::{backoff_delay, estimate_cost, model_family};
 use crate::error::Error;
 use crate::models::BACKOFF_MAX_MS;
-use crate::provider::{DeploymentTarget, LlmProvider, ProviderConfig};
+use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ProviderConfig};
 use crate::types::{CompletionRequest, Content, Message, Role};
 
 fn test_config_with(base_url: &str) -> ProviderConfig {
@@ -120,9 +120,14 @@ fn from_config_custom_models_claim_routing() {
     assert_eq!(provider.name(), "kimi-coding");
     assert_eq!(provider.supported_models(), ["kimi-for-coding"]);
     assert!(provider.supports_model("kimi-for-coding"));
-    assert!(
-        !provider.supports_model("claude-opus-4-6"),
-        "custom-model instance must not claim first-party models"
+    assert_eq!(
+        provider.match_specificity("kimi-for-coding"),
+        Some(MatchKind::Exact)
+    );
+    assert_eq!(
+        provider.match_specificity(koina::models::names::opus()),
+        Some(MatchKind::CatchAll),
+        "custom-model instance catches claude-* at lower precedence"
     );
 }
 
@@ -136,6 +141,15 @@ fn from_config_default_models_and_name_unchanged() {
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     assert_eq!(provider.name(), "anthropic");
     assert!(provider.supports_model("claude-opus-4-6"));
+    assert_eq!(
+        provider.match_specificity("claude-opus-4-6"),
+        Some(MatchKind::CatchAll)
+    );
+    assert_eq!(
+        provider.match_specificity("claude-future-family-model"),
+        Some(MatchKind::CatchAll)
+    );
+    assert_eq!(provider.match_specificity("kimi-for-coding"), None);
 }
 
 #[test]
@@ -514,7 +528,7 @@ fn estimate_cost_default_pricing_resolves_haiku() {
         "expected ~$6.00 for haiku from default pricing, got {cost}"
     );
 
-    for model in SUPPORTED_MODELS {
+    for model in koina::models::provider_models(koina::models::ModelProvider::Anthropic) {
         let c = estimate_cost(&pricing, model, 1000, 1000);
         assert!(
             c > 0.0,

@@ -24,9 +24,6 @@ use super::{parse, process};
 /// Model name prefix that routes requests to this provider.
 pub(crate) const CODEX_MODEL_PREFIX: &str = "codex/";
 
-/// Models Codex can route to. The CLI itself resolves aliases and availability.
-const SUPPORTED_MODELS: &[&str] = &["gpt-5-codex"];
-
 /// Configuration for the Codex subprocess provider.
 #[derive(Debug, Clone)]
 pub struct CodexProviderConfig {
@@ -42,7 +39,7 @@ impl Default for CodexProviderConfig {
     fn default() -> Self {
         Self {
             codex_binary: None,
-            default_model: "codex/gpt-5-codex".to_owned(),
+            default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_mins(5),
         }
     }
@@ -105,7 +102,7 @@ impl CodexProvider {
             .strip_prefix(CODEX_MODEL_PREFIX)
             .unwrap_or(selected);
         if stripped.is_empty() {
-            "gpt-5-codex"
+            koina::models::names::codex()
         } else {
             stripped
         }
@@ -271,7 +268,7 @@ impl LlmProvider for CodexProvider {
     }
 
     fn supported_models(&self) -> &[&str] {
-        SUPPORTED_MODELS
+        koina::models::provider_models(koina::models::ModelProvider::Codex)
     }
 
     fn supports_model(&self, model: &str) -> bool {
@@ -281,7 +278,7 @@ impl LlmProvider for CodexProvider {
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
         if model.starts_with(CODEX_MODEL_PREFIX) {
             Some(MatchKind::Prefix)
-        } else if SUPPORTED_MODELS.contains(&model) {
+        } else if self.supported_models().contains(&model) {
             Some(MatchKind::Exact)
         } else {
             None
@@ -495,22 +492,31 @@ mod tests {
     fn resolve_model_strips_prefix() {
         let provider = CodexProvider {
             codex_binary: PathBuf::from("codex"),
-            default_model: "codex/gpt-5-codex".to_owned(),
+            default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
         };
-        assert_eq!(provider.resolve_model("codex/gpt-5-codex"), "gpt-5-codex");
-        assert_eq!(provider.resolve_model(""), "gpt-5-codex");
+        assert_eq!(
+            provider.resolve_model(&format!(
+                "{CODEX_MODEL_PREFIX}{}",
+                koina::models::names::codex()
+            )),
+            koina::models::names::codex()
+        );
+        assert_eq!(provider.resolve_model(""), koina::models::names::codex());
     }
 
     #[test]
     fn supports_model_with_prefix() {
         let provider = CodexProvider {
             codex_binary: PathBuf::from("codex"),
-            default_model: "codex/gpt-5-codex".to_owned(),
+            default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
         };
-        assert!(provider.supports_model("codex/gpt-5-codex"));
-        assert!(provider.supports_model("gpt-5-codex"));
+        assert!(provider.supports_model(&format!(
+            "{CODEX_MODEL_PREFIX}{}",
+            koina::models::names::codex()
+        )));
+        assert!(provider.supports_model(koina::models::names::codex()));
         assert!(!provider.supports_model("claude-sonnet-4-6"));
     }
 
@@ -518,15 +524,18 @@ mod tests {
     fn match_specificity_prefers_prefix_and_exact() {
         let provider = CodexProvider {
             codex_binary: PathBuf::from("codex"),
-            default_model: "codex/gpt-5-codex".to_owned(),
+            default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
         };
         assert_eq!(
-            provider.match_specificity("codex/gpt-5-codex"),
+            provider.match_specificity(&format!(
+                "{CODEX_MODEL_PREFIX}{}",
+                koina::models::names::codex()
+            )),
             Some(MatchKind::Prefix)
         );
         assert_eq!(
-            provider.match_specificity("gpt-5-codex"),
+            provider.match_specificity(koina::models::names::codex()),
             Some(MatchKind::Exact)
         );
         assert_eq!(provider.match_specificity("claude-sonnet-4-6"), None);
@@ -536,7 +545,7 @@ mod tests {
     fn codex_provider_reports_cloud_deployment_target() {
         let provider = CodexProvider {
             codex_binary: PathBuf::from("codex"),
-            default_model: "codex/gpt-5-codex".to_owned(),
+            default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
@@ -546,7 +555,7 @@ mod tests {
     fn codex_provider_supports_streaming() {
         let provider = CodexProvider {
             codex_binary: PathBuf::from("codex"),
-            default_model: "codex/gpt-5-codex".to_owned(),
+            default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
         };
         assert!(
@@ -559,7 +568,7 @@ mod tests {
     fn seat_bridged_fields() {
         let provider = CodexProvider {
             codex_binary: PathBuf::from("/usr/local/bin/codex"),
-            default_model: "codex/gpt-5-codex".to_owned(),
+            default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(300),
         };
         assert_eq!(

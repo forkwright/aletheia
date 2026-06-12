@@ -119,6 +119,8 @@ pub struct AnthropicProvider {
     /// catalog by default; an operator-declared compatible endpoint claims
     /// exactly its configured model list instead.
     model_refs: &'static [&'static str],
+    /// Whether `model_refs` came from operator configuration.
+    has_operator_model_refs: bool,
     /// Where this instance's traffic terminates, for the recall
     /// sensitivity filter (#3404, #3413).
     deployment_target: DeploymentTarget,

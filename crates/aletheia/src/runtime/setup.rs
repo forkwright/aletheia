@@ -978,8 +978,10 @@ mod tests {
             "declarative Anthropic-protocol entry with its own key must register and claim its models"
         );
         assert!(
-            registry.find_provider("claude-opus-4-6").is_none(),
-            "custom-model instance must not claim first-party models"
+            registry
+                .find_provider(koina::models::names::opus())
+                .is_some(),
+            "custom-model instance must catch claude-* at lower precedence"
         );
     }
 
