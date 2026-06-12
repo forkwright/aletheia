@@ -2,7 +2,9 @@ use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, MessageRole, SessionStatus};
-use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval, validate_response};
+use crate::scenario::{
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval, validate_response,
+};
 use crate::sse;
 
 /// Create session → send message → get history → verify consistency
@@ -18,37 +20,43 @@ impl Scenario for SessionCreateSendHistory {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "session-lifecycle");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "session-lifecycle");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                let test_msg = "Canary session test message 12345";
-                let _ = client.send_message(&session.id, test_msg).await?;
-                let history = client.get_history(&session.id).await?;
+                    let test_msg = "Canary session test message 12345";
+                    let _ = client.send_message(&session.id, test_msg).await?;
+                    let history = client.get_history(&session.id).await?;
 
-                assert_eval(
-                    history.messages.len() >= 2,
-                    "History should have user + assistant",
-                )?;
-                let user_msg = history
-                    .messages
-                    .iter()
-                    .find(|m| m.role == MessageRole::User);
-                assert_eval(user_msg.is_some(), "History should contain a user message")?;
+                    assert_eval(
+                        history.messages.len() >= 2,
+                        "History should have user + assistant",
+                    )?;
+                    let user_msg = history
+                        .messages
+                        .iter()
+                        .find(|m| m.role == MessageRole::User);
+                    assert_eval(user_msg.is_some(), "History should contain a user message")?;
 
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -71,35 +79,41 @@ impl Scenario for SessionMultiTurnContext {
             requires_nous: true,
             expected_contains: Some("blue"),
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "session-context");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "session-context");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                let _ = client
-                    .send_message(&session.id, "My favorite color is blue.")
-                    .await?;
-                let _ = client
-                    .send_message(&session.id, "What is my favorite number? (You don't know)")
-                    .await?;
-                let events = client
-                    .send_message(&session.id, "What is my favorite color?")
-                    .await?;
-                let text = sse::extract_text(&events);
-                validate_response(&self.meta(), &text)?;
+                    let _ = client
+                        .send_message(&session.id, "My favorite color is blue.")
+                        .await?;
+                    let _ = client
+                        .send_message(&session.id, "What is my favorite number? (You don't know)")
+                        .await?;
+                    let events = client
+                        .send_message(&session.id, "What is my favorite color?")
+                        .await?;
+                    let text = sse::extract_text(&events);
+                    validate_response(&self.meta(), &text)?;
 
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -122,47 +136,53 @@ impl Scenario for SessionCloseReopenRestore {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "session-restore");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "session-restore");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                let _ = client
-                    .send_message(&session.id, "Session persistence test.")
-                    .await?;
-                client.close_session(&session.id).await?;
+                    let _ = client
+                        .send_message(&session.id, "Session persistence test.")
+                        .await?;
+                    client.close_session(&session.id).await?;
 
-                // Session should now be archived and retrievable
-                match client.get_session(&session.id).await {
-                    Ok(s) => {
-                        let is_archived = matches!(
-                            s.status,
-                            SessionStatus::Archived | SessionStatus::Unknown(_)
-                        );
-                        assert_eval(
-                            is_archived,
-                            format!("Closed session should be archived, got {:?}", s.status),
-                        )?;
+                    // Session should now be archived and retrievable
+                    match client.get_session(&session.id).await {
+                        Ok(s) => {
+                            let is_archived = matches!(
+                                s.status,
+                                SessionStatus::Archived | SessionStatus::Unknown(_)
+                            );
+                            assert_eval(
+                                is_archived,
+                                format!("Closed session should be archived, got {:?}", s.status),
+                            )?;
+                        }
+                        Err(crate::error::Error::UnexpectedStatus { status: 404, .. }) => {
+                            // Archived sessions may return 404, which is acceptable
+                        }
+                        Err(e) => return Err(e),
                     }
-                    Err(crate::error::Error::UnexpectedStatus { status: 404, .. }) => {
-                        // Archived sessions may return 404, which is acceptable
-                    }
-                    Err(e) => return Err(e),
+
+                    // kanon:ignore RUST/no-silent-result-swallow — session already closed in assertion above; best-effort cleanup
+                    let _ = client.close_session(&session.id).await;
+
+                    Ok(())
                 }
-
-                // kanon:ignore RUST/no-silent-result-swallow — session already closed in assertion above; best-effort cleanup
-                let _ = client.close_session(&session.id).await;
-
-                Ok(())
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -185,41 +205,47 @@ impl Scenario for SessionConcurrentOrdering {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "session-ordering");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "session-ordering");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                // Send messages in known order
-                let _ = client
-                    .send_message(&session.id, "First message: ALPHA")
-                    .await?;
-                let _ = client
-                    .send_message(&session.id, "Second message: BETA")
-                    .await?;
-                let _ = client
-                    .send_message(&session.id, "Third message: GAMMA")
-                    .await?;
+                    // Send messages in known order
+                    let _ = client
+                        .send_message(&session.id, "First message: ALPHA")
+                        .await?;
+                    let _ = client
+                        .send_message(&session.id, "Second message: BETA")
+                        .await?;
+                    let _ = client
+                        .send_message(&session.id, "Third message: GAMMA")
+                        .await?;
 
-                let history = client.get_history(&session.id).await?;
-                // Verify we have the expected number of messages
-                assert_eval(
-                    history.messages.len() >= 6,
-                    "Should have 6+ messages (3 user + 3 assistant)",
-                )?;
+                    let history = client.get_history(&session.id).await?;
+                    // Verify we have the expected number of messages
+                    assert_eval(
+                        history.messages.len() >= 6,
+                        "Should have 6+ messages (3 user + 3 assistant)",
+                    )?;
 
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -242,23 +268,26 @@ impl Scenario for SessionLargeContextDistillation {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "session-distillation");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "session-distillation");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                // Send several substantive messages to build context
-                for i in 1..=5 {
-                    let _ = client
+                    // Send several substantive messages to build context
+                    for i in 1..=5 {
+                        let _ = client
                         .send_message(
                             &session.id,
                             &format!(
@@ -269,20 +298,23 @@ impl Scenario for SessionLargeContextDistillation {
                             ),
                         )
                         .await?;
+                    }
+
+                    let events = client
+                        .send_message(&session.id, "Summarize what we've discussed.")
+                        .await?;
+                    let text = sse::extract_text(&events);
+                    assert_eval(
+                        !text.is_empty(),
+                        "Large context response should not be empty",
+                    )?;
+
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
                 }
-
-                let events = client
-                    .send_message(&session.id, "Summarize what we've discussed.")
-                    .await?;
-                let text = sse::extract_text(&events);
-                assert_eval(
-                    !text.is_empty(),
-                    "Large context response should not be empty",
-                )?;
-
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",

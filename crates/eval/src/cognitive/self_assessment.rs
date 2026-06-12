@@ -5,7 +5,10 @@ use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::EvalClient;
-use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
+use crate::scenario::{
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, ScenarioRunOutcome,
+    ScenarioSubResult, assert_eval,
+};
 use crate::sse;
 
 /// Structured self-assessment output from an agent.
@@ -62,6 +65,26 @@ pub(crate) fn validate_assessment(assessment: &SelfAssessment) -> bool {
         && assessment.improvement_areas.iter().all(|s| !s.is_empty())
 }
 
+fn assessment_sub_result(
+    sub_id: &'static str,
+    passed: bool,
+    criteria: &'static str,
+    violation_id: &'static str,
+) -> ScenarioSubResult {
+    ScenarioSubResult {
+        sub_id: sub_id.to_owned(),
+        classification: ScenarioClassification::Assertive,
+        passed,
+        criteria: Some(criteria.to_owned()),
+        response_excerpt: None,
+        violation_ids: if passed {
+            Vec::new()
+        } else {
+            vec![violation_id.to_owned()]
+        },
+    }
+}
+
 /// Scenario that requests a structured self-assessment from the agent.
 struct SelfAssessmentScenario;
 
@@ -75,12 +98,17 @@ impl Scenario for SelfAssessmentScenario {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
+                let mut sub_results = Vec::new();
+                let result: crate::error::Result<()> = async {
+
                 let nous_list = client.list_nous().await?;
                 let nous = nous_list
                     .first()
@@ -93,33 +121,56 @@ impl Scenario for SelfAssessmentScenario {
                     .await?;
                 let text = sse::extract_text(&events);
 
-                assert_eval(!text.is_empty(), "self-assessment response should not be empty")?;
+                let has_text = !text.is_empty();
+                sub_results.push(assessment_sub_result(
+                    "response-not-empty",
+                    has_text,
+                    "self-assessment response should not be empty",
+                    "empty_self_assessment_response",
+                ));
+                assert_eval(has_text, "self-assessment response should not be empty")?;
 
-                match parse_self_assessment(&text) {
-                    Some(assessment) => {
-                        tracing::info!(
-                            strengths = assessment.strengths.len(),
-                            weaknesses = assessment.weaknesses.len(),
-                            improvements = assessment.improvement_areas.len(),
-                            "self-assessment parsed"
-                        );
+                let assessment = parse_self_assessment(&text);
+                let parsed = assessment.is_some();
+                sub_results.push(assessment_sub_result(
+                    "json-parse",
+                    parsed,
+                    "self-assessment should parse as JSON",
+                    "self_assessment_parse_failed",
+                ));
+                let valid = assessment.as_ref().is_some_and(validate_assessment);
+                sub_results.push(assessment_sub_result(
+                    "json-structure",
+                    valid,
+                    "self-assessment should have non-empty strengths, weaknesses, and improvements",
+                    "self_assessment_invalid_structure",
+                ));
 
-                        assert_eval(
-                            validate_assessment(&assessment),
-                            "self-assessment should have non-empty strengths, weaknesses, and improvements",
-                        )?;
-                    }
-                    None => {
-                        tracing::warn!(
-                            response_len = text.len(),
-                            "failed to parse self-assessment JSON from response"
-                        );
-                    }
+                if let Some(assessment) = assessment {
+                    tracing::info!(
+                        strengths = assessment.strengths.len(),
+                        weaknesses = assessment.weaknesses.len(),
+                        improvements = assessment.improvement_areas.len(),
+                        "self-assessment parsed"
+                    );
+                } else {
+                    tracing::warn!(
+                        response_len = text.len(),
+                        "failed to parse self-assessment JSON from response"
+                    );
                 }
 
                 // kanon:ignore RUST/no-silent-result-swallow — session cleanup after self-assessment scenario
                 let _ = client.close_session(&session.id).await;
+                assert_eval(parsed, "self-assessment should parse as JSON")?;
+                assert_eval(
+                    valid,
+                    "self-assessment should have non-empty strengths, weaknesses, and improvements",
+                )?;
                 Ok(())
+
+            }.await;
+                ScenarioRunOutcome::from(result).with_sub_results(sub_results)
             }
             .instrument(tracing::info_span!(
                 "scenario",

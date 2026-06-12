@@ -3,7 +3,9 @@
 use tracing::Instrument;
 
 use crate::client::EvalClient;
-use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eq_eval};
+use crate::scenario::{
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eq_eval,
+};
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn scenarios() -> Vec<Box<dyn Scenario>> {
@@ -21,16 +23,29 @@ impl Scenario for AuthRejectsNoToken {
             requires_nous: false,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
-        Box::pin(async move {
+        Box::pin(
+            async move {
+                let result: crate::error::Result<()> = async {
+
             let body =
                 serde_json::json!({ "nous_id": "nonexistent", "session_key": "eval-auth-test" });
             let resp = client.raw_post("/api/v1/sessions", &body).await?;
             let status = resp.status().as_u16();
             assert_eq_eval(&status, &401, "expected 401 for unauthenticated request")
-        }.instrument(tracing::info_span!("scenario", id = "auth-rejects-no-token")))
+
+            }.await;
+                result.into()
+            }
+            .instrument(tracing::info_span!(
+                "scenario",
+                id = "auth-rejects-no-token"
+            )),
+        )
     }
 }
 
@@ -45,16 +60,22 @@ impl Scenario for AuthRejectsBadToken {
             requires_nous: false,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let resp = client
-                    .raw_get_with_token("/api/v1/nous", "invalid-garbage-token")
-                    .await?;
-                let status = resp.status().as_u16();
-                assert_eq_eval(&status, &401, "expected 401 for invalid token")
+                let result: crate::error::Result<()> = async {
+                    let resp = client
+                        .raw_get_with_token("/api/v1/nous", "invalid-garbage-token")
+                        .await?;
+                    let status = resp.status().as_u16();
+                    assert_eq_eval(&status, &401, "expected 401 for invalid token")
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",

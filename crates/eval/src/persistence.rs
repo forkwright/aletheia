@@ -8,6 +8,7 @@ use serde::Serialize;
 use snafu::ResultExt;
 
 use crate::error::{self, Result};
+use crate::provenance::EvalProvenance;
 use crate::runner::RunReport;
 use crate::scenario::ScenarioOutcome;
 use crate::tags::tag_eval_result;
@@ -17,6 +18,10 @@ use crate::tags::tag_eval_result;
 pub struct EvalRecord {
     /// ISO 8601 timestamp of when the evaluation was run.
     pub timestamp: String,
+    /// Stable identifier for the eval run.
+    pub eval_run_id: String,
+    /// Provenance envelope for the run.
+    pub provenance: EvalProvenance,
     /// Evaluation category (e.g., "health", "cognitive", "session").
     pub eval_type: String,
     // kanon:ignore RUST/primitive-for-domain-id — scenario_id for JSONL training data output, mirrors external scenario ids
@@ -31,12 +36,17 @@ pub struct EvalRecord {
     /// Error message or skip reason, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Structured sub-results for multi-probe scenarios.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub sub_results: Vec<crate::scenario::ScenarioSubResult>,
 }
 
 /// Convert a run report into evaluation records for JSONL output.
 #[must_use]
 pub fn records_from_report(report: &RunReport) -> Vec<EvalRecord> {
     let timestamp = now_iso8601();
+    let eval_run_id = report.provenance.eval_run_id.clone();
+    let provenance = report.provenance.clone();
 
     report
         .results
@@ -62,12 +72,15 @@ pub fn records_from_report(report: &RunReport) -> Vec<EvalRecord> {
 
             EvalRecord {
                 timestamp: timestamp.clone(),
+                eval_run_id: eval_run_id.clone(),
+                provenance: provenance.clone(),
                 eval_type: result.meta.category.to_owned(),
                 scenario_id: result.meta.id.to_owned(),
                 passed,
                 duration_ms,
                 outcome,
                 message,
+                sub_results: result.sub_results.clone(),
             }
         })
         .collect()
@@ -167,7 +180,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::scenario::{ScenarioMeta, ScenarioResult};
+    use crate::scenario::{ScenarioClassification, ScenarioMeta, ScenarioResult};
 
     fn sample_meta(id: &'static str, category: &'static str) -> ScenarioMeta {
         ScenarioMeta {
@@ -178,7 +191,12 @@ mod tests {
             requires_nous: false,
             expected_contains: None,
             expected_pattern: None,
+            classification: ScenarioClassification::Assertive,
         }
+    }
+
+    fn sample_provenance() -> EvalProvenance {
+        EvalProvenance::new("er-test", "http://localhost")
     }
 
     #[test]
@@ -193,7 +211,9 @@ mod tests {
                 outcome: ScenarioOutcome::Passed {
                     duration: Duration::from_millis(50),
                 },
+                sub_results: vec![],
             }],
+            provenance: sample_provenance(),
         };
         let records = records_from_report(&report);
         assert_eq!(records.len(), 1, "should produce one record");
@@ -204,6 +224,7 @@ mod tests {
             records[0].message.is_none(),
             "passed should have no message"
         );
+        assert_eq!(records[0].eval_run_id, "er-test");
     }
 
     #[test]
@@ -222,7 +243,9 @@ mod tests {
                     }
                     .build(),
                 },
+                sub_results: vec![],
             }],
+            provenance: sample_provenance(),
         };
         let records = records_from_report(&report);
         assert_eq!(records.len(), 1, "should produce one record");
@@ -243,7 +266,9 @@ mod tests {
                 outcome: ScenarioOutcome::Skipped {
                     reason: "no auth".to_owned(),
                 },
+                sub_results: vec![],
             }],
+            provenance: sample_provenance(),
         };
         let records = records_from_report(&report);
         assert_eq!(records.len(), 1, "should produce one record");
@@ -256,17 +281,24 @@ mod tests {
     fn eval_record_serializes_to_json() {
         let record = EvalRecord {
             timestamp: "1234567890".to_owned(),
+            eval_run_id: "er-1".to_owned(),
+            provenance: sample_provenance(),
             eval_type: "health".to_owned(),
             scenario_id: "health-ok".to_owned(),
             passed: true,
             duration_ms: 50,
             outcome: "passed".to_owned(),
             message: None,
+            sub_results: vec![],
         };
         let json = serde_json::to_string(&record).expect("should serialize");
         assert!(
             json.contains("health-ok"),
             "JSON should contain scenario ID"
+        );
+        assert!(
+            json.contains("eval_run_id"),
+            "JSON should contain eval_run_id"
         );
         assert!(!json.contains("message"), "None message should be skipped");
     }
@@ -275,17 +307,47 @@ mod tests {
     fn eval_record_with_message_serializes() {
         let record = EvalRecord {
             timestamp: "1234567890".to_owned(),
+            eval_run_id: "er-1".to_owned(),
+            provenance: sample_provenance(),
             eval_type: "cognitive".to_owned(),
             scenario_id: "test-fail".to_owned(),
             passed: false,
             duration_ms: 100,
             outcome: "failed".to_owned(),
             message: Some("assertion failed".to_owned()),
+            sub_results: vec![],
         };
         let json = serde_json::to_string(&record).expect("should serialize");
         assert!(
             json.contains("assertion failed"),
             "JSON should contain error message"
+        );
+    }
+
+    #[test]
+    fn eval_record_does_not_serialize_token() {
+        let provenance = EvalProvenance::new("er-1", "http://localhost")
+            .with_redacted_args(&["--token".to_owned(), "secret-token".to_owned()]);
+        let record = EvalRecord {
+            timestamp: "1234567890".to_owned(),
+            eval_run_id: "er-1".to_owned(),
+            provenance,
+            eval_type: "health".to_owned(),
+            scenario_id: "health-ok".to_owned(),
+            passed: true,
+            duration_ms: 50,
+            outcome: "passed".to_owned(),
+            message: None,
+            sub_results: vec![],
+        };
+        let json = serde_json::to_string(&record).expect("should serialize");
+        assert!(
+            !json.contains("secret-token"),
+            "token must not leak into JSONL"
+        );
+        assert!(
+            json.contains("[REDACTED]"),
+            "redacted placeholder should appear"
         );
     }
 
@@ -298,12 +360,15 @@ mod tests {
 
         let records = vec![EvalRecord {
             timestamp: "1234567890".to_owned(),
+            eval_run_id: "er-1".to_owned(),
+            provenance: sample_provenance(),
             eval_type: "test".to_owned(),
             scenario_id: "test-1".to_owned(),
             passed: true,
             duration_ms: 10,
             outcome: "passed".to_owned(),
             message: None,
+            sub_results: vec![],
         }];
 
         let result = append_jsonl(&path, &records);
@@ -325,21 +390,27 @@ mod tests {
 
         let record1 = vec![EvalRecord {
             timestamp: "1".to_owned(),
+            eval_run_id: "er-1".to_owned(),
+            provenance: sample_provenance(),
             eval_type: "test".to_owned(),
             scenario_id: "first".to_owned(),
             passed: true,
             duration_ms: 10,
             outcome: "passed".to_owned(),
             message: None,
+            sub_results: vec![],
         }];
         let record2 = vec![EvalRecord {
             timestamp: "2".to_owned(),
+            eval_run_id: "er-1".to_owned(),
+            provenance: sample_provenance(),
             eval_type: "test".to_owned(),
             scenario_id: "second".to_owned(),
             passed: true,
             duration_ms: 20,
             outcome: "passed".to_owned(),
             message: None,
+            sub_results: vec![],
         }];
 
         append_jsonl(&path, &record1).expect("first append");
@@ -399,6 +470,7 @@ mod tests {
             skipped: 0,
             total_duration: std::time::Duration::from_millis(300),
             results: vec![],
+            provenance: sample_provenance(),
         };
 
         append_jsonl_stamped(&path, &report).expect("stamped append should succeed");
@@ -445,7 +517,9 @@ mod tests {
                 outcome: ScenarioOutcome::Passed {
                     duration: std::time::Duration::from_millis(50),
                 },
+                sub_results: vec![],
             }],
+            provenance: sample_provenance(),
         };
 
         append_jsonl_stamped(&path, &report).expect("stamped append should succeed");

@@ -7,7 +7,10 @@ use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::EvalClient;
-use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
+use crate::scenario::{
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, ScenarioRunOutcome,
+    ScenarioSubResult, assert_eval,
+};
 
 type DocId = String;
 
@@ -99,6 +102,43 @@ fn recall_has_signal(scores: &[RecallScore]) -> bool {
     scores.iter().any(|score| score.found > 0)
 }
 
+fn recall_sub_result(score: &RecallScore) -> ScenarioSubResult {
+    let in_range = (0.0..=1.0).contains(&score.score) && (0.0..=1.0).contains(&score.precision);
+    ScenarioSubResult {
+        sub_id: format!("recall-at-{}", score.k),
+        classification: ScenarioClassification::Informational,
+        passed: in_range,
+        criteria: Some(format!(
+            "score={:.3}; precision={:.3}; found={}/{}",
+            score.score, score.precision, score.found, score.total_relevant
+        )),
+        response_excerpt: None,
+        violation_ids: if in_range {
+            Vec::new()
+        } else {
+            vec!["recall_metric_out_of_range".to_owned()]
+        },
+    }
+}
+
+fn recall_signal_sub_result(has_signal: bool) -> ScenarioSubResult {
+    ScenarioSubResult {
+        sub_id: "ground-truth-retrieval-signal".to_owned(),
+        classification: ScenarioClassification::Assertive,
+        passed: has_signal,
+        criteria: Some(
+            "at least one configured ground-truth document id must appear in retrieved results"
+                .to_owned(),
+        ),
+        response_excerpt: None,
+        violation_ids: if has_signal {
+            Vec::new()
+        } else {
+            vec!["no_ground_truth_hits".to_owned()]
+        },
+    }
+}
+
 /// Scenario that benchmarks recall@k against the knowledge search API.
 struct RecallBenchmarkScenario {
     relevant_set: Vec<DocId>,
@@ -143,48 +183,59 @@ impl Scenario for RecallBenchmarkScenario {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let mut sub_results = Vec::new();
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
 
-                let results = client
-                    .search_knowledge("recall benchmark", &nous.id, 20)
-                    .await?;
+                    let results = client
+                        .search_knowledge("recall benchmark", &nous.id, 20)
+                        .await?;
 
-                let retrieved: Vec<String> = results.facts.iter().map(|f| f.id.clone()).collect();
+                    let retrieved: Vec<String> =
+                        results.facts.iter().map(|f| f.id.clone()).collect();
 
-                let relevant: HashSet<String> = self.relevant_set.iter().cloned().collect();
+                    let relevant: HashSet<String> = self.relevant_set.iter().cloned().collect();
 
-                let scores = compute_recall_benchmark(&relevant, &retrieved);
+                    let scores = compute_recall_benchmark(&relevant, &retrieved);
+                    sub_results.extend(scores.iter().map(recall_sub_result));
+                    let has_signal = recall_has_signal(&scores);
+                    sub_results.push(recall_signal_sub_result(has_signal));
 
-                for score in &scores {
-                    tracing::info!(
-                        k = score.k,
-                        recall = score.score,
-                        precision = score.precision,
-                        found = score.found,
-                        total = score.total_relevant,
-                        "recall@k"
-                    );
+                    for score in &scores {
+                        tracing::info!(
+                            k = score.k,
+                            recall = score.score,
+                            precision = score.precision,
+                            found = score.found,
+                            total = score.total_relevant,
+                            "recall@k"
+                        );
+                    }
+
+                    assert_eval(
+                        scores.iter().all(|s| s.score >= 0.0 && s.score <= 1.0),
+                        "recall scores must be in [0.0, 1.0]",
+                    )?;
+                    assert_eval(
+                        has_signal,
+                        "no configured ground-truth document IDs were retrieved",
+                    )?;
+
+                    Ok(())
                 }
-
-                assert_eval(
-                    scores.iter().all(|s| s.score >= 0.0 && s.score <= 1.0),
-                    "recall scores must be in [0.0, 1.0]",
-                )?;
-                assert_eval(
-                    recall_has_signal(&scores),
-                    "no configured ground-truth document IDs were retrieved",
-                )?;
-
-                Ok(())
+                .await;
+                ScenarioRunOutcome::from(result).with_sub_results(sub_results)
             }
             .instrument(tracing::info_span!(
                 "scenario",

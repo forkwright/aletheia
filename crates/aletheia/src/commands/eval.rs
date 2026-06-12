@@ -73,6 +73,18 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         return Ok(());
     }
 
+    let config_hash = dokimion::provenance::sha256_hex_str(&format!(
+        "url={url}\nscenario={scenario:?}\njson_output={json_output}\ntimeout={timeout}\ntoken_present={}",
+        token.is_some()
+    ));
+    let cli_args: Vec<String> = std::env::args().collect();
+    let provenance = dokimion::provenance::EvalProvenance::new(
+        dokimion::provenance::generate_eval_run_id(),
+        url.clone(),
+    )
+    .with_redacted_args(&cli_args)
+    .with_config_hash(config_hash);
+
     let config = dokimion::runner::RunConfig {
         base_url: url.clone(),
         token: token.map(koina::secret::SecretString::from),
@@ -81,6 +93,7 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         fail_fast: false,
         timeout_secs: timeout,
         json_output,
+        provenance,
     };
     let runner = dokimion::runner::ScenarioRunner::new(config);
     let report = runner.run().await;

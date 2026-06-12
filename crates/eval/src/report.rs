@@ -4,8 +4,9 @@ use owo_colors::OwoColorize;
 use serde::Serialize;
 use tracing::info;
 
+use crate::provenance::EvalProvenance;
 use crate::runner::RunReport;
-use crate::scenario::ScenarioOutcome;
+use crate::scenario::{ScenarioClassification, ScenarioOutcome, ScenarioSubResult};
 
 /// Print a human-readable eval report to stdout.
 #[tracing::instrument(skip_all)]
@@ -71,6 +72,12 @@ pub fn print_report(report: &RunReport, base_url: &str) {
                 }
             }
         }
+
+        for sub in &result.sub_results {
+            let sub_icon = if sub.passed { "  ✓" } else { "  ✗" };
+            let sub_label = format_sub_result(sub);
+            info!("      {sub_icon} {sub_label}");
+        }
     }
 
     info!("");
@@ -93,43 +100,23 @@ pub fn print_report(report: &RunReport, base_url: &str) {
     }
 }
 
+fn format_sub_result(sub: &ScenarioSubResult) -> String {
+    let class = match sub.classification {
+        ScenarioClassification::Assertive => "assertive",
+        ScenarioClassification::Smoke => "smoke",
+        ScenarioClassification::Informational => "informational",
+    };
+    if let Some(criteria) = &sub.criteria {
+        format!("{} ({class}): {criteria}", sub.sub_id)
+    } else {
+        format!("{} ({class})", sub.sub_id)
+    }
+}
+
 /// Print the report as JSON for machine consumption.
 #[tracing::instrument(skip_all)]
 pub fn print_report_json(report: &RunReport) {
-    let json_report = JsonReport {
-        passed: report.passed,
-        failed: report.failed,
-        skipped: report.skipped,
-        total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
-        results: report
-            .results
-            .iter()
-            .map(|r| JsonScenarioResult {
-                id: r.meta.id.to_owned(),
-                category: r.meta.category.to_owned(),
-                outcome: match &r.outcome {
-                    ScenarioOutcome::Passed { .. } => OutcomeKind::Passed,
-                    ScenarioOutcome::Failed { .. } => OutcomeKind::Failed,
-                    ScenarioOutcome::Skipped { .. } => OutcomeKind::Skipped,
-                },
-                duration_ms: match &r.outcome {
-                    ScenarioOutcome::Passed { duration }
-                    | ScenarioOutcome::Failed { duration, .. } => {
-                        Some(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
-                    }
-                    ScenarioOutcome::Skipped { .. } => None,
-                },
-                error: match &r.outcome {
-                    ScenarioOutcome::Failed { error, .. } => Some(error.to_string()),
-                    _ => None,
-                },
-                skip_reason: match &r.outcome {
-                    ScenarioOutcome::Skipped { reason } => Some(reason.clone()),
-                    _ => None,
-                },
-            })
-            .collect(),
-    };
+    let json_report = build_json_report(report);
 
     match serde_json::to_string_pretty(&json_report) {
         Ok(json) => info!("{json}"),
@@ -147,40 +134,7 @@ pub fn print_report_json(report: &RunReport) {
 /// Returns an error if JSON serialization fails or if the Typst render fails.
 #[tracing::instrument(skip_all)]
 pub fn emit_eval_report(report: &RunReport) -> crate::error::Result<Vec<u8>> {
-    let json_report = JsonReport {
-        passed: report.passed,
-        failed: report.failed,
-        skipped: report.skipped,
-        total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
-        results: report
-            .results
-            .iter()
-            .map(|r| JsonScenarioResult {
-                id: r.meta.id.to_owned(),
-                category: r.meta.category.to_owned(),
-                outcome: match &r.outcome {
-                    ScenarioOutcome::Passed { .. } => OutcomeKind::Passed,
-                    ScenarioOutcome::Failed { .. } => OutcomeKind::Failed,
-                    ScenarioOutcome::Skipped { .. } => OutcomeKind::Skipped,
-                },
-                duration_ms: match &r.outcome {
-                    ScenarioOutcome::Passed { duration }
-                    | ScenarioOutcome::Failed { duration, .. } => {
-                        Some(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
-                    }
-                    ScenarioOutcome::Skipped { .. } => None,
-                },
-                error: match &r.outcome {
-                    ScenarioOutcome::Failed { error, .. } => Some(error.to_string()),
-                    _ => None,
-                },
-                skip_reason: match &r.outcome {
-                    ScenarioOutcome::Skipped { reason } => Some(reason.clone()),
-                    _ => None,
-                },
-            })
-            .collect(),
-    };
+    let json_report = build_json_report(report);
 
     let data = serde_json::json!({
         "summary": {
@@ -200,6 +154,48 @@ pub fn emit_eval_report(report: &RunReport) -> crate::error::Result<Vec<u8>> {
     })
 }
 
+fn build_json_report(report: &RunReport) -> JsonReport {
+    JsonReport {
+        eval_run_id: report.provenance.eval_run_id.clone(),
+        provenance: report.provenance.clone(),
+        passed: report.passed,
+        failed: report.failed,
+        skipped: report.skipped,
+        total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
+        results: report
+            .results
+            .iter()
+            .map(|r| JsonScenarioResult {
+                id: r.meta.id.to_owned(),
+                category: r.meta.category.to_owned(),
+                classification: r.meta.classification,
+                criteria: r.meta.criteria_summary(),
+                outcome: match &r.outcome {
+                    ScenarioOutcome::Passed { .. } => OutcomeKind::Passed,
+                    ScenarioOutcome::Failed { .. } => OutcomeKind::Failed,
+                    ScenarioOutcome::Skipped { .. } => OutcomeKind::Skipped,
+                },
+                duration_ms: match &r.outcome {
+                    ScenarioOutcome::Passed { duration }
+                    | ScenarioOutcome::Failed { duration, .. } => {
+                        Some(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
+                    }
+                    ScenarioOutcome::Skipped { .. } => None,
+                },
+                error: match &r.outcome {
+                    ScenarioOutcome::Failed { error, .. } => Some(error.to_string()),
+                    _ => None,
+                },
+                skip_reason: match &r.outcome {
+                    ScenarioOutcome::Skipped { reason } => Some(reason.clone()),
+                    _ => None,
+                },
+                sub_results: r.sub_results.clone(),
+            })
+            .collect(),
+    }
+}
+
 /// Typed outcome kind for JSON serialization: avoids bare "passed"/"failed"/"skipped" strings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -212,6 +208,8 @@ pub(crate) enum OutcomeKind {
 
 #[derive(Serialize)]
 struct JsonReport {
+    eval_run_id: String,
+    provenance: EvalProvenance,
     passed: usize,
     failed: usize,
     skipped: usize,
@@ -223,10 +221,17 @@ struct JsonReport {
 struct JsonScenarioResult {
     id: String,
     category: String,
+    classification: ScenarioClassification,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    criteria: Option<String>,
     outcome: OutcomeKind,
     duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     skip_reason: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    sub_results: Vec<ScenarioSubResult>,
 }
 
 #[cfg(test)]
@@ -235,7 +240,7 @@ mod tests {
     use std::time::Duration;
 
     use crate::runner::RunReport;
-    use crate::scenario::{ScenarioMeta, ScenarioOutcome, ScenarioResult};
+    use crate::scenario::{ScenarioClassification, ScenarioMeta, ScenarioOutcome, ScenarioResult};
 
     use super::*;
 
@@ -255,10 +260,12 @@ mod tests {
                         requires_nous: false,
                         expected_contains: None,
                         expected_pattern: None,
+                        classification: ScenarioClassification::Smoke,
                     },
                     outcome: ScenarioOutcome::Passed {
                         duration: Duration::from_millis(50),
                     },
+                    sub_results: vec![],
                 },
                 ScenarioResult {
                     meta: ScenarioMeta {
@@ -269,6 +276,7 @@ mod tests {
                         requires_nous: true,
                         expected_contains: None,
                         expected_pattern: None,
+                        classification: ScenarioClassification::Assertive,
                     },
                     outcome: ScenarioOutcome::Failed {
                         duration: Duration::from_millis(200),
@@ -277,21 +285,17 @@ mod tests {
                         }
                         .build(),
                     },
+                    sub_results: vec![],
                 },
             ],
+            provenance: EvalProvenance::new("er-sample", "http://localhost"),
         }
     }
 
     #[test]
     fn json_report_serializes() {
         let report = sample_report();
-        let json_report = JsonReport {
-            passed: report.passed,
-            failed: report.failed,
-            skipped: report.skipped,
-            total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
-            results: vec![],
-        };
+        let json_report = build_json_report(&report);
         let json = serde_json::to_string(&json_report).expect("serialization should succeed");
         assert!(!json.is_empty());
     }
@@ -299,20 +303,7 @@ mod tests {
     #[test]
     fn json_report_contains_expected_fields() {
         let report = sample_report();
-        let json_report = JsonReport {
-            passed: report.passed,
-            failed: report.failed,
-            skipped: report.skipped,
-            total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
-            results: vec![JsonScenarioResult {
-                id: "health-ok".to_owned(),
-                category: "health".to_owned(),
-                outcome: OutcomeKind::Passed,
-                duration_ms: Some(50),
-                error: None,
-                skip_reason: None,
-            }],
-        };
+        let json_report = build_json_report(&report);
         let json = serde_json::to_string_pretty(&json_report).expect("serialize");
         assert!(json.contains("\"passed\""));
         assert!(json.contains("\"failed\""));
@@ -320,6 +311,8 @@ mod tests {
         assert!(json.contains("\"total_duration_ms\""));
         assert!(json.contains("\"results\""));
         assert!(json.contains("health-ok"));
+        assert!(json.contains("eval_run_id"));
+        assert!(json.contains("classification"));
     }
 
     #[test]
@@ -352,5 +345,26 @@ mod tests {
         assert!(pdf_bytes.starts_with(b"%PDF-"), "output must be PDF magic");
         assert!(pdf_bytes.len() > 500, "PDF must be >500 bytes");
         assert!(pdf_bytes.len() < 5_000_000, "PDF must be <5MB");
+    }
+
+    #[test]
+    fn json_report_includes_sub_results() {
+        let mut report = sample_report();
+        report
+            .results
+            .first_mut()
+            .expect("sample report has a first result")
+            .sub_results
+            .push(ScenarioSubResult {
+                sub_id: "probe-1".to_owned(),
+                classification: ScenarioClassification::Assertive,
+                passed: true,
+                criteria: Some("forbidden patterns".to_owned()),
+                response_excerpt: None,
+                violation_ids: vec![],
+            });
+        let json_report = build_json_report(&report);
+        let result = json_report.results.first().expect("first JSON result");
+        assert_eq!(result.sub_results.len(), 1);
     }
 }

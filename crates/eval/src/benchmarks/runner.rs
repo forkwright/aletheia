@@ -18,11 +18,12 @@ use std::time::Duration;
 use tracing::{info, instrument, warn};
 
 use crate::client::EvalClient;
-use crate::error::{BenchmarkSnafu, Result};
+use crate::error::Result;
+use crate::provenance::EvalProvenance;
 
 use super::{
-    BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, judge, metrics,
-    score_answer,
+    BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, QuestionStatus, judge,
+    metrics, score_answer,
 };
 
 /// Configuration for a benchmark run.
@@ -49,6 +50,8 @@ pub struct BenchmarkRunnerConfig {
     /// When set, query the knowledge store after ingestion and compute
     /// Recall@k and NDCG@k against the expected answers.
     pub retrieval_k: Option<usize>,
+    /// Shared provenance envelope for the benchmark run.
+    pub provenance: EvalProvenance,
 }
 
 impl Default for BenchmarkRunnerConfig {
@@ -61,6 +64,7 @@ impl Default for BenchmarkRunnerConfig {
             close_between_questions: true,
             judge: None,
             retrieval_k: None,
+            provenance: EvalProvenance::new("er-benchmark-default", "http://localhost"),
         }
     }
 }
@@ -70,6 +74,14 @@ pub struct BenchmarkRunner {
     client: EvalClient,
     config: BenchmarkRunnerConfig,
 }
+
+struct QuestionExecution {
+    answer: String,
+    status: QuestionStatus,
+    error_message: Option<String>,
+}
+
+type RetrievalMetrics = (Option<Vec<String>>, Option<f64>, Option<f64>);
 
 impl BenchmarkRunner {
     /// Create a new runner with the given client and configuration.
@@ -107,7 +119,8 @@ impl BenchmarkRunner {
             results.push(result);
         }
 
-        let report = BenchmarkReport::new(benchmark.name(), results);
+        let report = BenchmarkReport::new(benchmark.name(), results)
+            .with_provenance(self.config.provenance.clone().finished());
         info!(
             total = report.total,
             em_rate = report.exact_match_rate(),
@@ -121,20 +134,62 @@ impl BenchmarkRunner {
     async fn run_question(&self, index: usize, question: BenchmarkQuestion) -> QuestionResult {
         let session_key = format!("{}-{}-{index}", self.config.session_key_prefix, question.id);
 
-        let answer = match tokio::time::timeout(
+        let execution = self.execute_question(&question, &session_key).await;
+        let status = execution.status;
+        let score = score_for_status(status, &execution.answer, &question.expected_answers);
+        let judge_score = self
+            .evaluate_judge(&question, &execution.answer, status)
+            .await;
+        let (retrieved_facts, recall_at_k, ndcg_at_k) =
+            self.evaluate_retrieval(&question, status).await;
+
+        QuestionResult {
+            id: question.id,
+            category: question.category,
+            status,
+            error_message: execution.error_message,
+            actual_answer: execution.answer,
+            expected_answers: question.expected_answers,
+            score,
+            judge_score,
+            retrieved_facts,
+            recall_at_k,
+            ndcg_at_k,
+        }
+    }
+
+    async fn execute_question(
+        &self,
+        question: &BenchmarkQuestion,
+        session_key: &str,
+    ) -> QuestionExecution {
+        match tokio::time::timeout(
             self.config.question_timeout,
-            self.ingest_and_ask(&question, &session_key),
+            self.ingest_and_ask(question, session_key),
         )
         .await
         {
-            Ok(Ok(answer)) => answer,
+            Ok(Ok(answer)) if answer.trim().is_empty() => QuestionExecution {
+                answer,
+                status: QuestionStatus::NoAnswer,
+                error_message: Some("empty answer".to_owned()),
+            },
+            Ok(Ok(answer)) => QuestionExecution {
+                answer,
+                status: QuestionStatus::Scored,
+                error_message: None,
+            },
             Ok(Err(e)) => {
                 warn!(
                     id = %question.id,
                     error = %e,
-                    "benchmark question failed — scoring as no-answer"
+                    "benchmark question failed before producing a scorable answer"
                 );
-                String::new()
+                QuestionExecution {
+                    answer: String::new(),
+                    status: QuestionStatus::Error,
+                    error_message: Some(e.to_string()),
+                }
             }
             Err(_) => {
                 let e = crate::error::TimeoutSnafu {
@@ -144,18 +199,29 @@ impl BenchmarkRunner {
                 warn!(
                     id = %question.id,
                     error = %e,
-                    "benchmark question timed out — scoring as no-answer"
+                    "benchmark question timed out before producing a scorable answer"
                 );
-                String::new()
+                QuestionExecution {
+                    answer: String::new(),
+                    status: QuestionStatus::Timeout,
+                    error_message: Some(e.to_string()),
+                }
             }
-        };
+        }
+    }
 
-        let score = score_answer(&answer, &question.expected_answers);
-
-        let judge_score = if let Some(ref config) = self.config.judge {
+    async fn evaluate_judge(
+        &self,
+        question: &BenchmarkQuestion,
+        answer: &str,
+        status: QuestionStatus,
+    ) -> Option<judge::JudgeScore> {
+        if status.is_scored()
+            && let Some(ref config) = self.config.judge
+        {
             let judge = judge::LlmJudge::new(config.clone());
             let expected = question.expected_answers.first().map_or("", String::as_str);
-            match judge.judge(&question.question, &answer, expected).await {
+            match judge.judge(&question.question, answer, expected).await {
                 Ok(js) => Some(js),
                 Err(e) => {
                     warn!(id = %question.id, error = %e, "judge evaluation failed");
@@ -164,9 +230,17 @@ impl BenchmarkRunner {
             }
         } else {
             None
-        };
+        }
+    }
 
-        let (retrieved_facts, recall_at_k, ndcg_at_k) = if let Some(k) = self.config.retrieval_k {
+    async fn evaluate_retrieval(
+        &self,
+        question: &BenchmarkQuestion,
+        status: QuestionStatus,
+    ) -> RetrievalMetrics {
+        if status.is_scored()
+            && let Some(k) = self.config.retrieval_k
+        {
             match self
                 .client
                 .search_knowledge(
@@ -177,10 +251,22 @@ impl BenchmarkRunner {
                 .await
             {
                 Ok(resp) => {
-                    let facts: Vec<String> = resp.facts.into_iter().map(|f| f.content).collect();
-                    let r = metrics::recall_at_k(&facts, &question.expected_answers, k);
-                    let n = metrics::ndcg_at_k(&facts, &question.expected_answers, k);
-                    (Some(facts), Some(r), Some(n))
+                    let mut fact_contents = Vec::new();
+                    let mut fact_refs = Vec::new();
+                    for fact in resp.facts {
+                        fact_contents.push(fact.content.clone());
+                        if fact.id.is_empty() {
+                            fact_refs.push(format!(
+                                "content_sha256:{}",
+                                crate::provenance::sha256_hex_str(&fact.content)
+                            ));
+                        } else {
+                            fact_refs.push(format!("fact:{}", fact.id));
+                        }
+                    }
+                    let r = metrics::recall_at_k(&fact_contents, &question.expected_answers, k);
+                    let n = metrics::ndcg_at_k(&fact_contents, &question.expected_answers, k);
+                    (Some(fact_refs), Some(r), Some(n))
                 }
                 Err(e) => {
                     warn!(id = %question.id, error = %e, "knowledge search failed");
@@ -189,18 +275,6 @@ impl BenchmarkRunner {
             }
         } else {
             (None, None, None)
-        };
-
-        QuestionResult {
-            id: question.id,
-            category: question.category,
-            actual_answer: answer,
-            expected_answers: question.expected_answers,
-            score,
-            judge_score,
-            retrieved_facts,
-            recall_at_k,
-            ndcg_at_k,
         }
     }
 
@@ -246,13 +320,6 @@ impl BenchmarkRunner {
             let _ = self.client.close_session(&session_id).await;
         }
 
-        if answer.trim().is_empty() {
-            return Err(BenchmarkSnafu {
-                message: format!("empty answer for question {}", question.id),
-            }
-            .build());
-        }
-
         Ok(answer)
     }
 }
@@ -269,6 +336,18 @@ fn role_is_user(role: &str) -> bool {
 
 fn millis_from_duration(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+fn score_for_status(
+    status: QuestionStatus,
+    answer: &str,
+    expected_answers: &[String],
+) -> metrics::BenchmarkScore {
+    if status.is_scored() {
+        score_answer(answer, expected_answers)
+    } else {
+        metrics::BenchmarkScore::zero()
+    }
 }
 
 #[cfg(test)]

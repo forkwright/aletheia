@@ -149,6 +149,30 @@ async fn run_benchmark(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Resul
 
     // Collect system metadata before running.
     let metadata = collect_metadata(&client, benchmark, args).await;
+    let config_hash = dokimion::provenance::sha256_hex_str(&format!(
+        "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
+        benchmark.name(),
+        args.dataset.display(),
+        args.url,
+        args.nous_id,
+        args.max_questions,
+        args.timeout,
+        args.json,
+        args.retrieval_k,
+        args.judge_endpoint.is_some(),
+        args.judge_model,
+        args.judge_api_key.is_some(),
+    ));
+    let cli_args: Vec<String> = std::env::args().collect();
+    let mut provenance = dokimion::provenance::EvalProvenance::new(
+        dokimion::provenance::generate_eval_run_id(),
+        args.url.clone(),
+    )
+    .with_redacted_args(&cli_args)
+    .with_config_hash(config_hash);
+    if let Some(dataset_hash) = metadata.dataset_hash.clone() {
+        provenance = provenance.with_scenario_suite_hash(dataset_hash);
+    }
 
     let judge =
         args.judge_endpoint
@@ -169,6 +193,7 @@ async fn run_benchmark(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Resul
         close_between_questions: true,
         judge,
         retrieval_k: args.retrieval_k,
+        provenance,
     };
     let runner = BenchmarkRunner::new(client, config);
     let mut report = runner
@@ -216,6 +241,10 @@ async fn run_benchmark(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Resul
 struct BenchmarkBaselineSummary {
     benchmark: String,
     total_questions: usize,
+    scored_questions: usize,
+    error_questions: usize,
+    timeout_questions: usize,
+    no_answer_questions: usize,
     exact_match_rate: f64,
     mean_f1: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -227,6 +256,10 @@ impl BenchmarkBaselineSummary {
         Self {
             benchmark: report.benchmark.clone(),
             total_questions: report.total,
+            scored_questions: report.scored,
+            error_questions: report.errors,
+            timeout_questions: report.timeouts,
+            no_answer_questions: report.no_answers,
             exact_match_rate: report.exact_match_rate(),
             mean_f1: report.mean_f1(),
             judge_accuracy: report.judge_accuracy(),
@@ -290,6 +323,21 @@ async fn collect_metadata(
         total_questions: benchmark.len(),
         evaluated_questions: args.max_questions.unwrap_or(benchmark.len()),
         timeout_secs: args.timeout,
+        dataset_hash: dataset_hash(&args.dataset).await,
+        git_sha: option_env!("GITHUB_SHA").map(str::to_owned),
+    }
+}
+
+async fn dataset_hash(path: &Path) -> Option<String> {
+    match tokio::fs::read(path).await {
+        Ok(bytes) => Some(format!(
+            "sha256:{}",
+            dokimion::provenance::sha256_hex(&bytes)
+        )),
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "failed to hash benchmark dataset");
+            None
+        }
     }
 }
 
@@ -315,15 +363,19 @@ fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSu
 
     if let Some(ref meta) = report.metadata {
         println!(
-            "Version: {} | Questions: {}/{} | Timeout: {}s\n",
+            "Version: {} | Questions: {}/{} | Timeout: {}s",
             meta.aletheia_version,
             meta.evaluated_questions,
             meta.total_questions,
             meta.timeout_secs
         );
     } else {
-        println!("Questions: {}\n", report.total);
+        println!("Questions: {}", report.total);
     }
+    println!(
+        "Attempted: {} | Scored: {} | Errors: {} | Timeouts: {} | No answer: {}\n",
+        report.total, report.scored, report.errors, report.timeouts, report.no_answers
+    );
 
     // Table header
     println!("Results:");
@@ -442,7 +494,7 @@ fn print_report_json(report: &BenchmarkReport) -> std::result::Result<(), serde_
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
-    use dokimion::benchmarks::{BenchmarkScore, QuestionResult};
+    use dokimion::benchmarks::{BenchmarkScore, QuestionResult, QuestionStatus};
     use std::io::Write as _;
 
     fn base_args() -> RunArgs {
@@ -536,6 +588,8 @@ mod tests {
                 QuestionResult {
                     id: "q1".to_owned(),
                     category: "factual".to_owned(),
+                    status: QuestionStatus::Scored,
+                    error_message: None,
                     actual_answer: "blue".to_owned(),
                     expected_answers: vec!["blue".to_owned()],
                     score: BenchmarkScore {
@@ -551,6 +605,8 @@ mod tests {
                 QuestionResult {
                     id: "q2".to_owned(),
                     category: "factual".to_owned(),
+                    status: QuestionStatus::Scored,
+                    error_message: None,
                     actual_answer: "green".to_owned(),
                     expected_answers: vec!["red".to_owned()],
                     score: BenchmarkScore {
