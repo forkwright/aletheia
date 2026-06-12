@@ -106,13 +106,18 @@ fn config_path() -> Result<PathBuf, ConfigError> {
 }
 
 /// Build a runtime connection config from canonical settings.
-fn connection_from_settings(settings: &settings_config::SettingsConfig) -> Option<ConnectionConfig> {
-    settings.server_store().active().map(|entry| ConnectionConfig {
-        server_url: entry.url.clone(),
-        auth_token: entry.auth_token.clone(),
-        auto_reconnect: true,
-        ..ConnectionConfig::default()
-    })
+fn connection_from_settings(
+    settings: &settings_config::SettingsConfig,
+) -> Option<ConnectionConfig> {
+    settings
+        .server_store()
+        .active()
+        .map(|entry| ConnectionConfig {
+            server_url: entry.url.clone(),
+            auth_token: entry.auth_token.clone(),
+            auto_reconnect: true,
+            ..ConnectionConfig::default()
+        })
 }
 
 /// Load connection config from disk.
@@ -552,12 +557,8 @@ server_url = "http://custom:9000"
         let (_dir, base) = temp_base();
 
         // Pre-populate canonical settings with an active server.
-        settings_config::upsert_active_server_in(
-            &base,
-            "http://canonical:18789".to_string(),
-            None,
-        )
-        .unwrap();
+        settings_config::upsert_active_server_in(&base, "http://canonical:18789".to_string(), None)
+            .unwrap();
 
         // Legacy file still exists with a different URL.
         let legacy = config_path_from(&base);

@@ -315,10 +315,7 @@ pub(crate) fn save(config: &SettingsConfig) -> Result<(), SettingsConfigError> {
     save_in(config, &base)
 }
 
-pub(crate) fn save_in(
-    config: &SettingsConfig,
-    base: &Path,
-) -> Result<(), SettingsConfigError> {
+pub(crate) fn save_in(config: &SettingsConfig, base: &Path) -> Result<(), SettingsConfigError> {
     let path = settings_path_from(base);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).context(CreateDirSnafu)?;
@@ -608,8 +605,12 @@ mod tests {
     #[test]
     fn upsert_existing_url_updates_token_and_makes_active() {
         let (_dir, base) = temp_base();
-        upsert_active_server_in(&base, "http://same:3000".to_string(), Some("first".to_string()))
-            .unwrap();
+        upsert_active_server_in(
+            &base,
+            "http://same:3000".to_string(),
+            Some("first".to_string()),
+        )
+        .unwrap();
         upsert_active_server_in(
             &base,
             "http://same:3000".to_string(),
@@ -620,7 +621,10 @@ mod tests {
         let config = load_in(&base).unwrap();
         let store = config.server_store();
         assert_eq!(store.servers.len(), 1);
-        assert_eq!(store.active().unwrap().auth_token.as_deref(), Some("second"));
+        assert_eq!(
+            store.active().unwrap().auth_token.as_deref(),
+            Some("second")
+        );
     }
 
     #[test]
