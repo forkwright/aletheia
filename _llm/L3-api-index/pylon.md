@@ -400,6 +400,94 @@ pub struct ModelPricing {
 }
 ```
 
+## `src/handlers/credentials.rs`
+
+```rust
+pub struct CredentialsListResponse {
+    /// Secret-safe credential metadata.
+    pub credentials: Vec<CredentialResponse>,
+}
+```
+
+```rust
+pub struct CredentialResponse {
+    /// Stable identifier in `{provider}:{role}` form.
+    pub id: String,
+    /// Provider name associated with the credential.
+    pub provider: String,
+    /// Role of this credential for its provider.
+    pub role: String,
+    /// Redacted key preview, never raw secret material.
+    pub masked_key: String,
+    /// Local validation status.
+    pub status: String,
+    /// Last validation timestamp when produced by a validation call.
+    pub last_validated: Option<String>,
+    /// Request counter reserved for provider metrics.
+    pub requests_today: u64,
+    /// Token counter reserved for provider metrics.
+    pub tokens_today: u64,
+}
+```
+
+```rust
+pub struct AddCredentialRequest {
+    /// Provider name.
+    pub provider: String,
+    /// Raw key to store encrypted at rest.
+    #[schema(value_type = String)]
+    pub key: SecretString,
+    /// Credential role: `primary` or `backup`.
+    pub role: String,
+}
+```
+
+```rust
+pub struct RotateCredentialQuery {
+    /// Provider whose primary and backup credentials should be swapped.
+    pub provider: String,
+}
+```
+
+```rust
+pub async fn list_credentials (
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<CredentialsListResponse>, ApiError>
+```
+
+```rust
+pub async fn add_credential (
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<AddCredentialRequest>,
+) -> Result<impl IntoResponse, ApiError>
+```
+
+```rust
+pub async fn validate_credential (
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<CredentialResponse>, ApiError>
+```
+
+```rust
+pub async fn rotate_credentials (
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<RotateCredentialQuery>,
+) -> Result<Json<CredentialsListResponse>, ApiError>
+```
+
+```rust
+pub async fn remove_credential (
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError>
+```
+
 ## `src/handlers/events.rs`
 
 ```rust

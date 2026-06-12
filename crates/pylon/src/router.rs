@@ -18,7 +18,8 @@ use koina::http::{API_HEALTH, API_V1};
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{
-    config, events, health, insights, knowledge, metrics, nous, ops, planning, sessions, workspace,
+    config, credentials, events, health, insights, knowledge, metrics, nous, ops, planning,
+    sessions, workspace,
 };
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
@@ -145,6 +146,22 @@ pub fn build_router_with(
         .route("/events/subscribe", get(events::subscribe))
         .route("/events/discovery", get(events::discovery))
         .route("/ops/tools", get(ops::tools))
+        .route(
+            "/system/credentials",
+            get(credentials::list_credentials).post(credentials::add_credential),
+        )
+        .route(
+            "/system/credentials/rotate",
+            post(credentials::rotate_credentials),
+        )
+        .route(
+            "/system/credentials/{id}",
+            axum::routing::delete(credentials::remove_credential),
+        )
+        .route(
+            "/system/credentials/{id}/validate",
+            post(credentials::validate_credential),
+        )
         .route("/nous", get(nous::list).post(nous::create))
         .route(
             "/nous/{id}",

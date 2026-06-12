@@ -14,6 +14,7 @@
 
 mod auth;
 mod config;
+mod credentials;
 mod error;
 mod error_envelope;
 mod handler_doc;
