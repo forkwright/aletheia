@@ -856,7 +856,7 @@ pub async fn assemble_context_conditional_with_cache(
     )]
     {
         ctx.remaining_tokens = budget.remaining() as i64; // kanon:ignore RUST/as-cast
-        ctx.history_budget = budget.history_budget() as i64; // kanon:ignore RUST/as-cast
+        ctx.history_budget = budget.adjusted_history_budget() as i64; // kanon:ignore RUST/as-cast
     }
 
     Ok(())

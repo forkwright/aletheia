@@ -544,3 +544,112 @@ fn pack_sections_to_bootstrap_empty_input() {
         "empty input should produce an empty list of bootstrap sections"
     );
 }
+
+#[tokio::test]
+async fn required_section_over_budget_debt_tracked() {
+    // WHY(#4623): A Required section (SOUL.md) that exceeds the system budget
+    // must still be force-consumed so that downstream stages see the real
+    // remaining budget. Use a budget so small it cannot fit SOUL.md.
+    let large_soul = "x".repeat(2000); // ~500 tokens at 4 chars/token
+    let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", &large_soul)]);
+    let assembler = BootstrapAssembler::new(&oikos);
+    // bootstrap_cap of 10 tokens is far too small for large_soul
+    let mut budget = TokenBudget::new(200_000, 0.6, 16_384, 10);
+
+    let result = assembler
+        .assemble("test", &mut budget)
+        .await
+        .expect("assemble should succeed even when Required section overruns budget");
+
+    assert!(
+        result.system_prompt.contains(&large_soul[..20]),
+        "Required SOUL.md must appear in system prompt despite budget exhaustion"
+    );
+    assert!(
+        budget.consumed() > budget.system_budget(),
+        "consumed tokens must exceed system_budget when Required section overruns"
+    );
+    assert!(
+        budget.adjusted_history_budget() < budget.history_budget(),
+        "history budget must be reduced to reflect Required-section over-budget debt"
+    );
+}
+
+#[tokio::test]
+async fn file_ref_expansion_debt_carried_into_budget() {
+    // WHY(#4623): File-ref expansion can grow the system prompt beyond its
+    // pre-expansion token estimate. The extra tokens must be force-consumed
+    // so downstream stages allocate history against the true remaining budget.
+    //
+    // Setup: SOUL.md is a tiny file that embeds a large ref. The pre-expansion
+    // token estimate (~3 tokens for the placeholder) passes the budget check,
+    // but the post-expansion prompt is ~500 tokens. The bootstrap cap is set
+    // to 100 tokens so the expansion pushes consumed past system_budget, making
+    // the debt visible in adjusted_history_budget.
+    let dir = TempDir::new().expect("create temp dir");
+    let root = dir.path();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
+    fs::create_dir_all(root.join("nous/test")).expect("create nous/test dir");
+    // large_content is ~500 tokens at 4 chars/token
+    let large_content = "y".repeat(2000);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
+    fs::write(root.join("nous/test/ref.md"), &large_content).expect("write ref.md");
+    // SOUL.md is tiny (pre-expansion ~3 tokens) but expands to ~500 tokens
+    let soul_content = "ID:{{file:nous/test/ref.md}}";
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
+    fs::write(root.join("nous/test/SOUL.md"), soul_content).expect("write SOUL.md");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
+    fs::create_dir_all(root.join("shared")).expect("create shared dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
+    fs::create_dir_all(root.join("theke")).expect("create theke dir");
+
+    let oikos = Oikos::from_root(root);
+    let assembler = BootstrapAssembler::new(&oikos);
+    // bootstrap_cap of 100 lets tiny SOUL.md pass the pre-expansion check, but
+    // the post-expansion prompt (~500 tokens) exceeds it, creating debt.
+    let mut budget = TokenBudget::new(200_000, 0.6, 16_384, 100);
+
+    let result = assembler
+        .assemble("test", &mut budget)
+        .await
+        .expect("assemble should succeed with file-ref expansion");
+
+    assert!(
+        result.system_prompt.contains(&large_content[..20]),
+        "expanded file-ref content must appear in the assembled system prompt"
+    );
+    // The expanded prompt is ~500 tokens; pre-expansion consumed was much less.
+    // After our fix, force_consume carries the expansion delta, so consumed must
+    // reflect the actual expanded prompt size.
+    let estimator = crate::budget::CharEstimator::default();
+    let actual_expanded_tokens = estimator.estimate(&result.system_prompt);
+    assert!(
+        budget.consumed() >= actual_expanded_tokens,
+        "consumed ({}) must be at least the expanded prompt token estimate ({actual_expanded_tokens})",
+        budget.consumed()
+    );
+    // Expansion pushed consumed past bootstrap_cap=100, so history must be reduced.
+    assert!(
+        budget.consumed() > budget.system_budget(),
+        "consumed tokens must exceed system_budget after large file-ref expansion"
+    );
+    assert!(
+        budget.adjusted_history_budget() < budget.history_budget(),
+        "history budget must shrink to carry file-ref expansion debt into downstream stages"
+    );
+}

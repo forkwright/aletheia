@@ -802,7 +802,10 @@ impl<'a> BootstrapAssembler<'a> {
                 // persona drift when the system prompt is compressed under token
                 // pressure. An over-budget Required section is always better than a
                 // missing one — the model cannot know who it is without it.
-                budget.consume(section.tokens);
+                // WHY(#4623): force_consume tracks the over-budget debt so that
+                // downstream stages (history, recall) see the accurate remaining budget
+                // via adjusted_history_budget() rather than an artificially inflated one.
+                budget.force_consume(section.tokens);
                 warn!(
                     section = section.name,
                     tokens = section.tokens,
@@ -851,6 +854,23 @@ impl<'a> BootstrapAssembler<'a> {
 
         let system_prompt = organon::interp::expand_file_refs(&system_prompt, self.oikos.root())
             .map_err(|e| crate::error::InterpSnafu.into_error(e))?;
+
+        // WHY(#4623): file-ref expansion can grow the prompt beyond the pre-expansion
+        // token estimate. Re-estimate the actual prompt size and force-consume any
+        // extra tokens so that downstream stages (history, recall) see the true
+        // remaining budget via adjusted_history_budget().
+        let expanded_tokens = self.estimator.estimate(&system_prompt);
+        let pre_expansion_consumed = budget.consumed();
+        if expanded_tokens > pre_expansion_consumed {
+            let expansion_debt = expanded_tokens - pre_expansion_consumed;
+            budget.force_consume(expansion_debt);
+            warn!(
+                expansion_debt,
+                expanded_tokens,
+                pre_expansion_consumed,
+                "file-ref expansion exceeded pre-expansion token estimate; carrying debt forward"
+            );
+        }
 
         let section_names: Vec<String> = included.iter().map(|s| s.name.clone()).collect();
         let total_tokens = budget.consumed();
