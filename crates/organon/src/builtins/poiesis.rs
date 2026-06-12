@@ -30,8 +30,9 @@ use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolTag,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -355,6 +356,14 @@ fn generate_document_def() -> ToolDef {
         groups: vec![ToolGroupId::Edit],
         tags: vec![ToolTag::Format],
     }
+}
+
+fn render_typst_report_capability_rule() -> ToolCallCapabilityRule {
+    ToolCallCapabilityRule::argument_presence(
+        "out_path",
+        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+    )
 }
 
 // ── lint_report ───────────────────────────────────────────────────────────────
@@ -765,7 +774,7 @@ fn render_typst_report_def() -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Workspace,
-        reversibility: Reversibility::FullyReversible,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Edit],
         tags: vec![ToolTag::Format],
@@ -878,8 +887,9 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(generate_document_def(), Box::new(GenerateDocumentExecutor))?;
     registry.register(lint_report_def(), Box::new(LintReportExecutor))?;
     registry.register(verify_report_def(), Box::new(VerifyReportExecutor))?;
-    registry.register(
+    registry.register_with_call_capability(
         render_typst_report_def(),
+        render_typst_report_capability_rule(),
         Box::new(RenderTypstReportExecutor),
     )?;
     registry.register(qa_gate_def(), Box::new(QaGateExecutor))?;

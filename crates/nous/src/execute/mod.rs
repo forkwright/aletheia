@@ -23,7 +23,7 @@ use hermeneus::types::{
 };
 use koina::id::ToolName;
 use organon::registry::ToolRegistry;
-use organon::types::ToolContext;
+use organon::types::{ToolContext, ToolGroupPolicy, ToolInput};
 
 use self::dispatch::{DispatchResult, build_messages, classify_signals, dispatch_tools};
 use self::resolve::{
@@ -38,6 +38,51 @@ use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult, ToolResult
 use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
+
+fn apply_tool_group_policy(
+    tool_uses: Vec<(String, String, serde_json::Value)>,
+    tools: &ToolRegistry,
+    policy: &ToolGroupPolicy,
+    denied_blocks: &mut Vec<ContentBlock>,
+) -> Vec<(String, String, serde_json::Value)> {
+    let mut allowed = Vec::with_capacity(tool_uses.len());
+    for (id, name, input) in tool_uses {
+        let denial = match ToolName::new(name.as_str()) {
+            Ok(tool_name) => {
+                let tool_input = ToolInput {
+                    name: tool_name,
+                    tool_use_id: id.clone(),
+                    arguments: input.clone(),
+                };
+                match tools.permits_call(&tool_input, policy) {
+                    Ok(true) => None,
+                    Ok(false) => Some(format!(
+                        "Tool '{name}' is not in your allowed tool groups. Policy: {}",
+                        policy.description()
+                    )),
+                    Err(e) => Some(format!("Tool '{name}' call rejected by group policy: {e}")),
+                }
+            }
+            Err(_err) => Some(format!("Invalid tool name: {name}")),
+        };
+
+        if let Some(message) = denial {
+            warn!(
+                tool = %name,
+                tool_use_id = %id,
+                "tool call denied by group policy"
+            );
+            denied_blocks.push(ContentBlock::ToolResult {
+                tool_use_id: id,
+                content: ToolResultContent::Text(message),
+                is_error: Some(true),
+            });
+        } else {
+            allowed.push((id, name, input));
+        }
+    }
+    allowed
+}
 
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
@@ -301,29 +346,12 @@ async fn execute_with_dispatch(
             extracted.tool_uses
         };
 
-        let (effective_tool_uses, denied): (Vec<_>, Vec<_>) =
-            effective_tool_uses.into_iter().partition(|(_, name, _)| {
-                ToolName::new(name)
-                    .ok()
-                    .and_then(|n| tools.get_def(&n))
-                    .is_none_or(|def| config.tool_groups.permits(&def.groups))
-            });
-
-        for (id, name, _) in &denied {
-            warn!(
-                tool = %name,
-                tool_use_id = %id,
-                "tool call denied by group policy"
-            );
-            denied_blocks.push(ContentBlock::ToolResult {
-                tool_use_id: id.clone(),
-                content: ToolResultContent::Text(format!(
-                    "Tool '{name}' is not in your allowed tool groups. Policy: {}",
-                    config.tool_groups.description()
-                )),
-                is_error: Some(true),
-            });
-        }
+        let effective_tool_uses = apply_tool_group_policy(
+            effective_tool_uses,
+            tools,
+            &config.tool_groups,
+            &mut denied_blocks,
+        );
 
         // WHY: before_tool hooks run after allowlist filtering but before dispatch,
         // so hooks can deny individual tool calls based on budget/scope/policy.
@@ -675,29 +703,12 @@ pub async fn execute_streaming(
             extracted.tool_uses
         };
 
-        let (effective_tool_uses, denied): (Vec<_>, Vec<_>) =
-            effective_tool_uses.into_iter().partition(|(_, name, _)| {
-                ToolName::new(name)
-                    .ok()
-                    .and_then(|n| tools.get_def(&n))
-                    .is_none_or(|def| config.tool_groups.permits(&def.groups))
-            });
-
-        for (id, name, _) in &denied {
-            warn!(
-                tool = %name,
-                tool_use_id = %id,
-                "tool call denied by group policy"
-            );
-            denied_blocks.push(ContentBlock::ToolResult {
-                tool_use_id: id.clone(),
-                content: ToolResultContent::Text(format!(
-                    "Tool '{name}' is not in your allowed tool groups. Policy: {}",
-                    config.tool_groups.description()
-                )),
-                is_error: Some(true),
-            });
-        }
+        let effective_tool_uses = apply_tool_group_policy(
+            effective_tool_uses,
+            tools,
+            &config.tool_groups,
+            &mut denied_blocks,
+        );
 
         // WHY: before_tool hooks filter tool calls before streaming dispatch
         let effective_tool_uses = if let Some(hook_registry) = hooks {

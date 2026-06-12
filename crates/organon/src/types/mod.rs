@@ -137,6 +137,138 @@ impl ToolGroupPolicy {
     }
 }
 
+/// Effective capability classification for one tool call.
+///
+/// Tool-level groups and reversibility describe the default call shape.
+/// Mixed tools can attach argument-driven rules so execution-time policy
+/// checks use the selected operation rather than the broad tool surface.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallCapability {
+    /// Tool groups required by this concrete call.
+    pub groups: Vec<ToolGroupId>,
+    /// Reversibility for this concrete call.
+    pub reversibility: Reversibility,
+}
+
+impl ToolCallCapability {
+    /// Build a call capability from groups and reversibility.
+    #[must_use]
+    pub fn new(groups: Vec<ToolGroupId>, reversibility: Reversibility) -> Self {
+        Self {
+            groups,
+            reversibility,
+        }
+    }
+}
+
+/// Argument value mapped to an effective call capability.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolArgumentValueCapability {
+    /// Selector value from the tool input.
+    pub value: String,
+    /// Capability for calls carrying this selector value.
+    pub capability: ToolCallCapability,
+}
+
+/// Argument-driven capability metadata for tools with mixed operations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ToolCallCapabilityRule {
+    /// Classify by an argument's string value, such as `action` or `op`.
+    ArgumentValue {
+        /// Argument name to read from the tool input.
+        argument: String,
+        /// Capabilities keyed by argument value.
+        values: Vec<ToolArgumentValueCapability>,
+    },
+    /// Classify by whether an argument is present.
+    ArgumentPresence {
+        /// Argument name to test in the tool input.
+        argument: String,
+        /// Capability when the argument is present and not null.
+        present: ToolCallCapability,
+        /// Capability when the argument is absent or null.
+        absent: ToolCallCapability,
+    },
+}
+
+impl ToolCallCapabilityRule {
+    /// Build a string-value selector.
+    #[must_use]
+    pub fn argument_value<V, I>(argument: impl Into<String>, values: I) -> Self
+    where
+        V: Into<String>,
+        I: IntoIterator<Item = (V, ToolCallCapability)>,
+    {
+        Self::ArgumentValue {
+            argument: argument.into(),
+            values: values
+                .into_iter()
+                .map(|(value, capability)| ToolArgumentValueCapability {
+                    value: value.into(),
+                    capability,
+                })
+                .collect(),
+        }
+    }
+
+    /// Build a presence selector.
+    #[must_use]
+    pub fn argument_presence(
+        argument: impl Into<String>,
+        present: ToolCallCapability,
+        absent: ToolCallCapability,
+    ) -> Self {
+        Self::ArgumentPresence {
+            argument: argument.into(),
+            present,
+            absent,
+        }
+    }
+
+    /// Classify one set of tool arguments.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a value selector argument is missing, non-string,
+    /// or has no matching classification.
+    pub fn classify(
+        &self,
+        arguments: &serde_json::Value,
+    ) -> std::result::Result<ToolCallCapability, String> {
+        match self {
+            Self::ArgumentValue { argument, values } => {
+                let Some(value) = arguments.get(argument).and_then(serde_json::Value::as_str)
+                else {
+                    return Err(format!("missing or invalid operation selector: {argument}"));
+                };
+                values
+                    .iter()
+                    .find(|case| case.value == value)
+                    .map(|case| case.capability.clone())
+                    .ok_or_else(|| {
+                        format!("unknown operation selector value for {argument}: {value}")
+                    })
+            }
+            Self::ArgumentPresence {
+                argument,
+                present,
+                absent,
+            } => {
+                if arguments
+                    .get(argument)
+                    .is_some_and(|value| !value.is_null())
+                {
+                    Ok(present.clone())
+                } else {
+                    Ok(absent.clone())
+                }
+            }
+        }
+    }
+}
+
 impl Serialize for ToolGroupPolicy {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where

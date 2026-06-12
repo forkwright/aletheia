@@ -11,8 +11,9 @@ use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolTag,
 };
 
 fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
@@ -133,23 +134,38 @@ fn render_xlsx_report_def() -> ToolDef {
             required: vec!["data".to_owned()],
         },
         category: ToolCategory::Workspace,
-        reversibility: Reversibility::FullyReversible,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Edit],
         tags: vec![ToolTag::Format],
     }
 }
 
+fn render_xlsx_report_capability_rule() -> ToolCallCapabilityRule {
+    ToolCallCapabilityRule::argument_presence(
+        "out_path",
+        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+    )
+}
+
 /// Register the `render_xlsx_report` tool.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(render_xlsx_report_def(), Box::new(RenderXlsxReportExecutor))?;
+    registry.register_with_call_capability(
+        render_xlsx_report_def(),
+        render_xlsx_report_capability_rule(),
+        Box::new(RenderXlsxReportExecutor),
+    )?;
     Ok(())
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(clippy::indexing_slicing, reason = "test schema assertions")]
 mod tests {
     use super::*;
+    use crate::types::ApprovalRequirement;
+    use koina::id::ToolName;
 
     #[test]
     fn schema_declares_data_object_with_string_leniency() {
@@ -162,6 +178,41 @@ mod tests {
                 .unwrap_or_default()
                 .contains("JSON string"),
             "data schema must document stringified JSON leniency"
+        );
+    }
+
+    #[test]
+    fn render_xlsx_report_call_capability_requires_approval_when_out_path_present() {
+        let mut registry = ToolRegistry::new();
+        register(&mut registry).expect("register");
+
+        assert_eq!(
+            registry
+                .approval_requirement_for_input(&ToolInput {
+                    name: ToolName::from_static("render_xlsx_report"),
+                    tool_use_id: "toolu_test".to_owned(),
+                    arguments: serde_json::json!({
+                        "data": {"sheets": [{"name": "Sheet1", "columns": [{"header": "A"}], "rows": [["x"]]}]},
+                    }),
+                })
+                .expect("approval"),
+            ApprovalRequirement::None,
+            "no out_path means no disk write"
+        );
+
+        assert_eq!(
+            registry
+                .approval_requirement_for_input(&ToolInput {
+                    name: ToolName::from_static("render_xlsx_report"),
+                    tool_use_id: "toolu_test".to_owned(),
+                    arguments: serde_json::json!({
+                        "data": {"sheets": [{"name": "Sheet1", "columns": [{"header": "A"}], "rows": [["x"]]}]},
+                        "out_path": "/tmp/report.xlsx",
+                    }),
+                })
+                .expect("approval"),
+            ApprovalRequirement::Required,
+            "out_path present means disk write"
         );
     }
 }

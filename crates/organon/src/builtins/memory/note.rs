@@ -10,8 +10,9 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolTag,
 };
 
 use crate::builtins::workspace::extract_str;
@@ -155,7 +156,34 @@ fn note_def() -> ToolDef {
     }
 }
 
+fn note_capability_rule() -> ToolCallCapabilityRule {
+    ToolCallCapabilityRule::argument_value(
+        "action",
+        [
+            (
+                "add",
+                ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::Reversible),
+            ),
+            (
+                "list",
+                ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+            ),
+            (
+                "delete",
+                ToolCallCapability::new(
+                    vec![ToolGroupId::Edit],
+                    Reversibility::PartiallyReversible,
+                ),
+            ),
+        ],
+    )
+}
+
 pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(note_def(), Box::new(NoteExecutor))?;
+    registry.register_with_call_capability(
+        note_def(),
+        note_capability_rule(),
+        Box::new(NoteExecutor),
+    )?;
     Ok(())
 }

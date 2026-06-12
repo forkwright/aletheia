@@ -9,8 +9,9 @@ use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolTag,
 };
 
 fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
@@ -196,16 +197,28 @@ fn scaffold_report_def() -> ToolDef {
             required: vec!["slug".to_owned(), "format".to_owned()],
         },
         category: ToolCategory::Workspace,
-        reversibility: Reversibility::FullyReversible,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read, ToolGroupId::Edit],
         tags: vec![ToolTag::Edit, ToolTag::Plan],
     }
 }
 
+fn scaffold_report_capability_rule() -> ToolCallCapabilityRule {
+    ToolCallCapabilityRule::argument_presence(
+        "directory",
+        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+    )
+}
+
 /// Register the scaffold report tool.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(scaffold_report_def(), Box::new(ScaffoldReportExecutor))?;
+    registry.register_with_call_capability(
+        scaffold_report_def(),
+        scaffold_report_capability_rule(),
+        Box::new(ScaffoldReportExecutor),
+    )?;
     Ok(())
 }
 
@@ -218,6 +231,7 @@ mod tests {
     use koina::id::{NousId, SessionId, ToolName};
 
     use super::*;
+    use crate::types::ApprovalRequirement;
 
     fn test_ctx(dir: &std::path::Path) -> ToolContext {
         ToolContext {
@@ -257,5 +271,42 @@ mod tests {
             assert!(result.is_error, "{directory} must be rejected");
             assert!(result.content.text_summary().contains("invalid directory"));
         }
+    }
+
+    #[test]
+    fn scaffold_report_call_capability_requires_approval_when_directory_present() {
+        let mut registry = ToolRegistry::new();
+        register(&mut registry).expect("register");
+
+        assert_eq!(
+            registry
+                .approval_requirement_for_input(&ToolInput {
+                    name: ToolName::from_static("scaffold_report"),
+                    tool_use_id: "toolu_test".to_owned(),
+                    arguments: serde_json::json!({
+                        "slug": "acme-report",
+                        "format": "typst",
+                    }),
+                })
+                .expect("approval"),
+            ApprovalRequirement::None,
+            "no directory means no disk write"
+        );
+
+        assert_eq!(
+            registry
+                .approval_requirement_for_input(&ToolInput {
+                    name: ToolName::from_static("scaffold_report"),
+                    tool_use_id: "toolu_test".to_owned(),
+                    arguments: serde_json::json!({
+                        "slug": "acme-report",
+                        "format": "typst",
+                        "directory": "/tmp/reports",
+                    }),
+                })
+                .expect("approval"),
+            ApprovalRequirement::Required,
+            "directory present means disk write"
+        );
     }
 }

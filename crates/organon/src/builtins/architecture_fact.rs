@@ -35,8 +35,9 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolTag,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -283,16 +284,56 @@ fn architecture_fact_def() -> ToolDef {
         category: ToolCategory::Research,
         reversibility: Reversibility::Reversible,
         auto_activate: true,
-        groups: vec![ToolGroupId::Read, ToolGroupId::Plan],
+        groups: vec![ToolGroupId::Read, ToolGroupId::Edit, ToolGroupId::Plan],
         tags: vec![ToolTag::Recon, ToolTag::Edit],
     }
+}
+
+fn architecture_fact_capability_rule() -> ToolCallCapabilityRule {
+    ToolCallCapabilityRule::argument_value(
+        "op",
+        [
+            (
+                "get",
+                ToolCallCapability::new(
+                    vec![ToolGroupId::Read, ToolGroupId::Plan],
+                    Reversibility::FullyReversible,
+                ),
+            ),
+            (
+                "put",
+                ToolCallCapability::new(
+                    vec![ToolGroupId::Edit, ToolGroupId::Plan],
+                    Reversibility::PartiallyReversible,
+                ),
+            ),
+            (
+                "list",
+                ToolCallCapability::new(
+                    vec![ToolGroupId::Read, ToolGroupId::Plan],
+                    Reversibility::FullyReversible,
+                ),
+            ),
+            (
+                "search",
+                ToolCallCapability::new(
+                    vec![ToolGroupId::Read, ToolGroupId::Plan],
+                    Reversibility::FullyReversible,
+                ),
+            ),
+        ],
+    )
 }
 
 // ── Registration ─────────────────────────────────────────────────────────────
 
 /// Register the `architecture_fact` tool into the registry.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(architecture_fact_def(), Box::new(ArchitectureFactExecutor))?;
+    registry.register_with_call_capability(
+        architecture_fact_def(),
+        architecture_fact_capability_rule(),
+        Box::new(ArchitectureFactExecutor),
+    )?;
     Ok(())
 }
 

@@ -32,22 +32,45 @@ pub struct ServerToolConfig {
     pub code_execution: bool,
 }
 
+/// Metadata describing one server tool available for activation via `enable_tool`.
+#[derive(Debug, Clone)]
+pub(crate) struct ServerToolCatalogEntry {
+    /// Tool name as exposed to the agent.
+    pub name: ToolName,
+    /// Human-readable description shown in the catalog.
+    pub description: String,
+    /// Whether activating this tool is considered sensitive for audit events.
+    pub sensitive: bool,
+}
+
 impl ServerToolConfig {
     /// Generate catalog entries for server tools available via `enable_tool`.
     #[must_use]
     pub(crate) fn catalog_entries(&self) -> Vec<(ToolName, String)> {
+        self.catalog_entries_with_metadata()
+            .into_iter()
+            .map(|entry| (entry.name, entry.description))
+            .collect()
+    }
+
+    /// Catalog entries with sensitivity metadata for policy checks.
+    #[must_use]
+    pub(crate) fn catalog_entries_with_metadata(&self) -> Vec<ServerToolCatalogEntry> {
         let mut entries = Vec::new();
         if self.web_search {
-            entries.push((
-                ToolName::from_static("web_search"), // kanon:ignore RUST/expect
-                "Search the web using Anthropic's server-side web search".to_owned(),
-            ));
+            entries.push(ServerToolCatalogEntry {
+                name: ToolName::from_static("web_search"), // kanon:ignore RUST/expect
+                description: "Search the web using Anthropic's server-side web search".to_owned(),
+                sensitive: false,
+            });
         }
         if self.code_execution {
-            entries.push((
-                ToolName::from_static("code_execution"), // kanon:ignore RUST/expect
-                "Execute Python code in a sandboxed server-side environment".to_owned(),
-            ));
+            entries.push(ServerToolCatalogEntry {
+                name: ToolName::from_static("code_execution"), // kanon:ignore RUST/expect
+                description: "Execute Python code in a sandboxed server-side environment"
+                    .to_owned(),
+                sensitive: true,
+            });
         }
         entries
     }

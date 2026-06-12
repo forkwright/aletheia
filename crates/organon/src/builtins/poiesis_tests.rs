@@ -20,6 +20,7 @@ use super::*;
 use crate::builtins::render_docx_report::RenderDocxReportExecutor;
 use crate::builtins::render_pptx_report::RenderPptxReportExecutor;
 use crate::builtins::render_xlsx_report::RenderXlsxReportExecutor;
+use crate::types::ApprovalRequirement;
 
 fn test_ctx(dir: &std::path::Path) -> ToolContext {
     ToolContext {
@@ -725,4 +726,37 @@ async fn report_renderers_reject_out_path_escape() {
             );
         }
     }
+}
+
+#[test]
+fn render_typst_report_call_capability_requires_approval_when_out_path_present() {
+    let mut registry = ToolRegistry::new();
+    register(&mut registry).expect("register");
+
+    assert_eq!(
+        registry
+            .approval_requirement_for_input(&tool_input(
+                "render_typst_report",
+                serde_json::json!({
+                    "source": "Hello from Typst.",
+                }),
+            ))
+            .expect("approval"),
+        ApprovalRequirement::None,
+        "no out_path means no disk write"
+    );
+
+    assert_eq!(
+        registry
+            .approval_requirement_for_input(&tool_input(
+                "render_typst_report",
+                serde_json::json!({
+                    "source": "Hello from Typst.",
+                    "out_path": "/tmp/report.pdf",
+                }),
+            ))
+            .expect("approval"),
+        ApprovalRequirement::Required,
+        "out_path present means disk write"
+    );
 }
