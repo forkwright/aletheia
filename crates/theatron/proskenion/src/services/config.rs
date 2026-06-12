@@ -1,26 +1,29 @@
-//! Persistent connection config stored at `~/.config/aletheia/desktop.toml`.
+//! Persistent desktop config compatibility facade.
 //!
-//! Loads on startup and saves after each successful connection so the user
-//! does not have to re-enter the server URL on every launch.
+//! Historically this module owned the connection config stored at
+//! `~/.config/aletheia/desktop.toml`. Connection state is now canonical in
+//! `~/.config/aletheia-desktop/settings.toml` via `services::settings_config`;
+//! this module remains responsible for:
 //!
-//! SECURITY: Auth tokens are stored in plaintext in the config file. The file
-//! is written with 0600 (owner-only) permissions, but any process running as
-//! the same user can read it. Full OS keyring integration (libsecret on Linux,
-//! Keychain on macOS) is tracked as future work. Do not copy this file or
-//! commit it to version control.
+//! - Migrating legacy `desktop.toml` profiles into the canonical store.
+//! - Loading and saving notification preferences (still in `desktop.toml`).
+//!
+//! Auth values are treated as opaque references in the canonical store. This
+//! module may read legacy plaintext tokens only to migrate existing profiles.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use snafu::{ResultExt, Snafu};
 
+use crate::services::settings_config;
 use crate::state::connection::ConnectionConfig;
 use crate::state::notifications::NotificationPreferences;
 
 /// Errors that can occur when loading or saving desktop config.
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
-pub enum ConfigError {
+pub(crate) enum ConfigError {
     /// No platform config directory could be determined.
     #[snafu(display("failed to determine config directory"))]
     NoConfigDir,
@@ -65,6 +68,20 @@ pub enum ConfigError {
         /// Underlying TOML serialization error.
         source: toml::ser::Error,
     },
+
+    /// Failed to load canonical settings.
+    #[snafu(display("failed to load canonical settings: {source}"))]
+    LoadSettings {
+        /// Underlying settings config error.
+        source: settings_config::SettingsConfigError,
+    },
+
+    /// Failed to persist the active connection to canonical settings.
+    #[snafu(display("failed to persist connection to settings: {source}"))]
+    PersistSettings {
+        /// Underlying settings config error.
+        source: settings_config::SettingsConfigError,
+    },
 }
 
 /// TOML file envelope for `~/.config/aletheia/desktop.toml`.
@@ -77,128 +94,118 @@ struct DesktopConfig {
     notifications: NotificationPreferences,
 }
 
+/// Resolve the legacy config file path under `base`.
+fn config_path_from(base: &Path) -> PathBuf {
+    base.join("aletheia").join("desktop.toml")
+}
+
 /// Resolve the config file path: `~/.config/aletheia/desktop.toml`.
 fn config_path() -> Result<PathBuf, ConfigError> {
     let dir = dirs::config_dir().ok_or(ConfigError::NoConfigDir)?;
-    Ok(dir.join("aletheia").join("desktop.toml"))
+    Ok(config_path_from(&dir))
+}
+
+/// Build a runtime connection config from canonical settings.
+fn connection_from_settings(settings: &settings_config::SettingsConfig) -> Option<ConnectionConfig> {
+    settings.server_store().active().map(|entry| ConnectionConfig {
+        server_url: entry.url.clone(),
+        auth_token: entry.auth_token.clone(),
+        auto_reconnect: true,
+        ..ConnectionConfig::default()
+    })
 }
 
 /// Load connection config from disk.
 ///
-/// Returns the default config if the file does not exist.
+/// Returns the active server from canonical settings if present. If canonical
+/// settings have no active server, attempts to migrate a legacy
+/// `~/.config/aletheia/desktop.toml` profile and returns its connection.
+/// Returns the default config if neither exists.
 ///
 /// # Errors
 ///
-/// Returns an error if the file exists but cannot be read or parsed.
+/// Returns an error if a legacy file exists but cannot be read or parsed.
 pub(crate) fn load() -> Result<ConnectionConfig, ConfigError> {
-    let path = config_path()?;
+    let base = dirs::config_dir().ok_or(ConfigError::NoConfigDir)?;
+    load_in(&base)
+}
 
+fn load_in(base: &Path) -> Result<ConnectionConfig, ConfigError> {
+    // WHY: Canonical settings own active connection state; read them first.
+    match settings_config::load_in(base) {
+        Ok(settings) => {
+            if let Some(config) = connection_from_settings(&settings) {
+                return Ok(config);
+            }
+        }
+        Err(e) => {
+            if base.join("aletheia-desktop").join("settings.toml").exists() {
+                return Err(ConfigError::LoadSettings { source: e });
+            }
+        }
+    }
+
+    // NOTE: No active canonical server. If a legacy desktop.toml exists,
+    // import its connection into the canonical store and use it.
+    let path = config_path_from(base);
     if !path.exists() {
         return Ok(ConnectionConfig::default());
     }
 
     let content = std::fs::read_to_string(&path).context(ReadFileSnafu { path: &path })?;
     let desktop: DesktopConfig = toml::from_str(&content).context(ParseSnafu)?;
+
+    if desktop.connection.server_url.is_empty() {
+        return Ok(ConnectionConfig::default());
+    }
+
+    if let Err(e) = settings_config::upsert_active_server_in(
+        base,
+        desktop.connection.server_url.clone(),
+        desktop.connection.auth_token.clone(),
+    ) {
+        tracing::warn!("failed to migrate legacy connection to settings: {e}");
+    }
+
     Ok(desktop.connection)
-}
-
-/// Save connection config to disk.
-///
-/// Creates the parent directory if it does not exist.
-///
-/// # Errors
-///
-/// Returns an error if the directory cannot be created or the file cannot
-/// be written.
-pub(crate) fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
-    let path = config_path()?;
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).context(CreateDirSnafu {
-            path: parent.to_path_buf(),
-        })?;
-    }
-
-    // NOTE: Preserve existing notification preferences when saving connection config.
-    let existing_notifications = if path.exists() {
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|c| toml::from_str::<DesktopConfig>(&c).ok())
-            .map(|d| d.notifications)
-            .unwrap_or_default()
-    } else {
-        NotificationPreferences::default()
-    };
-    let desktop = DesktopConfig {
-        connection: config.clone(),
-        notifications: existing_notifications,
-    };
-    let content = toml::to_string_pretty(&desktop).context(SerializeSnafu)?;
-    // SAFETY: Config may contain auth tokens; restrict to owner-only access.
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&path)
-            .context(WriteFileSnafu { path: &path })?;
-        file.write_all(content.as_bytes())
-            .context(WriteFileSnafu { path: &path })?;
-    }
-
-    Ok(())
 }
 
 /// Load config, falling back to defaults on any error.
 ///
 /// Logs a warning if loading fails. Suitable for startup where a missing
 /// or corrupt config file should not prevent the app from launching.
-///
-/// Emits a `tracing::warn!` if an auth token is present, since it is stored
-/// in plaintext (see module-level SECURITY note).
 #[must_use]
 pub(crate) fn load_or_default() -> ConnectionConfig {
-    let config = match load() {
+    match load() {
         Ok(config) => config,
         Err(e) => {
-            tracing::warn!("failed to load config, using defaults: {e}");
-            return ConnectionConfig::default();
+            tracing::warn!("failed to load connection config, using defaults: {e}");
+            ConnectionConfig::default()
         }
-    };
-
-    if config.auth_token.is_some() {
-        tracing::warn!(
-            "auth token loaded from plaintext config file (~/.config/aletheia/desktop.toml). \
-             OS keyring integration is not yet implemented. The file is 0600 but any \
-             same-user process can read it."
-        );
-        // Verify the config file has correct permissions (0600).
-        warn_if_permissions_loose();
     }
-
-    config
 }
 
-/// Check that the config file has restrictive permissions (0600) and warn if not.
-fn warn_if_permissions_loose() {
-    use std::os::unix::fs::PermissionsExt;
+/// Save connection config to disk.
+///
+/// Persists the active server URL and auth reference into the canonical
+/// settings store. Creates the parent directory if it does not exist.
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be created or the canonical
+/// settings cannot be written.
+pub(crate) fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
+    let base = dirs::config_dir().ok_or(ConfigError::NoConfigDir)?;
+    save_in(&base, config)
+}
 
-    let Ok(path) = config_path() else { return };
-    let Ok(metadata) = std::fs::metadata(&path) else {
-        return;
-    };
-    let mode = metadata.permissions().mode() & 0o777;
-    if mode != 0o600 {
-        tracing::warn!(
-            path = %path.display(),
-            mode = format!("{mode:04o}"),
-            "config file has loose permissions (expected 0600). \
-             Run: chmod 600 {}",
-            path.display(),
-        );
-    }
+fn save_in(base: &Path, config: &ConnectionConfig) -> Result<(), ConfigError> {
+    settings_config::upsert_active_server_in(
+        base,
+        config.server_url.clone(),
+        config.auth_token.clone(),
+    )
+    .context(PersistSettingsSnafu)
 }
 
 /// Load notification preferences from the config file.
@@ -209,10 +216,14 @@ pub(crate) fn load_notification_prefs() -> NotificationPreferences {
     let Ok(path) = config_path() else {
         return NotificationPreferences::default();
     };
+    load_notification_prefs_in(&path)
+}
+
+fn load_notification_prefs_in(path: &Path) -> NotificationPreferences {
     if !path.exists() {
         return NotificationPreferences::default();
     }
-    let content = match std::fs::read_to_string(&path) {
+    let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return NotificationPreferences::default(),
     };
@@ -228,17 +239,23 @@ pub(crate) fn load_notification_prefs() -> NotificationPreferences {
 /// Save notification preferences to the config file.
 ///
 /// Reads the current file, updates only the `[notifications]` section, and
-/// writes back -- preserving the `[connection]` section.
+/// writes back -- preserving the `[connection]` section if one still exists.
 ///
 /// # Errors
 ///
 /// Returns an error if the file cannot be read, parsed, or written.
 pub(crate) fn save_notification_prefs(prefs: &NotificationPreferences) -> Result<(), ConfigError> {
     let path = config_path()?;
+    save_notification_prefs_in(&path, prefs)
+}
 
+fn save_notification_prefs_in(
+    path: &Path,
+    prefs: &NotificationPreferences,
+) -> Result<(), ConfigError> {
     // Read existing config to preserve the connection section.
     let existing = if path.exists() {
-        let content = std::fs::read_to_string(&path).context(ReadFileSnafu { path: &path })?;
+        let content = std::fs::read_to_string(path).context(ReadFileSnafu { path })?;
         toml::from_str::<DesktopConfig>(&content).context(ParseSnafu)?
     } else {
         DesktopConfig::default()
@@ -256,7 +273,6 @@ pub(crate) fn save_notification_prefs(prefs: &NotificationPreferences) -> Result
         })?;
     }
 
-    // SAFETY: Config may contain auth tokens; restrict to owner-only access.
     {
         use std::os::unix::fs::OpenOptionsExt;
         let mut file = std::fs::OpenOptions::new()
@@ -264,10 +280,10 @@ pub(crate) fn save_notification_prefs(prefs: &NotificationPreferences) -> Result
             .create(true)
             .truncate(true)
             .mode(0o600)
-            .open(&path)
-            .context(WriteFileSnafu { path: &path })?;
+            .open(path)
+            .context(WriteFileSnafu { path })?;
         file.write_all(content.as_bytes())
-            .context(WriteFileSnafu { path: &path })?;
+            .context(WriteFileSnafu { path })?;
     }
 
     Ok(())
@@ -277,6 +293,12 @@ pub(crate) fn save_notification_prefs(prefs: &NotificationPreferences) -> Result
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
+
+    fn temp_base() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().to_path_buf();
+        (dir, base)
+    }
 
     #[test]
     fn round_trip_toml() {
@@ -494,5 +516,105 @@ server_url = "http://custom:9000"
         // value, never panic, regardless of host state.
         let prefs = load_notification_prefs();
         assert_eq!(prefs.enabled, NotificationPreferences::default().enabled);
+    }
+
+    // --- Migration / canonical-store tests ---
+
+    #[test]
+    fn legacy_desktop_toml_migrates_to_settings() {
+        let (_dir, base) = temp_base();
+        let legacy = config_path_from(&base);
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        let desktop = DesktopConfig {
+            connection: ConnectionConfig {
+                server_url: "http://legacy-server:18789".to_string(),
+                auth_token: Some("legacy-token".to_string()),
+                ..ConnectionConfig::default()
+            },
+            notifications: NotificationPreferences::default(),
+        };
+        std::fs::write(&legacy, toml::to_string_pretty(&desktop).unwrap()).unwrap();
+
+        let cfg = load_in(&base).unwrap();
+        assert_eq!(cfg.server_url, "http://legacy-server:18789");
+        assert_eq!(cfg.auth_token.as_deref(), Some("legacy-token"));
+
+        // WHY: Migration should have written the canonical settings store.
+        let settings = settings_config::load_in(&base).unwrap();
+        let store = settings.server_store();
+        let active = store.active().unwrap();
+        assert_eq!(active.url, "http://legacy-server:18789");
+        assert_eq!(active.auth_token.as_deref(), Some("legacy-token"));
+    }
+
+    #[test]
+    fn canonical_settings_take_precedence_over_legacy() {
+        let (_dir, base) = temp_base();
+
+        // Pre-populate canonical settings with an active server.
+        settings_config::upsert_active_server_in(
+            &base,
+            "http://canonical:18789".to_string(),
+            None,
+        )
+        .unwrap();
+
+        // Legacy file still exists with a different URL.
+        let legacy = config_path_from(&base);
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        let desktop = DesktopConfig {
+            connection: ConnectionConfig {
+                server_url: "http://legacy:18789".to_string(),
+                ..ConnectionConfig::default()
+            },
+            notifications: NotificationPreferences::default(),
+        };
+        std::fs::write(&legacy, toml::to_string_pretty(&desktop).unwrap()).unwrap();
+
+        let cfg = load_in(&base).unwrap();
+        assert_eq!(cfg.server_url, "http://canonical:18789");
+    }
+
+    #[test]
+    fn malformed_canonical_settings_do_not_fall_back_to_legacy() {
+        let (_dir, base) = temp_base();
+        let settings = base.join("aletheia-desktop").join("settings.toml");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(&settings, "not valid toml = [").unwrap();
+
+        let legacy = config_path_from(&base);
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        let desktop = DesktopConfig {
+            connection: ConnectionConfig {
+                server_url: "http://legacy:18789".to_string(),
+                ..ConnectionConfig::default()
+            },
+            notifications: NotificationPreferences::default(),
+        };
+        std::fs::write(&legacy, toml::to_string_pretty(&desktop).unwrap()).unwrap();
+
+        let err = load_in(&base).expect_err("canonical parse error should win");
+        assert!(
+            matches!(err, ConfigError::LoadSettings { .. }),
+            "expected canonical settings error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn save_connection_updates_canonical_settings() {
+        let (_dir, base) = temp_base();
+        let config = ConnectionConfig {
+            server_url: "http://save-me:18789".to_string(),
+            auth_token: Some("save-token".to_string()),
+            ..ConnectionConfig::default()
+        };
+
+        save_in(&base, &config).unwrap();
+
+        let settings = settings_config::load_in(&base).unwrap();
+        let store = settings.server_store();
+        let active = store.active().unwrap();
+        assert_eq!(active.url, "http://save-me:18789");
+        assert_eq!(active.auth_token.as_deref(), Some("save-token"));
     }
 }

@@ -107,6 +107,15 @@ const PLACEHOLDER_STYLE: &str = "\
     color: var(--text-muted);\
 ";
 
+/// Honest title for the default `/planning` surface.
+const PLANNING_NOT_AVAILABLE_TITLE: &str = "Planning verification only";
+
+/// Honest body explaining that only verification is wired on the public API.
+const PLANNING_NOT_AVAILABLE_BODY: &str = "\
+    Only project verification is available on this pylon instance. \
+    Project listing, requirements, roadmap, checkpoints, discussions, and execution are not exposed.\
+";
+
 /// Project dashboard -- the default `/planning` view.
 ///
 /// Displays the planning project list when the pylon project-list API exists.
@@ -153,11 +162,10 @@ pub(crate) fn Planning() -> Element {
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{PLACEHOLDER_STYLE}",
-                        div { style: "font-size: var(--text-3xl);", "[P]" }
-                        div { style: "font-size: var(--text-md);", "Project planning not available" }
+                        div { style: "font-size: var(--text-3xl);", "[V]" }
+                        div { style: "font-size: var(--text-md);", "{PLANNING_NOT_AVAILABLE_TITLE}" }
                         div { style: "font-size: var(--text-sm); max-width: 400px; text-align: center;",
-                            "The planning API is not available on this pylon instance. "
-                            "Projects will appear here when connected to a pylon with dianoia integration."
+                            "{PLANNING_NOT_AVAILABLE_BODY}"
                         }
                     }
                 },
@@ -258,5 +266,23 @@ fn render_project_card(project: &Project) -> Element {
             span { "Last: {activity_text}" }
             span { "{agents_text}" }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PLANNING_NOT_AVAILABLE_BODY, PLANNING_NOT_AVAILABLE_TITLE};
+
+    #[test]
+    fn placeholder_text_describes_verification_only_surface() {
+        assert_eq!(PLANNING_NOT_AVAILABLE_TITLE, "Planning verification only");
+        assert!(
+            PLANNING_NOT_AVAILABLE_BODY.contains("Only project verification is available"),
+            "placeholder must not imply a full planning product"
+        );
+        assert!(
+            PLANNING_NOT_AVAILABLE_BODY.contains("not exposed"),
+            "placeholder must be explicit about missing capabilities"
+        );
     }
 }

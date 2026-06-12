@@ -90,9 +90,13 @@ fn MetricsToolDetail(tool_name: String) -> Element {
 /// toast store as context. Gates on wizard -> connect -> connected.
 #[component]
 pub(crate) fn App() -> Element {
-    let loaded_settings = use_hook(settings_config::load_or_default);
-    let loaded_config = use_hook(config::load_or_default);
+    // WHY: Detect first run before any load_or_default call that might touch
+    // disk. A clean XDG_CONFIG_HOME must surface the setup wizard.
     let first_run = use_hook(settings_config::is_first_run);
+    // WHY: Loading connection config may migrate a legacy desktop.toml active
+    // server into settings.toml; do that before deriving the settings store.
+    let loaded_config = use_hook(config::load_or_default);
+    let loaded_settings = use_hook(settings_config::load_or_default);
     let loaded_window_state = use_hook(platform::window_state::load_or_default);
 
     let connection_state = use_signal(ConnectionState::default);

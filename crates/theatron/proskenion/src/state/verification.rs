@@ -69,6 +69,20 @@ pub(crate) struct VerificationResult {
     pub(crate) project_id: String,
     pub(crate) requirements: Vec<RequirementVerification>,
     pub(crate) last_verified_at: String,
+    #[serde(default = "default_visibility")]
+    pub(crate) visibility: String,
+    #[serde(default = "default_classification")]
+    pub(crate) classification: String,
+    #[serde(default)]
+    pub(crate) redacted: bool,
+}
+
+fn default_visibility() -> String {
+    "private".to_string()
+}
+
+fn default_classification() -> String {
+    "restricted".to_string()
 }
 
 /// Store for verification results of the active project.
@@ -152,6 +166,9 @@ mod tests {
                 project_id: "p1".to_string(),
                 requirements,
                 last_verified_at: "2026-01-01T00:00:00Z".to_string(),
+                visibility: "public".to_string(),
+                classification: "public".to_string(),
+                redacted: false,
             }),
         }
     }
