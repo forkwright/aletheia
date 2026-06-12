@@ -274,58 +274,22 @@ impl std::fmt::Debug for ProviderConfig {
 
 impl Default for ProviderConfig {
     fn default() -> Self {
-        // NOTE: Built-in pricing for all first-party Anthropic models (USD per million tokens).
-        // Operator configs are merged on top, so these act as sensible fallbacks.
-        // Prices last verified against https://www.anthropic.com/pricing (2026-06-11).
-        let pricing = HashMap::from([
-            (
-                "claude-opus-4-6".to_owned(),
-                ModelPricing {
-                    input_cost_per_mtok: 5.0,
-                    output_cost_per_mtok: 25.0,
-                },
-            ),
-            (
-                "claude-opus-4-20250514".to_owned(),
-                ModelPricing {
-                    input_cost_per_mtok: 5.0,
-                    output_cost_per_mtok: 25.0,
-                },
-            ),
-            (
-                "claude-sonnet-4-6".to_owned(),
-                ModelPricing {
-                    input_cost_per_mtok: 3.0,
-                    output_cost_per_mtok: 15.0,
-                },
-            ),
-            (
-                "claude-sonnet-4-20250514".to_owned(),
-                ModelPricing {
-                    input_cost_per_mtok: 3.0,
-                    output_cost_per_mtok: 15.0,
-                },
-            ),
-            (
-                "claude-haiku-4-5".to_owned(),
-                ModelPricing {
-                    input_cost_per_mtok: 1.0,
-                    output_cost_per_mtok: 5.0,
-                },
-            ),
-            (
-                "claude-haiku-4-5-20251001".to_owned(),
-                ModelPricing {
-                    input_cost_per_mtok: 1.0,
-                    output_cost_per_mtok: 5.0,
-                },
-            ),
-        ]);
+        let pricing = koina::models::pricing_entries()
+            .map(|(model, price)| {
+                (
+                    model.to_owned(),
+                    ModelPricing {
+                        input_cost_per_mtok: price.input_cost_per_mtok,
+                        output_cost_per_mtok: price.output_cost_per_mtok,
+                    },
+                )
+            })
+            .collect();
         Self {
             provider_type: "anthropic".to_owned(),
             api_key: None,
             base_url: None,
-            default_model: Some(crate::models::names::OPUS.to_owned()),
+            default_model: Some(crate::models::names::opus().to_owned()),
             max_retries: Some(3),
             pricing,
             cc_mimicry: None,
@@ -602,7 +566,7 @@ mod tests {
         assert_eq!(config.provider_type, "anthropic");
         assert_eq!(
             config.default_model.as_deref(),
-            Some(crate::models::names::OPUS)
+            Some(crate::models::names::opus())
         );
         // WHY: Default pricing must cover the models used by background tasks.
         assert!(

@@ -196,7 +196,8 @@ impl SpawnService for SpawnServiceImpl {
                 thinking_enabled: false,
                 thinking_budget: 0,
                 chars_per_token: 4,
-                prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+                prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
+                    .to_owned(),
                 complexity: hermeneus::complexity::ComplexityConfig::default(),
                 extraction_model: None,
                 distillation_model: None,
@@ -380,11 +381,14 @@ mod tests {
     // `koina::defaults::DEFAULT_MODEL`. The mock provider's supported-models
     // list must include the workspace default so `spawn_and_run` can route
     // Coder tasks.
-    const SUPPORTED_MOCK_MODELS: &[&str] = &[
-        koina::defaults::DEFAULT_MODEL,
-        "claude-sonnet-4-20250514",
-        "claude-haiku-4-5-20251001",
-    ];
+    static SUPPORTED_MOCK_MODELS: std::sync::LazyLock<Box<[&'static str]>> =
+        std::sync::LazyLock::new(|| {
+            Box::new([
+                koina::defaults::DEFAULT_MODEL,
+                koina::models::tier_default(koina::models::ModelTier::Opus),
+                koina::models::tier_default(koina::models::ModelTier::Haiku),
+            ])
+        });
 
     fn make_providers() -> Arc<ProviderRegistry> {
         let response = CompletionResponse {
@@ -405,7 +409,7 @@ mod tests {
         };
         let mut providers = ProviderRegistry::new();
         providers.register(Box::new(
-            MockProvider::with_responses(vec![response]).models(SUPPORTED_MOCK_MODELS),
+            MockProvider::with_responses(vec![response]).models(&SUPPORTED_MOCK_MODELS),
         ));
         Arc::new(providers)
     }
@@ -533,16 +537,23 @@ mod tests {
         // WHY (#4235): Coder/Researcher templates inherit from `SONNET_MODEL
         // = koina::defaults::DEFAULT_MODEL`. Assert against the constant so
         // template/model drift is caught at the call site, not in production.
-        // Reviewer/Explorer/Runner pin specific dated IDs locally
-        // (Opus 4.0 / Haiku 4.5); those remain literal here.
         assert_eq!(Role::Coder.template().model, koina::defaults::DEFAULT_MODEL);
-        assert_eq!(Role::Reviewer.template().model, "claude-opus-4-20250514");
+        assert_eq!(
+            Role::Reviewer.template().model,
+            koina::models::task_role_default(koina::models::TaskRole::Reviewer)
+        );
         assert_eq!(
             Role::Researcher.template().model,
             koina::defaults::DEFAULT_MODEL
         );
-        assert_eq!(Role::Explorer.template().model, "claude-haiku-4-5-20251001");
-        assert_eq!(Role::Runner.template().model, "claude-haiku-4-5-20251001");
+        assert_eq!(
+            Role::Explorer.template().model,
+            koina::models::task_role_default(koina::models::TaskRole::Explorer)
+        );
+        assert_eq!(
+            Role::Runner.template().model,
+            koina::models::task_role_default(koina::models::TaskRole::Runner)
+        );
         assert!(resolve_role("unknown").is_none());
     }
 
@@ -604,7 +615,7 @@ mod tests {
         }
 
         fn supported_models(&self) -> &[&str] {
-            SUPPORTED_MOCK_MODELS
+            &SUPPORTED_MOCK_MODELS
         }
 
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]

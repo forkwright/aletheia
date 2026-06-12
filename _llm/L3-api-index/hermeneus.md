@@ -313,20 +313,6 @@ impl CodexProvider {
 ## `src/complexity/mod.rs`
 
 ```rust
-pub enum ModelTier {
-    /// No model call required; a deterministic fast path can handle it.
-    #[serde(rename = "no_llm", alias = "no-llm")]
-    NoLlm,
-    /// Fast, cheap, sufficient for simple queries.
-    Haiku,
-    /// Balanced capability and cost.
-    Sonnet,
-    /// Maximum capability for hard problems.
-    Opus,
-}
-```
-
-```rust
 pub struct ComplexityInput<'a> {
     /// The user's message text.
     pub message_text: &'a str,
@@ -1073,37 +1059,6 @@ pub const BACKOFF_FACTOR: u64 = 2;
 > Maximum retry backoff delay in milliseconds.
 ```rust
 pub const BACKOFF_MAX_MS: u64 = 30_000;
-```
-
-> All supported Anthropic model identifiers.
-> 
-> Includes both short names (e.g., `claude-opus-4-6`) and dated snapshots
-> (e.g., `claude-opus-4-20250514`).
-```rust
-pub static SUPPORTED_MODELS: &[&str] = &[
-    // kanon:ignore RUST/pub-visibility
-    "claude-opus-4-6",
-    "claude-opus-4-20250514",
-    "claude-sonnet-4-6",
-    "claude-sonnet-4-20250514",
-    "claude-haiku-4-5",
-    "claude-haiku-4-5-20251001",
-];
-```
-
-> Default Opus model alias.
-```rust
-pub const OPUS: &str = "claude-opus-4-6";
-```
-
-> Default Sonnet model alias.
-```rust
-pub const SONNET: &str = "claude-sonnet-4-6";
-```
-
-> Default Haiku model alias.
-```rust
-pub const HAIKU: &str = "claude-haiku-4-5-20251001";
 ```
 
 ## `src/openai/client.rs`

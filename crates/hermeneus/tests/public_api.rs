@@ -14,7 +14,7 @@
 
 use hermeneus::models::{
     BACKOFF_BASE_MS, BACKOFF_FACTOR, BACKOFF_MAX_MS, DEFAULT_API_VERSION, DEFAULT_BASE_URL,
-    DEFAULT_MAX_RETRIES, SUPPORTED_MODELS, names,
+    DEFAULT_MAX_RETRIES, names,
 };
 use hermeneus::types::{StopReason, Usage};
 
@@ -23,7 +23,7 @@ use hermeneus::types::{StopReason, Usage};
 mod model_constants {
     use super::{
         BACKOFF_BASE_MS, BACKOFF_FACTOR, BACKOFF_MAX_MS, DEFAULT_API_VERSION, DEFAULT_BASE_URL,
-        DEFAULT_MAX_RETRIES, SUPPORTED_MODELS, names,
+        DEFAULT_MAX_RETRIES, names,
     };
 
     #[test]
@@ -59,25 +59,26 @@ mod model_constants {
     }
 
     #[test]
-    fn supported_models_includes_current_default_aliases() {
-        // WHY: the alias constants must always be present in SUPPORTED_MODELS
-        // so anything that picks an alias gets validated against the list.
-        assert!(SUPPORTED_MODELS.contains(&names::OPUS));
-        assert!(SUPPORTED_MODELS.contains(&names::SONNET));
-        assert!(SUPPORTED_MODELS.contains(&names::HAIKU));
+    fn model_names_are_from_shared_catalog() {
+        let anthropic = koina::models::provider_models(koina::models::ModelProvider::Anthropic);
+        assert!(anthropic.contains(&names::opus()));
+        assert!(anthropic.contains(&names::sonnet()));
+        assert!(anthropic.contains(&names::haiku()));
     }
 
     #[test]
     fn supported_models_are_distinct() {
-        // WHY: duplicates would shadow each other in any list-based lookup.
-        let mut sorted: Vec<&&str> = SUPPORTED_MODELS.iter().collect();
+        let mut sorted: Vec<&&str> =
+            koina::models::provider_models(koina::models::ModelProvider::Anthropic)
+                .iter()
+                .collect();
         sorted.sort();
         let len_before = sorted.len();
         sorted.dedup();
         assert_eq!(
             sorted.len(),
             len_before,
-            "SUPPORTED_MODELS must contain no duplicates"
+            "Anthropic catalog models must contain no duplicates"
         );
     }
 
@@ -85,8 +86,8 @@ mod model_constants {
     fn alias_constants_use_short_form() {
         // WHY: aliases should be short non-dated names so callers can
         // upgrade through them. Dated snapshots should not be aliases.
-        assert!(!names::OPUS.contains("2025"));
-        assert!(!names::SONNET.contains("2025"));
+        assert!(!names::opus().contains("2025"));
+        assert!(!names::sonnet().contains("2025"));
     }
 }
 

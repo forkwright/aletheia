@@ -28,8 +28,8 @@ fn workspace_root() -> PathBuf {
         .expect("workspace root resolves from CARGO_MANIFEST_DIR/../..")
 }
 
-/// Recursively collect every `.rs` file under `dir` into `out`.
-fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+/// Recursively collect source files under `dir` into `out`.
+fn collect_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -41,11 +41,31 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
             if matches!(name, "target" | ".git" | "node_modules") {
                 continue;
             }
-            collect_rs_files(&path, out);
-        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            collect_source_files(&path, out);
+        } else if matches!(
+            path.extension().and_then(|s| s.to_str()),
+            Some("rs" | "toml")
+        ) {
             out.push(path);
         }
     }
+}
+
+fn path_is_test_source(path: &Path) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|name| name.contains("tests") || name == "benches")
+    }) || path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            name.contains("_tests")
+                || name.contains("tests")
+                || name.starts_with("test_")
+                || name == "test_fixtures.rs"
+        })
 }
 
 /// True iff `line` declares a `pub const DEFAULT_MODEL[_*]: &str = ...`.
@@ -80,6 +100,27 @@ fn declares_pub_default_model_str(line: &str) -> bool {
     after.trim_start().starts_with("&str")
 }
 
+fn allowed_claude_literal_path(root: &Path, path: &Path) -> bool {
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    rel.starts_with("crates/koina")
+        || rel == Path::new("instance.example/versions/v0.19.0.toml")
+        || rel.starts_with("crates/hermeneus/src/anthropic/wire")
+}
+
+fn contains_claude_model_literal(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("//") || trimmed.starts_with("///") || trimmed.starts_with("//!") {
+        return false;
+    }
+    if line.contains("claude-code") || line.contains("claude-cli") {
+        return false;
+    }
+    if line.contains("starts_with(\"claude-\")") {
+        return false;
+    }
+    line.contains('"') && line.contains("claude-")
+}
+
 #[test]
 fn default_model_value_pinned_to_sonnet_4_6() {
     // WHY: the issue identified Sonnet 4.6 as the single shared default —
@@ -101,7 +142,7 @@ fn only_one_default_model_constant_in_workspace() {
     );
 
     let mut files = Vec::new();
-    collect_rs_files(&crates_dir, &mut files);
+    collect_source_files(&crates_dir, &mut files);
 
     let mut declarations: Vec<(PathBuf, usize, String)> = Vec::new();
     for path in &files {
@@ -153,6 +194,61 @@ fn only_one_default_model_constant_in_workspace() {
             .iter()
             .map(|(_, line, src)| format!("L{line}: {src}"))
             .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn claude_model_literals_stay_in_model_seed_or_wire_fixtures() {
+    let root = workspace_root();
+    let scan_roots = [
+        root.join("crates/koina"),
+        root.join("crates/hermeneus"),
+        root.join("crates/taxis"),
+        root.join("crates/nous"),
+        root.join("crates/episteme"),
+        root.join("crates/organon"),
+        root.join("crates/aletheia"),
+        root.join("crates/theatron/koilon"),
+        root.join("instance.example/versions"),
+    ];
+
+    let mut files = Vec::new();
+    for dir in scan_roots {
+        collect_source_files(&dir, &mut files);
+    }
+
+    let mut violations: Vec<(PathBuf, usize, String)> = Vec::new();
+    for path in files {
+        if path_is_test_source(&path) || allowed_claude_literal_path(&root, &path) {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for (idx, line) in text.lines().enumerate() {
+            if line.trim_start().starts_with("#[cfg(test)]") {
+                break;
+            }
+            if contains_claude_model_literal(line) {
+                violations.push((path.clone(), idx + 1, line.trim().to_owned()));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "found hardcoded claude-* model literals outside the koina model seed/default home, \
+         v0.19.0 fixture, or wire fixtures:\n{}",
+        violations
+            .iter()
+            .map(|(p, line, src)| format!(
+                "  {}:{} — {}",
+                p.strip_prefix(&root).unwrap_or(p).display(),
+                line,
+                src
+            ))
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 }
 

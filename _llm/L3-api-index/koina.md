@@ -825,6 +825,145 @@ impl MetricsRegistry {
 }
 ```
 
+## `src/models.rs`
+
+```rust
+pub enum ModelTier {
+    /// No model call required; a deterministic fast path can handle it.
+    #[serde(rename = "no_llm", alias = "no-llm")]
+    NoLlm,
+    /// Fast, cheap, sufficient for simple queries.
+    Haiku,
+    /// Balanced capability and cost.
+    Sonnet,
+    /// Maximum capability for hard problems.
+    Opus,
+}
+```
+
+```rust
+pub enum ModelProvider {
+    /// Anthropic Messages API models.
+    Anthropic,
+    /// Codex CLI models.
+    Codex,
+    /// Kimi CLI models.
+    Kimi,
+}
+```
+
+```rust
+pub enum TaskRole {
+    /// Implementation, testing, and debugging.
+    Coder,
+    /// Investigation, comparison, and documentation.
+    Researcher,
+    /// Code review and risk assessment.
+    Reviewer,
+    /// Codebase exploration.
+    Explorer,
+    /// Command-running task execution.
+    Runner,
+    /// Background heartbeat checks.
+    Prosoche,
+    /// Knowledge extraction.
+    Extraction,
+    /// Dispatch triage prompt generation.
+    TriagePrompt,
+}
+```
+
+```rust
+pub struct ModelPrice {
+    /// Cost per million input tokens in USD.
+    pub input_cost_per_mtok: f64,
+    /// Cost per million output tokens in USD.
+    pub output_cost_per_mtok: f64,
+}
+```
+
+```rust
+pub struct ModelMenuOption {
+    /// Model identifier written into config.
+    pub value: &'static str,
+    /// Human-readable menu label derived from the model identifier.
+    pub label: &'static str,
+}
+```
+
+```rust
+pub fn opus () -> &'static str
+```
+
+```rust
+pub fn sonnet () -> &'static str
+```
+
+```rust
+pub fn haiku () -> &'static str
+```
+
+```rust
+pub fn codex () -> &'static str
+```
+
+```rust
+pub fn kimi () -> &'static str
+```
+
+```rust
+pub fn as_of () -> &'static str
+```
+
+```rust
+pub fn tier_default (tier: ModelTier) -> &'static str
+```
+
+```rust
+pub fn task_role_tier (role: TaskRole) -> ModelTier
+```
+
+```rust
+pub fn task_role_default (role: TaskRole) -> &'static str
+```
+
+```rust
+pub fn cache_read_ratio () -> f64
+```
+
+```rust
+pub fn cache_write_ratio () -> f64
+```
+
+```rust
+pub fn provider_models (provider: ModelProvider) -> &'static [&'static str]
+```
+
+```rust
+pub fn model_for_provider (provider: ModelProvider) -> &'static str
+```
+
+```rust
+pub fn model_menu_options () -> &'static [ModelMenuOption]
+```
+
+> Pricing rows from the model catalog.
+```rust
+pub fn pricing_entries () -> impl Iterator<Item = (&'static str, ModelPrice)>
+```
+
+```rust
+pub fn context_tokens (model_id: &str) -> Option<u32>
+```
+
+```rust
+pub fn family (model_id: &str) -> Option<&'static str>
+```
+
+```rust
+pub fn model_tier (model_id: &str) -> Option<ModelTier>
+```
+
 ## `src/output_buffer.rs`
 
 ```rust

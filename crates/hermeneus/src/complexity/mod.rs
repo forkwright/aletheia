@@ -16,7 +16,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::models::names;
+pub use koina::models::ModelTier;
 
 /// Default threshold below which queries route to the fast tier.
 const DEFAULT_LOW_THRESHOLD: u32 = 30;
@@ -118,33 +118,6 @@ static PHILOSOPHICAL: LazyLock<Regex> = LazyLock::new(|| {
         .expect("compile-time-constant regex literals cannot fail")
 });
 
-/// Model capability tier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum ModelTier {
-    /// No model call required; a deterministic fast path can handle it.
-    #[serde(rename = "no_llm", alias = "no-llm")]
-    NoLlm,
-    /// Fast, cheap, sufficient for simple queries.
-    Haiku,
-    /// Balanced capability and cost.
-    Sonnet,
-    /// Maximum capability for hard problems.
-    Opus,
-}
-
-impl fmt::Display for ModelTier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoLlm => f.write_str("no_llm"),
-            Self::Haiku => f.write_str("haiku"),
-            Self::Sonnet => f.write_str("sonnet"),
-            Self::Opus => f.write_str("opus"),
-        }
-    }
-}
-
 /// Input signals for complexity scoring.
 #[derive(Debug, Clone)]
 pub struct ComplexityInput<'a> {
@@ -190,9 +163,9 @@ impl Default for ComplexityConfig {
             no_llm_threshold: DEFAULT_NO_LLM_THRESHOLD,
             low_threshold: DEFAULT_LOW_THRESHOLD,
             high_threshold: DEFAULT_HIGH_THRESHOLD,
-            haiku_model: names::HAIKU.to_owned(),
-            sonnet_model: names::SONNET.to_owned(),
-            opus_model: names::OPUS.to_owned(),
+            haiku_model: koina::models::tier_default(ModelTier::Haiku).to_owned(),
+            sonnet_model: koina::models::tier_default(ModelTier::Sonnet).to_owned(),
+            opus_model: koina::models::tier_default(ModelTier::Opus).to_owned(),
         }
     }
 }
@@ -252,11 +225,14 @@ pub struct RoutingOutcome {
 pub fn score_complexity(input: &ComplexityInput<'_>) -> ComplexityScore {
     // Agent-level tier override bypasses scoring
     if let Some(tier) = input.tier_override {
-        let score = match tier {
-            ModelTier::Opus => 100,
-            ModelTier::Sonnet => 50,
-            ModelTier::Haiku => 10,
-            ModelTier::NoLlm => 0,
+        let score = if tier == ModelTier::Opus {
+            100
+        } else if tier == ModelTier::Haiku {
+            10
+        } else if tier == ModelTier::NoLlm {
+            0
+        } else {
+            50
         };
         return ComplexityScore {
             score,
@@ -480,13 +456,15 @@ pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> Ro
 /// so that matched prompts never reach the model dispatch path at all.
 #[must_use]
 fn select_model_for_tier(tier: ModelTier, config: &ComplexityConfig) -> String {
-    match tier {
+    if matches!(tier, ModelTier::NoLlm | ModelTier::Haiku) {
         // WHY(#3970): NoLlm falls back to the fast model when the Tier-1
         // registry has no matching handler. The tier is preserved in telemetry
         // so callers can distinguish "no handler matched" from "Haiku choice."
-        ModelTier::NoLlm | ModelTier::Haiku => config.haiku_model.clone(),
-        ModelTier::Sonnet => config.sonnet_model.clone(),
-        ModelTier::Opus => config.opus_model.clone(),
+        config.haiku_model.clone()
+    } else if tier == ModelTier::Opus {
+        config.opus_model.clone()
+    } else {
+        config.sonnet_model.clone()
     }
 }
 

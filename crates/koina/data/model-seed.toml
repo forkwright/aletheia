@@ -1,0 +1,92 @@
+as_of = "2026-06-11"
+
+[cache]
+read_ratio = 0.10
+write_ratio = 1.25
+
+[tiers]
+opus = "claude-opus-4-6"
+sonnet = "claude-sonnet-4-6"
+haiku = "claude-haiku-4-5-20251001"
+
+[task_roles]
+coder = "sonnet"
+researcher = "sonnet"
+reviewer = "opus"
+explorer = "haiku"
+runner = "haiku"
+prosoche = "haiku"
+extraction = "haiku"
+triage_prompt = "opus"
+
+[[models]]
+id = "claude-opus-4-6"
+provider = "anthropic"
+tier = "opus"
+family = "claude-opus-4"
+context_tokens = 1000000
+input_cost_per_mtok = 5.0
+output_cost_per_mtok = 25.0
+menu = true
+
+[[models]]
+id = "claude-opus-4-20250514"
+provider = "anthropic"
+tier = "opus"
+family = "claude-opus-4"
+context_tokens = 1000000
+input_cost_per_mtok = 5.0
+output_cost_per_mtok = 25.0
+
+[[models]]
+id = "claude-sonnet-4-6"
+provider = "anthropic"
+tier = "sonnet"
+family = "claude-sonnet-4"
+context_tokens = 200000
+input_cost_per_mtok = 3.0
+output_cost_per_mtok = 15.0
+menu = true
+recommended = true
+
+[[models]]
+id = "claude-sonnet-4-20250514"
+provider = "anthropic"
+tier = "sonnet"
+family = "claude-sonnet-4"
+context_tokens = 200000
+input_cost_per_mtok = 3.0
+output_cost_per_mtok = 15.0
+
+[[models]]
+id = "claude-haiku-4-5"
+provider = "anthropic"
+tier = "haiku"
+family = "claude-haiku-4-5"
+context_tokens = 200000
+input_cost_per_mtok = 1.0
+output_cost_per_mtok = 5.0
+
+[[models]]
+id = "claude-haiku-4-5-20251001"
+provider = "anthropic"
+tier = "haiku"
+family = "claude-haiku-4-5"
+context_tokens = 200000
+input_cost_per_mtok = 1.0
+output_cost_per_mtok = 5.0
+menu = true
+
+[[models]]
+id = "gpt-5-codex"
+provider = "codex"
+tier = "opus"
+family = "gpt-5-codex"
+context_tokens = 272000
+
+[[models]]
+id = "kimi-k2-thinking"
+provider = "kimi"
+tier = "opus"
+family = "kimi-k2"
+context_tokens = 128000
