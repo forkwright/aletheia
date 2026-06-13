@@ -582,6 +582,48 @@ impl Role {
 }
 ```
 
+> Reserved prefixes for internal session/agent identifiers.
+> 
+> User-supplied IDs must not collide with these namespaces; internal callers
+> that legitimately mint such keys must bypass the user guard via the
+> dedicated unchecked constructors.
+```rust
+pub const RESERVED_SESSION_PREFIXES: &[&str] = &["cross:"];
+```
+
+```rust
+pub fn is_reserved_session_prefix (value: &str) -> bool
+```
+
+> Validates that `value` does not start with a reserved internal prefix.
+> 
+> Returns `Ok(())` for ordinary user-supplied identifiers and `Err` when the
+> identifier targets an internal namespace such as `cross:`.
+> 
+> # Errors
+> 
+> Returns [`ReservedIdPrefixError`] when `value` starts with a reserved
+> internal prefix.
+```rust
+pub fn validate_session_or_agent_id (value: &str) -> Result<(), ReservedIdPrefixError>
+```
+
+```rust
+pub enum ReservedIdPrefixError {
+    /// Identifier starts with a reserved internal prefix.
+    #[snafu(display("identifier uses reserved internal prefix '{prefix}': {value}"))]
+    ReservedIdPrefix {
+        /// The reserved prefix that was matched.
+        prefix: String,
+        /// The full identifier that was rejected.
+        value: String,
+        /// Source location where the error was constructed.
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
+```
+
 ```rust
 pub struct SessionMetrics {
     /// Approximate total tokens consumed across all messages.

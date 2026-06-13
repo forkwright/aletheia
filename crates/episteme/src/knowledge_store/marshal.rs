@@ -278,6 +278,15 @@ fn lcs_char_length(a: &[char], b: &[char]) -> usize {
     dp[idx(m, n)]
 }
 
+/// Number of columns a query must project for full [`Fact`] hydration via
+/// [`rows_to_facts`]. The canonical projection order lives in
+/// `crate::query::queries::FULL_FACT_SELECT`; the two MUST stay in lockstep
+/// (a compile-time assertion in that module enforces the count). See
+/// #4677/#4549: any query feeding `rows_to_facts` whose shape is shorter than
+/// this is a positional-decoding hazard and is rejected at read time.
+#[cfg(feature = "mneme-engine")]
+pub(crate) const FULL_FACT_COLUMNS: usize = 21;
+
 #[cfg(feature = "mneme-engine")]
 #[expect(
     clippy::too_many_lines,
@@ -290,6 +299,19 @@ pub(super) fn rows_to_facts(
     use crate::knowledge::Fact;
     let mut out = Vec::with_capacity(rows.rows.len());
     for row in rows.rows {
+        // SECURITY (#4677/#4549): scope, project_id, and visibility are
+        // policy/tenancy fields decoded by fixed column index below. A row that
+        // is too short would silently shift those fields and default security
+        // metadata to a more permissive value. Refuse the whole read instead.
+        if row.len() < FULL_FACT_COLUMNS {
+            return Err(crate::error::ConversionSnafu {
+                message: format!(
+                    "fact row: expected {FULL_FACT_COLUMNS} columns for full hydration, got {}",
+                    row.len()
+                ),
+            }
+            .build());
+        }
         let id = extract_str(row.first().ok_or_else(|| {
             crate::error::ConversionSnafu {
                 message: "fact row: missing id",
@@ -380,22 +402,14 @@ pub(super) fn rows_to_facts(
             .and_then(|v| extract_optional_str(v).ok())
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
-        let scope = row
-            .get(17)
-            .and_then(|v| extract_optional_str(v).ok())
-            .unwrap_or(None)
-            .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
-        let project_id = row
-            .get(18)
-            .and_then(|v| extract_optional_str(v).ok())
-            .unwrap_or(None)
-            .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok());
-        let visibility = row
-            .get(19)
-            .and_then(|v| extract_str(v).ok())
-            .unwrap_or_default()
-            .parse::<crate::knowledge::Visibility>()
-            .unwrap_or_default();
+        // SECURITY (#4677/#4549): decode policy/tenancy fields loudly. `scope`
+        // and `project_id` are nullable (a SQL null legitimately means
+        // unscoped/global), but a *present-but-undecodable* value must error
+        // rather than silently widen to global. `visibility` is required and is
+        // never allowed to fall back to a default.
+        let scope = parse_optional_scope(row.get(17))?;
+        let project_id = parse_optional_project_id(row.get(18))?;
+        let visibility = parse_visibility(row.get(19))?;
         let sensitivity = parse_fact_sensitivity(row.get(20));
 
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
@@ -456,6 +470,18 @@ pub(super) fn rows_to_raw_facts(
     use crate::knowledge::Fact;
     let mut out = Vec::with_capacity(rows.rows.len());
     for row in rows.rows {
+        // SECURITY (#4677/#4549): same short-row guard as `rows_to_facts` — a
+        // truncated row would shift policy/tenancy columns and default them to a
+        // more permissive value.
+        if row.len() < FULL_FACT_COLUMNS {
+            return Err(crate::error::ConversionSnafu {
+                message: format!(
+                    "raw fact row: expected {FULL_FACT_COLUMNS} columns for full hydration, got {}",
+                    row.len()
+                ),
+            }
+            .build());
+        }
         let id = extract_str(row.first().ok_or_else(|| {
             crate::error::ConversionSnafu {
                 message: "raw fact: missing id",
@@ -544,22 +570,14 @@ pub(super) fn rows_to_raw_facts(
             .and_then(|v| extract_optional_str(v).ok())
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
-        let scope = row
-            .get(17)
-            .and_then(|v| extract_optional_str(v).ok())
-            .unwrap_or(None)
-            .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
-        let project_id = row
-            .get(18)
-            .and_then(|v| extract_optional_str(v).ok())
-            .unwrap_or(None)
-            .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok());
-        let visibility = row
-            .get(19)
-            .and_then(|v| extract_str(v).ok())
-            .unwrap_or_default()
-            .parse::<crate::knowledge::Visibility>()
-            .unwrap_or_default();
+        // SECURITY (#4677/#4549): decode policy/tenancy fields loudly. `scope`
+        // and `project_id` are nullable (a SQL null legitimately means
+        // unscoped/global), but a *present-but-undecodable* value must error
+        // rather than silently widen to global. `visibility` is required and is
+        // never allowed to fall back to a default.
+        let scope = parse_optional_scope(row.get(17))?;
+        let project_id = parse_optional_project_id(row.get(18))?;
+        let visibility = parse_visibility(row.get(19))?;
         let sensitivity = parse_fact_sensitivity(row.get(20));
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         let superseded_by_id = superseded_by
@@ -1002,6 +1020,87 @@ fn parse_fact_sensitivity(
         .unwrap_or_default()
 }
 
+/// Decode the nullable `scope` column. A SQL null or empty string is a genuine
+/// "unscoped/global" value, but a present-but-undecodable string is a policy
+/// hazard and must error rather than silently widen to global (#4677/#4549).
+#[cfg(feature = "mneme-engine")]
+fn parse_optional_scope(
+    val: Option<&crate::engine::DataValue>,
+) -> crate::error::Result<Option<crate::knowledge::MemoryScope>> {
+    let cell = val.ok_or_else(|| {
+        crate::error::ConversionSnafu {
+            message: "fact row: missing scope column",
+        }
+        .build()
+    })?;
+    match extract_optional_str(cell)?.filter(|s| !s.is_empty()) {
+        None => Ok(None),
+        Some(s) => s
+            .parse::<crate::knowledge::MemoryScope>()
+            .map(Some)
+            .map_err(|_unparsed| {
+                crate::error::ConversionSnafu {
+                    message: format!("fact row: undecodable scope '{s}'"),
+                }
+                .build()
+            }),
+    }
+}
+
+/// Decode the nullable `project_id` column. As with `scope`, null/empty is the
+/// global tenant, but a present-but-invalid project hash must error rather than
+/// silently demote the fact to global (#4677/#4549).
+#[cfg(feature = "mneme-engine")]
+fn parse_optional_project_id(
+    val: Option<&crate::engine::DataValue>,
+) -> crate::error::Result<Option<eidos::workspace::ProjectId>> {
+    let cell = val.ok_or_else(|| {
+        crate::error::ConversionSnafu {
+            message: "fact row: missing project_id column",
+        }
+        .build()
+    })?;
+    match extract_optional_str(cell)?.filter(|s| !s.is_empty()) {
+        None => Ok(None),
+        Some(s) => eidos::workspace::ProjectId::from_sha256_hex(&s)
+            .map(Some)
+            .map_err(|_unparsed| {
+                crate::error::ConversionSnafu {
+                    message: format!("fact row: undecodable project_id '{s}'"),
+                }
+                .build()
+            }),
+    }
+}
+
+/// Decode the required `visibility` column. Visibility is a security boundary:
+/// a missing, empty, or undecodable value must error rather than fall back to a
+/// default that could expose or hide a fact incorrectly (#4677/#4549).
+#[cfg(feature = "mneme-engine")]
+fn parse_visibility(
+    val: Option<&crate::engine::DataValue>,
+) -> crate::error::Result<crate::knowledge::Visibility> {
+    let raw = extract_str(val.ok_or_else(|| {
+        crate::error::ConversionSnafu {
+            message: "fact row: missing visibility column",
+        }
+        .build()
+    })?)?;
+    if raw.is_empty() {
+        return Err(crate::error::ConversionSnafu {
+            message: "fact row: empty visibility — refusing to default a security field",
+        }
+        .build());
+    }
+    raw.parse::<crate::knowledge::Visibility>()
+        .map_err(|_unparsed| {
+            crate::error::ConversionSnafu {
+                message: format!("fact row: undecodable visibility '{raw}'"),
+            }
+            .build()
+        })
+}
+
 #[cfg(feature = "mneme-engine")]
 pub(super) fn parse_epistemic_tier(s: &str) -> crate::knowledge::EpistemicTier {
     use crate::knowledge::EpistemicTier;
@@ -1394,7 +1493,7 @@ mod tests {
     fn build_hybrid_query_includes_fts_when_text_present() {
         use super::super::HybridQuery;
         let query = HybridQuery {
-            text: "cozo databases".to_owned(),
+            text: "datalog databases".to_owned(),
             embedding: vec![0.1_f32; 384],
             seed_entities: Vec::new(),
             limit: 20,
@@ -1412,8 +1511,8 @@ mod tests {
         // WHY (#4156): a trailing '?' is an FTS-special character — unsanitized
         // it causes a parse error that disables recall on every question.
         assert_eq!(
-            sanitize_fts_query("what do you remember about cozo?"),
-            "what do you remember about cozo"
+            sanitize_fts_query("what do you remember about datalog?"),
+            "what do you remember about datalog"
         );
     }
 
@@ -1438,5 +1537,90 @@ mod tests {
         // invalid FTS syntax.
         assert_eq!(sanitize_fts_query("???"), "");
         assert_eq!(sanitize_fts_query(""), "");
+    }
+
+    // ── fail-loud policy-field decoding (#4677/#4549) ───────────────────────
+
+    #[test]
+    fn rows_to_facts_rejects_short_row() {
+        // A row shorter than the full-fact contract would shift policy/tenancy
+        // columns and silently default visibility/scope/project. It must error.
+        let rows = crate::engine::NamedRows {
+            headers: Vec::new(),
+            rows: vec![vec![
+                DataValue::Str("id1".into()),
+                DataValue::Str("content".into()),
+                DataValue::from(0.9_f64),
+                DataValue::Str("inferred".into()),
+                DataValue::Str("2026-01-01".into()),
+            ]],
+            next: None,
+        };
+        let err = rows_to_facts(rows, "agent").expect_err("short row must error");
+        assert!(
+            err.to_string().contains("columns for full hydration"),
+            "error must name the column-count contract, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_visibility_refuses_empty_or_undecodable() {
+        assert!(
+            parse_visibility(None).is_err(),
+            "missing visibility column must error"
+        );
+        assert!(
+            parse_visibility(Some(&DataValue::Str("".into()))).is_err(),
+            "empty visibility must error, not default"
+        );
+        assert!(
+            parse_visibility(Some(&DataValue::Str("not-a-visibility".into()))).is_err(),
+            "undecodable visibility must error"
+        );
+        let ok = parse_visibility(Some(&DataValue::Str(
+            crate::knowledge::Visibility::Shared.as_str().into(),
+        )))
+        .expect("valid visibility decodes");
+        assert_eq!(ok, crate::knowledge::Visibility::Shared);
+    }
+
+    #[test]
+    fn parse_optional_scope_nulls_ok_but_garbage_errors() {
+        assert_eq!(
+            parse_optional_scope(Some(&DataValue::Null)).expect("null scope ok"),
+            None,
+            "SQL null scope is a genuine unscoped value"
+        );
+        assert!(
+            parse_optional_scope(Some(&DataValue::Str("bogus-scope".into()))).is_err(),
+            "present-but-undecodable scope must error, not widen to global"
+        );
+        assert_eq!(
+            parse_optional_scope(Some(&DataValue::Str(
+                crate::knowledge::MemoryScope::Project.as_str().into()
+            )))
+            .expect("valid scope ok"),
+            Some(crate::knowledge::MemoryScope::Project)
+        );
+    }
+
+    #[test]
+    fn parse_optional_project_id_nulls_ok_but_garbage_errors() {
+        assert_eq!(
+            parse_optional_project_id(Some(&DataValue::Null)).expect("null project ok"),
+            None
+        );
+        assert!(
+            parse_optional_project_id(Some(&DataValue::Str("not-a-hash".into()))).is_err(),
+            "present-but-invalid project hash must error, not demote to global"
+        );
+        let project =
+            eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/alpha.git")
+                .expect("valid remote");
+        assert_eq!(
+            parse_optional_project_id(Some(&DataValue::Str(project.as_str().into())))
+                .expect("valid project ok"),
+            Some(project)
+        );
     }
 }

@@ -73,7 +73,7 @@ fn session_manager_creates_compatible_state() {
     let store = SessionStore::open_in_memory().expect("open in-memory session store");
     let mgr = SessionManager::new(config.clone());
 
-    let state = mgr.create_session("ses-1", "main");
+    let state = mgr.create_session("ses-1", "main").expect("valid session");
     let db_session = store
         .create_session(
             "ses-1",

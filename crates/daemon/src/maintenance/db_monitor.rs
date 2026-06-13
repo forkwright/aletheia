@@ -46,7 +46,7 @@ pub struct DbSizeReport {
 /// Information about a single database.
 #[derive(Debug, Clone, Serialize)]
 pub struct DbInfo {
-    /// Database file or directory name (e.g., `"sessions.db"`, `"cozo/"`).
+    /// Database file or legacy directory name.
     pub name: String,
     /// Absolute path to the database file or directory.
     pub path: PathBuf,
@@ -103,11 +103,13 @@ impl DbMonitor {
 
         self.scan_db_files(&mut report)?;
 
-        let cozo_dir = self.config.data_dir.join("cozo");
-        if cozo_dir.exists() {
-            let size = dir_size(&cozo_dir)?;
+        // WHY: Retain visibility into stale pre-Krites data directories during
+        // operator cleanup without presenting them as current storage.
+        let legacy_cozo_dir = self.config.data_dir.join("cozo");
+        if legacy_cozo_dir.exists() {
+            let size = dir_size(&legacy_cozo_dir)?;
             let status = self.classify(size);
-            let name = "cozo/".to_owned();
+            let name = "legacy-cozo/".to_owned();
             if status != DbStatus::Ok {
                 report
                     .alerts
@@ -115,7 +117,7 @@ impl DbMonitor {
             }
             report.databases.push(DbInfo {
                 name,
-                path: cozo_dir,
+                path: legacy_cozo_dir,
                 size_bytes: size,
                 status,
             });
@@ -402,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn cozo_directory_tracked() {
+    fn legacy_cozo_directory_tracked() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
         fs::create_dir_all(config.data_dir.join("cozo")).unwrap();
@@ -420,12 +422,12 @@ mod tests {
         let monitor = DbMonitor::new(config);
         let report = monitor.check().expect("check succeeds");
 
-        let cozo = report
+        let legacy_cozo = report
             .databases
             .iter()
-            .find(|d| d.name == "cozo/")
-            .expect("should have cozo/ entry");
-        assert_eq!(cozo.size_bytes, 8, "sum of two 4-byte files");
+            .find(|d| d.name == "legacy-cozo/")
+            .expect("should have legacy cozo entry");
+        assert_eq!(legacy_cozo.size_bytes, 8, "sum of two 4-byte files");
     }
 
     #[test]

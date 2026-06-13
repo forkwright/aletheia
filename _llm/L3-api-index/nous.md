@@ -3384,6 +3384,12 @@ pub struct SessionState {
 ```rust
 impl SessionState {
     pub fn new (id: String, session_key: String, config: &NousConfig) -> Self;
+    pub fn try_new (
+        id: String,
+        session_key: String,
+        config: &NousConfig,
+    ) -> Result<Self, mneme::types::ReservedIdPrefixError>;
+    pub fn new_internal (id: String, session_key: String, config: &NousConfig) -> Self;
     pub fn next_turn (&mut self) -> u64;
     pub fn needs_distillation (&self, threshold_ratio: f64, context_window: u32) -> bool;
 }
@@ -3398,7 +3404,11 @@ pub struct SessionManager {
 ```rust
 impl SessionManager {
     pub fn new (config: NousConfig) -> Self;
-    pub fn create_session (&self, id: &str, session_key: &str) -> SessionState;
+    pub fn create_session (
+        &self,
+        id: &str,
+        session_key: &str,
+    ) -> Result<SessionState, mneme::types::ReservedIdPrefixError>;
     pub fn config (&self) -> &NousConfig;
     pub fn is_ephemeral (session_key: &str) -> bool;
     pub fn is_background (session_key: &str) -> bool;

@@ -15,7 +15,7 @@ use oikonomos::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceReport};
 use taxis::config::AgentBehaviorDefaults;
 
 /// Bridges the daemon's `KnowledgeMaintenanceExecutor` trait to the concrete
-/// `KnowledgeStore`. All methods are blocking (`CozoDB` is sync).
+/// `KnowledgeStore`. All methods are blocking because Krites query execution is sync.
 pub(crate) struct KnowledgeMaintenanceAdapter {
     store: Arc<KnowledgeStore>,
     /// Embedding provider passed through to the dedup pipeline so it can

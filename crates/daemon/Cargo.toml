@@ -10,7 +10,7 @@ rust-version.workspace = true
 [features]
 default = []
 # WHY: gates anomaly detection (prosoche memory consistency checks) on the
-# heavy CozoDB-backed KnowledgeStore from episteme. Not all daemon users need it.
+# Krites-backed KnowledgeStore from episteme. Not all daemon users need it.
 knowledge-store = ["episteme/mneme-engine"]
 test-core = []
 test-full = []

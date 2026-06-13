@@ -95,52 +95,6 @@ fn query_facts_at_returns_snapshot() {
 }
 
 #[test]
-fn backup_db_returns_error_for_mem_backend() {
-    let store = make_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let backup_path = dir.path().join("backup.db");
-    let result = store.backup_db(&backup_path);
-    assert!(
-        result.is_err(),
-        "backup_db should error on in-memory backend"
-    );
-}
-
-#[test]
-fn restore_backup_returns_error_for_mem_backend() {
-    let store = make_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let backup_path = dir.path().join("backup.db");
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
-    )]
-    std::fs::write(&backup_path, "fake").expect("write fake backup file");
-    let result = store.restore_backup(&backup_path);
-    assert!(
-        result.is_err(),
-        "restore_backup should error on in-memory backend"
-    );
-}
-
-#[test]
-fn import_from_backup_returns_error_for_mem_backend() {
-    let store = make_store();
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let backup_path = dir.path().join("backup.db");
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "mneme filesystem operations access the embedded DB or model files; synchronous I/O is required in these contexts"
-    )]
-    std::fs::write(&backup_path, "fake").expect("write fake backup file");
-    let result = store.import_from_backup(&backup_path, &["facts".to_owned()]);
-    assert!(
-        result.is_err(),
-        "import_from_backup should error on in-memory backend"
-    );
-}
-
-#[test]
 fn query_result_does_not_expose_named_rows_type() {
     let store = make_store();
     let result: QueryResult = store

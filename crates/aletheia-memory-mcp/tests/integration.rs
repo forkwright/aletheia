@@ -196,7 +196,14 @@ async fn nous_tools_end_to_end() {
 
     // 1. nous_list_topics — should see "preference" with count 1.
     let topics = client
-        .call_tool(CallToolRequestParams::new("nous_list_topics"))
+        .call_tool(
+            CallToolRequestParams::new("nous_list_topics").with_arguments(
+                serde_json::json!({ "nous_id": "alice" })
+                    .as_object()
+                    .expect("object")
+                    .clone(),
+            ),
+        )
         .await
         .expect("nous_list_topics call");
     let topics_text = topics
@@ -216,7 +223,14 @@ async fn nous_tools_end_to_end() {
 
     // 2. nous_stats — fact_count should be 1.
     let stats = client
-        .call_tool(CallToolRequestParams::new("nous_stats"))
+        .call_tool(
+            CallToolRequestParams::new("nous_stats").with_arguments(
+                serde_json::json!({ "nous_id": "alice" })
+                    .as_object()
+                    .expect("object")
+                    .clone(),
+            ),
+        )
         .await
         .expect("nous_stats call");
     let stats_text = stats
@@ -246,7 +260,7 @@ async fn nous_tools_end_to_end() {
     let search = client
         .call_tool(
             CallToolRequestParams::new("nous_search").with_arguments(
-                serde_json::json!({ "query": "coffee", "limit": 5 })
+                serde_json::json!({ "query": "coffee", "nous_id": "alice", "limit": 5 })
                     .as_object()
                     .expect("object")
                     .clone(),
@@ -270,7 +284,7 @@ async fn nous_tools_end_to_end() {
     let neighbors = client
         .call_tool(
             CallToolRequestParams::new("nous_neighbors").with_arguments(
-                serde_json::json!({ "fact_id": "f-test-0001" })
+                serde_json::json!({ "fact_id": "f-test-0001", "nous_id": "alice" })
                     .as_object()
                     .expect("object")
                     .clone(),
@@ -301,7 +315,7 @@ async fn nous_tools_end_to_end() {
     let bad = client
         .call_tool(
             CallToolRequestParams::new("nous_search").with_arguments(
-                serde_json::json!({ "query": "" })
+                serde_json::json!({ "query": "", "nous_id": "alice" })
                     .as_object()
                     .expect("object")
                     .clone(),
@@ -364,6 +378,7 @@ async fn write_tool_rejected_without_token_env_set() {
                 serde_json::json!({
                     "fact_id": "f-test-0001",
                     "content": "test annotation",
+                    "session_id": "alice",
                     "write_token": "fake"
                 })
                 .as_object()
@@ -424,6 +439,7 @@ async fn write_tool_rejected_with_wrong_token() {
                 serde_json::json!({
                     "fact_id": "f-test-0001",
                     "content": "test annotation",
+                    "session_id": "alice",
                     "write_token": "wrong-token"
                 })
                 .as_object()
@@ -491,7 +507,7 @@ async fn write_tool_accepts_correct_token() {
                 serde_json::json!({
                     "fact_id": "f-test-0001",
                     "content": "This fact is well-established",
-                    "session_id": "test-agent",
+                    "session_id": "alice",
                     "write_token": "correct-token"
                 })
                 .as_object()
@@ -558,6 +574,7 @@ async fn write_tool_accepts_correct_token() {
                 serde_json::json!({
                     "old_fact_id": "f-test-0001",
                     "new_fact_id": "f-test-0002",
+                    "nous_id": "alice",
                     "reason": "Updated with fresher information",
                     "write_token": "correct-token"
                 })
@@ -591,6 +608,7 @@ async fn write_tool_accepts_correct_token() {
             CallToolRequestParams::new("nous_forget").with_arguments(
                 serde_json::json!({
                     "fact_id": "f-test-0001",
+                    "nous_id": "alice",
                     "reason": "Fact is outdated",
                     "write_token": "correct-token"
                 })
@@ -742,7 +760,14 @@ async fn nous_stats_last_updated_ignores_superseded_facts() {
         .expect("client handshake");
 
     let stats = client
-        .call_tool(CallToolRequestParams::new("nous_stats"))
+        .call_tool(
+            CallToolRequestParams::new("nous_stats").with_arguments(
+                serde_json::json!({ "nous_id": "alice" })
+                    .as_object()
+                    .expect("object")
+                    .clone(),
+            ),
+        )
         .await
         .expect("nous_stats call");
     let stats_text = stats

@@ -7,6 +7,7 @@ use clap::Args;
 use snafu::prelude::*;
 
 use mneme::store::SessionStore;
+use mneme::types::validate_session_or_agent_id;
 use taxis::loader::load_config;
 use taxis::oikos::Oikos;
 
@@ -105,6 +106,8 @@ fn validate_identifier(value: &str, field: &str) -> Result<()> {
     if value.len() > MAX_IDENTIFIER_BYTES {
         snafu::whatever!("{field} exceeds maximum length of {MAX_IDENTIFIER_BYTES} bytes");
     }
+    validate_session_or_agent_id(value)
+        .with_whatever_context(|_| format!("{field} uses a reserved internal prefix"))?;
     Ok(())
 }
 
@@ -143,6 +146,42 @@ mod tests {
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("exceeds maximum length"), "got: {msg}");
+    }
+
+    #[test]
+    fn run_rejects_reserved_cross_key_without_persisting() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::fs::write(
+            root.join("config/aletheia.toml"),
+            r#"
+[[agents.list]]
+id = "alice"
+name = "Alice"
+workspace = "/tmp/alice"
+"#,
+        )
+        .unwrap();
+
+        let args = SessionCreateArgs {
+            nous_id: "alice".to_owned(),
+            key: "cross:victim".to_owned(),
+        };
+
+        let result = run(Some(&root.to_path_buf()), &args);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("reserved internal prefix"), "got: {msg}");
+
+        let store = SessionStore::open(&Oikos::from_root(root).sessions_db()).unwrap();
+        let persisted = store.find_session("alice", "cross:victim").unwrap();
+        assert!(
+            persisted.is_none(),
+            "CLI session-create must not persist reserved session keys"
+        );
     }
 
     #[test]

@@ -43,7 +43,7 @@ is_a[child, parent] :=
 /// Datalog rule: transitive IS-A closure.
 ///
 /// `is_a[child, ancestor]` holds when `child` IS-A `mid` AND `mid` IS-A
-/// `ancestor` (recursively). `CozoDB` evaluates this to fixpoint.
+/// `ancestor` (recursively). The Datalog engine evaluates this to fixpoint.
 ///
 /// WHY: Datalog recursion replaces hand-written BFS. The engine guarantees
 /// termination when the `type_hierarchy` relation is acyclic (enforced by
@@ -136,7 +136,7 @@ causal_chain[cause, effect, conf] :=
 /// overrides it for the same entity. Tier ordering: `verified > assumed >
 /// inferred`. The rule produces one derived row per active default.
 ///
-/// The logic uses `CozoDB`'s negation-as-failure (`not`):
+/// The logic uses Datalog negation-as-failure (`not`):
 /// - Base rule `active_default[entity, content, conf]` fires for every
 ///   `defaults` row whose `entity_id` matches an entity.
 /// - The override check suppresses it when a `facts` row for the same entity
@@ -177,7 +177,7 @@ active_default[entity_id, content, conf] :=
 /// The inner negation scopes to `(entity_id, tag)` pairs: a verified fact for
 /// entity `alice` does **not** suppress a default for entity `bob`.
 ///
-/// `CozoDB` `not` is stratified negation: the `defaults` and `facts` base
+/// Datalog `not` is stratified negation: the `defaults` and `facts` base
 /// relations must be fully evaluated before the outer rule fires. This holds
 /// here because neither relation is derived by this script.
 #[cfg_attr(

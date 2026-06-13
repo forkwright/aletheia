@@ -353,6 +353,144 @@ fn forget_preserves_in_audit() {
     );
 }
 
+/// #4677/#4549: temporal, forgotten, and audit reads use distinct query
+/// builders from the normal current-facts path. Each must hydrate the policy
+/// fields (scope, `project_id`, visibility) of a project-scoped non-private fact.
+/// A regression here silently widened shared/project facts to private/global.
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn temporal_forgotten_audit_preserve_scope_project_visibility() {
+    let store = make_store();
+    let project = eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/alpha.git")
+        .expect("valid remote");
+
+    let mut live = make_fact("f-live", "agent-a", "Project-scoped shared fact");
+    live.scope = Some(crate::knowledge::MemoryScope::Project);
+    live.project_id = Some(project.clone());
+    live.visibility = crate::knowledge::Visibility::Shared;
+    store.insert_fact(&live).expect("insert live fact");
+
+    let assert_policy = |fact: &crate::knowledge::Fact, ctx: &str| {
+        assert_eq!(
+            fact.scope,
+            Some(crate::knowledge::MemoryScope::Project),
+            "{ctx}: scope must hydrate"
+        );
+        assert_eq!(
+            fact.project_id,
+            Some(project.clone()),
+            "{ctx}: project_id must hydrate"
+        );
+        assert_eq!(
+            fact.visibility,
+            crate::knowledge::Visibility::Shared,
+            "{ctx}: visibility must hydrate, not default to private"
+        );
+    };
+
+    let temporal = store
+        .query_facts_temporal("agent-a", "2026-06-01", None)
+        .expect("temporal query");
+    assert_policy(
+        temporal
+            .iter()
+            .find(|f| f.id.as_str() == "f-live")
+            .expect("live fact in temporal read"),
+        "temporal",
+    );
+
+    let audit = store.audit_all_facts("agent-a", 100).expect("audit query");
+    assert_policy(
+        audit
+            .iter()
+            .find(|f| f.id.as_str() == "f-live")
+            .expect("live fact in audit read"),
+        "audit",
+    );
+
+    store
+        .forget_fact(
+            &crate::id::FactId::new("f-live").expect("valid test id"),
+            ForgetReason::Privacy,
+        )
+        .expect("forget");
+    let forgotten = store
+        .list_forgotten("agent-a", 100)
+        .expect("list_forgotten");
+    assert_policy(
+        forgotten
+            .iter()
+            .find(|f| f.id.as_str() == "f-live")
+            .expect("fact in forgotten read"),
+        "forgotten",
+    );
+}
+
+/// #4552: superseding a fact must preserve scope, project partitioning, and
+/// visibility on both the closed old row and the new row, and must record the
+/// supersession link. A regression here would drift the memory graph into
+/// incorrect public/private or cross-project state when facts are replaced.
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn supersede_preserves_scope_project_visibility_and_links() {
+    let store = make_store();
+    let project = eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/beta.git")
+        .expect("valid remote");
+
+    let mut old_fact = make_fact("sup-old", "agent-a", "old shared fact");
+    old_fact.scope = Some(crate::knowledge::MemoryScope::Project);
+    old_fact.project_id = Some(project.clone());
+    old_fact.visibility = crate::knowledge::Visibility::Shared;
+    store.insert_fact(&old_fact).expect("insert old");
+
+    let mut new_fact = make_fact("sup-new", "agent-a", "new shared fact");
+    new_fact.scope = Some(crate::knowledge::MemoryScope::Project);
+    new_fact.project_id = Some(project.clone());
+    new_fact.visibility = crate::knowledge::Visibility::Shared;
+
+    store
+        .supersede_fact(&old_fact, &new_fact)
+        .expect("supersede");
+
+    let all = store.audit_all_facts("agent-a", 100).expect("audit");
+    let old_row = all
+        .iter()
+        .find(|f| f.id.as_str() == "sup-old")
+        .expect("old row in audit");
+    let new_row = all
+        .iter()
+        .find(|f| f.id.as_str() == "sup-new")
+        .expect("new row in audit");
+
+    for (row, label) in [(old_row, "old"), (new_row, "new")] {
+        assert_eq!(
+            row.scope,
+            Some(crate::knowledge::MemoryScope::Project),
+            "{label} row scope must be preserved across supersession"
+        );
+        assert_eq!(
+            row.project_id,
+            Some(project.clone()),
+            "{label} row project_id must be preserved across supersession"
+        );
+        assert_eq!(
+            row.visibility,
+            crate::knowledge::Visibility::Shared,
+            "{label} row visibility must be preserved across supersession"
+        );
+    }
+
+    assert_eq!(
+        old_row.lifecycle.superseded_by.as_ref().map(AsRef::as_ref),
+        Some("sup-new"),
+        "old row must link to its successor"
+    );
+    assert!(
+        new_row.lifecycle.superseded_by.is_none(),
+        "new row must not be marked superseded"
+    );
+}
+
 #[test]
 fn forget_reason_roundtrips() {
     let store = make_store();

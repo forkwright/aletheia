@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 
 use crate::id::{EntityId, FactId};
+use crate::knowledge::{FactSensitivity, MemoryScope, Visibility};
 
 #[cfg(feature = "mneme-engine")]
 mod engine;
@@ -91,6 +92,16 @@ pub enum ConsolidationError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Source facts have incompatible scope/project boundaries and cannot be
+    /// safely merged into a single consolidated fact.
+    #[snafu(display("incompatible consolidation sources: {reason}"))]
+    IncompatibleSources {
+        /// Human-readable explanation of the conflict.
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Why a consolidation was triggered.
@@ -130,6 +141,38 @@ impl ConsolidationTrigger {
     }
 }
 
+/// A source fact as read from the knowledge store for consolidation.
+///
+/// Carries the policy metadata (`scope`, `project_id`, `sensitivity`,
+/// `visibility`, `source_session_id`) that the conservative merge in
+/// [`KnowledgeStore::persist_consolidated_facts`](crate::knowledge_store::KnowledgeStore)
+/// needs so a consolidated fact does not silently become public/global.
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    not(feature = "mneme-engine"),
+    expect(dead_code, reason = "used by the mneme-engine consolidation engine")
+)]
+pub(crate) struct SourceFact {
+    /// The source fact identifier.
+    pub id: FactId,
+    /// Fact content sent to the LLM.
+    pub content: String,
+    /// Normalized confidence in `[0.0, 1.0]`.
+    pub confidence: f64,
+    /// ISO 8601 `recorded_at` timestamp from the knowledge store.
+    pub recorded_at: String,
+    /// Memory scope, if any.
+    pub scope: Option<MemoryScope>,
+    /// Project partition, if any.
+    pub project_id: Option<String>,
+    /// Data-sovereignty classification.
+    pub sensitivity: FactSensitivity,
+    /// Visibility level.
+    pub visibility: Visibility,
+    /// Session that produced this fact, if known.
+    pub source_session_id: Option<String>,
+}
+
 /// A cluster of facts ready for LLM consolidation.
 #[derive(Debug, Clone)]
 pub struct ConsolidationCandidate {
@@ -164,6 +207,26 @@ pub struct ConsolidatedFact {
     /// records (which predate this field) still deserialize.
     #[serde(default)]
     pub source_recorded_ats: Vec<String>,
+    /// Memory scopes of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_scopes: Vec<Option<MemoryScope>>,
+    /// Project identifiers of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_project_ids: Vec<Option<String>>,
+    /// Sensitivities of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_sensitivities: Vec<FactSensitivity>,
+    /// Visibilities of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_visibilities: Vec<Visibility>,
+    /// Source session IDs of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_session_ids: Vec<Option<String>>,
 }
 
 /// Result of a consolidation operation.
@@ -264,18 +327,22 @@ Output ONLY the JSON array, no other text."#
 
 /// Build the user message containing the facts to consolidate.
 #[must_use]
-pub fn consolidation_user_message(facts: &[(FactId, String, f64, String)]) -> String {
+#[cfg_attr(
+    not(feature = "mneme-engine"),
+    expect(dead_code, reason = "used by the mneme-engine consolidation engine")
+)]
+pub(crate) fn consolidation_user_message(facts: &[SourceFact]) -> String {
     use std::fmt::Write as _;
     let mut msg = format!("Input facts ({} total):\n\n", facts.len());
-    for (i, (id, content, confidence, recorded_at)) in facts.iter().enumerate() {
+    for (i, fact) in facts.iter().enumerate() {
         let _ = writeln!(
             msg,
             "{}. [id={}, confidence={:.2}, recorded={}] {}",
             i + 1,
-            id,
-            confidence,
-            recorded_at,
-            content,
+            fact.id,
+            fact.confidence,
+            fact.recorded_at,
+            fact.content,
         );
     }
     msg
@@ -393,11 +460,12 @@ candidates[cluster_id, count(fact_id)] :=
 /// Datalog query: gather eligible fact IDs for an entity.
 ///
 /// Parameters: `$entity_id` (String), `$cutoff` (String), `$nous_id` (String).
-/// Returns: `[fact_id, content, confidence, recorded_at]`.
+/// Returns: `[fact_id, content, confidence, recorded_at, scope, project_id,
+///           sensitivity, visibility, source_session_id]`.
 pub const ENTITY_FACTS_FOR_CONSOLIDATION: &str = r"
-?[fact_id, content, confidence, recorded_at] :=
+?[fact_id, content, confidence, recorded_at, scope, project_id, sensitivity, visibility, source_session_id] :=
     *fact_entities{fact_id, entity_id: $entity_id},
-    *facts{id: fact_id, content, confidence, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at},
+    *facts{id: fact_id, content, confidence, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at, scope, project_id, visibility, sensitivity, source_session_id},
     nous_id == $nous_id,
     is_null(superseded_by),
     is_forgotten == false,
@@ -411,12 +479,13 @@ pub const ENTITY_FACTS_FOR_CONSOLIDATION: &str = r"
 /// Datalog query: gather eligible fact IDs for a community cluster.
 ///
 /// Parameters: `$cluster_id` (Int), `$cutoff` (String), `$nous_id` (String).
-/// Returns: `[fact_id, content, confidence, recorded_at]`.
+/// Returns: `[fact_id, content, confidence, recorded_at, scope, project_id,
+///           sensitivity, visibility, source_session_id]`.
 pub const CLUSTER_FACTS_FOR_CONSOLIDATION: &str = r"
-?[fact_id, content, confidence, recorded_at] :=
+?[fact_id, content, confidence, recorded_at, scope, project_id, sensitivity, visibility, source_session_id] :=
     *graph_scores{entity_id, score_type: 'louvain', cluster_id: $cluster_id},
     *fact_entities{fact_id, entity_id},
-    *facts{id: fact_id, content, confidence, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at},
+    *facts{id: fact_id, content, confidence, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at, scope, project_id, visibility, sensitivity, source_session_id},
     nous_id == $nous_id,
     is_null(superseded_by),
     is_forgotten == false,
@@ -454,6 +523,17 @@ pub const FACT_MULTIPLICITY_DDL: &str = r":create fact_multiplicity {
     recorded_at: String
 }";
 
+/// Datalog DDL for the `consolidation_provenance` side-index (#4660).
+///
+/// Stores the original source fact IDs and source session IDs for each
+/// consolidated fact so provenance remains inspectable without parsing
+/// the audit relation's JSON arrays.
+pub const CONSOLIDATION_PROVENANCE_DDL: &str = r":create consolidation_provenance {
+    consolidated_fact_id: String =>
+    source_fact_ids: String,
+    source_session_ids: String
+}";
+
 /// Compute the age cutoff timestamp (now - `min_age_days`).
 #[cfg(feature = "mneme-engine")]
 pub(crate) fn age_cutoff(min_age_days: u32) -> String {
@@ -468,13 +548,10 @@ pub(crate) fn age_cutoff(min_age_days: u32) -> String {
 
 /// Split facts into batches of at most `batch_limit`.
 #[cfg(any(feature = "mneme-engine", test))]
-pub(crate) fn batch_facts(
-    facts: &[(FactId, String, f64, String)],
-    batch_limit: usize,
-) -> Vec<Vec<(FactId, String, f64, String)>> {
+pub(crate) fn batch_facts(facts: &[SourceFact], batch_limit: usize) -> Vec<Vec<SourceFact>> {
     facts
         .chunks(batch_limit)
-        .map(<[(FactId, String, f64, String)]>::to_vec)
+        .map(<[SourceFact]>::to_vec)
         .collect()
 }
 

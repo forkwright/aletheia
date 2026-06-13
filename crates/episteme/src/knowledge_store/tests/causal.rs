@@ -103,6 +103,78 @@ fn insert_and_query_causal_edge() {
     );
 }
 
+/// #4551: causal edges must round-trip their stable identity and the evidence
+/// session that justified them, across `query_effects`, `query_causes`, and
+/// `list_causal_edges`. A regression here re-synthesizes a fresh edge ID and
+/// drops evidence provenance, making causal explanations un-replayable.
+#[test]
+fn causal_edge_id_and_evidence_session_round_trip() {
+    let store = KnowledgeStore::open_mem().expect("open_mem should succeed");
+
+    store
+        .insert_fact(&make_fact("fact-a", "the build merged"))
+        .expect("insert fact-a");
+    store
+        .insert_fact(&make_fact("fact-b", "the deploy failed"))
+        .expect("insert fact-b");
+
+    // make_edge fixes id = "ce-fact-a-fact-b" and evidence_session = test-session.
+    let edge = make_edge("fact-a", "fact-b", 0.9);
+    store.insert_causal_edge(&edge).expect("insert causal edge");
+
+    let assert_preserved = |got: &CausalEdge, ctx: &str| {
+        assert_eq!(
+            got.id.as_str(),
+            "ce-fact-a-fact-b",
+            "{ctx}: stable edge ID must round-trip, not be re-synthesized"
+        );
+        assert_eq!(
+            got.evidence_session_id.as_deref(),
+            Some("test-session"),
+            "{ctx}: evidence session provenance must round-trip"
+        );
+    };
+
+    let effects = store
+        .query_effects(&FactId::new("fact-a").expect("valid test id"))
+        .expect("query_effects");
+    assert_preserved(&effects[0], "query_effects");
+
+    let causes = store
+        .query_causes(&FactId::new("fact-b").expect("valid test id"))
+        .expect("query_causes");
+    assert_preserved(&causes[0], "query_causes");
+
+    let all = store.list_causal_edges().expect("list_causal_edges");
+    assert_preserved(
+        all.iter()
+            .find(|e| e.id.as_str() == "ce-fact-a-fact-b")
+            .expect("edge in list"),
+        "list_causal_edges",
+    );
+
+    // An edge with no evidence session stores and reads back as None, not "".
+    store
+        .insert_fact(&make_fact("fact-c", "unrelated"))
+        .expect("insert fact-c");
+    let mut no_evidence = make_edge("fact-a", "fact-c", 0.5);
+    no_evidence.evidence_session_id = None;
+    store
+        .insert_causal_edge(&no_evidence)
+        .expect("insert edge without evidence");
+    let from_a = store
+        .query_effects(&FactId::new("fact-a").expect("valid test id"))
+        .expect("query_effects");
+    let edge_c = from_a
+        .iter()
+        .find(|e| e.target_id.as_str() == "fact-c")
+        .expect("edge to fact-c");
+    assert_eq!(
+        edge_c.evidence_session_id, None,
+        "absent evidence session must read back as None, not empty string"
+    );
+}
+
 #[test]
 fn list_causal_edges() {
     let store = KnowledgeStore::open_mem().expect("open_mem should succeed");

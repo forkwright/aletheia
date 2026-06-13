@@ -46,6 +46,10 @@ impl KnowledgeStore {
             "effect".to_owned(),
             DataValue::Str(edge.target_id.as_str().into()),
         );
+        // #4551: persist the stable edge identity and the session that supplied
+        // the causal evidence so reads can replay an edge to its source rather
+        // than synthesizing a fresh ID and dropping provenance.
+        params.insert("id".to_owned(), DataValue::Str(edge.id.as_str().into()));
         params.insert(
             "ordering".to_owned(),
             DataValue::Str(edge.ordering.as_str().into()),
@@ -55,8 +59,17 @@ impl KnowledgeStore {
             DataValue::Str(edge.relationship_type.as_str().into()),
         );
         params.insert("confidence".to_owned(), DataValue::from(edge.confidence));
+        params.insert(
+            "evidence_session_id".to_owned(),
+            edge.evidence_session_id
+                .as_deref()
+                .map_or(DataValue::Null, |s| DataValue::Str(s.into())),
+        );
         params.insert("created_at".to_owned(), DataValue::Str(now.into()));
-        self.run_mut(&queries::upsert_causal_edge(), params)
+        self.run_mut(&queries::upsert_causal_edge(), params)?;
+        // WHY (#4662): causal transitive-closure rules read `causal_edges`, so
+        // a new edge can change derived chains. Mark derived facts stale.
+        self.invalidate_derived_facts()
     }
 
     /// Remove a causal edge.
@@ -97,8 +110,10 @@ impl KnowledgeStore {
 
         use crate::engine::DataValue;
         let script = r"
-            ?[cause, effect, ordering, relationship_type, confidence, created_at] :=
-                *causal_edges{cause, effect, ordering, relationship_type, confidence, created_at},
+            ?[cause, effect, id, ordering, relationship_type, confidence,
+              evidence_session_id, created_at] :=
+                *causal_edges{cause, effect, id, ordering, relationship_type,
+                    confidence, evidence_session_id, created_at},
                 cause = $cause
         ";
         let mut params = BTreeMap::new();
@@ -125,8 +140,10 @@ impl KnowledgeStore {
 
         use crate::engine::DataValue;
         let script = r"
-            ?[cause, effect, ordering, relationship_type, confidence, created_at] :=
-                *causal_edges{cause, effect, ordering, relationship_type, confidence, created_at},
+            ?[cause, effect, id, ordering, relationship_type, confidence,
+              evidence_session_id, created_at] :=
+                *causal_edges{cause, effect, id, ordering, relationship_type,
+                    confidence, evidence_session_id, created_at},
                 effect = $effect
         ";
         let mut params = BTreeMap::new();
@@ -154,8 +171,10 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         let script = r"
-            ?[cause, effect, ordering, relationship_type, confidence, created_at] :=
-                *causal_edges{cause, effect, ordering, relationship_type, confidence, created_at}
+            ?[cause, effect, id, ordering, relationship_type, confidence,
+              evidence_session_id, created_at] :=
+                *causal_edges{cause, effect, id, ordering, relationship_type,
+                    confidence, evidence_session_id, created_at}
             :order created_at
         ";
         let rows = self.run_read(script, BTreeMap::new())?;
@@ -236,19 +255,25 @@ impl KnowledgeStore {
 fn rows_to_causal_edges(
     rows: &crate::engine::NamedRows,
 ) -> crate::error::Result<Vec<crate::knowledge::CausalEdge>> {
-    use super::marshal::{extract_float, extract_str};
+    use super::marshal::{extract_float, extract_optional_str, extract_str};
 
     let mut edges = Vec::new();
     for row in &rows.rows {
-        if row.len() < 6 {
+        // #4551: the projection is
+        // `[cause, effect, id, ordering, relationship_type, confidence,
+        //   evidence_session_id, created_at]`. A row shorter than this would
+        // shift the columns and silently lose edge identity/provenance.
+        if row.len() < 8 {
             continue;
         }
         let cause_str = extract_str(&row[0])?;
         let effect_str = extract_str(&row[1])?;
-        let ordering_str = extract_str(&row[2])?;
-        let rel_type_str = extract_str(&row[3])?;
-        let confidence = extract_float(&row[4])?;
-        let created_at_str = extract_str(&row[5])?;
+        let id_str = extract_str(&row[2])?;
+        let ordering_str = extract_str(&row[3])?;
+        let rel_type_str = extract_str(&row[4])?;
+        let confidence = extract_float(&row[5])?;
+        let evidence_session_id = extract_optional_str(&row[6])?.filter(|s| !s.is_empty());
+        let created_at_str = extract_str(&row[7])?;
 
         let ordering = ordering_str
             .parse::<crate::knowledge::TemporalOrdering>()
@@ -265,10 +290,11 @@ fn rows_to_causal_edges(
             crate::id::FactId::new(cause_str.as_str()).context(crate::error::InvalidIdSnafu)?;
         let target_id =
             crate::id::FactId::new(effect_str.as_str()).context(crate::error::InvalidIdSnafu)?;
-        // WHY: Datalog rows don't carry id/evidence_session_id;
-        // generate a fresh edge ID and default the optional fields.
-        let id = crate::id::CausalEdgeId::new(koina::ulid::Ulid::new().to_string())
-            .context(crate::error::InvalidIdSnafu)?;
+        // #4551: preserve the stored edge identity and evidence provenance so
+        // causal explanations stay inspectable and replayable to their source
+        // session, rather than synthesizing a fresh ID on every read.
+        let id =
+            crate::id::CausalEdgeId::new(id_str.as_str()).context(crate::error::InvalidIdSnafu)?;
         edges.push(crate::knowledge::CausalEdge {
             id,
             source_id,
@@ -276,7 +302,7 @@ fn rows_to_causal_edges(
             relationship_type,
             ordering,
             confidence,
-            evidence_session_id: None,
+            evidence_session_id,
             timestamp,
         });
     }

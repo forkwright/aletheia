@@ -7,6 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use clap::Args;
+use mneme::types::validate_session_or_agent_id;
 use snafu::prelude::*;
 
 use crate::error::Result;
@@ -1043,6 +1044,16 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         })?;
 
         for session in &agent_file.sessions {
+            validate_session_or_agent_id(&session.id).with_whatever_context(|_| {
+                format!(
+                    "imported session {} uses a reserved internal prefix",
+                    session.id
+                )
+            })?;
+            validate_session_or_agent_id(&session.session_key).with_whatever_context(|_| {
+                format!("imported session {} has a reserved session_key", session.id)
+            })?;
+
             let status =
                 parse_session_status(&session.status, &session.id, args.allow_unknown_values)
                     .map_err(|e| import_error(&e))?;
@@ -2088,6 +2099,49 @@ workspace = "nous/{agent_id}"
         let history = dest_store.get_history(&sessions[0].id, None).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].content, "round trip");
+    }
+
+    #[test]
+    fn import_agent_rejects_reserved_cross_session_key_without_persisting() {
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+
+        let mut agent_file = sample_agent_file();
+        agent_file.sessions[0].session_key = "cross:victim".to_owned();
+        let import_path = dest.path().join("reserved.agent.json");
+        std::fs::write(
+            &import_path,
+            serde_json::to_string_pretty(&agent_file).unwrap(),
+        )
+        .unwrap();
+
+        let result = import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: import_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+            },
+        );
+
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("reserved session_key"), "got: {msg}");
+
+        let store = mneme::store::SessionStore::open(&dest_oikos.sessions_db()).unwrap();
+        let persisted = store
+            .find_session("imported-agent", "cross:victim")
+            .unwrap();
+        assert!(
+            persisted.is_none(),
+            "import must not persist sessions with reserved session keys"
+        );
     }
 
     /// WHY(#4163): import preserves session status, timestamps, and metrics

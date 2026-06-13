@@ -33,8 +33,26 @@
 
 /// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
 pub use eidos::id;
-/// Knowledge graph domain types: facts, entities, relationships, embeddings (re-exported from `eidos`).
-pub use eidos::knowledge;
+
+/// Curated knowledge domain types: facts, entities, relationships, embeddings.
+///
+/// This is an explicit, curated subset of `eidos::knowledge` rather than a
+/// whole-module re-export (#4553). The facade surfaces only the domain types
+/// downstream consumers import; storage-oriented helpers — notably the
+/// flat-file [`FactStore`](eidos::knowledge::architecture_fact::FactStore) in
+/// `eidos::knowledge::architecture_fact` — are intentionally excluded so the
+/// public memory boundary stays a curated contract and storage internals can
+/// evolve without leaking through the facade. Add a name here when a
+/// downstream crate genuinely needs it; reach into `eidos` directly for
+/// internal/storage types.
+pub mod knowledge {
+    pub use eidos::knowledge::{
+        ConflictResolution, EmbeddedChunk, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle,
+        FactProvenance, FactSensitivity, FactTemporal, FactType, ForgetReason, MemoryScope,
+        RecallResult, Relationship, VerificationProposal, VerificationVerdict, VerificationVote,
+        Visibility, default_stability_hours, far_future, format_timestamp, parse_timestamp,
+    };
+}
 /// Workspace/project identity primitives (re-exported from `eidos`).
 pub mod workspace {
     pub use eidos::workspace::{ProjectId, ProjectIdError};
@@ -103,6 +121,10 @@ pub mod types {
         AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin,
         SessionStatus, SessionType, UsageRecord,
     };
+    pub use graphe::types::{
+        ReservedIdPrefixError, ReservedIdPrefixSnafu, is_reserved_session_prefix,
+        validate_session_or_agent_id,
+    };
 }
 
 // ── Training data types (eidos) ───────────────────────────────────────
@@ -167,7 +189,7 @@ pub mod instinct {
     };
 }
 
-/// `CozoDB`-backed knowledge store for graph traversal and vector search.
+/// Krites-backed knowledge store for graph traversal and vector search.
 #[cfg(feature = "mneme-engine")]
 pub mod knowledge_store {
     pub use episteme::knowledge_store::{
@@ -293,6 +315,53 @@ pub mod verification {
         Conflict, ConflictKind, DEFAULT_VERIFICATION_THRESHOLD, ResolveError, VerificationOutcome,
         detect_conflict, publish_fact, resolve_conflict, vote_on_proposal,
     };
+}
+
+#[cfg(test)]
+mod facade_surface_tests {
+    //! Pins the curated `mneme::knowledge` facade surface (#4553). Every name in
+    //! the import below must stay exported; if a re-export is dropped, this stops
+    //! compiling. Storage helpers such as `eidos::knowledge::architecture_fact`'s
+    //! `FactStore` are deliberately absent and must never be added here.
+    use core::marker::PhantomData;
+
+    use crate::knowledge::{
+        ConflictResolution, EmbeddedChunk, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle,
+        FactProvenance, FactSensitivity, FactTemporal, FactType, ForgetReason, MemoryScope,
+        RecallResult, Relationship, VerificationProposal, VerificationVerdict, VerificationVote,
+        Visibility, default_stability_hours, far_future, format_timestamp, parse_timestamp,
+    };
+
+    #[test]
+    fn curated_knowledge_surface_is_exported() {
+        // Naming each curated type pins it to the facade contract without
+        // constructing values; the function items pin the curated helpers.
+        let _ = PhantomData::<(
+            EmbeddedChunk,
+            Entity,
+            EpistemicTier,
+            Fact,
+            FactAccess,
+            FactLifecycle,
+            FactProvenance,
+            FactSensitivity,
+            FactTemporal,
+            FactType,
+            ForgetReason,
+            MemoryScope,
+            RecallResult,
+            Relationship,
+            VerificationProposal,
+            VerificationVerdict,
+            VerificationVote,
+            Visibility,
+            ConflictResolution,
+        )>;
+        let _ = far_future;
+        let _ = default_stability_hours;
+        let _ = parse_timestamp;
+        let _ = format_timestamp;
+    }
 }
 
 #[cfg(all(test, feature = "mneme-engine"))]

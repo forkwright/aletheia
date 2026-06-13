@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-use snafu::ResultExt;
+use snafu::{IntoError, ResultExt};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, info_span, warn};
@@ -708,23 +708,26 @@ pub(super) async fn run_execute_stage(
     }
     .instrument(span.clone());
 
+    let mut timed_out = false;
+    let mut timeout_secs = 0u32;
+
     let execute_result = if let Some(timeout_dur) = effective_execute_timeout {
         match tokio::time::timeout(timeout_dur, execute_fut).await {
             Ok(res) => res,
             Err(_elapsed) => {
-                let timeout_secs = u32::try_from(timeout_dur.as_secs()).unwrap_or(u32::MAX);
+                timeout_secs = u32::try_from(timeout_dur.as_secs()).unwrap_or(u32::MAX);
                 span.record("status", "timeout");
                 emitter.emit(&StageTimeout {
                     nous_id: config.id.to_string(),
                     stage: "execute",
                     timeout_secs,
                 });
-                time_budget.end_stage(crate::budget::StageTimingStatus::TimedOut);
-                return Err(error::PipelineTimeoutSnafu {
-                    stage: "execute",
-                    timeout_secs,
+                timed_out = true;
+                let herm_err = hermeneus::error::ApiRequestSnafu {
+                    message: format!("execute stage timeout after {timeout_secs}s"),
                 }
-                .build());
+                .build();
+                Err(error::LlmSnafu.into_error(herm_err))
             }
         }
     } else {
@@ -738,15 +741,9 @@ pub(super) async fn run_execute_stage(
     let result = match execute_result {
         Ok(turn_result) => turn_result,
         Err(ref err) if crate::degraded_mode::is_transient_llm_error(err) => {
-            emitter.emit(&StageError {
-                nous_id: config.id.to_string(),
-                stage: "execute",
-                error_type: "degraded_mode".to_owned(),
-            });
-
             // WHY: a None distillation summary means the session has never been
-            // distilled — the degraded response acknowledges that honestly
-            // rather than serving stale context.
+            // distilled — for a hard timeout we fail instead of serving a generic
+            // unavailable message, while other transient errors still degrade.
             let recent_distillation = session_store.and_then(|store_mutex| {
                 store_mutex.try_lock().ok().and_then(|store| {
                     store
@@ -754,6 +751,30 @@ pub(super) async fn run_execute_stage(
                         .ok()
                         .flatten()
                 })
+            });
+
+            if timed_out && recent_distillation.is_none() {
+                emitter.emit(&StageError {
+                    nous_id: config.id.to_string(),
+                    stage: "execute",
+                    error_type: "timeout".to_owned(),
+                });
+                time_budget.end_stage(crate::budget::StageTimingStatus::TimedOut);
+                return Err(error::PipelineTimeoutSnafu {
+                    stage: "execute".to_owned(),
+                    timeout_secs,
+                }
+                .build());
+            }
+
+            emitter.emit(&StageError {
+                nous_id: config.id.to_string(),
+                stage: "execute",
+                error_type: if timed_out {
+                    "degraded_timeout".to_owned()
+                } else {
+                    "degraded_mode".to_owned()
+                },
             });
 
             span.record("status", "degraded");
@@ -787,7 +808,11 @@ pub(super) async fn run_execute_stage(
         stage: "execute",
         duration_secs,
     });
-    time_budget.end_stage(crate::budget::StageTimingStatus::Completed);
+    time_budget.end_stage(if timed_out {
+        crate::budget::StageTimingStatus::TimedOut
+    } else {
+        crate::budget::StageTimingStatus::Completed
+    });
     Ok(result)
 }
 

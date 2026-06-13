@@ -44,6 +44,11 @@ fn consolidation_preserves_multiplicity_metadata() {
         tier: "inferred".to_owned(),
         source_fact_ids: source_ids.clone(),
         source_recorded_ats: source_recorded_ats.clone(),
+        source_scopes: vec![None; source_ids.len()],
+        source_project_ids: vec![None; source_ids.len()],
+        source_sensitivities: vec![crate::knowledge::FactSensitivity::Public; source_ids.len()],
+        source_visibilities: vec![crate::knowledge::Visibility::Private; source_ids.len()],
+        source_session_ids: vec![Some("test-session".to_owned()); source_ids.len()],
     };
     let result = ConsolidationResult {
         original_count: source_ids.len(),
@@ -114,5 +119,193 @@ fn non_consolidated_fact_has_no_multiplicity() {
     assert!(
         result.is_none(),
         "facts with no consolidation history must return None"
+    );
+}
+
+/// Requirement #4660: a consolidated fact built from confidential,
+/// project-scoped sources must stay confidential and project-scoped.
+///
+/// Builds a `ConsolidationResult` whose sources all share
+/// `scope = Project`, a single project ID, `sensitivity = Confidential`,
+/// and a common source session. After `persist_consolidated_facts`, the
+/// stored fact and its provenance side-index must retain those boundaries.
+#[test]
+fn consolidation_preserves_confidential_project_metadata() {
+    use crate::knowledge::{FactSensitivity, MemoryScope, Visibility};
+    use eidos::workspace::ProjectId;
+
+    let store = make_store();
+    let project_id = ProjectId::from_git_remote("https://github.com/forkwright/secret-project.git")
+        .expect("valid project remote");
+
+    let source_ids: Vec<FactId> = (0..3)
+        .map(|i| FactId::new(format!("src-conf-{i}")).expect("valid test id"))
+        .collect();
+
+    let consolidated = ConsolidatedFact {
+        content: "Alice has access to the secret project".to_owned(),
+        confidence: 0.95,
+        tier: "inferred".to_owned(),
+        source_fact_ids: source_ids.clone(),
+        source_recorded_ats: vec!["2026-01-01T00:00:00Z".to_owned(); source_ids.len()],
+        source_scopes: vec![Some(MemoryScope::Project); source_ids.len()],
+        source_project_ids: vec![Some(project_id.as_str().to_owned()); source_ids.len()],
+        source_sensitivities: vec![FactSensitivity::Confidential; source_ids.len()],
+        source_visibilities: vec![Visibility::Private; source_ids.len()],
+        source_session_ids: vec![Some("secret-session".to_owned()); source_ids.len()],
+    };
+    let result = ConsolidationResult {
+        original_count: source_ids.len(),
+        consolidated_count: 1,
+        consolidated_facts: vec![consolidated],
+        superseded_fact_ids: source_ids.clone(),
+    };
+
+    let new_ids = store
+        .persist_consolidated_facts(&result, "nous-test")
+        .expect("persist succeeds");
+    let new_id = new_ids.first().expect("one new fact").clone();
+
+    let stored = store
+        .read_facts_by_id(new_id.as_str())
+        .expect("read back consolidated fact");
+    let fact = stored
+        .first()
+        .expect("consolidated fact has one temporal row");
+
+    assert_eq!(
+        fact.sensitivity,
+        FactSensitivity::Confidential,
+        "confidential sources must produce a confidential consolidated fact"
+    );
+    assert_eq!(
+        fact.visibility,
+        Visibility::Private,
+        "private visibility must be preserved"
+    );
+    assert_eq!(
+        fact.scope,
+        Some(MemoryScope::Project),
+        "project scope must be preserved"
+    );
+    assert_eq!(
+        fact.project_id.as_ref().map(ProjectId::as_str),
+        Some(project_id.as_str()),
+        "project ID must be preserved"
+    );
+
+    let provenance = store
+        .get_consolidation_provenance(&new_id)
+        .expect("provenance query succeeds")
+        .expect("provenance side-index must exist");
+    assert!(
+        provenance.0.len() >= source_ids.len(),
+        "provenance must record at least the source fact IDs"
+    );
+    assert!(
+        provenance.1.contains(&"secret-session".to_owned()),
+        "provenance must retain the source session ID"
+    );
+}
+
+/// Requirement #4660: mixed sensitivities take the strictest (most
+/// restrictive) value, so a single confidential source prevents the output
+/// from becoming public.
+#[test]
+fn consolidation_mixed_sensitivity_takes_strictest() {
+    use crate::knowledge::{FactSensitivity, Visibility};
+
+    let store = make_store();
+    let source_ids: Vec<FactId> = (0..3)
+        .map(|i| FactId::new(format!("src-mixed-{i}")).expect("valid test id"))
+        .collect();
+
+    let sensitivities = vec![
+        FactSensitivity::Public,
+        FactSensitivity::Internal,
+        FactSensitivity::Confidential,
+    ];
+    let consolidated = ConsolidatedFact {
+        content: "Alice can access internal systems".to_owned(),
+        confidence: 0.95,
+        tier: "inferred".to_owned(),
+        source_fact_ids: source_ids.clone(),
+        source_recorded_ats: vec!["2026-01-01T00:00:00Z".to_owned(); source_ids.len()],
+        source_scopes: vec![None; source_ids.len()],
+        source_project_ids: vec![None; source_ids.len()],
+        source_sensitivities: sensitivities,
+        source_visibilities: vec![Visibility::Private; source_ids.len()],
+        source_session_ids: vec![None; source_ids.len()],
+    };
+    let result = ConsolidationResult {
+        original_count: source_ids.len(),
+        consolidated_count: 1,
+        consolidated_facts: vec![consolidated],
+        superseded_fact_ids: source_ids,
+    };
+
+    let new_ids = store
+        .persist_consolidated_facts(&result, "nous-test")
+        .expect("persist succeeds");
+    let new_id = new_ids.first().expect("one new fact").clone();
+
+    let stored = store
+        .read_facts_by_id(new_id.as_str())
+        .expect("read back consolidated fact");
+    let fact = stored.first().expect("one row");
+    assert_eq!(
+        fact.sensitivity,
+        FactSensitivity::Confidential,
+        "mixed sensitivities must collapse to the most restrictive"
+    );
+}
+
+/// Requirement #4660: mixed project IDs are refused rather than emitted as a
+/// single global fact, avoiding cross-project leakage.
+#[test]
+fn consolidation_mixed_project_ids_refused() {
+    use crate::knowledge::{FactSensitivity, Visibility};
+    use eidos::workspace::ProjectId;
+
+    let store = make_store();
+    let project_a = ProjectId::from_git_remote("https://github.com/forkwright/project-a.git")
+        .expect("valid project remote");
+    let project_b = ProjectId::from_git_remote("https://github.com/forkwright/project-b.git")
+        .expect("valid project remote");
+
+    let source_ids: Vec<FactId> = (0..2)
+        .map(|i| FactId::new(format!("src-proj-{i}")).expect("valid test id"))
+        .collect();
+    let project_ids: Vec<Option<String>> = vec![
+        Some(project_a.as_str().to_owned()),
+        Some(project_b.as_str().to_owned()),
+    ];
+
+    let consolidated = ConsolidatedFact {
+        content: "Alice works on both projects".to_owned(),
+        confidence: 0.95,
+        tier: "inferred".to_owned(),
+        source_fact_ids: source_ids,
+        source_recorded_ats: vec!["2026-01-01T00:00:00Z".to_owned(); 2],
+        source_scopes: vec![None; 2],
+        source_project_ids: project_ids,
+        source_sensitivities: vec![FactSensitivity::Public; 2],
+        source_visibilities: vec![Visibility::Private; 2],
+        source_session_ids: vec![None; 2],
+    };
+    let result = ConsolidationResult {
+        original_count: 2,
+        consolidated_count: 1,
+        consolidated_facts: vec![consolidated],
+        superseded_fact_ids: vec![],
+    };
+
+    let err = store
+        .persist_consolidated_facts(&result, "nous-test")
+        .expect_err("mixed project IDs must be refused");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("mixed project IDs"),
+        "error should identify project conflict: {msg}"
     );
 }

@@ -535,7 +535,7 @@ fn query_entity_linked_fact_ids(
         return Ok(std::collections::HashSet::new());
     }
 
-    // WHY: Build an inline list of IDs for CozoDB's `in [...]` operator.
+    // WHY: Build an inline list of IDs for the Datalog `in [...]` operator.
     // Each ID is single-quoted and interior quotes are escaped.
     let id_list: Vec<String> = fact_ids
         .iter()
@@ -570,7 +570,7 @@ fn query_dangling_fact_entity_refs(
 ) -> Result<Vec<String>, episteme::error::Error> {
     use std::collections::BTreeMap;
 
-    // WHY: Two-pass in Rust because CozoDB negation (`not`) requires all key
+    // WHY: Two-pass in Rust because Datalog negation (`not`) requires all key
     // columns to be bound, but `facts` has composite key `(id, valid_from)`.
     // Query 1: collect distinct fact IDs referenced by `fact_entities`.
     // Query 2: collect distinct fact IDs that exist in `facts`.

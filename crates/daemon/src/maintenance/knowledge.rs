@@ -2,9 +2,10 @@
 //!
 //! The daemon crate defines this interface; the binary crate implements it
 //! where concrete types (`KnowledgeStore`) are available. All methods are
-//! blocking (CozoDB is sync): the runner wraps calls in `spawn_blocking`.
+//! blocking: the runner wraps calls in `spawn_blocking`.
 
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// Outcome of a single knowledge maintenance operation.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -67,6 +68,40 @@ pub trait KnowledgeMaintenanceExecutor: Send + Sync {
     ) -> crate::error::Result<MaintenanceReport>;
 }
 
+/// Policy for derived-rule materialization (#4662).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DerivedMaterializationPolicy {
+    /// Eagerly refresh derived facts as part of the scheduled daemon task.
+    /// This is the production default: derived results are materialized in
+    /// the background and query surfaces only need to check the watermark.
+    #[default]
+    Scheduled,
+    /// Refresh derived facts on demand when a freshness check finds stale
+    /// rows. This trades query latency for lower background write volume.
+    OnDemand,
+}
+
+/// Configuration for derived-rule maintenance (#4662).
+#[derive(Debug, Clone)]
+pub struct DerivedRulesConfig {
+    /// How derived facts are refreshed.
+    pub policy: DerivedMaterializationPolicy,
+    /// Cadence for the scheduled materialization task when policy is
+    /// [`DerivedMaterializationPolicy::Scheduled`].
+    pub materialization_interval: Duration,
+}
+
+impl Default for DerivedRulesConfig {
+    fn default() -> Self {
+        // WHY: every 6 hours balances freshness of IS-A closure / causal
+        // chains against the cost of a full Datalog fixpoint pass.
+        Self {
+            policy: DerivedMaterializationPolicy::Scheduled,
+            materialization_interval: Duration::from_secs(6 * 60 * 60),
+        }
+    }
+}
+
 /// Configuration for knowledge maintenance task scheduling.
 #[derive(Debug, Clone, Default)]
 pub struct KnowledgeMaintenanceConfig {
@@ -76,6 +111,8 @@ pub struct KnowledgeMaintenanceConfig {
     pub auto_dream: AutoDreamConfig,
     /// Serendipity discovery idle-maintenance settings.
     pub serendipity: SerendipityMaintenanceConfig,
+    /// Derived Datalog rule maintenance settings.
+    pub derived_rules: DerivedRulesConfig,
 }
 
 /// Configuration for auto-dream memory consolidation.

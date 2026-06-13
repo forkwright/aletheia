@@ -10,13 +10,18 @@ use super::{
     ConsolidatedFact, ConsolidationAuditRecord, ConsolidationCandidate, ConsolidationConfig,
     ConsolidationError, ConsolidationProvider, ConsolidationResult, ConsolidationTrigger,
     ENTITY_FACTS_FOR_CONSOLIDATION, ENTITY_OVERFLOW_CANDIDATES, FACT_MULTIPLICITY_DDL,
-    FactMultiplicity, RateLimitedSnafu, StoreSnafu, age_cutoff, batch_facts,
-    consolidation_system_prompt, consolidation_user_message, parse_consolidation_response,
+    FactMultiplicity, IncompatibleSourcesSnafu, RateLimitedSnafu, SourceFact, StoreSnafu,
+    age_cutoff, batch_facts, consolidation_system_prompt, consolidation_user_message,
+    parse_consolidation_response,
 };
 use crate::engine::DataValue;
 use crate::id::{EntityId, FactId};
-use crate::knowledge::{EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactTemporal};
+use crate::knowledge::{
+    EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
+    MemoryScope, Visibility,
+};
 use crate::knowledge_store::KnowledgeStore;
+use eidos::workspace::ProjectId;
 
 /// Convert a non-negative `i64` from a Datalog row to `usize`.
 ///
@@ -111,7 +116,7 @@ impl KnowledgeStore {
                     .build()
                 })?;
 
-            let fact_ids: Vec<FactId> = facts.iter().map(|(id, _, _, _)| id.clone()).collect();
+            let fact_ids: Vec<FactId> = facts.iter().map(|s| s.id.clone()).collect();
 
             candidates.push(ConsolidationCandidate {
                 trigger: ConsolidationTrigger::EntityOverflow {
@@ -170,7 +175,7 @@ impl KnowledgeStore {
                     .build()
                 })?;
 
-            let fact_ids: Vec<FactId> = facts.iter().map(|(id, _, _, _)| id.clone()).collect();
+            let fact_ids: Vec<FactId> = facts.iter().map(|s| s.id.clone()).collect();
 
             candidates.push(ConsolidationCandidate {
                 trigger: ConsolidationTrigger::CommunityOverflow {
@@ -192,7 +197,7 @@ impl KnowledgeStore {
         nous_id: &str,
         entity_id: &EntityId,
         cutoff: &str,
-    ) -> crate::error::Result<Vec<(FactId, String, f64, String)>> {
+    ) -> crate::error::Result<Vec<SourceFact>> {
         let mut params = BTreeMap::new();
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert(
@@ -202,7 +207,7 @@ impl KnowledgeStore {
         params.insert("cutoff".to_owned(), DataValue::Str(cutoff.into()));
 
         let result = self.run_query(ENTITY_FACTS_FOR_CONSOLIDATION, params)?;
-        Ok(parse_fact_rows(&result.rows))
+        parse_fact_rows(&result.rows)
     }
 
     /// Gather eligible facts for a community cluster.
@@ -211,14 +216,14 @@ impl KnowledgeStore {
         nous_id: &str,
         cluster_id: i64,
         cutoff: &str,
-    ) -> crate::error::Result<Vec<(FactId, String, f64, String)>> {
+    ) -> crate::error::Result<Vec<SourceFact>> {
         let mut params = BTreeMap::new();
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert("cluster_id".to_owned(), DataValue::from(cluster_id));
         params.insert("cutoff".to_owned(), DataValue::Str(cutoff.into()));
 
         let result = self.run_query(CLUSTER_FACTS_FOR_CONSOLIDATION, params)?;
-        Ok(parse_fact_rows(&result.rows))
+        parse_fact_rows(&result.rows)
     }
 
     /// Execute a consolidation: insert new facts, supersede originals, record audit.
@@ -283,22 +288,36 @@ impl KnowledgeStore {
     ) -> Result<Vec<FactId>, ConsolidationError> {
         let now = jiff::Timestamp::now();
         let far_future = crate::knowledge::far_future();
+        let now_str = crate::knowledge::format_timestamp(&now);
         let mut new_fact_ids = Vec::new();
 
         for consolidated in &result.consolidated_facts {
+            // WHY (#4660): conservative merge of source policy metadata keeps
+            // a confidential or project-scoped input from silently becoming
+            // public/global.
+            let merged = merge_consolidated_metadata(consolidated)?;
             let new_id = FactId::new(koina::ulid::Ulid::new().to_string()).map_err(|e| {
                 StoreSnafu {
                     message: e.to_string(),
                 }
                 .build()
             })?;
+            let project_id = match merged.project_id {
+                Some(ref raw) => Some(ProjectId::from_sha256_hex(raw).map_err(|e| {
+                    StoreSnafu {
+                        message: format!("consolidated source has invalid project_id: {e}"),
+                    }
+                    .build()
+                })?),
+                None => None,
+            };
             let fact = crate::knowledge::Fact {
                 id: new_id.clone(),
                 nous_id: nous_id.to_owned(),
                 content: consolidated.content.clone(),
                 fact_type: "observation".to_owned(),
-                scope: None,
-                project_id: None,
+                scope: merged.scope,
+                project_id,
                 temporal: FactTemporal {
                     valid_from: now,
                     valid_to: far_future,
@@ -307,6 +326,9 @@ impl KnowledgeStore {
                 provenance: FactProvenance {
                     confidence: consolidated.confidence,
                     tier: EpistemicTier::Inferred,
+                    // Source session IDs are preserved in the side-index below;
+                    // the single-valued field intentionally stays None because
+                    // a consolidated fact has multiple sources.
                     source_session_id: None,
                     stability_hours: crate::knowledge::FactType::Observation.base_stability_hours(),
                 },
@@ -320,8 +342,8 @@ impl KnowledgeStore {
                     access_count: 0,
                     last_accessed_at: None,
                 },
-                sensitivity: crate::knowledge::FactSensitivity::Public,
-                visibility: crate::knowledge::Visibility::Private,
+                sensitivity: merged.sensitivity,
+                visibility: merged.visibility,
             };
             self.insert_fact(&fact).map_err(|e| {
                 StoreSnafu {
@@ -336,16 +358,145 @@ impl KnowledgeStore {
             // converged on it. Failing to record multiplicity must not
             // prevent the fact from being persisted, but the error should
             // surface to the caller.
-            let multiplicity = compute_multiplicity(
-                &new_id,
-                consolidated,
-                &crate::knowledge::format_timestamp(&now),
-            );
+            let multiplicity = compute_multiplicity(&new_id, consolidated, &now_str);
             self.record_fact_multiplicity(&multiplicity)?;
+
+            // WHY (#4660): keep source fact IDs and source session IDs
+            // inspectable from the consolidated fact's provenance side-index.
+            self.record_consolidation_provenance(&new_id, consolidated)?;
 
             new_fact_ids.push(new_id);
         }
         Ok(new_fact_ids)
+    }
+
+    /// Read the source provenance recorded for a consolidated fact.
+    ///
+    /// Returns `None` if no provenance side-index row exists. Used by tests
+    /// and by recall paths that need to surface why a consolidated fact was
+    /// emitted.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "used by consolidation engine tests")
+    )]
+    #[expect(
+        clippy::type_complexity,
+        reason = "simple pair of vectors; aliasing adds no clarity"
+    )]
+    pub(crate) fn get_consolidation_provenance(
+        &self,
+        fact_id: &FactId,
+    ) -> Result<Option<(Vec<FactId>, Vec<String>)>, ConsolidationError> {
+        let script = r"
+?[source_fact_ids, source_session_ids] :=
+    *consolidation_provenance{consolidated_fact_id: $fact_id, source_fact_ids, source_session_ids}
+";
+        let mut params = BTreeMap::new();
+        params.insert(
+            "fact_id".to_owned(),
+            DataValue::Str(fact_id.as_str().into()),
+        );
+        let result = self.run_query(script, params).map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+
+        if result.is_empty() {
+            return Ok(None);
+        }
+
+        let source_fact_ids_json = result.get_string(0, "source_fact_ids").unwrap_or_default();
+        let source_session_ids_json = result
+            .get_string(0, "source_session_ids")
+            .unwrap_or_default();
+
+        let source_fact_id_strings = serde_json::from_str::<Vec<String>>(&source_fact_ids_json)
+            .map_err(|e| {
+                StoreSnafu {
+                    message: format!("failed to decode consolidation source fact IDs: {e}"),
+                }
+                .build()
+            })?;
+        let mut source_fact_ids = Vec::with_capacity(source_fact_id_strings.len());
+        for source_fact_id in source_fact_id_strings {
+            source_fact_ids.push(FactId::new(source_fact_id).map_err(|e| {
+                StoreSnafu {
+                    message: format!("invalid consolidation source fact ID: {e}"),
+                }
+                .build()
+            })?);
+        }
+        let source_session_ids = serde_json::from_str::<Vec<String>>(&source_session_ids_json)
+            .map_err(|e| {
+                StoreSnafu {
+                    message: format!("failed to decode consolidation source session IDs: {e}"),
+                }
+                .build()
+            })?;
+
+        Ok(Some((source_fact_ids, source_session_ids)))
+    }
+
+    /// Record the source fact/session provenance for a consolidated fact.
+    fn record_consolidation_provenance(
+        &self,
+        fact_id: &FactId,
+        consolidated: &ConsolidatedFact,
+    ) -> Result<(), ConsolidationError> {
+        let source_fact_ids_json = serde_json::to_string(
+            &consolidated
+                .source_fact_ids
+                .iter()
+                .map(FactId::as_str)
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| {
+            StoreSnafu {
+                message: format!("failed to serialize source fact IDs: {e}"),
+            }
+            .build()
+        })?;
+        let source_session_ids: Vec<&str> = consolidated
+            .source_session_ids
+            .iter()
+            .filter_map(|s| s.as_deref())
+            .collect();
+        let source_session_ids_json = serde_json::to_string(&source_session_ids).map_err(|e| {
+            StoreSnafu {
+                message: format!("failed to serialize source session IDs: {e}"),
+            }
+            .build()
+        })?;
+
+        let script = r"
+?[consolidated_fact_id, source_fact_ids, source_session_ids] <-
+    [[$fact_id, $source_fact_ids, $source_session_ids]]
+
+:put consolidation_provenance {
+    consolidated_fact_id => source_fact_ids, source_session_ids
+}
+";
+        let mut params = BTreeMap::new();
+        params.insert(
+            "fact_id".to_owned(),
+            DataValue::Str(fact_id.as_str().into()),
+        );
+        params.insert(
+            "source_fact_ids".to_owned(),
+            DataValue::Str(source_fact_ids_json.into()),
+        );
+        params.insert(
+            "source_session_ids".to_owned(),
+            DataValue::Str(source_session_ids_json.into()),
+        );
+        self.run_mut_query(script, params).map(|_| ()).map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })
     }
 
     /// Persist a `FactMultiplicity` record for a consolidated fact (#3634).
@@ -680,7 +831,7 @@ impl KnowledgeStore {
 /// Run the LLM consolidation prompt across batches and collect results.
 fn run_llm_consolidation(
     provider: &dyn ConsolidationProvider,
-    facts: &[(FactId, String, f64, String)],
+    facts: &[SourceFact],
     config: &ConsolidationConfig,
 ) -> Result<ConsolidationResult, ConsolidationError> {
     let batches = batch_facts(facts, config.batch_limit);
@@ -694,12 +845,22 @@ fn run_llm_consolidation(
         let response = provider.consolidate(system, &user_msg)?;
         let entries = parse_consolidation_response(&response)?;
 
-        let batch_fact_ids: Vec<FactId> = batch.iter().map(|(id, _, _, _)| id.clone()).collect();
+        let batch_fact_ids: Vec<FactId> = batch.iter().map(|s| s.id.clone()).collect();
         // WHY (#3634): preserve source recorded_at timestamps so multiplicity
         // metadata (time-spread, first/last observation) can be computed
         // downstream. Aligned by index to `batch_fact_ids`.
-        let batch_recorded_ats: Vec<String> =
-            batch.iter().map(|(_, _, _, ts)| ts.clone()).collect();
+        let batch_recorded_ats: Vec<String> = batch.iter().map(|s| s.recorded_at.clone()).collect();
+        // WHY (#4660): carry source policy metadata through the batch so the
+        // conservative merge in `persist_consolidated_facts` can enforce scope,
+        // project, sensitivity, and visibility boundaries.
+        let batch_scopes: Vec<Option<MemoryScope>> = batch.iter().map(|s| s.scope).collect();
+        let batch_project_ids: Vec<Option<String>> =
+            batch.iter().map(|s| s.project_id.clone()).collect();
+        let batch_sensitivities: Vec<FactSensitivity> =
+            batch.iter().map(|s| s.sensitivity).collect();
+        let batch_visibilities: Vec<Visibility> = batch.iter().map(|s| s.visibility).collect();
+        let batch_session_ids: Vec<Option<String>> =
+            batch.iter().map(|s| s.source_session_id.clone()).collect();
 
         for entry in entries {
             all_consolidated.push(ConsolidatedFact {
@@ -711,6 +872,11 @@ fn run_llm_consolidation(
                 // would eliminate this but ConsolidatedFact is part of the public API.
                 source_fact_ids: batch_fact_ids.clone(),
                 source_recorded_ats: batch_recorded_ats.clone(),
+                source_scopes: batch_scopes.clone(),
+                source_project_ids: batch_project_ids.clone(),
+                source_sensitivities: batch_sensitivities.clone(),
+                source_visibilities: batch_visibilities.clone(),
+                source_session_ids: batch_session_ids.clone(),
             });
         }
         all_superseded.extend(batch_fact_ids);
@@ -722,6 +888,127 @@ fn run_llm_consolidation(
         consolidated_facts: all_consolidated,
         superseded_fact_ids: all_superseded,
     })
+}
+
+/// Policy-merged metadata for a consolidated fact (#4660).
+///
+/// Produced by [`merge_consolidated_metadata`] from the source facts that
+/// contributed to a single consolidated output.
+#[derive(Debug, Clone)]
+struct MergedSourceMetadata {
+    /// Conservative scope: only set when all sources agree.
+    pub scope: Option<MemoryScope>,
+    /// Conservative project partition: only set when all sources agree.
+    pub project_id: Option<String>,
+    /// Most restrictive sensitivity across sources.
+    pub sensitivity: FactSensitivity,
+    /// Most restrictive visibility across sources.
+    pub visibility: Visibility,
+}
+
+/// Merge source-fact policy metadata into conservative consolidated metadata.
+///
+/// # Policy (#4660)
+///
+/// - **Sensitivity:** take the maximum (most restrictive) value. A single
+///   confidential source makes the whole output confidential.
+/// - **Visibility:** take the minimum (most restrictive) value. A single
+///   private source keeps the output private.
+/// - **Scope:** all non-null source scopes must match exactly. Mixed scopes
+///   are refused because there is no safe single scope that preserves every
+///   source's boundary.
+/// - **Project ID:** all non-null source project IDs must match exactly.
+///   Mixed project IDs are refused to avoid cross-project leakage.
+/// - **Source sessions:** collect distinct non-null session IDs for provenance.
+fn merge_consolidated_metadata(
+    consolidated: &ConsolidatedFact,
+) -> Result<MergedSourceMetadata, ConsolidationError> {
+    validate_source_metadata_lengths(consolidated)?;
+
+    let mut sensitivity = FactSensitivity::Public;
+    let mut visibility: Option<Visibility> = None;
+    let mut scopes = std::collections::HashSet::new();
+    let mut project_ids = std::collections::BTreeSet::new();
+
+    for (((scope, project_id), src_sensitivity), src_visibility) in consolidated
+        .source_scopes
+        .iter()
+        .zip(&consolidated.source_project_ids)
+        .zip(&consolidated.source_sensitivities)
+        .zip(&consolidated.source_visibilities)
+    {
+        sensitivity = sensitivity.max(*src_sensitivity);
+
+        visibility = Some(match visibility {
+            Some(cur) => cur.min(*src_visibility),
+            None => *src_visibility,
+        });
+
+        if let Some(scope) = scope {
+            scopes.insert(*scope);
+        }
+        if let Some(project_id) = project_id {
+            project_ids.insert(project_id.clone());
+        }
+    }
+
+    let scope = match scopes.len() {
+        0 => None,
+        1 => scopes.into_iter().next(),
+        _ => {
+            return Err(IncompatibleSourcesSnafu {
+                reason: "mixed memory scopes in consolidation sources".to_owned(),
+            }
+            .build());
+        }
+    };
+
+    let project_id = match project_ids.len() {
+        0 => None,
+        1 => project_ids.into_iter().next(),
+        _ => {
+            return Err(IncompatibleSourcesSnafu {
+                reason: "mixed project IDs in consolidation sources".to_owned(),
+            }
+            .build());
+        }
+    };
+
+    Ok(MergedSourceMetadata {
+        scope,
+        project_id,
+        sensitivity,
+        visibility: visibility.unwrap_or(Visibility::Private),
+    })
+}
+
+fn validate_source_metadata_lengths(
+    consolidated: &ConsolidatedFact,
+) -> Result<(), ConsolidationError> {
+    let expected = consolidated.source_fact_ids.len();
+    for (field, actual) in [
+        ("source_scopes", consolidated.source_scopes.len()),
+        ("source_project_ids", consolidated.source_project_ids.len()),
+        (
+            "source_sensitivities",
+            consolidated.source_sensitivities.len(),
+        ),
+        (
+            "source_visibilities",
+            consolidated.source_visibilities.len(),
+        ),
+        ("source_session_ids", consolidated.source_session_ids.len()),
+    ] {
+        if actual != expected {
+            return Err(IncompatibleSourcesSnafu {
+                reason: format!(
+                    "{field} length {actual} does not match source_fact_ids length {expected}"
+                ),
+            }
+            .build());
+        }
+    }
+    Ok(())
 }
 
 /// Compute multiplicity metadata for a consolidated fact (#3634).
@@ -768,31 +1055,108 @@ fn compute_multiplicity(
     }
 }
 
-/// Parse fact rows from query results.
-fn parse_fact_rows(rows: &[Vec<DataValue>]) -> Vec<(FactId, String, f64, String)> {
+/// Parse fact rows from query results into [`SourceFact`] records.
+fn parse_fact_rows(rows: &[Vec<DataValue>]) -> crate::error::Result<Vec<SourceFact>> {
     rows.iter()
-        .filter_map(|row| {
-            // kanon:ignore RUST/no-result-unwrap-or-default — malformed row filtered out by let-else None below
-            let Ok(id) = FactId::new(row.first().and_then(|v| v.get_str()).unwrap_or_default())
-            else {
-                return None;
-            };
-            let content = row
-                // kanon:ignore RUST/no-result-unwrap-or-default — malformed row content defaults to empty string
-                .get(1)
-                .and_then(|v| v.get_str())
-                .unwrap_or_default()
-                .to_owned();
-            let confidence = row.get(2).and_then(DataValue::get_float).unwrap_or(0.0);
-            let recorded_at = row
-                // kanon:ignore RUST/no-result-unwrap-or-default — malformed row timestamp defaults to empty string
-                .get(3)
-                .and_then(|v| v.get_str())
-                .unwrap_or_default()
-                .to_owned();
-            Some((id, content, confidence, recorded_at))
-        })
+        .enumerate()
+        .map(|(idx, row)| parse_fact_row(row, idx))
         .collect()
+}
+
+fn parse_fact_row(row: &[DataValue], idx: usize) -> crate::error::Result<SourceFact> {
+    if row.len() < 9 {
+        return Err(crate::error::ConversionSnafu {
+            message: format!(
+                "consolidation source row {idx}: expected 9 columns, got {}",
+                row.len()
+            ),
+        }
+        .build());
+    }
+
+    let id_raw = required_str(row, 0, "fact_id", idx)?;
+    let id = FactId::new(id_raw.to_owned()).map_err(|e| {
+        crate::error::ConversionSnafu {
+            message: format!("consolidation source row {idx}: invalid fact_id '{id_raw}': {e}"),
+        }
+        .build()
+    })?;
+    let content = required_str(row, 1, "content", idx)?.to_owned();
+    let confidence = row.get(2).and_then(DataValue::get_float).ok_or_else(|| {
+        crate::error::ConversionSnafu {
+            message: format!("consolidation source row {idx}: missing confidence"),
+        }
+        .build()
+    })?;
+    let recorded_at = required_str(row, 3, "recorded_at", idx)?.to_owned();
+    let scope = optional_str(row, 4, "scope", idx)?
+        .map(str::parse::<MemoryScope>)
+        .transpose()
+        .map_err(|e| {
+            crate::error::ConversionSnafu {
+                message: format!("consolidation source row {idx}: invalid scope: {e}"),
+            }
+            .build()
+        })?;
+    let project_id = optional_str(row, 5, "project_id", idx)?.map(str::to_owned);
+    let sensitivity_raw = required_str(row, 6, "sensitivity", idx)?;
+    let sensitivity = sensitivity_raw.parse::<FactSensitivity>().map_err(|e| {
+        crate::error::ConversionSnafu {
+            message: format!("consolidation source row {idx}: invalid sensitivity: {e}"),
+        }
+        .build()
+    })?;
+    let visibility_raw = required_str(row, 7, "visibility", idx)?;
+    let visibility = visibility_raw.parse::<Visibility>().map_err(|e| {
+        crate::error::ConversionSnafu {
+            message: format!("consolidation source row {idx}: invalid visibility: {e}"),
+        }
+        .build()
+    })?;
+    let source_session_id = optional_str(row, 8, "source_session_id", idx)?.map(str::to_owned);
+
+    Ok(SourceFact {
+        id,
+        content,
+        confidence,
+        recorded_at,
+        scope,
+        project_id,
+        sensitivity,
+        visibility,
+        source_session_id,
+    })
+}
+
+fn required_str<'a>(
+    row: &'a [DataValue],
+    index: usize,
+    name: &str,
+    row_idx: usize,
+) -> crate::error::Result<&'a str> {
+    row.get(index).and_then(DataValue::get_str).ok_or_else(|| {
+        crate::error::ConversionSnafu {
+            message: format!("consolidation source row {row_idx}: missing {name}"),
+        }
+        .build()
+    })
+}
+
+fn optional_str<'a>(
+    row: &'a [DataValue],
+    index: usize,
+    name: &str,
+    row_idx: usize,
+) -> crate::error::Result<Option<&'a str>> {
+    match row.get(index) {
+        Some(DataValue::Null) | None => Ok(None),
+        Some(value) => value.get_str().map(Some).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: format!("consolidation source row {row_idx}: invalid {name}"),
+            }
+            .build()
+        }),
+    }
 }
 
 #[cfg(all(test, feature = "mneme-engine"))]

@@ -29,7 +29,6 @@ pub(crate) mod callback;
     clippy::struct_field_names,
     clippy::type_complexity,
     clippy::unnecessary_wraps,
-    clippy::unused_self,
     reason = "engine database core — internal API surface, dead code for optional features"
 )]
 pub(crate) mod db;

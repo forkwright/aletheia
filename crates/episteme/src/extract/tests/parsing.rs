@@ -306,7 +306,7 @@ fn persist_round_trip() {
         facts: vec![ExtractedFact {
             subject: "Aletheia".to_owned(),
             predicate: "uses".to_owned(),
-            object: "CozoDB for knowledge storage".to_owned(),
+            object: "Krites for knowledge storage".to_owned(),
             confidence: 0.9,
             is_correction: false,
             fact_type: None,
@@ -339,7 +339,7 @@ fn persist_round_trip() {
         .query_facts("syn", "2099-01-01T00:00:00Z", 100)
         .expect("query_facts should return results for syn nous up to year 2099");
     assert!(
-        facts.iter().any(|f| f.content.contains("CozoDB")),
+        facts.iter().any(|f| f.content.contains("Krites")),
         "persisted fact should be retrievable"
     );
 }

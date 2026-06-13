@@ -22,6 +22,29 @@ use tracing::instrument;
 use super::KnowledgeStore;
 use crate::engine::{DataValue, ScriptMutability};
 
+/// Datalog DDL for the global derived-rule source-revision counter (#4662).
+///
+/// A single row with `key = 'global'` tracks a monotonic revision that is
+/// bumped whenever a base relation (`facts`, `entities`, `causal_edges`,
+/// `type_hierarchy`, `defaults`) changes. Rule watermarks compare against
+/// this counter to detect stale materializations.
+pub const DERIVED_SOURCE_REVISION_DDL: &str = r":create derived_source_revision {
+    key: String =>
+    revision: Int
+}";
+
+/// Datalog DDL for per-rule materialization watermarks (#4662).
+///
+/// Each rule family (`ontological`, `causal`, `defeasible`) stores the source
+/// revision it was materialized against, the materialization timestamp, and a
+/// dirty flag that base writes set to `true`.
+pub const DERIVED_RULE_WATERMARKS_DDL: &str = r":create derived_rule_watermarks {
+    rule_id: String =>
+    source_revision: Int,
+    materialized_at: String,
+    dirty: Bool
+}";
+
 /// A single row produced by a materialization pass.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DerivedFact {
@@ -37,6 +60,20 @@ pub struct DerivedFact {
     pub confidence: f64,
 }
 
+/// Freshness state for a derived-fact query (#4662).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DerivedFreshness {
+    /// The derived rows were materialized at the current source revision and
+    /// are not marked dirty.
+    Fresh,
+    /// The derived rows exist but the source revision has advanced or the rule
+    /// family is marked dirty, so the results may be stale.
+    Stale,
+    /// No derived rows exist for the requested entity/rule prefix.
+    Unavailable,
+}
+
 // ── Type-hierarchy helpers ─────────────────────────────────────────────────────
 
 impl KnowledgeStore {
@@ -44,6 +81,9 @@ impl KnowledgeStore {
     ///
     /// Inserts `child_type IS-A parent_type`. Both values are free-form
     /// strings matching entity `entity_type` values in the `entities` relation.
+    ///
+    /// Invalidates derived facts because the ontological rule set depends on
+    /// `type_hierarchy`.
     ///
     /// # Errors
     ///
@@ -63,13 +103,20 @@ impl KnowledgeStore {
             r"?[child_type, parent_type, created_at] <- [[$child_type, $parent_type, $created_at]]
             :put type_hierarchy { child_type, parent_type => created_at }",
             params,
-        )
+        )?;
+        // WHY (#4662): `type_hierarchy` is a base relation for ontological
+        // rules. The manager-owned `facts.rs` / `causal.rs` / `entity.rs`
+        // writers must call `invalidate_derived_facts` too.
+        self.invalidate_derived_facts()
     }
 
     /// Insert a defeasible default assertion for an entity+tag.
     ///
     /// The `tag` identifies the topic area (used for override matching).
     /// The `default_content` is the assertion text.
+    ///
+    /// Invalidates derived facts because the defeasible rule set depends on
+    /// `defaults`.
     ///
     /// # Errors
     ///
@@ -97,7 +144,11 @@ impl KnowledgeStore {
                 [[$entity_id, $tag, $default_content, $confidence, $created_at]]
             :put defaults { entity_id, tag => default_content, confidence, created_at }",
             params,
-        )
+        )?;
+        // WHY (#4662): `defaults` is a base relation for defeasible rules.
+        // The manager-owned `facts.rs` / `causal.rs` / `entity.rs` writers
+        // must call `invalidate_derived_facts` too.
+        self.invalidate_derived_facts()
     }
 
     // ── Materialization ────────────────────────────────────────────────────────
@@ -147,6 +198,13 @@ impl KnowledgeStore {
         for fact in &derived {
             self.put_derived_fact(fact, &now)?;
         }
+
+        // WHY (#4662): record the watermark so consumers can tell whether the
+        // output is fresh. Use the current source revision at materialization
+        // time; a concurrent base write would bump the revision and mark dirty
+        // after this point.
+        let revision = self.current_derived_source_revision()?;
+        self.put_rule_watermark("ontological", revision, &now, false)?;
         Ok(count)
     }
 
@@ -173,6 +231,10 @@ impl KnowledgeStore {
         for fact in &derived {
             self.put_derived_fact(fact, &now)?;
         }
+
+        // WHY (#4662): record the watermark after writing rows.
+        let revision = self.current_derived_source_revision()?;
+        self.put_rule_watermark("causal", revision, &now, false)?;
         Ok(count)
     }
 
@@ -200,6 +262,10 @@ impl KnowledgeStore {
         for fact in &derived {
             self.put_derived_fact(fact, &now)?;
         }
+
+        // WHY (#4662): record the watermark after writing rows.
+        let revision = self.current_derived_source_revision()?;
+        self.put_rule_watermark("defeasible", revision, &now, false)?;
         Ok(count)
     }
 
@@ -253,7 +319,140 @@ impl KnowledgeStore {
         parse_derived_rows(&rows)
     }
 
+    /// Return the freshness of derived facts for an entity and rule prefix
+    /// (#4662).
+    ///
+    /// - `Unavailable` if no derived rows exist.
+    /// - `Fresh` if rows exist, the rule family's watermark is at the current
+    ///   source revision, and the dirty flag is false.
+    /// - `Stale` if rows exist but the watermark is behind or dirty.
+    ///
+    /// This query surface lets callers detect when a base-relation change may
+    /// have left derived results out of date.
+    #[instrument(skip(self))]
+    pub fn derived_fact_freshness(
+        &self,
+        entity_id: &str,
+        rule_prefix: &str,
+    ) -> crate::error::Result<DerivedFreshness> {
+        let derived = self.query_derived_facts_by_rule(entity_id, rule_prefix)?;
+        if derived.is_empty() {
+            return Ok(DerivedFreshness::Unavailable);
+        }
+
+        let family = rule_family(rule_prefix);
+        let current_revision = self.current_derived_source_revision()?;
+        let (watermark_revision, dirty) = self.rule_watermark(family)?;
+
+        if dirty || watermark_revision < current_revision {
+            Ok(DerivedFreshness::Stale)
+        } else {
+            Ok(DerivedFreshness::Fresh)
+        }
+    }
+
+    /// Bump the global derived-rule source revision and mark all rule families
+    /// dirty.
+    ///
+    /// This is the single entry point for invalidating derived materializations
+    /// after a base-relation change. The manager-owned `facts.rs`, `causal.rs`,
+    /// and `entity.rs` writers must call this method; the `type_hierarchy` and
+    /// `defaults` writers in this module already call it.
+    #[instrument(skip(self))]
+    pub fn invalidate_derived_facts(&self) -> crate::error::Result<()> {
+        let revision = self.bump_derived_source_revision()?;
+        self.mark_derived_rules_dirty(revision)
+    }
+
     // ── Internal helpers ───────────────────────────────────────────────────────
+
+    /// Read the current global derived-rule source revision.
+    fn current_derived_source_revision(&self) -> crate::error::Result<i64> {
+        let script = r"
+?[revision] := *derived_source_revision{key: 'global', revision}
+";
+        let result = self.run_query(script, BTreeMap::new())?;
+        if result.is_empty() {
+            // WHY: Should only happen on stores that predate v18 and lost the
+            // counter; recover at 0 so materialization can proceed.
+            return Ok(0);
+        }
+        Ok(result.get_i64(0, "revision").unwrap_or_default())
+    }
+
+    /// Atomically increment the global derived-rule source revision.
+    ///
+    /// Returns the new revision value.
+    fn bump_derived_source_revision(&self) -> crate::error::Result<i64> {
+        let current = self.current_derived_source_revision()?;
+        let next = current.saturating_add(1);
+        let mut params = BTreeMap::new();
+        params.insert("revision".to_owned(), DataValue::from(next));
+        self.run_mut(
+            r"?[key, revision] <- [['global', $revision]]
+              :put derived_source_revision { key => revision }",
+            params,
+        )?;
+        Ok(next)
+    }
+
+    /// Mark all rule-family watermarks dirty at the given source revision.
+    fn mark_derived_rules_dirty(&self, revision: i64) -> crate::error::Result<()> {
+        let now = jiff::Timestamp::now().to_string();
+        for family in ["ontological", "causal", "defeasible"] {
+            self.put_rule_watermark(family, revision, &now, true)?;
+        }
+        Ok(())
+    }
+
+    /// Read the watermark for a rule family.
+    ///
+    /// Returns `(source_revision, dirty)`. Missing watermarks are treated as
+    /// dirty at revision 0 so freshness checks default to stale.
+    fn rule_watermark(&self, rule_family: &str) -> crate::error::Result<(i64, bool)> {
+        let mut params = BTreeMap::new();
+        params.insert("rule_id".to_owned(), DataValue::Str(rule_family.into()));
+        let result = self.run_query(
+            r"?[source_revision, dirty] :=
+                *derived_rule_watermarks{rule_id: $rule_id, source_revision, materialized_at, dirty}",
+            params,
+        )?;
+        if result.is_empty() {
+            return Ok((0, true));
+        }
+        let source_revision = result.get_i64(0, "source_revision").unwrap_or_default();
+        let dirty = result.get_bool(0, "dirty").unwrap_or(true);
+        Ok((source_revision, dirty))
+    }
+
+    /// Upsert a watermark for a rule family.
+    fn put_rule_watermark(
+        &self,
+        rule_family: &str,
+        source_revision: i64,
+        materialized_at: &str,
+        dirty: bool,
+    ) -> crate::error::Result<()> {
+        let mut params = BTreeMap::new();
+        params.insert("rule_id".to_owned(), DataValue::Str(rule_family.into()));
+        params.insert(
+            "source_revision".to_owned(),
+            DataValue::from(source_revision),
+        );
+        params.insert(
+            "materialized_at".to_owned(),
+            DataValue::Str(materialized_at.into()),
+        );
+        params.insert("dirty".to_owned(), DataValue::Bool(dirty));
+        self.run_mut(
+            r"?[rule_id, source_revision, materialized_at, dirty] <-
+                [[$rule_id, $source_revision, $materialized_at, $dirty]]
+              :put derived_rule_watermarks {
+                  rule_id => source_revision, materialized_at, dirty
+              }",
+            params,
+        )
+    }
 
     /// Upsert a single derived fact row.
     fn put_derived_fact(&self, fact: &DerivedFact, now: &str) -> crate::error::Result<()> {
@@ -290,6 +489,20 @@ impl KnowledgeStore {
                 }
                 .build()
             })
+    }
+}
+
+// ── Free helpers ───────────────────────────────────────────────────────────────
+
+/// Extract the rule family from a rule ID or prefix.
+///
+/// Rule IDs are shaped `family:detail` (e.g. `ontological:is_a`). Watermarks
+/// are keyed by family, so `query_derived_facts_by_rule("alice", "ontological")`
+/// looks up the `ontological` watermark.
+fn rule_family(rule_id_or_prefix: &str) -> &str {
+    match rule_id_or_prefix.split_once(':') {
+        Some((family, _)) => family,
+        None => rule_id_or_prefix,
     }
 }
 

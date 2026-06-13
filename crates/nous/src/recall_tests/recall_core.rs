@@ -1,4 +1,13 @@
-#![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+#![expect(
+    clippy::expect_used,
+    clippy::too_many_lines,
+    reason = "test assertions and scenario setup favor direct, self-contained cases"
+)]
+
+use std::sync::Mutex;
+
+use mneme::side_query::{SideQueryError, SideQueryRanker};
+use mneme::workspace::ProjectId;
 
 use super::super::*;
 use super::*;
@@ -735,5 +744,134 @@ fn cohort_isolation_shared_fact_visible_to_any_nous() {
     assert!(
         result.results_injected > 0,
         "shared fact should be visible to any querying nous"
+    );
+}
+
+/// Mock side-query ranker that captures the manifest text sent by the recall stage.
+struct CapturingSideRanker {
+    manifest: Mutex<Option<String>>,
+}
+
+impl SideQueryRanker for CapturingSideRanker {
+    fn rank_memories(
+        &self,
+        _query: &str,
+        manifest_text: &str,
+        _max_results: usize,
+    ) -> Result<Vec<String>, SideQueryError> {
+        *self.manifest.lock().expect("manifest lock") = Some(manifest_text.to_owned());
+        Ok(vec![])
+    }
+}
+
+#[test]
+fn side_query_manifest_excludes_memory_content() {
+    let public_content = "PUBLIC_KNOWLEDGE_CONTENT_4619";
+    let confidential_content = "CONFIDENTIAL_SECRET_CONTENT_4619";
+    let private_other_content = "PRIVATE_OTHER_NOUS_CONTENT_4619";
+
+    let results = vec![
+        KnowledgeRecallResult {
+            content: public_content.to_owned(),
+            source_id: "fact-public".to_owned(),
+            source_type: "fact".to_owned(),
+            distance: 0.1,
+            nous_id: "syn".to_owned(),
+            sensitivity: mneme::knowledge::FactSensitivity::Public,
+            visibility: mneme::knowledge::Visibility::Shared,
+            scope: None,
+            project_id: None,
+            graph_importance: 0.0,
+            source_count: 0,
+        },
+        KnowledgeRecallResult {
+            content: confidential_content.to_owned(),
+            source_id: "fact-confidential".to_owned(),
+            source_type: "fact".to_owned(),
+            distance: 0.2,
+            nous_id: "syn".to_owned(),
+            sensitivity: mneme::knowledge::FactSensitivity::Confidential,
+            visibility: mneme::knowledge::Visibility::Private,
+            scope: None,
+            project_id: None,
+            graph_importance: 0.0,
+            source_count: 0,
+        },
+        KnowledgeRecallResult {
+            content: private_other_content.to_owned(),
+            source_id: "fact-private-other".to_owned(),
+            source_type: "fact".to_owned(),
+            distance: 0.3,
+            nous_id: "other-nous".to_owned(),
+            sensitivity: mneme::knowledge::FactSensitivity::Public,
+            visibility: mneme::knowledge::Visibility::Private,
+            scope: None,
+            project_id: Some(
+                ProjectId::from_git_remote("https://example.com/other-project.git")
+                    .expect("valid project id"),
+            ),
+            graph_importance: 0.0,
+            source_count: 0,
+        },
+    ];
+
+    let config = RecallConfig {
+        enabled: true,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config)
+        .with_deployment_target(hermeneus::provider::DeploymentTarget::Cloud)
+        .with_project_scope(mneme::recall::ProjectRecallScope::Project(
+            ProjectId::from_git_remote("https://example.com/this-project.git")
+                .expect("valid project id"),
+        ));
+
+    let ranker = CapturingSideRanker {
+        manifest: Mutex::new(None),
+    };
+
+    let _result = stage
+        .run_with_recall_enhancements(
+            "query",
+            "syn",
+            &mock_embed(),
+            &MockVectorSearch::new(results),
+            10_000,
+            Some(&ranker),
+            None,
+        )
+        .expect("recall should succeed");
+
+    let manifest = ranker
+        .manifest
+        .lock()
+        .expect("manifest lock")
+        .take()
+        .expect("side-query ranker should have received a manifest");
+
+    assert!(
+        manifest.contains("fact-public"),
+        "manifest should reference public fact by id"
+    );
+    assert!(
+        !manifest.contains("fact-confidential"),
+        "manifest should not reference confidential facts"
+    );
+    assert!(
+        !manifest.contains("fact-private-other"),
+        "manifest should not reference out-of-scope private facts"
+    );
+    assert!(
+        !manifest.contains(public_content),
+        "public memory content should not leak to the side-query provider"
+    );
+    assert!(
+        !manifest.contains(confidential_content),
+        "confidential memory content should not leak to the side-query provider"
+    );
+    assert!(
+        !manifest.contains(private_other_content),
+        "other-nous private memory content should not leak to the side-query provider"
     );
 }

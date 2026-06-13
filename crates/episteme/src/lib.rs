@@ -60,7 +60,7 @@ pub mod ingest;
 pub mod instinct;
 /// Knowledge graph export/import for agent portability.
 pub mod knowledge_portability;
-/// `CozoDB`-backed knowledge store for graph traversal and vector search.
+/// Krites-backed knowledge store for graph traversal and vector search.
 pub mod knowledge_store;
 /// Memory manifest: lightweight headers for side-query pre-filtering.
 pub mod manifest;

@@ -1,9 +1,10 @@
-//! `CozoDB`-backed knowledge store implementation.
+//! Krites-backed knowledge store implementation.
 //!
 //! This module requires the `mneme-engine` feature flag.
 //!
-//! **Storage:** The `mneme-engine` vendored CozoDB uses only mem/redb/fjall
-//! storage backends: no C++ dependencies.
+//! **Storage:** production knowledge stores use Krites over Fjall. In-memory
+//! Krites storage is available for tests and short-lived tools. No external
+//! database process or C++ runtime is required.
 //!
 //! # Schema
 //!
@@ -60,13 +61,16 @@ mod entity;
 #[cfg(feature = "mneme-engine")]
 mod facts;
 #[cfg(feature = "mneme-engine")]
-mod marshal;
+pub(crate) mod marshal;
 #[cfg(feature = "mneme-engine")]
 mod migration;
 #[cfg(feature = "mneme-engine")]
 mod search;
 #[cfg(feature = "mneme-engine")]
 mod skills;
+
+#[cfg(feature = "mneme-engine")]
+pub use derived_rules::DerivedFreshness;
 
 #[cfg(test)]
 mod tests;
@@ -147,9 +151,11 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
     }",
     r":create causal_edges {
         cause: String, effect: String =>
+        id: String,
         ordering: String,
         relationship_type: String,
         confidence: Float,
+        evidence_session_id: String?,
         created_at: String
     }",
     // Index 7 - type_hierarchy (added in schema v8)
@@ -195,6 +201,18 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         severity: String,
         flagged_by: String,
         flagged_at: String
+    }",
+    // Index 14 - derived_source_revision (added in schema v19, #4662)
+    r":create derived_source_revision {
+        key: String =>
+        revision: Int
+    }",
+    // Index 15 - derived_rule_watermarks (added in schema v19, #4662)
+    r":create derived_rule_watermarks {
+        rule_id: String =>
+        source_revision: Int,
+        materialized_at: String,
+        dirty: Bool
     }",
 ];
 
@@ -280,7 +298,7 @@ use crate::query::queries;
 /// Typed wrapper for raw Datalog query results.
 ///
 /// Returned by [`KnowledgeStore::run_query`] and related escape-hatch methods.
-/// Hides the `crate::engine::NamedRows` type from callers, keeping `CozoDB`
+/// Hides the `crate::engine::NamedRows` type from callers, keeping engine
 /// internals encapsulated within the knowledge layer.
 ///
 /// Use the typed accessor methods ([`get_string`](Self::get_string),
@@ -592,7 +610,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    pub(crate) const SCHEMA_VERSION: i64 = 16;
+    pub(crate) const SCHEMA_VERSION: i64 = 19;
     const MIN_SCHEMA_VERSION: i64 = 1;
     pub(crate) const ASSUMED_EMBEDDING_MODEL: &'static str = "assumed";
 
@@ -908,6 +926,38 @@ impl KnowledgeStore {
                 .build()
             })?;
 
+        // WHY (#4660): consolidation_provenance stores the original source fact
+        // IDs and source session IDs for each consolidated fact, keeping
+        // provenance inspectable without parsing audit JSON.
+        self.db
+            .run(
+                crate::consolidation::CONSOLIDATION_PROVENANCE_DDL,
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+
+        // WHY (#4662): initialize the derived-rule source-revision counter so
+        // fresh stores start at revision 0 and base writes can bump it.
+        self.db
+            .run(
+                r"?[key, revision] <- [['global', 0]]
+                  :put derived_source_revision { key => revision }",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("init derived_source_revision failed: {e}"),
+                }
+                .build()
+            })?;
+
         self.db
             .run(
                 r":create schema_version { key: String => version: Int }",
@@ -928,8 +978,12 @@ impl KnowledgeStore {
     }
 
     fn schema_version_relation_exists(&self) -> crate::error::Result<bool> {
+        self.relation_exists("schema_version")
+    }
+
+    fn relation_exists(&self, name: &str) -> crate::error::Result<bool> {
         self.relation_names()
-            .map(|names| names.iter().any(|name| name == "schema_version"))
+            .map(|names| names.iter().any(|n| n == name))
     }
 
     fn relation_names(&self) -> crate::error::Result<Vec<String>> {
@@ -1253,7 +1307,7 @@ impl KnowledgeStore {
 
     /// Raw query escape hatch for callers needing custom Datalog.
     ///
-    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB`
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep engine
     /// internals encapsulated. Use typed accessors (`get_string`, `get_f64`, etc.).
     ///
     /// # Complexity
@@ -1274,10 +1328,10 @@ impl KnowledgeStore {
     /// If the query exceeds the timeout, returns `Error::QueryTimeout`.
     /// The `:timeout` directive is injected into the script: callers should not include it.
     ///
-    /// Note: timeout detection relies on the engine error containing "killed before completion"
-    /// (from `CozoDB`'s internal `ProcessKilled` error). This is a known fragile dependency.
+    /// Note: timeout detection relies on the engine cancellation error containing
+    /// "killed before completion". This is a known fragile dependency.
     ///
-    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep engine internals
     /// encapsulated.
     ///
     /// # Complexity
@@ -1314,7 +1368,7 @@ impl KnowledgeStore {
     /// Raw mutable query escape hatch: runs script with `ScriptMutability::Mutable`.
     /// Required for `:rm` and `:put` operations from caller code.
     ///
-    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep engine internals
     /// encapsulated.
     ///
     /// # Complexity
@@ -1347,70 +1401,12 @@ impl KnowledgeStore {
         crate::serendipity::discover_serendipitous_facts(self, nous_id)
     }
 
-    /// Create a backup of the knowledge database.
-    ///
-    /// Delegates to the inner engine's `backup_db`. Currently returns an error
-    /// for in-memory and redb backends.
-    ///
-    /// # Complexity
-    ///
-    /// O(D) where D is database size. Copies all `SSTables` and logs.
-    #[instrument(skip(self, out_file))]
-    pub fn backup_db(&self, out_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
-        self.db.backup_db(out_file).map_err(|e| {
-            crate::error::EngineQuerySnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })
-    }
-
-    /// Restore the knowledge database from a backup file.
-    ///
-    /// Delegates to the inner engine's `restore_backup`. Currently returns an error
-    /// for in-memory and redb backends.
-    ///
-    /// # Complexity
-    ///
-    /// O(D) where D is backup size. Replaces all `SSTables`.
-    #[instrument(skip(self, in_file))]
-    pub fn restore_backup(&self, in_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
-        self.db.restore_backup(in_file).map_err(|e| {
-            crate::error::EngineQuerySnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })
-    }
-
-    /// Import specific relations from a backup file into the live database.
-    ///
-    /// Delegates to the inner engine's `import_from_backup`. Currently returns an error
-    /// for in-memory and redb backends.
-    ///
-    /// # Complexity
-    ///
-    /// O(R) where R is total size of relations being imported.
-    #[instrument(skip(self, in_file))]
-    pub fn import_from_backup(
-        &self,
-        in_file: impl AsRef<std::path::Path>,
-        relations: &[String],
-    ) -> crate::error::Result<()> {
-        self.db.import_from_backup(in_file, relations).map_err(|e| {
-            crate::error::EngineQuerySnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })
-    }
-
     /// Run a Datalog script in read-only mode. Convenience wrapper around `run_query`.
     ///
     /// Equivalent to calling `run_query`, but makes the immutability contract explicit
     /// for callers who need a read-only guarantee (e.g., the `datalog_query` tool).
     ///
-    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep engine internals
     /// encapsulated.
     ///
     /// # Complexity

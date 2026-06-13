@@ -131,9 +131,11 @@ impl Field for CausalEdgesField {
         match self {
             Self::Cause => "cause",
             Self::Effect => "effect",
+            Self::Id => "id",
             Self::Ordering => "ordering",
             Self::RelationshipType => "relationship_type",
             Self::Confidence => "confidence",
+            Self::EvidenceSessionId => "evidence_session_id",
             Self::CreatedAt => "created_at",
         }
     }
