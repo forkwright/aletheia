@@ -740,7 +740,29 @@ nproc_limit = 256
 
 ## Environment variables
 
-Any config key can be set via environment variable with the `ALETHEIA_` prefix and double underscores for nesting:
+The public runtime environment contract has one env-file owner:
+`<instance-root>/config/env`. The root `.env.example` is the template for that
+file, and `instance.example/services/aletheia.service` loads it from
+`%h/aletheia/instance/config/env`.
+
+| Variable | Owner | Meaning |
+|----------|-------|---------|
+| `ALETHEIA_ROOT` | `taxis::Oikos` instance discovery | Instance root only. Equivalent to `--instance-root` when the CLI flag is absent; never a source tree or install prefix. |
+| `ALETHEIA_BIN` | shared and deploy helper scripts | Executable path for helpers such as `shared/bin/start.sh`, `scripts/aletheia-heartbeat.sh`, deploy, rollback, and smoke scripts. Older scripts still accept `ALETHEIA_BINARY` as a compatibility fallback. |
+| `ANTHROPIC_API_KEY` | credential provider chain | Anthropic API key. May live in `config/env` or the process environment. |
+| `ANTHROPIC_AUTH_TOKEN` | credential provider chain | Anthropic OAuth token, usually maintained by credential tooling. |
+| `VOYAGE_API_KEY` | embedding provider | Optional remote embedding provider credential. Local candle embeddings do not need it. |
+| `BRAVE_API_KEY` | shared research tools | Optional Brave Search credential for operator-installed tools. |
+| `PERPLEXITY_API_KEY` | shared research tools | Optional Perplexity credential for `shared/bin/pplx`. |
+| `RESEARCH_EMAIL` | shared research tools | Contact email used in scholarly API user agents. |
+| `PROSOCHE_GATEWAY_TOKEN` | prosoche integration | Optional token for prosoche gateway calls. |
+| `PROSOCHE_CALENDAR_*` | prosoche integration | Optional calendar identifiers for prosoche calendar surfaces. |
+| `CHROMIUM_PATH` | browser automation and Chromium printer | Optional explicit Chromium executable path. |
+| `RUST_LOG` | logging runtime | Console log filter. |
+| `RUST_BACKTRACE` | Rust runtime | Backtrace control for panics and error reports. |
+
+Any config key can also be set via environment variable with the `ALETHEIA_`
+prefix and double underscores for nesting:
 
 | Config Key | Environment Variable |
 |------------|---------------------|
@@ -749,7 +771,8 @@ Any config key can be set via environment variable with the `ALETHEIA_` prefix a
 | `embedding.provider` | `ALETHEIA_EMBEDDING__PROVIDER` |
 | `channels.signal.enabled` | `ALETHEIA_CHANNELS__SIGNAL__ENABLED` |
 
-The `ANTHROPIC_API_KEY` environment variable is read separately by the provider registry (not part of the config cascade).
+Provider credentials such as `ANTHROPIC_API_KEY` are read by the credential
+provider chain, not by the TOML config cascade.
 
 ---
 

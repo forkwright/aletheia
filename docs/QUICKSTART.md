@@ -148,15 +148,28 @@ Shows agents, sessions, storage, and system info.
 
 ## 5. Start a conversation
 
-### Option A: Terminal dashboard (TUI)
+### Current supported path: TUI
 
 ```bash
 aletheia tui
 ```
 
-Opens a rich terminal UI with markdown rendering, session management, and real-time streaming. Type a message and press Enter.
+Opens a rich terminal UI with markdown rendering, session management, and real-time streaming. Type a message and press Enter. This is the current supported first-run interface for a public checkout.
 
-### Option B: API (curl)
+### Optional preview: desktop
+
+The desktop app is the v1.0 target surface and currently installs separately
+from source:
+
+```bash
+scripts/install-proskenion.sh
+aletheia desktop --url http://127.0.0.1:18789
+```
+
+See [DESKTOP.md](DESKTOP.md) for system packages, build details, and smoke
+checks.
+
+### API (curl)
 
 Create a session, then send a message:
 
@@ -212,6 +225,14 @@ customize:
 EnvironmentFile=-%h/aletheia/instance/config/env
 ExecStart=/usr/bin/env %h/.local/bin/aletheia -r %h/aletheia/instance
 ReadWritePaths=%h/aletheia/instance
+```
+
+The environment file is owned by the instance. Start from the checked-in
+template when you need process-manager environment variables:
+
+```bash
+cp .env.example ~/aletheia/instance/config/env
+chmod 600 ~/aletheia/instance/config/env
 ```
 
 Verify the edited unit before enabling it:
@@ -344,7 +365,8 @@ The server looks for `instance/` in the current directory, or you can specify it
 aletheia -r /absolute/path/to/instance
 ```
 
-You can also set the `ALETHEIA_ROOT` environment variable.
+You can also set the `ALETHEIA_ROOT` environment variable. It must point to the
+instance root, not to the source checkout or `target/` directory.
 
 ### Signal channel log spam
 

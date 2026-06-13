@@ -12,7 +12,7 @@ set -euo pipefail
 #
 # Environment:
 #   PROSKENION_BINARY     Existing proskenion binary to run.
-#   ALETHEIA_BINARY       Existing aletheia server binary to start when no URL is supplied.
+#   ALETHEIA_BIN          Existing aletheia server binary to start when no URL is supplied.
 #   ALETHEIA_URL          Existing server URL.
 #   ALETHEIA_AUTH_TOKEN   Bearer token written to the temporary desktop config.
 #   PROSKENION_RUNTIME    Runtime budget in seconds, default: 20.
@@ -20,7 +20,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROSKENION_BINARY="${PROSKENION_BINARY:-$REPO_ROOT/crates/theatron/proskenion/target/release/proskenion}"
-SERVER_BINARY="${ALETHEIA_BINARY:-$REPO_ROOT/target/debug/aletheia}"
+SERVER_BINARY="${ALETHEIA_BIN:-${ALETHEIA_BINARY:-$REPO_ROOT/target/debug/aletheia}}"
 SERVER_URL="${ALETHEIA_URL:-}"
 AUTH_TOKEN="${ALETHEIA_AUTH_TOKEN:-}"
 RUNTIME="${PROSKENION_RUNTIME:-20}"

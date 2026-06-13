@@ -13,6 +13,21 @@ The starter config binds the gateway to localhost. For private LAN or tailnet
 exposure, copy the named reference settings from
 `config/aletheia.tailnet.toml` and keep authentication, CORS, and TLS explicit.
 
+## Runtime environment file
+
+The canonical environment file for a deployed instance is
+`instance/config/env`. The root `.env.example` is the template for that file:
+
+```bash
+cp .env.example instance/config/env
+chmod 600 instance/config/env
+```
+
+`ALETHEIA_ROOT` means the instance root only. It never points at the source tree
+or an install prefix. Helper scripts that need an executable path use
+`ALETHEIA_BIN` instead. The included systemd unit loads
+`%h/aletheia/instance/config/env`, matching this layout.
+
 ## Directory Structure
 
 ```text

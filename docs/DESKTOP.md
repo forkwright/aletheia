@@ -44,16 +44,21 @@ cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml 
 The desktop crate is outside the main workspace, so acceptance uses two focused checks instead of a full GUI driver:
 
 ```bash
-CARGO_TARGET_DIR=/data/target/wt/proskenion-contract-smoke/target \
-  cargo +1.94 test -p integration-tests --features test-core proskenion_contract -- --nocapture
+cargo +1.94 test -p integration-tests --features test-core proskenion_contract -- --nocapture
 
 bash -n scripts/smoke-proskenion.sh
-scripts/smoke-proskenion.sh --server-url http://127.0.0.1:3000 --proskenion-binary ~/.cargo/bin/proskenion
+scripts/smoke-proskenion.sh --proskenion-binary ~/.cargo/bin/proskenion
 ```
 
 The `proskenion_contract` integration test exercises the protocol surface the app consumes: agent list/status/tool envelopes, knowledge browse endpoints, metrics/cost/token envelopes, session create/list/history, and `POST /api/v1/sessions/stream` SSE event names, terminal events, and JSON field shape. If it fails, file the failure as a server/client runtime-contract mismatch and include the assertion text, full response body printed by the test, endpoint, and expected proskenion field or event name.
 
-The smoke script starts a local server when no `--server-url` is supplied, or connects to the supplied URL. It writes a temporary desktop config, uses `xvfb-run` when no `DISPLAY` is available, enforces a bounded runtime, captures logs, and fails on known display/startup/connectivity patterns. Missing Xvfb or a missing `proskenion` binary exits with a clear skip status instead of silently passing.
+The smoke script starts a local server when no `--server-url` is supplied, or connects to the supplied URL. Use the default gateway port when targeting an already running local server:
+
+```bash
+scripts/smoke-proskenion.sh --server-url http://127.0.0.1:18789 --proskenion-binary ~/.cargo/bin/proskenion
+```
+
+The script writes a temporary desktop config, uses `xvfb-run` when no `DISPLAY` is available, enforces a bounded runtime, captures logs, and fails on known display/startup/connectivity patterns. Missing Xvfb or a missing `proskenion` binary exits with a clear skip status instead of silently passing.
 
 ## Pin discipline
 

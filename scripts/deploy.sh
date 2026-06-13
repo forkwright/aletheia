@@ -12,7 +12,7 @@ set -euo pipefail
 #
 # Path discovery (first match wins):
 #   Instance root:  "$ALETHEIA_ROOT" > ~/aletheia/instance
-#   Binary dest:    "$ALETHEIA_BINARY" > ~/.local/bin/aletheia
+#   Binary dest:    "$ALETHEIA_BIN" > "$ALETHEIA_BINARY" > ~/.local/bin/aletheia
 #
 # Prerequisites: cargo, curl, jq, systemctl
 
@@ -32,7 +32,9 @@ fi
 BINARY_SRC="$REPO_ROOT/target/release/aletheia"
 
 # Binary destination: env var, then common locations
-if [[ -n "${ALETHEIA_BINARY:-}" ]]; then
+if [[ -n "${ALETHEIA_BIN:-}" ]]; then
+    BINARY_DST="$ALETHEIA_BIN"
+elif [[ -n "${ALETHEIA_BINARY:-}" ]]; then
     BINARY_DST="$ALETHEIA_BINARY"
 else
     BINARY_DST="$HOME/.local/bin/aletheia"

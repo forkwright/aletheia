@@ -28,12 +28,16 @@ Planning and milestones are tracked in the internal project roadmap.
 
 ## Interfaces
 
+Current first-run default: TUI. The desktop app is the v1.0 target surface and
+is not the default public onboarding path until release artifacts include the
+desktop app.
+
 | Interface | Status | Notes |
 |-----------|--------|-------|
-| TUI | Active | Terminal dashboard, rich markdown, session management |
+| TUI | Active | Current supported first-run interface; terminal dashboard with rich markdown and session management |
 | Signal | Active | Always-on ambient messaging; inbound messages delivered as plain conversational turns |
 | HTTP API | Active | REST on port 18789, SSE streaming |
-| Desktop app | In progress | Dioxus 0.7 desktop; scaffold with streaming architecture, not feature-complete |
+| Desktop app | In progress | v1.0 target surface; source-built preview, not current default onboarding |
 
 ## Related documents
 

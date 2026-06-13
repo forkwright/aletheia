@@ -4,7 +4,7 @@
 All nous share common resources at `$ALETHEIA_SHARED`:
 
 ### Environment
-Source paths: `. $ALETHEIA_SHARED/config/aletheia.env`
+Runtime environment file: `$ALETHEIA_ROOT/config/env`
 
 Convention-based paths (no mapping files needed):
 - Agent workspace: `$ALETHEIA_NOUS/$AGENT_ID`

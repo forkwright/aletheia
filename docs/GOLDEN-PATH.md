@@ -1,14 +1,19 @@
 # Golden Path
 
-Aletheia's v1.0 app path is desktop-first. The desktop app (`proskenion`) is
-the canonical user surface for configuring a client connection, starting work,
+Aletheia's v1.0 target path is desktop-first. The desktop app (`proskenion`) is
+the target user surface for configuring a client connection, starting work,
 watching an agent act, inspecting memory, reviewing failures, and exporting the
-useful result. The terminal dashboard (`koilon`, launched with `aletheia tui`)
-is the headless and SSH fallback.
+useful result.
 
-The desktop app connects to a running Aletheia server over HTTP. It uses the
-same API and SSE stream as the TUI, but the desktop navigation is the public
-workflow described here.
+Today, the current supported first-run path for a public checkout is: initialize
+an instance, start the server, then use the terminal dashboard (`koilon`,
+launched with `aletheia tui`). The desktop app is available as a source-built
+preview and uses the same HTTP API and SSE stream as the TUI, but it is not the
+default public onboarding path until the release train ships matching desktop
+artifacts.
+
+This document describes the v1.0 target workflow and labels each surface by its
+current implementation status.
 
 Status labels in this document mean:
 
@@ -77,8 +82,8 @@ counts, token summary when available, model, duration, message previews, and an
 Open in Chat action. Archive and Restore actions close or re-open a session in
 the working list without deleting its history.
 
-**Fallback:** On a headless host or over SSH, use `aletheia tui`. The TUI accepts
-`--url`, `--token`, `--agent`, and `--session` flags and provides chat,
+**Current supported first-run and headless path:** Use `aletheia tui`. The TUI
+accepts `--url`, `--token`, `--agent`, and `--session` flags and provides chat,
 planning, memory, metrics, and ops views in a terminal.
 
 ## 3. Observe Tool Calls and Approvals
@@ -197,8 +202,8 @@ its trace and memory evidence.
 
 ## Headless Fallback
 
-Use the TUI when the desktop cannot run, such as SSH-only work or Wayland
-remote-launch limitations. The TUI is a ratatui client over the same server API
-and SSE events. It supports chat, planning, memory, metrics, ops, session focus,
-agent focus, and setup wizard flows, but it is the fallback path for v1.0. The
-desktop remains the canonical public app surface.
+Use the TUI for current public first-run, headless hosts, SSH-only work, or
+Wayland remote-launch limitations. The TUI is a ratatui client over the same
+server API and SSE events. It supports chat, planning, memory, metrics, ops,
+session focus, agent focus, and setup wizard flows. The desktop remains the
+v1.0 target app surface once the release path ships matching desktop artifacts.
