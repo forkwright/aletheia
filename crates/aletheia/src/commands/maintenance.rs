@@ -8,8 +8,8 @@ use snafu::prelude::*;
 
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector,
-    FjallBackupConfig, MaintenanceConfig, PromptAuditRetentionConfig, PromptAuditRotator,
-    ProposeRulesConfig, TraceRotationConfig, TraceRotator,
+    FjallBackupConfig, InstanceBackupConfig, MaintenanceConfig, PromptAuditRetentionConfig,
+    PromptAuditRotator, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
 };
 use oikonomos::prosoche_audit::{ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
@@ -162,10 +162,11 @@ async fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Resul
             }
         }
         "fjall-backup" => {
-            let manager = oikonomos::maintenance::FjallBackup::new(maint.fjall_backup.clone());
+            let manager =
+                oikonomos::maintenance::InstanceBackup::new(maint.instance_backup.clone());
             let report = manager
                 .create_backup()
-                .whatever_context("fjall backup failed")?;
+                .whatever_context("whole-instance backup failed")?;
             match report.backup_path {
                 Some(path) => println!(
                     "fjall-backup: {} files copied ({} bytes) to {}, {} old backups pruned",
@@ -281,6 +282,13 @@ pub(crate) fn build_config(
             enabled: settings.backup.enabled,
             source_dir: oikos.knowledge_db(),
             backup_dir: oikos.backups().join("fjall"),
+            interval_hours: settings.backup.backup_interval_hours,
+            retention_count: settings.backup.backup_retention_count,
+        },
+        instance_backup: InstanceBackupConfig {
+            enabled: settings.backup.enabled,
+            instance_root: oikos.root().to_path_buf(),
+            backup_dir: oikos.backups().join("instance"),
             interval_hours: settings.backup.backup_interval_hours,
             retention_count: settings.backup.backup_retention_count,
         },

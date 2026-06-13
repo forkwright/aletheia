@@ -64,7 +64,7 @@ The daemon `TaskRunner` ticks every second and spawns tasks via `tokio::spawn` (
 
 ### Maintenance Tasks
 
-Maintenance builtins (trace rotation, drift detection, fjall backup, etc.) are dispatched via `tokio::task::spawn_blocking` inside the action (`execution.rs:145`). Blocking-task panics are caught by the same `check_in_flight` path and do not propagate.
+Maintenance builtins (trace rotation, drift detection, whole-instance backup, etc.) are dispatched via `tokio::task::spawn_blocking` inside the action (`execution.rs:145`). Blocking-task panics are caught by the same `check_in_flight` path and do not propagate.
 
 ### Graceful Shutdown
 

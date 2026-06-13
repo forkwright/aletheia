@@ -1025,6 +1025,53 @@ pub enum EvidenceLevel {
 ```
 
 ```rust
+pub fn stable_hash (input: &str) -> String
+```
+
+```rust
+pub enum EvidenceRef {
+    /// Reference to a fact by id and content hash.
+    Fact {
+        /// Stable fact identifier.
+        fact_id: String,
+        /// Hash of the fact content at audit time.
+        content_hash: String,
+    },
+    /// Reference to a session by id and turn-text hash.
+    Session {
+        /// Stable session identifier.
+        session_id: String,
+        /// Hash of the combined session turn text.
+        turn_hash: String,
+    },
+    /// Hash of the query/set that produced a finding.
+    Query {
+        /// Query hash.
+        query_hash: String,
+    },
+    /// Hash of the full snapshot used for the audit.
+    Snapshot {
+        /// Snapshot hash.
+        snapshot_hash: String,
+    },
+}
+```
+
+```rust
+pub struct FindingSupport {
+    /// References to the evidence behind the finding.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_refs: Vec<EvidenceRef>,
+    /// `true` if the check that produced this finding is a stub.
+    #[serde(default)]
+    pub is_stub: bool,
+    /// `true` if the check that produced this finding is a heuristic.
+    #[serde(default)]
+    pub is_heuristic: bool,
+}
+```
+
+```rust
 pub struct FindingStats {
     /// FDR-adjusted p-value. `None` for non-statistical findings.
     pub p_adjusted: Option<f64>,
@@ -1036,6 +1083,12 @@ pub struct FindingStats {
     pub ci: Option<[f64; 2]>,
     /// Sample sizes: `[n_a, n_b]`.
     pub sample_sizes: Option<[usize; 2]>,
+    /// Normalised rate (e.g. contradiction rate, stale rate) when applicable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate: Option<f64>,
+    /// Non-statistical support metadata (evidence refs, maturity flags).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support: Option<FindingSupport>,
 }
 ```
 

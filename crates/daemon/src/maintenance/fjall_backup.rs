@@ -9,6 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use fjall::Readable;
 use snafu::ResultExt;
 use tracing::{info, warn};
 
@@ -65,6 +66,17 @@ pub struct BackupEntry {
     pub created: SystemTime,
     /// Total size of the backup in bytes.
     pub size_bytes: u64,
+}
+
+/// Result of verifying a single fjall store directory.
+#[derive(Debug, Clone, Default)]
+pub struct FjallVerifyResult {
+    /// Per-partition key counts.
+    pub partition_counts: Vec<(String, usize)>,
+    /// First validation error encountered, if any.
+    pub first_error: Option<String>,
+    /// Total keys iterated across all partitions.
+    pub total_keys: usize,
 }
 
 /// Manages fjall knowledge store backups.
@@ -166,6 +178,79 @@ impl FjallBackup {
         Ok(entries)
     }
 
+    /// Verify a fjall store directory by opening it read-only and iterating
+    /// every partition. Returns per-partition key counts and the first
+    /// validation error encountered, if any.
+    ///
+    /// WHY: this is used both by the legacy `aletheia backup verify` path and
+    /// by whole-instance backup verification for the `knowledge.fjall` and
+    /// `sessions.db` stores.
+    pub fn verify_store(path: &Path) -> error::Result<FjallVerifyResult> {
+        // WHY: FjallDb::open_existing eagerly creates `version`, `keyspaces/`,
+        // and a fresh journal in the target directory if it doesn't already
+        // look like a fjall store. Guard against that by requiring the fjall
+        // marker file before opening.
+        if !path.join("version").is_file() {
+            return error::MaintenanceInvariantSnafu {
+                context: format!(
+                    "not a fjall store (missing `version` marker): {}",
+                    path.display()
+                ),
+            }
+            .fail();
+        }
+
+        let fdb = koina::fjall::FjallDb::open_existing(path)
+            .map_err(|e| std::io::Error::other(e.to_string()))
+            .context(error::MaintenanceIoSnafu {
+                context: format!("opening fjall store {}", path.display()),
+            })?;
+
+        let mut result = FjallVerifyResult {
+            partition_counts: Vec::new(),
+            first_error: None,
+            total_keys: 0,
+        };
+
+        let names = fdb.db.list_keyspace_names();
+        for name in names {
+            let name_str = name.as_ref();
+            let ks = fdb
+                .db
+                .keyspace(name_str, fjall::KeyspaceCreateOptions::default)
+                .map_err(|e| std::io::Error::other(e.to_string()))
+                .context(error::MaintenanceIoSnafu {
+                    context: format!("opening partition {name_str}"),
+                })?;
+
+            let snap = fdb.db.read_tx();
+            let mut count = 0usize;
+
+            for guard in snap.range::<&str, _>(&ks, ..) {
+                let (key, value): (fjall::Slice, fjall::Slice) = guard
+                    .into_inner()
+                    .map_err(|e: fjall::Error| std::io::Error::other(e.to_string()))
+                    .context(error::MaintenanceIoSnafu {
+                        context: format!("reading partition {name_str}"),
+                    })?;
+
+                count += 1;
+                result.total_keys += 1;
+
+                if result.first_error.is_none()
+                    && let Err(e) = validate_kv(name_str, key.as_ref(), value.as_ref())
+                {
+                    let key_display = String::from_utf8_lossy(key.as_ref());
+                    result.first_error = Some(format!("{name_str}/{key_display}: {e}"));
+                }
+            }
+
+            result.partition_counts.push((name_str.to_owned(), count));
+        }
+
+        Ok(result)
+    }
+
     /// Remove old backups beyond the configured retention count.
     fn prune_old_backups(&self) -> error::Result<u32> {
         let entries = self.list_backups()?;
@@ -225,6 +310,130 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> error::Result<(u64, u32)> {
     }
 
     Ok((total_bytes, total_files))
+}
+
+// ── Per-partition validation ───────────────────────────────────────────────
+
+fn validate_kv(partition: &str, key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
+    match partition {
+        "sessions" => validate_sessions(key, value),
+        "messages" => validate_messages(key, value),
+        "usage" => serde_json::from_slice::<mneme::types::UsageRecord>(value)
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+        "distillations" | "ops:tasks" => validate_json(value),
+        "notes" => validate_notes(key, value),
+        "blackboard" => serde_json::from_slice::<mneme::types::BlackboardRow>(value)
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+        "counters" => validate_u64(value),
+        "users" => validate_users(key, value),
+        "api_keys" => validate_api_keys(key, value),
+        "revoked_tokens" => validate_utf8(value),
+        // Known partitions with opaque/internal encoding, plus unknown partitions:
+        // all verified by successful read (iteration implicitly verifies checksums).
+        other => validate_opaque_or_unknown_partition(other),
+    }
+}
+
+fn validate_opaque_or_unknown_partition(partition: &str) -> std::result::Result<(), String> {
+    if partition.is_empty() {
+        return Err("partition name must not be empty".into());
+    }
+    Ok(())
+}
+
+fn validate_sessions(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
+    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
+    if key_str.starts_with("idx:nous:") {
+        if !value.is_empty() {
+            return Err("session nous index value should be empty".into());
+        }
+        Ok(())
+    } else if key_str.starts_with("idx:key:") {
+        std::str::from_utf8(value)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        serde_json::from_slice::<mneme::types::Session>(value)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+}
+
+fn validate_messages(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
+    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
+    if key_str.starts_with("next_seq:") {
+        if value.len() != 8 {
+            return Err(format!(
+                "next_seq value should be 8 bytes, got {}",
+                value.len()
+            ));
+        }
+        Ok(())
+    } else if key_str.starts_with("distilled:") {
+        if value != b"1" {
+            return Err("distilled flag should be \"1\"".into());
+        }
+        Ok(())
+    } else {
+        serde_json::from_slice::<mneme::types::Message>(value)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+}
+
+fn validate_notes(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
+    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
+    if key_str.starts_with("gid:") {
+        std::str::from_utf8(value)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        serde_json::from_slice::<mneme::types::AgentNote>(value)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+}
+
+fn validate_users(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
+    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
+    if !key_str.starts_with("user:") {
+        return Err(format!(
+            "users key should start with 'user:', got {key_str}"
+        ));
+    }
+    validate_json(value)
+}
+
+fn validate_api_keys(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
+    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
+    if key_str.starts_with("hash:") {
+        std::str::from_utf8(value)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        validate_json(value)
+    }
+}
+
+fn validate_u64(value: &[u8]) -> std::result::Result<(), String> {
+    if value.len() != 8 {
+        return Err(format!("u64 value should be 8 bytes, got {}", value.len()));
+    }
+    Ok(())
+}
+
+fn validate_json(value: &[u8]) -> std::result::Result<(), String> {
+    serde_json::from_slice::<serde_json::Value>(value)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+fn validate_utf8(value: &[u8]) -> std::result::Result<(), String> {
+    std::str::from_utf8(value)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// Calculate total size of a directory tree.

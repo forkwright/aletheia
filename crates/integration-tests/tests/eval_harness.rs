@@ -1,5 +1,6 @@
 //! Integration tests: run eval scenarios against a real TCP-bound pylon instance.
 
+use dokimion::provenance::EvalProvenance;
 use dokimion::runner::{RunConfig, ScenarioRunner};
 use hermeneus::test_utils::MockProvider;
 use integration_tests::harness::TestHarness;
@@ -16,18 +17,23 @@ async fn start_test_server() -> (String, String, TestHarness) {
     .await
 }
 
+fn test_provenance(base_url: &str) -> EvalProvenance {
+    EvalProvenance::new("er-integration-test", base_url)
+}
+
 #[tokio::test]
 async fn eval_health_scenarios_pass() {
     let (base_url, _token, _dir) = start_test_server().await;
 
     let config = RunConfig {
-        base_url,
+        base_url: base_url.clone(),
         token: None,
         filter: None,
         category_filter: Some("health".to_owned()),
         fail_fast: false,
         timeout_secs: 10,
         json_output: false,
+        provenance: test_provenance(&base_url),
     };
 
     let runner = ScenarioRunner::new(config);
@@ -42,13 +48,14 @@ async fn eval_auth_scenarios_pass() {
     let (base_url, _token, _dir) = start_test_server().await;
 
     let config = RunConfig {
-        base_url,
+        base_url: base_url.clone(),
         token: None,
         filter: None,
         category_filter: Some("auth".to_owned()),
         fail_fast: false,
         timeout_secs: 10,
         json_output: false,
+        provenance: test_provenance(&base_url),
     };
 
     let runner = ScenarioRunner::new(config);
@@ -63,13 +70,14 @@ async fn eval_nous_scenarios_pass() {
     let (base_url, token, _dir) = start_test_server().await;
 
     let config = RunConfig {
-        base_url,
+        base_url: base_url.clone(),
         token: Some(SecretString::from(token)),
         filter: None,
         category_filter: Some("nous".to_owned()),
         fail_fast: false,
         timeout_secs: 10,
         json_output: false,
+        provenance: test_provenance(&base_url),
     };
 
     let runner = ScenarioRunner::new(config);
@@ -88,13 +96,14 @@ async fn eval_session_scenarios_pass() {
     let (base_url, token, _dir) = start_test_server().await;
 
     let config = RunConfig {
-        base_url,
+        base_url: base_url.clone(),
         token: Some(SecretString::from(token)),
         filter: None,
         category_filter: Some("session".to_owned()),
         fail_fast: false,
         timeout_secs: 10,
         json_output: false,
+        provenance: test_provenance(&base_url),
     };
 
     let runner = ScenarioRunner::new(config);
@@ -126,13 +135,14 @@ async fn eval_conversation_scenarios_pass() {
     let (base_url, token, _dir) = start_test_server().await;
 
     let config = RunConfig {
-        base_url,
+        base_url: base_url.clone(),
         token: Some(SecretString::from(token)),
         filter: None,
         category_filter: Some("conversation".to_owned()),
         fail_fast: false,
         timeout_secs: 15,
         json_output: false,
+        provenance: test_provenance(&base_url),
     };
 
     let runner = ScenarioRunner::new(config);
@@ -170,6 +180,7 @@ async fn eval_full_run_excludes_canary() {
             fail_fast: false,
             timeout_secs: 15,
             json_output: true,
+            provenance: test_provenance(&base_url),
         };
         let runner = ScenarioRunner::new(config);
         let report = runner.run().await;

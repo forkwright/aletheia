@@ -3,7 +3,9 @@
 use tracing::Instrument;
 
 use crate::client::{EvalClient, InstanceStatus};
-use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
+use crate::scenario::{
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval,
+};
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn scenarios() -> Vec<Box<dyn Scenario>> {
@@ -25,19 +27,25 @@ impl Scenario for HealthReturnsOk {
             requires_nous: false,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let health = client.health().await?;
-                assert_eval(
-                    matches!(
-                        health.status,
-                        InstanceStatus::Healthy | InstanceStatus::Degraded
-                    ),
-                    format!("expected healthy or degraded, got {:?}", health.status),
-                )
+                let result: crate::error::Result<()> = async {
+                    let health = client.health().await?;
+                    assert_eval(
+                        matches!(
+                            health.status,
+                            InstanceStatus::Healthy | InstanceStatus::Degraded
+                        ),
+                        format!("expected healthy or degraded, got {:?}", health.status),
+                    )
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!("scenario", id = "health-returns-ok")),
         )
@@ -55,13 +63,19 @@ impl Scenario for HealthContainsVersion {
             requires_nous: false,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let health = client.health().await?;
-                assert_eval(!health.version.is_empty(), "version field is empty")
+                let result: crate::error::Result<()> = async {
+                    let health = client.health().await?;
+                    assert_eval(!health.version.is_empty(), "version field is empty")
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -82,13 +96,19 @@ impl Scenario for HealthReportsChecks {
             requires_nous: false,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let health = client.health().await?;
-                assert_eval(!health.checks.is_empty(), "checks array is empty")
+                let result: crate::error::Result<()> = async {
+                    let health = client.health().await?;
+                    assert_eval(!health.checks.is_empty(), "checks array is empty")
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",

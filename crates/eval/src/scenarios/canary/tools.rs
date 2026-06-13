@@ -2,7 +2,9 @@ use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::EvalClient;
-use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
+use crate::scenario::{
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval,
+};
 use crate::sse;
 
 /// File read tool capability query smoke test.
@@ -18,36 +20,42 @@ impl Scenario for ToolFileReadContent {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "tool-read");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "tool-read");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                // Ask to read a standard file - will use tool or respond about capability
-                let events = client
-                    .send_message(
-                        &session.id,
-                        "Use the file read tool to check if /etc/hostname exists. \
+                    // Ask to read a standard file - will use tool or respond about capability
+                    let events = client
+                        .send_message(
+                            &session.id,
+                            "Use the file read tool to check if /etc/hostname exists. \
                          If you cannot use tools, explain your capabilities.",
-                    )
-                    .await?;
-                assert_eval(!events.is_empty(), "Tool use should produce events")?;
-                assert_eval(sse::is_complete(&events), "SSE stream should complete")?;
-                let text = sse::extract_text(&events);
-                assert_eval(!text.is_empty(), "Tool use response should not be empty")?;
+                        )
+                        .await?;
+                    assert_eval(!events.is_empty(), "Tool use should produce events")?;
+                    assert_eval(sse::is_complete(&events), "SSE stream should complete")?;
+                    let text = sse::extract_text(&events);
+                    assert_eval(!text.is_empty(), "Tool use response should not be empty")?;
 
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -70,37 +78,43 @@ impl Scenario for ToolFileWriteReadRoundtrip {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "tool-roundtrip");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "tool-roundtrip");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                // Ask about file write capability - system should respond appropriately
-                let events = client
-                    .send_message(
-                        &session.id,
-                        "Can you write files and then read them back? \
+                    // Ask about file write capability - system should respond appropriately
+                    let events = client
+                        .send_message(
+                            &session.id,
+                            "Can you write files and then read them back? \
                          Explain your file system capabilities.",
-                    )
-                    .await?;
-                let text = sse::extract_text(&events);
-                assert_eval(
-                    !text.is_empty(),
-                    "Tool capability response should not be empty",
-                )?;
+                        )
+                        .await?;
+                    let text = sse::extract_text(&events);
+                    assert_eval(
+                        !text.is_empty(),
+                        "Tool capability response should not be empty",
+                    )?;
 
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -123,34 +137,40 @@ impl Scenario for ToolWebSearchStructured {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "tool-websearch");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "tool-websearch");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                let events = client
-                    .send_message(
-                        &session.id,
-                        "Do you have web search capability? \
+                    let events = client
+                        .send_message(
+                            &session.id,
+                            "Do you have web search capability? \
                          If yes, how would you search for current news? \
                          If no, explain your limitations.",
-                    )
-                    .await?;
-                let text = sse::extract_text(&events);
-                assert_eval(!text.is_empty(), "Web search response should not be empty")?;
+                        )
+                        .await?;
+                    let text = sse::extract_text(&events);
+                    assert_eval(!text.is_empty(), "Web search response should not be empty")?;
 
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -173,34 +193,40 @@ impl Scenario for ToolMultiToolChain {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "tool-chain");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "tool-chain");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                let events = client
-                    .send_message(
-                        &session.id,
-                        "Explain how you would handle a multi-step task: \
+                    let events = client
+                        .send_message(
+                            &session.id,
+                            "Explain how you would handle a multi-step task: \
                          1) Read a file, 2) Transform its contents, 3) Write to a new file. \
                          Describe your tool chaining capabilities.",
-                    )
-                    .await?;
-                let text = sse::extract_text(&events);
-                assert_eval(!text.is_empty(), "Multi-tool response should not be empty")?;
+                        )
+                        .await?;
+                    let text = sse::extract_text(&events);
+                    assert_eval(!text.is_empty(), "Multi-tool response should not be empty")?;
 
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -223,36 +249,42 @@ impl Scenario for ToolInvalidInputError {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
 
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = crate::scenarios::unique_key("canary", "tool-error");
-                let session = client.create_session(nous_id, &key).await?;
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = crate::scenarios::unique_key("canary", "tool-error");
+                    let session = client.create_session(nous_id, &key).await?;
 
-                let events = client
-                    .send_message(
-                        &session.id,
-                        "How do you handle tool errors or invalid inputs? \
+                    let events = client
+                        .send_message(
+                            &session.id,
+                            "How do you handle tool errors or invalid inputs? \
                          Give an example of what happens when a tool call fails.",
-                    )
-                    .await?;
-                let text = sse::extract_text(&events);
-                assert_eval(
-                    !text.is_empty(),
-                    "Error handling response should not be empty",
-                )?;
+                        )
+                        .await?;
+                    let text = sse::extract_text(&events);
+                    assert_eval(
+                        !text.is_empty(),
+                        "Error handling response should not be empty",
+                    )?;
 
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",

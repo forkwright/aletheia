@@ -4,7 +4,9 @@ use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, MessageRole};
-use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval, validate_response};
+use crate::scenario::{
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval, validate_response,
+};
 use crate::sse;
 
 #[tracing::instrument(skip_all)]
@@ -28,31 +30,36 @@ impl Scenario for ConversationSendSse {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+            classification: ScenarioClassification::Smoke,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = super::unique_key("conv", "sse");
-                let session = client.create_session(nous_id, &key).await?;
-                let events = client
-                    .send_message(&session.id, "Hello, this is an eval test.")
-                    .await?;
-                assert_eval(!events.is_empty(), "SSE stream should not be empty")?;
-                assert_eval(
-                    sse::is_complete(&events),
-                    "SSE stream should contain message_complete event",
-                )?;
-                let text = sse::extract_text(&events);
-                validate_response(&self.meta(), &text)?;
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after conversation scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = super::unique_key("conv", "sse");
+                    let session = client.create_session(nous_id, &key).await?;
+                    let events = client
+                        .send_message(&session.id, "Hello, this is an eval test.")
+                        .await?;
+                    assert_eval(!events.is_empty(), "SSE stream should not be empty")?;
+                    assert_eval(
+                        sse::is_complete(&events),
+                        "SSE stream should contain message_complete event",
+                    )?;
+                    let text = sse::extract_text(&events);
+                    validate_response(&self.meta(), &text)?;
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after conversation scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -73,43 +80,49 @@ impl Scenario for ConversationHistoryReflects {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = super::unique_key("conv", "history");
-                let session = client.create_session(nous_id, &key).await?;
-                let _ = client
-                    .send_message(&session.id, "Eval history test message.")
-                    .await?;
-                let history = client.get_history(&session.id).await?;
-                assert_eval(
-                    history.messages.len() >= 2,
-                    format!(
-                        "history should have at least 2 messages, got {}",
-                        history.messages.len()
-                    ),
-                )?;
-                // history.messages.len() >= 2 is asserted above
-                let first_role = history.messages.first().map(|m| &m.role);
-                let second_role = history.messages.get(1).map(|m| &m.role);
-                assert_eval(
-                    first_role == Some(&MessageRole::User),
-                    format!("first message should be user, got {first_role:?}"),
-                )?;
-                assert_eval(
-                    second_role == Some(&MessageRole::Assistant),
-                    format!("second message should be assistant, got {second_role:?}"),
-                )?;
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after conversation scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = super::unique_key("conv", "history");
+                    let session = client.create_session(nous_id, &key).await?;
+                    let _ = client
+                        .send_message(&session.id, "Eval history test message.")
+                        .await?;
+                    let history = client.get_history(&session.id).await?;
+                    assert_eval(
+                        history.messages.len() >= 2,
+                        format!(
+                            "history should have at least 2 messages, got {}",
+                            history.messages.len()
+                        ),
+                    )?;
+                    // history.messages.len() >= 2 is asserted above
+                    let first_role = history.messages.first().map(|m| &m.role);
+                    let second_role = history.messages.get(1).map(|m| &m.role);
+                    assert_eval(
+                        first_role == Some(&MessageRole::User),
+                        format!("first message should be user, got {first_role:?}"),
+                    )?;
+                    assert_eval(
+                        second_role == Some(&MessageRole::Assistant),
+                        format!("second message should be assistant, got {second_role:?}"),
+                    )?;
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after conversation scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -130,35 +143,41 @@ impl Scenario for ConversationMultiTurn {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = super::unique_key("conv", "multi");
-                let session = client.create_session(nous_id, &key).await?;
-                let _ = client
-                    .send_message(&session.id, "First eval message.")
-                    .await?;
-                let _ = client
-                    .send_message(&session.id, "Second eval message.")
-                    .await?;
-                let history = client.get_history(&session.id).await?;
-                assert_eval(
-                    history.messages.len() >= 4,
-                    format!(
-                        "should have at least 4 messages after 2 turns, got {}",
-                        history.messages.len()
-                    ),
-                )?;
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after conversation scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = super::unique_key("conv", "multi");
+                    let session = client.create_session(nous_id, &key).await?;
+                    let _ = client
+                        .send_message(&session.id, "First eval message.")
+                        .await?;
+                    let _ = client
+                        .send_message(&session.id, "Second eval message.")
+                        .await?;
+                    let history = client.get_history(&session.id).await?;
+                    assert_eval(
+                        history.messages.len() >= 4,
+                        format!(
+                            "should have at least 4 messages after 2 turns, got {}",
+                            history.messages.len()
+                        ),
+                    )?;
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after conversation scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -179,31 +198,37 @@ impl Scenario for ConversationEmptyRejected {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                // WHY: pylon returns 422 Unprocessable Entity for validation
-                // failures (empty content). See pylon::error::ApiError::Validation
-                // and the `send_message_empty_content_returns_422` test.
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = super::unique_key("conv", "empty");
-                let session = client.create_session(nous_id, &key).await?;
-                match client.send_message(&session.id, "").await {
-                    Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
-                        assert_eval(status == 422, format!("expected 422, got {status}"))
+                let result: crate::error::Result<()> = async {
+                    // WHY: pylon returns 422 Unprocessable Entity for validation
+                    // failures (empty content). See pylon::error::ApiError::Validation
+                    // and the `send_message_empty_content_returns_422` test.
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = super::unique_key("conv", "empty");
+                    let session = client.create_session(nous_id, &key).await?;
+                    match client.send_message(&session.id, "").await {
+                        Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
+                            assert_eval(status == 422, format!("expected 422, got {status}"))
+                        }
+                        Err(e) => Err(e),
+                        Ok(_) => crate::error::AssertionSnafu {
+                            message: "expected 422 for empty content but got success",
+                        }
+                        .fail(),
                     }
-                    Err(e) => Err(e),
-                    Ok(_) => crate::error::AssertionSnafu {
-                        message: "expected 422 for empty content but got success",
-                    }
-                    .fail(),
                 }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",

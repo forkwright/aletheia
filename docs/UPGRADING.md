@@ -156,10 +156,22 @@ Before any upgrade:
    ```bash
    sudo cp /usr/local/bin/aletheia.prev /usr/local/bin/aletheia
    ```
-3. If the new version ran and modified the database schema, restore from backup:
+3. If the new version ran and modified the database schema, restore from the
+   pre-upgrade whole-instance backup set:
    ```bash
-   aletheia backup --list          # find pre-upgrade backup
-   cp instance/data/backups/<backup-file> instance/data/sessions.db
+   aletheia backup --list                              # find pre-upgrade backup
+   LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
+   BACKUP="instance/data/backups/instance/${LATEST}"
+   aletheia backup verify "$BACKUP"
+   # Move the modified stores aside (do not delete until recovery is confirmed).
+   mv instance/data/knowledge.fjall "instance/data/knowledge.fjall.upgraded.$(date -u +%Y%m%dT%H%M%SZ)"
+   mv instance/data/sessions.db     "instance/data/sessions.db.upgraded.$(date -u +%Y%m%dT%H%M%SZ)"
+   # Restore the required stores from the backup set.
+   cp -a "$BACKUP/stores/knowledge.fjall" instance/data/knowledge.fjall
+   cp -a "$BACKUP/stores/sessions.db"     instance/data/sessions.db
+   # Restore config and workspace data if the upgrade modified them.
+   cp -a "$BACKUP/config/." instance/config/ 2>/dev/null || true
+   cp -a "$BACKUP/workspace/." instance/ 2>/dev/null || true
    ```
 4. Start the service:
    ```bash

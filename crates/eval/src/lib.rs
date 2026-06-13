@@ -11,6 +11,8 @@ pub(crate) mod cognitive;
 pub mod error;
 /// JSONL persistence for evaluation results as training data.
 pub mod persistence;
+/// Durable provenance envelope shared by eval runs and benchmark reports.
+pub mod provenance;
 /// Evaluation provider trait: pluggable scenario sources for programmatic use.
 pub mod provider;
 /// Evaluation report types for summarizing scenario results.
@@ -46,6 +48,7 @@ mod tests {
             skipped: 0,
             total_duration: std::time::Duration::from_secs(0),
             results: vec![],
+            provenance: crate::provenance::EvalProvenance::new("er-test", "http://localhost"),
         };
         crate::report::print_report(&report, "http://localhost");
         assert_eq!(report.passed, 0, "public module should be accessible");

@@ -9,8 +9,9 @@ use koina::secret::SecretString;
 
 use crate::client::EvalClient;
 use crate::persistence::now_iso8601;
+use crate::provenance::EvalProvenance;
 use crate::provider::{BuiltinProvider, EvalProvider};
-use crate::scenario::{Scenario, ScenarioOutcome, ScenarioResult};
+use crate::scenario::{Scenario, ScenarioOutcome, ScenarioResult, ScenarioRunOutcome};
 
 /// Configuration for a scenario run.
 pub struct RunConfig {
@@ -31,6 +32,8 @@ pub struct RunConfig {
     pub timeout_secs: u64,
     /// Emit JSON instead of formatted output.
     pub json_output: bool,
+    /// Durable provenance envelope for this run.
+    pub provenance: EvalProvenance,
 }
 
 /// Aggregated results from a full eval run.
@@ -45,6 +48,8 @@ pub struct RunReport {
     pub total_duration: Duration,
     /// Per-scenario results in run order.
     pub results: Vec<ScenarioResult>,
+    /// Durable provenance envelope for this run.
+    pub provenance: EvalProvenance,
 }
 
 impl Stamped for RunReport {
@@ -158,6 +163,7 @@ impl ScenarioRunner {
                     outcome: ScenarioOutcome::Skipped {
                         reason: "instance unreachable".to_owned(),
                     },
+                    sub_results: Vec::new(),
                 });
                 skipped += 1;
                 continue;
@@ -169,6 +175,7 @@ impl ScenarioRunner {
                     outcome: ScenarioOutcome::Skipped {
                         reason: "no auth token provided".to_owned(),
                     },
+                    sub_results: Vec::new(),
                 });
                 skipped += 1;
                 continue;
@@ -180,6 +187,7 @@ impl ScenarioRunner {
                     outcome: ScenarioOutcome::Skipped {
                         reason: "no nous agents configured".to_owned(),
                     },
+                    sub_results: Vec::new(),
                 });
                 skipped += 1;
                 continue;
@@ -194,23 +202,11 @@ impl ScenarioRunner {
             let scenario_fut = scenario.run(&self.client);
             tokio::pin!(scenario_fut);
 
-            let outcome = tokio::select! {
-                result = &mut scenario_fut => {
-                    match result {
-                        Ok(()) => {
-                            let duration = scenario_start.elapsed();
-                            info!(id = meta.id, ?duration, "scenario passed");
-                            passed += 1;
-                            ScenarioOutcome::Passed { duration }
-                        }
-                        Err(error) => {
-                            let duration = scenario_start.elapsed();
-                            warn!(id = meta.id, %error, "scenario failed");
-                            failed += 1;
-                            ScenarioOutcome::Failed { duration, error }
-                        }
-                    }
-                }
+            let ScenarioRunOutcome {
+                result,
+                sub_results,
+            } = tokio::select! {
+                outcome = &mut scenario_fut => outcome,
                 () = tokio::time::sleep(timeout) => {
                     // NOTE: scenario_fut goes out of scope here, cancelling any in-flight work
                     let duration = scenario_start.elapsed();
@@ -219,18 +215,36 @@ impl ScenarioRunner {
                         timeout_secs = self.config.timeout_secs,
                         "scenario timed out, task cancelled"
                     );
-                    failed += 1;
-                    ScenarioOutcome::Failed {
-                        duration,
-                        error: crate::error::TimeoutSnafu {
+                    ScenarioRunOutcome {
+                        result: Err(crate::error::TimeoutSnafu {
                             elapsed_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
                         }
-                        .build(),
+                        .build()),
+                        sub_results: Vec::new(),
                     }
                 }
             };
 
-            results.push(ScenarioResult { meta, outcome });
+            let outcome = match result {
+                Ok(()) => {
+                    let duration = scenario_start.elapsed();
+                    info!(id = meta.id, ?duration, "scenario passed");
+                    passed += 1;
+                    ScenarioOutcome::Passed { duration }
+                }
+                Err(error) => {
+                    let duration = scenario_start.elapsed();
+                    warn!(id = meta.id, %error, "scenario failed");
+                    failed += 1;
+                    ScenarioOutcome::Failed { duration, error }
+                }
+            };
+
+            results.push(ScenarioResult {
+                meta,
+                outcome,
+                sub_results,
+            });
 
             if self.config.fail_fast && failed > 0 {
                 fail_fast_idx = Some(i + 1);
@@ -250,6 +264,7 @@ impl ScenarioRunner {
                     outcome: ScenarioOutcome::Skipped {
                         reason: "fail_fast: earlier scenario failed".to_owned(),
                     },
+                    sub_results: Vec::new(),
                 });
                 skipped += 1;
             }
@@ -261,6 +276,7 @@ impl ScenarioRunner {
             skipped,
             total_duration: start.elapsed(),
             results,
+            provenance: self.config.provenance.clone().finished(),
         }
     }
 }
@@ -268,6 +284,10 @@ impl ScenarioRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn empty_provenance() -> EvalProvenance {
+        EvalProvenance::new("er-test", "http://localhost")
+    }
 
     #[test]
     fn run_report_counts() {
@@ -277,6 +297,7 @@ mod tests {
             skipped: 2,
             total_duration: Duration::from_millis(500),
             results: vec![],
+            provenance: empty_provenance(),
         };
         assert_eq!(report.passed, 3);
         assert_eq!(report.failed, 1);
@@ -322,6 +343,7 @@ mod tests {
             skipped: 3,
             total_duration: Duration::from_secs(1),
             results: vec![],
+            provenance: empty_provenance(),
         };
         assert_eq!(report.passed + report.failed + report.skipped, 10);
     }
@@ -336,6 +358,7 @@ mod tests {
             requires_nous: false,
             expected_contains: None,
             expected_pattern: None,
+            classification: crate::scenario::ScenarioClassification::Assertive,
         };
         assert_eq!(meta.id, "test-scenario");
         assert_eq!(meta.description, "a test scenario");
@@ -351,6 +374,7 @@ mod tests {
             skipped: 2,
             total_duration: Duration::from_millis(500),
             results: vec![],
+            provenance: empty_provenance(),
         }
     }
 
@@ -396,5 +420,27 @@ mod tests {
             Some(6),
             "total should be passed + failed + skipped"
         );
+    }
+
+    #[test]
+    fn run_report_carries_provenance() {
+        let provenance = EvalProvenance::new("er-123", "http://example.com");
+        let report = RunReport {
+            passed: 0,
+            failed: 0,
+            skipped: 0,
+            total_duration: Duration::from_secs(0),
+            results: vec![],
+            provenance: provenance.clone(),
+        };
+        assert_eq!(report.provenance.eval_run_id, "er-123");
+        assert!(report.provenance.finished_at.is_none());
+    }
+
+    #[test]
+    fn run_report_finished_sets_finished_at() {
+        let provenance = EvalProvenance::new("er-123", "http://example.com");
+        let finished = provenance.finished();
+        assert!(finished.finished_at.is_some());
     }
 }

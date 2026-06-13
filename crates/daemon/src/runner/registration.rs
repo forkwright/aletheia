@@ -115,11 +115,11 @@ impl TaskRunner {
             );
         }
 
-        if config.fjall_backup.enabled {
+        if config.instance_backup.enabled {
             self.register_builtin(
                 "fjall-backup",
-                "Fjall knowledge store backup",
-                Schedule::Interval(Duration::from_hours(config.fjall_backup.interval_hours)),
+                "Whole-instance backup",
+                Schedule::Interval(Duration::from_hours(config.instance_backup.interval_hours)),
                 BuiltinTask::FjallBackup,
                 true,
             );

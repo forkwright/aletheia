@@ -56,6 +56,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::provenance::EvalProvenance;
+
 pub use self::metrics::{BenchmarkScore, score_answer};
 
 /// A single question/answer pair backed by prior conversation context.
@@ -113,6 +115,12 @@ pub struct BenchmarkMetadata {
     pub evaluated_questions: usize,
     /// Per-question timeout in seconds.
     pub timeout_secs: u64,
+    /// SHA-256 hash of the dataset file, when the runner can read it.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub dataset_hash: Option<String>,
+    /// Git SHA of the build or invocation, when known.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub git_sha: Option<String>,
 }
 
 impl Default for BenchmarkMetadata {
@@ -126,7 +134,33 @@ impl Default for BenchmarkMetadata {
             total_questions: 0,
             evaluated_questions: 0,
             timeout_secs: 120,
+            dataset_hash: None,
+            git_sha: None,
         }
+    }
+}
+
+/// Per-question execution status.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum QuestionStatus {
+    /// The question produced an answer and was included in score denominators.
+    #[default]
+    Scored,
+    /// The benchmark pipeline failed before a scorable answer was available.
+    Error,
+    /// The benchmark question exceeded its configured timeout.
+    Timeout,
+    /// The model returned an empty answer.
+    NoAnswer,
+}
+
+impl QuestionStatus {
+    /// Whether this status should be included in correctness denominators.
+    #[must_use]
+    pub fn is_scored(self) -> bool {
+        matches!(self, Self::Scored)
     }
 }
 
@@ -138,6 +172,12 @@ pub struct QuestionResult {
     pub id: String,
     /// Category.
     pub category: String,
+    /// Execution status for this question.
+    #[serde(default)]
+    pub status: QuestionStatus,
+    /// Error or timeout detail when the question was not scorable.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub error_message: Option<String>,
     /// The answer produced by aletheia.
     pub actual_answer: String,
     /// The expected answers (ground truth, may have multiple valid forms).
@@ -163,10 +203,21 @@ pub struct QuestionResult {
 pub struct BenchmarkReport {
     /// Benchmark name.
     pub benchmark: String,
-    /// Total questions scored.
+    /// Total questions attempted.
     pub total: usize,
+    /// Questions included in score denominators.
+    pub scored: usize,
+    /// Questions that failed before producing a scorable answer.
+    pub errors: usize,
+    /// Questions that exceeded the per-question timeout.
+    pub timeouts: usize,
+    /// Questions that returned an empty answer.
+    pub no_answers: usize,
     /// Per-question results.
     pub questions: Vec<QuestionResult>,
+    /// Shared provenance envelope for this benchmark run.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub provenance: Option<EvalProvenance>,
     /// System and run metadata.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<BenchmarkMetadata>,
@@ -199,14 +250,43 @@ pub struct BenchmarkStatistics {
     pub method: String,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct BenchmarkCounts {
+    scored: usize,
+    errors: usize,
+    timeouts: usize,
+    no_answers: usize,
+}
+
+impl BenchmarkCounts {
+    fn from_questions(questions: &[QuestionResult]) -> Self {
+        let mut counts = Self::default();
+        for question in questions {
+            match question.status {
+                QuestionStatus::Scored => counts.scored += 1,
+                QuestionStatus::Error => counts.errors += 1,
+                QuestionStatus::Timeout => counts.timeouts += 1,
+                QuestionStatus::NoAnswer => counts.no_answers += 1,
+            }
+        }
+        counts
+    }
+}
+
 impl BenchmarkReport {
     /// Build an aggregate report from individual question results.
     #[must_use]
     pub fn new(benchmark: impl Into<String>, questions: Vec<QuestionResult>) -> Self {
+        let counts = BenchmarkCounts::from_questions(&questions);
         Self {
             benchmark: benchmark.into(),
             total: questions.len(),
+            scored: counts.scored,
+            errors: counts.errors,
+            timeouts: counts.timeouts,
+            no_answers: counts.no_answers,
             questions,
+            provenance: None,
             metadata: None,
             statistics: None,
         }
@@ -219,13 +299,26 @@ impl BenchmarkReport {
         questions: Vec<QuestionResult>,
         metadata: BenchmarkMetadata,
     ) -> Self {
+        let counts = BenchmarkCounts::from_questions(&questions);
         Self {
             benchmark: benchmark.into(),
             total: questions.len(),
+            scored: counts.scored,
+            errors: counts.errors,
+            timeouts: counts.timeouts,
+            no_answers: counts.no_answers,
             questions,
+            provenance: None,
             metadata: Some(metadata),
             statistics: None,
         }
+    }
+
+    /// Attach the shared provenance envelope for this benchmark report.
+    #[must_use]
+    pub fn with_provenance(mut self, provenance: EvalProvenance) -> Self {
+        self.provenance = Some(provenance);
+        self
     }
 
     /// Attach bootstrap CIs for F1 and exact-match rate to the report.
@@ -251,12 +344,12 @@ impl BenchmarkReport {
     pub fn with_statistics(mut self, n_resamples: usize) -> Self {
         use crate::stats::bootstrap::bootstrap_ci;
 
-        if self.questions.len() < 2 {
+        let scored = self.scored_questions();
+        if scored.len() < 2 {
             return self;
         }
-        let f1_scores: Vec<f64> = self.questions.iter().map(|q| q.score.f1).collect();
-        let em_scores: Vec<f64> = self
-            .questions
+        let f1_scores: Vec<f64> = scored.iter().map(|q| q.score.f1).collect();
+        let em_scores: Vec<f64> = scored
             .iter()
             .map(|q| if q.score.exact_match { 1.0 } else { 0.0 })
             .collect();
@@ -285,6 +378,13 @@ impl BenchmarkReport {
         self
     }
 
+    fn scored_questions(&self) -> Vec<&QuestionResult> {
+        self.questions
+            .iter()
+            .filter(|q| q.status.is_scored())
+            .collect()
+    }
+
     /// Fraction of questions with exact-match score >= 1.0.
     #[must_use]
     #[expect(
@@ -296,15 +396,12 @@ impl BenchmarkReport {
         reason = "usize to f64 — question counts are bounded and small"
     )]
     pub fn exact_match_rate(&self) -> f64 {
-        if self.questions.is_empty() {
+        let scored = self.scored_questions();
+        if scored.is_empty() {
             return 0.0;
         }
-        let hits = self
-            .questions
-            .iter()
-            .filter(|q| q.score.exact_match)
-            .count();
-        hits as f64 / self.questions.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
+        let hits = scored.iter().filter(|q| q.score.exact_match).count();
+        hits as f64 / scored.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
     }
 
     /// Mean F1 score across all questions.
@@ -318,11 +415,12 @@ impl BenchmarkReport {
         reason = "usize to f64 — question counts are bounded and small"
     )]
     pub fn mean_f1(&self) -> f64 {
-        if self.questions.is_empty() {
+        let scored = self.scored_questions();
+        if scored.is_empty() {
             return 0.0;
         }
-        let sum: f64 = self.questions.iter().map(|q| q.score.f1).sum();
-        sum / self.questions.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
+        let sum: f64 = scored.iter().map(|q| q.score.f1).sum();
+        sum / scored.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
     }
 
     /// Mean LLM-as-judge accuracy across all questions that have a judge score.
@@ -401,7 +499,7 @@ impl BenchmarkReport {
     pub fn per_category(&self) -> Vec<(String, f64, f64)> {
         use std::collections::BTreeMap;
         let mut buckets: BTreeMap<String, Vec<&QuestionResult>> = BTreeMap::new();
-        for q in &self.questions {
+        for q in self.questions.iter().filter(|q| q.status.is_scored()) {
             buckets.entry(q.category.clone()).or_default().push(q);
         }
         buckets
@@ -482,6 +580,8 @@ mod tests {
             QuestionResult {
                 id: "q1".to_owned(),
                 category: "factual".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
                 actual_answer: "blue".to_owned(),
                 expected_answers: vec!["blue".to_owned()],
                 score: BenchmarkScore {
@@ -497,6 +597,8 @@ mod tests {
             QuestionResult {
                 id: "q2".to_owned(),
                 category: "factual".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
                 actual_answer: "green".to_owned(),
                 expected_answers: vec!["red".to_owned()],
                 score: BenchmarkScore {
@@ -522,6 +624,8 @@ mod tests {
             QuestionResult {
                 id: "q1".to_owned(),
                 category: "temporal".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
                 actual_answer: "yes".to_owned(),
                 expected_answers: vec!["yes".to_owned()],
                 score: BenchmarkScore {
@@ -537,6 +641,8 @@ mod tests {
             QuestionResult {
                 id: "q2".to_owned(),
                 category: "temporal".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
                 actual_answer: "no".to_owned(),
                 expected_answers: vec!["yes".to_owned()],
                 score: BenchmarkScore {
@@ -552,6 +658,8 @@ mod tests {
             QuestionResult {
                 id: "q3".to_owned(),
                 category: "factual".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
                 actual_answer: "42".to_owned(),
                 expected_answers: vec!["42".to_owned()],
                 score: BenchmarkScore {
@@ -581,6 +689,8 @@ mod tests {
             QuestionResult {
                 id: "q1".to_owned(),
                 category: "factual".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
                 actual_answer: "blue".to_owned(),
                 expected_answers: vec!["blue".to_owned()],
                 score: BenchmarkScore::zero(),
@@ -595,6 +705,8 @@ mod tests {
             QuestionResult {
                 id: "q2".to_owned(),
                 category: "factual".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
                 actual_answer: "red".to_owned(),
                 expected_answers: vec!["blue".to_owned()],
                 score: BenchmarkScore::zero(),
@@ -616,6 +728,8 @@ mod tests {
         let questions = vec![QuestionResult {
             id: "q1".to_owned(),
             category: "factual".to_owned(),
+            status: QuestionStatus::Scored,
+            error_message: None,
             actual_answer: "blue".to_owned(),
             expected_answers: vec!["blue".to_owned()],
             score: BenchmarkScore::zero(),
@@ -634,6 +748,8 @@ mod tests {
             QuestionResult {
                 id: "q1".to_owned(),
                 category: "factual".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
                 actual_answer: "blue".to_owned(),
                 expected_answers: vec!["blue".to_owned()],
                 score: BenchmarkScore::zero(),
@@ -645,6 +761,8 @@ mod tests {
             QuestionResult {
                 id: "q2".to_owned(),
                 category: "factual".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
                 actual_answer: "red".to_owned(),
                 expected_answers: vec!["blue".to_owned()],
                 score: BenchmarkScore::zero(),
@@ -677,11 +795,55 @@ mod tests {
             total_questions: 500,
             evaluated_questions: 50,
             timeout_secs: 120,
+            dataset_hash: Some("sha256:abc".to_owned()),
+            git_sha: Some("deadbeef".to_owned()),
         };
         let report = BenchmarkReport::with_metadata("LongMemEval", vec![], meta);
         let json = serde_json::to_string(&report).expect("serialize");
         let deserialized: BenchmarkReport = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(deserialized.metadata, report.metadata);
+    }
+
+    #[test]
+    fn non_scored_statuses_do_not_enter_score_denominator() {
+        let questions = vec![
+            QuestionResult {
+                id: "q1".to_owned(),
+                category: "factual".to_owned(),
+                status: QuestionStatus::Scored,
+                error_message: None,
+                actual_answer: "blue".to_owned(),
+                expected_answers: vec!["blue".to_owned()],
+                score: BenchmarkScore {
+                    exact_match: true,
+                    f1: 1.0,
+                    contains: true,
+                },
+                judge_score: None,
+                retrieved_facts: None,
+                recall_at_k: None,
+                ndcg_at_k: None,
+            },
+            QuestionResult {
+                id: "q2".to_owned(),
+                category: "factual".to_owned(),
+                status: QuestionStatus::Timeout,
+                error_message: Some("timed out".to_owned()),
+                actual_answer: String::new(),
+                expected_answers: vec!["red".to_owned()],
+                score: BenchmarkScore::zero(),
+                judge_score: None,
+                retrieved_facts: None,
+                recall_at_k: None,
+                ndcg_at_k: None,
+            },
+        ];
+        let report = BenchmarkReport::new("Test", questions);
+        assert_eq!(report.total, 2);
+        assert_eq!(report.scored, 1);
+        assert_eq!(report.timeouts, 1);
+        assert!((report.exact_match_rate() - 1.0).abs() < f64::EPSILON);
+        assert!((report.mean_f1() - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]

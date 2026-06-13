@@ -4,7 +4,9 @@ use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, SessionStatus};
-use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eq_eval, assert_eval};
+use crate::scenario::{
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eq_eval, assert_eval,
+};
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn scenarios() -> Vec<Box<dyn Scenario>> {
@@ -26,31 +28,37 @@ impl Scenario for SessionCreateAndGet {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = super::unique_key("session", "create");
-                let session = client.create_session(nous_id, &key).await?;
-                assert_eval(!session.id.is_empty(), "session id should not be empty")?;
-                assert_eq_eval(&session.nous_id, nous_id, "nous_id should match")?;
-                assert_eq_eval(&session.session_key, &key, "session_key should match")?;
-                assert_eq_eval(
-                    &session.status,
-                    &SessionStatus::Active,
-                    "status should be active",
-                )?;
-                let fetched = client.get_session(&session.id).await?;
-                assert_eq_eval(&fetched.id, &session.id, "fetched session id should match")?;
-                // kanon:ignore RUST/no-silent-result-swallow — session cleanup after session scenario
-                let _ = client.close_session(&session.id).await;
-                Ok(())
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = super::unique_key("session", "create");
+                    let session = client.create_session(nous_id, &key).await?;
+                    assert_eval(!session.id.is_empty(), "session id should not be empty")?;
+                    assert_eq_eval(&session.nous_id, nous_id, "nous_id should match")?;
+                    assert_eq_eval(&session.session_key, &key, "session_key should match")?;
+                    assert_eq_eval(
+                        &session.status,
+                        &SessionStatus::Active,
+                        "status should be active",
+                    )?;
+                    let fetched = client.get_session(&session.id).await?;
+                    assert_eq_eval(&fetched.id, &session.id, "fetched session id should match")?;
+                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after session scenario
+                    let _ = client.close_session(&session.id).await;
+                    Ok(())
+                }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -72,30 +80,36 @@ impl Scenario for SessionCloseArchives {
             requires_nous: true,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
-                let nous_id = &nous.id;
-                let key = super::unique_key("session", "close");
-                let session = client.create_session(nous_id, &key).await?;
-                client.close_session(&session.id).await?;
-                // WHY: after DELETE the session is archived; GET must return 404 (#1251).
-                match client.get_session(&session.id).await {
-                    Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
-                        assert_eq_eval(&status, &404, "closed session must return 404")
+                let result: crate::error::Result<()> = async {
+                    let nous_list = client.list_nous().await?;
+                    let nous = nous_list
+                        .first()
+                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = &nous.id;
+                    let key = super::unique_key("session", "close");
+                    let session = client.create_session(nous_id, &key).await?;
+                    client.close_session(&session.id).await?;
+                    // WHY: after DELETE the session is archived; GET must return 404 (#1251).
+                    match client.get_session(&session.id).await {
+                        Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
+                            assert_eq_eval(&status, &404, "closed session must return 404")
+                        }
+                        Err(e) => Err(e),
+                        Ok(_) => crate::error::AssertionSnafu {
+                            message: "expected 404 for closed session but got success",
+                        }
+                        .fail(),
                     }
-                    Err(e) => Err(e),
-                    Ok(_) => crate::error::AssertionSnafu {
-                        message: "expected 404 for closed session but got success",
-                    }
-                    .fail(),
                 }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
@@ -116,21 +130,27 @@ impl Scenario for SessionUnknown404 {
             requires_nous: false,
             expected_contains: None,
             expected_pattern: None,
+
+            classification: ScenarioClassification::Assertive,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
-                match client.get_session("nonexistent-eval-session-id").await {
-                    Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
-                        assert_eq_eval(&status, &404, "expected 404 for unknown session")
+                let result: crate::error::Result<()> = async {
+                    match client.get_session("nonexistent-eval-session-id").await {
+                        Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
+                            assert_eq_eval(&status, &404, "expected 404 for unknown session")
+                        }
+                        Err(e) => Err(e),
+                        Ok(_) => crate::error::AssertionSnafu {
+                            message: "expected 404 but got success",
+                        }
+                        .fail(),
                     }
-                    Err(e) => Err(e),
-                    Ok(_) => crate::error::AssertionSnafu {
-                        message: "expected 404 but got success",
-                    }
-                    .fail(),
                 }
+                .await;
+                result.into()
             }
             .instrument(tracing::info_span!("scenario", id = "session-unknown-404")),
         )

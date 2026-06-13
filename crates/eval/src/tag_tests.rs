@@ -3,8 +3,9 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
+use crate::provenance::EvalProvenance;
 use crate::runner::RunReport;
-use crate::scenario::{ScenarioMeta, ScenarioOutcome, ScenarioResult};
+use crate::scenario::{ScenarioClassification, ScenarioMeta, ScenarioOutcome, ScenarioResult};
 use crate::tags::{DurationBand, OutcomeTag, SizeBand, TagId, tag_eval_result};
 
 fn sample_meta(id: &'static str, category: &'static str) -> ScenarioMeta {
@@ -16,23 +17,53 @@ fn sample_meta(id: &'static str, category: &'static str) -> ScenarioMeta {
         requires_nous: false,
         expected_contains: None,
         expected_pattern: None,
+        classification: ScenarioClassification::Assertive,
+    }
+}
+
+fn sample_provenance() -> EvalProvenance {
+    EvalProvenance::new("er-tag-test", "http://localhost")
+}
+
+fn sample_result(meta: ScenarioMeta, outcome: ScenarioOutcome) -> ScenarioResult {
+    ScenarioResult {
+        meta,
+        outcome,
+        sub_results: Vec::new(),
+    }
+}
+
+fn sample_report(
+    passed: usize,
+    failed: usize,
+    skipped: usize,
+    total_duration: Duration,
+    results: Vec<ScenarioResult>,
+) -> RunReport {
+    RunReport {
+        passed,
+        failed,
+        skipped,
+        total_duration,
+        results,
+        provenance: sample_provenance(),
     }
 }
 
 #[test]
 fn test_tags_for_completed_run() {
-    let report = RunReport {
-        passed: 1,
-        failed: 0,
-        skipped: 0,
-        total_duration: Duration::from_millis(500),
-        results: vec![ScenarioResult {
-            meta: sample_meta("test-pass", "health"),
-            outcome: ScenarioOutcome::Passed {
+    let report = sample_report(
+        1,
+        0,
+        0,
+        Duration::from_millis(500),
+        vec![sample_result(
+            sample_meta("test-pass", "health"),
+            ScenarioOutcome::Passed {
                 duration: Duration::from_millis(50),
             },
-        }],
-    };
+        )],
+    );
     let tags = tag_eval_result(&report);
     assert!(tags.contains(&TagId::Outcome(OutcomeTag::Passed)));
     assert!(tags.contains(&TagId::Category {
@@ -44,22 +75,22 @@ fn test_tags_for_completed_run() {
 
 #[test]
 fn test_tags_for_failed_run() {
-    let report = RunReport {
-        passed: 0,
-        failed: 1,
-        skipped: 0,
-        total_duration: Duration::from_secs(5),
-        results: vec![ScenarioResult {
-            meta: sample_meta("test-fail", "session"),
-            outcome: ScenarioOutcome::Failed {
+    let report = sample_report(
+        0,
+        1,
+        0,
+        Duration::from_secs(5),
+        vec![sample_result(
+            sample_meta("test-fail", "session"),
+            ScenarioOutcome::Failed {
                 duration: Duration::from_millis(150),
                 error: crate::error::AssertionSnafu {
                     message: "test failure",
                 }
                 .build(),
             },
-        }],
-    };
+        )],
+    );
     let tags = tag_eval_result(&report);
     assert!(tags.contains(&TagId::Outcome(OutcomeTag::Failed)));
     assert!(!tags.contains(&TagId::Outcome(OutcomeTag::Passed)));
@@ -68,18 +99,18 @@ fn test_tags_for_failed_run() {
 #[test]
 fn test_no_tools_fired() {
     // Adapted to reality: no auth/nous/criteria means those tags are absent.
-    let report = RunReport {
-        passed: 1,
-        failed: 0,
-        skipped: 0,
-        total_duration: Duration::from_millis(100),
-        results: vec![ScenarioResult {
-            meta: sample_meta("test-noauth", "cognitive"),
-            outcome: ScenarioOutcome::Passed {
+    let report = sample_report(
+        1,
+        0,
+        0,
+        Duration::from_millis(100),
+        vec![sample_result(
+            sample_meta("test-noauth", "cognitive"),
+            ScenarioOutcome::Passed {
                 duration: Duration::from_millis(50),
             },
-        }],
-    };
+        )],
+    );
     let tags = tag_eval_result(&report);
     assert!(!tags.contains(&TagId::RequiresAuth));
     assert!(!tags.contains(&TagId::RequiresNous));
@@ -94,13 +125,13 @@ fn test_no_tools_fired() {
 fn test_set_membership_filtering() {
     let reports = [
         // Report 0: health, passed, requires_auth
-        RunReport {
-            passed: 1,
-            failed: 0,
-            skipped: 0,
-            total_duration: Duration::from_millis(100),
-            results: vec![ScenarioResult {
-                meta: ScenarioMeta {
+        sample_report(
+            1,
+            0,
+            0,
+            Duration::from_millis(100),
+            vec![sample_result(
+                ScenarioMeta {
                     id: "r0",
                     description: "r0",
                     category: "health",
@@ -108,34 +139,35 @@ fn test_set_membership_filtering() {
                     requires_nous: false,
                     expected_contains: None,
                     expected_pattern: None,
+                    classification: ScenarioClassification::Assertive,
                 },
-                outcome: ScenarioOutcome::Passed {
+                ScenarioOutcome::Passed {
                     duration: Duration::from_millis(50),
                 },
-            }],
-        },
+            )],
+        ),
         // Report 1: health, failed
-        RunReport {
-            passed: 0,
-            failed: 1,
-            skipped: 0,
-            total_duration: Duration::from_millis(200),
-            results: vec![ScenarioResult {
-                meta: sample_meta("r1", "health"),
-                outcome: ScenarioOutcome::Failed {
+        sample_report(
+            0,
+            1,
+            0,
+            Duration::from_millis(200),
+            vec![sample_result(
+                sample_meta("r1", "health"),
+                ScenarioOutcome::Failed {
                     duration: Duration::from_millis(100),
                     error: crate::error::AssertionSnafu { message: "fail" }.build(),
                 },
-            }],
-        },
+            )],
+        ),
         // Report 2: session, passed, has criteria
-        RunReport {
-            passed: 1,
-            failed: 0,
-            skipped: 0,
-            total_duration: Duration::from_millis(300),
-            results: vec![ScenarioResult {
-                meta: ScenarioMeta {
+        sample_report(
+            1,
+            0,
+            0,
+            Duration::from_millis(300),
+            vec![sample_result(
+                ScenarioMeta {
                     id: "r2",
                     description: "r2",
                     category: "session",
@@ -143,20 +175,21 @@ fn test_set_membership_filtering() {
                     requires_nous: false,
                     expected_contains: Some("hello"),
                     expected_pattern: None,
+                    classification: ScenarioClassification::Assertive,
                 },
-                outcome: ScenarioOutcome::Passed {
+                ScenarioOutcome::Passed {
                     duration: Duration::from_millis(50),
                 },
-            }],
-        },
+            )],
+        ),
         // Report 3: session, passed, requires_nous
-        RunReport {
-            passed: 1,
-            failed: 0,
-            skipped: 0,
-            total_duration: Duration::from_millis(400),
-            results: vec![ScenarioResult {
-                meta: ScenarioMeta {
+        sample_report(
+            1,
+            0,
+            0,
+            Duration::from_millis(400),
+            vec![sample_result(
+                ScenarioMeta {
                     id: "r3",
                     description: "r3",
                     category: "session",
@@ -164,25 +197,26 @@ fn test_set_membership_filtering() {
                     requires_nous: true,
                     expected_contains: None,
                     expected_pattern: None,
+                    classification: ScenarioClassification::Assertive,
                 },
-                outcome: ScenarioOutcome::Passed {
+                ScenarioOutcome::Passed {
                     duration: Duration::from_millis(50),
                 },
-            }],
-        },
+            )],
+        ),
         // Report 4: cognitive, skipped
-        RunReport {
-            passed: 0,
-            failed: 0,
-            skipped: 1,
-            total_duration: Duration::from_millis(50),
-            results: vec![ScenarioResult {
-                meta: sample_meta("r4", "cognitive"),
-                outcome: ScenarioOutcome::Skipped {
+        sample_report(
+            0,
+            0,
+            1,
+            Duration::from_millis(50),
+            vec![sample_result(
+                sample_meta("r4", "cognitive"),
+                ScenarioOutcome::Skipped {
                     reason: "no auth".to_owned(),
                 },
-            }],
-        },
+            )],
+        ),
     ];
 
     let query: HashSet<TagId> = [

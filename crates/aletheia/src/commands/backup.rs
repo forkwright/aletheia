@@ -1,12 +1,12 @@
-//! `aletheia backup`: database backup management.
+//! `aletheia backup`: whole-instance backup management.
 //!
-//! Operates on the fjall knowledge store. Session/auth storage also uses fjall;
-//! `rusqlite` remains only in the legacy one-shot sessions migrator.
+//! Operates on the instance backup set covering `knowledge.fjall`,
+//! `sessions.db`, configuration, and workspace data. The legacy fjall-only
+//! `backup verify <path>` path is still supported for existing backups.
 
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
-use fjall::Readable;
 use snafu::prelude::*;
 
 use crate::error::Result;
@@ -15,15 +15,15 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum BackupAction {
-    /// Create a new backup (default when no subcommand is given)
+    /// Create a new whole-instance backup (default when no subcommand is given)
     Create,
-    /// List available backups
+    /// List available whole-instance backups
     List {
         /// Output as JSON
         #[arg(long)]
         json: bool,
     },
-    /// Prune old backups
+    /// Prune old whole-instance backups
     Prune {
         /// Number of backups to keep
         #[arg(long, default_value_t = 5)]
@@ -32,7 +32,7 @@ pub(crate) enum BackupAction {
         #[arg(long)]
         yes: bool,
     },
-    /// Verify a backup directory
+    /// Verify a backup directory (instance set or legacy fjall snapshot)
     Verify {
         /// Path to the backup directory
         path: PathBuf,
@@ -73,15 +73,15 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
         Some(BackupAction::Verify { path }) => run_verify(path),
         Some(BackupAction::List { json }) => {
             let oikos = super::resolve_oikos(instance_root)?;
-            run_fjall(&oikos, true, false, 5, *json, false)
+            run_instance(&oikos, true, false, 5, *json, false)
         }
         Some(BackupAction::Prune { keep, yes }) => {
             let oikos = super::resolve_oikos(instance_root)?;
-            run_fjall(&oikos, false, true, *keep, false, *yes)
+            run_instance(&oikos, false, true, *keep, false, *yes)
         }
         Some(BackupAction::Create) => {
             let oikos = super::resolve_oikos(instance_root)?;
-            run_fjall(&oikos, false, false, 5, false, false)
+            run_instance(&oikos, false, false, 5, false, false)
         }
         None => {
             let oikos = super::resolve_oikos(instance_root)?;
@@ -93,19 +93,12 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
                 yes,
                 ..
             } = args;
-            run_fjall(&oikos, list, prune, keep, json, yes)
+            run_instance(&oikos, list, prune, keep, json, yes)
         }
     }
 }
 
 // ── Verify ─────────────────────────────────────────────────────────────────
-
-/// Result of verifying a single backup directory.
-pub(crate) struct VerifyResult {
-    pub(crate) partition_counts: Vec<(String, usize)>,
-    pub(crate) first_error: Option<String>,
-    pub(crate) total_keys: usize,
-}
 
 fn run_verify(path: &Path) -> Result<()> {
     if !path.exists() {
@@ -115,9 +108,58 @@ fn run_verify(path: &Path) -> Result<()> {
         whatever!("backup path is not a directory: {}", path.display());
     }
 
-    let result = verify_backup(path)?;
+    // Prefer whole-instance backup verification when a manifest is present.
+    if path.join("manifest.json").is_file() {
+        return run_verify_instance(path);
+    }
 
-    // Summary to stdout
+    // Fall back to legacy fjall-only verification.
+    run_verify_fjall(path)
+}
+
+pub(crate) fn verify_backup(path: &Path) -> Result<oikonomos::maintenance::FjallVerifyResult> {
+    use oikonomos::maintenance::FjallBackup;
+
+    FjallBackup::verify_store(path)
+        .map_err(|e| crate::error::Error::msg(format!("failed to verify backup: {e}")))
+}
+
+fn run_verify_instance(path: &Path) -> Result<()> {
+    use oikonomos::maintenance::InstanceBackup;
+
+    let result = InstanceBackup::verify_backup(path)
+        .map_err(|e| crate::error::Error::msg(format!("failed to verify backup set: {e}")))?;
+
+    println!("Backup set: {}", path.display());
+    println!();
+    println!("{:<24} {:>12}", "Store", "Keys / Bytes");
+    println!("{}", "-".repeat(38));
+    for (name, outcome) in &result.store_results {
+        match outcome {
+            Ok(n) => println!("{name:<24} {n:>12}"),
+            Err(e) => println!("{name:<24} {:>12}", format!("FAIL: {e}")),
+        }
+    }
+    println!("{}", "-".repeat(38));
+    println!("{:<24} {:>12}", "Total keys", result.total_keys);
+    println!();
+
+    if let Some(err) = &result.first_error {
+        println!("Status: FAIL");
+        println!("First error: {err}");
+        whatever!("backup verification failed");
+    }
+
+    println!("Status: PASS");
+    Ok(())
+}
+
+fn run_verify_fjall(path: &Path) -> Result<()> {
+    use oikonomos::maintenance::FjallBackup;
+
+    let result = FjallBackup::verify_store(path)
+        .map_err(|e| crate::error::Error::msg(format!("failed to verify backup: {e}")))?;
+
     println!("Backup: {}", path.display());
     println!();
     println!("{:<24} {:>10}", "Partition", "Keys");
@@ -139,192 +181,13 @@ fn run_verify(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn verify_backup(path: &Path) -> Result<VerifyResult> {
-    // WHY: FjallDb::open_existing eagerly creates `version`, `keyspaces/`, and
-    // a fresh journal in the target directory if it doesn't already look like a
-    // fjall store. That makes `backup verify <empty-dir>` report PASS while
-    // silently dropping ~64 MB of fjall scaffolding into the user's path. Guard
-    // against that by requiring the fjall marker file before opening.
-    if !path.join("version").is_file() {
-        whatever!(
-            "not a fjall backup (missing `version` marker): {}",
-            path.display()
-        );
-    }
+// ── Instance backup operations ─────────────────────────────────────────────
 
-    let fdb = koina::fjall::FjallDb::open_existing(path)
-        .map_err(|e| crate::error::Error::msg(format!("failed to open backup: {e}")))?;
-
-    let mut result = VerifyResult {
-        partition_counts: Vec::new(),
-        first_error: None,
-        total_keys: 0,
-    };
-
-    let names = fdb.db.list_keyspace_names();
-    for name in names {
-        let name_str = name.as_ref();
-        let ks = fdb
-            .db
-            .keyspace(name_str, fjall::KeyspaceCreateOptions::default)
-            .map_err(|e| {
-                crate::error::Error::msg(format!("failed to open partition {name_str}: {e}"))
-            })?;
-
-        let snap = fdb.db.read_tx();
-        let mut count = 0usize;
-
-        for guard in snap.range::<&str, _>(&ks, ..) {
-            let (key, value) = guard
-                .into_inner()
-                .map_err(|e| crate::error::Error::msg(format!("read error in {name_str}: {e}")))?;
-
-            count += 1;
-            result.total_keys += 1;
-
-            if result.first_error.is_none()
-                && let Err(e) = validate_kv(name_str, key.as_ref(), value.as_ref())
-            {
-                let key_display = String::from_utf8_lossy(key.as_ref());
-                result.first_error = Some(format!("{name_str}/{key_display}: {e}"));
-            }
-        }
-
-        result.partition_counts.push((name_str.to_owned(), count));
-    }
-
-    Ok(result)
-}
-
-// ── Per-partition validation ───────────────────────────────────────────────
-
-fn validate_kv(partition: &str, key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
-    match partition {
-        "sessions" => validate_sessions(key, value),
-        "messages" => validate_messages(key, value),
-        "usage" => serde_json::from_slice::<mneme::types::UsageRecord>(value)
-            .map(|_| ())
-            .map_err(|e| e.to_string()),
-        "distillations" | "ops:tasks" => validate_json(value),
-        "notes" => validate_notes(key, value),
-        "blackboard" => serde_json::from_slice::<mneme::types::BlackboardRow>(value)
-            .map(|_| ())
-            .map_err(|e| e.to_string()),
-        "counters" => validate_u64(value),
-        "users" => validate_users(key, value),
-        "api_keys" => validate_api_keys(key, value),
-        "revoked_tokens" => validate_utf8(value),
-        // Known partitions with opaque/internal encoding, plus unknown partitions:
-        // all verified by successful read (iteration implicitly verifies checksums).
-        other => validate_opaque_or_unknown_partition(other),
-    }
-}
-
-fn validate_opaque_or_unknown_partition(partition: &str) -> std::result::Result<(), String> {
-    if partition.is_empty() {
-        return Err("partition name must not be empty".into());
-    }
-    Ok(())
-}
-
-fn validate_sessions(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
-    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
-    if key_str.starts_with("idx:nous:") {
-        if !value.is_empty() {
-            return Err("session nous index value should be empty".into());
-        }
-        Ok(())
-    } else if key_str.starts_with("idx:key:") {
-        std::str::from_utf8(value).map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        serde_json::from_slice::<mneme::types::Session>(value)
-            .map(|_| ())
-            .map_err(|e| e.to_string())
-    }
-}
-
-fn validate_messages(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
-    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
-    if key_str.starts_with("next_seq:") {
-        if value.len() != 8 {
-            return Err(format!(
-                "next_seq value should be 8 bytes, got {}",
-                value.len()
-            ));
-        }
-        Ok(())
-    } else if key_str.starts_with("distilled:") {
-        if value != b"1" {
-            return Err("distilled flag should be \"1\"".into());
-        }
-        Ok(())
-    } else {
-        serde_json::from_slice::<mneme::types::Message>(value)
-            .map(|_| ())
-            .map_err(|e| e.to_string())
-    }
-}
-
-fn validate_notes(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
-    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
-    if key_str.starts_with("gid:") {
-        std::str::from_utf8(value).map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        serde_json::from_slice::<mneme::types::AgentNote>(value)
-            .map(|_| ())
-            .map_err(|e| e.to_string())
-    }
-}
-
-fn validate_users(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
-    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
-    if !key_str.starts_with("user:") {
-        return Err(format!(
-            "users key should start with 'user:', got {key_str}"
-        ));
-    }
-    validate_json(value)
-}
-
-fn validate_api_keys(key: &[u8], value: &[u8]) -> std::result::Result<(), String> {
-    let key_str = std::str::from_utf8(key).map_err(|e| e.to_string())?;
-    if key_str.starts_with("hash:") {
-        std::str::from_utf8(value).map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        validate_json(value)
-    }
-}
-
-fn validate_u64(value: &[u8]) -> std::result::Result<(), String> {
-    if value.len() != 8 {
-        return Err(format!("u64 value should be 8 bytes, got {}", value.len()));
-    }
-    Ok(())
-}
-
-fn validate_json(value: &[u8]) -> std::result::Result<(), String> {
-    serde_json::from_slice::<serde_json::Value>(value)
-        .map(|_| ())
-        .map_err(|e| e.to_string())
-}
-
-fn validate_utf8(value: &[u8]) -> std::result::Result<(), String> {
-    std::str::from_utf8(value)
-        .map(|_| ())
-        .map_err(|e| e.to_string())
-}
-
-// ── Legacy backup operations ───────────────────────────────────────────────
-
-/// Handle fjall knowledge store backup operations.
 #[expect(
     clippy::fn_params_excessive_bools,
     reason = "1:1 pass-through of CLI flags from clap; grouping into a struct adds no clarity"
 )]
-fn run_fjall(
+fn run_instance(
     oikos: &taxis::oikos::Oikos,
     list: bool,
     prune: bool,
@@ -332,21 +195,21 @@ fn run_fjall(
     json: bool,
     yes: bool,
 ) -> Result<()> {
-    use oikonomos::maintenance::{FjallBackup, FjallBackupConfig};
+    use oikonomos::maintenance::{InstanceBackup, InstanceBackupConfig};
 
-    let config = FjallBackupConfig {
+    let config = InstanceBackupConfig {
         enabled: true,
-        source_dir: oikos.knowledge_db(),
-        backup_dir: oikos.backups().join("fjall"),
+        instance_root: oikos.root().to_path_buf(),
+        backup_dir: oikos.backups().join("instance"),
         interval_hours: 24,
         retention_count: keep,
     };
-    let manager = FjallBackup::new(config);
+    let manager = InstanceBackup::new(config);
 
     if list {
         let backups = manager
             .list_backups()
-            .whatever_context("failed to list fjall backups")?;
+            .whatever_context("failed to list instance backups")?;
         if json {
             let items: Vec<serde_json::Value> = backups
                 .iter()
@@ -364,7 +227,7 @@ fn run_fjall(
                     .whatever_context("failed to serialize backups")?
             );
         } else if backups.is_empty() {
-            println!("No fjall backups found.");
+            println!("No instance backups found.");
         } else {
             for b in &backups {
                 let mb = b.size_bytes / (1024 * 1024);
@@ -377,17 +240,17 @@ fn run_fjall(
     if prune {
         let backups = manager
             .list_backups()
-            .whatever_context("failed to list fjall backups")?;
+            .whatever_context("failed to list instance backups")?;
         let to_remove: Vec<_> = backups.iter().skip(keep).collect();
         if to_remove.is_empty() {
             println!(
-                "Nothing to prune: {} fjall backup(s) found, keeping {keep}.",
+                "Nothing to prune: {} instance backup(s) found, keeping {keep}.",
                 backups.len()
             );
             return Ok(());
         }
         if !yes {
-            println!("The following fjall backup(s) will be deleted:");
+            println!("The following instance backup(s) will be deleted:");
             for b in &to_remove {
                 println!("  {} ({} bytes)", b.name, b.size_bytes);
             }
@@ -405,22 +268,22 @@ fn run_fjall(
         for entry in to_remove {
             std::fs::remove_dir_all(&entry.path).whatever_context("failed to remove backup")?;
         }
-        println!("Pruned fjall backups, kept {keep}.");
+        println!("Pruned instance backups, kept {keep}.");
         return Ok(());
     }
 
-    // Default: create a new fjall backup.
+    // Default: create a new whole-instance backup.
     let report = manager
         .create_backup()
-        .whatever_context("failed to create fjall backup")?;
+        .whatever_context("failed to create whole-instance backup")?;
     match report.backup_path {
         Some(path) => println!(
-            "Fjall backup created: {} ({} files, {} bytes)",
+            "Whole-instance backup created: {} ({} files, {} bytes)",
             path.display(),
             report.files_copied,
             report.bytes_copied,
         ),
-        None => println!("Fjall backup skipped: knowledge store directory not found."),
+        None => println!("Whole-instance backup skipped: required directories not found."),
     }
     Ok(())
 }
@@ -431,134 +294,93 @@ fn run_fjall(
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use std::io::Write as _;
 
-    #[test]
-    fn verify_backup_empty_db_passes() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db = fjall::SingleWriterTxDatabase::builder(tmp.path())
-            .open()
-            .unwrap();
+    fn make_fjall_store(path: &Path) {
+        std::fs::create_dir_all(path).unwrap();
+        let db = fjall::SingleWriterTxDatabase::builder(path).open().unwrap();
         let _ = db
             .keyspace("test", fjall::KeyspaceCreateOptions::default)
             .unwrap();
         drop(db);
+    }
 
-        let result = verify_backup(tmp.path()).unwrap();
+    fn write_text_file(path: &Path, contents: &str) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let mut file = std::fs::File::create(path).unwrap();
+        file.write_all(contents.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn verify_fjall_empty_db_passes() {
+        let tmp = tempfile::tempdir().unwrap();
+        make_fjall_store(tmp.path());
+
+        let result = oikonomos::maintenance::FjallBackup::verify_store(tmp.path()).unwrap();
         assert_eq!(result.total_keys, 0);
         assert!(result.first_error.is_none());
     }
 
     #[test]
-    fn verify_backup_with_data_passes() {
+    fn verify_fjall_rejects_non_fjall_directory() {
         let tmp = tempfile::tempdir().unwrap();
-        let db = fjall::SingleWriterTxDatabase::builder(tmp.path())
-            .open()
-            .unwrap();
-        let ks = db
-            .keyspace("sessions", fjall::KeyspaceCreateOptions::default)
-            .unwrap();
-        let session = mneme::types::Session {
-            id: "sess-1".into(),
-            nous_id: "syn".into(),
-            session_key: "default".into(),
-            status: mneme::types::SessionStatus::Active,
-            model: None,
-            session_type: mneme::types::SessionType::Primary,
-            created_at: "2024-01-01T00:00:00.000Z".into(),
-            updated_at: "2024-01-01T00:00:00.000Z".into(),
-            metrics: mneme::types::SessionMetrics {
-                token_count_estimate: 0,
-                message_count: 0,
-                last_input_tokens: 0,
-                bootstrap_hash: None,
-                distillation_count: 0,
-                last_distilled_at: None,
-                computed_context_tokens: 0,
-            },
-            origin: mneme::types::SessionOrigin {
-                parent_session_id: None,
-                thread_id: None,
-                transport: None,
-                display_name: None,
-            },
-            artefact_meta: None,
-        };
-        ks.insert("sess-1", serde_json::to_vec(&session).unwrap().as_slice())
-            .unwrap();
-        drop(db);
-
-        // WHY: fjall holds a file lock even after drop; verify a copy instead.
-        let verify_tmp = tempfile::tempdir().unwrap();
-        copy_dir(tmp.path(), verify_tmp.path());
-
-        let result = verify_backup(verify_tmp.path()).unwrap();
-        assert_eq!(result.total_keys, 1);
-        assert!(result.first_error.is_none());
-        assert_eq!(result.partition_counts.len(), 1);
-        let first = result.partition_counts.first().unwrap();
-        assert_eq!(first.0, "sessions");
-        assert_eq!(first.1, 1);
-    }
-
-    #[test]
-    fn verify_backup_detects_bad_json() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db = fjall::SingleWriterTxDatabase::builder(tmp.path())
-            .open()
-            .unwrap();
-        let ks = db
-            .keyspace("sessions", fjall::KeyspaceCreateOptions::default)
-            .unwrap();
-        ks.insert("bad-key", b"not json").unwrap();
-        drop(db);
-
-        // WHY: fjall holds a file lock even after drop; verify a copy instead.
-        let verify_tmp = tempfile::tempdir().unwrap();
-        copy_dir(tmp.path(), verify_tmp.path());
-
-        let result = verify_backup(verify_tmp.path()).unwrap();
-        assert_eq!(result.total_keys, 1);
-        assert!(result.first_error.is_some());
-        let err = result.first_error.unwrap();
-        assert!(err.contains("bad-key"), "error should mention key: {err}");
-    }
-
-    fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
-        std::fs::create_dir_all(dst).unwrap();
-        for entry in std::fs::read_dir(src).unwrap() {
-            let entry = entry.unwrap();
-            let src_path = entry.path();
-            let dst_path = dst.join(entry.file_name());
-            if src_path.is_dir() {
-                copy_dir(&src_path, &dst_path);
-            } else {
-                std::fs::copy(&src_path, &dst_path).unwrap();
-            }
-        }
-    }
-
-    #[test]
-    fn verify_backup_nonexistent_path_fails() {
-        let result = run_verify(Path::new("/tmp/nonexistent-fjall-backup-xyz"));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn verify_backup_rejects_non_fjall_directory() {
-        // WHY: A bare or unrelated directory must not be silently scaffolded
-        // into a fjall store by `backup verify`; that would corrupt the user's
-        // path and falsely report PASS.
-        let tmp = tempfile::tempdir().unwrap();
-        let msg = match verify_backup(tmp.path()) {
+        let msg = match oikonomos::maintenance::FjallBackup::verify_store(tmp.path()) {
             Ok(_) => panic!("expected rejection of non-fjall dir"),
             Err(e) => e.to_string(),
         };
-        assert!(
-            msg.contains("not a fjall backup"),
-            "unexpected error: {msg}"
-        );
+        assert!(msg.contains("not a fjall store"), "unexpected error: {msg}");
         // The pre-check must not create any fjall scaffolding.
         assert!(!tmp.path().join("version").exists());
         assert!(!tmp.path().join("keyspaces").exists());
+    }
+
+    #[test]
+    fn verify_instance_backup_rejects_missing_sessions() {
+        use oikonomos::maintenance::{BackupManifest, InstanceBackup, StoreEntry};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let backup_path = tmp.path().join("bad-backup");
+        std::fs::create_dir_all(&backup_path).unwrap();
+
+        let manifest = BackupManifest {
+            version: String::from("aletheia-instance-backup-v1"),
+            created_at: jiff::Zoned::now().to_string(),
+            source_root: tmp.path().join("instance"),
+            stores: vec![StoreEntry {
+                name: String::from("knowledge.fjall"),
+                source_path: tmp
+                    .path()
+                    .join("instance")
+                    .join("data")
+                    .join("knowledge.fjall"),
+                backup_path: PathBuf::from("stores/knowledge.fjall"),
+                snapshot_time: jiff::Zoned::now().to_string(),
+                byte_count: 0,
+                status: String::from("ok"),
+            }],
+            optional_stores: Vec::new(),
+            total_bytes: 0,
+        };
+        write_text_file(
+            &backup_path.join("manifest.json"),
+            &serde_json::to_string_pretty(&manifest).unwrap(),
+        );
+        make_fjall_store(&backup_path.join("stores").join("knowledge.fjall"));
+
+        let result = InstanceBackup::verify_backup(&backup_path).unwrap();
+        assert!(result.first_error.is_some());
+        let err = result.first_error.unwrap();
+        assert!(
+            err.contains("sessions.db"),
+            "error should mention sessions.db: {err}"
+        );
+    }
+
+    #[test]
+    fn run_verify_nonexistent_path_fails() {
+        let result = run_verify(Path::new("/tmp/nonexistent-instance-backup-xyz"));
+        assert!(result.is_err());
     }
 }

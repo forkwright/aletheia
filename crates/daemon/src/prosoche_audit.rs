@@ -4,7 +4,8 @@
 //! Five check types (consistency, staleness, goal alignment, session quality,
 //! instinct patterns) implement [`ProsocheCheck`]; a [`ProsocheAuditRunner`]
 //! runs all registered checks on demand and persists [`Finding`]s with
-//! [`ArtefactMeta`] stamps for operator review.
+//! [`ArtefactMeta`] stamps and a versioned [`ProsocheReportProvenance`] envelope
+//! for operator review and replay.
 //!
 //! # Philosophy
 //!
@@ -19,26 +20,35 @@
 //! [`ArtefactMeta`] provenance, and persists an [`AuditReport`] to disk.
 //!
 //! The [`AuditReport`] itself implements [`Stamped`] so the report envelope
-//! carries provenance independent of its contained findings.
+//! carries provenance independent of its contained findings. Each report also
+//! carries a [`ProsocheReportProvenance`] envelope with per-check versions,
+//! thresholds, sampling windows, and source snapshot hashes so the run can be
+//! replayed and audited later.
 //!
 //! # Object safety
 //!
 //! `ProsocheCheck::check` returns a `Pin<Box<dyn Future>>` (same pattern as
 //! [`DaemonBridge`](crate::bridge::DaemonBridge)) so the trait is object-safe
-//! and `Arc<dyn ProsocheCheck>` works without `async_trait`.
+//! and `Arc<dyn ProsocheCheck>` works without `async_trait`. A synchronous
+//! `metadata` method is provided for replay provenance without breaking the
+//! existing trait contract.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
-use eidos::knowledge::finding::{EvidenceLevel, Finding, FindingStats};
+use eidos::knowledge::finding::{
+    EvidenceLevel, EvidenceRef, Finding, FindingStats, FindingSupport, stable_hash,
+};
 use eidos::meta::{ArtefactMeta, Stamped};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tracing::Instrument as _;
 
 /// The five categories of prosoche self-audit check, one per
 /// attention-quality dimension.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[non_exhaustive]
 pub enum ProsocheCheckKind {
     /// Detect contradictions between facts in the knowledge store (X and not-X).
@@ -66,6 +76,21 @@ impl std::fmt::Display for ProsocheCheckKind {
             Self::InstinctPatterns => write!(f, "instinct-patterns"),
         }
     }
+}
+
+/// Maturity of a prosoche check, used to mark heuristic/stub/exploratory work
+/// explicitly in replay provenance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum CheckMaturity {
+    /// Check uses a well-defined algorithm but is not yet validated at scale.
+    Heuristic,
+    /// Check is an exploratory placeholder; semantics are not yet implemented.
+    Stub,
+    /// Check is intentionally lightweight and qualitative.
+    Exploratory,
+    /// Check is considered production-ready.
+    Established,
 }
 
 /// Snapshot of system state available to prosoche checks.
@@ -98,6 +123,95 @@ pub struct ProsocheState {
     pub checked_at: String,
 }
 
+impl ProsocheState {
+    /// Deterministic hash of the query inputs (sorted ids and counts).
+    ///
+    /// Does not embed raw fact/session content; only the shape of the query
+    /// snapshot is represented.
+    #[must_use]
+    pub fn source_query_hash(&self) -> String {
+        let mut parts = Vec::new();
+        parts.push(format!("nous_id={}", self.nous_id));
+        parts.push(format!("goals={}", self.stated_goals.len()));
+
+        let mut facts: Vec<_> = self
+            .facts
+            .iter()
+            .map(|f| {
+                format!(
+                    "fact:{}:days={}",
+                    f.fact_id,
+                    f.days_since_touched
+                        .map_or_else(|| "unknown".to_owned(), |d| format!("{d:.6}"))
+                )
+            })
+            .collect();
+        facts.sort();
+        parts.extend(facts);
+
+        let mut sessions: Vec<_> = self
+            .sessions
+            .iter()
+            .map(|s| {
+                format!(
+                    "session:{}:turns={}:errors={}:completed={}",
+                    s.session_id, s.turn_count, s.error_count, s.completed
+                )
+            })
+            .collect();
+        sessions.sort();
+        parts.extend(sessions);
+
+        stable_hash(&parts.join("\n"))
+    }
+
+    /// Deterministic hash of the full snapshot, including content hashes.
+    ///
+    /// Embedding content hashes (not the content itself) lets a later auditor
+    /// confirm whether the same underlying facts and sessions were used.
+    #[must_use]
+    pub fn source_snapshot_hash(&self) -> String {
+        let mut parts = Vec::new();
+        parts.push(format!("nous_id={}", self.nous_id));
+        parts.push(format!("goals={}", self.stated_goals.len()));
+
+        let mut facts: Vec<_> = self
+            .facts
+            .iter()
+            .map(|f| {
+                format!(
+                    "fact:{}:days={}:content_hash={}",
+                    f.fact_id,
+                    f.days_since_touched
+                        .map_or_else(|| "unknown".to_owned(), |d| format!("{d:.6}")),
+                    stable_hash(&f.content)
+                )
+            })
+            .collect();
+        facts.sort();
+        parts.extend(facts);
+
+        let mut sessions: Vec<_> = self
+            .sessions
+            .iter()
+            .map(|s| {
+                format!(
+                    "session:{}:turns={}:errors={}:completed={}:turn_hash={}",
+                    s.session_id,
+                    s.turn_count,
+                    s.error_count,
+                    s.completed,
+                    stable_hash(&s.turn_text)
+                )
+            })
+            .collect();
+        sessions.sort();
+        parts.extend(sessions);
+
+        stable_hash(&parts.join("\n"))
+    }
+}
+
 /// A minimal fact snapshot for audit checks.
 #[derive(Debug, Clone)]
 pub struct FactSnapshot {
@@ -126,7 +240,8 @@ pub struct SessionSnapshot {
     pub completed: bool,
     /// Combined text of all user turns in this session.
     ///
-    /// Used for goal-alignment keyword matching.
+    /// Used for goal-alignment keyword matching. Only hashes of this value are
+    /// persisted in durable reports.
     pub turn_text: String,
 }
 
@@ -139,7 +254,8 @@ pub struct SessionSnapshot {
 /// # Implementation contract
 ///
 /// - Checks MUST be stateless: all input is in [`ProsocheState`].
-/// - Checks MUST NOT panic. Return an empty `Vec` on errors and log via `tracing`.
+/// - Checks SHOULD NOT panic. The runner records task failures as `CheckFailure`
+///   entries and continues the remaining checks.
 /// - Checks SHOULD log one `tracing::info!` per invocation with `findings_count`.
 /// - Checks SHOULD be fast (<100ms). Long-running analysis belongs in a separate
 ///   maintenance task, not a prosoche check.
@@ -161,6 +277,47 @@ pub trait ProsocheCheck: Send + Sync {
 
     /// The kind of attention this check evaluates.
     fn kind(&self) -> ProsocheCheckKind;
+
+    /// Replay provenance for this check.
+    ///
+    /// Default implementation provides a generic envelope; concrete checks
+    /// should override to advertise their version, thresholds, and maturity.
+    fn metadata(&self, state: &ProsocheState) -> CheckProvenance {
+        CheckProvenance {
+            kind: self.kind(),
+            version: "0.0.0".to_owned(),
+            maturity: CheckMaturity::Exploratory,
+            thresholds: Value::Null,
+            sampling_window: None,
+            source_query_hash: state.source_query_hash(),
+        }
+    }
+}
+
+/// Per-check replay provenance.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckProvenance {
+    /// Which check this provenance describes.
+    pub kind: ProsocheCheckKind,
+    /// Semantic version of the check implementation.
+    pub version: String,
+    /// Maturity of the check implementation.
+    pub maturity: CheckMaturity,
+    /// Threshold parameters that influenced the check, if any.
+    pub thresholds: Value,
+    /// Human-readable sampling window description, if applicable.
+    pub sampling_window: Option<String>,
+    /// Hash of the inputs relevant to this check.
+    pub source_query_hash: String,
+}
+
+/// Record of a check that failed during the audit run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckFailure {
+    /// Which check failed.
+    pub kind: ProsocheCheckKind,
+    /// Human-readable failure reason.
+    pub reason: String,
 }
 
 /// Detect contradictions in the fact graph.
@@ -173,6 +330,18 @@ pub trait ProsocheCheck: Send + Sync {
 /// multi-path contradiction detection.
 pub struct ConsistencyCheck;
 
+impl ConsistencyCheck {
+    fn query_hash(state: &ProsocheState) -> String {
+        let mut parts: Vec<String> = state
+            .facts
+            .iter()
+            .map(|f| format!("{}:{}", f.fact_id, stable_hash(&f.content)))
+            .collect();
+        parts.sort();
+        stable_hash(&parts.join("\n"))
+    }
+}
+
 impl ProsocheCheck for ConsistencyCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -182,17 +351,22 @@ impl ProsocheCheck for ConsistencyCheck {
         Box::pin(async move {
             let mut findings = Vec::new();
 
-            let normalised: Vec<(String, String, Vec<String>)> = state
+            let normalised: Vec<(String, String, Vec<String>, String)> = state
                 .facts
                 .iter()
                 .map(|f| {
                     let terms = extract_key_terms(&f.content);
-                    (f.fact_id.clone(), f.content.clone(), terms)
+                    let content_hash = stable_hash(&f.content);
+                    (f.fact_id.clone(), f.content.clone(), terms, content_hash)
                 })
                 .collect();
 
-            for (i, (id_a, content_a, terms_a)) in normalised.iter().enumerate() {
-                for (id_b, content_b, _) in normalised.get(i + 1..).unwrap_or_default() {
+            let fact_count = normalised.len();
+            let total_pairs = fact_count.saturating_mul(fact_count.saturating_sub(1)) / 2;
+            let query_hash = Self::query_hash(state);
+
+            for (i, (id_a, content_a, terms_a, hash_a)) in normalised.iter().enumerate() {
+                for (id_b, content_b, _, hash_b) in normalised.get(i + 1..).unwrap_or_default() {
                     for term in terms_a {
                         let negated = format!("not {term}");
                         let negated_alt = format!("never {term}");
@@ -200,11 +374,18 @@ impl ProsocheCheck for ConsistencyCheck {
                         if content_b_lower.contains(&negated)
                             || content_b_lower.contains(&negated_alt)
                         {
+                            let rate = if total_pairs == 0 {
+                                None
+                            } else {
+                                Some(
+                                    1.0 / f64::from(u32::try_from(total_pairs).unwrap_or(u32::MAX)),
+                                )
+                            };
                             findings.push(Finding {
                                 finding_id: format!("PROSOCHE-CONSISTENCY-{}", findings.len() + 1),
                                 claim: format!(
-                                    "Fact '{id_a}' asserts '{term}'; \
-                                     fact '{id_b}' appears to negate it."
+                                    "Fact '{id_a}' and fact '{id_b}' matched the term-negation \
+                                     contradiction heuristic."
                                 ),
                                 evidence_level: EvidenceLevel::Exploratory,
                                 counter_argument:
@@ -212,7 +393,31 @@ impl ProsocheCheck for ConsistencyCheck {
                                      nuanced phrasing. Requires human review."
                                         .to_owned(),
                                 source: "prosoche::ConsistencyCheck".to_owned(),
-                                stats: FindingStats::none(),
+                                stats: FindingStats {
+                                    p_adjusted: None,
+                                    effect_metric: Some("contradiction_rate".to_owned()),
+                                    effect_value: None,
+                                    ci: None,
+                                    sample_sizes: Some([total_pairs, fact_count]),
+                                    rate,
+                                    support: Some(FindingSupport {
+                                        evidence_refs: vec![
+                                            EvidenceRef::Fact {
+                                                fact_id: id_a.clone(),
+                                                content_hash: hash_a.clone(),
+                                            },
+                                            EvidenceRef::Fact {
+                                                fact_id: id_b.clone(),
+                                                content_hash: hash_b.clone(),
+                                            },
+                                            EvidenceRef::Query {
+                                                query_hash: query_hash.clone(),
+                                            },
+                                        ],
+                                        is_stub: false,
+                                        is_heuristic: true,
+                                    }),
+                                },
                             });
                             break;
                         }
@@ -225,11 +430,18 @@ impl ProsocheCheck for ConsistencyCheck {
                                 w.trim_matches(|c: char| !c.is_alphanumeric()) == term.as_str()
                             })
                         {
+                            let rate = if total_pairs == 0 {
+                                None
+                            } else {
+                                Some(
+                                    1.0 / f64::from(u32::try_from(total_pairs).unwrap_or(u32::MAX)),
+                                )
+                            };
                             findings.push(Finding {
                                 finding_id: format!("PROSOCHE-CONSISTENCY-{}", findings.len() + 1),
                                 claim: format!(
-                                    "Fact '{id_a}' negates '{term}'; \
-                                     fact '{id_b}' asserts it."
+                                    "Fact '{id_a}' and fact '{id_b}' matched the term-negation \
+                                     contradiction heuristic."
                                 ),
                                 evidence_level: EvidenceLevel::Exploratory,
                                 counter_argument:
@@ -237,7 +449,31 @@ impl ProsocheCheck for ConsistencyCheck {
                                      nuanced phrasing. Requires human review."
                                         .to_owned(),
                                 source: "prosoche::ConsistencyCheck".to_owned(),
-                                stats: FindingStats::none(),
+                                stats: FindingStats {
+                                    p_adjusted: None,
+                                    effect_metric: Some("contradiction_rate".to_owned()),
+                                    effect_value: None,
+                                    ci: None,
+                                    sample_sizes: Some([total_pairs, fact_count]),
+                                    rate,
+                                    support: Some(FindingSupport {
+                                        evidence_refs: vec![
+                                            EvidenceRef::Fact {
+                                                fact_id: id_a.clone(),
+                                                content_hash: hash_a.clone(),
+                                            },
+                                            EvidenceRef::Fact {
+                                                fact_id: id_b.clone(),
+                                                content_hash: hash_b.clone(),
+                                            },
+                                            EvidenceRef::Query {
+                                                query_hash: query_hash.clone(),
+                                            },
+                                        ],
+                                        is_stub: false,
+                                        is_heuristic: true,
+                                    }),
+                                },
                             });
                             break;
                         }
@@ -257,6 +493,17 @@ impl ProsocheCheck for ConsistencyCheck {
 
     fn kind(&self) -> ProsocheCheckKind {
         ProsocheCheckKind::Consistency
+    }
+
+    fn metadata(&self, state: &ProsocheState) -> CheckProvenance {
+        CheckProvenance {
+            kind: self.kind(),
+            version: "1.0.0".to_owned(),
+            maturity: CheckMaturity::Heuristic,
+            thresholds: Value::Null,
+            sampling_window: None,
+            source_query_hash: Self::query_hash(state),
+        }
     }
 }
 
@@ -300,6 +547,39 @@ impl Default for StalenessCheck {
     }
 }
 
+impl StalenessCheck {
+    fn query_hash(state: &ProsocheState) -> String {
+        let mut parts: Vec<String> = state
+            .facts
+            .iter()
+            .map(|f| {
+                format!(
+                    "fact:{}:days={}",
+                    f.fact_id,
+                    f.days_since_touched
+                        .map_or_else(|| "unknown".to_owned(), |d| format!("{d:.6}"))
+                )
+            })
+            .collect();
+        parts.sort();
+
+        let mut sessions: Vec<String> = state
+            .sessions
+            .iter()
+            .map(|s| {
+                format!(
+                    "session:{}:turns={}:completed={}",
+                    s.session_id, s.turn_count, s.completed
+                )
+            })
+            .collect();
+        sessions.sort();
+        parts.extend(sessions);
+
+        stable_hash(&parts.join("\n"))
+    }
+}
+
 impl ProsocheCheck for StalenessCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -309,10 +589,19 @@ impl ProsocheCheck for StalenessCheck {
         Box::pin(async move {
             let mut findings = Vec::new();
 
+            let facts_scanned = state.facts.len();
+            let sessions_scanned = state.sessions.len();
+            let query_hash = Self::query_hash(state);
+
             for fact in &state.facts {
                 if let Some(days) = fact.days_since_touched
                     && days > self.fact_stale_days
                 {
+                    let rate = if facts_scanned == 0 {
+                        None
+                    } else {
+                        Some(1.0 / f64::from(u32::try_from(facts_scanned).unwrap_or(u32::MAX)))
+                    };
                     findings.push(Finding {
                         finding_id: format!("PROSOCHE-STALENESS-FACT-{}", findings.len() + 1),
                         claim: format!(
@@ -327,7 +616,27 @@ impl ProsocheCheck for StalenessCheck {
                              archival is appropriate."
                                 .to_owned(),
                         source: "prosoche::StalenessCheck".to_owned(),
-                        stats: FindingStats::none(),
+                        stats: FindingStats {
+                            p_adjusted: None,
+                            effect_metric: Some("stale_fact_rate".to_owned()),
+                            effect_value: None,
+                            ci: None,
+                            sample_sizes: Some([1, facts_scanned]),
+                            rate,
+                            support: Some(FindingSupport {
+                                evidence_refs: vec![
+                                    EvidenceRef::Fact {
+                                        fact_id: fact.fact_id.clone(),
+                                        content_hash: stable_hash(&fact.content),
+                                    },
+                                    EvidenceRef::Query {
+                                        query_hash: query_hash.clone(),
+                                    },
+                                ],
+                                is_stub: false,
+                                is_heuristic: true,
+                            }),
+                        },
                     });
                 }
             }
@@ -335,6 +644,11 @@ impl ProsocheCheck for StalenessCheck {
             // Future: carry session_age_days in SessionSnapshot and use it here.
             for session in &state.sessions {
                 if !session.completed && session.turn_count > 10 {
+                    let rate = if sessions_scanned == 0 {
+                        None
+                    } else {
+                        Some(1.0 / f64::from(u32::try_from(sessions_scanned).unwrap_or(u32::MAX)))
+                    };
                     findings.push(Finding {
                         finding_id: format!("PROSOCHE-STALENESS-SESSION-{}", findings.len() + 1),
                         claim: format!(
@@ -347,7 +661,27 @@ impl ProsocheCheck for StalenessCheck {
                              Requires operator review."
                                 .to_owned(),
                         source: "prosoche::StalenessCheck".to_owned(),
-                        stats: FindingStats::none(),
+                        stats: FindingStats {
+                            p_adjusted: None,
+                            effect_metric: Some("incomplete_session_rate".to_owned()),
+                            effect_value: None,
+                            ci: None,
+                            sample_sizes: Some([1, sessions_scanned]),
+                            rate,
+                            support: Some(FindingSupport {
+                                evidence_refs: vec![
+                                    EvidenceRef::Session {
+                                        session_id: session.session_id.clone(),
+                                        turn_hash: stable_hash(&session.turn_text),
+                                    },
+                                    EvidenceRef::Query {
+                                        query_hash: query_hash.clone(),
+                                    },
+                                ],
+                                is_stub: false,
+                                is_heuristic: true,
+                            }),
+                        },
                     });
                 }
             }
@@ -365,6 +699,17 @@ impl ProsocheCheck for StalenessCheck {
     fn kind(&self) -> ProsocheCheckKind {
         ProsocheCheckKind::Staleness
     }
+
+    fn metadata(&self, state: &ProsocheState) -> CheckProvenance {
+        CheckProvenance {
+            kind: self.kind(),
+            version: "1.0.0".to_owned(),
+            maturity: CheckMaturity::Heuristic,
+            thresholds: serde_json::json!({ "fact_stale_days": self.fact_stale_days }),
+            sampling_window: None,
+            source_query_hash: Self::query_hash(state),
+        }
+    }
 }
 
 /// Verify recent session turns are advancing stated goals.
@@ -377,6 +722,33 @@ impl ProsocheCheck for StalenessCheck {
 /// about "implement the authentication system" may advance the goal
 /// "ship secure login" without sharing keywords.
 pub struct GoalAlignmentCheck;
+
+impl GoalAlignmentCheck {
+    fn query_hash(state: &ProsocheState) -> String {
+        let mut parts: Vec<String> = state
+            .stated_goals
+            .iter()
+            .map(|g| format!("goal:{}", stable_hash(g)))
+            .collect();
+        parts.sort();
+
+        let mut sessions: Vec<String> = state
+            .sessions
+            .iter()
+            .map(|s| {
+                format!(
+                    "session:{}:turn_hash={}",
+                    s.session_id,
+                    stable_hash(&s.turn_text)
+                )
+            })
+            .collect();
+        sessions.sort();
+        parts.extend(sessions);
+
+        stable_hash(&parts.join("\n"))
+    }
+}
 
 impl ProsocheCheck for GoalAlignmentCheck {
     #[tracing::instrument(skip(self, state))]
@@ -401,15 +773,26 @@ impl ProsocheCheck for GoalAlignmentCheck {
                 .iter()
                 .flat_map(|g| extract_key_terms(g))
                 .collect();
+            let goal_terms_count = goal_terms.len();
+            let sessions_scanned = state.sessions.len();
+            let qualified: Vec<&SessionSnapshot> =
+                state.sessions.iter().filter(|s| s.turn_count > 3).collect();
+            let qualified_count = qualified.len();
+            let query_hash = Self::query_hash(state);
 
-            for session in &state.sessions {
+            for session in &qualified {
                 let session_lower = session.turn_text.to_lowercase();
                 let overlap = goal_terms
                     .iter()
                     .filter(|term| session_lower.contains(term.as_str()))
                     .count();
 
-                if overlap == 0 && session.turn_count > 3 {
+                if overlap == 0 {
+                    let rate = if qualified_count == 0 {
+                        None
+                    } else {
+                        Some(1.0 / f64::from(u32::try_from(qualified_count).unwrap_or(u32::MAX)))
+                    };
                     findings.push(Finding {
                         finding_id: format!("PROSOCHE-GOAL-ALIGNMENT-{}", findings.len() + 1),
                         claim: format!(
@@ -424,7 +807,27 @@ impl ProsocheCheck for GoalAlignmentCheck {
                              Requires operator review."
                                 .to_owned(),
                         source: "prosoche::GoalAlignmentCheck".to_owned(),
-                        stats: FindingStats::none(),
+                        stats: FindingStats {
+                            p_adjusted: None,
+                            effect_metric: Some("goal_misalignment_rate".to_owned()),
+                            effect_value: None,
+                            ci: None,
+                            sample_sizes: Some([1, qualified_count]),
+                            rate,
+                            support: Some(FindingSupport {
+                                evidence_refs: vec![
+                                    EvidenceRef::Session {
+                                        session_id: session.session_id.clone(),
+                                        turn_hash: stable_hash(&session.turn_text),
+                                    },
+                                    EvidenceRef::Query {
+                                        query_hash: query_hash.clone(),
+                                    },
+                                ],
+                                is_stub: false,
+                                is_heuristic: true,
+                            }),
+                        },
                     });
                 }
             }
@@ -432,6 +835,9 @@ impl ProsocheCheck for GoalAlignmentCheck {
             tracing::info!(
                 check_kind = %ProsocheCheckKind::GoalAlignment,
                 findings_count = findings.len(),
+                goal_terms_count,
+                sessions_scanned,
+                qualified_count,
                 "prosoche audit complete"
             );
 
@@ -441,6 +847,17 @@ impl ProsocheCheck for GoalAlignmentCheck {
 
     fn kind(&self) -> ProsocheCheckKind {
         ProsocheCheckKind::GoalAlignment
+    }
+
+    fn metadata(&self, state: &ProsocheState) -> CheckProvenance {
+        CheckProvenance {
+            kind: self.kind(),
+            version: "1.0.0".to_owned(),
+            maturity: CheckMaturity::Heuristic,
+            thresholds: serde_json::json!({ "goal_terms_count": state.stated_goals.len() }),
+            sampling_window: None,
+            source_query_hash: Self::query_hash(state),
+        }
     }
 }
 
@@ -467,6 +884,23 @@ impl Default for SessionQualityCheck {
     }
 }
 
+impl SessionQualityCheck {
+    fn query_hash(state: &ProsocheState) -> String {
+        let mut parts: Vec<String> = state
+            .sessions
+            .iter()
+            .map(|s| {
+                format!(
+                    "session:{}:turns={}:errors={}:completed={}",
+                    s.session_id, s.turn_count, s.error_count, s.completed
+                )
+            })
+            .collect();
+        parts.sort();
+        stable_hash(&parts.join("\n"))
+    }
+}
+
 impl ProsocheCheck for SessionQualityCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -481,6 +915,8 @@ impl ProsocheCheck for SessionQualityCheck {
                 .iter()
                 .filter(|s| s.turn_count >= self.min_turns)
                 .collect();
+            let qualified_count = qualified.len();
+            let query_hash = Self::query_hash(state);
 
             for session in &qualified {
                 if session.turn_count > 0 {
@@ -502,7 +938,30 @@ impl ProsocheCheck for SessionQualityCheck {
                                  signal from noise."
                                     .to_owned(),
                             source: "prosoche::SessionQualityCheck".to_owned(),
-                            stats: FindingStats::none(),
+                            stats: FindingStats {
+                                p_adjusted: None,
+                                effect_metric: Some("error_rate".to_owned()),
+                                effect_value: Some(error_rate),
+                                ci: None,
+                                sample_sizes: Some([
+                                    usize::try_from(session.error_count).unwrap_or(usize::MAX),
+                                    usize::try_from(session.turn_count).unwrap_or(usize::MAX),
+                                ]),
+                                rate: Some(error_rate),
+                                support: Some(FindingSupport {
+                                    evidence_refs: vec![
+                                        EvidenceRef::Session {
+                                            session_id: session.session_id.clone(),
+                                            turn_hash: stable_hash(&session.turn_text),
+                                        },
+                                        EvidenceRef::Query {
+                                            query_hash: query_hash.clone(),
+                                        },
+                                    ],
+                                    is_stub: false,
+                                    is_heuristic: true,
+                                }),
+                            },
                         });
                     }
                 }
@@ -510,6 +969,14 @@ impl ProsocheCheck for SessionQualityCheck {
 
             let completed_count = qualified.iter().filter(|s| s.completed).count();
             if qualified.len() >= 5 && completed_count == 0 {
+                let rate = if qualified_count == 0 {
+                    None
+                } else {
+                    Some(
+                        f64::from(u32::try_from(completed_count).unwrap_or(u32::MAX))
+                            / f64::from(u32::try_from(qualified_count).unwrap_or(u32::MAX)),
+                    )
+                };
                 findings.push(Finding {
                     finding_id: format!("PROSOCHE-SESSION-QUALITY-{}", findings.len() + 1),
                     claim: format!(
@@ -523,7 +990,21 @@ impl ProsocheCheck for SessionQualityCheck {
                          background sessions. Requires operator review."
                             .to_owned(),
                     source: "prosoche::SessionQualityCheck".to_owned(),
-                    stats: FindingStats::none(),
+                    stats: FindingStats {
+                        p_adjusted: None,
+                        effect_metric: Some("completion_rate".to_owned()),
+                        effect_value: rate,
+                        ci: None,
+                        sample_sizes: Some([completed_count, qualified_count]),
+                        rate,
+                        support: Some(FindingSupport {
+                            evidence_refs: vec![EvidenceRef::Query {
+                                query_hash: query_hash.clone(),
+                            }],
+                            is_stub: false,
+                            is_heuristic: true,
+                        }),
+                    },
                 });
             }
 
@@ -539,6 +1020,20 @@ impl ProsocheCheck for SessionQualityCheck {
 
     fn kind(&self) -> ProsocheCheckKind {
         ProsocheCheckKind::SessionQuality
+    }
+
+    fn metadata(&self, state: &ProsocheState) -> CheckProvenance {
+        CheckProvenance {
+            kind: self.kind(),
+            version: "1.0.0".to_owned(),
+            maturity: CheckMaturity::Heuristic,
+            thresholds: serde_json::json!({
+                "error_rate_threshold": self.error_rate_threshold,
+                "min_turns": self.min_turns,
+            }),
+            sampling_window: None,
+            source_query_hash: Self::query_hash(state),
+        }
     }
 }
 
@@ -556,6 +1051,18 @@ impl ProsocheCheck for SessionQualityCheck {
 ///    over-confidence in tool selection).
 /// 3. Emit `Speculative` findings for patterns that exceed a threshold.
 pub struct InstinctPatternsCheck;
+
+impl InstinctPatternsCheck {
+    fn query_hash(state: &ProsocheState) -> String {
+        let mut parts: Vec<String> = state
+            .sessions
+            .iter()
+            .map(|s| format!("session:{}:turns={}", s.session_id, s.turn_count))
+            .collect();
+        parts.sort();
+        stable_hash(&parts.join("\n"))
+    }
+}
 
 impl ProsocheCheck for InstinctPatternsCheck {
     #[tracing::instrument(skip(self, state))]
@@ -586,13 +1093,38 @@ impl ProsocheCheck for InstinctPatternsCheck {
                                    implementation, not absence of patterns."
                     .to_owned(),
                 source: "prosoche::InstinctPatternsCheck".to_owned(),
-                stats: FindingStats::none(),
+                stats: FindingStats {
+                    p_adjusted: None,
+                    effect_metric: None,
+                    effect_value: None,
+                    ci: None,
+                    sample_sizes: None,
+                    rate: None,
+                    support: Some(FindingSupport {
+                        evidence_refs: vec![EvidenceRef::Query {
+                            query_hash: Self::query_hash(state),
+                        }],
+                        is_stub: true,
+                        is_heuristic: false,
+                    }),
+                },
             }]
         })
     }
 
     fn kind(&self) -> ProsocheCheckKind {
         ProsocheCheckKind::InstinctPatterns
+    }
+
+    fn metadata(&self, state: &ProsocheState) -> CheckProvenance {
+        CheckProvenance {
+            kind: self.kind(),
+            version: "0.1.0".to_owned(),
+            maturity: CheckMaturity::Stub,
+            thresholds: Value::Null,
+            sampling_window: None,
+            source_query_hash: Self::query_hash(state),
+        }
     }
 }
 
@@ -636,6 +1168,33 @@ impl AuditStorage {
     }
 }
 
+/// Versioned provenance envelope for a prosoche audit report.
+///
+/// Captures everything needed to replay or audit the run: check versions,
+/// thresholds, sampling windows, code/build identifiers, config hash, and
+/// hashes of the source query/snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProsocheReportProvenance {
+    /// Report provenance schema version.
+    pub report_version: String,
+    /// Daemon version that produced the report.
+    pub daemon_version: String,
+    /// Source code SHA, if available at build time.
+    pub code_sha: Option<String>,
+    /// Build SHA, if available at build time.
+    pub build_sha: Option<String>,
+    /// Hash of the daemon config active at audit time, if available.
+    pub config_hash: Option<String>,
+    /// Hash of the source query (sorted ids and counts).
+    pub source_query_hash: String,
+    /// Hash of the full source snapshot (including content hashes).
+    pub source_snapshot_hash: String,
+    /// Per-check replay provenance.
+    pub checks: Vec<CheckProvenance>,
+    /// Checks that failed during the run.
+    pub check_failures: Vec<CheckFailure>,
+}
+
 /// Result of a single prosoche self-audit pass.
 ///
 /// Implements [`Stamped`] so the report envelope carries provenance
@@ -653,6 +1212,9 @@ pub struct AuditReport {
     pub check_summary: Vec<CheckSummary>,
     /// Provenance metadata (producer, schema version, counts).
     pub meta: ArtefactMeta,
+    /// Versioned replay provenance envelope.
+    #[serde(default)]
+    pub provenance: Option<ProsocheReportProvenance>,
 }
 
 /// Per-check summary for the audit report envelope.
@@ -736,8 +1298,8 @@ impl ProsocheAuditRunner {
     /// return the completed [`AuditReport`].
     ///
     /// Each check runs sequentially (they're fast heuristics). The runner
-    /// does not propagate check errors — failed checks return empty finding
-    /// lists and log at `WARN`.
+    /// captures check panics as [`CheckFailure`] records rather than failing
+    /// the whole audit.
     ///
     /// # Observability
     ///
@@ -748,16 +1310,42 @@ impl ProsocheAuditRunner {
     pub async fn run_audit(&self, state: &ProsocheState) -> AuditReport {
         let mut all_findings: Vec<Finding> = Vec::new();
         let mut check_summary: Vec<CheckSummary> = Vec::new();
+        let mut check_provenances: Vec<CheckProvenance> = Vec::new();
+        let mut check_failures: Vec<CheckFailure> = Vec::new();
 
         for check in &self.checks {
             let kind = check.kind();
-            let findings = check.check(state).await;
-            let count = findings.len();
-            all_findings.extend(findings);
-            check_summary.push(CheckSummary {
-                kind,
-                findings_count: count,
-            });
+            check_provenances.push(check.metadata(state));
+
+            let state_clone = state.clone();
+            let check_arc = Arc::clone(check);
+            let span = tracing::Span::current();
+
+            match tokio::spawn(async move { check_arc.check(&state_clone).await }.instrument(span))
+                .await
+            {
+                Ok(findings) => {
+                    let count = findings.len();
+                    all_findings.extend(findings);
+                    check_summary.push(CheckSummary {
+                        kind,
+                        findings_count: count,
+                    });
+                }
+                Err(join_err) => {
+                    let reason = format!("check task failed: {join_err}");
+                    tracing::warn!(
+                        check_kind = %kind,
+                        error = %join_err,
+                        "prosoche check failed"
+                    );
+                    check_failures.push(CheckFailure { kind, reason });
+                    check_summary.push(CheckSummary {
+                        kind,
+                        findings_count: 0,
+                    });
+                }
+            }
         }
 
         let total = all_findings.len();
@@ -774,12 +1362,25 @@ impl ProsocheAuditRunner {
             u64::try_from(self.checks.len()).unwrap_or(u64::MAX),
         );
 
+        let provenance = ProsocheReportProvenance {
+            report_version: "1.1.0".to_owned(),
+            daemon_version: format!("oikonomos@{}", env!("CARGO_PKG_VERSION")),
+            code_sha: option_env!("ALETHEIA_CODE_SHA").map(String::from),
+            build_sha: option_env!("ALETHEIA_BUILD_SHA").map(String::from),
+            config_hash: option_env!("ALETHEIA_CONFIG_HASH").map(String::from),
+            source_query_hash: state.source_query_hash(),
+            source_snapshot_hash: state.source_snapshot_hash(),
+            checks: check_provenances,
+            check_failures,
+        };
+
         let report = AuditReport {
             audited_at: state.checked_at.clone(),
             nous_id: state.nous_id.clone(),
             findings: all_findings,
             check_summary,
             meta,
+            provenance: Some(provenance),
         };
 
         // WHY: a persist failure is logged but never fails the audit — the

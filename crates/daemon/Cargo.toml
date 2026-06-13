@@ -20,6 +20,7 @@ aletheia-routing = { path = "../aletheia-routing" }
 eidos = { path = "../eidos" }
 episteme = { path = "../episteme", default-features = false }
 koina = { path = "../koina", features = ["fjall"] }
+mneme = { path = "../mneme" }
 taxis = { path = "../taxis" }
 # WHY: axum for webhook trigger listener
 axum = { workspace = true }

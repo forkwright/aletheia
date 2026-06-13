@@ -10,8 +10,8 @@ For day-to-day operations, see [RUNBOOK.md](RUNBOOK.md). Deployment details are 
 
 | Target | Value | Basis |
 |--------|-------|-------|
-| **RTO** | 30–60 minutes | Binary deploy + health check is ~30–45 s; reinstall + full NAS restore dominates the window |
-| **RPO** | 24 hours | Default fjall backup interval (`interval_hours = 24`, see `FjallBackupConfig`) |
+| **RTO** | 30–60 minutes | Local instance backup restore is copy-bound; reinstall + full NAS restore dominates the window |
+| **RPO** | 24 hours | Default whole-instance backup interval (`interval_hours = 24`, see `InstanceBackupConfig`) |
 
 > If you need tighter RPO, reduce `interval_hours` in config or run `aletheia backup` more frequently.
 
@@ -47,7 +47,7 @@ fuser -k 18789/tcp   # only if the PID is not aletheia
 
 ---
 
-## Scenario 2: DB corruption → restore from fjall backup
+## Scenario 2: Store corruption → restore from whole-instance backup
 
 **Symptom:** `aletheia health` reports session-store or knowledge-store failures; the store fails to open or returns read errors.
 
@@ -57,42 +57,56 @@ fuser -k 18789/tcp   # only if the PID is not aletheia
 # 1. Stop the service
 systemctl --user stop aletheia
 
-# 2. List available fjall backups
+# 2. List available whole-instance backups
 aletheia backup --list
 
 # 3. Identify the most recent good backup
 LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
 echo "Restoring from: $LATEST"
+ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
+BACKUP="$ROOT/data/backups/instance/$LATEST"
 
-# 4. Move corrupted store aside (do not delete until recovery is confirmed)
-mv "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/knowledge.fjall" \
-   "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/knowledge.fjall.corrupt.$(date -u +%Y%m%dT%H%M%SZ)"
+# 4. Verify the backup set before replacing live stores
+aletheia backup verify "$BACKUP"
 
-# 5. Restore from the fjall backup snapshot
-cp -a "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/backups/fjall/${LATEST}" \
-      "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/knowledge.fjall"
+# 5. Move corrupted stores aside (do not delete until recovery is confirmed)
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+mv "$ROOT/data/knowledge.fjall" "$ROOT/data/knowledge.fjall.corrupt.$STAMP"
+mv "$ROOT/data/sessions.db"     "$ROOT/data/sessions.db.corrupt.$STAMP"
 
-# 6. Start and verify
+# 6. Restore required stores from the backup set
+cp -a "$BACKUP/stores/knowledge.fjall" "$ROOT/data/knowledge.fjall"
+cp -a "$BACKUP/stores/sessions.db"     "$ROOT/data/sessions.db"
+
+# 7. Restore config/workspace if corruption or an upgrade touched them
+cp -a "$BACKUP/config/." "$ROOT/config/" 2>/dev/null || true
+cp -a "$BACKUP/workspace/." "$ROOT/" 2>/dev/null || true
+
+# 8. Start and verify
 systemctl --user start aletheia
 aletheia health
 ```
 
 ### Session-store corruption
 
-`sessions.db` is also a fjall LSM-tree. There is no built-in backup for the session store; the `aletheia backup` command only covers `knowledge.fjall`. If the session store is corrupt, your options are:
-
-1. Restore from a filesystem snapshot (restic, ZFS, etc.) taken while the service was stopped.
-2. Delete the directory and let the service recreate it on startup. Session history will be lost.
+`sessions.db` is included in the whole-instance backup set under
+`stores/sessions.db`. Restore it from the same backup set as `knowledge.fjall`;
+do not copy a knowledge backup over `sessions.db`.
 
 ```bash
 systemctl --user stop aletheia
-mv "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/sessions.db" \
-   "${ALETHEIA_ROOT:-$HOME/aletheia/instance}/data/sessions.db.corrupt.$(date -u +%Y%m%dT%H%M%SZ)"
+ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
+LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
+BACKUP="$ROOT/data/backups/instance/$LATEST"
+aletheia backup verify "$BACKUP"
+mv "$ROOT/data/sessions.db" "$ROOT/data/sessions.db.corrupt.$(date -u +%Y%m%dT%H%M%SZ)"
+cp -a "$BACKUP/stores/sessions.db" "$ROOT/data/sessions.db"
 systemctl --user start aletheia
 aletheia health
 ```
 
-> The daemon's `FjallBackup` task only backs up `knowledge.fjall`. `scripts/backup-cron.sh` is legacy and references a removed CLI flag.
+> Backup sets remain local under `instance/data/backups/instance/`. Use your
+> own restic/ZFS/NAS process if you need off-machine copies.
 
 ---
 
@@ -196,8 +210,8 @@ Run these checks before declaring recovery complete:
 | 4 | Health monitor script passes | `scripts/health-monitor.sh` |
 | 5 | Metrics endpoint responds | `curl -sf http://localhost:18789/metrics \| head` |
 | 6 | Session store opens without errors | `aletheia status` shows expected session counts |
-| 7 | Knowledge store backup directory exists | `ls -ld "$ALETHEIA_ROOT/data/backups/fjall"` |
-| 8 | Fjall backup directory exists and is writable | `ls -ld "$ALETHEIA_ROOT/data/backups/fjall"` |
+| 7 | Instance backup directory exists | `ls -ld "$ALETHEIA_ROOT/data/backups/instance"` |
+| 8 | Latest backup verifies | `aletheia backup verify "$ALETHEIA_ROOT/data/backups/instance/$(aletheia backup --list --json \| jq -r '.[0].name')"` |
 | 9 | Create a test session (if auth is enabled) | See API smoke test in [DEPLOYMENT.md](DEPLOYMENT.md) |
 | 10 | No recent errors in logs | `journalctl --user -u aletheia --since "5 minutes ago" --priority err..warning` |
 
@@ -211,9 +225,15 @@ Restore to a **test instance** at least once a month to prove the procedure and 
 # 1. Create a temporary instance root
 TMP_INSTANCE=$(mktemp -d)
 
-# 2. Restore the latest fjall backup into it
-cp -a "$ALETHEIA_ROOT/data/backups/fjall/$(aletheia backup --list --json | jq -r '.[0].name')" \
-      "$TMP_INSTANCE/knowledge.fjall"
+# 2. Restore the latest instance backup into it
+LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
+BACKUP="$ALETHEIA_ROOT/data/backups/instance/$LATEST"
+aletheia backup verify "$BACKUP"
+mkdir -p "$TMP_INSTANCE/data"
+cp -a "$BACKUP/stores/knowledge.fjall" "$TMP_INSTANCE/data/knowledge.fjall"
+cp -a "$BACKUP/stores/sessions.db"     "$TMP_INSTANCE/data/sessions.db"
+cp -a "$BACKUP/config/." "$TMP_INSTANCE/config/" 2>/dev/null || true
+cp -a "$BACKUP/workspace/." "$TMP_INSTANCE/" 2>/dev/null || true
 
 # 3. Start aletheia against the test instance
 aletheia -r "$TMP_INSTANCE" --port 28789 &
@@ -242,5 +262,6 @@ rm -rf "$TMP_INSTANCE"
 | `scripts/health-monitor.sh` | Service health, token expiry, and metrics monitor |
 | `scripts/backup-cron.sh` | Legacy script (non-functional; references removed `--export-json` flag) |
 | `scripts/smoke-test.sh` | Offline CLI smoke test (good after reinstall) |
-| `crates/daemon/src/maintenance/fjall_backup.rs` | Fjall knowledge store file-level backup implementation |
+| `crates/daemon/src/maintenance/instance_backup.rs` | Whole-instance backup set implementation |
+| `crates/daemon/src/maintenance/fjall_backup.rs` | Legacy fjall store verification and snapshot helper |
 | `instance.example/services/aletheia.service` | Systemd unit template |
