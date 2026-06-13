@@ -43,6 +43,8 @@ pub mod longmemeval;
 pub mod metrics;
 /// Live benchmark runner: executes a benchmark against an aletheia instance.
 pub mod runner;
+/// Dataset validation primitives shared by benchmark loaders.
+pub mod validation;
 
 pub use self::runner::{BenchmarkRunner, BenchmarkRunnerConfig};
 
@@ -59,6 +61,9 @@ use serde::{Deserialize, Serialize};
 use crate::provenance::EvalProvenance;
 
 pub use self::metrics::{BenchmarkScore, score_answer};
+pub use self::validation::{
+    BenchmarkValidationIssue, BenchmarkValidationOptions, BenchmarkValidationReport,
+};
 
 /// A single question/answer pair backed by prior conversation context.
 #[derive(Debug, Clone)]
@@ -74,6 +79,8 @@ pub struct BenchmarkQuestion {
     pub question: String,
     /// The ground-truth answer(s). Multiple acceptable answers may be listed.
     pub expected_answers: Vec<String>,
+    /// Expected evidence or fact references supplied by the source dataset.
+    pub expected_evidence_refs: Vec<String>,
     /// Category label for per-ability scoring (e.g. "temporal", "multi-session").
     pub category: String,
 }
@@ -121,6 +128,12 @@ pub struct BenchmarkMetadata {
     /// Git SHA of the build or invocation, when known.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub git_sha: Option<String>,
+    /// Whether malformed or incomplete dataset records were allowed.
+    #[serde(default)]
+    pub dataset_best_effort: bool,
+    /// Dataset validation diagnostics captured before execution.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub dataset_validation: Option<BenchmarkValidationReport>,
 }
 
 impl Default for BenchmarkMetadata {
@@ -136,6 +149,8 @@ impl Default for BenchmarkMetadata {
             timeout_secs: 120,
             dataset_hash: None,
             git_sha: None,
+            dataset_best_effort: false,
+            dataset_validation: None,
         }
     }
 }
@@ -182,6 +197,9 @@ pub struct QuestionResult {
     pub actual_answer: String,
     /// The expected answers (ground truth, may have multiple valid forms).
     pub expected_answers: Vec<String>,
+    /// Expected evidence/fact references from the dataset, when available.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub expected_evidence_refs: Vec<String>,
     /// Best score across all expected answers.
     pub score: BenchmarkScore,
     /// Optional LLM-as-judge score (populated when judge is configured).
@@ -189,13 +207,54 @@ pub struct QuestionResult {
     pub judge_score: Option<judge::JudgeScore>,
     /// Optional retrieval metrics: facts retrieved for the question.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub retrieved_facts: Option<Vec<String>>,
+    pub retrieved_facts: Option<Vec<RetrievedFact>>,
+    /// Retrieval scoring basis and relevant refs used for metrics.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub retrieval_scoring: Option<RetrievalScoring>,
     /// Optional retrieval metric: Recall@k.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub recall_at_k: Option<f64>,
     /// Optional retrieval metric: NDCG@k.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ndcg_at_k: Option<f64>,
+}
+
+/// One retrieved fact serialized with retrieval metric provenance.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RetrievedFact {
+    /// Fact ID returned by the knowledge API, when present.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub id: Option<String>,
+    /// Stable display reference for this retrieved fact.
+    pub reference: String,
+    /// Knowledge API relevance score.
+    pub score: f64,
+    /// Stored fact confidence.
+    pub confidence: f64,
+    /// SHA-256 hash of the fact content.
+    pub content_sha256: String,
+}
+
+/// Retrieval relevance basis used for a question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum RetrievalScoringMode {
+    /// Dataset evidence/fact refs were used as the relevance set.
+    EvidenceId,
+    /// Dataset lacks evidence refs; normalized content hashes were used.
+    NormalizedContent,
+}
+
+/// Retrieval scoring metadata for a question.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RetrievalScoring {
+    /// Relevance basis used for Recall@k and NDCG@k.
+    pub mode: RetrievalScoringMode,
+    /// Whether the normalized-content fallback was used.
+    pub fallback_used: bool,
+    /// Relevant refs compared against retrieved facts.
+    pub relevant_refs: Vec<String>,
 }
 
 /// Aggregate report for a benchmark run.
@@ -213,6 +272,9 @@ pub struct BenchmarkReport {
     pub timeouts: usize,
     /// Questions that returned an empty answer.
     pub no_answers: usize,
+    /// LLM judge denominator summary, when judge scoring was attempted.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub judge_summary: Option<JudgeSummary>,
     /// Per-question results.
     pub questions: Vec<QuestionResult>,
     /// Shared provenance envelope for this benchmark run.
@@ -227,6 +289,19 @@ pub struct BenchmarkReport {
     /// Absent in reports produced without statistical analysis.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub statistics: Option<BenchmarkStatistics>,
+}
+
+/// Aggregate denominator semantics for LLM-as-judge scoring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JudgeSummary {
+    /// Questions for which judge scoring was attempted.
+    pub attempted: usize,
+    /// Judge attempts that returned a parsed judgment.
+    pub scored: usize,
+    /// Judge attempts that failed, timed out, refused, or returned malformed data.
+    pub errors: usize,
+    /// Parsed judge judgments marked correct.
+    pub correct: usize,
 }
 
 /// Statistical summary for a benchmark run.
@@ -273,6 +348,29 @@ impl BenchmarkCounts {
     }
 }
 
+impl JudgeSummary {
+    fn from_questions(questions: &[QuestionResult]) -> Option<Self> {
+        let mut summary = Self {
+            attempted: 0,
+            scored: 0,
+            errors: 0,
+            correct: 0,
+        };
+        for score in questions.iter().filter_map(|q| q.judge_score.as_ref()) {
+            summary.attempted += 1;
+            if score.status.is_scored() {
+                summary.scored += 1;
+                if score.correct {
+                    summary.correct += 1;
+                }
+            } else {
+                summary.errors += 1;
+            }
+        }
+        (summary.attempted > 0).then_some(summary)
+    }
+}
+
 impl BenchmarkReport {
     /// Build an aggregate report from individual question results.
     #[must_use]
@@ -285,6 +383,7 @@ impl BenchmarkReport {
             errors: counts.errors,
             timeouts: counts.timeouts,
             no_answers: counts.no_answers,
+            judge_summary: JudgeSummary::from_questions(&questions),
             questions,
             provenance: None,
             metadata: None,
@@ -307,6 +406,7 @@ impl BenchmarkReport {
             errors: counts.errors,
             timeouts: counts.timeouts,
             no_answers: counts.no_answers,
+            judge_summary: JudgeSummary::from_questions(&questions),
             questions,
             provenance: None,
             metadata: Some(metadata),
@@ -423,7 +523,11 @@ impl BenchmarkReport {
         sum / scored.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
     }
 
-    /// Mean LLM-as-judge accuracy across all questions that have a judge score.
+    /// Mean LLM-as-judge accuracy across all attempted judge calls.
+    ///
+    /// Judge errors stay in the denominator and count as incorrect. Use
+    /// [`BenchmarkReport::judge_summary`] to distinguish parsed judgments from
+    /// failed/refused/malformed judge attempts.
     #[must_use]
     #[expect(
         clippy::cast_precision_loss,
@@ -434,16 +538,8 @@ impl BenchmarkReport {
         reason = "usize to f64 — question counts are bounded and small"
     )]
     pub fn judge_accuracy(&self) -> Option<f64> {
-        let scored: Vec<_> = self
-            .questions
-            .iter()
-            .filter_map(|q| q.judge_score.as_ref())
-            .collect();
-        if scored.is_empty() {
-            return None;
-        }
-        let correct = scored.iter().filter(|j| j.correct).count() as f64; // SAFETY: question counts <10_000 per function-level #[expect]
-        Some(correct / scored.len() as f64) // SAFETY: question counts <10_000 per function-level #[expect]
+        let summary = self.judge_summary?;
+        Some(summary.correct as f64 / summary.attempted as f64) // SAFETY: question counts <10_000 per function-level #[expect]
     }
 
     /// Mean Recall@k across all questions that have retrieval metrics.
@@ -546,6 +642,18 @@ pub async fn load_longmemeval(
     longmemeval::LongMemEvalDataset::from_path(path).await
 }
 
+/// Load and validate a `LongMemEval` dataset from a JSON file on disk.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, parsed, or validated.
+pub async fn load_longmemeval_with_options(
+    path: impl AsRef<Path> + Send,
+    options: BenchmarkValidationOptions,
+) -> std::io::Result<(longmemeval::LongMemEvalDataset, BenchmarkValidationReport)> {
+    longmemeval::LongMemEvalDataset::from_path_with_options(path, options).await
+}
+
 /// Load a `LoCoMo` dataset from a JSON file on disk.
 ///
 /// # Errors
@@ -554,6 +662,18 @@ pub async fn load_longmemeval(
 /// expected `LoCoMo` format.
 pub async fn load_locomo(path: impl AsRef<Path> + Send) -> std::io::Result<locomo::LocomoDataset> {
     locomo::LocomoDataset::from_path(path).await
+}
+
+/// Load and validate a `LoCoMo` dataset from a JSON file on disk.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, parsed, or validated.
+pub async fn load_locomo_with_options(
+    path: impl AsRef<Path> + Send,
+    options: BenchmarkValidationOptions,
+) -> std::io::Result<(locomo::LocomoDataset, BenchmarkValidationReport)> {
+    locomo::LocomoDataset::from_path_with_options(path, options).await
 }
 
 #[cfg(test)]
@@ -566,6 +686,55 @@ pub async fn load_locomo(path: impl AsRef<Path> + Send) -> std::io::Result<locom
 mod tests {
     use super::*;
 
+    fn result(id: &str, category: &str, actual: &str, expected: &[&str]) -> QuestionResult {
+        QuestionResult {
+            id: id.to_owned(),
+            category: category.to_owned(),
+            status: QuestionStatus::Scored,
+            error_message: None,
+            actual_answer: actual.to_owned(),
+            expected_answers: expected.iter().map(|answer| (*answer).to_owned()).collect(),
+            expected_evidence_refs: Vec::new(),
+            score: score_answer(
+                actual,
+                &expected
+                    .iter()
+                    .map(|answer| (*answer).to_owned())
+                    .collect::<Vec<_>>(),
+            ),
+            judge_score: None,
+            retrieved_facts: None,
+            retrieval_scoring: None,
+            recall_at_k: None,
+            ndcg_at_k: None,
+        }
+    }
+
+    fn judge_score(correct: bool, status: judge::JudgeStatus) -> judge::JudgeScore {
+        judge::JudgeScore {
+            correct,
+            reasoning: "judge result".to_owned(),
+            status,
+            error_message: matches!(status, judge::JudgeStatus::Error)
+                .then(|| "judge failed".to_owned()),
+            provenance: judge::JudgeProvenance {
+                endpoint: "http://judge.test".to_owned(),
+                model: "judge-model".to_owned(),
+                prompt_sha256: "abc".to_owned(),
+                raw_response_sha256: None,
+                raw_response_body_ref: None,
+                request_id: None,
+                usage: None,
+                provider_status: Some(200),
+                parse_status: if status.is_scored() {
+                    judge::JudgeParseStatus::Parsed
+                } else {
+                    judge::JudgeParseStatus::MalformedJson
+                },
+            },
+        }
+    }
+
     #[test]
     fn empty_report_has_zero_rates() {
         let report = BenchmarkReport::default();
@@ -577,40 +746,8 @@ mod tests {
     #[test]
     fn report_aggregates_em_and_f1() {
         let questions = vec![
-            QuestionResult {
-                id: "q1".to_owned(),
-                category: "factual".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "blue".to_owned(),
-                expected_answers: vec!["blue".to_owned()],
-                score: BenchmarkScore {
-                    exact_match: true,
-                    f1: 1.0,
-                    contains: true,
-                },
-                judge_score: None,
-                retrieved_facts: None,
-                recall_at_k: None,
-                ndcg_at_k: None,
-            },
-            QuestionResult {
-                id: "q2".to_owned(),
-                category: "factual".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "green".to_owned(),
-                expected_answers: vec!["red".to_owned()],
-                score: BenchmarkScore {
-                    exact_match: false,
-                    f1: 0.0,
-                    contains: false,
-                },
-                judge_score: None,
-                retrieved_facts: None,
-                recall_at_k: None,
-                ndcg_at_k: None,
-            },
+            result("q1", "factual", "blue", &["blue"]),
+            result("q2", "factual", "green", &["red"]),
         ];
         let report = BenchmarkReport::new("Test", questions);
         assert_eq!(report.total, 2);
@@ -621,57 +758,9 @@ mod tests {
     #[test]
     fn per_category_groups_results() {
         let questions = vec![
-            QuestionResult {
-                id: "q1".to_owned(),
-                category: "temporal".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "yes".to_owned(),
-                expected_answers: vec!["yes".to_owned()],
-                score: BenchmarkScore {
-                    exact_match: true,
-                    f1: 1.0,
-                    contains: true,
-                },
-                judge_score: None,
-                retrieved_facts: None,
-                recall_at_k: None,
-                ndcg_at_k: None,
-            },
-            QuestionResult {
-                id: "q2".to_owned(),
-                category: "temporal".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "no".to_owned(),
-                expected_answers: vec!["yes".to_owned()],
-                score: BenchmarkScore {
-                    exact_match: false,
-                    f1: 0.0,
-                    contains: false,
-                },
-                judge_score: None,
-                retrieved_facts: None,
-                recall_at_k: None,
-                ndcg_at_k: None,
-            },
-            QuestionResult {
-                id: "q3".to_owned(),
-                category: "factual".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "42".to_owned(),
-                expected_answers: vec!["42".to_owned()],
-                score: BenchmarkScore {
-                    exact_match: true,
-                    f1: 1.0,
-                    contains: true,
-                },
-                judge_score: None,
-                retrieved_facts: None,
-                recall_at_k: None,
-                ndcg_at_k: None,
-            },
+            result("q1", "temporal", "yes", &["yes"]),
+            result("q2", "temporal", "no", &["yes"]),
+            result("q3", "factual", "42", &["42"]),
         ];
         let report = BenchmarkReport::new("Test", questions);
         let per_cat = report.per_category();
@@ -684,94 +773,44 @@ mod tests {
     }
 
     #[test]
-    fn judge_accuracy_computed_correctly() {
-        let questions = vec![
-            QuestionResult {
-                id: "q1".to_owned(),
-                category: "factual".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "blue".to_owned(),
-                expected_answers: vec!["blue".to_owned()],
-                score: BenchmarkScore::zero(),
-                judge_score: Some(judge::JudgeScore {
-                    correct: true,
-                    reasoning: "ok".to_owned(),
-                }),
-                retrieved_facts: None,
-                recall_at_k: None,
-                ndcg_at_k: None,
-            },
-            QuestionResult {
-                id: "q2".to_owned(),
-                category: "factual".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "red".to_owned(),
-                expected_answers: vec!["blue".to_owned()],
-                score: BenchmarkScore::zero(),
-                judge_score: Some(judge::JudgeScore {
-                    correct: false,
-                    reasoning: "wrong".to_owned(),
-                }),
-                retrieved_facts: None,
-                recall_at_k: None,
-                ndcg_at_k: None,
-            },
-        ];
+    fn judge_accuracy_counts_errors_in_denominator() {
+        let mut q1 = result("q1", "factual", "blue", &["blue"]);
+        q1.judge_score = Some(judge_score(true, judge::JudgeStatus::Scored));
+        let mut q2 = result("q2", "factual", "red", &["blue"]);
+        q2.judge_score = Some(judge_score(false, judge::JudgeStatus::Scored));
+        let mut q3 = result("q3", "factual", "green", &["green"]);
+        q3.judge_score = Some(judge_score(false, judge::JudgeStatus::Error));
+
+        let questions = vec![q1, q2, q3];
         let report = BenchmarkReport::new("Test", questions);
-        assert!((report.judge_accuracy().unwrap() - 0.5).abs() < f64::EPSILON);
+        assert_eq!(
+            report.judge_summary,
+            Some(JudgeSummary {
+                attempted: 3,
+                scored: 2,
+                errors: 1,
+                correct: 1,
+            })
+        );
+        assert!((report.judge_accuracy().unwrap() - (1.0 / 3.0)).abs() < f64::EPSILON);
     }
 
     #[test]
     fn judge_accuracy_none_when_no_scores() {
-        let questions = vec![QuestionResult {
-            id: "q1".to_owned(),
-            category: "factual".to_owned(),
-            status: QuestionStatus::Scored,
-            error_message: None,
-            actual_answer: "blue".to_owned(),
-            expected_answers: vec!["blue".to_owned()],
-            score: BenchmarkScore::zero(),
-            judge_score: None,
-            retrieved_facts: None,
-            recall_at_k: None,
-            ndcg_at_k: None,
-        }];
+        let questions = vec![result("q1", "factual", "blue", &["blue"])];
         let report = BenchmarkReport::new("Test", questions);
         assert!(report.judge_accuracy().is_none());
     }
 
     #[test]
     fn mean_recall_and_ndcg_computed_correctly() {
-        let questions = vec![
-            QuestionResult {
-                id: "q1".to_owned(),
-                category: "factual".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "blue".to_owned(),
-                expected_answers: vec!["blue".to_owned()],
-                score: BenchmarkScore::zero(),
-                judge_score: None,
-                retrieved_facts: None,
-                recall_at_k: Some(1.0),
-                ndcg_at_k: Some(1.0),
-            },
-            QuestionResult {
-                id: "q2".to_owned(),
-                category: "factual".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "red".to_owned(),
-                expected_answers: vec!["blue".to_owned()],
-                score: BenchmarkScore::zero(),
-                judge_score: None,
-                retrieved_facts: None,
-                recall_at_k: Some(0.0),
-                ndcg_at_k: Some(0.0),
-            },
-        ];
+        let mut q1 = result("q1", "factual", "blue", &["blue"]);
+        q1.recall_at_k = Some(1.0);
+        q1.ndcg_at_k = Some(1.0);
+        let mut q2 = result("q2", "factual", "red", &["blue"]);
+        q2.recall_at_k = Some(0.0);
+        q2.ndcg_at_k = Some(0.0);
+        let questions = vec![q1, q2];
         let report = BenchmarkReport::new("Test", questions);
         assert!((report.mean_recall_at_k().unwrap() - 0.5).abs() < f64::EPSILON);
         assert!((report.mean_ndcg_at_k().unwrap() - 0.5).abs() < f64::EPSILON);
@@ -797,6 +836,15 @@ mod tests {
             timeout_secs: 120,
             dataset_hash: Some("sha256:abc".to_owned()),
             git_sha: Some("deadbeef".to_owned()),
+            dataset_best_effort: true,
+            dataset_validation: Some(BenchmarkValidationReport {
+                dataset: "LongMemEval".to_owned(),
+                dataset_path: Some("/tmp/dataset.json".to_owned()),
+                best_effort: true,
+                require_retrieval_evidence: false,
+                errors: Vec::new(),
+                warnings: Vec::new(),
+            }),
         };
         let report = BenchmarkReport::with_metadata("LongMemEval", vec![], meta);
         let json = serde_json::to_string(&report).expect("serialize");
@@ -806,38 +854,11 @@ mod tests {
 
     #[test]
     fn non_scored_statuses_do_not_enter_score_denominator() {
-        let questions = vec![
-            QuestionResult {
-                id: "q1".to_owned(),
-                category: "factual".to_owned(),
-                status: QuestionStatus::Scored,
-                error_message: None,
-                actual_answer: "blue".to_owned(),
-                expected_answers: vec!["blue".to_owned()],
-                score: BenchmarkScore {
-                    exact_match: true,
-                    f1: 1.0,
-                    contains: true,
-                },
-                judge_score: None,
-                retrieved_facts: None,
-                recall_at_k: None,
-                ndcg_at_k: None,
-            },
-            QuestionResult {
-                id: "q2".to_owned(),
-                category: "factual".to_owned(),
-                status: QuestionStatus::Timeout,
-                error_message: Some("timed out".to_owned()),
-                actual_answer: String::new(),
-                expected_answers: vec!["red".to_owned()],
-                score: BenchmarkScore::zero(),
-                judge_score: None,
-                retrieved_facts: None,
-                recall_at_k: None,
-                ndcg_at_k: None,
-            },
-        ];
+        let mut timeout = result("q2", "factual", "", &["red"]);
+        timeout.status = QuestionStatus::Timeout;
+        timeout.error_message = Some("timed out".to_owned());
+        timeout.score = BenchmarkScore::zero();
+        let questions = vec![result("q1", "factual", "blue", &["blue"]), timeout];
         let report = BenchmarkReport::new("Test", questions);
         assert_eq!(report.total, 2);
         assert_eq!(report.scored, 1);

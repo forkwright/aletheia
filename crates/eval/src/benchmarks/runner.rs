@@ -22,8 +22,8 @@ use crate::error::Result;
 use crate::provenance::EvalProvenance;
 
 use super::{
-    BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, QuestionStatus, judge,
-    metrics, score_answer,
+    BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, QuestionStatus,
+    RetrievalScoring, RetrievalScoringMode, RetrievedFact, judge, metrics, score_answer,
 };
 
 /// Configuration for a benchmark run.
@@ -81,7 +81,12 @@ struct QuestionExecution {
     error_message: Option<String>,
 }
 
-type RetrievalMetrics = (Option<Vec<String>>, Option<f64>, Option<f64>);
+type RetrievalMetrics = (
+    Option<Vec<RetrievedFact>>,
+    Option<RetrievalScoring>,
+    Option<f64>,
+    Option<f64>,
+);
 
 impl BenchmarkRunner {
     /// Create a new runner with the given client and configuration.
@@ -140,7 +145,7 @@ impl BenchmarkRunner {
         let judge_score = self
             .evaluate_judge(&question, &execution.answer, status)
             .await;
-        let (retrieved_facts, recall_at_k, ndcg_at_k) =
+        let (retrieved_facts, retrieval_scoring, recall_at_k, ndcg_at_k) =
             self.evaluate_retrieval(&question, status).await;
 
         QuestionResult {
@@ -150,9 +155,11 @@ impl BenchmarkRunner {
             error_message: execution.error_message,
             actual_answer: execution.answer,
             expected_answers: question.expected_answers,
+            expected_evidence_refs: question.expected_evidence_refs,
             score,
             judge_score,
             retrieved_facts,
+            retrieval_scoring,
             recall_at_k,
             ndcg_at_k,
         }
@@ -219,13 +226,29 @@ impl BenchmarkRunner {
         if status.is_scored()
             && let Some(ref config) = self.config.judge
         {
-            let judge = judge::LlmJudge::new(config.clone());
-            let expected = question.expected_answers.first().map_or("", String::as_str);
-            match judge.judge(&question.question, answer, expected).await {
-                Ok(js) => Some(js),
+            match judge::LlmJudge::new(config.clone()) {
+                Ok(judge) => {
+                    let score = judge
+                        .judge(&question.question, answer, &question.expected_answers)
+                        .await;
+                    if !score.status.is_scored() {
+                        warn!(
+                            id = %question.id,
+                            error = ?score.error_message,
+                            "judge evaluation failed"
+                        );
+                    }
+                    Some(score)
+                }
                 Err(e) => {
                     warn!(id = %question.id, error = %e, "judge evaluation failed");
-                    None
+                    Some(judge::JudgeScore::configuration_error(
+                        config,
+                        &question.question,
+                        answer,
+                        &question.expected_answers,
+                        e.to_string(),
+                    ))
                 }
             }
         } else {
@@ -251,30 +274,48 @@ impl BenchmarkRunner {
                 .await
             {
                 Ok(resp) => {
-                    let mut fact_contents = Vec::new();
-                    let mut fact_refs = Vec::new();
+                    let mut retrieved = Vec::new();
+                    let mut retrieved_evidence_refs = Vec::new();
+                    let mut retrieved_content_refs = Vec::new();
                     for fact in resp.facts {
-                        fact_contents.push(fact.content.clone());
-                        if fact.id.is_empty() {
-                            fact_refs.push(format!(
-                                "content_sha256:{}",
-                                crate::provenance::sha256_hex_str(&fact.content)
-                            ));
+                        let id = if fact.id.trim().is_empty() {
+                            None
                         } else {
-                            fact_refs.push(format!("fact:{}", fact.id));
+                            Some(fact.id.clone())
+                        };
+                        if let Some(ref id) = id {
+                            retrieved_evidence_refs.push(normalize_evidence_ref(id));
                         }
+                        let content_sha256 = crate::provenance::sha256_hex_str(&fact.content);
+                        retrieved_content_refs.push(metrics::normalized_content_ref(&fact.content));
+                        let reference = id.as_ref().map_or_else(
+                            || format!("content_sha256:{content_sha256}"),
+                            |id| format!("fact:{id}"),
+                        );
+                        retrieved.push(RetrievedFact {
+                            id,
+                            reference,
+                            score: fact.score,
+                            confidence: fact.confidence,
+                            content_sha256,
+                        });
                     }
-                    let r = metrics::recall_at_k(&fact_contents, &question.expected_answers, k);
-                    let n = metrics::ndcg_at_k(&fact_contents, &question.expected_answers, k);
-                    (Some(fact_refs), Some(r), Some(n))
+                    let (scoring, retrieved_refs) = retrieval_scoring_refs(
+                        question,
+                        retrieved_evidence_refs,
+                        retrieved_content_refs,
+                    );
+                    let r = metrics::recall_at_k(&retrieved_refs, &scoring.relevant_refs, k);
+                    let n = metrics::ndcg_at_k(&retrieved_refs, &scoring.relevant_refs, k);
+                    (Some(retrieved), Some(scoring), Some(r), Some(n))
                 }
                 Err(e) => {
                     warn!(id = %question.id, error = %e, "knowledge search failed");
-                    (None, None, None)
+                    (None, None, None, None)
                 }
             }
         } else {
-            (None, None, None)
+            (None, None, None, None)
         }
     }
 
@@ -350,6 +391,52 @@ fn score_for_status(
     }
 }
 
+fn retrieval_scoring_refs(
+    question: &BenchmarkQuestion,
+    retrieved_evidence_refs: Vec<String>,
+    retrieved_content_refs: Vec<String>,
+) -> (RetrievalScoring, Vec<String>) {
+    let expected_evidence_refs: Vec<String> = question
+        .expected_evidence_refs
+        .iter()
+        .map(|reference| normalize_evidence_ref(reference))
+        .filter(|reference| !reference.is_empty())
+        .collect();
+    if expected_evidence_refs.is_empty() {
+        let relevant_refs: Vec<String> = question
+            .expected_answers
+            .iter()
+            .map(|answer| metrics::normalized_content_ref(answer))
+            .collect();
+        (
+            RetrievalScoring {
+                mode: RetrievalScoringMode::NormalizedContent,
+                fallback_used: true,
+                relevant_refs,
+            },
+            retrieved_content_refs,
+        )
+    } else {
+        (
+            RetrievalScoring {
+                mode: RetrievalScoringMode::EvidenceId,
+                fallback_used: false,
+                relevant_refs: expected_evidence_refs,
+            },
+            retrieved_evidence_refs,
+        )
+    }
+}
+
+fn normalize_evidence_ref(reference: &str) -> String {
+    let trimmed = reference.trim();
+    trimmed
+        .strip_prefix("fact:")
+        .unwrap_or(trimmed)
+        .trim()
+        .to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,5 +490,49 @@ mod tests {
             .take(config.max_questions.unwrap_or(items.len()))
             .collect();
         assert_eq!(taken.len(), 3);
+    }
+
+    #[test]
+    fn retrieval_scoring_prefers_evidence_ids() {
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: Vec::new(),
+            question: "What color?".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            expected_evidence_refs: vec!["fact:fact-blue".to_owned()],
+            category: "single-session-user".to_owned(),
+        };
+
+        let (scoring, refs) = retrieval_scoring_refs(
+            &question,
+            vec!["fact-blue".to_owned()],
+            vec![metrics::normalized_content_ref("not the answer")],
+        );
+
+        assert_eq!(scoring.mode, RetrievalScoringMode::EvidenceId);
+        assert!(!scoring.fallback_used);
+        assert_eq!(scoring.relevant_refs, vec!["fact-blue"]);
+        assert_eq!(refs, vec!["fact-blue"]);
+    }
+
+    #[test]
+    fn retrieval_scoring_reports_content_fallback() {
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: Vec::new(),
+            question: "What color?".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            expected_evidence_refs: Vec::new(),
+            category: "single-session-user".to_owned(),
+        };
+
+        let content_ref = metrics::normalized_content_ref("blue");
+        let (scoring, refs) =
+            retrieval_scoring_refs(&question, Vec::new(), vec![content_ref.clone()]);
+
+        assert_eq!(scoring.mode, RetrievalScoringMode::NormalizedContent);
+        assert!(scoring.fallback_used);
+        assert_eq!(scoring.relevant_refs, vec![content_ref.clone()]);
+        assert_eq!(refs, vec![content_ref]);
     }
 }

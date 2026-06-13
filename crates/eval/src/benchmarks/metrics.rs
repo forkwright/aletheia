@@ -133,10 +133,20 @@ fn token_f1(predicted: &[&str], expected: &[&str]) -> f64 {
     2.0 * precision * recall / (precision + recall)
 }
 
-/// Compute Recall@k: fraction of relevant items found in the top-k retrieved.
+/// Build a normalized-content reference for fallback retrieval scoring.
+#[must_use]
+pub fn normalized_content_ref(content: &str) -> String {
+    format!(
+        "content_sha256:{}",
+        crate::provenance::sha256_hex_str(&normalize(content))
+    )
+}
+
+/// Compute Recall@k: fraction of relevant refs found in the top-k retrieved.
 ///
-/// `relevant` is the set of ground-truth strings (e.g. expected answers).
-/// `retrieved` is the ordered list of returned strings.
+/// `relevant` is the set of ground-truth refs. `retrieved` is the ordered list
+/// of returned refs. The caller owns whether those refs are evidence IDs or
+/// normalized-content fallback hashes.
 ///
 /// # Panics
 ///
@@ -163,7 +173,7 @@ pub fn recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
 /// Compute NDCG@k (Normalized Discounted Cumulative Gain).
 ///
 /// Assumes binary relevance: an item is relevant if it appears in `relevant`.
-/// `retrieved` is the ordered list of returned strings.
+/// `retrieved` is the ordered list of returned refs.
 ///
 /// # Panics
 ///
@@ -356,5 +366,20 @@ mod tests {
         let retrieved = vec!["a".to_owned()];
         let relevant: Vec<String> = vec![];
         assert!((ndcg_at_k(&retrieved, &relevant, 1) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn recall_scores_evidence_ids_without_text_matching() {
+        let retrieved = vec!["fact-a".to_owned(), "fact-b".to_owned()];
+        let relevant = vec!["fact-b".to_owned()];
+        assert!((recall_at_k(&retrieved, &relevant, 2) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn normalized_content_ref_hashes_normalized_text() {
+        let left = normalized_content_ref("Blue, whale");
+        let right = normalized_content_ref("blue whale");
+        assert_eq!(left, right);
+        assert!(left.starts_with("content_sha256:"));
     }
 }

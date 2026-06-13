@@ -65,6 +65,88 @@ pub struct JudgeScore {
     pub correct: bool,
     /// Short reasoning provided by the judge.
     pub reasoning: String,
+    /// Judge execution status.
+    #[serde(default)]
+    pub status: JudgeStatus,
+    /// Error detail when the judge did not produce a parsed score.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub error_message: Option<String>,
+    /// Provider and parsing provenance for the judge call.
+    pub provenance: JudgeProvenance,
+}
+```
+
+```rust
+pub enum JudgeStatus {
+    /// The judge returned a parsed judgment.
+    #[default]
+    Scored,
+    /// The judge attempt failed or returned unparseable/refusal data.
+    Error,
+}
+```
+
+```rust
+impl JudgeStatus {
+    pub fn is_scored (self) -> bool;
+}
+```
+
+```rust
+pub enum JudgeParseStatus {
+    /// Provider response parsed into a judge verdict.
+    Parsed,
+    /// The provider returned a non-success HTTP status.
+    HttpError,
+    /// The HTTP request or body read failed before parsing.
+    TransportError,
+    /// The request exceeded the configured judge timeout.
+    Timeout,
+    /// The provider response JSON lacked message content.
+    MissingContent,
+    /// The provider or judge JSON was malformed.
+    MalformedJson,
+    /// The provider returned a refusal instead of judgment content.
+    Refusal,
+}
+```
+
+```rust
+pub struct JudgeUsage {
+    /// Prompt/input tokens.
+    pub prompt_tokens: u64,
+    /// Completion/output tokens.
+    pub completion_tokens: u64,
+    /// Total tokens.
+    pub total_tokens: u64,
+}
+```
+
+```rust
+pub struct JudgeProvenance {
+    /// OpenAI-compatible endpoint.
+    pub endpoint: String,
+    /// Judge model.
+    pub model: String,
+    /// SHA-256 hash of the full user prompt sent to the judge.
+    pub prompt_sha256: String,
+    /// SHA-256 hash of the raw provider response body.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub raw_response_sha256: Option<String>,
+    /// Body reference for external storage; currently the response hash URN.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub raw_response_body_ref: Option<String>,
+    /// Provider request ID from headers or response JSON.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub request_id: Option<String>,
+    /// Provider token usage, when reported.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub usage: Option<JudgeUsage>,
+    /// HTTP status returned by the provider.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub provider_status: Option<u16>,
+    /// Parse/provider outcome.
+    pub parse_status: JudgeParseStatus,
 }
 ```
 
@@ -80,6 +162,8 @@ pub struct LlmJudgeConfig {
     pub max_tokens: u32,
     /// Temperature (default 0.0 for deterministic judging).
     pub temperature: f32,
+    /// Explicit HTTP timeout for one judge request.
+    pub timeout: Duration,
 }
 ```
 
@@ -90,7 +174,7 @@ pub const DEFAULT_JUDGE_MODEL: &str = "gpt-4o";
 
 ```rust
 impl LlmJudge {
-    pub async fn judge (&self, question: &str, actual: &str, expected: &str) -> Result<JudgeScore>;
+    pub async fn judge (&self, question: &str, actual: &str, expected: &[String]) -> JudgeScore;
 }
 ```
 
@@ -105,7 +189,15 @@ pub struct LocomoDataset {
 ```rust
 impl LocomoDataset {
     pub async fn from_path (path: impl AsRef<Path> + Send) -> io::Result<Self>;
+    pub async fn from_path_with_options (
+        path: impl AsRef<Path> + Send,
+        mut options: BenchmarkValidationOptions,
+    ) -> io::Result<(Self, BenchmarkValidationReport)>;
     pub fn from_bytes (bytes: &[u8]) -> io::Result<Self>;
+    pub fn from_bytes_with_options (
+        bytes: &[u8],
+        options: &BenchmarkValidationOptions,
+    ) -> io::Result<(Self, BenchmarkValidationReport)>;
     pub fn question_count (&self) -> usize;
 }
 ```
@@ -121,7 +213,15 @@ pub struct LongMemEvalDataset {
 ```rust
 impl LongMemEvalDataset {
     pub async fn from_path (path: impl AsRef<Path> + Send) -> io::Result<Self>;
+    pub async fn from_path_with_options (
+        path: impl AsRef<Path> + Send,
+        mut options: BenchmarkValidationOptions,
+    ) -> io::Result<(Self, BenchmarkValidationReport)>;
     pub fn from_bytes (bytes: &[u8]) -> io::Result<Self>;
+    pub fn from_bytes_with_options (
+        bytes: &[u8],
+        options: &BenchmarkValidationOptions,
+    ) -> io::Result<(Self, BenchmarkValidationReport)>;
 }
 ```
 
@@ -146,6 +246,10 @@ impl BenchmarkScore {
 
 ```rust
 pub fn score_answer (actual: &str, expected: &[String]) -> BenchmarkScore
+```
+
+```rust
+pub fn normalized_content_ref (content: &str) -> String
 ```
 
 ```rust
@@ -179,6 +283,8 @@ pub struct BenchmarkQuestion {
     pub question: String,
     /// The ground-truth answer(s). Multiple acceptable answers may be listed.
     pub expected_answers: Vec<String>,
+    /// Expected evidence or fact references supplied by the source dataset.
+    pub expected_evidence_refs: Vec<String>,
     /// Category label for per-ability scoring (e.g. "temporal", "multi-session").
     pub category: String,
 }
@@ -219,6 +325,12 @@ pub struct BenchmarkMetadata {
     /// Git SHA of the build or invocation, when known.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub git_sha: Option<String>,
+    /// Whether malformed or incomplete dataset records were allowed.
+    #[serde(default)]
+    pub dataset_best_effort: bool,
+    /// Dataset validation diagnostics captured before execution.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub dataset_validation: Option<BenchmarkValidationReport>,
 }
 ```
 
@@ -259,6 +371,9 @@ pub struct QuestionResult {
     pub actual_answer: String,
     /// The expected answers (ground truth, may have multiple valid forms).
     pub expected_answers: Vec<String>,
+    /// Expected evidence/fact references from the dataset, when available.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub expected_evidence_refs: Vec<String>,
     /// Best score across all expected answers.
     pub score: BenchmarkScore,
     /// Optional LLM-as-judge score (populated when judge is configured).
@@ -266,13 +381,52 @@ pub struct QuestionResult {
     pub judge_score: Option<judge::JudgeScore>,
     /// Optional retrieval metrics: facts retrieved for the question.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub retrieved_facts: Option<Vec<String>>,
+    pub retrieved_facts: Option<Vec<RetrievedFact>>,
+    /// Retrieval scoring basis and relevant refs used for metrics.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub retrieval_scoring: Option<RetrievalScoring>,
     /// Optional retrieval metric: Recall@k.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub recall_at_k: Option<f64>,
     /// Optional retrieval metric: NDCG@k.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ndcg_at_k: Option<f64>,
+}
+```
+
+```rust
+pub struct RetrievedFact {
+    /// Fact ID returned by the knowledge API, when present.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub id: Option<String>,
+    /// Stable display reference for this retrieved fact.
+    pub reference: String,
+    /// Knowledge API relevance score.
+    pub score: f64,
+    /// Stored fact confidence.
+    pub confidence: f64,
+    /// SHA-256 hash of the fact content.
+    pub content_sha256: String,
+}
+```
+
+```rust
+pub enum RetrievalScoringMode {
+    /// Dataset evidence/fact refs were used as the relevance set.
+    EvidenceId,
+    /// Dataset lacks evidence refs; normalized content hashes were used.
+    NormalizedContent,
+}
+```
+
+```rust
+pub struct RetrievalScoring {
+    /// Relevance basis used for Recall@k and NDCG@k.
+    pub mode: RetrievalScoringMode,
+    /// Whether the normalized-content fallback was used.
+    pub fallback_used: bool,
+    /// Relevant refs compared against retrieved facts.
+    pub relevant_refs: Vec<String>,
 }
 ```
 
@@ -290,6 +444,9 @@ pub struct BenchmarkReport {
     pub timeouts: usize,
     /// Questions that returned an empty answer.
     pub no_answers: usize,
+    /// LLM judge denominator summary, when judge scoring was attempted.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub judge_summary: Option<JudgeSummary>,
     /// Per-question results.
     pub questions: Vec<QuestionResult>,
     /// Shared provenance envelope for this benchmark run.
@@ -304,6 +461,19 @@ pub struct BenchmarkReport {
     /// Absent in reports produced without statistical analysis.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub statistics: Option<BenchmarkStatistics>,
+}
+```
+
+```rust
+pub struct JudgeSummary {
+    /// Questions for which judge scoring was attempted.
+    pub attempted: usize,
+    /// Judge attempts that returned a parsed judgment.
+    pub scored: usize,
+    /// Judge attempts that failed, timed out, refused, or returned malformed data.
+    pub errors: usize,
+    /// Parsed judge judgments marked correct.
+    pub correct: usize,
 }
 ```
 
@@ -359,6 +529,18 @@ pub async fn load_longmemeval (
 ) -> std::io::Result<longmemeval::LongMemEvalDataset>
 ```
 
+> Load and validate a `LongMemEval` dataset from a JSON file on disk.
+> 
+> # Errors
+> 
+> Returns an error if the file cannot be read, parsed, or validated.
+```rust
+pub async fn load_longmemeval_with_options (
+    path: impl AsRef<Path> + Send,
+    options: BenchmarkValidationOptions,
+) -> std::io::Result<(longmemeval::LongMemEvalDataset, BenchmarkValidationReport)>
+```
+
 > Load a `LoCoMo` dataset from a JSON file on disk.
 > 
 > # Errors
@@ -367,6 +549,18 @@ pub async fn load_longmemeval (
 > expected `LoCoMo` format.
 ```rust
 pub async fn load_locomo (path: impl AsRef<Path> + Send) -> std::io::Result<locomo::LocomoDataset>
+```
+
+> Load and validate a `LoCoMo` dataset from a JSON file on disk.
+> 
+> # Errors
+> 
+> Returns an error if the file cannot be read, parsed, or validated.
+```rust
+pub async fn load_locomo_with_options (
+    path: impl AsRef<Path> + Send,
+    options: BenchmarkValidationOptions,
+) -> std::io::Result<(locomo::LocomoDataset, BenchmarkValidationReport)>
 ```
 
 ## `src/benchmarks/runner.rs`
@@ -412,6 +606,101 @@ impl BenchmarkRunner {
     pub fn new (client: EvalClient, config: BenchmarkRunnerConfig) -> Self;
     pub async fn run (&self, benchmark: &dyn MemoryBenchmark) -> Result<BenchmarkReport>;
 }
+```
+
+## `src/benchmarks/validation.rs`
+
+```rust
+pub struct BenchmarkValidationOptions {
+    /// Dataset path for diagnostics.
+    pub dataset_path: Option<String>,
+    /// Downgrade incomplete records and unknown categories to warnings.
+    pub allow_best_effort: bool,
+    /// Require question-level retrieval evidence references.
+    pub require_retrieval_evidence: bool,
+}
+```
+
+```rust
+impl BenchmarkValidationOptions {
+    pub fn strict () -> Self;
+    pub fn strict_for_path (path: impl Into<String>) -> Self;
+}
+```
+
+```rust
+pub struct BenchmarkValidationReport {
+    /// Dataset name.
+    pub dataset: String,
+    /// Dataset path used for diagnostics.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub dataset_path: Option<String>,
+    /// Whether best-effort validation was requested.
+    pub best_effort: bool,
+    /// Whether retrieval evidence refs were required.
+    pub require_retrieval_evidence: bool,
+    /// Fatal validation errors.
+    #[serde(default)]
+    pub errors: Vec<BenchmarkValidationIssue>,
+    /// Best-effort validation warnings.
+    #[serde(default)]
+    pub warnings: Vec<BenchmarkValidationIssue>,
+}
+```
+
+```rust
+impl BenchmarkValidationReport {
+    pub fn new (dataset: impl Into<String>, options: &BenchmarkValidationOptions) -> Self;
+    pub fn error (
+        &mut self,
+        record_id: Option<String>,
+        question_id: Option<String>,
+        field: impl Into<String>,
+        message: impl Into<String>,
+    );
+    pub fn issue (
+        &mut self,
+        options: &BenchmarkValidationOptions,
+        record_id: Option<String>,
+        question_id: Option<String>,
+        field: impl Into<String>,
+        message: impl Into<String>,
+    );
+    pub fn into_result (self) -> io::Result<Self>;
+    pub fn error_summary (&self) -> String;
+}
+```
+
+```rust
+pub struct BenchmarkValidationIssue {
+    /// Dataset path that contained the invalid record.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub dataset_path: Option<String>,
+    /// Dataset record/conversation identifier when known.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub record_id: Option<String>,
+    /// Question identifier when known.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub question_id: Option<String>,
+    /// Invalid field name.
+    pub field: String,
+    /// Human-readable diagnostic.
+    pub message: String,
+}
+```
+
+```rust
+pub fn clean_refs (refs: &[String]) -> Vec<String>
+```
+
+> Deserialize evidence refs from absent/null, a string, or a string array.
+> 
+> # Errors
+> 
+> Returns a serde error when the field is neither a string nor a string array.
+```rust
+pub fn deserialize_string_list <'de, D> (deserializer: D) -> Result<Vec<String>, D::Error> where
+    D: serde::Deserializer<'de>,
 ```
 
 ## `src/client.rs`
@@ -586,7 +875,7 @@ pub struct HistoryMessage {
 ```rust
 pub struct KnowledgeSearchResponse {
     /// Matching facts ordered by relevance.
-    #[serde(default)]
+    #[serde(default, alias = "results")]
     pub facts: Vec<KnowledgeFact>,
 }
 ```
@@ -602,6 +891,9 @@ pub struct KnowledgeFact {
     /// Confidence score (0.0 to 1.0).
     #[serde(default)]
     pub confidence: f64,
+    /// Search relevance score.
+    #[serde(default)]
+    pub score: f64,
 }
 ```
 
