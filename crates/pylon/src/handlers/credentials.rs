@@ -140,7 +140,6 @@ pub async fn add_credential(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Credential not found"),
-        (status = 409, description = "Cannot remove the last primary credential for the provider"),
     ),
     security(("bearer_auth" = []))
 )]
@@ -204,6 +203,7 @@ pub async fn rotate_credentials(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Credential not found"),
+        (status = 409, description = "Cannot remove the last primary credential for the provider"),
     ),
     security(("bearer_auth" = []))
 )]

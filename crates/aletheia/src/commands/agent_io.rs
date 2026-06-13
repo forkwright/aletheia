@@ -754,7 +754,7 @@ fn capitalize(s: &str) -> String {
 enum ImportError {
     #[snafu(display(
         "agent file is version {version} but importer requires v{expected}. \
-         Re-export from the source instance — there is no in-place migration. See #4163."
+         Re-export from the source instance; there is no in-place migration. See #4163."
     ))]
     VersionMismatch { version: u32, expected: u32 },
 
@@ -766,10 +766,8 @@ enum ImportError {
     },
 }
 
-impl From<ImportError> for crate::error::Error {
-    fn from(err: ImportError) -> Self {
-        crate::error::Error::msg(err.to_string())
-    }
+fn import_error(err: ImportError) -> crate::error::Error {
+    crate::error::Error::msg(err.to_string())
 }
 
 fn parse_session_status(
@@ -848,11 +846,10 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
 
     if agent_file.version != mneme::portability::AGENT_FILE_VERSION {
-        return Err(ImportError::VersionMismatch {
+        return Err(import_error(ImportError::VersionMismatch {
             version: agent_file.version,
             expected: mneme::portability::AGENT_FILE_VERSION,
-        }
-        .into());
+        }));
     }
 
     // WARNING(#4241): if --target-id is absent, the imported nous.id is
@@ -1047,12 +1044,14 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
 
         for session in &agent_file.sessions {
             let status =
-                parse_session_status(&session.status, &session.id, args.allow_unknown_values)?;
+                parse_session_status(&session.status, &session.id, args.allow_unknown_values)
+                    .map_err(import_error)?;
             let session_type = parse_session_type(
                 &session.session_type,
                 &session.id,
                 args.allow_unknown_values,
-            )?;
+            )
+            .map_err(import_error)?;
 
             let imported = store
                 .import_session(
@@ -1087,7 +1086,8 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                 .with_whatever_context(|_| format!("failed to import session {}", session.id))?;
 
             for msg in &session.messages {
-                let role = parse_message_role(&msg.role, &session.id, args.allow_unknown_values)?;
+                let role = parse_message_role(&msg.role, &session.id, args.allow_unknown_values)
+                    .map_err(import_error)?;
                 store
                     .insert_message_raw(&mneme::types::Message {
                         id: msg.seq,
@@ -2483,7 +2483,6 @@ workspace = "nous/{agent_id}"
                 nous_id: "alice".to_owned(),
                 force: false,
                 dry_run: false,
-                allow_unknown_values: false,
             },
         )
         .unwrap();

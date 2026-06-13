@@ -441,16 +441,9 @@ impl SessionStore {
                 session.status = SessionStatus::Active;
                 session.updated_at = now_iso();
 
-                let data = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
                 let mut tx = self.db.write_tx();
-                tx.insert(&sessions_part, session.id.as_str(), data.as_slice());
                 Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-                let new_nous_key = Self::session_nous_index_key(
-                    &session.nous_id,
-                    &session.updated_at,
-                    &session.id,
-                );
-                tx.insert(&sessions_part, new_nous_key.as_str(), b"");
+                Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
                 tx.commit().map_err(|e| {
                     error::StorageSnafu {
                         message: format!("fjall reactivate session: {e}"),
@@ -578,12 +571,9 @@ impl SessionStore {
         session.status = status;
         session.updated_at = now_iso();
 
-        let data = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
         let mut tx = self.db.write_tx();
-        tx.insert(&sessions_part, id, data.as_slice());
         Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-        let new_nous_key = Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
-        tx.insert(&sessions_part, new_nous_key.as_str(), b"");
+        Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall commit failed (session_status write): {e}"),
@@ -609,12 +599,9 @@ impl SessionStore {
         session.origin.display_name = Some(display_name.to_owned());
         session.updated_at = now_iso();
 
-        let data = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
         let mut tx = self.db.write_tx();
-        tx.insert(&sessions_part, id, data.as_slice());
         Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-        let new_nous_key = Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
-        tx.insert(&sessions_part, new_nous_key.as_str(), b"");
+        Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall commit failed (display_name write): {e}"),
@@ -822,7 +809,6 @@ impl SessionStore {
         session.metrics.message_count += 1;
         session.metrics.token_count_estimate += token_estimate;
         session.updated_at = now_iso();
-        let session_data = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
 
         let counters_part = self.partition("counters")?;
 
@@ -830,11 +816,8 @@ impl SessionStore {
         tx.insert(&messages_part, msg_key.as_str(), msg_data.as_slice());
         tx.insert(&messages_part, next_seq_key.as_str(), encode_u64(seq));
         tx.insert(&counters_part, "msg_id", encode_u64(msg_id_counter));
-        tx.insert(&sessions_part, session_id, session_data.as_slice());
         Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-        let new_nous_key =
-            Self::session_nous_index_key(&session.nous_id, &session.updated_at, session_id);
-        tx.insert(&sessions_part, new_nous_key.as_str(), b"");
+        Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall append_message commit: {e}"),

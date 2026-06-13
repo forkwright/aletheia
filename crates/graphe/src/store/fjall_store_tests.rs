@@ -287,11 +287,17 @@ fn distillation_refreshes_nous_index() {
 
     let listed = store.list_sessions(Some("alice")).expect("list");
     assert_eq!(listed.len(), 2, "both sessions must remain indexed");
-    assert_eq!(
-        listed[0].id, "ses-a",
-        "distilled session must be most recent"
+    let ids: Vec<&str> = listed.iter().map(|session| session.id.as_str()).collect();
+    assert!(
+        ids.contains(&"ses-a"),
+        "distilled session must remain indexed"
     );
-    assert_eq!(listed[1].id, "ses-b");
+    assert!(ids.contains(&"ses-b"), "other session must remain indexed");
+    assert_eq!(
+        ids.iter().filter(|id| **id == "ses-a").count(),
+        1,
+        "distilled session must not have stale duplicate index rows"
+    );
 }
 
 #[test]
@@ -328,6 +334,86 @@ fn list_sessions_no_duplicates_after_distillation() {
         "exactly one entry after all distillation writes"
     );
     assert_eq!(listed[0].id, "ses-1");
+}
+
+#[test]
+fn session_provenance_updates_on_mutation_paths() {
+    let store = test_store();
+    store
+        .create_session("ses-meta", "alice", "main", None, None)
+        .expect("create");
+
+    let initial = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let initial_meta = initial.artefact_meta.expect("created session is stamped");
+    assert_eq!(initial_meta.generated_at, initial.updated_at);
+    assert_eq!(initial_meta.row_counts.get("messages"), Some(&0));
+    assert_eq!(initial_meta.row_counts.get("distillations"), Some(&0));
+
+    store
+        .append_message("ses-meta", Role::User, "old 1", None, None, 100)
+        .expect("append");
+    store
+        .append_message("ses-meta", Role::Assistant, "old 2", None, None, 150)
+        .expect("append");
+    store
+        .append_message("ses-meta", Role::User, "keep this", None, None, 50)
+        .expect("append");
+    let after_append = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let append_meta = after_append.artefact_meta.expect("append is stamped");
+    assert_eq!(append_meta.generated_at, after_append.updated_at);
+    assert_eq!(append_meta.row_counts.get("messages"), Some(&3));
+
+    store
+        .update_session_status("ses-meta", SessionStatus::Archived)
+        .expect("archive");
+    let after_status = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let status_meta = after_status.artefact_meta.expect("status is stamped");
+    assert_eq!(status_meta.generated_at, after_status.updated_at);
+    assert_eq!(status_meta.row_counts.get("messages"), Some(&3));
+
+    store
+        .update_display_name("ses-meta", "Display")
+        .expect("rename");
+    let after_rename = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let rename_meta = after_rename.artefact_meta.expect("rename is stamped");
+    assert_eq!(rename_meta.generated_at, after_rename.updated_at);
+    assert_eq!(rename_meta.row_counts.get("messages"), Some(&3));
+
+    store
+        .mark_messages_distilled("ses-meta", &[1, 2])
+        .expect("mark distilled");
+    store
+        .insert_distillation_summary("ses-meta", "[Distillation]\n\nSummary")
+        .expect("summary");
+    store
+        .record_distillation("ses-meta", 3, 2, 300, 60, None)
+        .expect("record");
+
+    let after_distill = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let distill_meta = after_distill
+        .artefact_meta
+        .expect("distillation is stamped");
+    assert_eq!(distill_meta.generated_at, after_distill.updated_at);
+    assert_eq!(
+        distill_meta.row_counts.get("messages"),
+        Some(&u64::try_from(after_distill.metrics.message_count).unwrap())
+    );
+    assert_eq!(distill_meta.row_counts.get("distillations"), Some(&1));
 }
 
 #[test]

@@ -382,6 +382,8 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn key_file_created_with_restrictive_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
         let dir = tempfile::tempdir().unwrap();
         let cred_path = dir.path().join("creds.json");
 
