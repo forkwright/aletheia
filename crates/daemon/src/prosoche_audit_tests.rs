@@ -282,26 +282,91 @@ async fn session_quality_check_all_abandoned_flagged_when_five_or_more() {
 // ── InstinctPatternsCheck ─────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn instinct_patterns_check_stub_returns_speculative_finding() {
+async fn instinct_patterns_check_empty_state_returns_no_findings() {
     let check = InstinctPatternsCheck;
     let state = make_state("test-nous");
     let findings = check.check(&state).await;
-    assert_eq!(findings.len(), 1, "stub should return exactly one finding");
-    assert_eq!(
-        findings
-            .first()
-            .expect("at least one finding")
-            .evidence_level,
-        EvidenceLevel::Speculative,
-        "stub finding must be Speculative"
+    assert!(
+        findings.is_empty(),
+        "empty behavior input should not emit a fixed stub finding"
+    );
+}
+
+#[tokio::test]
+async fn instinct_patterns_check_detects_behavioral_patterns() {
+    let check = InstinctPatternsCheck;
+    let mut state = make_state("test-nous");
+    state.sessions = vec![SessionSnapshot {
+        session_id: "s-pattern".to_owned(),
+        turn_count: 8,
+        error_count: 4,
+        completed: false,
+        turn_text: "synthetic session transcript".to_owned(),
+    }];
+    state.behavior_patterns = vec![BehaviorPatternSnapshot {
+        session_id: "s-pattern".to_owned(),
+        tool_call_count: 6,
+        tool_error_count: 4,
+        repeated_action_count: 2,
+        no_progress_turns: 2,
+        avoidance_markers: 3,
+        confidence_claims: 3,
+    }];
+
+    let findings = check.check(&state).await;
+    assert!(
+        findings.len() >= 3,
+        "behavior counters should produce multiple pattern findings: {findings:?}"
     );
     assert!(
         findings
-            .first()
-            .expect("at least one finding")
-            .finding_id
-            .contains("INSTINCT-STUB"),
-        "stub finding ID should include INSTINCT-STUB"
+            .iter()
+            .any(|finding| finding.finding_id.contains("INSTINCT-LOOP")),
+        "loop/no-progress pattern should be detected"
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.finding_id.contains("INSTINCT-TOOLS")),
+        "tool outcome pattern should be detected"
+    );
+    assert!(
+        findings
+            .iter()
+            .all(|finding| !finding.finding_id.contains("STUB")),
+        "real implementation must not emit stub IDs"
+    );
+
+    for finding in findings {
+        let support = finding.stats.support.expect("support metadata");
+        assert!(!support.is_stub, "instinct findings must not be stubs");
+        assert!(support.is_heuristic, "instinct findings are heuristic");
+        assert_eq!(finding.evidence_level, EvidenceLevel::Exploratory);
+    }
+}
+
+#[tokio::test]
+async fn instinct_patterns_text_fallback_is_speculative() {
+    let check = InstinctPatternsCheck;
+    let mut state = make_state("test-nous");
+    state.sessions = vec![SessionSnapshot {
+        session_id: "s-text".to_owned(),
+        turn_count: 6,
+        error_count: 1,
+        completed: false,
+        turn_text: "still failing same error retry again definitely will work".to_owned(),
+    }];
+
+    let findings = check.check(&state).await;
+    assert!(
+        !findings.is_empty(),
+        "text fallback should detect weak pattern evidence"
+    );
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.evidence_level == EvidenceLevel::Speculative),
+        "text-only evidence must stay speculative"
     );
 }
 
@@ -430,7 +495,7 @@ async fn report_provenance_records_check_versions_and_hashes() {
             .checks
             .iter()
             .any(|check| check.kind == ProsocheCheckKind::InstinctPatterns
-                && check.maturity == CheckMaturity::Stub)
+                && check.maturity == CheckMaturity::Heuristic)
     );
 }
 

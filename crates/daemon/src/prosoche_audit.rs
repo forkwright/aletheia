@@ -60,9 +60,6 @@ pub enum ProsocheCheckKind {
     /// Evaluate whether sessions produce actionable outcomes (error rate, completion rate).
     SessionQuality,
     /// Detect recurring patterns in agent behavior (loops, avoidance, over-confidence).
-    ///
-    /// v1: stub — defines the trait shape. Full semantics need gnomon weights.
-    /// Tracked in follow-up issue.
     InstinctPatterns,
 }
 
@@ -115,6 +112,10 @@ pub struct ProsocheState {
     ///
     /// Used by [`SessionQualityCheck`] and [`GoalAlignmentCheck`].
     pub sessions: Vec<SessionSnapshot>,
+    /// Recent behavioral pattern counters sampled from runtime/session history.
+    ///
+    /// Used by [`InstinctPatternsCheck`].
+    pub behavior_patterns: Vec<BehaviorPatternSnapshot>,
     /// Recent facts for consistency and staleness checks.
     ///
     /// Each entry is `(fact_id, content, last_touched_days_ago)`.
@@ -133,6 +134,7 @@ impl ProsocheState {
         let mut parts = Vec::new();
         parts.push(format!("nous_id={}", self.nous_id));
         parts.push(format!("goals={}", self.stated_goals.len()));
+        parts.push(format!("behavior={}", self.behavior_patterns.len()));
 
         let mut facts: Vec<_> = self
             .facts
@@ -162,6 +164,25 @@ impl ProsocheState {
         sessions.sort();
         parts.extend(sessions);
 
+        let mut behavior: Vec<_> = self
+            .behavior_patterns
+            .iter()
+            .map(|b| {
+                format!(
+                    "behavior:{}:tools={}:tool_errors={}:repeats={}:no_progress={}:avoidance={}:confidence={}",
+                    b.session_id,
+                    b.tool_call_count,
+                    b.tool_error_count,
+                    b.repeated_action_count,
+                    b.no_progress_turns,
+                    b.avoidance_markers,
+                    b.confidence_claims
+                )
+            })
+            .collect();
+        behavior.sort();
+        parts.extend(behavior);
+
         stable_hash(&parts.join("\n"))
     }
 
@@ -174,6 +195,7 @@ impl ProsocheState {
         let mut parts = Vec::new();
         parts.push(format!("nous_id={}", self.nous_id));
         parts.push(format!("goals={}", self.stated_goals.len()));
+        parts.push(format!("behavior={}", self.behavior_patterns.len()));
 
         let mut facts: Vec<_> = self
             .facts
@@ -207,6 +229,25 @@ impl ProsocheState {
             .collect();
         sessions.sort();
         parts.extend(sessions);
+
+        let mut behavior: Vec<_> = self
+            .behavior_patterns
+            .iter()
+            .map(|b| {
+                format!(
+                    "behavior:{}:tools={}:tool_errors={}:repeats={}:no_progress={}:avoidance={}:confidence={}",
+                    b.session_id,
+                    b.tool_call_count,
+                    b.tool_error_count,
+                    b.repeated_action_count,
+                    b.no_progress_turns,
+                    b.avoidance_markers,
+                    b.confidence_claims
+                )
+            })
+            .collect();
+        behavior.sort();
+        parts.extend(behavior);
 
         stable_hash(&parts.join("\n"))
     }
@@ -243,6 +284,26 @@ pub struct SessionSnapshot {
     /// Used for goal-alignment keyword matching. Only hashes of this value are
     /// persisted in durable reports.
     pub turn_text: String,
+}
+
+/// Behavioral counters for one recent session.
+#[derive(Debug, Clone, Default)]
+pub struct BehaviorPatternSnapshot {
+    /// Session identifier that owns the behavior sample.
+    // kanon:ignore RUST/primitive-for-domain-id — BehaviorPatternSnapshot is an ephemeral audit input keyed by external session ids
+    pub session_id: String,
+    /// Tool calls attempted during the sampled window.
+    pub tool_call_count: u32,
+    /// Tool calls that returned errors during the sampled window.
+    pub tool_error_count: u32,
+    /// Repeated actions or near-identical attempts observed in the window.
+    pub repeated_action_count: u32,
+    /// Turns explicitly marked as stuck, looping, or making no progress.
+    pub no_progress_turns: u32,
+    /// Markers indicating deferral, skipping, or avoidance of the stated task.
+    pub avoidance_markers: u32,
+    /// High-confidence assertions or tool-selection claims.
+    pub confidence_claims: u32,
 }
 
 /// A single prosoche self-audit check.
@@ -1039,28 +1100,171 @@ impl ProsocheCheck for SessionQualityCheck {
 
 /// Detect recurring patterns in agent behavior.
 ///
-/// v1: stub implementation. The trait shape and variant are correct; the
-/// pattern detection logic requires gnomon behavioral weights and a session
-/// history longer than what's available in `ProsocheState`.
-///
-/// # Follow-up
-///
-/// Full implementation tracked separately. When gnomon weights are available:
-/// 1. Sample the last N session summaries.
-/// 2. Run behavioural pattern detection (loop detection, avoidance bias,
-///    over-confidence in tool selection).
-/// 3. Emit `Speculative` findings for patterns that exceed a threshold.
+/// v1 heuristic: combines typed behavior counters with lightweight text
+/// markers inferred from recent session turn text. Typed counters carry
+/// `Exploratory` evidence; text-only fallback findings remain `Speculative`.
 pub struct InstinctPatternsCheck;
 
 impl InstinctPatternsCheck {
+    const MIN_TURNS: u32 = 4;
+    const LOOP_MARKER_THRESHOLD: u32 = 3;
+    const TOOL_ERROR_RATE_THRESHOLD: f64 = 0.5;
+    const AVOIDANCE_MARKER_THRESHOLD: u32 = 3;
+    const CONFIDENCE_MARKER_THRESHOLD: u32 = 3;
+
     fn query_hash(state: &ProsocheState) -> String {
         let mut parts: Vec<String> = state
             .sessions
             .iter()
-            .map(|s| format!("session:{}:turns={}", s.session_id, s.turn_count))
+            .map(|s| {
+                format!(
+                    "session:{}:turns={}:errors={}:completed={}:turn_hash={}",
+                    s.session_id,
+                    s.turn_count,
+                    s.error_count,
+                    s.completed,
+                    stable_hash(&s.turn_text)
+                )
+            })
             .collect();
+        parts.extend(state.behavior_patterns.iter().map(|b| {
+            format!(
+                "behavior:{}:tools={}:tool_errors={}:repeats={}:no_progress={}:avoidance={}:confidence={}",
+                b.session_id,
+                b.tool_call_count,
+                b.tool_error_count,
+                b.repeated_action_count,
+                b.no_progress_turns,
+                b.avoidance_markers,
+                b.confidence_claims
+            )
+        }));
         parts.sort();
         stable_hash(&parts.join("\n"))
+    }
+}
+
+#[derive(Debug)]
+struct BehaviorSample {
+    session_id: String,
+    turn_count: u32,
+    completed: bool,
+    turn_hash: String,
+    tool_call_count: u32,
+    tool_error_count: u32,
+    repeated_action_count: u32,
+    no_progress_turns: u32,
+    avoidance_markers: u32,
+    confidence_claims: u32,
+    inferred_from_text: bool,
+}
+
+fn behavior_samples(state: &ProsocheState) -> Vec<BehaviorSample> {
+    let mut samples = Vec::new();
+
+    for behavior in &state.behavior_patterns {
+        let session = state
+            .sessions
+            .iter()
+            .find(|session| session.session_id == behavior.session_id);
+        samples.push(BehaviorSample {
+            session_id: behavior.session_id.clone(),
+            turn_count: session.map_or(0, |session| session.turn_count),
+            completed: session.is_some_and(|session| session.completed),
+            turn_hash: session.map_or_else(
+                || stable_hash(&behavior.session_id),
+                |session| stable_hash(&session.turn_text),
+            ),
+            tool_call_count: behavior.tool_call_count,
+            tool_error_count: behavior.tool_error_count,
+            repeated_action_count: behavior.repeated_action_count,
+            no_progress_turns: behavior.no_progress_turns,
+            avoidance_markers: behavior.avoidance_markers,
+            confidence_claims: behavior.confidence_claims,
+            inferred_from_text: false,
+        });
+    }
+
+    for session in &state.sessions {
+        if state
+            .behavior_patterns
+            .iter()
+            .any(|behavior| behavior.session_id == session.session_id)
+        {
+            continue;
+        }
+        samples.push(infer_behavior_sample(session));
+    }
+
+    samples
+}
+
+fn infer_behavior_sample(session: &SessionSnapshot) -> BehaviorSample {
+    let lower = session.turn_text.to_lowercase();
+    let tool_call_count = count_markers(&lower, &["tool", "command", "search", "read", "write"]);
+    let tool_error_count =
+        count_markers(&lower, &["error", "failed", "failure", "timeout", "panic"])
+            .max(session.error_count);
+
+    BehaviorSample {
+        session_id: session.session_id.clone(),
+        turn_count: session.turn_count,
+        completed: session.completed,
+        turn_hash: stable_hash(&session.turn_text),
+        tool_call_count,
+        tool_error_count,
+        repeated_action_count: count_markers(&lower, &["again", "retry", "same error"]),
+        no_progress_turns: count_markers(
+            &lower,
+            &["no progress", "stuck", "still failing", "loop", "blocked"],
+        ),
+        avoidance_markers: count_markers(
+            &lower,
+            &["defer", "later", "skip", "avoid", "not necessary", "cannot"],
+        ),
+        confidence_claims: count_markers(
+            &lower,
+            &[
+                "definitely",
+                "guaranteed",
+                "certain",
+                "obviously",
+                "will work",
+            ],
+        ),
+        inferred_from_text: true,
+    }
+}
+
+fn count_markers(haystack: &str, markers: &[&str]) -> u32 {
+    let count = markers
+        .iter()
+        .map(|marker| haystack.matches(marker).count())
+        .sum::<usize>();
+    u32::try_from(count).unwrap_or(u32::MAX)
+}
+
+fn sample_evidence_level(sample: &BehaviorSample) -> EvidenceLevel {
+    if sample.inferred_from_text {
+        EvidenceLevel::Speculative
+    } else {
+        EvidenceLevel::Exploratory
+    }
+}
+
+fn session_support(sample: &BehaviorSample, query_hash: &str) -> FindingSupport {
+    FindingSupport {
+        evidence_refs: vec![
+            EvidenceRef::Session {
+                session_id: sample.session_id.clone(),
+                turn_hash: sample.turn_hash.clone(),
+            },
+            EvidenceRef::Query {
+                query_hash: query_hash.to_owned(),
+            },
+        ],
+        is_stub: false,
+        is_heuristic: true,
     }
 }
 
@@ -1071,44 +1275,163 @@ impl ProsocheCheck for InstinctPatternsCheck {
         state: &'a ProsocheState,
     ) -> Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
         Box::pin(async move {
-            // v1 stub: gnomon behavioral weights not yet available.
-            // Shape is correct; semantics mature in a follow-up issue.
+            let query_hash = Self::query_hash(state);
+            let samples: Vec<_> = behavior_samples(state)
+                .into_iter()
+                .filter(|sample| {
+                    sample.turn_count >= Self::MIN_TURNS
+                        || sample.tool_call_count > 0
+                        || sample.no_progress_turns > 0
+                        || sample.avoidance_markers > 0
+                        || sample.confidence_claims > 0
+                })
+                .collect();
+            let mut findings = Vec::new();
+
+            for sample in &samples {
+                let loop_markers = sample
+                    .no_progress_turns
+                    .saturating_add(sample.repeated_action_count);
+                if loop_markers >= Self::LOOP_MARKER_THRESHOLD {
+                    let denominator = sample.turn_count.max(1);
+                    let rate = f64::from(loop_markers) / f64::from(denominator);
+                    findings.push(Finding {
+                        finding_id: format!("PROSOCHE-INSTINCT-LOOP-{}", findings.len() + 1),
+                        claim: format!(
+                            "Session '{}' shows {} loop/no-progress markers across {} turns.",
+                            sample.session_id, loop_markers, sample.turn_count
+                        ),
+                        evidence_level: sample_evidence_level(sample),
+                        counter_argument:
+                            "Repeated-attempt markers can be legitimate during hard debugging. \
+                             Confirm whether the session changed strategy before treating this \
+                             as behavioral drift."
+                                .to_owned(),
+                        source: "prosoche::InstinctPatternsCheck".to_owned(),
+                        stats: FindingStats {
+                            p_adjusted: None,
+                            effect_metric: Some("loop_marker_rate".to_owned()),
+                            effect_value: Some(rate),
+                            ci: None,
+                            sample_sizes: Some([
+                                usize::try_from(loop_markers).unwrap_or(usize::MAX),
+                                usize::try_from(denominator).unwrap_or(usize::MAX),
+                            ]),
+                            rate: Some(rate),
+                            support: Some(session_support(sample, &query_hash)),
+                        },
+                    });
+                }
+
+                if sample.tool_call_count >= 3 {
+                    let tool_error_rate =
+                        f64::from(sample.tool_error_count) / f64::from(sample.tool_call_count);
+                    if tool_error_rate >= Self::TOOL_ERROR_RATE_THRESHOLD {
+                        findings.push(Finding {
+                            finding_id: format!("PROSOCHE-INSTINCT-TOOLS-{}", findings.len() + 1),
+                            claim: format!(
+                                "Session '{}' has a {:.0}% tool-error rate ({}/{} tool calls).",
+                                sample.session_id,
+                                tool_error_rate * 100.0,
+                                sample.tool_error_count,
+                                sample.tool_call_count
+                            ),
+                            evidence_level: sample_evidence_level(sample),
+                            counter_argument:
+                                "Tool failures may come from unavailable dependencies or expected \
+                                 negative probes. Review the underlying calls before attributing \
+                                 the pattern to agent behavior."
+                                    .to_owned(),
+                            source: "prosoche::InstinctPatternsCheck".to_owned(),
+                            stats: FindingStats {
+                                p_adjusted: None,
+                                effect_metric: Some("tool_error_rate".to_owned()),
+                                effect_value: Some(tool_error_rate),
+                                ci: None,
+                                sample_sizes: Some([
+                                    usize::try_from(sample.tool_error_count).unwrap_or(usize::MAX),
+                                    usize::try_from(sample.tool_call_count).unwrap_or(usize::MAX),
+                                ]),
+                                rate: Some(tool_error_rate),
+                                support: Some(session_support(sample, &query_hash)),
+                            },
+                        });
+                    }
+                }
+
+                if !sample.completed && sample.avoidance_markers >= Self::AVOIDANCE_MARKER_THRESHOLD
+                {
+                    let denominator = sample.turn_count.max(1);
+                    let rate = f64::from(sample.avoidance_markers) / f64::from(denominator);
+                    findings.push(Finding {
+                        finding_id: format!("PROSOCHE-INSTINCT-AVOIDANCE-{}", findings.len() + 1),
+                        claim: format!(
+                            "Session '{}' has {} avoidance markers and did not complete.",
+                            sample.session_id, sample.avoidance_markers
+                        ),
+                        evidence_level: sample_evidence_level(sample),
+                        counter_argument:
+                            "Deferral language can reflect correct prioritization or missing \
+                             authority. Treat this as a review prompt, not proof of avoidance."
+                                .to_owned(),
+                        source: "prosoche::InstinctPatternsCheck".to_owned(),
+                        stats: FindingStats {
+                            p_adjusted: None,
+                            effect_metric: Some("avoidance_marker_rate".to_owned()),
+                            effect_value: Some(rate),
+                            ci: None,
+                            sample_sizes: Some([
+                                usize::try_from(sample.avoidance_markers).unwrap_or(usize::MAX),
+                                usize::try_from(denominator).unwrap_or(usize::MAX),
+                            ]),
+                            rate: Some(rate),
+                            support: Some(session_support(sample, &query_hash)),
+                        },
+                    });
+                }
+
+                if sample.confidence_claims >= Self::CONFIDENCE_MARKER_THRESHOLD
+                    && sample.tool_error_count > 0
+                {
+                    let denominator = sample.turn_count.max(1);
+                    let rate = f64::from(sample.confidence_claims) / f64::from(denominator);
+                    findings.push(Finding {
+                        finding_id: format!("PROSOCHE-INSTINCT-CONFIDENCE-{}", findings.len() + 1),
+                        claim: format!(
+                            "Session '{}' pairs {} confidence markers with {} tool errors.",
+                            sample.session_id, sample.confidence_claims, sample.tool_error_count
+                        ),
+                        evidence_level: sample_evidence_level(sample),
+                        counter_argument:
+                            "Confidence markers may appear in quoted text or user instructions. \
+                             Confirm speaker attribution before treating this as over-confidence."
+                                .to_owned(),
+                        source: "prosoche::InstinctPatternsCheck".to_owned(),
+                        stats: FindingStats {
+                            p_adjusted: None,
+                            effect_metric: Some("confidence_marker_rate".to_owned()),
+                            effect_value: Some(rate),
+                            ci: None,
+                            sample_sizes: Some([
+                                usize::try_from(sample.confidence_claims).unwrap_or(usize::MAX),
+                                usize::try_from(denominator).unwrap_or(usize::MAX),
+                            ]),
+                            rate: Some(rate),
+                            support: Some(session_support(sample, &query_hash)),
+                        },
+                    });
+                }
+            }
+
             tracing::info!(
                 nous_id = %state.nous_id,
                 check_kind = %ProsocheCheckKind::InstinctPatterns,
-                findings_count = 1,
-                stub = true,
-                "prosoche audit complete (stub — gnomon weights needed)"
+                findings_count = findings.len(),
+                samples = samples.len(),
+                "prosoche audit complete"
             );
 
-            // WHY: return a single speculative finding noting the stub state, so
-            // the operator knows this check ran but has no depth yet.
-            vec![Finding {
-                finding_id: "PROSOCHE-INSTINCT-STUB-001".to_owned(),
-                claim: "InstinctPatternsCheck is a v1 stub; no behavioral pattern data is \
-                        available yet. Full detection requires gnomon weights."
-                    .to_owned(),
-                evidence_level: EvidenceLevel::Speculative,
-                counter_argument: "This finding is itself speculative — it confirms absence of \
-                                   implementation, not absence of patterns."
-                    .to_owned(),
-                source: "prosoche::InstinctPatternsCheck".to_owned(),
-                stats: FindingStats {
-                    p_adjusted: None,
-                    effect_metric: None,
-                    effect_value: None,
-                    ci: None,
-                    sample_sizes: None,
-                    rate: None,
-                    support: Some(FindingSupport {
-                        evidence_refs: vec![EvidenceRef::Query {
-                            query_hash: Self::query_hash(state),
-                        }],
-                        is_stub: true,
-                        is_heuristic: false,
-                    }),
-                },
-            }]
+            findings
         })
     }
 
@@ -1119,10 +1442,16 @@ impl ProsocheCheck for InstinctPatternsCheck {
     fn metadata(&self, state: &ProsocheState) -> CheckProvenance {
         CheckProvenance {
             kind: self.kind(),
-            version: "0.1.0".to_owned(),
-            maturity: CheckMaturity::Stub,
-            thresholds: Value::Null,
-            sampling_window: None,
+            version: "1.0.0".to_owned(),
+            maturity: CheckMaturity::Heuristic,
+            thresholds: serde_json::json!({
+                "min_turns": Self::MIN_TURNS,
+                "loop_marker_threshold": Self::LOOP_MARKER_THRESHOLD,
+                "tool_error_rate_threshold": Self::TOOL_ERROR_RATE_THRESHOLD,
+                "avoidance_marker_threshold": Self::AVOIDANCE_MARKER_THRESHOLD,
+                "confidence_marker_threshold": Self::CONFIDENCE_MARKER_THRESHOLD,
+            }),
+            sampling_window: Some("recent ProsocheState sessions and behavior counters".to_owned()),
             source_query_hash: Self::query_hash(state),
         }
     }
@@ -1260,7 +1589,7 @@ impl Stamped for AuditReport {
 ///        ├─ StalenessCheck::check()
 ///        ├─ GoalAlignmentCheck::check()
 ///        ├─ SessionQualityCheck::check()
-///        └─ InstinctPatternsCheck::check()  (stub)
+///        └─ InstinctPatternsCheck::check()
 /// ```
 pub struct ProsocheAuditRunner {
     /// Ordered list of checks to run.
