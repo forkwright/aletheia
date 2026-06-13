@@ -15,7 +15,7 @@ default = []
 tls = ["dep:axum-server"]
 knowledge-store = ["nous/knowledge-store"]
 test-core = ["knowledge-store"]
-test-full = []
+test-full = ["test-core"]
 
 [dependencies]
 # HTTP framework

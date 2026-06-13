@@ -89,6 +89,10 @@ jobs:
         with:
           tool: nextest
 
+      - name: Check test tier features
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: scripts/check-test-tier-features.py
+
       - name: cargo fmt --check
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo fmt --all -- --check
@@ -99,7 +103,17 @@ jobs:
 
       - name: cargo nextest run
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
-        run: cargo nextest run --workspace --features test-core
+        run: cargo nextest run --profile ci --workspace --features test-core
+
+      - name: Upload nextest failure artifacts
+        if: ${{ failure() && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nextest-gate-attestation
+          path: |
+            target/nextest/ci/junit.xml
+            target/nextest/**/*.log
+          if-no-files-found: warn
 
       - name: Gate summary
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}

@@ -80,4 +80,16 @@ jobs:
         run: cargo clippy --manifest-path crates/theatron/proskenion/Cargo.toml --all-targets -- -D warnings
 
       - name: cargo nextest run
-        run: cargo nextest run --manifest-path crates/theatron/proskenion/Cargo.toml --no-tests=pass
+        run: cargo nextest run --profile ci --manifest-path crates/theatron/proskenion/Cargo.toml --no-tests=pass
+
+      - name: Upload nextest failure artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nextest-proskenion
+          path: |
+            target/nextest/ci/junit.xml
+            crates/theatron/proskenion/target/nextest/ci/junit.xml
+            target/nextest/**/*.log
+            crates/theatron/proskenion/target/nextest/**/*.log
+          if-no-files-found: warn

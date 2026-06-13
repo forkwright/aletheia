@@ -1,0 +1,178 @@
+# WHY: PR CodeQL needs path-scoped coverage before merge without changing the
+# existing push/schedule CodeQL scanner.
+name: CodeQL PR
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: detect CodeQL scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      actions: ${{ steps.scope.outputs.actions }}
+      rust: ${{ steps.scope.outputs.rust }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect changed CodeQL scopes
+        id: scope
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags --prune --depth=1 origin "${BASE_REF}"
+
+          rust=false
+          actions=false
+
+          while IFS= read -r path; do
+            case "$path" in
+              *.rs|Cargo.toml|Cargo.lock|*/Cargo.toml)
+                rust=true
+                ;;
+            esac
+
+            if [[ "$path" == .github/workflows/*.yml ||
+                  "$path" == .github/workflows/*.yaml ||
+                  "$path" == .github/codeql/* ||
+                  "$path" == .github/dependabot.yml ||
+                  "$path" == .github/SECURITY.md ||
+                  "$path" == .github/pii-patterns.txt ]]; then
+              actions=true
+            fi
+          done < <(git diff --name-only "origin/${BASE_REF}...HEAD")
+
+          {
+            echo "rust=${rust}"
+            echo "actions=${actions}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### CodeQL PR scope"
+            echo
+            echo "- rust: ${rust}"
+            echo "- actions: ${actions}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  analyze-actions:
+    name: Analyze PR (actions)
+    needs: changes
+    if: ${{ needs.changes.outputs.actions == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
+        with:
+          languages: actions
+          queries: +security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
+        with:
+          category: /language:actions-pr
+
+  analyze-rust:
+    name: Analyze PR (rust)
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: "1.94.0"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
+        with:
+          languages: rust
+          queries: +security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
+        with:
+          category: /language:rust-pr
+
+  codeql-pr:
+    name: codeql-pr
+    needs:
+      - changes
+      - analyze-actions
+      - analyze-rust
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check CodeQL PR result
+        env:
+          ACTIONS_NEEDED: ${{ needs.changes.outputs.actions }}
+          ACTIONS_RESULT: ${{ needs.analyze-actions.result }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          RUST_NEEDED: ${{ needs.changes.outputs.rust }}
+          RUST_RESULT: ${{ needs.analyze-rust.result }}
+        run: |
+          set -euo pipefail
+
+          failed=false
+
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::CodeQL scope detection finished with ${CHANGES_RESULT}."
+            failed=true
+          fi
+
+          if [ "$ACTIONS_NEEDED" = "true" ] && [ "$ACTIONS_RESULT" != "success" ]; then
+            echo "::error::Actions CodeQL was required but finished with ${ACTIONS_RESULT}."
+            failed=true
+          fi
+
+          if [ "$RUST_NEEDED" = "true" ] && [ "$RUST_RESULT" != "success" ]; then
+            echo "::error::Rust CodeQL was required but finished with ${RUST_RESULT}."
+            failed=true
+          fi
+
+          if [ "$failed" = "true" ]; then
+            exit 1
+          fi
+
+          if [ "$ACTIONS_NEEDED" != "true" ] && [ "$RUST_NEEDED" != "true" ]; then
+            echo "CodeQL PR check not applicable for this file set."
+          else
+            echo "Required CodeQL PR analysis passed."
+          fi

@@ -1,4 +1,4 @@
-# nextest configuration for aletheia
+# nextest configuration for the standalone proskenion workspace
 # See: https://nexte.st/book/configuration.html
 
 [profile.default]
@@ -14,5 +14,5 @@ retries = { backoff = "fixed", count = 2, delay = "1s" }
 slow-timeout = { period = "60s", terminate-after = 2 }
 
 [profile.ci.junit]
-# JUnit XML report for CI integration
-path = "target/nextest/ci/junit.xml"
+# JUnit XML report for desktop CI artifacts
+path = "junit.xml"

@@ -1,0 +1,6 @@
+Co-Authored-By:[[:space:]]+.*(Claude|GPT|Codex|Kimi|Moonshot|Gemini|Anthropic|OpenAI)
+🤖
+🧠
+Generated with .*Claude
+Generated with .*Codex
+claude\.com/claude-code

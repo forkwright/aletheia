@@ -17,7 +17,7 @@ async = []
 hot-reload = ["dep:notify", "dep:arc-swap"]
 storage-fjall = ["dep:fjall"]
 test-core = ["storage-fjall"]
-test-full = []
+test-full = ["test-core"]
 
 [dependencies]
 koina = { path = "../koina" }

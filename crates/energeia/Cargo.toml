@@ -12,7 +12,7 @@ workspace = true
 
 [features]
 test-core = ["storage-fjall"]
-test-full = []
+test-full = ["test-core"]
 storage-fjall = ["dep:fjall", "koina/fjall"]
 
 [dependencies]
