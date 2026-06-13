@@ -227,9 +227,53 @@ jobs:
         run: |
           version="${VERSION}"
           dir="aletheia-${version}"
+          rm -rf "${dir}"
           mkdir -p "${dir}"
-          cp "target/${BUILD_TARGET}/release/aletheia" "${dir}/"
-          cp -r instance.example "${dir}/" 2>/dev/null || true
+          install -m 0755 "target/${BUILD_TARGET}/release/aletheia" "${dir}/aletheia"
+          cp -R docs "${dir}/"
+          cp -R instance.example "${dir}/"
+          cp LICENSE LICENSE-DOCS README.md SECURITY.md CHANGELOG.md Cargo.toml Cargo.lock deny.toml "${dir}/"
+          PACKAGE_DIR="${dir}" \
+          PACKAGE_VERSION="${version}" \
+          PACKAGE_TARGET="${BUILD_TARGET}" \
+          PACKAGE_ARTIFACT="${ARTIFACT}" \
+          PACKAGE_FEATURES="recall,embed-candle" \
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import stat
+          from pathlib import Path
+
+          root = Path(os.environ["PACKAGE_DIR"])
+          manifest = root / "PACKAGE-MANIFEST.txt"
+          version = os.environ["PACKAGE_VERSION"]
+          target = os.environ["PACKAGE_TARGET"]
+          artifact = os.environ["PACKAGE_ARTIFACT"]
+          features = os.environ["PACKAGE_FEATURES"]
+          source_commit = os.environ.get("GITHUB_SHA", "")
+
+          lines = [
+              "Aletheia binary package manifest",
+              f"version={version}",
+              f"target={target}",
+              f"source_commit={source_commit}",
+              f"features={features}",
+              f"provenance_asset={artifact}-{version}.provenance.intoto.jsonl",
+              f"cyclonedx_sbom_asset={artifact}-{version}.cdx.json",
+              f"spdx_sbom_asset={artifact}-{version}.spdx.json",
+              "",
+              "sha256 mode bytes path",
+          ]
+
+          for path in sorted(p for p in root.rglob("*") if p.is_file() and p != manifest):
+              data = path.read_bytes()
+              digest = hashlib.sha256(data).hexdigest()
+              file_mode = stat.S_IMODE(path.stat().st_mode)
+              rel = path.relative_to(root).as_posix()
+              lines.append(f"{digest} {file_mode:04o} {len(data)} {rel}")
+
+          manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
           tar czf "${ARTIFACT}-${version}.tar.gz" "${dir}"
           cp "target/${BUILD_TARGET}/release/aletheia" "${ARTIFACT}-${version}"
           echo "TARBALL=${ARTIFACT}-${version}.tar.gz" >> "$GITHUB_ENV"
@@ -237,6 +281,12 @@ jobs:
           echo "bin=${ARTIFACT}-${version}" >> "$GITHUB_OUTPUT"
         env:
           ARTIFACT: ${{ matrix.artifact }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_TARGET: ${{ matrix.target }}
+
+      - name: Inspect tarball contents
+        run: scripts/check-release-tarball.sh "$TARBALL" "$VERSION" "$BUILD_TARGET"
+        env:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_TARGET: ${{ matrix.target }}
 
