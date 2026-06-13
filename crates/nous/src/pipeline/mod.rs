@@ -663,6 +663,8 @@ pub struct TurnResult {
     /// `after_action` can record the correct provider in the empirical store
     /// without re-running routing logic at finalize time.
     pub model_used: String,
+    /// Opaque effective tool-surface hash refs observed during this turn.
+    pub tool_surface_hashes: Vec<String>,
 }
 
 /// Re-export so callers can use `pipeline::DegradedMode` as the canonical path.
@@ -1280,6 +1282,7 @@ pub(crate) async fn run_pipeline(
                         fact_types: Some(vec![fact_type.to_string()]),
                         tool_outcomes,
                         recall_signals,
+                        tool_surface_hashes: &result.tool_surface_hashes,
                     });
                 }
                 Err(e) => {

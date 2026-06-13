@@ -13,6 +13,7 @@ use tracing::{Instrument, info_span};
 use koina::id::ToolName;
 
 use crate::error::{self, Result};
+use crate::surface::{EffectiveToolSurface, RegistrySurfaceTool, SurfaceInputs};
 use crate::types::{
     ApprovalRequirement, Reversibility, ToolCallCapability, ToolCallCapabilityRule,
     ToolCallMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolGroupPolicy, ToolInput,
@@ -327,6 +328,18 @@ impl ToolRegistry {
     pub fn definitions(&self) -> Vec<&ToolDef> {
         // kanon:ignore RUST/pub-visibility
         self.tools.values().map(|t| &t.def).collect()
+    }
+
+    /// Resolve the effective tool surface for one LLM iteration.
+    #[must_use]
+    pub fn effective_surface(&self, inputs: SurfaceInputs<'_>) -> EffectiveToolSurface {
+        EffectiveToolSurface::resolve(
+            self.tools.values().map(|tool| RegistrySurfaceTool {
+                def: &tool.def,
+                call_capability: tool.call_capability.as_ref(),
+            }),
+            inputs,
+        )
     }
 
     /// Tool definitions filtered by category.

@@ -77,6 +77,8 @@ pub struct ResolvedNousConfig {
     pub allowed_roots: Vec<String>,
     /// Resolved tool-group policy.
     pub tool_groups: AgentToolGroupPolicy,
+    /// Per-agent tool allowlist.
+    pub tool_allowlist: Option<Vec<String>>,
     /// Knowledge domains this agent covers.
     pub domains: Vec<String>,
     /// Resolved recall pipeline settings.
@@ -157,6 +159,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     let tool_groups = agent
         .and_then(|agent| agent.tool_groups.clone())
         .unwrap_or_else(|| defaults.tool_groups.clone());
+    let tool_allowlist = agent.and_then(|agent| agent.tool_allowlist.clone());
     let name = agent.and_then(|a| a.name.clone());
     let private = agent.is_some_and(|a| a.private);
     let episteme_cohort = agent
@@ -220,6 +223,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         episteme_cohort: Arc::from(episteme_cohort),
         allowed_roots,
         tool_groups,
+        tool_allowlist,
         domains,
         recall,
         extraction: config.knowledge.extraction.clone(),

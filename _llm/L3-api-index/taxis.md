@@ -1972,6 +1972,8 @@ pub struct ResolvedNousConfig {
     pub allowed_roots: Vec<String>,
     /// Resolved tool-group policy.
     pub tool_groups: AgentToolGroupPolicy,
+    /// Per-agent tool allowlist.
+    pub tool_allowlist: Option<Vec<String>>,
     /// Knowledge domains this agent covers.
     pub domains: Vec<String>,
     /// Resolved recall pipeline settings.

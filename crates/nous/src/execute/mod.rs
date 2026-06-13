@@ -22,6 +22,7 @@ use hermeneus::types::{
     ThinkingConfig, ToolResultContent,
 };
 use organon::registry::ToolRegistry;
+use organon::surface::SurfaceInputs;
 use organon::types::ToolContext;
 
 use self::dispatch::{
@@ -116,6 +117,7 @@ async fn execute_with_dispatch(
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();
+    let mut tool_surface_hashes: Vec<String> = Vec::new();
 
     let thinking = config
         .generation
@@ -151,12 +153,25 @@ async fn execute_with_dispatch(
         }
 
         let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
-        let dispatch_policy = ToolDispatchPolicy::new(
-            config.tool_allowlist.as_deref(),
-            &config.tool_groups,
-            Arc::clone(&active),
+        let surface = Arc::new(
+            tools.effective_surface(SurfaceInputs {
+                policy: &config.tool_groups,
+                allowlist: config.tool_allowlist.as_deref(),
+                active: active.as_ref(),
+                server_tools: server_tools.as_slice(),
+                server_tool_config: tool_ctx
+                    .services
+                    .as_deref()
+                    .map(|services| &services.server_tool_config),
+            }),
         );
-        let tool_defs = dispatch_policy.tool_definitions(tools);
+        let surface_hash = surface.hash().as_str().to_owned();
+        if !tool_surface_hashes.contains(&surface_hash) {
+            tool_surface_hashes.push(surface_hash);
+        }
+        let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
+        let dispatch_policy = ToolDispatchPolicy::new(surface);
+        let tool_defs = dispatch_policy.tool_definitions();
 
         let tool_count = tool_defs.len();
         let bytes_serialized = serde_json::to_string(&tool_defs).map_or(0, |s| s.len());
@@ -172,7 +187,7 @@ async fn execute_with_dispatch(
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
             tools: tool_defs,
-            server_tools: (*server_tools).clone(),
+            server_tools: dispatch_policy.server_tool_definitions(),
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
@@ -409,6 +424,7 @@ async fn execute_with_dispatch(
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
         model_used: turn_model,
+        tool_surface_hashes,
     })
 }
 
@@ -483,6 +499,7 @@ pub async fn execute_streaming(
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();
+    let mut tool_surface_hashes: Vec<String> = Vec::new();
 
     let thinking = config
         .generation
@@ -513,12 +530,25 @@ pub async fn execute_streaming(
         // WHY: derive server tools on each iteration so enable_tool activations take effect.
         // resolve_active_server_tools reuses the hoisted Arc when no dynamic changes occurred.
         let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
-        let dispatch_policy = ToolDispatchPolicy::new(
-            config.tool_allowlist.as_deref(),
-            &config.tool_groups,
-            Arc::clone(&active),
+        let surface = Arc::new(
+            tools.effective_surface(SurfaceInputs {
+                policy: &config.tool_groups,
+                allowlist: config.tool_allowlist.as_deref(),
+                active: active.as_ref(),
+                server_tools: server_tools.as_slice(),
+                server_tool_config: tool_ctx
+                    .services
+                    .as_deref()
+                    .map(|services| &services.server_tool_config),
+            }),
         );
-        let tool_defs = dispatch_policy.tool_definitions(tools);
+        let surface_hash = surface.hash().as_str().to_owned();
+        if !tool_surface_hashes.contains(&surface_hash) {
+            tool_surface_hashes.push(surface_hash);
+        }
+        let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
+        let dispatch_policy = ToolDispatchPolicy::new(surface);
+        let tool_defs = dispatch_policy.tool_definitions();
 
         let request = CompletionRequest {
             model: turn_model.clone(),
@@ -526,7 +556,7 @@ pub async fn execute_streaming(
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
             tools: tool_defs.clone(),
-            server_tools: (*server_tools).clone(),
+            server_tools: dispatch_policy.server_tool_definitions(),
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
@@ -745,5 +775,6 @@ pub async fn execute_streaming(
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
         model_used: turn_model,
+        tool_surface_hashes,
     })
 }

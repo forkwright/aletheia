@@ -23,6 +23,7 @@ fn good_input() -> CaptureInput<'static> {
         fact_types: None,
         tool_outcomes: None,
         recall_signals: None,
+        tool_surface_hashes: &[],
     }
 }
 
@@ -74,6 +75,7 @@ fn training_capture_writes_jsonl() {
         quality_score: Some(0.9),
         tool_outcomes: None,
         recall_signals: None,
+        tool_surface_hashes: Vec::new(),
         pii_redacted: false,
     };
     capture.write_record(&record).expect("write");
@@ -115,6 +117,7 @@ fn training_capture_appends() {
             quality_score: None,
             tool_outcomes: None,
             recall_signals: None,
+            tool_surface_hashes: Vec::new(),
             pii_redacted: false,
         };
         capture.write_record(&record).expect("write");
@@ -154,6 +157,7 @@ fn shard_rotation_on_size_limit() {
             quality_score: None,
             tool_outcomes: None,
             recall_signals: None,
+            tool_surface_hashes: Vec::new(),
             pii_redacted: false,
         };
         capture.write_record(&record).expect("write");
@@ -642,6 +646,7 @@ fn training_record_serde_roundtrip() {
         quality_score: None,
         tool_outcomes: None,
         recall_signals: None,
+        tool_surface_hashes: Vec::new(),
         pii_redacted: false,
     };
 

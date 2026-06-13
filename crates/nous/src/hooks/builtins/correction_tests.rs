@@ -407,6 +407,7 @@ async fn detector_returns_continue() {
         degraded: None,
         reasoning: String::new(),
         model_used: "test-model".to_owned(),
+        tool_surface_hashes: Vec::new(),
     };
     let ctx = crate::hooks::TurnContext {
         result: &turn_result,

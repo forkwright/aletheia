@@ -68,6 +68,55 @@ fn assert_event_kinds(events: &[TurnStreamEvent], expected: &[&str]) {
 }
 
 #[tokio::test]
+async fn unknown_tool_is_denied_before_approval_routing() {
+    let tools = make_registry_rev("exec", Reversibility::Irreversible);
+    let (event_tx, mut event_rx) = mpsc::channel::<TurnStreamEvent>(64);
+    let (_decision_tx, decision_rx) = mpsc::channel::<ApprovalDecision>(4);
+    let gate = ApprovalGate::new(decision_rx, Duration::from_secs(5));
+
+    let tool_uses = vec![(
+        "tool-1".to_owned(),
+        "ghost_tool".to_owned(),
+        serde_json::json!({}),
+    )];
+    let mut loop_detector = LoopDetector::new(3);
+    let mut all_calls = Vec::new();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+
+    let result = dispatch_tools(
+        &tool_uses,
+        &tools,
+        &test_tool_ctx(),
+        &mut loop_detector,
+        &mut all_calls,
+        1,
+        Some(&event_tx),
+        Some(&gate),
+        &policy,
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect("dispatch ok");
+
+    assert_eq!(result.blocks.len(), 1);
+    assert_eq!(all_calls.len(), 1);
+    assert!(all_calls[0].is_error);
+    assert!(
+        all_calls[0]
+            .result
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("unknown_tool:")
+    );
+
+    drop(event_tx);
+    let events = drain_events(&mut event_rx);
+    assert_event_kinds(&events, &["tool_result"]);
+}
+
+#[tokio::test]
 async fn reversibility_class_call_blocks_until_approved() {
     // Mandatory tool (Reversibility::Irreversible) with an approval gate.
     let tools = make_registry_rev("exec", Reversibility::Irreversible);
@@ -90,7 +139,7 @@ async fn reversibility_class_call_blocks_until_approved() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
 
     let result = dispatch_tools(
         &tool_uses,
@@ -153,7 +202,7 @@ async fn reversibility_class_call_denied_skips_execution() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
 
     let result = dispatch_tools(
         &tool_uses,
@@ -216,7 +265,7 @@ async fn mandatory_without_gate_defaults_to_denial() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
 
     let result = dispatch_tools(
         &tool_uses,
@@ -261,7 +310,7 @@ async fn batch_dispatch_mandatory_without_gate_matches_streaming_denial_record()
     let mut streaming_detector = LoopDetector::new(3);
     let mut streaming_calls = Vec::new();
     let (event_tx, _event_rx) = mpsc::channel::<TurnStreamEvent>(64);
-    let policy = ToolDispatchPolicy::allow_all_for_tests();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
 
     let batch_result = dispatch_tools(
         &tool_uses,
@@ -318,7 +367,7 @@ async fn safe_call_proceeds_without_gate() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
 
     let result = dispatch_tools(
         &tool_uses,
@@ -365,7 +414,7 @@ async fn advisory_call_executes_without_approval_required_event() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
 
     let _ = dispatch_tools(
         &tool_uses,
@@ -408,7 +457,7 @@ async fn gate_timeout_denies_mandatory_call() {
     )];
     let mut loop_detector = LoopDetector::new(3);
     let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests();
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
 
     let result = dispatch_tools(
         &tool_uses,

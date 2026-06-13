@@ -29,6 +29,7 @@ use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::surface::{SurfaceAvailability, SurfaceEntryKind, SurfaceLookup};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -51,17 +52,53 @@ struct ToolSchemaExecutor {
 }
 
 impl ToolExecutor for ToolSchemaExecutor {
-    #[tracing::instrument(skip(self, input, _ctx), fields(queried_tool = ?input.arguments.get("tool_name").and_then(|v| v.as_str())))]
+    #[tracing::instrument(skip(self, input, ctx), fields(queried_tool = ?input.arguments.get("tool_name").and_then(|v| v.as_str())))]
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             let Some(tool_name_str) = input.arguments.get("tool_name").and_then(|v| v.as_str())
             else {
                 return Ok(ToolResult::error("missing required field: tool_name"));
             };
+
+            if let Some(surface) = ctx.effective_surface() {
+                let Ok(tool_name) = ToolName::new(tool_name_str.to_owned()) else {
+                    return Ok(ToolResult::text(unavailable_schema_response(
+                        tool_name_str,
+                        "unknown_tool",
+                    )));
+                };
+                return match surface.lookup(&tool_name) {
+                    SurfaceLookup::Callable(entry) if entry.kind == SurfaceEntryKind::Registry => {
+                        match entry.input_schema.as_ref() {
+                            Some(schema) => Ok(ToolResult::text(format_json(schema))),
+                            None => Ok(ToolResult::text(unavailable_schema_response(
+                                tool_name_str,
+                                "schema_unavailable",
+                            ))),
+                        }
+                    }
+                    SurfaceLookup::Callable(entry) if entry.kind == SurfaceEntryKind::Server => Ok(
+                        ToolResult::text(available_server_tool_response(entry.name.as_str())),
+                    ),
+                    SurfaceLookup::Callable(_) => Ok(ToolResult::text(
+                        unavailable_schema_response(tool_name_str, "schema_unavailable"),
+                    )),
+                    SurfaceLookup::Inactive(entry) | SurfaceLookup::Denied(entry) => Ok(
+                        ToolResult::text(unavailable_schema_response_with_availability(
+                            entry.name.as_str(),
+                            &entry.availability,
+                        )),
+                    ),
+                    SurfaceLookup::Unknown => Ok(ToolResult::text(unavailable_schema_response(
+                        tool_name_str,
+                        "unknown_tool",
+                    ))),
+                };
+            }
 
             let Ok(schemas) = self.schemas.read() else {
                 return Ok(ToolResult::error(
@@ -170,6 +207,39 @@ pub(crate) fn register_with_pairs(
     Ok(())
 }
 
+fn format_json(value: &serde_json::Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
+}
+
+fn unavailable_schema_response(tool_name: &str, reason: &str) -> String {
+    format_json(&serde_json::json!({
+        "tool_name": tool_name,
+        "available": false,
+        "reason": reason,
+    }))
+}
+
+fn unavailable_schema_response_with_availability(
+    tool_name: &str,
+    availability: &SurfaceAvailability,
+) -> String {
+    let reason = match availability {
+        SurfaceAvailability::Inactive => "inactive",
+        SurfaceAvailability::Denied(reason) => reason.as_str(),
+        SurfaceAvailability::Callable => "schema_unavailable",
+    };
+    unavailable_schema_response(tool_name, reason)
+}
+
+fn available_server_tool_response(tool_name: &str) -> String {
+    format_json(&serde_json::json!({
+        "tool_name": tool_name,
+        "available": true,
+        "kind": "server",
+        "reason": "server_tool_has_no_local_schema",
+    }))
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -186,10 +256,12 @@ mod tests {
     use crate::builtins::register_all_with_sandbox;
     use crate::registry::{ToolExecutor, ToolRegistry};
     use crate::sandbox::SandboxConfig;
+    use crate::surface::SurfaceInputs;
     use crate::testing::install_crypto_provider;
     use crate::types::{
         InputSchema, PropertyDef, PropertyType, Reversibility, ServerToolConfig, ToolCategory,
-        ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolServices, ToolTag,
+        ToolContext, ToolDef, ToolGroupId, ToolGroupPolicy, ToolInput, ToolResult, ToolServices,
+        ToolTag,
     };
 
     fn mock_ctx() -> ToolContext {
@@ -306,6 +378,41 @@ mod tests {
             result.content.text_summary().contains("does_not_exist"),
             "error message should mention the unknown tool name"
         );
+    }
+
+    #[tokio::test]
+    async fn tool_schema_uses_bound_effective_surface_for_denials() {
+        let reg = build_registry();
+        let ctx = mock_ctx();
+        let active = HashSet::new();
+        let allowlist = vec!["tool_schema".to_owned()];
+        let policy = ToolGroupPolicy::AllowAll {
+            reason: "test".to_owned(),
+        };
+        let surface = Arc::new(reg.effective_surface(SurfaceInputs {
+            policy: &policy,
+            allowlist: Some(&allowlist),
+            active: &active,
+            server_tools: &[],
+            server_tool_config: None,
+        }));
+        let _binding = ctx.bind_effective_surface(surface);
+
+        let input = ToolInput {
+            name: ToolName::from_static("tool_schema"),
+            tool_use_id: "toolu_3".to_owned(),
+            arguments: serde_json::json!({ "tool_name": "read" }),
+        };
+        let result = reg.execute(&input, &ctx).await.expect("execute");
+
+        assert!(
+            !result.is_error,
+            "structured unavailable response should not be a tool execution error"
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&result.content.text_summary()).expect("valid JSON");
+        assert_eq!(parsed.get("available"), Some(&serde_json::json!(false)));
+        assert_eq!(parsed.get("reason"), Some(&serde_json::json!("allowlist")));
     }
 
     // ── eager-load regression guard ──────────────────────────────────────────

@@ -69,6 +69,7 @@ impl Stamped for RunReport {
         .with_count("failed", u64::try_from(self.failed).unwrap_or(u64::MAX))
         .with_count("skipped", u64::try_from(self.skipped).unwrap_or(u64::MAX))
         .with_count("total", total)
+        .with_evidence(self.provenance.tool_ref.iter().map(String::as_str))
     }
 }
 
@@ -420,6 +421,17 @@ mod tests {
             Some(6),
             "total should be passed + failed + skipped"
         );
+    }
+
+    #[test]
+    fn run_report_stamp_carries_tool_ref_evidence() {
+        let mut report = sample_report();
+        report.provenance =
+            report
+                .provenance
+                .with_audit_refs(None, None, None, Some("ts1:test".to_owned()), None);
+        let meta = report.stamp();
+        assert_eq!(meta.evidence_refs, vec!["ts1:test"]);
     }
 
     #[test]

@@ -26,6 +26,7 @@ fn make_record(ts: Timestamp, id: &str) -> PromptAuditRecord {
         fact_ids_included: vec!["fact:1".to_owned(), "fact:2".to_owned()],
         fact_ids_filtered: vec![],
         tool_names: vec!["read".to_owned(), "write".to_owned()],
+        tool_surface_hash: "ts1:test".to_owned(),
         request_id: Some("req-abc".to_owned()),
     }
 }
@@ -56,6 +57,7 @@ fn record_serialization_roundtrip() {
     assert_eq!(decoded.nous_id, "syn");
     assert_eq!(decoded.fact_ids_included.len(), 2);
     assert_eq!(decoded.tool_names, vec!["read", "write"]);
+    assert_eq!(decoded.tool_surface_hash, "ts1:test");
     assert_eq!(decoded.request_id.as_deref(), Some("req-abc"));
     assert_eq!(decoded.system_prompt_bytes, 12);
 }
@@ -95,6 +97,7 @@ fn build_audit_record_includes_filtered_recall_facts() {
     let record = build_audit_record(&ctx, &session, &config, &providers, &tools, &tool_ctx);
 
     assert_eq!(record.deployment_target, "cloud");
+    assert!(record.tool_surface_hash.starts_with("ts1:"));
     assert_eq!(record.fact_ids_included, vec!["fact-public"]);
     let filtered = record
         .fact_ids_filtered

@@ -714,6 +714,7 @@ impl ToolRegistry {
         policy: &ToolGroupPolicy,
     ) -> Result<ToolResult>;
     pub fn definitions (&self) -> Vec<&ToolDef>;
+    pub fn effective_surface (&self, inputs: SurfaceInputs<'_>) -> EffectiveToolSurface;
     pub fn definitions_for_category (&self, category: ToolCategory) -> Vec<&ToolDef>;
     pub fn definitions_for_tags (&self, tags: &[ToolTag]) -> Vec<&ToolDef>;
     pub fn definitions_for_groups (&self, allowed_groups: &[ToolGroupId]) -> Vec<&ToolDef>;
@@ -981,6 +982,163 @@ impl SubprocessRunner {
 }
 ```
 
+## `src/surface.rs`
+
+```rust
+pub struct SurfaceInputs<'a> {
+    /// Tool-group policy resolved for the active agent.
+    pub policy: &'a ToolGroupPolicy,
+    /// Optional per-agent tool allowlist.
+    pub allowlist: Option<&'a [String]>,
+    /// Snapshot of tools activated for the session.
+    pub active: &'a HashSet<ToolName>,
+    /// Provider-side tools already active for this request.
+    pub server_tools: &'a [ServerToolDefinition],
+    /// Provider-side tools available for lazy activation.
+    pub server_tool_config: Option<&'a ServerToolConfig>,
+}
+```
+
+```rust
+pub struct ToolSurfaceHash(String);
+```
+
+```rust
+impl ToolSurfaceHash {
+    pub fn as_str (&self) -> &str;
+}
+```
+
+```rust
+pub enum DenialReason {
+    /// Denied by the agent's configured tool-group policy.
+    GroupPolicy,
+    /// Denied by the agent's configured tool allowlist.
+    Allowlist,
+}
+```
+
+```rust
+impl DenialReason {
+    pub const fn as_str (self) -> &'static str;
+}
+```
+
+```rust
+pub enum SurfaceAvailability {
+    /// Tool can be called now.
+    Callable,
+    /// Tool is permitted but requires `enable_tool` first.
+    Inactive,
+    /// Tool is known but denied by policy.
+    Denied(DenialReason),
+}
+```
+
+```rust
+impl SurfaceAvailability {
+    pub const fn as_str (&self) -> &'static str;
+    pub const fn denial_reason (&self) -> Option<DenialReason>;
+    pub const fn is_callable (&self) -> bool;
+}
+```
+
+```rust
+pub enum SurfaceEntryKind {
+    /// Local registry tool executed by Organon.
+    Registry,
+    /// Provider-side tool sent through the LLM API.
+    Server,
+}
+```
+
+```rust
+impl SurfaceEntryKind {
+    pub const fn as_str (self) -> &'static str;
+}
+```
+
+```rust
+pub struct SurfaceEntry {
+    /// Tool name.
+    pub name: ToolName,
+    /// Description shown to agents and introspection callers.
+    pub description: String,
+    /// Local JSON schema when this entry comes from the registry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<serde_json::Value>,
+    /// Local category when this entry comes from the registry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<ToolCategory>,
+    /// Tool groups used by policy resolution.
+    pub groups: Vec<ToolGroupId>,
+    /// Reversibility metadata.
+    pub reversibility: Reversibility,
+    /// Approval level derived from reversibility.
+    pub approval: ApprovalRequirement,
+    /// Whether this tool activates without `enable_tool`.
+    pub auto_activate: bool,
+    /// Whether this local tool has argument-sensitive capability metadata.
+    pub has_capability_rule: bool,
+    /// Stable digest of argument-sensitive capability metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_rule_sha256: Option<String>,
+    /// Stable digest of provider-side tool definition metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_definition_sha256: Option<String>,
+    /// Entry source kind.
+    pub kind: SurfaceEntryKind,
+    /// Effective availability.
+    pub availability: SurfaceAvailability,
+}
+```
+
+```rust
+impl SurfaceEntry {
+    pub fn is_callable (&self) -> bool;
+    pub fn to_provider_tool (&self) -> Option<ToolDefinition>;
+    pub fn to_provider_summary (&self) -> Option<ToolDefinition>;
+}
+```
+
+```rust
+pub enum SurfaceLookup<'a> {
+    /// Known and callable.
+    Callable(&'a SurfaceEntry),
+    /// Known but not active.
+    Inactive(&'a SurfaceEntry),
+    /// Known but denied by policy.
+    Denied(&'a SurfaceEntry),
+    /// Not present in the resolved surface.
+    Unknown,
+}
+```
+
+```rust
+pub struct EffectiveToolSurface {
+    policy: ToolGroupPolicy,
+    allowlist: Option<Vec<String>>,
+    entries: Vec<SurfaceEntry>,
+    server_tools: Vec<ServerToolDefinition>,
+    hash: ToolSurfaceHash,
+}
+```
+
+```rust
+impl EffectiveToolSurface {
+    pub fn policy (&self) -> &ToolGroupPolicy;
+    pub fn allowlist (&self) -> Option<&[String]>;
+    pub fn hash (&self) -> &ToolSurfaceHash;
+    pub fn entries (&self) -> &[SurfaceEntry];
+    pub fn lookup (&self, name: &ToolName) -> SurfaceLookup<'_>;
+    pub fn provider_tools (&self) -> Vec<ToolDefinition>;
+    pub fn provider_summaries (&self) -> Vec<ToolDefinition>;
+    pub fn provider_server_tools (&self) -> Vec<ServerToolDefinition>;
+    pub fn lazy_catalog (&self) -> Vec<(ToolName, String)>;
+    pub fn callable_registry_entries (&self) -> Vec<&SurfaceEntry>;
+}
+```
+
 ## `src/testing.rs`
 
 > Install the default rustls crypto provider for tests.
@@ -1149,6 +1307,23 @@ pub struct ToolContext {
     pub active_tools: Arc<RwLock<HashSet<ToolName>>>,
     /// Deployment-tunable tool size and timeout limits from taxis config.
     pub tool_config: Arc<ToolLimitsConfig>,
+}
+```
+
+> Scoped guard for an effective-surface binding.
+```rust
+pub struct EffectiveSurfaceBinding {
+    key: SurfaceBindingKey,
+}
+```
+
+```rust
+impl ToolContext {
+    pub fn bind_effective_surface (
+        &self,
+        surface: Arc<EffectiveToolSurface>,
+    ) -> EffectiveSurfaceBinding;
+    pub fn effective_surface (&self) -> Option<Arc<EffectiveToolSurface>>;
 }
 ```
 

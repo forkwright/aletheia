@@ -119,6 +119,7 @@ pub fn build_degraded_response(
             }),
             reasoning: String::new(),
             model_used: String::new(),
+            tool_surface_hashes: Vec::new(),
         }
     } else {
         let banner = "Operating in degraded mode — LLM unavailable. \
@@ -146,6 +147,7 @@ pub fn build_degraded_response(
             }),
             reasoning: String::new(),
             model_used: String::new(),
+            tool_surface_hashes: Vec::new(),
         }
     }
 }
