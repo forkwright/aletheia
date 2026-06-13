@@ -39,3 +39,18 @@ SCRIPT="$SCRIPT_DIR/credential-refresh"
     [ "$status" -ne 0 ]
     rm -rf "$HOME"
 }
+
+@test "status reads credential file from ALETHEIA_ROOT" {
+    export HOME="$(mktemp -d)"
+    mkdir -p "$HOME/instance/config/credentials"
+    cat > "$HOME/instance/config/credentials/anthropic.json" <<'EOF'
+{"token": "sk-ant-oat01-fake-token", "refreshToken": "fake-refresh", "expiresAt": 4102444800000}
+EOF
+
+    run env HOME="$HOME" ALETHEIA_ROOT="$HOME/instance" "$SCRIPT" --status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"$HOME/instance/config/credentials/anthropic.json"* ]]
+    [[ "$output" == *"VALID"* ]]
+
+    rm -rf "$HOME"
+}

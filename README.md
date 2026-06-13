@@ -6,6 +6,10 @@ Talk to an AI that remembers your previous conversations, learns your preference
 
 One binary. No containers. No external databases. Beyond your LLM provider, there are no cloud dependencies.
 
+Current first run: start the server and use the TUI. The desktop app is the
+v1.0 target surface and can be installed as a preview from a source checkout,
+but it is not the default public onboarding path yet.
+
 [Golden Path](docs/GOLDEN-PATH.md) · [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md)
 
 ---
@@ -36,6 +40,7 @@ The tarball contains `instance.example/` with the reference config layout. See [
 - **Tools.** 67 built-in tools (default build): file I/O, shell execution, web search, memory search, planning, and agent coordination. External MCP bridge support is optional; build with `cargo build -p aletheia --features mcp` when you want runtime-discovered MCP tools in the Organon tool plane. Feature-gated additions bring the total to 76 with `aletheia/energeia`, or 80 with `cargo build -p aletheia --all-features` (`energeia` + `bookkeeper` + `computer-use` + `z3`).
 - **Runtime guardrails.** Tool calls carry HMAC-SHA256 receipts, loop detection combines ping-pong, no-progress, and doom-loop signals, and per-stage timeouts bound long-running turns.
 - **Terminal dashboard.** Rich TUI with markdown rendering, session management, and real-time streaming.
+- **Desktop preview.** Dioxus desktop app for the v1.0 workflow target; see [DESKTOP.md](docs/DESKTOP.md).
 - **Signal messaging.** Talk to your agents over Signal. Messages arrive as plain conversational turns routed to the configured agent.
 - **Privacy.** No telemetry, no analytics, no phone-home. Only outbound connections are to services you configure.
 
@@ -60,6 +65,7 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 ## Interfaces
 
 - **TUI** - Terminal dashboard. Rich markdown rendering, session management.
+- **Desktop app** - v1.0 target surface, currently installed separately from source.
 - **Signal** - Inbound messages are delivered as conversational turns to the configured agent. Messages prefixed with `!` are intercepted as operator commands (see below).
 - **CLI** - `aletheia help` for the full command reference.
 - **API** - REST on port 18789. See [ARCHITECTURE.md](docs/ARCHITECTURE.md).

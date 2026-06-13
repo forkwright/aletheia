@@ -116,8 +116,11 @@ See [instance.example/README.md](../instance.example/README.md) for the three-ti
 The binary finds the instance directory in this order:
 
 1. `--instance-root` CLI flag (explicit path)
-2. `ALETHEIA_ROOT` environment variable
+2. `ALETHEIA_ROOT` environment variable, interpreted as the instance root
 3. `./instance` relative to the working directory
+
+`ALETHEIA_ROOT` never points at a source checkout, target directory, or install
+prefix. Helper scripts use `ALETHEIA_BIN` when they need an executable path.
 
 ---
 
@@ -237,7 +240,18 @@ Set the Anthropic API key as an environment variable:
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-The binary reads `ANTHROPIC_API_KEY` from the environment at startup. If unset, it starts without an LLM provider (health check reports degraded status).
+For systemd or other process managers, put runtime environment values in the
+instance env file:
+
+```bash
+cp .env.example instance/config/env
+chmod 600 instance/config/env
+```
+
+The binary reads `ANTHROPIC_API_KEY` from the process environment at startup.
+The included systemd unit gets that environment from
+`instance/config/env`. If no credential source is present, the server starts
+without an LLM provider and the health check reports degraded status.
 
 ### TLS (optional)
 

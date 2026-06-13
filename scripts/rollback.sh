@@ -9,7 +9,7 @@ set -euo pipefail
 # logging and health verification.
 
 INSTANCE_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
-BINARY_DST="${ALETHEIA_BINARY:-$HOME/.local/bin/aletheia}"
+BINARY_DST="${ALETHEIA_BIN:-${ALETHEIA_BINARY:-$HOME/.local/bin/aletheia}}"
 BACKUP_DIR="${INSTANCE_ROOT}/.deploy-backup"
 SERVICE="aletheia.service"
 HEALTH_URL="${ALETHEIA_HEALTH_URL:-http://localhost:18789/api/health}"

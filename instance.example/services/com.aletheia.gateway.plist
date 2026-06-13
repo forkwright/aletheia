@@ -6,20 +6,20 @@
     <string>com.aletheia.gateway</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__ALETHEIA_ROOT__/target/release/aletheia</string>
+        <string>__ALETHEIA_BIN__</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
         <key>ALETHEIA_ROOT</key>
-        <string>__ALETHEIA_ROOT__/instance</string>
+        <string>__ALETHEIA_INSTANCE_ROOT__</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>__ALETHEIA_ROOT__/instance/logs/gateway.log</string>
+    <string>__ALETHEIA_INSTANCE_ROOT__/logs/gateway.log</string>
     <key>StandardErrorPath</key>
-    <string>__ALETHEIA_ROOT__/instance/logs/gateway.err</string>
+    <string>__ALETHEIA_INSTANCE_ROOT__/logs/gateway.err</string>
 </dict>
 </plist>

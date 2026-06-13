@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/.aletheia}"
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
 THEKE="$ALETHEIA_ROOT/theke"
 DEFAULT_MODEL="tiny"
 DEFAULT_DOMAIN="default"

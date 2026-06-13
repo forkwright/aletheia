@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# start.sh — Template for ~/.aletheia/start.sh
-# Copy to ~/.aletheia/start.sh and make executable.
+# start.sh - Template for a local Aletheia startup helper.
+# Copy to your instance host and make executable.
 # Run `claude setup-token` first to get a 1-year OAuth token, then this script
 # uses credential-refresh to keep it renewed automatically on every startup.
 
-ALETHEIA_CREDS="$HOME/.aletheia/credentials/anthropic.json"
+export ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
+ALETHEIA_ENV_FILE="${ALETHEIA_ENV_FILE:-$ALETHEIA_ROOT/config/env}"
+ALETHEIA_BIN="${ALETHEIA_BIN:-aletheia}"
 CLAUDE_JSON="$HOME/.claude.json"
+
+if [[ -f "$ALETHEIA_ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090 # Runtime env-file path is operator-owned.
+  . "$ALETHEIA_ENV_FILE"
+  set +a
+fi
+
+export ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
+ALETHEIA_CREDS="${ALETHEIA_CREDS:-$ALETHEIA_ROOT/config/credentials/anthropic.json}"
 
 # Attempt OAuth token refresh if a token is already stored
 if command -v credential-refresh &>/dev/null && [[ -f "$ALETHEIA_CREDS" ]]; then
@@ -19,7 +31,8 @@ except Exception:
     print('no')
 " "$ALETHEIA_CREDS" 2>/dev/null || echo "no")
   if [[ "$has_token" == "yes" ]]; then
-    credential-refresh || echo "warn: credential-refresh failed — proceeding with existing token" >&2
+    ALETHEIA_ROOT="$ALETHEIA_ROOT" ALETHEIA_CREDS="$ALETHEIA_CREDS" credential-refresh \
+      || echo "warn: credential-refresh failed - proceeding with existing token" >&2
   fi
 fi
 
@@ -49,11 +62,20 @@ if not existing.get('token','').startswith('sk-ant-oat'):
   fi
 fi
 
-if [[ ! -f "$ALETHEIA_CREDS" ]]; then
-  echo "error: No credentials found. Run: claude setup-token" >&2
+if [[ ! -f "$ALETHEIA_CREDS" && -z "${ANTHROPIC_API_KEY:-}" && -z "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
+  echo "error: No credentials found. Run: aletheia init, set ANTHROPIC_API_KEY in ${ALETHEIA_ENV_FILE}, or run claude setup-token" >&2
   exit 1
 fi
 
-export ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/.aletheia}"
 export ALETHEIA_MEMORY_USER="${ALETHEIA_MEMORY_USER:-$(whoami)}"
-exec "${ALETHEIA_ROOT}/target/release/aletheia" "$@"
+if [[ "$ALETHEIA_BIN" == */* ]]; then
+  if [[ ! -x "$ALETHEIA_BIN" ]]; then
+    echo "error: Aletheia binary not executable at ${ALETHEIA_BIN}. Set ALETHEIA_BIN or install aletheia on PATH." >&2
+    exit 127
+  fi
+elif ! command -v "$ALETHEIA_BIN" >/dev/null 2>&1; then
+  echo "error: Aletheia binary not found on PATH. Set ALETHEIA_BIN or install aletheia on PATH." >&2
+  exit 127
+fi
+
+exec "$ALETHEIA_BIN" "$@"
