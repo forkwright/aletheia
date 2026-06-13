@@ -1,10 +1,11 @@
-//! `aletheia eval-embeddings`: embedding quality gate for model upgrades.
+//! `aletheia eval-embeddings`: embedding quality measurement and upgrade gate.
 //!
 //! Loads a labelled query set (JSONL), embeds each query against a corpus
-//! of known facts, computes Recall@K and MRR, and optionally compares a
-//! candidate model against a baseline.
+//! of known facts, computes Recall@K and MRR, and compares a candidate model
+//! against a baseline unless explicit measurement mode is requested.
 //!
-//! Exits non-zero when a candidate model's Recall@K regresses below baseline.
+//! Exits non-zero when gate mode lacks a candidate or the candidate model's
+//! Recall@K regresses below baseline.
 
 use std::path::PathBuf;
 
@@ -44,10 +45,19 @@ pub(crate) struct EvalEmbeddingsArgs {
 
     /// Candidate model provider for side-by-side comparison.
     ///
-    /// When set, the candidate must match or exceed baseline Recall@K to pass.
-    /// Accepted values: `candle`, `voyage`.
+    /// Required for gate mode. The candidate must match or exceed baseline
+    /// Recall@K to pass. Accepted values: `candle`, `voyage`.
+    ///
+    /// Omit only with `--measure`.
     #[arg(long)]
     pub candidate_provider: Option<String>,
+
+    /// Run explicit baseline measurement mode instead of the regression gate.
+    ///
+    /// Measurement mode evaluates only the baseline model and exits zero when
+    /// metrics are produced. It does not report or imply a gate pass.
+    #[arg(long)]
+    pub measure: bool,
 
     /// Output full results as JSON instead of a human-readable table.
     #[arg(long)]
@@ -59,6 +69,36 @@ pub(crate) struct EvalEmbeddingsArgs {
 struct CorpusEntry {
     id: String,
     text: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct EvalEmbeddingsReport<'a> {
+    #[serde(flatten)]
+    run: &'a episteme::embedding_eval::EvalRunResult,
+    dataset: EvalInputReport,
+    corpus: EvalInputReport,
+    providers: EvalProviderReport<'a>,
+    models: EvalModelReport<'a>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct EvalInputReport {
+    reference: String,
+    records: usize,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct EvalProviderReport<'a> {
+    baseline: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    candidate: Option<&'a str>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct EvalModelReport<'a> {
+    baseline: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    candidate: Option<&'a str>,
 }
 
 /// Parse a corpus JSONL file into `(id, text)` pairs.
@@ -149,12 +189,17 @@ fn builtin_corpus() -> Vec<(String, String)> {
 }
 
 /// Print a human-readable comparison table to stdout.
-fn print_table(run: &mneme::embedding_eval::EvalRunResult) {
+fn print_table(run: &episteme::embedding_eval::EvalRunResult) {
+    use episteme::embedding_eval::EvalRunMode;
     use owo_colors::OwoColorize;
 
     println!();
     println!("┌─────────────────────────────────────────────────────────┐");
-    println!("│              Embedding Evaluation Results                │");
+    if run.mode == EvalRunMode::Measurement {
+        println!("│              Embedding Baseline Measurement              │");
+    } else {
+        println!("│              Embedding Regression Gate                   │");
+    }
     println!("└─────────────────────────────────────────────────────────┘");
     println!();
 
@@ -193,8 +238,15 @@ fn print_table(run: &mneme::embedding_eval::EvalRunResult) {
         println!();
     }
 
-    if run.passed {
+    if run.mode == EvalRunMode::Measurement {
+        println!("  {}", "BASELINE MEASUREMENT COMPLETE".green().bold());
+    } else if run.passed {
         println!("  {}", "GATE PASSED".green().bold());
+    } else if run.candidate.is_none() {
+        println!(
+            "  {}",
+            "GATE FAILED — candidate provider missing".red().bold()
+        );
     } else {
         println!(
             "  {}",
@@ -204,19 +256,59 @@ fn print_table(run: &mneme::embedding_eval::EvalRunResult) {
     println!();
 }
 
+fn build_report<'a>(
+    run: &'a episteme::embedding_eval::EvalRunResult,
+    args: &'a EvalEmbeddingsArgs,
+    dataset_records: usize,
+    corpus_records: usize,
+) -> EvalEmbeddingsReport<'a> {
+    let corpus_reference = args.corpus.as_ref().map_or_else(
+        || "builtin:synthetic".to_owned(),
+        |path| path.display().to_string(),
+    );
+
+    EvalEmbeddingsReport {
+        run,
+        dataset: EvalInputReport {
+            reference: args.dataset.display().to_string(),
+            records: dataset_records,
+        },
+        corpus: EvalInputReport {
+            reference: corpus_reference,
+            records: corpus_records,
+        },
+        providers: EvalProviderReport {
+            baseline: args.baseline_provider.as_str(),
+            candidate: args.candidate_provider.as_deref(),
+        },
+        models: EvalModelReport {
+            baseline: run.baseline.model_name.as_str(),
+            candidate: run.candidate.as_ref().map(|c| c.model_name.as_str()),
+        },
+    }
+}
+
 /// Reject obviously-broken inputs up-front so operators don't get a
 /// meaningless table (e.g. `Recall@0: 0.0%`) instead of an error.
 fn validate_args(args: &EvalEmbeddingsArgs) -> Result<()> {
     if args.top_k == 0 {
         snafu::whatever!("--top-k must be greater than 0 (got 0; Recall@0 is undefined)");
     }
+    if args.measure && args.candidate_provider.is_some() {
+        snafu::whatever!("--measure cannot be combined with --candidate-provider");
+    }
+    if !args.measure && args.candidate_provider.is_none() {
+        snafu::whatever!(
+            "embedding regression gate requires --candidate-provider; use --measure for baseline-only measurement"
+        );
+    }
     Ok(())
 }
 
 /// Entry point for the `eval-embeddings` subcommand.
 pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
+    use episteme::embedding_eval::{EvalDataset, EvalRunMode, compare_models, measure_baseline};
     use mneme::embedding::{EmbeddingConfig, create_provider};
-    use mneme::embedding_eval::{EvalDataset, compare_models};
 
     validate_args(args)?;
 
@@ -270,12 +362,18 @@ pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
         };
 
     // Run evaluation.
-    let run = compare_models(baseline.as_ref(), candidate, &dataset, &corpus, args.top_k)
-        .whatever_context("evaluation failed")?;
+    let run = if args.measure {
+        measure_baseline(baseline.as_ref(), &dataset, &corpus, args.top_k)
+            .whatever_context("evaluation failed")?
+    } else {
+        compare_models(baseline.as_ref(), candidate, &dataset, &corpus, args.top_k)
+            .whatever_context("evaluation failed")?
+    };
 
     // Output.
     if args.json {
-        let json = serde_json::to_string_pretty(&run)
+        let report = build_report(&run, args, dataset.queries.len(), corpus.len());
+        let json = serde_json::to_string_pretty(&report)
             .whatever_context("failed to serialize eval result as JSON")?;
         println!("{json}");
     } else {
@@ -284,15 +382,15 @@ pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
 
     if run.passed {
         Ok(())
-    } else {
+    } else if run.mode == EvalRunMode::Gate {
         snafu::whatever!(
-            "embedding evaluation gate failed: candidate Recall@{} ({:.1}%) regresses below baseline ({:.1}%)",
-            run.candidate.as_ref().map_or(0, |c| c.k),
-            run.candidate
-                .as_ref()
-                .map_or(0.0, |c| c.recall_at_k * 100.0),
-            run.baseline.recall_at_k * 100.0,
+            "embedding evaluation gate failed: {}",
+            run.failure_reason
+                .as_deref()
+                .unwrap_or("candidate Recall@K regresses below baseline")
         )
+    } else {
+        snafu::whatever!("embedding baseline measurement failed")
     }
 }
 
@@ -308,6 +406,7 @@ mod tests {
             top_k,
             baseline_provider: "candle".to_owned(),
             candidate_provider: None,
+            measure: false,
             json: false,
         }
     }
@@ -323,8 +422,38 @@ mod tests {
 
     #[test]
     fn validate_accepts_positive_top_k() {
-        validate_args(&args_with(1)).unwrap();
-        validate_args(&args_with(5)).unwrap();
-        validate_args(&args_with(100)).unwrap();
+        let mut args = args_with(1);
+        args.measure = true;
+        validate_args(&args).unwrap();
+
+        let mut args = args_with(5);
+        args.candidate_provider = Some("voyage".to_owned());
+        validate_args(&args).unwrap();
+
+        let mut args = args_with(100);
+        args.measure = true;
+        validate_args(&args).unwrap();
+    }
+
+    #[test]
+    fn validate_rejects_gate_without_candidate_provider() {
+        let err = validate_args(&args_with(5)).unwrap_err();
+        assert!(
+            err.to_string().contains("requires --candidate-provider"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_measure_with_candidate_provider() {
+        let mut args = args_with(5);
+        args.measure = true;
+        args.candidate_provider = Some("voyage".to_owned());
+        let err = validate_args(&args).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("--measure cannot be combined with --candidate-provider"),
+            "got: {err}"
+        );
     }
 }

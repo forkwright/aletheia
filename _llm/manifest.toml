@@ -20,7 +20,7 @@ l3_token_estimate = 5780
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "e34e628ff52426d3e6ebd310ad64e9188a55482e58f4e04d5cc31bffa94effc8"
+source_hash = "0b14a83171d1b9ba64892fc4b226f81e686e97bd35731c646ed8a2c73845b045"
 l3_token_estimate = 167
 
 [[crates]]
@@ -86,8 +86,8 @@ l3_token_estimate = 20790
 [[crates]]
 name = "episteme"
 path = "crates/episteme"
-source_hash = "6670f364540d0151b92da2ac51b634e75d16bd5ec385236f7f48dec161f907f4"
-l3_token_estimate = 35894
+source_hash = "268ee2a710f126ea071868c1719730b5843ba5e5c76465bfb49257591be28329"
+l3_token_estimate = 36167
 
 [[crates]]
 name = "gnosis"
