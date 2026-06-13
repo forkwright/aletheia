@@ -1002,3 +1002,135 @@ async fn run_background_distillation(
         "background distillation complete"
     );
 }
+
+// WHY: knowledge-store gates both `KnowledgeStore` and the persistence branch
+// of `run_skill_extraction`; the test exercises that branch end-to-end.
+#[cfg(all(test, feature = "knowledge-store"))]
+#[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+mod tests {
+    use std::sync::Arc;
+
+    use hermeneus::provider::ProviderRegistry;
+    use hermeneus::test_utils::MockProvider;
+
+    use super::run_skill_extraction;
+
+    /// Drive real candidate/turn data through `run_skill_extraction` and assert
+    /// the persisted pending skill carries derived source-session, redacted
+    /// tool-call evidence with sequence hashes, and extraction audit refs.
+    #[tokio::test]
+    async fn run_skill_extraction_persists_pending_with_provenance() {
+        let skill_json = r#"{
+            "name": "diagnose-and-patch",
+            "description": "Diagnose a failure then patch it",
+            "steps": ["grep", "read", "edit"],
+            "tools_used": ["Grep", "Read", "Edit", "Bash"],
+            "domain_tags": ["debugging"],
+            "when_to_use": "when fixing bugs"
+        }"#;
+
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(
+            MockProvider::new(skill_json).models(&["test-model"]),
+        ));
+        let providers = Arc::new(providers);
+
+        // Build a candidate via the live tracker path with a secret-bearing
+        // tool call so redaction is exercised, not assumed.
+        let secret = "super-secret-token-value";
+        let tool_calls = vec![
+            mneme::skills::ToolCallRecord::new("Grep", 10).with_evidence(
+                "t0",
+                &serde_json::json!({ "pattern": "needle" }),
+                Some("hits"),
+                Some("receipt-0"),
+            ),
+            mneme::skills::ToolCallRecord::new("Read", 10),
+            mneme::skills::ToolCallRecord::new("Read", 10),
+            mneme::skills::ToolCallRecord::new("Edit", 10).with_evidence(
+                "t3",
+                &serde_json::json!({ "api_key": secret }),
+                Some("patched"),
+                Some("receipt-3"),
+            ),
+            mneme::skills::ToolCallRecord::new("Bash", 10),
+            mneme::skills::ToolCallRecord::new("Bash", 10),
+        ];
+
+        let tracker = mneme::skills::CandidateTracker::new();
+        tracker.track_sequence(&tool_calls, "session-alpha", "review-nous");
+        let candidate_id = tracker
+            .candidates_for("review-nous")
+            .pop()
+            .expect("candidate tracked")
+            .id;
+
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+
+        run_skill_extraction(
+            "test-model",
+            providers,
+            "review-nous",
+            &candidate_id,
+            &tool_calls,
+            "turn-derived-session",
+            &tracker,
+            Some(&store),
+        )
+        .await;
+
+        let pending_facts = store
+            .find_pending_skills("review-nous")
+            .expect("pending skills query");
+        assert_eq!(pending_facts.len(), 1, "one pending skill persisted");
+        let pending_fact = pending_facts.first().expect("one pending skill persisted");
+
+        let pending = mneme::skills::PendingSkill::from_json(&pending_fact.content)
+            .expect("pending skill deserializes");
+
+        // Source session is derived (from the candidate evidence on the live
+        // path), never None.
+        assert_eq!(
+            pending.source_session_id.as_deref(),
+            Some("session-alpha"),
+            "source session derived from candidate evidence"
+        );
+        assert_eq!(
+            pending_fact.provenance.source_session_id.as_deref(),
+            Some("session-alpha"),
+            "fact provenance carries the derived source session"
+        );
+
+        // Evidence carries a non-empty sequence hash.
+        let observation = pending
+            .source_evidence
+            .observations
+            .first()
+            .expect("observation evidence present");
+        assert!(
+            !observation.sequence_hash.is_empty(),
+            "observation carries a sequence hash"
+        );
+
+        // Tool-call params are redacted, with the secret value absent.
+        let redacted = observation
+            .tool_calls
+            .iter()
+            .find(|tc| tc.tool_name == "Edit")
+            .and_then(|tc| tc.redacted_input.as_ref())
+            .and_then(|value| value.get("api_key"))
+            .and_then(serde_json::Value::as_str)
+            .expect("redacted api_key present");
+        assert_eq!(redacted, "[REDACTED]", "secret tool param is redacted");
+        assert!(
+            !pending_fact.content.contains(secret),
+            "secret value must not be persisted"
+        );
+
+        // Extraction prompt/response audit refs are retained.
+        assert!(
+            pending.extraction_audit.is_some(),
+            "extraction audit refs retained"
+        );
+    }
+}

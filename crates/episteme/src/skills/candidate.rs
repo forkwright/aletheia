@@ -480,4 +480,77 @@ mod tests {
         assert_eq!(back.id, candidates[0].id);
         assert_eq!(back.recurrence_count, 1);
     }
+
+    #[test]
+    fn evidence_caps_and_survives_into_source_evidence() {
+        use crate::skills::SkillSourceEvidence;
+
+        // Observe the same pattern more times than the cap allows so the
+        // tracker must drop the oldest observations.
+        let tracker = CandidateTracker::new();
+        let total = MAX_EVIDENCE_OBSERVATIONS + 3;
+        for i in 0..total {
+            tracker.track_sequence(&good_seq(), &format!("session-{i}"), "nous1");
+        }
+
+        let candidates = tracker.candidates_for("nous1");
+        assert_eq!(
+            candidates.len(),
+            1,
+            "similar sequences merge into one candidate"
+        );
+        let candidate = candidates.first().expect("one merged candidate");
+        assert_eq!(
+            candidate.recurrence_count,
+            u32::try_from(total).expect("recurrence fits u32"),
+            "every occurrence is counted even past the evidence cap"
+        );
+        assert_eq!(
+            candidate.evidence.len(),
+            MAX_EVIDENCE_OBSERVATIONS,
+            "retained evidence is capped at MAX_EVIDENCE_OBSERVATIONS"
+        );
+
+        // The cap drops oldest-first, so the most relevant (most recent)
+        // observations are the ones retained.
+        assert_eq!(
+            candidate
+                .evidence
+                .first()
+                .expect("evidence present")
+                .session_id,
+            format!("session-{}", total - MAX_EVIDENCE_OBSERVATIONS),
+            "oldest observations are dropped first"
+        );
+        assert_eq!(
+            candidate
+                .evidence
+                .last()
+                .expect("evidence present")
+                .session_id,
+            format!("session-{}", total - 1),
+            "the most recent observation is retained"
+        );
+
+        // Capped evidence must survive the merge into the extraction's source
+        // evidence on the live `from_candidate` path.
+        let source = SkillSourceEvidence::from_candidate(candidate);
+        assert_eq!(
+            source.observations.len(),
+            MAX_EVIDENCE_OBSERVATIONS,
+            "capped observations reach SkillSourceEvidence"
+        );
+        assert_eq!(
+            source.sequence_hashes.len(),
+            MAX_EVIDENCE_OBSERVATIONS,
+            "one sequence hash per retained observation"
+        );
+        assert!(
+            source
+                .observations
+                .iter()
+                .all(|o| !o.sequence_hash.is_empty()),
+            "every retained observation carries a sequence hash"
+        );
+    }
 }
