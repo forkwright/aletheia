@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use super::*;
 
+mod diagnostics;
 mod edge_cases;
 mod landlock_and_seccomp;
 mod namespace_and_failure;

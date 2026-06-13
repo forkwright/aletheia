@@ -1,14 +1,9 @@
 //! Workspace tool executors: read, write, edit, exec.
 
 use std::future::Future;
-use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
-
-#[cfg(target_os = "linux")]
-use std::os::unix::process::CommandExt as _;
+use std::time::Duration;
 
 use indexmap::IndexMap;
 
@@ -17,8 +12,8 @@ use koina::id::ToolName;
 use koina::system::{Environment, RealSystem};
 
 use crate::error::{self, Result};
-use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::subprocess::{SubprocessRequest, SubprocessRunner};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolDiagnostics, ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -573,38 +568,11 @@ fn parse_command_args(command: &str) -> std::result::Result<(String, Vec<String>
     Ok((program, args))
 }
 
-/// WHY: The parent process holds API keys (`ANTHROPIC_API_KEY`,
-/// `ANTHROPIC_AUTH_TOKEN`, `ALETHEIA_*`, etc.) in its environment. Without
-/// clearing, any child process spawned by the exec tool inherits these secrets,
-/// enabling exfiltration via prompt injection (e.g., `exec env | grep API`).
-/// The Landlock sandbox restricts filesystem access but NOT env var reading —
-/// env vars are process state, not filesystem objects.
-///
-/// We clear the entire environment and re-add only variables needed for basic
-/// process operation. Operators needing additional variables should add them to
-/// the `SandboxConfig` allowlist.
-const SAFE_ENV_VARS: &[&str] = &[
-    "PATH",
-    "HOME",
-    "TERM",
-    "LANG",
-    "LC_ALL",
-    "USER",
-    "SHELL",
-    "TMPDIR",
-    "XDG_RUNTIME_DIR",
-    "TZ",
-];
-
 struct ExecExecutor {
     sandbox: crate::sandbox::SandboxConfig,
 }
 
 impl ToolExecutor for ExecExecutor {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "env sanitization (#3374) + sandbox + rlimit setup in a single spawn sequence; splitting obscures the security-critical ordering"
-    )]
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -632,117 +600,21 @@ impl ToolExecutor for ExecExecutor {
                 Err(e) => return Ok(err_result(format!("invalid command syntax: {e}"))),
             };
 
-            let mut cmd = Command::new(&program);
-            cmd.args(&args)
-                .current_dir(&ctx.workspace)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-
-            // WHY: Clear inherited environment to prevent API key exfiltration.
-            // See SAFE_ENV_VARS constant for rationale.
-            cmd.env_clear();
-            for &var in SAFE_ENV_VARS {
-                if let Some(val) = std::env::var_os(var) {
-                    cmd.env(var, val);
-                }
-            }
-
-            // WHY: Apply process resource limits before sandbox to constrain fork-bombs
-            // and runaway CPU usage. RLIMIT_NPROC caps child process count;
-            // RLIMIT_CPU caps CPU seconds.
-            #[cfg(target_os = "linux")]
-            {
-                let nproc_cap = u64::from(self.sandbox.nproc_limit);
-
-                // SAFETY: setrlimit is async-signal-safe and only modifies the
-                // calling process's resource limits. Runs between fork and exec.
-                #[expect(
-                    unsafe_code,
-                    reason = "pre_exec requires unsafe; setrlimit is async-signal-safe"
-                )]
-                unsafe {
-                    cmd.pre_exec(move || {
-                        use rustix::process::{Resource, Rlimit, setrlimit};
-
-                        // WHY: Cap subprocess count to prevent fork bombs.
-                        // RLIMIT_NPROC counts ALL user processes, not just sandbox
-                        // children, so the limit must be high enough to accommodate
-                        // existing background processes.
-                        let nproc_limit = Rlimit {
-                            current: Some(nproc_cap),
-                            maximum: Some(nproc_cap),
-                        };
-                        let _ = setrlimit(Resource::Nproc, nproc_limit);
-
-                        // WHY: Cap CPU time to prevent runaway processes.
-                        let cpu_limit = Rlimit {
-                            current: Some(60),
-                            maximum: Some(60),
-                        };
-                        let _ = setrlimit(Resource::Cpu, cpu_limit);
-
-                        Ok(())
-                    });
-                }
-            }
-
-            if self.sandbox.enabled {
-                let policy = self
-                    .sandbox
-                    .build_policy(&ctx.workspace, &ctx.allowed_roots);
-                if let Err(e) = crate::sandbox::apply_sandbox(&mut cmd, policy) {
-                    return Ok(err_result(format!("sandbox setup failed: {e}")));
-                }
-            }
-
-            // NOTE: Wrap immediately so the child is killed on any early return
-            // (timeout, wait error, or panic).
-            let mut guard = match cmd.spawn() {
-                Ok(c) => ProcessGuard::new(c),
-                Err(e) => {
-                    return Ok(err_result(format!("spawn failed: {e}")));
-                }
+            let output_result = SubprocessRunner::new(self.sandbox.clone()).run(
+                SubprocessRequest::new(program, ctx.workspace.clone())
+                    .args(args)
+                    .timeout(Duration::from_millis(timeout_ms))
+                    .max_output_bytes(MAX_OUTPUT_BYTES),
+                ctx,
+            );
+            let out = match output_result {
+                Ok(out) => out,
+                Err(e) => return Ok(err_result(e.to_string())),
             };
 
-            let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-            let status = loop {
-                match guard.get_mut().try_wait() {
-                    Ok(Some(s)) => break s,
-                    Ok(None) => {
-                        if Instant::now() >= deadline {
-                            // INVARIANT: kill() must always be followed by wait() to
-                            // prevent zombie accumulation. If the process exited between
-                            // try_wait() returning None and this kill(), kill() returns
-                            // ESRCH (safe to ignore); wait() still reaps the zombie
-                            // because no other caller can have waited on this child.
-                            let _ = guard.get_mut().kill();
-                            let _ = guard.get_mut().wait();
-                            return Ok(err_result(format!(
-                                "command timed out after {timeout_ms}ms"
-                            )));
-                        }
-                        std::thread::sleep(Duration::from_millis(50));
-                    }
-                    Err(e) => {
-                        return Ok(err_result(format!("wait failed: {e}")));
-                    }
-                }
-            };
-
-            // NOTE: Process exited normally (`try_wait` already reaped the zombie).
-            // Read captured stdio via the guard. The guard's Drop will call
-            // kill() + wait() on the already-dead process, both of which
-            // safely ignore ESRCH / ECHILD errors.
-            let mut stdout = String::new();
-            if let Some(ref mut pipe) = guard.get_mut().stdout {
-                let _ = pipe.read_to_string(&mut stdout);
-            }
-            let mut stderr = String::new();
-            if let Some(ref mut pipe) = guard.get_mut().stderr {
-                let _ = pipe.read_to_string(&mut stderr);
-            }
-
-            let code = status.code().unwrap_or(-1);
+            let code = out.exit_code;
+            let stdout = out.stdout;
+            let stderr = out.stderr;
             let mut output = format!("exit={code}\n{stdout}\n{stderr}");
             if output.len() > MAX_OUTPUT_BYTES {
                 // WHY: Truncating at an arbitrary byte position can split a multi-byte
@@ -765,7 +637,7 @@ impl ToolExecutor for ExecExecutor {
                 exit_code: Some(code),
                 stderr: stderr_diag,
                 sandbox_violations: Vec::new(),
-                duration_ms: 0, // filled in by dispatch
+                duration_ms: u64::try_from(out.duration.as_millis()).unwrap_or(u64::MAX),
             };
 
             Ok(ToolResult::text(output).with_diagnostics(diagnostics))

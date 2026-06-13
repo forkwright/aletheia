@@ -3,7 +3,7 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use super::super::*;
-use super::{test_ctx, tool_input};
+use super::{find_executor, grep_executor, test_ctx, test_sandbox, tool_input};
 
 #[tokio::test]
 async fn grep_finds_pattern() {
@@ -20,7 +20,7 @@ async fn grep_finds_pattern() {
 
     let ctx = test_ctx(dir.path());
     let input = tool_input("grep", serde_json::json!({ "pattern": "println" }));
-    let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = grep_executor().execute(&input, &ctx).await.expect("exec");
     assert!(!result.is_error, "grep should succeed without error");
     assert!(
         result.content.text_summary().contains("println"),
@@ -47,7 +47,7 @@ async fn grep_with_glob_filter() {
         "grep",
         serde_json::json!({ "pattern": "func", "glob": "*.rs" }),
     );
-    let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = grep_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "grep with glob filter should succeed without error"
@@ -77,7 +77,7 @@ async fn grep_case_insensitive() {
         "grep",
         serde_json::json!({ "pattern": "HELLO", "caseSensitive": false }),
     );
-    let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = grep_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "case-insensitive grep should succeed without error"
@@ -104,7 +104,7 @@ async fn grep_no_matches_not_error() {
 
     let ctx = test_ctx(dir.path());
     let input = tool_input("grep", serde_json::json!({ "pattern": "zzzznotfound" }));
-    let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = grep_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "grep with no matches should not return an error"
@@ -113,6 +113,71 @@ async fn grep_no_matches_not_error() {
         result.content.text_summary(),
         "No matches found.",
         "grep with no matches should return the standard no-matches message"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn grep_subprocess_uses_shared_env_policy() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let _guard = crate::subprocess::SUBPROCESS_ENV_LOCK
+        .lock()
+        .expect("env lock");
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let bin_dir = tempfile::tempdir().expect("bindir");
+    let fake_rg = bin_dir.path().join("rg");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test creates a fake helper binary on disk"
+    )]
+    std::fs::write(
+        &fake_rg,
+        "#!/bin/sh\nprintf 'ALETHEIA_TOKEN=%s\\n' \"${ALETHEIA_TOKEN-unset}\"\n",
+    )
+    .expect("write fake rg");
+    std::fs::set_permissions(&fake_rg, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod fake rg");
+
+    #[expect(
+        unsafe_code,
+        reason = "set_var requires unsafe in Rust 2024; test controls env"
+    )]
+    unsafe {
+        std::env::set_var("ALETHEIA_TOKEN", "read-helper-secret");
+    }
+
+    let ctx = test_ctx(dir.path());
+    let input = tool_input("grep", serde_json::json!({ "pattern": "anything" }));
+    let executor = GrepExecutor {
+        runner: crate::subprocess::SubprocessRunner::new(test_sandbox()),
+        rg_program: fake_rg.into_os_string(),
+        grep_program: "grep".into(),
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let result = runtime
+        .block_on(executor.execute(&input, &ctx))
+        .expect("exec");
+
+    #[expect(
+        unsafe_code,
+        reason = "remove_var requires unsafe in Rust 2024; test cleanup"
+    )]
+    unsafe {
+        std::env::remove_var("ALETHEIA_TOKEN");
+    }
+
+    let text = result.content.text_summary();
+    assert!(
+        text.contains("ALETHEIA_TOKEN=unset"),
+        "fake rg should observe the sanitized child environment: {text}"
+    );
+    assert!(
+        !text.contains("read-helper-secret"),
+        "read helper subprocess must not inherit sensitive env"
     );
 }
 
@@ -132,7 +197,7 @@ async fn find_locates_files() {
 
     let ctx = test_ctx(dir.path());
     let input = tool_input("find", serde_json::json!({ "pattern": "app" }));
-    let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = find_executor().execute(&input, &ctx).await.expect("exec");
     assert!(!result.is_error, "find should succeed without error");
     let text = result.content.text_summary();
     assert!(
@@ -153,7 +218,7 @@ async fn find_type_filter() {
 
     let ctx = test_ctx(dir.path());
     let input = tool_input("find", serde_json::json!({ "pattern": ".", "type": "d" }));
-    let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = find_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "find with type filter should succeed without error"
@@ -186,7 +251,7 @@ async fn find_max_depth() {
         "find",
         serde_json::json!({ "pattern": "txt", "maxDepth": 1 }),
     );
-    let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = find_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "find with max depth should succeed without error"
@@ -318,7 +383,7 @@ async fn path_validation_rejects_outside_roots() {
         "grep",
         serde_json::json!({ "pattern": "x", "path": "/etc" }),
     );
-    let err = GrepExecutor
+    let err = grep_executor()
         .execute(&input, &ctx)
         .await
         .expect_err("should reject outside root");
@@ -344,7 +409,7 @@ async fn test_grep_when_pattern_argument_missing_returns_error() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("grep", serde_json::json!({}));
-    let err = GrepExecutor
+    let err = grep_executor()
         .execute(&input, &ctx)
         .await
         .expect_err("missing pattern should error");
@@ -359,7 +424,7 @@ async fn test_find_when_pattern_argument_missing_returns_error() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("find", serde_json::json!({}));
-    let err = FindExecutor
+    let err = find_executor()
         .execute(&input, &ctx)
         .await
         .expect_err("missing pattern should error");
@@ -387,7 +452,7 @@ async fn test_grep_max_results_limits_output_lines() {
         "grep",
         serde_json::json!({ "pattern": "match", "maxResults": 5 }),
     );
-    let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = grep_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "grep with maxResults should succeed without error"
@@ -414,7 +479,7 @@ async fn test_grep_case_sensitive_does_not_match_wrong_case() {
         "grep",
         serde_json::json!({ "pattern": "hello", "caseSensitive": true }),
     );
-    let result = GrepExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = grep_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "case-sensitive grep should succeed without error"
@@ -434,7 +499,7 @@ async fn test_grep_returns_error_result_for_invalid_path_outside_roots() {
         "grep",
         serde_json::json!({ "pattern": "x", "path": "/root/secret" }),
     );
-    let err = GrepExecutor
+    let err = grep_executor()
         .execute(&input, &ctx)
         .await
         .expect_err("outside root should fail");
@@ -449,7 +514,7 @@ async fn test_find_empty_results_returns_not_error_message() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
     let input = tool_input("find", serde_json::json!({ "pattern": "zzz_never_exists" }));
-    let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = find_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "find with no matches should not return an error"
@@ -482,7 +547,7 @@ async fn test_find_glob_extension_filter_matches_correctly() {
 
     let ctx = test_ctx(dir.path());
     let input = tool_input("find", serde_json::json!({ "pattern": "*.rs" }));
-    let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = find_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "find with glob extension filter should succeed without error"
@@ -507,7 +572,7 @@ async fn test_find_max_results_limits_output() {
         "find",
         serde_json::json!({ "pattern": "file", "maxResults": 3 }),
     );
-    let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
+    let result = find_executor().execute(&input, &ctx).await.expect("exec");
     assert!(
         !result.is_error,
         "find with maxResults should succeed without error"

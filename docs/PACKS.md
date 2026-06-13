@@ -26,7 +26,7 @@ packs = [
 ]
 ```
 
-Packs load at startup. Invalid or missing packs log warnings and are skipped (graceful degradation).
+Relative paths resolve from the instance root (`$ALETHEIA_ROOT` or `./instance`). Absolute paths are used as-is. Packs load at startup. Invalid or missing packs log warnings and are skipped (graceful degradation).
 
 ## Manifest: pack.toml
 
@@ -50,6 +50,9 @@ name = "query_database"
 description = "Run a read-only SQL query against the data warehouse"
 command = "tools/query_database.sh"
 timeout = 60000
+groups = ["read"]
+tags = ["recon", "fetch"]
+reversibility = "fully_reversible"
 
 [tools.input_schema]
 required = ["sql"]
@@ -104,6 +107,9 @@ Tools are shell commands exposed to the LLM as callable functions. The runtime p
 | `description` | string | required | Short description sent to the LLM |
 | `command` | string | required | Path to script, relative to pack root |
 | `timeout` | int | `30000` | Execution timeout in **milliseconds** |
+| `groups` | list | `["command"]` | Tool gating groups: `read`, `edit`, `command`, `mcp`, `spawn_subtask`, `plan`, `verify` |
+| `tags` | list | `["execute"]` | Operational tags: `recon`, `edit`, `verify`, `fetch`, `spawn`, `plan`, `execute`, `format` |
+| `reversibility` | string | `irreversible` | One of `fully_reversible`, `reversible`, `partially_reversible`, `irreversible` |
 | `input_schema` | object | none | JSON Schema for input parameters |
 
 Input schema properties support types: `string`, `number`, `integer`, `boolean`, `array`, `object`. Each property has a `description` field and optional `enum` and `default` values.
@@ -113,8 +119,9 @@ Input schema properties support types: `string`, `number`, `integer`, `boolean`,
 1. LLM emits a `tool_use` block with JSON arguments
 2. Runtime serializes arguments to JSON and pipes to the command's stdin
 3. Command writes result to stdout (text or JSON)
-4. Runtime captures stdout as the tool result (stderr is logged, not returned)
-5. Output is truncated at 50KB
+4. Runtime captures stdout as the tool result
+5. Stderr is logged with metadata only; it is not returned to the LLM-visible tool result
+6. Output is truncated at 50KB
 
 ### Security
 
@@ -180,10 +187,10 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
    priority = "important"
    ```
 
-5. **Register the pack** in `instance/config/aletheia.toml`:
+5. **Register the pack** in `instance/config/aletheia.toml`. Relative paths resolve from the instance root:
 
    ```toml
-   packs = ["instance/packs/my-pack"]
+   packs = ["packs/my-pack"]
    ```
 
 6. **Restart Aletheia**. The startup log will show `domain pack loaded` for each valid pack.

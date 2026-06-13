@@ -75,6 +75,20 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// `tool_schema` has not been registered yet.
+    #[snafu(display("tool_schema is not registered"))]
+    ToolSchemaNotRegistered {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Lock guarding the `tool_schema` snapshot was poisoned.
+    #[snafu(display("tool_schema snapshot lock poisoned"))]
+    SchemaSnapshotPoisoned {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias.

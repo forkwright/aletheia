@@ -25,6 +25,8 @@ pub mod receipts;
 pub mod registry;
 /// Landlock + seccomp sandbox for tool execution.
 pub mod sandbox;
+/// Shared sandboxed subprocess runner for built-ins and extension tools.
+pub mod subprocess;
 /// Test support: mock executors and component spec validation framework.
 ///
 /// Enabled by the `test-support` Cargo feature. Never compiled into release builds.

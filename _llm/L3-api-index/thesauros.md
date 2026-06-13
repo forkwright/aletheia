@@ -260,6 +260,15 @@ pub struct PackToolDef {
     /// Input parameter schema.
     #[serde(default)]
     pub input_schema: Option<PackInputSchema>,
+    /// Capability groups for tool gating. Defaults to `["command"]`.
+    #[serde(default)]
+    pub groups: Vec<String>,
+    /// Operational intent tags. Defaults to `["execute"]`.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Reversibility metadata. Defaults to `irreversible`.
+    #[serde(default)]
+    pub reversibility: Option<String>,
 }
 ```
 
@@ -298,4 +307,16 @@ pub struct PackPropertyDef {
 > Invalid tools are skipped with warnings; errors are collected and returned.
 ```rust
 pub fn register_pack_tools (packs: &[LoadedPack], registry: &mut ToolRegistry) -> Vec<error::Error>
+```
+
+> Register all tools from loaded packs with the supplied subprocess sandbox.
+> 
+> Runtime callers pass the same sandbox config used by built-in tools so pack
+> shell tools inherit the deployment's process, filesystem, and egress policy.
+```rust
+pub fn register_pack_tools_with_sandbox (
+    packs: &[LoadedPack],
+    registry: &mut ToolRegistry,
+    sandbox: organon::sandbox::SandboxConfig,
+) -> Vec<error::Error>
 ```

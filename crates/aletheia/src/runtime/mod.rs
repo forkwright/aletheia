@@ -3,6 +3,7 @@
 
 #[cfg(feature = "recall")]
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -15,6 +16,7 @@ use tracing::{Instrument, error, info, warn};
 use agora::types::ChannelProvider;
 use aletheia_routing::{AfterActionStore, RecordingRouter};
 use hermeneus::provider::ProviderRegistry;
+use koina::id::ToolName;
 use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
 use mneme::embedding::DegradedEmbeddingProvider;
@@ -65,6 +67,22 @@ pub(crate) struct Runtime {
     /// timeout so every task gets a chance to drain cleanly.
     pub task_tracker: TaskTracker,
     pub shutdown_token: CancellationToken,
+}
+
+fn resolve_pack_path(oikos: &Oikos, configured: &Path) -> PathBuf {
+    if configured.is_absolute() {
+        configured.to_path_buf()
+    } else {
+        let absolute = oikos.root().join(configured);
+        absolute.canonicalize().unwrap_or(absolute)
+    }
+}
+
+fn resolve_pack_paths(oikos: &Oikos, configured: &[PathBuf]) -> Vec<PathBuf> {
+    configured
+        .iter()
+        .map(|path| resolve_pack_path(oikos, path))
+        .collect()
 }
 
 impl RuntimeBuilder {
@@ -241,7 +259,7 @@ impl RuntimeBuilder {
         // WHY: load_packs performs synchronous file I/O; wrap in spawn_blocking
         // so the async runtime thread is not stalled during pack discovery.
         let loaded_packs = if self.domain_packs {
-            let packs = self.config.packs.clone();
+            let packs = resolve_pack_paths(&self.oikos, &self.config.packs);
             tokio::task::spawn_blocking(move || thesauros::loader::load_packs(&packs))
                 .await
                 .whatever_context("pack loading task panicked")?
@@ -303,7 +321,11 @@ impl RuntimeBuilder {
         };
 
         if self.domain_packs {
-            let tool_errors = thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
+            let tool_errors = thesauros::tools::register_pack_tools_with_sandbox(
+                &packs,
+                &mut tool_registry,
+                sandbox_config(&self.config),
+            );
             for err in &tool_errors {
                 warn!(error = %err, "failed to register pack tool");
             }
@@ -328,6 +350,19 @@ impl RuntimeBuilder {
                 count = missing,
                 "required external tools unavailable -- agents will degrade gracefully"
             );
+        }
+
+        // WHY: `tool_schema` was registered during built-in tool setup with a
+        // snapshot of only the built-ins.  Domain packs and external tools are
+        // registered after that, so refresh the snapshot now that the complete
+        // tool set is known.
+        if tool_registry
+            .get_def(&ToolName::from_static("tool_schema"))
+            .is_some()
+        {
+            tool_registry
+                .finalize_tool_schema()
+                .whatever_context("failed to finalize tool_schema snapshot")?;
         }
 
         let tool_registry = Arc::new(tool_registry);
@@ -859,5 +894,108 @@ mod cron_executor;
 use setup::open_knowledge_stores;
 use setup::{
     LazyEmbeddingProvider, build_matrix_provider, build_provider_registry, build_signal_provider,
-    build_tool_registry, start_inbound_dispatch,
+    build_tool_registry, sandbox_config, start_inbound_dispatch,
 };
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::{LazyLock, Mutex};
+
+    use taxis::oikos::Oikos;
+    use tempfile::TempDir;
+    use thesauros::loader::load_packs;
+
+    use super::resolve_pack_paths;
+
+    static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    struct CwdGuard {
+        original: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn move_to(path: &std::path::Path) -> Self {
+            let original = std::env::current_dir().expect("read current working directory");
+            std::env::set_current_dir(path).expect("set test working directory");
+            Self { original }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.original).expect("restore working directory");
+        }
+    }
+
+    fn write_pack(dir: &std::path::Path, files: &[(&str, &str)]) {
+        for (name, content) in files {
+            let path = dir.join(name);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("create pack parent directory");
+            }
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "test writes synthetic pack files on disk"
+            )]
+            fs::write(&path, content).expect("write pack file");
+        }
+    }
+
+    #[test]
+    fn relative_pack_paths_resolve_against_instance_root() {
+        let _cwd_lock = CWD_LOCK.lock().expect("lock cwd mutation");
+        let instance = TempDir::new().expect("instance temp directory");
+        let pack_dir = instance.path().join("packs").join("my-pack");
+        fs::create_dir_all(&pack_dir).expect("create pack directory");
+        write_pack(
+            &pack_dir,
+            &[("pack.toml", "name = \"cwd-test\"\nversion = \"1.0\"\n")],
+        );
+
+        let unrelated = TempDir::new().expect("unrelated temp directory");
+        let _cwd_guard = CwdGuard::move_to(unrelated.path());
+
+        let oikos = Oikos::from_root(instance.path());
+        let resolved = resolve_pack_paths(&oikos, &[PathBuf::from("packs/my-pack")]);
+        let packs = load_packs(&resolved);
+
+        assert_eq!(
+            packs.len(),
+            1,
+            "relative pack path should resolve from instance root regardless of process cwd"
+        );
+        let pack = packs.first().expect("one pack loaded");
+        assert_eq!(pack.manifest.name, "cwd-test");
+        assert_eq!(
+            pack.root, pack_dir,
+            "loaded pack root should be the resolved absolute path"
+        );
+    }
+
+    #[test]
+    fn absolute_pack_paths_are_used_directly() {
+        let instance = TempDir::new().expect("instance temp directory");
+        let pack_dir = instance.path().join("external-pack");
+        fs::create_dir_all(&pack_dir).expect("create pack directory");
+        write_pack(
+            &pack_dir,
+            &[("pack.toml", "name = \"absolute-test\"\nversion = \"1.0\"\n")],
+        );
+
+        let oikos = Oikos::from_root(instance.path());
+        let resolved = resolve_pack_paths(&oikos, std::slice::from_ref(&pack_dir));
+        let packs = load_packs(&resolved);
+
+        assert_eq!(
+            packs.len(),
+            1,
+            "absolute pack path should be used without root resolution"
+        );
+        let pack = packs.first().expect("one pack loaded");
+        assert_eq!(pack.manifest.name, "absolute-test");
+        assert_eq!(pack.root, pack_dir);
+    }
+}

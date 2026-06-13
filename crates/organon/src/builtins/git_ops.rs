@@ -23,19 +23,18 @@
 //! narrow. If the workspace later adopts `gix` we can swap without changing
 //! tool shapes.
 
+use std::ffi::OsString;
 use std::future::Future;
-use std::io::Read as _;
 use std::pin::Pin;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use indexmap::IndexMap;
 
 use koina::id::ToolName;
 
 use crate::error::Result;
-use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::subprocess::{SubprocessError, SubprocessRequest, SubprocessRunner};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolDiagnostics, ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -74,81 +73,62 @@ struct GitRunOutput {
     stdout: String,
     stderr: String,
     code: i32,
+    duration_ms: u64,
+}
+
+#[derive(Clone)]
+struct GitCommandRunner {
+    runner: SubprocessRunner,
+    program: OsString,
+}
+
+impl GitCommandRunner {
+    fn new(runner: SubprocessRunner) -> Self {
+        Self {
+            runner,
+            program: OsString::from("git"),
+        }
+    }
 }
 
 /// Run `git` in the workspace root. Returns stdout on success, stderr on failure.
-fn run_git(ctx: &ToolContext, args: &[&str]) -> std::result::Result<GitRunOutput, GitRunOutput> {
-    let mut cmd = Command::new("git");
-    cmd.args(args)
-        .current_dir(&ctx.workspace)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+fn run_git(
+    ctx: &ToolContext,
+    git: &GitCommandRunner,
+    args: &[&str],
+) -> std::result::Result<GitRunOutput, GitRunOutput> {
+    let output = git.runner.run(
+        SubprocessRequest::new(git.program.clone(), ctx.workspace.clone())
+            .args(args.iter().copied())
+            .timeout(GIT_TIMEOUT)
+            .max_output_bytes(MAX_GIT_OUTPUT),
+        ctx,
+    );
 
-    let child = cmd.spawn().map_err(|e| GitRunOutput {
-        stdout: String::new(),
-        stderr: format!("failed to spawn git: {e}"),
-        code: -1,
-    })?;
-    let mut guard = ProcessGuard::new(child);
-
-    let deadline = Instant::now() + GIT_TIMEOUT;
-    let status = loop {
-        match guard.get_mut().try_wait() {
-            Ok(Some(s)) => break s,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    // Guard drop kills + reaps.
-                    return Err(GitRunOutput {
-                        stdout: String::new(),
-                        stderr: "git timed out after 30s".to_owned(),
-                        code: -1,
-                    });
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(e) => {
-                return Err(GitRunOutput {
-                    stdout: String::new(),
-                    stderr: format!("git wait failed: {e}"),
-                    code: -1,
-                });
-            }
+    let out = match output {
+        Ok(out) => out,
+        Err(e) => {
+            let stderr = match e {
+                SubprocessError::Timeout(_) => "git timed out after 30s".to_owned(),
+                other => other.to_string(),
+            };
+            return Err(GitRunOutput {
+                stdout: String::new(),
+                stderr,
+                code: -1,
+                duration_ms: 0,
+            });
         }
     };
 
-    let mut stdout = String::new();
-    if let Some(ref mut pipe) = guard.get_mut().stdout {
-        let _ = pipe.read_to_string(&mut stdout);
-    }
-    let mut stderr = String::new();
-    if let Some(ref mut pipe) = guard.get_mut().stderr {
-        let _ = pipe.read_to_string(&mut stderr);
-    }
-
-    #[expect(
-        clippy::zombie_processes,
-        reason = "process already reaped via try_wait in poll loop above"
-    )]
-    let _ = guard.detach();
-
-    if stdout.len() > MAX_GIT_OUTPUT {
-        // WHY: slice at UTF-8 char boundary to preserve validity.
-        let mut end = MAX_GIT_OUTPUT;
-        while end > 0 && !stdout.is_char_boundary(end) {
-            end -= 1;
-        }
-        stdout.truncate(end);
-        stdout.push_str("\n[output truncated]");
-    }
-
-    let code = status.code().unwrap_or(-1);
     let output = GitRunOutput {
-        stdout,
-        stderr,
-        code,
+        stdout: out.stdout,
+        stderr: out.stderr,
+        code: out.exit_code,
+        duration_ms: u64::try_from(out.duration.as_millis()).unwrap_or(u64::MAX),
     };
 
-    if status.success() {
+    if output.code == 0 {
         Ok(output)
     } else {
         Err(output)
@@ -170,7 +150,7 @@ fn git_ok(out: GitRunOutput, empty_msg: &str) -> ToolResult {
             Some(out.stderr)
         },
         sandbox_violations: Vec::new(),
-        duration_ms: 0,
+        duration_ms: out.duration_ms,
     })
 }
 
@@ -185,11 +165,13 @@ fn git_err(out: GitRunOutput) -> ToolResult {
             Some(out.stderr)
         },
         sandbox_violations: Vec::new(),
-        duration_ms: 0,
+        duration_ms: out.duration_ms,
     })
 }
 
-struct GitStatusExecutor;
+struct GitStatusExecutor {
+    git: GitCommandRunner,
+}
 
 impl ToolExecutor for GitStatusExecutor {
     fn execute<'a>(
@@ -199,7 +181,7 @@ impl ToolExecutor for GitStatusExecutor {
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
             let _ = input;
-            match run_git(ctx, &["status", "--short", "--branch"]) {
+            match run_git(ctx, &self.git, &["status", "--short", "--branch"]) {
                 Ok(out) => Ok(git_ok(out, "(clean working tree)")),
                 Err(out) => Ok(git_err(out)),
             }
@@ -207,7 +189,9 @@ impl ToolExecutor for GitStatusExecutor {
     }
 }
 
-struct GitLogExecutor;
+struct GitLogExecutor {
+    git: GitCommandRunner,
+}
 
 impl ToolExecutor for GitLogExecutor {
     fn execute<'a>(
@@ -234,7 +218,7 @@ impl ToolExecutor for GitLogExecutor {
                 }
             }
 
-            match run_git(ctx, &args) {
+            match run_git(ctx, &self.git, &args) {
                 Ok(out) => Ok(git_ok(out, "(no commits)")),
                 Err(out) => Ok(git_err(out)),
             }
@@ -242,7 +226,9 @@ impl ToolExecutor for GitLogExecutor {
     }
 }
 
-struct GitDiffExecutor;
+struct GitDiffExecutor {
+    git: GitCommandRunner,
+}
 
 impl ToolExecutor for GitDiffExecutor {
     fn execute<'a>(
@@ -276,7 +262,7 @@ impl ToolExecutor for GitDiffExecutor {
                 args.push(p);
             }
 
-            match run_git(ctx, &args) {
+            match run_git(ctx, &self.git, &args) {
                 Ok(out) => Ok(git_ok(out, "(no changes)")),
                 Err(out) => Ok(git_err(out)),
             }
@@ -284,7 +270,9 @@ impl ToolExecutor for GitDiffExecutor {
     }
 }
 
-struct GitBranchExecutor;
+struct GitBranchExecutor {
+    git: GitCommandRunner,
+}
 
 impl ToolExecutor for GitBranchExecutor {
     fn execute<'a>(
@@ -296,7 +284,7 @@ impl ToolExecutor for GitBranchExecutor {
             let _ = input;
             // WHY: --list default shows local branches; --verbose adds the
             // commit subject which helps the LLM pick a branch.
-            match run_git(ctx, &["branch", "--list", "--verbose"]) {
+            match run_git(ctx, &self.git, &["branch", "--list", "--verbose"]) {
                 Ok(out) => Ok(git_ok(out, "(no local branches)")),
                 Err(out) => Ok(git_err(out)),
             }
@@ -304,7 +292,9 @@ impl ToolExecutor for GitBranchExecutor {
     }
 }
 
-struct GitCheckoutExecutor;
+struct GitCheckoutExecutor {
+    git: GitCommandRunner,
+}
 
 impl ToolExecutor for GitCheckoutExecutor {
     fn execute<'a>(
@@ -331,7 +321,7 @@ impl ToolExecutor for GitCheckoutExecutor {
                 vec!["checkout", validated]
             };
 
-            match run_git(ctx, &args) {
+            match run_git(ctx, &self.git, &args) {
                 Ok(out) => Ok(git_ok(
                     out,
                     &format!(
@@ -346,12 +336,37 @@ impl ToolExecutor for GitCheckoutExecutor {
 }
 
 /// Register the git tool suite.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "unit tests use default registration; runtime injects sandbox config"
+    )
+)]
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(git_status_def(), Box::new(GitStatusExecutor))?;
-    registry.register(git_log_def(), Box::new(GitLogExecutor))?;
-    registry.register(git_diff_def(), Box::new(GitDiffExecutor))?;
-    registry.register(git_branch_def(), Box::new(GitBranchExecutor))?;
-    registry.register(git_checkout_def(), Box::new(GitCheckoutExecutor))?;
+    register_with_sandbox(registry, crate::sandbox::SandboxConfig::default())
+}
+
+/// Register git tools with a shared subprocess sandbox config.
+pub(crate) fn register_with_sandbox(
+    registry: &mut ToolRegistry,
+    sandbox: crate::sandbox::SandboxConfig,
+) -> Result<()> {
+    let git = GitCommandRunner::new(SubprocessRunner::new(sandbox));
+    registry.register(
+        git_status_def(),
+        Box::new(GitStatusExecutor { git: git.clone() }),
+    )?;
+    registry.register(git_log_def(), Box::new(GitLogExecutor { git: git.clone() }))?;
+    registry.register(
+        git_diff_def(),
+        Box::new(GitDiffExecutor { git: git.clone() }),
+    )?;
+    registry.register(
+        git_branch_def(),
+        Box::new(GitBranchExecutor { git: git.clone() }),
+    )?;
+    registry.register(git_checkout_def(), Box::new(GitCheckoutExecutor { git }))?;
     Ok(())
 }
 
@@ -517,6 +532,7 @@ fn git_checkout_def() -> ToolDef {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::HashSet;
+    use std::process::Command;
     use std::sync::{Arc, RwLock};
 
     use koina::id::{NousId, SessionId};
@@ -554,6 +570,38 @@ mod tests {
         run(&["commit", "--allow-empty", "-q", "-m", "initial"]);
     }
 
+    fn test_sandbox() -> crate::sandbox::SandboxConfig {
+        crate::sandbox::SandboxConfig {
+            enabled: false,
+            nproc_limit: 4096,
+            ..crate::sandbox::SandboxConfig::default()
+        }
+    }
+
+    fn git_runner() -> GitCommandRunner {
+        GitCommandRunner::new(SubprocessRunner::new(test_sandbox()))
+    }
+
+    fn git_status_executor() -> GitStatusExecutor {
+        GitStatusExecutor { git: git_runner() }
+    }
+
+    fn git_log_executor() -> GitLogExecutor {
+        GitLogExecutor { git: git_runner() }
+    }
+
+    fn git_diff_executor() -> GitDiffExecutor {
+        GitDiffExecutor { git: git_runner() }
+    }
+
+    fn git_branch_executor() -> GitBranchExecutor {
+        GitBranchExecutor { git: git_runner() }
+    }
+
+    fn git_checkout_executor() -> GitCheckoutExecutor {
+        GitCheckoutExecutor { git: git_runner() }
+    }
+
     #[test]
     fn validate_ref_rejects_dashed_input() {
         assert!(validate_ref("--upload-pack=evil").is_err());
@@ -582,7 +630,10 @@ mod tests {
             tool_use_id: "toolu_test".to_owned(),
             arguments: serde_json::json!({}),
         };
-        let result = GitStatusExecutor.execute(&input, &ctx).await.expect("exec");
+        let result = git_status_executor()
+            .execute(&input, &ctx)
+            .await
+            .expect("exec");
         assert!(!result.is_error, "git_status should succeed in a real repo");
         let text = result.content.text_summary();
         assert!(
@@ -601,7 +652,10 @@ mod tests {
             tool_use_id: "toolu_test".to_owned(),
             arguments: serde_json::json!({ "maxCount": 5 }),
         };
-        let result = GitLogExecutor.execute(&input, &ctx).await.expect("exec");
+        let result = git_log_executor()
+            .execute(&input, &ctx)
+            .await
+            .expect("exec");
         assert!(!result.is_error, "git_log should succeed");
         assert!(
             result.content.text_summary().contains("initial"),
@@ -619,7 +673,10 @@ mod tests {
             tool_use_id: "toolu_test".to_owned(),
             arguments: serde_json::json!({ "ref": "--upload-pack=evil" }),
         };
-        let result = GitLogExecutor.execute(&input, &ctx).await.expect("exec");
+        let result = git_log_executor()
+            .execute(&input, &ctx)
+            .await
+            .expect("exec");
         assert!(result.is_error, "dashed ref must be rejected");
     }
 
@@ -633,7 +690,10 @@ mod tests {
             tool_use_id: "toolu_test".to_owned(),
             arguments: serde_json::json!({}),
         };
-        let result = GitDiffExecutor.execute(&input, &ctx).await.expect("exec");
+        let result = git_diff_executor()
+            .execute(&input, &ctx)
+            .await
+            .expect("exec");
         assert!(!result.is_error, "git_diff should succeed");
         assert!(
             result.content.text_summary().contains("no changes"),
@@ -651,7 +711,10 @@ mod tests {
             tool_use_id: "toolu_test".to_owned(),
             arguments: serde_json::json!({}),
         };
-        let result = GitBranchExecutor.execute(&input, &ctx).await.expect("exec");
+        let result = git_branch_executor()
+            .execute(&input, &ctx)
+            .await
+            .expect("exec");
         assert!(!result.is_error);
         assert!(
             result.content.text_summary().contains("main"),
@@ -669,11 +732,81 @@ mod tests {
             tool_use_id: "toolu_test".to_owned(),
             arguments: serde_json::json!({ "branch": "--force" }),
         };
-        let result = GitCheckoutExecutor
+        let result = git_checkout_executor()
             .execute(&input, &ctx)
             .await
             .expect("exec");
         assert!(result.is_error, "dashed branch must be rejected");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn git_subprocess_uses_shared_env_policy() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let _guard = crate::subprocess::SUBPROCESS_ENV_LOCK
+            .lock()
+            .expect("env lock");
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let bin_dir = tempfile::tempdir().expect("bindir");
+        let fake_git = bin_dir.path().join("git");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "test creates a fake helper binary on disk"
+        )]
+        std::fs::write(
+            &fake_git,
+            "#!/bin/sh\nprintf 'ALETHEIA_TOKEN=%s\\n' \"${ALETHEIA_TOKEN-unset}\"\n",
+        )
+        .expect("write fake git");
+        std::fs::set_permissions(&fake_git, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod fake git");
+
+        #[expect(
+            unsafe_code,
+            reason = "set_var requires unsafe in Rust 2024; test controls env"
+        )]
+        unsafe {
+            std::env::set_var("ALETHEIA_TOKEN", "git-helper-secret");
+        }
+
+        let ctx = test_ctx(dir.path());
+        let input = ToolInput {
+            name: ToolName::new("git_status").expect("valid"),
+            tool_use_id: "toolu_test".to_owned(),
+            arguments: serde_json::json!({}),
+        };
+        let executor = GitStatusExecutor {
+            git: GitCommandRunner {
+                runner: SubprocessRunner::new(test_sandbox()),
+                program: fake_git.into_os_string(),
+            },
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let result = runtime
+            .block_on(executor.execute(&input, &ctx))
+            .expect("exec");
+
+        #[expect(
+            unsafe_code,
+            reason = "remove_var requires unsafe in Rust 2024; test cleanup"
+        )]
+        unsafe {
+            std::env::remove_var("ALETHEIA_TOKEN");
+        }
+
+        let text = result.content.text_summary();
+        assert!(
+            text.contains("ALETHEIA_TOKEN=unset"),
+            "fake git should observe the sanitized child environment: {text}"
+        );
+        assert!(
+            !text.contains("git-helper-secret"),
+            "git helper subprocess must not inherit sensitive env"
+        );
     }
 
     #[test]

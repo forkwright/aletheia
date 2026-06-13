@@ -1,20 +1,19 @@
 //! Pack tool registration and shell execution.
 
 use std::future::Future;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::process::{Command, Stdio}; // kanon:ignore RUST/no-direct-process-command -- WHY: thesauros IS the shell-tool executor; this is the approved execution site
-use std::time::{Duration, Instant};
+use std::str::FromStr as _;
+use std::time::Duration;
 
 use indexmap::IndexMap;
 use koina::defaults::MAX_OUTPUT_BYTES;
 use koina::id::ToolName;
-use organon::process_guard::ProcessGuard;
 use organon::registry::{ToolExecutor, ToolRegistry};
+use organon::subprocess::{SubprocessError, SubprocessRequest, SubprocessRunner};
 use organon::types::{
-    InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolDiagnostics,
-    ToolInput, ToolResult,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolDiagnostics, ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 use tracing::info;
 
@@ -26,18 +25,15 @@ use crate::manifest::{PackInputSchema, PackToolDef};
 struct ShellToolExecutor {
     command_path: PathBuf,
     pack_root: PathBuf,
+    runner: SubprocessRunner,
     timeout_ms: u64,
 }
 
 impl ToolExecutor for ShellToolExecutor {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "shell execution pipeline: spawn, pipe I/O, timeout, error handling"
-    )]
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
             let json_input = serde_json::to_string(&input.arguments).unwrap_or_else(|e| {
@@ -45,139 +41,38 @@ impl ToolExecutor for ShellToolExecutor {
                 String::new()
             });
             let timeout = Duration::from_millis(self.timeout_ms);
-            let start = Instant::now();
-
-            // WHY: retry on ETXTBSY (errno 26): benign race between writing/chmod and exec
-            let mut guard = {
-                let mut last_err = None;
-                let mut spawned = None;
-                for attempt in 0..4 {
-                    match Command::new(&self.command_path) // kanon:ignore RUST/no-direct-process-command -- WHY: this executor IS the organon-approved shell dispatch site for pack tools
-                        .current_dir(&self.pack_root)
-                        .stdin(Stdio::piped())
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped())
-                        .spawn()
-                    {
-                        Ok(c) => {
-                            spawned = Some(c);
-                            break;
-                        }
-                        Err(e) if e.raw_os_error() == Some(26) && attempt < 3 => {
-                            // WHY: brief exponential backoff on ETXTBSY before each retry
-                            tokio::time::sleep(Duration::from_millis(1 << (2 * attempt))).await;
-                            last_err = Some(e);
-                        }
-                        Err(e) => {
-                            return Ok(ToolResult::error(format!("spawn failed: {e}")));
-                        }
-                    }
-                }
-                if let Some(c) = spawned {
-                    // SAFETY: ProcessGuard ensures child is killed and reaped if we
-                    // exit early (timeout, error, or panic).
-                    ProcessGuard::new(c)
-                } else {
-                    let msg = last_err.map_or_else(
-                        || "spawn failed: binary not found or inaccessible".to_owned(),
-                        |e| format!("spawn failed after retries: {e}"),
-                    );
-                    return Ok(ToolResult::error(msg));
-                }
+            let output_result =
+                run_pack_command_with_retry(self, ctx, json_input.into_bytes(), timeout).await;
+            let output_result = match output_result {
+                Ok(output) => output,
+                Err(e) => return Ok(ToolResult::error(e.to_string())),
             };
 
-            if let Some(mut stdin) = guard.get_mut().stdin.take() {
-                use std::io::Write;
-                if let Err(e) = stdin.write_all(json_input.as_bytes()) {
-                    return Ok(ToolResult::error(format!(
-                        "failed to write tool input: {e}"
-                    )));
-                }
-            }
-
-            // WHY: take pipes before moving guard to the background thread so
-            // reads complete independently of the child's exit.
-            let stdout_pipe = guard.get_mut().stdout.take();
-            let stderr_pipe = guard.get_mut().stderr.take();
-            let child_pid = guard.get_mut().id();
-
-            // WHY: wait in a background thread to avoid blocking the async runtime;
-            // enforce timeout from the async side via oneshot + tokio timeout.
-            // ProcessGuard ensures the child is killed if the thread panics.
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            std::thread::spawn(move || {
-                let mut stdout_buf = Vec::new();
-                let mut stderr_buf = Vec::new();
-                if let Some(mut pipe) = stdout_pipe {
-                    let _ = pipe.read_to_end(&mut stdout_buf); // kanon:ignore RUST/no-silent-result-swallow -- WHY: pipe read in background thread; partial read is acceptable, data already in buf
-                }
-                if let Some(mut pipe) = stderr_pipe {
-                    let _ = pipe.read_to_end(&mut stderr_buf); // kanon:ignore RUST/no-silent-result-swallow -- WHY: pipe read in background thread; partial read is acceptable, data already in buf
-                }
-                let result = guard.get_mut().wait().map(|status| std::process::Output {
-                    status,
-                    stdout: stdout_buf,
-                    stderr: stderr_buf,
-                });
-                let _ = tx.send(result); // kanon:ignore RUST/no-silent-result-swallow -- WHY: receiver may have dropped on timeout; send failure is intentionally ignored here
-                // NOTE: guard drops here -- kills and reaps child if still alive
-                // (no-op if already exited). This handles the panic path too.
-            });
-
-            let output_result = match tokio::time::timeout(timeout, rx).await {
-                Ok(Ok(Ok(o))) => o,
-                Ok(Ok(Err(e))) => return Ok(ToolResult::error(format!("wait failed: {e}"))),
-                Ok(Err(_)) => {
-                    return Ok(ToolResult::error(
-                        "wait channel closed unexpectedly".to_owned(),
-                    ));
-                }
-                Err(_) => {
-                    // WHY: kill child by PID to unblock the background thread's
-                    // read_to_end(). The thread will then exit and drop the
-                    // ProcessGuard (which reaps the zombie).
-                    let _ = std::process::Command::new("kill") // kanon:ignore RUST/no-direct-process-command RUST/no-silent-result-swallow -- WHY: kill -9 for timeout cleanup; kill failure is benign (child may have already exited)
-                        .args(["-9", &child_pid.to_string()])
-                        .stdin(Stdio::null())
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .output();
-                    return Ok(ToolResult::error(format!(
-                        "command timed out after {}ms",
-                        self.timeout_ms
-                    )));
-                }
-            };
-
-            let code = output_result.status.code().unwrap_or(-1);
+            let code = output_result.exit_code;
             let is_error = code != 0;
 
-            let stdout = String::from_utf8_lossy(&output_result.stdout);
-            let stderr = String::from_utf8_lossy(&output_result.stderr);
-
-            let mut output = if stderr.is_empty() {
-                stdout.into_owned()
-            } else {
-                format!("{stdout}\n[stderr] {stderr}")
-            };
-
-            if output.len() > MAX_OUTPUT_BYTES {
-                // WHY: floor_char_boundary() rounds down to the nearest valid char boundary,
-                // guaranteeing the truncated slice is valid UTF-8
-                let boundary = output.floor_char_boundary(MAX_OUTPUT_BYTES);
-                output.truncate(boundary);
-                output.push_str("\n[output truncated]");
+            if !output_result.stderr.trim().is_empty() {
+                tracing::warn!(
+                    tool = %input.name,
+                    exit_code = code,
+                    stderr_bytes = output_result.stderr.len(),
+                    "pack tool wrote stderr"
+                );
             }
+
+            let output = if !output_result.stdout.is_empty() {
+                output_result.stdout
+            } else if is_error {
+                format!("command exited with status {code}")
+            } else {
+                String::new()
+            };
 
             let diagnostics = ToolDiagnostics {
                 exit_code: Some(code),
-                stderr: if output_result.stderr.is_empty() {
-                    None
-                } else {
-                    Some(String::from_utf8_lossy(&output_result.stderr).into_owned())
-                },
+                stderr: None,
                 sandbox_violations: Vec::new(),
-                duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                duration_ms: u64::try_from(output_result.duration.as_millis()).unwrap_or(u64::MAX),
             };
 
             if is_error {
@@ -189,12 +84,66 @@ impl ToolExecutor for ShellToolExecutor {
     }
 }
 
+async fn run_pack_command_with_retry(
+    executor: &ShellToolExecutor,
+    ctx: &ToolContext,
+    stdin: Vec<u8>,
+    timeout: Duration,
+) -> Result<organon::subprocess::SubprocessOutput, SubprocessError> {
+    let mut last_err = None;
+    for attempt in 0..4 {
+        let runner = executor.runner.clone();
+        let ctx = ctx.clone();
+        let request =
+            SubprocessRequest::new(executor.command_path.clone(), executor.pack_root.clone())
+                .stdin_bytes(stdin.clone())
+                .timeout(timeout)
+                .max_output_bytes(MAX_OUTPUT_BYTES)
+                .allow_read_path(executor.pack_root.clone())
+                .allow_exec_path(executor.command_path.clone());
+
+        let result = tokio::task::spawn_blocking(move || runner.run(request, &ctx))
+            .await
+            .map_err(|e| SubprocessError::Wait(std::io::Error::other(e.to_string())))?;
+
+        match result {
+            Ok(output) => return Ok(output),
+            Err(e) if is_text_file_busy(&e) && attempt < 3 => {
+                last_err = Some(e);
+                tokio::time::sleep(Duration::from_millis(1 << (2 * attempt))).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Err(last_err.unwrap_or_else(|| {
+        SubprocessError::Spawn(std::io::Error::other("spawn failed after retry attempts"))
+    }))
+}
+
+fn is_text_file_busy(error: &SubprocessError) -> bool {
+    matches!(error, SubprocessError::Spawn(e) if e.raw_os_error() == Some(26))
+}
+
 /// Register all tools from loaded packs into the tool registry.
 ///
 /// Validates each tool's command path and schema, then registers it.
 /// Invalid tools are skipped with warnings; errors are collected and returned.
 pub fn register_pack_tools(packs: &[LoadedPack], registry: &mut ToolRegistry) -> Vec<error::Error> {
+    register_pack_tools_with_sandbox(packs, registry, organon::sandbox::SandboxConfig::default())
+}
+
+/// Register all tools from loaded packs with the supplied subprocess sandbox.
+///
+/// Runtime callers pass the same sandbox config used by built-in tools so pack
+/// shell tools inherit the deployment's process, filesystem, and egress policy.
+pub fn register_pack_tools_with_sandbox(
+    packs: &[LoadedPack],
+    registry: &mut ToolRegistry,
+    sandbox: organon::sandbox::SandboxConfig,
+) -> Vec<error::Error> {
     let mut errors = Vec::new();
+    let runner = SubprocessRunner::new(sandbox);
 
     for pack in packs {
         // WHY: snapshot error count before this pack to compute per-pack failures
@@ -202,7 +151,7 @@ pub fn register_pack_tools(packs: &[LoadedPack], registry: &mut ToolRegistry) ->
         let errors_before = errors.len();
 
         for tool_def in &pack.manifest.tools {
-            match prepare_tool(tool_def, &pack.root, &pack.manifest.name) {
+            match prepare_tool(tool_def, &pack.root, &pack.manifest.name, runner.clone()) {
                 Ok((def, executor)) => match registry.register(def, executor) {
                     Ok(()) => {
                         info!(
@@ -246,8 +195,12 @@ fn prepare_tool(
     tool_def: &PackToolDef,
     pack_root: &Path,
     pack_name: &str,
+    runner: SubprocessRunner,
 ) -> Result<(ToolDef, Box<dyn ToolExecutor>), error::Error> {
     let command_path = validate_command_path(pack_root, &tool_def.command)?;
+    let groups = parse_groups(tool_def, pack_name)?;
+    let tags = parse_tags(tool_def, pack_name)?;
+    let reversibility = parse_reversibility(tool_def, pack_name)?;
 
     let input_schema = match &tool_def.input_schema {
         Some(schema) => convert_input_schema(schema, &tool_def.name)?,
@@ -270,19 +223,92 @@ fn prepare_tool(
         extended_description: None,
         input_schema,
         category: ToolCategory::Domain,
-        reversibility: organon::types::Reversibility::Irreversible,
+        reversibility,
         auto_activate: false,
-        groups: vec![],
-        tags: vec![],
+        groups,
+        tags,
     };
 
     let executor = Box::new(ShellToolExecutor {
         command_path,
         pack_root: pack_root.to_path_buf(),
+        runner,
         timeout_ms: tool_def.timeout,
     });
 
     Ok((def, executor))
+}
+
+fn parse_groups(tool_def: &PackToolDef, pack_name: &str) -> Result<Vec<ToolGroupId>, error::Error> {
+    if tool_def.groups.is_empty() {
+        return Ok(vec![ToolGroupId::Command]);
+    }
+
+    tool_def
+        .groups
+        .iter()
+        .map(|group| {
+            ToolGroupId::from_str(group).map_err(|e| {
+                tool_registration_error(tool_def, pack_name, format!("invalid group: {e}"))
+            })
+        })
+        .collect()
+}
+
+fn parse_tags(tool_def: &PackToolDef, pack_name: &str) -> Result<Vec<ToolTag>, error::Error> {
+    if tool_def.tags.is_empty() {
+        return Ok(vec![ToolTag::Execute]);
+    }
+
+    tool_def
+        .tags
+        .iter()
+        .map(|tag| match tag.as_str() {
+            "recon" => Ok(ToolTag::Recon),
+            "edit" => Ok(ToolTag::Edit),
+            "verify" => Ok(ToolTag::Verify),
+            "fetch" => Ok(ToolTag::Fetch),
+            "spawn" => Ok(ToolTag::Spawn),
+            "plan" => Ok(ToolTag::Plan),
+            "execute" => Ok(ToolTag::Execute),
+            "format" => Ok(ToolTag::Format),
+            other => Err(tool_registration_error(
+                tool_def,
+                pack_name,
+                format!("unknown tool tag: {other}"),
+            )),
+        })
+        .collect()
+}
+
+fn parse_reversibility(
+    tool_def: &PackToolDef,
+    pack_name: &str,
+) -> Result<Reversibility, error::Error> {
+    match tool_def.reversibility.as_deref() {
+        None | Some("irreversible") => Ok(Reversibility::Irreversible),
+        Some("fully_reversible") => Ok(Reversibility::FullyReversible),
+        Some("reversible") => Ok(Reversibility::Reversible),
+        Some("partially_reversible") => Ok(Reversibility::PartiallyReversible),
+        Some(other) => Err(tool_registration_error(
+            tool_def,
+            pack_name,
+            format!("unknown reversibility: {other}"),
+        )),
+    }
+}
+
+fn tool_registration_error(
+    tool_def: &PackToolDef,
+    pack_name: &str,
+    reason: String,
+) -> error::Error {
+    error::Error::ToolRegistration {
+        tool_name: tool_def.name.clone(),
+        pack_name: pack_name.to_owned(),
+        reason,
+        location: snafu::Location::new(file!(), line!(), column!()),
+    }
 }
 
 /// Validate that a command path exists and stays within the pack root.
