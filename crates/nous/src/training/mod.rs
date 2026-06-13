@@ -219,6 +219,15 @@ pub struct CaptureInput<'a> {
     pub tool_surface_hashes: &'a [String],
 }
 
+struct PiiScreeningResult {
+    user_message: String,
+    assistant_response: String,
+    pii_redacted: bool,
+    pii_filter_applied: bool,
+    pii_redaction_count: u32,
+    pii_policy_ref: Option<String>,
+}
+
 impl CaptureInput<'_> {
     /// Compute the derived quality score for this turn.
     ///
@@ -655,6 +664,34 @@ impl TrainingCapture {
         Ok(())
     }
 
+    fn screen_pii(&self, input: &CaptureInput<'_>) -> PiiScreeningResult {
+        if self.pii_filter_enabled {
+            let (user_message, user_report) = pii::redact_with_report(input.user_message);
+            let (assistant_response, assistant_report) =
+                pii::redact_with_report(input.assistant_response);
+            let pii_redaction_count = user_report
+                .redaction_count
+                .saturating_add(assistant_report.redaction_count);
+            PiiScreeningResult {
+                user_message,
+                assistant_response,
+                pii_redacted: pii_redaction_count > 0,
+                pii_filter_applied: true,
+                pii_redaction_count,
+                pii_policy_ref: Some(pii::POLICY_REF.to_owned()),
+            }
+        } else {
+            PiiScreeningResult {
+                user_message: input.user_message.to_owned(),
+                assistant_response: input.assistant_response.to_owned(),
+                pii_redacted: false,
+                pii_filter_applied: false,
+                pii_redaction_count: 0,
+                pii_policy_ref: None,
+            }
+        }
+    }
+
     /// Capture a conversation turn if it passes the quality gate.
     ///
     /// Quality gate criteria:
@@ -752,27 +789,14 @@ impl TrainingCapture {
         // `user_message` and `assistant_response` are scrubbed because
         // either can contain pasted secrets — e.g. a user sharing a
         // key for debugging, or the assistant echoing a key back.
-        let (user_message, assistant_response, pii_redacted) = if self.pii_filter_enabled {
-            let (u, u_changed) = pii::redact(input.user_message);
-            let (a, a_changed) = pii::redact(input.assistant_response);
-            // NOTE: `pii_redacted = true` only when the policy was applied AND
-            // at least one match was found — corpus readers filter on this flag
-            // to find records that had sensitive content.
-            (u, a, u_changed || a_changed)
-        } else {
-            (
-                input.user_message.to_owned(),
-                input.assistant_response.to_owned(),
-                false,
-            )
-        };
+        let pii = self.screen_pii(&input);
 
         let record = TrainingRecord {
             schema_version: TRAINING_RECORD_SCHEMA_VERSION,
             session_id: input.session_id.to_owned(),
             nous_id: input.nous_id.to_owned(),
-            user_message,
-            assistant_response,
+            user_message: pii.user_message,
+            assistant_response: pii.assistant_response,
             model: input.model.to_owned(),
             tokens: input.tokens,
             timestamp: Timestamp::now(),
@@ -783,7 +807,10 @@ impl TrainingCapture {
             tool_outcomes: input.tool_outcomes,
             recall_signals: input.recall_signals,
             tool_surface_hashes: input.tool_surface_hashes.to_vec(),
-            pii_redacted,
+            pii_redacted: pii.pii_redacted,
+            pii_filter_applied: pii.pii_filter_applied,
+            pii_redaction_count: pii.pii_redaction_count,
+            pii_policy_ref: pii.pii_policy_ref,
         };
 
         match self.write_record(&record) {

@@ -1143,6 +1143,7 @@ pub(crate) async fn run_pipeline(
                 providers,
                 tools,
                 tool_ctx,
+                log.record_options(),
             );
             if let Err(e) = log.log_request(&record) {
                 tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");

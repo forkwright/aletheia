@@ -306,6 +306,9 @@ readRequestsPerMinute = 300
 enabled = false
 path = "data/training"
 max_shard_bytes = 52428800
+# When enabled, each new row records pii_filter_applied,
+# pii_redaction_count, and pii_policy_ref so downstream jobs can reject
+# unscreened rows without rejecting clean rows that were checked.
 pii_filter_enabled = true
 
 [timeouts]
@@ -441,4 +444,6 @@ clockSkewLeewaySecs = 30
 [promptAudit]
 enabled = true
 retentionDays = 90
+# true stores IDs and sensitivity labels for facts withheld from recall.
+# false keeps included fact IDs but writes an empty fact_ids_filtered list.
 includeFilteredIds = true

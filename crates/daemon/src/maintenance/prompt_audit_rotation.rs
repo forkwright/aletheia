@@ -5,13 +5,17 @@
 //! task enforces the retention window.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use jiff::civil::Date;
+use jiff::{Timestamp, ToSpan};
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 
 use crate::error;
+
+const SECONDS_PER_DAY: u64 = 86_400;
 
 /// Configuration for prompt audit log retention.
 #[derive(Debug, Clone)]
@@ -41,6 +45,12 @@ pub struct PromptAuditRetentionReport {
     pub files_pruned: u32,
     /// Total bytes freed.
     pub bytes_freed: u64,
+    /// Number of valid daily files retained by filename date.
+    pub files_retained: u32,
+    /// Number of malformed JSONL files retained by mtime fallback.
+    pub malformed_files_skipped: u32,
+    /// Number of malformed JSONL files deleted by mtime fallback.
+    pub fallback_files_pruned: u32,
 }
 
 /// Prunes prompt-audit daily files past the retention window.
@@ -55,8 +65,8 @@ impl PromptAuditRotator {
         Self { config }
     }
 
-    /// Run retention. Delete any `*.jsonl` file whose mtime is older than
-    /// `retention_days`.
+    /// Run retention. Delete daily `*.jsonl` files whose filename date is
+    /// older than `retention_days`; malformed names use mtime fallback.
     ///
     /// # Errors
     ///
@@ -73,8 +83,12 @@ impl PromptAuditRotator {
         }
 
         let now = SystemTime::now();
+        let today = Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date();
+        let cutoff_date = today
+            .checked_sub(i64::from(self.config.retention_days).days())
+            .unwrap_or(today);
         let max_age =
-            std::time::Duration::from_secs(u64::from(self.config.retention_days) * 86_400);
+            std::time::Duration::from_secs(u64::from(self.config.retention_days) * SECONDS_PER_DAY);
 
         let dir = fs::read_dir(&self.config.log_dir).context(error::MaintenanceIoSnafu {
             context: format!("reading prompt audit dir {}", self.config.log_dir.display()),
@@ -97,28 +111,84 @@ impl PromptAuditRotator {
                 continue;
             }
 
-            let metadata = entry.metadata().context(error::MaintenanceIoSnafu {
-                context: format!("reading metadata for {}", path.display()),
-            })?;
-            let modified = metadata.modified().context(error::MaintenanceIoSnafu {
-                context: format!("reading mtime for {}", path.display()),
-            })?;
-
-            // kanon:ignore RUST/no-result-unwrap-or-default — future mtime is treated as not expired; zero duration correctly skips pruning
-            let age = now.duration_since(modified).unwrap_or_default();
-            if age > max_age {
-                let size = metadata.len();
-                fs::remove_file(&path).context(error::MaintenanceIoSnafu {
-                    context: format!("pruning {}", path.display()),
-                })?;
-                report.files_pruned += 1;
-                report.bytes_freed += size;
-                tracing::debug!(path = %path.display(), "pruned prompt audit file");
+            if let Some(audit_date) = parse_audit_date(&path) {
+                if audit_date < cutoff_date {
+                    prune_file(&path, &mut report, "pruning prompt audit file by date")?;
+                } else {
+                    report.files_retained += 1;
+                }
+            } else if prune_malformed_by_mtime(&entry, now, max_age, &mut report)? {
+                tracing::debug!(
+                    path = %path.display(),
+                    "pruned malformed prompt audit file by mtime fallback"
+                );
+            } else {
+                tracing::debug!(
+                    path = %path.display(),
+                    "retained malformed prompt audit file by mtime fallback"
+                );
             }
         }
 
         Ok(report)
     }
+}
+
+fn parse_audit_date(path: &Path) -> Option<Date> {
+    let stem = path.file_stem()?.to_str()?;
+    if stem.len() != "YYYY-MM-DD".len() {
+        return None;
+    }
+    stem.parse::<Date>().ok()
+}
+
+fn prune_file(
+    path: &Path,
+    report: &mut PromptAuditRetentionReport,
+    reason: &str,
+) -> error::Result<()> {
+    let metadata = fs::metadata(path).context(error::MaintenanceIoSnafu {
+        context: format!("reading metadata for {}", path.display()),
+    })?;
+    let size = metadata.len();
+    fs::remove_file(path).context(error::MaintenanceIoSnafu {
+        context: format!("pruning {}", path.display()),
+    })?;
+    report.files_pruned += 1;
+    report.bytes_freed += size;
+    tracing::debug!(path = %path.display(), reason, "pruned prompt audit file");
+    Ok(())
+}
+
+fn prune_malformed_by_mtime(
+    entry: &fs::DirEntry,
+    now: SystemTime,
+    max_age: std::time::Duration,
+    report: &mut PromptAuditRetentionReport,
+) -> error::Result<bool> {
+    let path = entry.path();
+    let metadata = entry.metadata().context(error::MaintenanceIoSnafu {
+        context: format!("reading metadata for {}", path.display()),
+    })?;
+    let modified = metadata.modified().context(error::MaintenanceIoSnafu {
+        context: format!("reading mtime for {}", path.display()),
+    })?;
+
+    // kanon:ignore RUST/no-result-unwrap-or-default — future mtime is treated as not expired; zero duration correctly skips pruning
+    let age = now.duration_since(modified).unwrap_or_default();
+    if age > max_age {
+        let size = metadata.len();
+        fs::remove_file(&path).context(error::MaintenanceIoSnafu {
+            context: format!("pruning {}", path.display()),
+        })?;
+        report.files_pruned += 1;
+        report.fallback_files_pruned += 1;
+        report.bytes_freed += size;
+        return Ok(true);
+    }
+
+    report.malformed_files_skipped += 1;
+    Ok(false)
 }
 
 #[cfg(test)]
@@ -145,7 +215,7 @@ mod tests {
     /// WHY: tests rely on rewriting mtime to simulate aging without waiting.
     /// MSRV 1.94 provides `File::set_modified`.
     fn set_old_mtime(path: &std::path::Path, days_ago: u64) {
-        let age = std::time::Duration::from_secs(days_ago * 86_400);
+        let age = std::time::Duration::from_secs(days_ago * SECONDS_PER_DAY);
         let mtime = SystemTime::now()
             .checked_sub(age)
             .expect("subtract duration");
@@ -154,6 +224,26 @@ mod tests {
             .open(path)
             .expect("open for mtime");
         file.set_modified(mtime).expect("set mtime");
+    }
+
+    fn utc_today() -> Date {
+        Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date()
+    }
+
+    fn date_days_ago(days: u32) -> Date {
+        utc_today()
+            .checked_sub(i64::from(days).days())
+            .expect("date subtract")
+    }
+
+    fn date_days_ahead(days: u32) -> Date {
+        utc_today()
+            .checked_add(i64::from(days).days())
+            .expect("date add")
+    }
+
+    fn audit_file(dir: &std::path::Path, date: Date) -> PathBuf {
+        dir.join(format!("{date}.jsonl"))
     }
 
     #[test]
@@ -170,6 +260,7 @@ mod tests {
 
         let report = PromptAuditRotator::new(config).prune().unwrap();
         assert_eq!(report.files_pruned, 0);
+        assert_eq!(report.files_retained, 0);
         assert!(path.exists(), "disabled rotator must not touch files");
     }
 
@@ -182,10 +273,11 @@ mod tests {
         };
         let report = PromptAuditRotator::new(config).prune().unwrap();
         assert_eq!(report.files_pruned, 0);
+        assert_eq!(report.files_retained, 0);
     }
 
     #[test]
-    fn old_files_pruned_recent_kept() {
+    fn valid_files_use_filename_date_not_mtime() {
         let tmp = tempfile::tempdir().unwrap();
         let config = PromptAuditRetentionConfig {
             enabled: true,
@@ -193,17 +285,61 @@ mod tests {
             retention_days: 7,
         };
 
-        let old = tmp.path().join("2020-01-01.jsonl");
-        let recent = tmp.path().join("2026-04-15.jsonl");
+        let old = audit_file(tmp.path(), date_days_ago(8));
+        let recent = audit_file(tmp.path(), date_days_ago(1));
         write_fixture(&old, "{}\n");
         write_fixture(&recent, "{}\n");
-        set_old_mtime(&old, 365);
-        set_old_mtime(&recent, 1);
+        set_old_mtime(&recent, 365);
 
         let report = PromptAuditRotator::new(config).prune().unwrap();
         assert_eq!(report.files_pruned, 1);
+        assert_eq!(report.files_retained, 1);
         assert!(!old.exists(), "old file must be pruned");
         assert!(recent.exists(), "recent file must be kept");
+    }
+
+    #[test]
+    fn future_dated_file_is_retained() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = PromptAuditRetentionConfig {
+            enabled: true,
+            log_dir: tmp.path().to_path_buf(),
+            retention_days: 7,
+        };
+
+        let future = audit_file(tmp.path(), date_days_ahead(2));
+        write_fixture(&future, "{}\n");
+        set_old_mtime(&future, 365);
+
+        let report = PromptAuditRotator::new(config).prune().unwrap();
+        assert_eq!(report.files_pruned, 0);
+        assert_eq!(report.files_retained, 1);
+        assert!(future.exists(), "future-dated audit file must be kept");
+    }
+
+    #[test]
+    fn malformed_jsonl_uses_mtime_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = PromptAuditRetentionConfig {
+            enabled: true,
+            log_dir: tmp.path().to_path_buf(),
+            retention_days: 7,
+        };
+        let stale = tmp.path().join("restored-copy.jsonl");
+        let fresh = tmp.path().join("operator-note.jsonl");
+        write_fixture(&stale, "{}\n");
+        write_fixture(&fresh, "{}\n");
+        set_old_mtime(&stale, 365);
+
+        let report = PromptAuditRotator::new(config).prune().unwrap();
+        assert_eq!(report.files_pruned, 1);
+        assert_eq!(report.fallback_files_pruned, 1);
+        assert_eq!(report.malformed_files_skipped, 1);
+        assert!(!stale.exists(), "stale malformed file should use fallback");
+        assert!(
+            fresh.exists(),
+            "fresh malformed file should be reported and kept"
+        );
     }
 
     #[test]

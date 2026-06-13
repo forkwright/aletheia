@@ -659,6 +659,12 @@ pub struct PromptAuditRetentionReport {
     pub files_pruned: u32,
     /// Total bytes freed.
     pub bytes_freed: u64,
+    /// Number of valid daily files retained by filename date.
+    pub files_retained: u32,
+    /// Number of malformed JSONL files retained by mtime fallback.
+    pub malformed_files_skipped: u32,
+    /// Number of malformed JSONL files deleted by mtime fallback.
+    pub fallback_files_pruned: u32,
 }
 ```
 
