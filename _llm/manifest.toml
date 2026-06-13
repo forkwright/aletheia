@@ -146,13 +146,13 @@ l3_token_estimate = 51
 [[crates]]
 name = "nous"
 path = "crates/nous"
-source_hash = "dee9417ca47a8c5c6b50b5f295e4468db1bc063a6edb3cfeb2a65cbb49e26ae1"
+source_hash = "11554460823b5a2b149e76f188b156229dc37469a6be7a507d5d191152da1fcf"
 l3_token_estimate = 34702
 
 [[crates]]
 name = "oikonomos"
 path = "crates/daemon"
-source_hash = "2f9b37144d5610ff72149321e6c5c98eb36229d05f7133507dab3b6308eba949"
+source_hash = "dcbf56653c5310cbdb292dcb3d2eb8f85ab244af5cf8ddbc57ddd332c8130493"
 l3_token_estimate = 12508
 
 [[crates]]
