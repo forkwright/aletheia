@@ -749,6 +749,23 @@ file, and `instance.example/services/aletheia.service` loads it from
 |----------|-------|---------|
 | `ALETHEIA_ROOT` | `taxis::Oikos` instance discovery | Instance root only. Equivalent to `--instance-root` when the CLI flag is absent; never a source tree or install prefix. |
 | `ALETHEIA_BIN` | shared and deploy helper scripts | Executable path for helpers such as `shared/bin/start.sh`, `scripts/aletheia-heartbeat.sh`, deploy, rollback, and smoke scripts. Older scripts still accept `ALETHEIA_BINARY` as a compatibility fallback. |
+| `ALETHEIA_ENV_FILE` | `shared/bin/start.sh` | Env file sourced at startup. Defaults to `$ALETHEIA_ROOT/config/env`, the canonical env-file owner. |
+| `ALETHEIA_NOUS` | shared tools (`shared/bin/scholar`) | Nous workspace directory. Defaults to `$ALETHEIA_ROOT/nous`. |
+| `ALETHEIA_CREDS` | `shared/bin/start.sh`, `credential-refresh` | Anthropic credential JSON path. Defaults to `$ALETHEIA_ROOT/config/credentials/anthropic.json`. |
+| `ALETHEIA_MEMORY_USER` | `shared/bin/start.sh` | Identity attributed to stored memory. Defaults to the current `whoami`. |
+| `ALETHEIA_SHARED` | instance nous templates | Shared-resources root referenced by agent templates (`$ALETHEIA_SHARED/config/...`). |
+| `ALETHEIA_THEKE` | instance nous templates | Vault (theke) root referenced by agent templates (`$ALETHEIA_THEKE/<domain>`). |
+| `ALETHEIA_LOG_DIR` | `scripts/health-monitor.sh` | Log directory. Defaults to `$XDG_STATE_HOME/aletheia` (`~/.local/state/aletheia`). |
+| `ALETHEIA_URL` | `scripts/aletheia-heartbeat.sh`, `aletheia-health.service` | Base server URL for health and heartbeat probes. Defaults to `http://127.0.0.1:18789`. |
+| `ALETHEIA_HEALTH_URL` | `deploy.sh`, `rollback.sh`, `health-monitor.sh` | Health endpoint. Defaults to `http://localhost:18789/api/health`. |
+| `ALETHEIA_METRICS_URL` | `scripts/health-monitor.sh` | Metrics endpoint. Defaults to `http://localhost:18789/metrics`. |
+| `ALETHEIA_NOTIFY_TO` | `scripts/health-monitor.sh` | Optional `signal-cli` recipient for health alerts. |
+| `ALETHEIA_HEARTBEAT_TASK` | `scripts/aletheia-heartbeat.sh` | Task id pinged by the heartbeat. Defaults to `prosoche-self-audit`. |
+| `ALETHEIA_PRIMARY_KEY` | `taxis::encrypt` | Master encryption key. Overrides the instance keyfile when set. Security-sensitive. |
+| `ALETHEIA_JWT_SECRET` | `taxis` gateway | JWT signing key used when `gateway.jwt_secret` is unset. Security-sensitive. |
+| `ALETHEIA_ALLOW_AUTH_NONE` | `taxis::validate` | Operator gate: set to `1` to permit `auth = "none"`. Off by default. Security-sensitive. |
+| `ALETHEIA_ALLOW_AUTH_NONE_LAN` | `taxis::validate` | Operator gate: set to `1` to permit `auth = "none"` on LAN binds. Off by default. Security-sensitive. |
+| `SEMANTIC_SCHOLAR_API_KEY` | `shared/bin/scholar` | Optional Semantic Scholar API key for higher rate limits. |
 | `ANTHROPIC_API_KEY` | credential provider chain | Anthropic API key. May live in `config/env` or the process environment. |
 | `ANTHROPIC_AUTH_TOKEN` | credential provider chain | Anthropic OAuth token, usually maintained by credential tooling. |
 | `VOYAGE_API_KEY` | embedding provider | Optional remote embedding provider credential. Local candle embeddings do not need it. |
@@ -773,6 +790,17 @@ prefix and double underscores for nesting:
 
 Provider credentials such as `ANTHROPIC_API_KEY` are read by the credential
 provider chain, not by the TOML config cascade.
+
+### Internal and test-fixture variables
+
+These are read only by maintainer and CI tooling, not by the public runtime path:
+
+| Variable | Owner | Meaning |
+|----------|-------|---------|
+| `ALETHEIA_AUTH_TOKEN` | `scripts/smoke-proskenion.sh` | Bearer token written to the temporary desktop config during the smoke check. |
+| `ALETHEIA_EVAL_TOKEN` | `scripts/benchmark.sh` | Auth token used when the benchmarked instance requires authentication. |
+| `ALETHEIA_SMOKE_PORT` | `scripts/smoke-proskenion.sh` | Port for the smoke check's local server. Defaults to a random port in `39000-40999`. |
+| `ALETHEIA_SMOKE_KEEP_LOGS` | `scripts/smoke-proskenion.sh` | Set to `1` to retain temporary smoke logs on success. |
 
 ---
 

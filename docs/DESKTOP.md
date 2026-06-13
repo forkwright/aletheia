@@ -41,7 +41,9 @@ cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml 
 
 ## Contract and smoke checks
 
-The desktop crate is outside the main workspace, so acceptance uses two focused checks instead of a full GUI driver:
+The desktop crate is outside the main workspace, so acceptance uses two focused checks instead of a full GUI driver.
+
+> Maintainer/CI variant. Prerequisites: install the pinned toolchain (`rustup toolchain install 1.94`) and build the desktop binary first with `scripts/install-proskenion.sh`, which places `proskenion` on `~/.cargo/bin`. The contract test compiles from a fresh checkout; the smoke invocation below needs that installed binary.
 
 ```bash
 cargo +1.94 test -p integration-tests --features test-core proskenion_contract -- --nocapture

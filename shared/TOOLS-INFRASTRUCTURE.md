@@ -9,7 +9,7 @@ All agents have access to shared scripts and built-in commands:
 | gcal | Google Calendar event query |
 | pplx | Perplexity pro-search |
 | scholar | Multi-source academic search (OpenAlex + arXiv + Semantic Scholar) |
-| start.sh | Template startup script for ~/.aletheia/start.sh |
+| start.sh | Instance startup script; sources `$ALETHEIA_ROOT/config/env` and launches `$ALETHEIA_BIN` (instance root defaults to `$HOME/aletheia/instance`) |
 | transcribe | Audio transcription via Whisper |
 | wiki | Wikipedia lookup for concept verification |
 

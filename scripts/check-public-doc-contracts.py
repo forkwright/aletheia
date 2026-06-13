@@ -26,34 +26,74 @@ def require_absent(path: str, needle: str, reason: str) -> None:
         FAILURES.append(f"{path}: forbidden {reason}: {needle!r}")
 
 
+def forbid_same_line(path: str, word_a: str, word_b: str, reason: str) -> None:
+    a = word_a.lower()
+    b = word_b.lower()
+    for lineno, line in enumerate(read(path).splitlines(), start=1):
+        low = line.lower()
+        if a in low and b in low:
+            FAILURES.append(f"{path}:{lineno}: forbidden {reason}: {line.strip()!r}")
+
+
 def markdown_files() -> list[Path]:
     roots = [ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.md"))]
     roots.extend(sorted((ROOT / "instance.example").rglob("*.md")))
     return [path for path in roots if path.is_file()]
 
 
+# WHY: a maintainer-personal absolute path leaking into a public command snippet
+# is not reproducible from a fresh checkout. The `(?<![\w/])` guard keeps relative
+# segments such as `instance/data/` and var-prefixed `$ROOT/data/` from matching;
+# only a path anchored at one of these roots is flagged.
+LOCAL_PATH = re.compile(
+    r"(?<![\w/])"
+    r"(?:"
+    r"(?P<userhome>/(?:home|Users)/(?P<user>[^\s/`\"'<>)]+))"
+    r"|/data/[^\s`\"'<>)]+"
+    r")"
+)
+# Generic substitution tokens that are portable, not a specific maintainer.
+PLACEHOLDER_USERS = {
+    "user", "users", "you", "youruser", "username", "name",
+    "example", "someone", "$user", "${user}", "<user>", "<username>", "*",
+}
+
+
+# Fence languages whose contents are environment-specific config *data* the
+# operator fills in (e.g. `extra_read_paths = ["/data/shared"]`), not
+# copy-paste commands. Absolute example paths there are expected, not leaks.
+DATA_FENCES = {
+    "toml", "json", "yaml", "yml", "ini", "env", "dotenv",
+    "properties", "cfg", "conf", "csv", "xml",
+}
+
+
 def check_public_snippets() -> None:
-    local_path = re.compile(
-        r"(?<![\w/])"
-        r"("
-        r"/data/(?:target|wt|worktrees)[^\s`\"'<>)]*"
-        r"|/home/ck[^\s`\"'<>)]*"
-        r"|/Users/ck[^\s`\"'<>)]*"
-        r")"
-    )
     for path in markdown_files():
         rel = path.relative_to(ROOT)
         in_fence = False
         fence_start = 0
+        fence_lang = ""
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if line.lstrip().startswith("```"):
-                in_fence = not in_fence
-                fence_start = lineno if in_fence else 0
+                if in_fence:
+                    in_fence = False
+                    fence_start = 0
+                    fence_lang = ""
+                else:
+                    in_fence = True
+                    fence_start = lineno
+                    fence_lang = line.lstrip()[3:].strip().split()[0].lower() if line.lstrip()[3:].strip() else ""
                 continue
-            if in_fence and (match := local_path.search(line)):
+            if not in_fence or fence_lang in DATA_FENCES:
+                continue
+            for match in LOCAL_PATH.finditer(line):
+                user = match.group("user")
+                if user is not None and user.strip("{}$<>").lower() in PLACEHOLDER_USERS:
+                    continue
                 FAILURES.append(
                     f"{rel}:{lineno}: maintainer-local path in public snippet "
-                    f"(fence starts at line {fence_start}): {match.group(1)}"
+                    f"(fence starts at line {fence_start}): {match.group(0)}"
                 )
 
 
@@ -90,6 +130,57 @@ def check_env_contract() -> None:
     )
 
 
+# WHY: scopes scanned for env-var references that the CONFIGURATION.md contract
+# table must document. Provider keys (ANTHROPIC_*, VOYAGE_*, ...) are owned by the
+# credential chain and excluded by the ALETHEIA_/SEMANTIC_SCHOLAR capture below.
+ENV_SCAN_GLOBS = (
+    "shared/bin/*",
+    "scripts/*.sh",
+    "shared/templates/**/*",
+    "instance.example/**/*",
+)
+# Matches env-var *access* idioms (python os.environ/getenv, shell $VAR/${VAR},
+# systemd Environment=NAME) so plain local identifiers such as the Path variable
+# `ALETHEIA_CRED = aletheia_credential_path()` are not mistaken for env vars.
+ENV_ACCESS = re.compile(
+    r"""(?:os\.environ(?:\.get)?\(\s*["']
+        |getenv\(\s*["']
+        |\$\{?
+        |Environment=)
+        (ALETHEIA_[A-Z0-9_]+|SEMANTIC_SCHOLAR_API_KEY)
+    """,
+    re.VERBOSE,
+)
+
+
+def reconcile_env_vars() -> None:
+    contract = read("docs/CONFIGURATION.md")
+    referenced: dict[str, str] = {}
+    for glob in ENV_SCAN_GLOBS:
+        for path in sorted(ROOT.glob(glob)):
+            if not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            rel = str(path.relative_to(ROOT))
+            for match in ENV_ACCESS.finditer(text):
+                name = match.group(1)
+                # Skip figment config-cascade keys and template substitution
+                # tokens (both carry a double underscore); the cascade is
+                # documented by its own ALETHEIA_<KEY>__<SUBKEY> table.
+                if "__" in name:
+                    continue
+                referenced.setdefault(name, rel)
+    for name, where in sorted(referenced.items()):
+        if name not in contract:
+            FAILURES.append(
+                f"docs/CONFIGURATION.md: env var {name} referenced in {where} "
+                f"is missing from the environment-variable contract table"
+            )
+
+
 def check_onboarding_contract() -> None:
     require_contains(
         "README.md",
@@ -111,11 +202,21 @@ def check_onboarding_contract() -> None:
         "Current first-run default: TUI.",
         "project interface status",
     )
+    # Drift guards: the current first-run surface is server + TUI; desktop is the
+    # v1.0 *target*, not a present-tense canonical/default surface. These keep a
+    # future edit from silently relabelling desktop as the current product.
+    for doc in ("README.md", "docs/GOLDEN-PATH.md", "docs/QUICKSTART.md", "docs/PROJECT.md"):
+        forbid_same_line(doc, "canonical", "desktop", "present-tense canonical-desktop claim")
+    require_absent("docs/GOLDEN-PATH.md", "canonical user surface", "desktop relabelled canonical")
+    require_absent("docs/GOLDEN-PATH.md", "canonical public app surface", "desktop relabelled canonical")
+    require_absent("docs/PROJECT.md", "Current first-run default: desktop", "first-run default flipped to desktop")
+    require_absent("docs/QUICKSTART.md", "### Current supported path: desktop", "current supported path flipped to desktop")
 
 
 def main() -> int:
     check_public_snippets()
     check_env_contract()
+    reconcile_env_vars()
     check_onboarding_contract()
     if FAILURES:
         for failure in FAILURES:
