@@ -38,9 +38,10 @@ Navigation index for concepts that touch many components.
 
 **Contracts:**
 - Facts carry bi-temporal timestamps (`valid_from`/`valid_to` and `recorded_at`) from `eidos`
-- Facts carry `Visibility` and optional `MemoryScope`; recall and MCP/API surfaces must preserve those filters
+- Facts carry `Visibility` and optional `MemoryScope`; recall and MCP/API surfaces must preserve those filters, scope reads to the requesting `nous_id`, and require explicit per-request ownership for writes (no fallback service authorship)
 - Recall weights are configurable per-agent via `taxis` config and consumed by `nous`
 - `memory_search` routes through `organon` → `mneme` → `episteme` with the same scoring
+- Memory docs and comments use Krites/Datalog/Fjall for current architecture; CozoDB/SQLite/redb references are acceptable only in explicitly historical migration notes.
 
 **Known mismatches:** none
 

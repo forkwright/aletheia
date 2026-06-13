@@ -18,7 +18,10 @@ pub(crate) mod engine;
 mod error;
 mod provider;
 mod types;
-mod utils;
+// WHY: `slugify` is the canonical entity-id scheme; the v17->v18 fact-entity
+// backfill in `knowledge_store::migration` reuses it to infer edges, so the
+// module is visible crate-wide (#4675).
+pub(crate) mod utils;
 
 pub use engine::ExtractionEngine;
 pub use error::{ExtractionError, LlmCallSnafu, ParseResponseSnafu, PersistSnafu};

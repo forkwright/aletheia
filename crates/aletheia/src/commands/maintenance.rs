@@ -7,9 +7,10 @@ use clap::Subcommand;
 use snafu::prelude::*;
 
 use oikonomos::maintenance::{
-    AutoDreamConfig, DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector,
-    FjallBackupConfig, InstanceBackupConfig, MaintenanceConfig, PromptAuditRetentionConfig,
-    PromptAuditRotator, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
+    AutoDreamConfig, DbMonitor, DbMonitoringConfig, DerivedRulesConfig, DriftDetectionConfig,
+    DriftDetector, FjallBackupConfig, InstanceBackupConfig, MaintenanceConfig,
+    PromptAuditRetentionConfig, PromptAuditRotator, ProposeRulesConfig, TraceRotationConfig,
+    TraceRotator,
 };
 use oikonomos::prosoche_audit::{ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
@@ -273,6 +274,7 @@ pub(crate) fn build_config(
         knowledge_maintenance: oikonomos::maintenance::KnowledgeMaintenanceConfig {
             enabled: settings.knowledge_maintenance_enabled,
             auto_dream: AutoDreamConfig::default(),
+            derived_rules: DerivedRulesConfig::default(),
             serendipity: oikonomos::maintenance::SerendipityMaintenanceConfig {
                 enabled: settings.knowledge_maintenance_serendipity.enabled,
                 cadence: settings.knowledge_maintenance_serendipity.cadence.clone(),

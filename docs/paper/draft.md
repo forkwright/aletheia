@@ -85,7 +85,7 @@ aletheia binary
 
 ### 3.2 Datalog engine (krites)
 
-Krites is an embedded Datalog engine with in-memory and fjall (LSM-tree) storage backends. Historical SQLite backup/restore hooks are disabled with the removed `storage-sqlite` feature. It supports:
+Krites is an embedded Datalog engine with in-memory and fjall (LSM-tree) storage backends. Engine-level snapshots use relation export/import; production durability comes from fjall knowledge-store backups. It supports:
 
 - **Stratified Datalog** with negation and recursion
 - **HNSW approximate nearest-neighbor vector search** inside queries
@@ -139,7 +139,7 @@ comm[labels, entity_id] <~ CommunityDetectionLouvain(edges_w[])
 
 `PageRank` and `Louvain` execute in Rust (via the fixed-rule mechanism), read the `relationships` relation, and write results back to `graph_scores`. The engine then uses these scores in the recall pipeline.
 
-**Storage.** The fjall backend provides persistent LSM-tree storage with LZ4 compression and read-your-own-writes semantics. No external database process is required. Historical SQLite portability hooks remain disabled with the removed `storage-sqlite` feature.
+**Storage.** The fjall backend provides persistent LSM-tree storage with LZ4 compression and read-your-own-writes semantics. No external database process is required. File-level SQLite portability hooks were retired; relation export/import is the engine-level snapshot primitive.
 
 ### 3.3 Kernel-level sandbox (organon)
 

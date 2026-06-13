@@ -418,17 +418,17 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         let row_limit = row_limit.unwrap_or(100);
         let timeout = timeout_secs.map(std::time::Duration::from_secs_f64);
         Box::pin(async move {
-            let mut cozo_params = std::collections::BTreeMap::new();
+            let mut datalog_params = std::collections::BTreeMap::new();
             if let Some(serde_json::Value::Object(map)) = params {
                 for (k, v) in map {
                     let dv = json_to_datavalue(&v);
-                    cozo_params.insert(k, dv);
+                    datalog_params.insert(k, dv);
                 }
             }
 
             let rows = self
                 .store
-                .run_query_with_timeout(&query, cozo_params, timeout)
+                .run_query_with_timeout(&query, datalog_params, timeout)
                 .map_err(|e| {
                     DatalogQuerySnafu {
                         message: e.to_string(),

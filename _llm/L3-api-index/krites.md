@@ -31,19 +31,6 @@ impl AsyncDb {
         script: &str,
         params: BTreeMap<String, DataValue>,
     ) -> crate::Result<NamedRows>;
-    pub async fn backup_db (
-        &self,
-        out_file: impl AsRef<Path> + Send + 'static,
-    ) -> crate::Result<()>;
-    pub async fn restore_backup (
-        &self,
-        in_file: impl AsRef<Path> + Send + 'static,
-    ) -> crate::Result<()>;
-    pub async fn import_from_backup (
-        &self,
-        in_file: impl AsRef<Path> + Send + 'static,
-        relations: &[String],
-    ) -> crate::Result<()>;
     pub async fn export_relations <I, T> (
         &self,
         relations: I,
@@ -755,13 +742,6 @@ impl Db {
         script: &str,
         params: BTreeMap<String, DataValue>,
     ) -> crate::Result<NamedRows>;
-    pub fn backup_db (&self, out_file: impl AsRef<Path>) -> crate::Result<()>;
-    pub fn restore_backup (&self, in_file: impl AsRef<Path>) -> crate::Result<()>;
-    pub fn import_from_backup (
-        &self,
-        in_file: impl AsRef<Path>,
-        relations: &[String],
-    ) -> crate::Result<()>;
     pub fn export_relations <I, T> (&self, relations: I) -> crate::Result<BTreeMap<String, NamedRows>> where
         I: Iterator<Item = T>,
         T: AsRef<str>,;
@@ -1237,13 +1217,6 @@ impl <'s, S: Storage<'s>> Db<S> {
     pub fn new (storage: S) -> Result<Self>;
     pub fn initialize (&'s self) -> Result<()>;
     pub fn get_fixed_rules (&'s self) -> BTreeMap<String, Arc<Box<dyn FixedRule>>>;
-    pub fn backup_db (&'s self, _out_file: impl AsRef<Path>) -> Result<()>;
-    pub fn restore_backup (&'s self, _in_file: impl AsRef<Path>) -> Result<()>;
-    pub fn import_from_backup (
-        &'s self,
-        _in_file: impl AsRef<Path>,
-        _relations: &[String],
-    ) -> Result<()>;
     pub fn register_fixed_rule <R> (&self, name: String, rule_impl: R) -> Result<()> where
         R: FixedRule + 'static,;
     pub fn unregister_fixed_rule (&self, name: &str) -> Result<bool>;

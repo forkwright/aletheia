@@ -491,6 +491,16 @@ pub enum ConsolidationError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Source facts have incompatible scope/project boundaries and cannot be
+    /// safely merged into a single consolidated fact.
+    #[snafu(display("incompatible consolidation sources: {reason}"))]
+    IncompatibleSources {
+        /// Human-readable explanation of the conflict.
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 ```
 
@@ -546,6 +556,26 @@ pub struct ConsolidatedFact {
     /// records (which predate this field) still deserialize.
     #[serde(default)]
     pub source_recorded_ats: Vec<String>,
+    /// Memory scopes of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_scopes: Vec<Option<MemoryScope>>,
+    /// Project identifiers of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_project_ids: Vec<Option<String>>,
+    /// Sensitivities of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_sensitivities: Vec<FactSensitivity>,
+    /// Visibilities of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_visibilities: Vec<Visibility>,
+    /// Source session IDs of the original facts, aligned to
+    /// [`source_fact_ids`](Self::source_fact_ids) by index.
+    #[serde(default)]
+    pub source_session_ids: Vec<Option<String>>,
 }
 ```
 
@@ -615,10 +645,6 @@ pub trait ConsolidationProvider : Send + Sync {
 
 ```rust
 pub fn consolidation_system_prompt () -> &'static str
-```
-
-```rust
-pub fn consolidation_user_message (facts: &[(FactId, String, f64, String)]) -> String
 ```
 
 > Parse the LLM response into consolidated fact entries.
@@ -715,12 +741,13 @@ candidates[cluster_id, count(fact_id)] :=
 > Datalog query: gather eligible fact IDs for an entity.
 > 
 > Parameters: `$entity_id` (String), `$cutoff` (String), `$nous_id` (String).
-> Returns: `[fact_id, content, confidence, recorded_at]`.
+> Returns: `[fact_id, content, confidence, recorded_at, scope, project_id,
+>           sensitivity, visibility, source_session_id]`.
 ```rust
 pub const ENTITY_FACTS_FOR_CONSOLIDATION: &str = r"
-?[fact_id, content, confidence, recorded_at] :=
+?[fact_id, content, confidence, recorded_at, scope, project_id, sensitivity, visibility, source_session_id] :=
     *fact_entities{fact_id, entity_id: $entity_id},
-    *facts{id: fact_id, content, confidence, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at},
+    *facts{id: fact_id, content, confidence, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at, scope, project_id, visibility, sensitivity, source_session_id},
     nous_id == $nous_id,
     is_null(superseded_by),
     is_forgotten == false,
@@ -735,13 +762,14 @@ pub const ENTITY_FACTS_FOR_CONSOLIDATION: &str = r"
 > Datalog query: gather eligible fact IDs for a community cluster.
 > 
 > Parameters: `$cluster_id` (Int), `$cutoff` (String), `$nous_id` (String).
-> Returns: `[fact_id, content, confidence, recorded_at]`.
+> Returns: `[fact_id, content, confidence, recorded_at, scope, project_id,
+>           sensitivity, visibility, source_session_id]`.
 ```rust
 pub const CLUSTER_FACTS_FOR_CONSOLIDATION: &str = r"
-?[fact_id, content, confidence, recorded_at] :=
+?[fact_id, content, confidence, recorded_at, scope, project_id, sensitivity, visibility, source_session_id] :=
     *graph_scores{entity_id, score_type: 'louvain', cluster_id: $cluster_id},
     *fact_entities{fact_id, entity_id},
-    *facts{id: fact_id, content, confidence, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at},
+    *facts{id: fact_id, content, confidence, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at, scope, project_id, visibility, sensitivity, source_session_id},
     nous_id == $nous_id,
     is_null(superseded_by),
     is_forgotten == false,
@@ -781,6 +809,19 @@ pub const FACT_MULTIPLICITY_DDL: &str = r":create fact_multiplicity {
     last_observed: String,
     time_spread_seconds: Int,
     recorded_at: String
+}";
+```
+
+> Datalog DDL for the `consolidation_provenance` side-index (#4660).
+> 
+> Stores the original source fact IDs and source session IDs for each
+> consolidated fact so provenance remains inspectable without parsing
+> the audit relation's JSON arrays.
+```rust
+pub const CONSOLIDATION_PROVENANCE_DDL: &str = r":create consolidation_provenance {
+    consolidated_fact_id: String =>
+    source_fact_ids: String,
+    source_session_ids: String
 }";
 ```
 
@@ -1969,6 +2010,8 @@ pub struct PersistResult {
     pub facts_inserted: usize,
     /// Number of causal edges extracted and recorded.
     pub causal_edges_inserted: usize,
+    /// Number of fact-entity edges linked during persistence.
+    pub fact_entities_inserted: usize,
 }
 ```
 
@@ -2169,6 +2212,33 @@ pub struct KnowledgeImportResult {
 
 ## `src/knowledge_store/derived_rules.rs`
 
+> Datalog DDL for the global derived-rule source-revision counter (#4662).
+> 
+> A single row with `key = 'global'` tracks a monotonic revision that is
+> bumped whenever a base relation (`facts`, `entities`, `causal_edges`,
+> `type_hierarchy`, `defaults`) changes. Rule watermarks compare against
+> this counter to detect stale materializations.
+```rust
+pub const DERIVED_SOURCE_REVISION_DDL: &str = r":create derived_source_revision {
+    key: String =>
+    revision: Int
+}";
+```
+
+> Datalog DDL for per-rule materialization watermarks (#4662).
+> 
+> Each rule family (`ontological`, `causal`, `defeasible`) stores the source
+> revision it was materialized against, the materialization timestamp, and a
+> dirty flag that base writes set to `true`.
+```rust
+pub const DERIVED_RULE_WATERMARKS_DDL: &str = r":create derived_rule_watermarks {
+    rule_id: String =>
+    source_revision: Int,
+    materialized_at: String,
+    dirty: Bool
+}";
+```
+
 ```rust
 pub struct DerivedFact {
     /// The entity this derived fact is about.
@@ -2181,6 +2251,19 @@ pub struct DerivedFact {
     pub derived_content: String,
     /// Confidence score in `[0.0, 1.0]`.
     pub confidence: f64,
+}
+```
+
+```rust
+pub enum DerivedFreshness {
+    /// The derived rows were materialized at the current source revision and
+    /// are not marked dirty.
+    Fresh,
+    /// The derived rows exist but the source revision has advanced or the rule
+    /// family is marked dirty, so the results may be stale.
+    Stale,
+    /// No derived rows exist for the requested entity/rule prefix.
+    Unavailable,
 }
 ```
 
@@ -2205,6 +2288,12 @@ impl KnowledgeStore {
         entity_id: &str,
         rule_prefix: &str,
     ) -> crate::error::Result<Vec<DerivedFact>>;
+    pub fn derived_fact_freshness (
+        &self,
+        entity_id: &str,
+        rule_prefix: &str,
+    ) -> crate::error::Result<DerivedFreshness>;
+    pub fn invalidate_derived_facts (&self) -> crate::error::Result<()>;
 }
 ```
 
@@ -2508,9 +2597,11 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
     }",
     r":create causal_edges {
         cause: String, effect: String =>
+        id: String,
         ordering: String,
         relationship_type: String,
         confidence: Float,
+        evidence_session_id: String?,
         created_at: String
     }",
     // Index 7 - type_hierarchy (added in schema v8)
@@ -2556,6 +2647,18 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         severity: String,
         flagged_by: String,
         flagged_at: String
+    }",
+    // Index 14 - derived_source_revision (added in schema v19, #4662)
+    r":create derived_source_revision {
+        key: String =>
+        revision: Int
+    }",
+    // Index 15 - derived_rule_watermarks (added in schema v19, #4662)
+    r":create derived_rule_watermarks {
+        rule_id: String =>
+        source_revision: Int,
+        materialized_at: String,
+        dirty: Bool
     }",
 ];
 ```
@@ -2729,13 +2832,6 @@ impl KnowledgeStore {
         &self,
         nous_id: &str,
     ) -> crate::error::Result<SerendipityDiscoveryReport>;
-    pub fn backup_db (&self, out_file: impl AsRef<std::path::Path>) -> crate::error::Result<()>;
-    pub fn restore_backup (&self, in_file: impl AsRef<std::path::Path>) -> crate::error::Result<()>;
-    pub fn import_from_backup (
-        &self,
-        in_file: impl AsRef<std::path::Path>,
-        relations: &[String],
-    ) -> crate::error::Result<()>;
     pub fn run_script_read_only (
         &self,
         script: &str,
@@ -3196,9 +3292,11 @@ pub enum EntityFlagsField {
 pub enum CausalEdgesField {
     Cause,
     Effect,
+    Id,
     Ordering,
     RelationshipType,
     Confidence,
+    EvidenceSessionId,
     CreatedAt,
 }
 ```

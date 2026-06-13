@@ -10,6 +10,93 @@
 
 use super::*;
 
+/// Canonical `?[...]` projection for full [`Fact`](crate::knowledge::Fact)
+/// hydration. The column order MUST match the positional decoding in
+/// `crate::knowledge_store::marshal::rows_to_facts`: `id`(0), `content`(1), …,
+/// `scope`(17), `project_id`(18), `visibility`(19), `sensitivity`(20).
+///
+/// Every query whose rows are passed to `rows_to_facts` must project exactly
+/// these fields in this order. Centralizing the list keeps temporal, forgotten,
+/// audit, and current-fact reads from drifting out of the marshal contract and
+/// silently mis-hydrating policy fields (#4677/#4549).
+pub(crate) const FULL_FACT_SELECT: [FactsField; 21] = {
+    use FactsField::*;
+    [
+        Id,
+        Content,
+        Confidence,
+        Tier,
+        RecordedAt,
+        NousId,
+        ValidFrom,
+        ValidTo,
+        SupersededBy,
+        SourceSessionId,
+        AccessCount,
+        LastAccessedAt,
+        StabilityHours,
+        FactType,
+        IsForgotten,
+        ForgottenAt,
+        ForgetReason,
+        Scope,
+        ProjectId,
+        Visibility,
+        Sensitivity,
+    ]
+};
+
+/// Canonical `*facts{...}` relation bindings for full-fact scans, in schema
+/// declaration order. Binding is by field name so the order is cosmetic, but a
+/// single source avoids drift from [`FULL_FACT_SELECT`].
+const FULL_FACT_BIND: [FactsField; 21] = {
+    use FactsField::*;
+    [
+        Id,
+        ValidFrom,
+        Content,
+        NousId,
+        Confidence,
+        Tier,
+        ValidTo,
+        SupersededBy,
+        SourceSessionId,
+        RecordedAt,
+        AccessCount,
+        LastAccessedAt,
+        StabilityHours,
+        FactType,
+        IsForgotten,
+        ForgottenAt,
+        ForgetReason,
+        Scope,
+        ProjectId,
+        Visibility,
+        Sensitivity,
+    ]
+};
+
+// The canonical projection length is the marshal hydration contract; keep the
+// two in lockstep so a column added to one fails to compile until the other and
+// `rows_to_facts` agree (#4677).
+#[cfg(feature = "mneme-engine")]
+const _: () = assert!(
+    FULL_FACT_SELECT.len() == crate::knowledge_store::marshal::FULL_FACT_COLUMNS,
+    "FULL_FACT_SELECT must match rows_to_facts FULL_FACT_COLUMNS"
+);
+
+/// Begin a `*facts{...}` scan projecting the canonical full-fact column set.
+/// Callers add filters/order/limit and finish with `.done().build_script()`.
+fn full_fact_scan() -> ScanBuilder {
+    let mut scan = QueryBuilder::new()
+        .scan(Relation::Facts)
+        .select(&FULL_FACT_SELECT);
+    for field in FULL_FACT_BIND {
+        scan = scan.bind(field);
+    }
+    scan
+}
+
 /// Insert or update a fact. Params: `$id`, `$valid_from`, `$content`,
 /// `$nous_id`, `$confidence`, `$tier`, `$valid_to`, `$superseded_by`,
 /// `$source_session_id`, `$recorded_at`.
@@ -91,53 +178,7 @@ pub(crate) fn current_facts() -> String {
 /// Params: `$nous_id`, `$now`, `$limit`.
 #[must_use]
 pub(crate) fn full_current_facts() -> String {
-    use FactsField::*;
-    QueryBuilder::new()
-        .scan(Relation::Facts)
-        .select(&[
-            Id,
-            Content,
-            Confidence,
-            Tier,
-            RecordedAt,
-            NousId,
-            ValidFrom,
-            ValidTo,
-            SupersededBy,
-            SourceSessionId,
-            AccessCount,
-            LastAccessedAt,
-            StabilityHours,
-            FactType,
-            IsForgotten,
-            ForgottenAt,
-            ForgetReason,
-            Scope,
-            ProjectId,
-            Visibility,
-            Sensitivity,
-        ])
-        .bind(Id)
-        .bind(ValidFrom)
-        .bind(Content)
-        .bind(NousId)
-        .bind(Confidence)
-        .bind(Tier)
-        .bind(ValidTo)
-        .bind(SupersededBy)
-        .bind(SourceSessionId)
-        .bind(RecordedAt)
-        .bind(AccessCount)
-        .bind(LastAccessedAt)
-        .bind(StabilityHours)
-        .bind(FactType)
-        .bind(IsForgotten)
-        .bind(ForgottenAt)
-        .bind(ForgetReason)
-        .bind(Scope)
-        .bind(ProjectId)
-        .bind(Visibility)
-        .bind(Sensitivity)
+    full_fact_scan()
         .filter("nous_id = $nous_id")
         .filter("valid_from <= $now")
         .filter("valid_to > $now")
@@ -395,53 +436,7 @@ pub(crate) const HYBRID_SEARCH_BASE: &str = r"
 /// Returns facts where `valid_from <= at_time` AND `valid_to > at_time` AND not forgotten.
 #[must_use]
 pub(crate) fn temporal_facts() -> String {
-    use FactsField::*;
-    QueryBuilder::new()
-        .scan(Relation::Facts)
-        .select(&[
-            Id,
-            Content,
-            Confidence,
-            Tier,
-            RecordedAt,
-            NousId,
-            ValidFrom,
-            ValidTo,
-            SupersededBy,
-            SourceSessionId,
-            AccessCount,
-            LastAccessedAt,
-            StabilityHours,
-            FactType,
-            IsForgotten,
-            ForgottenAt,
-            ForgetReason,
-            Scope,
-            ProjectId,
-            Visibility,
-            Sensitivity,
-        ])
-        .bind(Id)
-        .bind(ValidFrom)
-        .bind(Content)
-        .bind(NousId)
-        .bind(Confidence)
-        .bind(Tier)
-        .bind(ValidTo)
-        .bind(SupersededBy)
-        .bind(SourceSessionId)
-        .bind(RecordedAt)
-        .bind(AccessCount)
-        .bind(LastAccessedAt)
-        .bind(StabilityHours)
-        .bind(FactType)
-        .bind(IsForgotten)
-        .bind(ForgottenAt)
-        .bind(ForgetReason)
-        .bind(Scope)
-        .bind(ProjectId)
-        .bind(Visibility)
-        .bind(Sensitivity)
+    full_fact_scan()
         .filter("nous_id = $nous_id")
         .filter("is_forgotten == false")
         .filter("valid_from <= $at_time")
@@ -510,53 +505,7 @@ pub(crate) const TEMPORAL_DIFF_REMOVED: &str = r"
 /// Query returning only forgotten facts. Params: `$nous_id`, `$limit`.
 #[must_use]
 pub(crate) fn forgotten_facts() -> String {
-    use FactsField::*;
-    QueryBuilder::new()
-        .scan(Relation::Facts)
-        .select(&[
-            Id,
-            Content,
-            Confidence,
-            Tier,
-            RecordedAt,
-            NousId,
-            ValidFrom,
-            ValidTo,
-            SupersededBy,
-            SourceSessionId,
-            AccessCount,
-            LastAccessedAt,
-            StabilityHours,
-            FactType,
-            IsForgotten,
-            ForgottenAt,
-            ForgetReason,
-            Scope,
-            ProjectId,
-            Visibility,
-            Sensitivity,
-        ])
-        .bind(Id)
-        .bind(ValidFrom)
-        .bind(Content)
-        .bind(NousId)
-        .bind(Confidence)
-        .bind(Tier)
-        .bind(ValidTo)
-        .bind(SupersededBy)
-        .bind(SourceSessionId)
-        .bind(RecordedAt)
-        .bind(AccessCount)
-        .bind(LastAccessedAt)
-        .bind(StabilityHours)
-        .bind(FactType)
-        .bind(IsForgotten)
-        .bind(ForgottenAt)
-        .bind(ForgetReason)
-        .bind(Scope)
-        .bind(ProjectId)
-        .bind(Visibility)
-        .bind(Sensitivity)
+    full_fact_scan()
         .filter("nous_id = $nous_id")
         .filter("is_forgotten == true")
         .order("-forgotten_at")
@@ -569,53 +518,7 @@ pub(crate) fn forgotten_facts() -> String {
 /// Params: `$nous_id`, `$limit`.
 #[must_use]
 pub(crate) fn audit_all_facts() -> String {
-    use FactsField::*;
-    QueryBuilder::new()
-        .scan(Relation::Facts)
-        .select(&[
-            Id,
-            Content,
-            Confidence,
-            Tier,
-            RecordedAt,
-            NousId,
-            ValidFrom,
-            ValidTo,
-            SupersededBy,
-            SourceSessionId,
-            AccessCount,
-            LastAccessedAt,
-            StabilityHours,
-            FactType,
-            IsForgotten,
-            ForgottenAt,
-            ForgetReason,
-            Scope,
-            ProjectId,
-            Visibility,
-            Sensitivity,
-        ])
-        .bind(Id)
-        .bind(ValidFrom)
-        .bind(Content)
-        .bind(NousId)
-        .bind(Confidence)
-        .bind(Tier)
-        .bind(ValidTo)
-        .bind(SupersededBy)
-        .bind(SourceSessionId)
-        .bind(RecordedAt)
-        .bind(AccessCount)
-        .bind(LastAccessedAt)
-        .bind(StabilityHours)
-        .bind(FactType)
-        .bind(IsForgotten)
-        .bind(ForgottenAt)
-        .bind(ForgetReason)
-        .bind(Scope)
-        .bind(ProjectId)
-        .bind(Visibility)
-        .bind(Sensitivity)
+    full_fact_scan()
         .filter("nous_id = $nous_id")
         .order("-recorded_at")
         .limit("$limit")
@@ -753,14 +656,22 @@ pub(crate) fn rm_entity_flag() -> String {
 }
 
 /// Insert or update a causal edge.
-/// Params: `$cause`, `$effect`, `$ordering`, `$relationship_type`, `$confidence`, `$created_at`.
+/// Params: `$cause`, `$effect`, `$id`, `$ordering`, `$relationship_type`,
+/// `$confidence`, `$evidence_session_id`, `$created_at`.
 #[must_use]
 pub(crate) fn upsert_causal_edge() -> String {
     use CausalEdgesField::*;
     QueryBuilder::new()
         .put(Relation::CausalEdges)
         .keys(&[Cause, Effect])
-        .values(&[Ordering, RelationshipType, Confidence, CreatedAt])
+        .values(&[
+            Id,
+            Ordering,
+            RelationshipType,
+            Confidence,
+            EvidenceSessionId,
+            CreatedAt,
+        ])
         .done()
         .build_script()
 }

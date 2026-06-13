@@ -30,8 +30,8 @@ pub use instance_backup::{
     InstanceVerifyResult, StoreEntry,
 };
 pub use knowledge::{
-    AutoDreamConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor, MaintenanceReport,
-    SerendipityMaintenanceConfig,
+    AutoDreamConfig, DerivedRulesConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor,
+    MaintenanceReport, SerendipityMaintenanceConfig,
 };
 pub use prompt_audit_rotation::{
     PromptAuditRetentionConfig, PromptAuditRetentionReport, PromptAuditRotator,

@@ -460,8 +460,11 @@ impl RecallStage {
             return Ok(RecallStageResult::empty());
         }
 
-        let side_ids = side_ranker.and_then(|ranker| self.side_query_ids(query, &raw, ranker));
         let candidates = self.build_candidates(raw, nous_id, None);
+        let side_ids = side_ranker.and_then(|ranker| {
+            let egress_candidates = self.provider_egress_candidates(candidates.clone(), nous_id);
+            self.side_query_ids(query, &egress_candidates, ranker)
+        });
         let ranked = self.rank_candidates_with_side_ids(
             candidates,
             self.side_query_ids.as_ref().or(side_ids.as_ref()),
@@ -503,8 +506,10 @@ impl RecallStage {
         }
 
         let candidates_c1 = self.build_candidates(raw_cycle1.clone(), nous_id, None);
-        let side_ids_c1 =
-            side_ranker.and_then(|ranker| self.side_query_ids(query, &raw_cycle1, ranker));
+        let side_ids_c1 = side_ranker.and_then(|ranker| {
+            let egress_candidates = self.provider_egress_candidates(candidates_c1.clone(), nous_id);
+            self.side_query_ids(query, &egress_candidates, ranker)
+        });
         let ranked_c1 = self.rank_candidates_with_side_ids(candidates_c1, side_ids_c1.as_ref());
 
         let terms = discover_terminology(&ranked_c1, query);
@@ -575,20 +580,21 @@ impl RecallStage {
     fn side_query_ids(
         &self,
         query: &str,
-        raw: &[KnowledgeRecallResult],
+        candidates: &[ScoredResult],
         ranker: &dyn mneme::side_query::SideQueryRanker,
     ) -> Option<HashSet<String>> {
-        let headers = raw
+        // WHY (#4619): the side-query provider sees only references that have
+        // already passed the same sovereignty, cohort, and project filters as
+        // final recall output. Memory content never leaves during ranking.
+        let headers = candidates
             .iter()
             .enumerate()
             .map(|(idx, result)| {
-                let description: String = result.content.chars().take(240).collect();
                 mneme::manifest::MemoryHeader::new(
                     result.source_id.clone(),
                     result.source_type.clone(),
-                    i64::try_from(raw.len().saturating_sub(idx)).unwrap_or(i64::MAX),
+                    i64::try_from(candidates.len().saturating_sub(idx)).unwrap_or(i64::MAX),
                 )
-                .with_description(description)
             })
             .collect();
         let manifest = mneme::manifest::MemoryManifest::from_headers(headers);
@@ -602,6 +608,16 @@ impl RecallStage {
                 None
             }
         }
+    }
+
+    fn provider_egress_candidates(
+        &self,
+        candidates: Vec<ScoredResult>,
+        nous_id: &str,
+    ) -> Vec<ScoredResult> {
+        let ranked = self.filter_by_sensitivity(candidates).kept;
+        let ranked = mneme::recall::filter_by_cohort_visibility(ranked, nous_id);
+        mneme::recall::filter_by_project_scope(ranked, &self.project_scope)
     }
 
     fn finalize_results(

@@ -466,6 +466,14 @@ Rules:
         }
         let facts = extraction.facts.iter().take(self.config.max_facts);
 
+        // #4675: track the entities written in this extraction so each fact can
+        // be linked to the subject/object entities it references. Linking is
+        // scoped to entities known from this batch; a subject/object name that
+        // did not resolve to an inserted entity is skipped rather than linked to
+        // a dangling id. Existing facts are reconnected by the v17->v18 backfill.
+        let mut known_entity_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+
         for entity in entities {
             // WHY: reject entities with empty names — they cannot be referenced or queried.
             if entity.name.trim().is_empty() {
@@ -500,6 +508,7 @@ Rules:
                 created_at: now,
                 updated_at: now,
             };
+            known_entity_ids.insert(e.id.as_str().to_owned());
             store.insert_entity(&e).map_err(|e| {
                 PersistSnafu {
                     message: e.to_string(),
@@ -657,6 +666,33 @@ Rules:
                 .build()
             })?;
             result.facts_inserted += 1;
+
+            // #4675: link the fact to the subject/object entities it references
+            // so graph-aware recall, scoped dedup, and consolidation see real
+            // fact-entity edges. The edge is idempotent (keyed put); subject and
+            // object are de-duplicated per fact so a reflexive triple links once.
+            let mut linked_this_fact: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+            for reference in [fact.subject.as_str(), fact.object.as_str()] {
+                let entity_slug = slugify(reference);
+                if !known_entity_ids.contains(&entity_slug)
+                    || !linked_this_fact.insert(entity_slug.clone())
+                {
+                    continue;
+                }
+                let Ok(entity_id) = crate::id::EntityId::new(entity_slug) else {
+                    continue;
+                };
+                match store.insert_fact_entity(&f.id, &entity_id) {
+                    Ok(()) => result.fact_entities_inserted += 1,
+                    Err(error) => tracing::debug!(
+                        %error,
+                        fact_id = %f.id,
+                        entity_id = %entity_id,
+                        "failed to link fact to referenced entity"
+                    ),
+                }
+            }
         }
 
         Ok(result)

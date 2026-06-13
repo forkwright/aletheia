@@ -7,6 +7,15 @@
 
 use crate::knowledge::{EmbeddedChunk, Visibility};
 use crate::test_fixtures::{make_entity, make_fact, make_store, test_ts};
+
+fn extraction_entity(name: &str, entity_type: &str) -> eidos::bookkeeping::ExtractedEntity {
+    eidos::bookkeeping::ExtractedEntity {
+        name: name.to_owned(),
+        entity_type: entity_type.to_owned(),
+        description: String::new(),
+    }
+}
+
 fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> EmbeddedChunk {
     EmbeddedChunk {
         id: crate::id::EmbeddingId::new(id).expect("valid test id"),
@@ -331,6 +340,164 @@ fn scoped_cluster_expansion_hides_foreign_private_cluster_mates() {
     assert!(
         !ids.contains(&"cluster-private"),
         "cluster expansion must not add foreign private facts"
+    );
+}
+
+/// #4620: cluster expansion must hydrate a cluster-mate's real scope, project,
+/// visibility, and sensitivity rather than synthesizing permissive defaults
+/// (`None` / `Public` / `Private`). A regression turns a project-scoped or
+/// confidential cluster mate into a globally eligible candidate, because the
+/// downstream quota and visibility filters trust whatever metadata expansion
+/// attached.
+#[test]
+fn cluster_expansion_hydrates_scope_project_and_sensitivity() {
+    let store = make_store();
+    let project =
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/cluster.git")
+            .expect("valid remote");
+
+    // Anchor fact: matched by the BM25 query, selects the cluster.
+    let anchor = make_visible_fact(
+        "cluster-anchor",
+        "alice",
+        "cluster anchor visible",
+        Visibility::Shared,
+    );
+    store.insert_fact(&anchor).expect("insert anchor");
+
+    // Cluster mate: project-scoped and confidential. Shared visibility keeps it
+    // in the unscoped expansion so we can observe whether its policy metadata
+    // survived, rather than being filtered out for an unrelated reason.
+    let mut mate = make_visible_fact(
+        "cluster-mate",
+        "alice",
+        "unrelated cluster mate body",
+        Visibility::Shared,
+    );
+    mate.scope = Some(crate::knowledge::MemoryScope::Project);
+    mate.project_id = Some(project.clone());
+    mate.sensitivity = crate::knowledge::FactSensitivity::Confidential;
+    store.insert_fact(&mate).expect("insert mate");
+
+    let anchor_entity = make_entity("entity-anchor", "Anchor", "topic");
+    let mate_entity = make_entity("entity-mate", "Mate", "topic");
+    store
+        .insert_entity(&anchor_entity)
+        .expect("insert anchor entity");
+    store
+        .insert_entity(&mate_entity)
+        .expect("insert mate entity");
+    store
+        .insert_fact_entity(&anchor.id, &anchor_entity.id)
+        .expect("link anchor");
+    store
+        .insert_fact_entity(&mate.id, &mate_entity.id)
+        .expect("link mate");
+
+    store
+        .run_mut_query(
+            r#"
+            ?[entity_id, score_type, score, cluster_id, updated_at] <- [
+                ["entity-anchor", "cluster", 0.0, 11, "2026-06-01T00:00:00Z"],
+                ["entity-mate", "cluster", 0.0, 11, "2026-06-01T00:00:00Z"]
+            ]
+            :put graph_scores { entity_id, score_type => score, cluster_id, updated_at }
+            "#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("seed cluster scores");
+
+    let results = store
+        .search_text_for_recall("cluster anchor visible", 10)
+        .expect("bm25 with cluster expansion");
+    let mate_result = results
+        .iter()
+        .find(|result| result.source_id.as_str() == "cluster-mate")
+        .expect("cluster mate added via expansion");
+
+    assert_eq!(
+        mate_result.scope,
+        Some(crate::knowledge::MemoryScope::Project),
+        "expansion must hydrate real scope, not default to None"
+    );
+    assert_eq!(
+        mate_result.project_id,
+        Some(project),
+        "expansion must hydrate real project_id, not default to None"
+    );
+    assert_eq!(
+        mate_result.sensitivity,
+        crate::knowledge::FactSensitivity::Confidential,
+        "expansion must hydrate real sensitivity, not default to Public"
+    );
+    assert_eq!(
+        mate_result.visibility,
+        Visibility::Shared,
+        "expansion must hydrate real visibility, not default to Private"
+    );
+}
+
+#[test]
+fn cluster_expansion_uses_fact_entities_created_by_extraction_persist() {
+    let store = make_store();
+    let engine = crate::extract::ExtractionEngine::new(crate::extract::ExtractionConfig::default());
+    let extraction = crate::extract::Extraction {
+        entities: vec![
+            extraction_entity("Recall Anchor", "topic"),
+            extraction_entity("Cluster Mate", "topic"),
+            extraction_entity("Shared Topic", "topic"),
+        ],
+        relationships: vec![],
+        facts: vec![
+            crate::extract::ExtractedFact {
+                subject: "Recall Anchor".to_owned(),
+                predicate: "links".to_owned(),
+                object: "Shared Topic".to_owned(),
+                confidence: 0.95,
+                fact_type: None,
+                is_correction: false,
+            },
+            crate::extract::ExtractedFact {
+                subject: "Cluster Mate".to_owned(),
+                predicate: "uses".to_owned(),
+                object: "Shared Topic".to_owned(),
+                confidence: 0.95,
+                fact_type: None,
+                is_correction: false,
+            },
+        ],
+    };
+
+    let persisted = engine
+        .persist(&extraction, &store, "session:test", "alice")
+        .expect("persist extraction");
+    assert_eq!(
+        persisted.fact_entities_inserted, 4,
+        "persist must create fact-entity edges for both extracted facts"
+    );
+
+    store
+        .run_mut_query(
+            r#"
+            ?[entity_id, score_type, score, cluster_id, updated_at] <- [
+                ["recall-anchor", "cluster", 0.0, 19, "2026-06-01T00:00:00Z"],
+                ["cluster-mate", "cluster", 0.0, 19, "2026-06-01T00:00:00Z"]
+            ]
+            :put graph_scores { entity_id, score_type => score, cluster_id, updated_at }
+            "#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("seed cluster scores");
+
+    let results = store
+        .search_text_for_recall("Recall Anchor links", 10)
+        .expect("bm25 with extraction-created cluster expansion");
+    let ids = result_ids(&results);
+
+    assert!(ids.contains(&"recall-anchor-links-0"));
+    assert!(
+        ids.contains(&"cluster-mate-uses-1"),
+        "cluster mate must be discovered through extraction-created fact_entities"
     );
 }
 

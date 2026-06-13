@@ -4,7 +4,7 @@ pub trait Field: Copy {
     fn name(self) -> &'static str;
 }
 
-/// Knowledge graph relations stored in the `CozoDB` engine.
+/// Knowledge graph relations stored in the Krites engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Relation {
@@ -29,7 +29,7 @@ pub enum Relation {
 }
 
 impl Relation {
-    /// Return the `CozoDB` relation name used in Datalog queries.
+    /// Return the relation name used in Datalog queries.
     #[must_use]
     pub(crate) fn name(self) -> &'static str {
         match self {
@@ -204,9 +204,11 @@ pub enum EntityFlagsField {
 pub enum CausalEdgesField {
     Cause,
     Effect,
+    Id,
     Ordering,
     RelationshipType,
     Confidence,
+    EvidenceSessionId,
     CreatedAt,
 }
 

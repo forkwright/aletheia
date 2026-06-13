@@ -22,6 +22,7 @@
 
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
+#[cfg(feature = "storage-fjall")]
 use std::path::Path;
 use std::sync::Arc;
 
@@ -149,48 +150,7 @@ impl AsyncDb {
             .map_err(|e| map_join_err(&e))?
     }
 
-    /// Backup the running database: always returns `Unsupported` (storage-sqlite removed).
-    #[instrument(skip(self, out_file))]
-    pub async fn backup_db(
-        &self,
-        out_file: impl AsRef<Path> + Send + 'static,
-    ) -> crate::Result<()> {
-        let inner = self.inner.clone();
-        let path = out_file.as_ref().to_path_buf();
-        tokio::task::spawn_blocking(move || inner.backup_db(&path))
-            .await
-            .map_err(|e| map_join_err(&e))?
-    }
-
-    /// Restore from a backup: always returns `Unsupported` (storage-sqlite removed).
-    #[instrument(skip(self, in_file))]
-    pub async fn restore_backup(
-        &self,
-        in_file: impl AsRef<Path> + Send + 'static,
-    ) -> crate::Result<()> {
-        let inner = self.inner.clone();
-        let path = in_file.as_ref().to_path_buf();
-        tokio::task::spawn_blocking(move || inner.restore_backup(&path))
-            .await
-            .map_err(|e| map_join_err(&e))?
-    }
-
-    /// Import data from relations in a backup file.
-    #[instrument(skip(self, in_file))]
-    pub async fn import_from_backup(
-        &self,
-        in_file: impl AsRef<Path> + Send + 'static,
-        relations: &[String],
-    ) -> crate::Result<()> {
-        let inner = self.inner.clone();
-        let path = in_file.as_ref().to_path_buf();
-        let relations = relations.to_vec();
-        tokio::task::spawn_blocking(move || inner.import_from_backup(&path, &relations))
-            .await
-            .map_err(|e| map_join_err(&e))?
-    }
-
-    /// Export relations for backup.
+    /// Export named relations as an engine-level relation snapshot.
     #[instrument(skip(self, relations))]
     pub async fn export_relations<I, T>(
         &self,
@@ -209,7 +169,7 @@ impl AsyncDb {
         .map_err(|e| map_join_err(&e))?
     }
 
-    /// Import relations from backup.
+    /// Import relations from an engine-level relation snapshot.
     #[instrument(skip(self))]
     pub async fn import_relations(&self, data: BTreeMap<String, NamedRows>) -> crate::Result<()> {
         let inner = self.inner.clone();

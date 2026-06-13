@@ -17,6 +17,7 @@ use tracing::Instrument as _;
 
 use koina::http::BEARER_PREFIX;
 use koina::id::SessionId;
+use mneme::types::validate_session_or_agent_id;
 use organon::surface::{SurfaceAvailability, SurfaceInputs};
 use symbolon::types::Role;
 
@@ -368,6 +369,22 @@ impl DiaporeiaServer {
         self.rate_limiter.check(Tier::Expensive)?;
         require_role(self, &context, Role::Operator, "session_create").await?;
         let session_key = params.session_key.as_deref().unwrap_or("main");
+        validate_session_or_agent_id(&params.nous_id).map_err(|e| {
+            rmcp::ErrorData::from(
+                InvalidInputSnafu {
+                    message: e.to_string(),
+                }
+                .build(),
+            )
+        })?;
+        validate_session_or_agent_id(session_key).map_err(|e| {
+            rmcp::ErrorData::from(
+                InvalidInputSnafu {
+                    message: e.to_string(),
+                }
+                .build(),
+            )
+        })?;
 
         let nous_config = self
             .state
@@ -2039,6 +2056,13 @@ impl DiaporeiaServer {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    use hermeneus::provider::ProviderRegistry;
+    use rmcp::model::CallToolRequestParams;
+    use tokio_util::sync::CancellationToken;
+
     use super::*;
 
     #[cfg(feature = "knowledge-store")]
@@ -2146,6 +2170,107 @@ mod tests {
             mcp.message.contains("alice"),
             "error message must include the nous_id"
         );
+    }
+
+    fn test_server_state(
+        store: Arc<tokio::sync::Mutex<mneme::store::SessionStore>>,
+        oikos: Arc<taxis::oikos::Oikos>,
+    ) -> Arc<crate::state::DiaporeiaState> {
+        let mut config = taxis::config::AletheiaConfig::default();
+        config.gateway.auth.mode = "none".to_owned();
+
+        Arc::new(crate::state::DiaporeiaState {
+            session_store: store.clone(),
+            nous_manager: Arc::new(nous::manager::NousManager::new(
+                Arc::new(ProviderRegistry::new()),
+                Arc::new(organon::registry::ToolRegistry::new()),
+                oikos.clone(),
+                None,
+                None,
+                Some(store),
+                #[cfg(feature = "knowledge-store")]
+                None,
+                Arc::new(Vec::new()),
+                None,
+                None,
+                taxis::config::NousBehaviorConfig::default(),
+                taxis::config::ToolLimitsConfig::default(),
+            )),
+            tool_registry: Arc::new(organon::registry::ToolRegistry::new()),
+            oikos,
+            jwt_manager: None,
+            start_time: Instant::now(),
+            config: Arc::new(tokio::sync::RwLock::new(config)),
+            auth_mode: "none".to_owned(),
+            none_role: "admin".to_owned(),
+            shutdown: CancellationToken::new(),
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
+            note_store: None,
+            blackboard_store: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn session_create_rejects_reserved_cross_key_without_persisting() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let oikos = Arc::new(taxis::oikos::Oikos::from_root(dir.path()));
+        let store = Arc::new(tokio::sync::Mutex::new(
+            mneme::store::SessionStore::open(&oikos.sessions_db()).expect("open sessions store"),
+        ));
+        let state = test_server_state(Arc::clone(&store), oikos);
+        let server =
+            DiaporeiaServer::with_state(state, &taxis::config::McpRateLimitConfig::default());
+
+        let (client_io, server_io) = tokio::io::duplex(16 * 1024);
+        let server_task = tokio::spawn(async move { rmcp::serve_server(server, server_io).await });
+        let mut client = rmcp::serve_client((), client_io)
+            .await
+            .expect("client initializes");
+        let mut server_service = server_task
+            .await
+            .expect("server task joins")
+            .expect("server initializes");
+
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "nous_id".to_owned(),
+            serde_json::Value::String("syn".to_owned()),
+        );
+        args.insert(
+            "session_key".to_owned(),
+            serde_json::Value::String("cross:victim".to_owned()),
+        );
+        let err = client
+            .peer()
+            .call_tool(CallToolRequestParams::new("session_create").with_arguments(args))
+            .await
+            .expect_err("reserved session key must be rejected");
+
+        match err {
+            rmcp::service::ServiceError::McpError(error) => {
+                assert_eq!(error.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+                assert!(
+                    error.message.contains("reserved internal prefix"),
+                    "got: {}",
+                    error.message
+                );
+            }
+            other => panic!("expected MCP invalid params error, got {other:?}"),
+        }
+
+        let persisted = store
+            .lock()
+            .await
+            .find_session("syn", "cross:victim")
+            .expect("query rejected session");
+        assert!(
+            persisted.is_none(),
+            "MCP session_create must not persist reserved session keys"
+        );
+
+        client.close().await.expect("client close");
+        server_service.close().await.expect("server close");
     }
 
     #[test]

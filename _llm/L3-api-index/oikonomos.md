@@ -241,7 +241,7 @@ pub struct DbSizeReport {
 
 ```rust
 pub struct DbInfo {
-    /// Database file or directory name (e.g., `"sessions.db"`, `"cozo/"`).
+    /// Database file or legacy directory name.
     pub name: String,
     /// Absolute path to the database file or directory.
     pub path: PathBuf,
@@ -530,6 +530,29 @@ pub trait KnowledgeMaintenanceExecutor : Send + Sync {
 ```
 
 ```rust
+pub enum DerivedMaterializationPolicy {
+    /// Eagerly refresh derived facts as part of the scheduled daemon task.
+    /// This is the production default: derived results are materialized in
+    /// the background and query surfaces only need to check the watermark.
+    #[default]
+    Scheduled,
+    /// Refresh derived facts on demand when a freshness check finds stale
+    /// rows. This trades query latency for lower background write volume.
+    OnDemand,
+}
+```
+
+```rust
+pub struct DerivedRulesConfig {
+    /// How derived facts are refreshed.
+    pub policy: DerivedMaterializationPolicy,
+    /// Cadence for the scheduled materialization task when policy is
+    /// [`DerivedMaterializationPolicy::Scheduled`].
+    pub materialization_interval: Duration,
+}
+```
+
+```rust
 pub struct KnowledgeMaintenanceConfig {
     /// Whether knowledge maintenance tasks are enabled.
     pub enabled: bool,
@@ -537,6 +560,8 @@ pub struct KnowledgeMaintenanceConfig {
     pub auto_dream: AutoDreamConfig,
     /// Serendipity discovery idle-maintenance settings.
     pub serendipity: SerendipityMaintenanceConfig,
+    /// Derived Datalog rule maintenance settings.
+    pub derived_rules: DerivedRulesConfig,
 }
 ```
 

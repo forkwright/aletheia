@@ -18,7 +18,10 @@ impl KnowledgeStore {
         use snafu::ensure;
         ensure!(!entity.name.is_empty(), crate::error::EmptyEntityNameSnafu);
         let params = entity_to_params(entity);
-        self.run_mut(&queries::upsert_entity(), params)
+        self.run_mut(&queries::upsert_entity(), params)?;
+        // WHY (#4662): ontological rules key off `entity_type`, so an entity
+        // upsert can change derived IS-A closure. Mark derived facts stale.
+        self.invalidate_derived_facts()
     }
 
     /// Insert a relationship.
@@ -1244,7 +1247,10 @@ impl KnowledgeStore {
                 "failed to clear entity flags during delete"
             );
         }
-        Ok(())
+        // WHY (#4662): deleting an entity removes `entity_type` input for
+        // ontological rules. Mark derived materializations stale after the
+        // durable delete succeeds.
+        self.invalidate_derived_facts()
     }
 
     /// Flag an entity for operator review.

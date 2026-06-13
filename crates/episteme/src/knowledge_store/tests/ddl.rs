@@ -12,8 +12,8 @@ use super::super::*;
 #[test]
 fn ddl_templates_are_valid_strings() {
     assert!(
-        KNOWLEDGE_DDL.len() == 14,
-        "expected 14 DDL entries (including type_hierarchy, derived_facts, defaults, published_facts, provenance, embedding_meta, entity_flags)"
+        KNOWLEDGE_DDL.len() == 16,
+        "expected 16 DDL entries (including type_hierarchy, derived_facts, defaults, published_facts, provenance, embedding_meta, entity_flags, derived_source_revision, derived_rule_watermarks)"
     );
     let emb = embeddings_ddl(1024);
     assert!(emb.contains("1024"));
@@ -44,7 +44,7 @@ fn query_templates_contain_params() {
     // $query_text lives in the BM25 rule injected by build_hybrid_query (#4156);
     // verify it reaches the rendered query when the message has text terms.
     let rendered = marshal::build_hybrid_query(&HybridQuery {
-        text: "cozo".into(),
+        text: "datalog".into(),
         embedding: vec![0.0; 4],
         seed_entities: vec![],
         limit: 5,

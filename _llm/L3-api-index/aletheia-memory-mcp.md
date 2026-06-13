@@ -119,9 +119,62 @@ impl MemoryServer {
 pub struct NousSearchParams {
     /// Free-text query string; matched via BM25 against current fact content.
     pub query: String,
+    /// Owning agent (nous) for whom results are being recalled. Filters out
+    /// foreign private facts and respects visibility rules.
+    pub nous_id: String,
     /// Maximum number of results to return. Defaults to 20 when omitted.
     #[serde(default)]
     pub limit: Option<usize>,
+    /// Optional project partition (64-character SHA-256 hex) to restrict results.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// Optional memory scope (`user`, `feedback`, `project`, or `reference`).
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// Optional minimum visibility (`private`, `shared`, `restricted`, `published`).
+    #[serde(default)]
+    pub min_visibility: Option<String>,
+    /// Optional maximum sensitivity (`public`, `internal`, `confidential`).
+    #[serde(default)]
+    pub max_sensitivity: Option<String>,
+}
+```
+
+```rust
+pub struct NousListTopicsParams {
+    /// Owning agent (nous) whose view of the topic distribution is requested.
+    pub nous_id: String,
+    /// Optional project partition filter.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// Optional memory scope filter.
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// Optional minimum visibility filter.
+    #[serde(default)]
+    pub min_visibility: Option<String>,
+    /// Optional maximum sensitivity filter.
+    #[serde(default)]
+    pub max_sensitivity: Option<String>,
+}
+```
+
+```rust
+pub struct NousStatsParams {
+    /// Owning agent (nous) whose view of the stats is requested.
+    pub nous_id: String,
+    /// Optional project partition filter.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// Optional memory scope filter.
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// Optional minimum visibility filter.
+    #[serde(default)]
+    pub min_visibility: Option<String>,
+    /// Optional maximum sensitivity filter.
+    #[serde(default)]
+    pub max_sensitivity: Option<String>,
 }
 ```
 
@@ -130,13 +183,28 @@ pub struct NousNeighborsParams {
     /// ID of the seed fact whose entity neighbors should be returned.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
+    /// Owning agent (nous) whose scoped view is requesting the neighbors.
+    pub nous_id: String,
+    /// Optional project partition filter.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// Optional memory scope filter.
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// Optional minimum visibility filter.
+    #[serde(default)]
+    pub min_visibility: Option<String>,
+    /// Optional maximum sensitivity filter.
+    #[serde(default)]
+    pub max_sensitivity: Option<String>,
 }
 ```
 
 ```rust
 pub struct NousAnnotateParams {
-    /// Session ID for the annotation (identifies the agent or source).
-    pub session_id: Option<String>,
+    /// Owning agent (nous) that is authoring the annotation. Must be explicit;
+    /// the `mcp-client` fallback is no longer used for user memory.
+    pub session_id: String,
     /// Fact ID to annotate.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
@@ -155,6 +223,8 @@ pub struct NousSupersedeParams {
     /// ID of the new fact that supersedes it.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub new_fact_id: String,
+    /// Owning agent (nous) recording the supersession. Must be explicit.
+    pub nous_id: String,
     /// Reason for supersession.
     pub reason: String,
     /// Capability token for write authorization.
@@ -167,6 +237,8 @@ pub struct NousForgetParams {
     /// ID of the fact to forget.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
+    /// Owning agent (nous) requesting the forget. Must match the fact owner.
+    pub nous_id: String,
     /// Reason for forgetting.
     pub reason: String,
     /// Capability token for write authorization.

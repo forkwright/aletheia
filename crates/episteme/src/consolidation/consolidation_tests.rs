@@ -4,6 +4,7 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 use super::*;
+use crate::knowledge::{FactSensitivity, Visibility};
 
 struct MockConsolidationProvider {
     response: String,
@@ -190,18 +191,28 @@ fn extract_json_array_none() {
 #[test]
 fn user_message_formatting() {
     let facts = vec![
-        (
-            FactId::new("f-1").expect("valid test id"),
-            "Alice works at Acme".to_owned(),
-            0.9,
-            "2026-01-01T00:00:00Z".to_owned(),
-        ),
-        (
-            FactId::new("f-2").expect("valid test id"),
-            "Alice likes Rust".to_owned(),
-            0.85,
-            "2026-01-02T00:00:00Z".to_owned(),
-        ),
+        SourceFact {
+            id: FactId::new("f-1").expect("valid test id"),
+            content: "Alice works at Acme".to_owned(),
+            confidence: 0.9,
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            source_session_id: None,
+        },
+        SourceFact {
+            id: FactId::new("f-2").expect("valid test id"),
+            content: "Alice likes Rust".to_owned(),
+            confidence: 0.85,
+            recorded_at: "2026-01-02T00:00:00Z".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            source_session_id: None,
+        },
     ];
     let msg = consolidation_user_message(&facts);
     assert!(
@@ -241,14 +252,17 @@ fn system_prompt_is_stable() {
 
 #[test]
 fn batch_facts_splits_correctly() {
-    let facts: Vec<(FactId, String, f64, String)> = (0..7)
-        .map(|i| {
-            (
-                FactId::new(format!("f-{i}")).expect("valid test id"),
-                format!("fact {i}"),
-                0.8,
-                "2026-01-01T00:00:00Z".to_owned(),
-            )
+    let facts: Vec<SourceFact> = (0..7)
+        .map(|i| SourceFact {
+            id: FactId::new(format!("f-{i}")).expect("valid test id"),
+            content: format!("fact {i}"),
+            confidence: 0.8,
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            source_session_id: None,
         })
         .collect();
 
@@ -277,14 +291,17 @@ fn batch_facts_splits_correctly() {
 
 #[test]
 fn batch_facts_single_batch() {
-    let facts: Vec<(FactId, String, f64, String)> = (0..5)
-        .map(|i| {
-            (
-                FactId::new(format!("f-{i}")).expect("valid test id"),
-                format!("fact {i}"),
-                0.8,
-                "2026-01-01T00:00:00Z".to_owned(),
-            )
+    let facts: Vec<SourceFact> = (0..5)
+        .map(|i| SourceFact {
+            id: FactId::new(format!("f-{i}")).expect("valid test id"),
+            content: format!("fact {i}"),
+            confidence: 0.8,
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            source_session_id: None,
         })
         .collect();
 
@@ -315,6 +332,11 @@ fn consolidated_fact_serde_roundtrip() {
             "2026-01-01T00:00:00Z".to_owned(),
             "2026-01-05T00:00:00Z".to_owned(),
         ],
+        source_scopes: vec![None, None],
+        source_project_ids: vec![None, None],
+        source_sensitivities: vec![FactSensitivity::Public, FactSensitivity::Public],
+        source_visibilities: vec![Visibility::Private, Visibility::Private],
+        source_session_ids: vec![None, None],
     };
     let json = serde_json::to_string(&fact).expect("serialize");
     let back: ConsolidatedFact = serde_json::from_str(&json).expect("deserialize");
@@ -503,12 +525,17 @@ fn parse_response_missing_required_content_field_errors() {
 /// Requirement 30: single-fact batch is valid (no off-by-one).
 #[test]
 fn batch_single_fact_produces_one_batch_of_one() {
-    let facts: Vec<(FactId, String, f64, String)> = vec![(
-        FactId::new("f-1").expect("valid test id"),
-        "Alice is a software engineer at Acme Corp".to_owned(),
-        0.9,
-        "2026-01-01T00:00:00Z".to_owned(),
-    )];
+    let facts: Vec<SourceFact> = vec![SourceFact {
+        id: FactId::new("f-1").expect("valid test id"),
+        content: "Alice is a software engineer at Acme Corp".to_owned(),
+        confidence: 0.9,
+        recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+        scope: None,
+        project_id: None,
+        sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
+        source_session_id: None,
+    }];
 
     let batches = batch_facts(&facts, 50);
     assert_eq!(
@@ -527,14 +554,17 @@ fn batch_single_fact_produces_one_batch_of_one() {
 #[test]
 fn batch_exactly_batch_size_produces_single_batch() {
     let batch_size = 5;
-    let facts: Vec<(FactId, String, f64, String)> = (0..batch_size)
-        .map(|i| {
-            (
-                FactId::new(format!("f-{i}")).expect("valid test id"),
-                format!("fact {i} about bob@example.org"),
-                0.8,
-                "2026-01-01T00:00:00Z".to_owned(),
-            )
+    let facts: Vec<SourceFact> = (0..batch_size)
+        .map(|i| SourceFact {
+            id: FactId::new(format!("f-{i}")).expect("valid test id"),
+            content: format!("fact {i} about bob@example.org"),
+            confidence: 0.8,
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            source_session_id: None,
         })
         .collect();
 
@@ -566,14 +596,17 @@ mod proptests {
             count in 0usize..200,
             batch_size in 1usize..50,
         ) {
-            let facts: Vec<(FactId, String, f64, String)> = (0..count)
-                .map(|i| {
-                    (
-                        FactId::new(format!("f-{i}")).expect("valid test id"),
-                        format!("synthetic fact {i}"),
-                        0.8,
-                        "2026-01-01T00:00:00Z".to_owned(),
-                    )
+            let facts: Vec<SourceFact> = (0..count)
+                .map(|i| SourceFact {
+                    id: FactId::new(format!("f-{i}")).expect("valid test id"),
+                    content: format!("synthetic fact {i}"),
+                    confidence: 0.8,
+                    recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+                    scope: None,
+                    project_id: None,
+                    sensitivity: FactSensitivity::Public,
+                    visibility: Visibility::Private,
+                    source_session_id: None,
                 })
                 .collect();
 

@@ -171,6 +171,8 @@ pub struct PersistResult {
     pub facts_inserted: usize,
     /// Number of causal edges extracted and recorded.
     pub causal_edges_inserted: usize,
+    /// Number of fact-entity edges linked during persistence.
+    pub fact_entities_inserted: usize,
 }
 
 impl PersistResult {

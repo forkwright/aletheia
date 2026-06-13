@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
+#[cfg(feature = "storage-fjall")]
 use std::path::Path;
 use std::sync::Arc;
 
@@ -247,44 +248,7 @@ impl Db {
         self.run(script, params, ScriptMutability::Immutable)
     }
 
-    /// Backup the running database: always returns `Unsupported` (storage-sqlite removed).
-    pub fn backup_db(&self, out_file: impl AsRef<Path>) -> crate::Result<()> {
-        let path = out_file.as_ref();
-        let result = match &self.inner {
-            DbInner::Mem(db) => db.backup_db(path),
-            #[cfg(feature = "storage-fjall")]
-            DbInner::Fjall(db) => db.backup_db(path),
-        };
-        result.map_err(convert_internal)
-    }
-
-    /// Restore from a backup: always returns `Unsupported` (storage-sqlite removed).
-    pub fn restore_backup(&self, in_file: impl AsRef<Path>) -> crate::Result<()> {
-        let path = in_file.as_ref();
-        let result = match &self.inner {
-            DbInner::Mem(db) => db.restore_backup(path),
-            #[cfg(feature = "storage-fjall")]
-            DbInner::Fjall(db) => db.restore_backup(path),
-        };
-        result.map_err(convert_internal)
-    }
-
-    /// Import data from relations in a backup file.
-    pub fn import_from_backup(
-        &self,
-        in_file: impl AsRef<Path>,
-        relations: &[String],
-    ) -> crate::Result<()> {
-        let path = in_file.as_ref();
-        let result = match &self.inner {
-            DbInner::Mem(db) => db.import_from_backup(path, relations),
-            #[cfg(feature = "storage-fjall")]
-            DbInner::Fjall(db) => db.import_from_backup(path, relations),
-        };
-        result.map_err(convert_internal)
-    }
-
-    /// Export relations for backup.
+    /// Export named relations as an engine-level relation snapshot.
     pub fn export_relations<I, T>(&self, relations: I) -> crate::Result<BTreeMap<String, NamedRows>>
     where
         I: Iterator<Item = T>,
@@ -298,7 +262,7 @@ impl Db {
         result.map_err(convert_internal)
     }
 
-    /// Import relations from backup.
+    /// Import relations from an engine-level relation snapshot.
     pub fn import_relations(&self, data: BTreeMap<String, NamedRows>) -> crate::Result<()> {
         let result = match &self.inner {
             DbInner::Mem(db) => db.import_relations(data),

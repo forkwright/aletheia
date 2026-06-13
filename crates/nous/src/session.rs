@@ -11,6 +11,8 @@ use tracing::{info, instrument};
 
 use crate::config::NousConfig;
 
+use mneme::types::validate_session_or_agent_id;
+
 /// Active session state held in memory.
 #[derive(Debug, Clone)]
 #[expect(
@@ -65,6 +67,11 @@ pub struct SessionState {
 
 impl SessionState {
     /// Create a new session state from config.
+    ///
+    /// This constructor performs no reserved-prefix validation. It is the
+    /// internal bypass for callers that legitimately mint internal keys such
+    /// as `cross:`. User-facing creation must go through [`Self::try_new`] or
+    /// [`SessionManager::create_session`].
     #[must_use]
     pub fn new(id: String, session_key: String, config: &NousConfig) -> Self {
         Self {
@@ -91,6 +98,33 @@ impl SessionState {
                 config.recall.surprise_ema_alpha,
             ),
         }
+    }
+
+    /// Create a new session state from config, validating that the supplied
+    /// `id` and `session_key` do not use reserved internal prefixes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`mneme::types::ReservedIdPrefixError`] when `id` or
+    /// `session_key` starts with a reserved prefix such as `cross:`.
+    pub fn try_new(
+        id: String,
+        session_key: String,
+        config: &NousConfig,
+    ) -> Result<Self, mneme::types::ReservedIdPrefixError> {
+        validate_session_or_agent_id(&id)?;
+        validate_session_or_agent_id(&session_key)?;
+        Ok(Self::new(id, session_key, config))
+    }
+
+    /// Internal bypass constructor for reserved session keys.
+    ///
+    /// WHY: cross-nous coordination mints `cross:`-prefixed session keys. Those
+    /// keys must not be constructible from ordinary user creation paths, so
+    /// this constructor is explicit and named `internal`.
+    #[must_use]
+    pub fn new_internal(id: String, session_key: String, config: &NousConfig) -> Self {
+        Self::new(id, session_key, config)
     }
 
     /// Advance to the next turn.
@@ -135,15 +169,24 @@ impl SessionManager {
     }
 
     /// Create a new session state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`mneme::types::ReservedIdPrefixError`] when `id` or
+    /// `session_key` uses a reserved internal prefix such as `cross:`.
     #[instrument(skip(self))]
-    pub fn create_session(&self, id: &str, session_key: &str) -> SessionState {
+    pub fn create_session(
+        &self,
+        id: &str,
+        session_key: &str,
+    ) -> Result<SessionState, mneme::types::ReservedIdPrefixError> {
         info!(
             id,
             session_key,
             nous_id = self.config.id.as_ref(),
             "creating session"
         );
-        SessionState::new(id.to_owned(), session_key.to_owned(), &self.config)
+        SessionState::try_new(id.to_owned(), session_key.to_owned(), &self.config)
     }
 
     /// Get the agent configuration.
@@ -212,8 +255,32 @@ mod tests {
     #[test]
     fn session_manager_creates() {
         let mgr = SessionManager::new(make_config());
-        let state = mgr.create_session("ses-1", "main");
+        let Ok(state) = mgr.create_session("ses-1", "main") else {
+            panic!("valid session should be created");
+        };
         assert_eq!(state.id, "ses-1");
+        assert_eq!(state.nous_id, "syn");
+    }
+
+    #[test]
+    fn create_session_rejects_reserved_cross_prefix() {
+        let mgr = SessionManager::new(make_config());
+        assert!(
+            mgr.create_session("cross:alice", "main").is_err(),
+            "user-supplied ids must not use the cross: namespace"
+        );
+        assert!(
+            mgr.create_session("ses-1", "cross:alice").is_err(),
+            "user-supplied session keys must not use the cross: namespace"
+        );
+    }
+
+    #[test]
+    fn internal_cross_session_key_minting_works() {
+        let config = make_config();
+        let state =
+            SessionState::new_internal("ses-cross-1".to_owned(), "cross:alice".to_owned(), &config);
+        assert_eq!(state.session_key, "cross:alice");
         assert_eq!(state.nous_id, "syn");
     }
 

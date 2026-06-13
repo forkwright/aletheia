@@ -14,7 +14,7 @@ use crate::knowledge::{
     CausalEdge, CausalRelationType, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle,
     FactProvenance, FactSensitivity, FactTemporal, TemporalOrdering, far_future,
 };
-use crate::knowledge_store::KnowledgeStore;
+use crate::knowledge_store::{DerivedFreshness, KnowledgeStore};
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -654,5 +654,194 @@ fn query_derived_facts_by_rule_prefix_filters_correctly() {
     assert!(
         causal.iter().all(|d| d.rule_id.starts_with("causal")),
         "prefix filter should only return causal rows"
+    );
+}
+
+// ── Freshness tests (#4662) ────────────────────────────────────────────────────
+
+#[test]
+fn derived_facts_freshness_transitions_on_base_change() {
+    let store = KnowledgeStore::open_mem().expect("open_mem");
+
+    make_entity(&store, "frank", "Frank", "analyst");
+    store
+        .insert_type_hierarchy("analyst", "knowledge_worker")
+        .expect("insert hierarchy");
+
+    // Before materialization: no derived rows.
+    assert_eq!(
+        store
+            .derived_fact_freshness("frank", "ontological")
+            .expect("freshness query"),
+        DerivedFreshness::Unavailable,
+        "no derived rows means unavailable"
+    );
+
+    // After materialization: fresh.
+    store
+        .materialize_ontological_rules()
+        .expect("materialize ontological");
+    assert_eq!(
+        store
+            .derived_fact_freshness("frank", "ontological")
+            .expect("freshness query"),
+        DerivedFreshness::Fresh,
+        "materialized rows at current revision should be fresh"
+    );
+
+    // A base-relation change (new IS-A edge) must make existing rows stale.
+    store
+        .insert_type_hierarchy("knowledge_worker", "worker")
+        .expect("insert second hierarchy");
+    assert_eq!(
+        store
+            .derived_fact_freshness("frank", "ontological")
+            .expect("freshness query"),
+        DerivedFreshness::Stale,
+        "base relation change must mark derived facts stale"
+    );
+
+    // Re-materialization restores freshness.
+    store
+        .materialize_ontological_rules()
+        .expect("rematerialize ontological");
+    assert_eq!(
+        store
+            .derived_fact_freshness("frank", "ontological")
+            .expect("freshness query"),
+        DerivedFreshness::Fresh,
+        "rematerialization clears stale flag"
+    );
+}
+
+#[test]
+fn derived_facts_default_insert_marks_ontological_stale() {
+    let store = KnowledgeStore::open_mem().expect("open_mem");
+
+    make_entity(&store, "grace", "Grace", "person");
+    store
+        .insert_type_hierarchy("person", "agent")
+        .expect("insert hierarchy");
+    store.materialize_ontological_rules().expect("materialize");
+
+    assert_eq!(
+        store
+            .derived_fact_freshness("grace", "ontological")
+            .expect("freshness"),
+        DerivedFreshness::Fresh
+    );
+
+    // Inserting a default is a base write for the defeasible family; because
+    // we do not know which families a base write affects at the writer site,
+    // `invalidate_derived_facts` marks all families dirty.
+    store
+        .insert_default("grace", "skill", "grace is a beginner", 0.5)
+        .expect("insert default");
+    assert_eq!(
+        store
+            .derived_fact_freshness("grace", "ontological")
+            .expect("freshness"),
+        DerivedFreshness::Stale,
+        "any base write must make derived results stale"
+    );
+}
+
+#[test]
+fn derived_facts_fact_insert_marks_existing_rows_stale() {
+    let store = KnowledgeStore::open_mem().expect("open_mem");
+
+    make_entity(&store, "helen", "Helen", "person");
+    store
+        .insert_type_hierarchy("person", "agent")
+        .expect("insert hierarchy");
+    store.materialize_ontological_rules().expect("materialize");
+    assert_eq!(
+        store
+            .derived_fact_freshness("helen", "ontological")
+            .expect("freshness"),
+        DerivedFreshness::Fresh
+    );
+
+    make_fact_with_tier(
+        &store,
+        "fact-helen-1",
+        "helen",
+        "helen works on memory freshness",
+        EpistemicTier::Inferred,
+    );
+    assert_eq!(
+        store
+            .derived_fact_freshness("helen", "ontological")
+            .expect("freshness"),
+        DerivedFreshness::Stale,
+        "fact writes must mark derived facts stale"
+    );
+}
+
+#[test]
+fn derived_facts_causal_edge_insert_marks_existing_rows_stale() {
+    let store = KnowledgeStore::open_mem().expect("open_mem");
+
+    make_entity(&store, "irene", "Irene", "person");
+    store
+        .insert_type_hierarchy("person", "agent")
+        .expect("insert hierarchy");
+    make_fact_with_tier(
+        &store,
+        "fact-cause",
+        "irene",
+        "irene updates a memory rule",
+        EpistemicTier::Inferred,
+    );
+    make_fact_with_tier(
+        &store,
+        "fact-effect",
+        "irene",
+        "the derived row changes",
+        EpistemicTier::Inferred,
+    );
+    store.materialize_ontological_rules().expect("materialize");
+    assert_eq!(
+        store
+            .derived_fact_freshness("irene", "ontological")
+            .expect("freshness"),
+        DerivedFreshness::Fresh
+    );
+
+    store
+        .insert_causal_edge(&make_causal_edge("fact-cause", "fact-effect", 0.8))
+        .expect("insert causal edge");
+    assert_eq!(
+        store
+            .derived_fact_freshness("irene", "ontological")
+            .expect("freshness"),
+        DerivedFreshness::Stale,
+        "causal edge writes must mark derived facts stale"
+    );
+}
+
+#[test]
+fn derived_facts_entity_insert_marks_existing_rows_stale() {
+    let store = KnowledgeStore::open_mem().expect("open_mem");
+
+    make_entity(&store, "jules", "Jules", "person");
+    store
+        .insert_type_hierarchy("person", "agent")
+        .expect("insert hierarchy");
+    store.materialize_ontological_rules().expect("materialize");
+    assert_eq!(
+        store
+            .derived_fact_freshness("jules", "ontological")
+            .expect("freshness"),
+        DerivedFreshness::Fresh
+    );
+
+    make_entity(&store, "kai", "Kai", "person");
+    assert_eq!(
+        store
+            .derived_fact_freshness("jules", "ontological")
+            .expect("freshness"),
+        DerivedFreshness::Stale,
+        "entity writes must mark derived facts stale"
     );
 }

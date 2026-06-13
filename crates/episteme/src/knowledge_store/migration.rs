@@ -70,6 +70,18 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
         target_version: 16,
         run: KnowledgeStore::migrate_v15_to_v16,
     },
+    MigrationStep {
+        target_version: 17,
+        run: KnowledgeStore::migrate_v16_to_v17,
+    },
+    MigrationStep {
+        target_version: 18,
+        run: KnowledgeStore::migrate_v17_to_v18,
+    },
+    MigrationStep {
+        target_version: 19,
+        run: KnowledgeStore::migrate_v18_to_v19,
+    },
 ];
 
 #[cfg(feature = "mneme-engine")]
@@ -1125,6 +1137,383 @@ impl KnowledgeStore {
         self.stamp_schema_version(16, "v15->v16")?;
 
         tracing::info!("knowledge schema migration v15 -> v16 complete");
+        Ok(())
+    }
+
+    /// Migrate v16 → v17: add `id` and `evidence_session_id` to `causal_edges`.
+    ///
+    /// Pre-v17 edges stored only `(cause, effect)` identity and no provenance,
+    /// so reads synthesized a fresh edge ID and dropped the evidence session.
+    /// Existing rows are re-keyed unchanged; each is assigned a stable ULID
+    /// edge ID (no prior identity exists to preserve) and a null
+    /// `evidence_session_id` (#4551). New edges carry both fields from insert.
+    pub(super) fn migrate_v16_to_v17(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::ScriptMutability;
+        tracing::info!("migrating knowledge schema v16 -> v17");
+
+        let all_edges = self
+            .db
+            .run(
+                r"?[cause, effect, ordering, relationship_type, confidence, created_at] :=
+                    *causal_edges{cause, effect, ordering, relationship_type, confidence, created_at}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v16->v17 read causal_edges: {e}"),
+                }
+                .build()
+            })?;
+
+        self.db
+            .run(
+                "::remove causal_edges",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v16->v17 remove causal_edges: {e}"),
+                }
+                .build()
+            })?;
+
+        self.db
+            .run(KNOWLEDGE_DDL[6], BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v16->v17 recreate causal_edges: {e}"),
+                }
+                .build()
+            })?;
+
+        for row in &all_edges.rows {
+            let script = r"
+                ?[cause, effect, id, ordering, relationship_type, confidence,
+                  evidence_session_id, created_at] <- [[
+                    $cause, $effect, $id, $ordering, $relationship_type, $confidence,
+                    null, $created_at
+                ]]
+                :put causal_edges {cause, effect => id, ordering, relationship_type,
+                    confidence, evidence_session_id, created_at}
+            ";
+            let mut params = BTreeMap::new();
+            for (i, name) in [
+                "cause",
+                "effect",
+                "ordering",
+                "relationship_type",
+                "confidence",
+                "created_at",
+            ]
+            .iter()
+            .enumerate()
+            {
+                if let Some(val) = row.get(i) {
+                    params.insert((*name).to_owned(), val.clone());
+                }
+            }
+            params.insert(
+                "id".to_owned(),
+                crate::engine::DataValue::Str(koina::ulid::Ulid::new().to_string().into()),
+            );
+            self.db
+                .run(script, params, ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v16->v17 reinsert causal_edge: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        self.stamp_schema_version(17, "v16->v17")?;
+
+        tracing::info!("knowledge schema migration v16 -> v17 complete");
+        Ok(())
+    }
+
+    /// Migrate v17 -> v18: backfill `fact_entities` edges for existing facts.
+    ///
+    /// Before #4675, normal extraction never linked facts to the entities they
+    /// reference, so historical facts have no `fact_entities` edges and graph
+    /// recall, scoped dedup, and consolidation cannot see them. This backfill
+    /// infers edges by matching each stored entity id against the slugified
+    /// fact content: an entity whose id appears as a whole hyphen-delimited run
+    /// in `slugify(content)` is linked to that fact. Matching is bounded to
+    /// token boundaries so a short entity id cannot match inside a longer word.
+    /// The link is idempotent, so re-running is safe and new extraction-time
+    /// edges are never duplicated.
+    pub(super) fn migrate_v17_to_v18(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        tracing::info!("migrating knowledge schema v17 -> v18");
+
+        let entity_rows = self
+            .db
+            .run(
+                "?[id] := *entities{id}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v17->v18 read entities: {e}"),
+                }
+                .build()
+            })?;
+        let entity_slugs: Vec<String> = entity_rows
+            .rows
+            .iter()
+            .filter_map(|row| row.first().and_then(crate::engine::DataValue::get_str))
+            .map(str::to_owned)
+            .collect();
+
+        if entity_slugs.is_empty() {
+            self.stamp_schema_version(18, "v17->v18")?;
+            tracing::info!("knowledge schema migration v17 -> v18 complete (no entities)");
+            return Ok(());
+        }
+
+        let fact_rows = self
+            .db
+            .run(
+                "?[id, content] := *facts{id, content}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v17->v18 read facts: {e}"),
+                }
+                .build()
+            })?;
+
+        let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
+        let mut linked = 0_usize;
+        for row in &fact_rows.rows {
+            let (Some(fact_id), Some(content)) = (
+                row.first().and_then(DataValue::get_str),
+                row.get(1).and_then(DataValue::get_str),
+            ) else {
+                continue;
+            };
+            // Pad so a whole-token entity id matches only on hyphen boundaries.
+            let haystack = format!("-{}-", crate::extract::utils::slugify(content));
+            for entity_slug in &entity_slugs {
+                if !haystack.contains(&format!("-{entity_slug}-")) {
+                    continue;
+                }
+                let script = r"
+                    ?[fact_id, entity_id, created_at] <- [[$fact_id, $entity_id, $created_at]]
+                    :put fact_entities {fact_id, entity_id => created_at}
+                ";
+                let mut params = BTreeMap::new();
+                params.insert("fact_id".to_owned(), DataValue::Str(fact_id.into()));
+                params.insert(
+                    "entity_id".to_owned(),
+                    DataValue::Str(entity_slug.as_str().into()),
+                );
+                params.insert("created_at".to_owned(), DataValue::Str(now.as_str().into()));
+                self.db
+                    .run(script, params, ScriptMutability::Mutable)
+                    .map_err(|e| {
+                        crate::error::EngineQuerySnafu {
+                            message: format!("v17->v18 link fact-entity: {e}"),
+                        }
+                        .build()
+                    })?;
+                linked += 1;
+            }
+        }
+
+        self.stamp_schema_version(18, "v17->v18")?;
+
+        tracing::info!(linked, "knowledge schema migration v17 -> v18 complete");
+        Ok(())
+    }
+
+    /// Migrate v18 → v19: add derived-rule freshness bookkeeping and
+    /// consolidation provenance side-index (#4660, #4662).
+    ///
+    /// - `derived_source_revision` holds a global monotonic revision bumped by
+    ///   base writes (`facts`, `entities`, `causal_edges`, `type_hierarchy`,
+    ///   `defaults`).
+    /// - `derived_rule_watermarks` records, per rule family, the source
+    ///   revision the materialization ran against, the timestamp, and a dirty
+    ///   flag. Existing derived rows are marked dirty so the next scheduled
+    ///   materialization refreshes them against the new revision counter.
+    /// - `consolidation_provenance` stores source fact IDs and source session
+    ///   IDs for each consolidated fact.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "sequential migration that creates multiple relations and backfills watermarks"
+    )]
+    pub(super) fn migrate_v18_to_v19(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        tracing::info!("migrating knowledge schema v18 -> v19");
+
+        // The migration must be idempotent: a store created at the current
+        // schema, or a partially-applied migration, may already contain these
+        // relations. Skip creation when present, but still ensure the
+        // bookkeeping rows and watermarks are correct.
+        if !self.relation_exists("derived_source_revision")? {
+            self.db
+                .run(
+                    crate::knowledge_store::derived_rules::DERIVED_SOURCE_REVISION_DDL,
+                    BTreeMap::new(),
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v18->v19 derived_source_revision DDL failed: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        // Initialize the global source revision at 0. Base writes that happen
+        // after this migration will bump it; materializations will record the
+        // current revision in their watermark and clear the dirty flag.
+        // `:put` is an upsert, so this is safe to re-run.
+        self.db
+            .run(
+                r"?[key, revision] <- [['global', 0]]
+                  :put derived_source_revision { key => revision }",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v18->v19 init derived_source_revision: {e}"),
+                }
+                .build()
+            })?;
+
+        let has_watermarks = self.relation_exists("derived_rule_watermarks")?;
+        if !has_watermarks {
+            self.db
+                .run(
+                    crate::knowledge_store::derived_rules::DERIVED_RULE_WATERMARKS_DDL,
+                    BTreeMap::new(),
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v18->v19 derived_rule_watermarks DDL failed: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        // Collect watermarks that already exist so a re-run does not overwrite
+        // a clean watermark (and therefore a valid materialization) with a
+        // stale dirty marker.
+        let mut existing_families = std::collections::BTreeSet::<String>::new();
+        if has_watermarks {
+            let rows = self
+                .db
+                .run(
+                    "?[rule_id] := *derived_rule_watermarks{rule_id}",
+                    BTreeMap::new(),
+                    ScriptMutability::Immutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v18->v19 read existing watermarks: {e}"),
+                    }
+                    .build()
+                })?;
+            for row in &rows.rows {
+                if let Some(family) = row.first().and_then(DataValue::get_str) {
+                    let _ = existing_families.insert(family.to_owned());
+                }
+            }
+        }
+
+        // Mark every rule family that already has derived output as dirty with
+        // source_revision 0, but only once. This forces a refresh before callers
+        // trust the output as fresh, rather than silently presenting
+        // pre-migration rows.
+        let mut seen_families = std::collections::BTreeSet::new();
+        if self.relation_exists("derived_facts")? {
+            let existing_rule_families = self
+                .db
+                .run(
+                    "?[rule_id] := *derived_facts{entity_id, rule_id, derived_content, confidence, materialized_at}",
+                    BTreeMap::new(),
+                    ScriptMutability::Immutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v18->v19 read existing rule families: {e}"),
+                    }
+                    .build()
+                })?;
+
+            for row in &existing_rule_families.rows {
+                let Some(rule_id) = row.first().and_then(DataValue::get_str) else {
+                    continue;
+                };
+                // Rule IDs are `family:detail`; watermark at the family level.
+                let family = match rule_id.split_once(':') {
+                    Some((family, _)) => family,
+                    None => rule_id,
+                };
+                if !seen_families.insert(family) {
+                    continue;
+                }
+                if existing_families.contains(family) {
+                    continue;
+                }
+                let mut params = BTreeMap::new();
+                params.insert("rule_id".to_owned(), DataValue::Str(family.into()));
+                params.insert("source_revision".to_owned(), DataValue::from(0_i64));
+                params.insert("materialized_at".to_owned(), DataValue::Str("".into()));
+                params.insert("dirty".to_owned(), DataValue::Bool(true));
+                self.db
+                    .run(
+                        r"?[rule_id, source_revision, materialized_at, dirty] <-
+                            [[$rule_id, $source_revision, $materialized_at, $dirty]]
+                          :put derived_rule_watermarks {
+                              rule_id => source_revision, materialized_at, dirty
+                          }",
+                        params,
+                        ScriptMutability::Mutable,
+                    )
+                    .map_err(|e| {
+                        crate::error::EngineQuerySnafu {
+                            message: format!("v18->v19 watermark existing family {family}: {e}"),
+                        }
+                        .build()
+                    })?;
+            }
+        }
+
+        if !self.relation_exists("consolidation_provenance")? {
+            self.db
+                .run(
+                    crate::consolidation::CONSOLIDATION_PROVENANCE_DDL,
+                    BTreeMap::new(),
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v18->v19 consolidation_provenance DDL failed: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        self.stamp_schema_version(19, "v18->v19")?;
+
+        tracing::info!("knowledge schema migration v18 -> v19 complete");
         Ok(())
     }
 }

@@ -98,7 +98,7 @@ fn session_state_flows_through_pipeline() {
         ..NousConfig::default()
     };
     let mgr = SessionManager::new(config);
-    let mut state = mgr.create_session("ses-1", "main");
+    let mut state = mgr.create_session("ses-1", "main").expect("valid session");
 
     assert_eq!(state.turn, 0);
     state.next_turn();

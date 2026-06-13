@@ -110,6 +110,62 @@ macro_rules! display_via_as_str {
 
 display_via_as_str!(SessionStatus, SessionType, Role);
 
+/// Reserved prefixes for internal session/agent identifiers.
+///
+/// User-supplied IDs must not collide with these namespaces; internal callers
+/// that legitimately mint such keys must bypass the user guard via the
+/// dedicated unchecked constructors.
+pub const RESERVED_SESSION_PREFIXES: &[&str] = &["cross:"];
+
+/// Whether `value` starts with any reserved internal prefix.
+#[must_use]
+pub fn is_reserved_session_prefix(value: &str) -> bool {
+    RESERVED_SESSION_PREFIXES
+        .iter()
+        .any(|prefix| value.starts_with(prefix))
+}
+
+/// Validates that `value` does not start with a reserved internal prefix.
+///
+/// Returns `Ok(())` for ordinary user-supplied identifiers and `Err` when the
+/// identifier targets an internal namespace such as `cross:`.
+///
+/// # Errors
+///
+/// Returns [`ReservedIdPrefixError`] when `value` starts with a reserved
+/// internal prefix.
+pub fn validate_session_or_agent_id(value: &str) -> Result<(), ReservedIdPrefixError> {
+    if let Some(prefix) = RESERVED_SESSION_PREFIXES
+        .iter()
+        .find(|prefix| value.starts_with(**prefix))
+    {
+        return Err(ReservedIdPrefixSnafu {
+            prefix: prefix.to_string(),
+            value: value.to_owned(),
+        }
+        .build());
+    }
+    Ok(())
+}
+
+/// Error returned when an identifier uses a reserved internal prefix.
+// kanon:ignore RUST/no-debug-derive-on-public-types — error contains only the offending prefix and value; safe to derive
+#[derive(Debug, snafu::Snafu)]
+#[snafu(visibility(pub))]
+pub enum ReservedIdPrefixError {
+    /// Identifier starts with a reserved internal prefix.
+    #[snafu(display("identifier uses reserved internal prefix '{prefix}': {value}"))]
+    ReservedIdPrefix {
+        /// The reserved prefix that was matched.
+        prefix: String,
+        /// The full identifier that was rejected.
+        value: String,
+        /// Source location where the error was constructed.
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
+
 /// Token and message count metrics for a session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionMetrics {
@@ -504,6 +560,36 @@ mod tests {
             let s = role.as_str();
             assert!(!s.is_empty(), "as_str() must be non-empty for {role:?}");
         }
+    }
+
+    #[test]
+    fn reserved_prefix_rejects_cross_session_key() {
+        let result = validate_session_or_agent_id("cross:alice");
+        assert!(
+            result.is_err(),
+            "cross:-prefixed identifiers must be rejected for user-supplied IDs"
+        );
+        let Err(err) = result else {
+            panic!("cross:-prefixed identifiers must be rejected for user-supplied IDs");
+        };
+        assert!(err.to_string().contains("cross:"));
+    }
+
+    #[test]
+    fn reserved_prefix_accepts_ordinary_ids() {
+        for id in ["ses-123", "alice", "ask:demiurge", "spawn:coder"] {
+            assert!(
+                validate_session_or_agent_id(id).is_ok(),
+                "'{id}' should not be a reserved prefix"
+            );
+        }
+    }
+
+    #[test]
+    fn is_reserved_session_prefix_detects_cross() {
+        assert!(is_reserved_session_prefix("cross:foo"));
+        assert!(!is_reserved_session_prefix("foo:cross:"));
+        assert!(!is_reserved_session_prefix("Cross:foo"));
     }
 
     #[test]

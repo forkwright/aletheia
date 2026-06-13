@@ -1,14 +1,35 @@
-#![expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+#![expect(
+    clippy::expect_used,
+    clippy::type_complexity,
+    clippy::unnecessary_literal_bound,
+    reason = "test helpers and assertions may use concise panic-oriented shapes"
+)]
 
-use koina::event::EventEmitter;
+use std::collections::HashSet;
+use std::future::Future;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
+use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
+use koina::event::EventEmitter;
+use koina::id::{NousId, SessionId};
+use mneme::store::SessionStore;
+use organon::registry::ToolRegistry;
+use organon::types::ToolContext;
+use tokio::sync::{Mutex as TokioMutex, mpsc};
 
 use super::*;
+use crate::budget::{StageTimingStatus, TimeBudget};
 use crate::compact::CompactConfig;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
-use crate::pipeline::{PipelineMessage, ReflectionStatus};
+use crate::error;
+use crate::pipeline::{PipelineContext, PipelineInput, ReflectionStatus};
+use crate::session::SessionState;
+use crate::stream::TurnStreamEvent;
 
 fn make_msg(role: &str, content: &str) -> PipelineMessage {
     PipelineMessage {
@@ -338,4 +359,308 @@ fn apply_recall_result_late_inject_appends_system_message() {
             .is_some_and(|m| m.role == "system" && m.content.contains("Recalled Knowledge"))
     );
     assert_eq!(ctx.remaining_tokens, 90, "tokens should be deducted");
+}
+
+// --- Execute-stage timeout / degraded-mode tests (#4690) ---
+
+fn execute_stage_config() -> NousConfig {
+    NousConfig {
+        id: Arc::from("test-agent"),
+        generation: crate::config::NousGenerationConfig {
+            model: "test-model".to_owned(),
+            ..crate::config::NousGenerationConfig::default()
+        },
+        ..NousConfig::default()
+    }
+}
+
+fn execute_stage_tool_ctx() -> ToolContext {
+    ToolContext {
+        nous_id: NousId::new("test-agent").expect("valid"),
+        session_id: SessionId::new(),
+        turn_number: 0,
+        workspace: PathBuf::from("/tmp/test"),
+        allowed_roots: vec![PathBuf::from("/tmp")],
+        services: None,
+        active_tools: Arc::new(std::sync::RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+    }
+}
+
+fn execute_stage_pipeline_input(
+    session: SessionState,
+    pipeline_config: &PipelineConfig,
+) -> PipelineInput {
+    PipelineInput {
+        content: "hello".to_owned(),
+        session,
+        config: pipeline_config.clone(),
+    }
+}
+
+fn execute_stage_time_budget(pipeline_config: &PipelineConfig) -> TimeBudget {
+    TimeBudget::new(pipeline_config.stage_budget.clone())
+}
+
+fn capturing_emitter() -> (
+    EventEmitter,
+    Arc<Mutex<Vec<(String, Vec<(String, String)>)>>>,
+) {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = Arc::clone(&captured);
+    let emitter = EventEmitter::with_metric_sink(move |name, labels, _value| {
+        let labels: Vec<(String, String)> = labels
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect();
+        captured_clone
+            .lock()
+            .expect("metric lock")
+            .push((name.to_owned(), labels));
+    });
+    (emitter, captured)
+}
+
+fn has_metric_event(
+    events: &[(String, Vec<(String, String)>)],
+    event_name: &str,
+    error_type: &str,
+) -> bool {
+    events.iter().any(|(name, labels)| {
+        name == event_name
+            && labels
+                .iter()
+                .any(|(k, v)| k == "error_type" && v == error_type)
+    })
+}
+
+/// Provider that sleeps longer than the execute budget so the stage times out.
+struct SleepingProvider {
+    sleep: Duration,
+}
+
+impl LlmProvider for SleepingProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        let sleep = self.sleep;
+        Box::pin(async move {
+            tokio::time::sleep(sleep).await;
+            Ok(CompletionResponse {
+                id: "resp-sleep".to_owned(),
+                model: "test-model".to_owned(),
+                stop_reason: StopReason::EndTurn,
+                content: vec![ContentBlock::Text {
+                    text: "should never arrive".to_owned(),
+                    citations: None,
+                }],
+                usage: Usage::default(),
+                cost_usd: None,
+                duration_ms: None,
+            })
+        })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    fn name(&self) -> &str {
+        "sleeping"
+    }
+}
+
+fn sleeping_providers(sleep: Duration) -> ProviderRegistry {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(SleepingProvider { sleep }));
+    providers
+}
+
+#[tokio::test]
+async fn execute_timeout_with_distillation_returns_degraded_response() {
+    let config = execute_stage_config();
+    let mut pipeline_config = PipelineConfig::default();
+    pipeline_config.stage_budget.execute_secs = 1;
+
+    let store = SessionStore::open_in_memory().expect("in-memory store");
+    store
+        .insert_distillation_summary("ses-1", "cached distillation summary")
+        .expect("insert summary");
+    let session = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
+    let input = execute_stage_pipeline_input(session, &pipeline_config);
+    let ctx = PipelineContext::default();
+    let providers = sleeping_providers(Duration::from_secs(10));
+    let tools = ToolRegistry::new();
+    let tool_ctx = execute_stage_tool_ctx();
+    let mut time_budget = execute_stage_time_budget(&pipeline_config);
+    let (emitter, captured) = capturing_emitter();
+
+    let result = run_execute_stage(
+        &config,
+        &pipeline_config,
+        &ctx,
+        &input,
+        &providers,
+        &tools,
+        &tool_ctx,
+        None,
+        None,
+        &mut time_budget,
+        &emitter,
+        None,
+        Some(&TokioMutex::new(store)),
+    )
+    .await
+    .expect("degraded response should succeed");
+
+    assert!(
+        matches!(
+            result.degraded,
+            Some(crate::pipeline::DegradedMode::DistillationCache { .. })
+        ),
+        "timeout with cache should return DistillationCache degraded mode, got {:?}",
+        result.degraded
+    );
+    assert!(
+        result.content.contains("cached distillation summary"),
+        "degraded response should include cached distillation summary"
+    );
+
+    let events = captured.lock().expect("metric lock");
+    assert!(
+        has_metric_event(&events, "StageTimeout", "timeout"),
+        "timeout metric should be emitted"
+    );
+    assert!(
+        has_metric_event(&events, "StageError", "degraded_timeout"),
+        "degraded_timeout metric should distinguish a cache-served timeout"
+    );
+
+    let summary = time_budget.summary();
+    let execute_record = summary
+        .iter()
+        .find(|r| r.name == "execute")
+        .expect("execute timing record");
+    assert_eq!(
+        execute_record.status,
+        StageTimingStatus::TimedOut,
+        "time budget should record the execute stage as timed out"
+    );
+}
+
+#[tokio::test]
+async fn execute_timeout_without_distillation_returns_hard_timeout() {
+    let config = execute_stage_config();
+    let mut pipeline_config = PipelineConfig::default();
+    pipeline_config.stage_budget.execute_secs = 1;
+
+    let store = SessionStore::open_in_memory().expect("in-memory store");
+    let session = SessionState::new("ses-2".to_owned(), "main".to_owned(), &config);
+    let input = execute_stage_pipeline_input(session, &pipeline_config);
+    let ctx = PipelineContext::default();
+    let providers = sleeping_providers(Duration::from_secs(10));
+    let tools = ToolRegistry::new();
+    let tool_ctx = execute_stage_tool_ctx();
+    let mut time_budget = execute_stage_time_budget(&pipeline_config);
+    let (emitter, captured) = capturing_emitter();
+
+    let err = run_execute_stage(
+        &config,
+        &pipeline_config,
+        &ctx,
+        &input,
+        &providers,
+        &tools,
+        &tool_ctx,
+        None,
+        None,
+        &mut time_budget,
+        &emitter,
+        None,
+        Some(&TokioMutex::new(store)),
+    )
+    .await
+    .expect_err("timeout without cache should fail");
+
+    assert!(
+        matches!(err, error::Error::PipelineTimeout { ref stage, .. } if stage == "execute"),
+        "expected PipelineTimeout for execute stage, got {err:?}"
+    );
+
+    let events = captured.lock().expect("metric lock");
+    assert!(
+        has_metric_event(&events, "StageTimeout", "timeout"),
+        "timeout metric should be emitted"
+    );
+    assert!(
+        has_metric_event(&events, "StageError", "timeout"),
+        "timeout error metric should distinguish a hard timeout failure"
+    );
+
+    let summary = time_budget.summary();
+    let execute_record = summary
+        .iter()
+        .find(|r| r.name == "execute")
+        .expect("execute timing record");
+    assert_eq!(
+        execute_record.status,
+        StageTimingStatus::TimedOut,
+        "time budget should record the execute stage as timed out"
+    );
+}
+
+#[tokio::test]
+async fn execute_timeout_streaming_with_distillation_returns_degraded_response() {
+    let config = execute_stage_config();
+    let mut pipeline_config = PipelineConfig::default();
+    pipeline_config.stage_budget.execute_secs = 1;
+
+    let store = SessionStore::open_in_memory().expect("in-memory store");
+    store
+        .insert_distillation_summary("ses-3", "cached distillation summary")
+        .expect("insert summary");
+    let session = SessionState::new("ses-3".to_owned(), "main".to_owned(), &config);
+    let input = execute_stage_pipeline_input(session, &pipeline_config);
+    let ctx = PipelineContext::default();
+    let providers = sleeping_providers(Duration::from_secs(10));
+    let tools = ToolRegistry::new();
+    let tool_ctx = execute_stage_tool_ctx();
+    let mut time_budget = execute_stage_time_budget(&pipeline_config);
+    let (emitter, _captured) = capturing_emitter();
+    let (tx, mut rx) = mpsc::channel::<TurnStreamEvent>(16);
+
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
+
+    let result = run_execute_stage(
+        &config,
+        &pipeline_config,
+        &ctx,
+        &input,
+        &providers,
+        &tools,
+        &tool_ctx,
+        Some(&tx),
+        None,
+        &mut time_budget,
+        &emitter,
+        None,
+        Some(&TokioMutex::new(store)),
+    )
+    .await
+    .expect("streaming timeout should degrade");
+
+    assert!(
+        matches!(
+            result.degraded,
+            Some(crate::pipeline::DegradedMode::DistillationCache { .. })
+        ),
+        "streaming timeout with cache should return DistillationCache degraded mode, got {:?}",
+        result.degraded
+    );
+    assert!(
+        result.content.contains("cached distillation summary"),
+        "streaming degraded response should include cached distillation summary"
+    );
 }

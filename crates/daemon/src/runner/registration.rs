@@ -203,13 +203,17 @@ impl TaskRunner {
 
     /// Register implemented knowledge maintenance tasks with their schedules.
     fn register_knowledge_maintenance_tasks(&mut self) {
-        let (serendipity_enabled, serendipity_cadence) = {
+        let (serendipity_enabled, serendipity_cadence, derived_interval) = {
             let Some(config) = self.maintenance.as_ref() else {
                 return;
             };
             (
                 config.knowledge_maintenance.serendipity.enabled,
                 config.knowledge_maintenance.serendipity.cadence.clone(),
+                config
+                    .knowledge_maintenance
+                    .derived_rules
+                    .materialization_interval,
             )
         };
         let tasks: [(_, _, Schedule, BuiltinTask); 5] = [
@@ -240,10 +244,10 @@ impl TaskRunner {
             (
                 "derived-facts-materialize",
                 "Derived Datalog rule materialization",
-                // WHY: every 6 hours balances freshness of IS-A closure / causal chains
-                // against the cost of a full Datalog fixpoint pass. Aligned between
-                // graph-recompute (8h) and entity-dedup (6h) to share warm cache state.
-                Schedule::Interval(Duration::from_hours(6)),
+                // WHY: the default interval balances freshness of IS-A closure /
+                // causal chains against the cost of a full Datalog fixpoint pass.
+                // It is configurable via `KnowledgeMaintenanceConfig::derived_rules`.
+                Schedule::Interval(derived_interval),
                 BuiltinTask::DerivedFactsMaterialize,
             ),
         ];

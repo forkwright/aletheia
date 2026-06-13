@@ -102,6 +102,11 @@ impl KnowledgeStore {
         let result = self.run_mut(&queries::upsert_fact(), params);
         if result.is_ok() {
             crate::metrics::record_fact_inserted(&fact.nous_id);
+            // WHY (#4662): a successful base write to `facts` can change the
+            // inputs to ontological/causal/defeasible rules, so mark derived
+            // materializations stale. Only on success: a rejected/errored write
+            // must not spuriously invalidate derived results.
+            self.invalidate_derived_facts()?;
         }
         result
     }
@@ -202,9 +207,9 @@ impl KnowledgeStore {
         reason = "sequential param mapping, splitting adds indirection"
     )]
     #[instrument(skip(self, old_fact, new_fact), fields(old_id = %old_fact.id, new_id = %new_fact.id))]
-    #[expect(
-        dead_code,
-        reason = "fact temporal pipeline — no callers yet including tests"
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "fact temporal pipeline — exercised by tests only")
     )]
     pub(crate) fn supersede_fact(
         &self,
@@ -370,7 +375,10 @@ impl KnowledgeStore {
             DataValue::Str(new_fact.sensitivity.as_str().into()),
         );
 
-        self.run_mut(&queries::supersede_fact(), params)
+        self.run_mut(&queries::supersede_fact(), params)?;
+        // WHY (#4662): supersession rewrites `facts` rows (old `valid_to`/
+        // `superseded_by` plus the new row), changing derived-rule inputs.
+        self.invalidate_derived_facts()
     }
 
     /// Query current facts for a nous at a given time, up to limit results.
@@ -479,8 +487,8 @@ impl KnowledgeStore {
         });
         let now = jiff::Timestamp::now();
         for id in fact_ids {
-            // WHY: CozoDB in-memory read-modify-write in a single Datalog rule does not
-            // reflect the mutation in subsequent reads, so we read-increment-write in Rust.
+            // WHY: a single Datalog read-modify-write rule does not reflect
+            // the mutation in subsequent reads, so we read-increment-write in Rust.
             let facts = match self.read_facts_by_id(id.as_str()) {
                 Ok(f) => f,
                 Err(e) => {
@@ -968,7 +976,7 @@ impl KnowledgeStore {
         rows_to_facts(rows, nous_id)
     }
 
-    // NOTE: Async wrappers use spawn_blocking because CozoDB is synchronous.
+    // NOTE: Async wrappers use spawn_blocking because Krites query execution is synchronous.
 
     /// Async `forget_fact`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self))]
@@ -1039,8 +1047,8 @@ impl KnowledgeStore {
             .build());
         }
 
-        // WHY: CozoDB in-memory read-modify-write: read the record, change the
-        // field in Rust, then upsert it back. Same pattern as increment_access.
+        // WHY: read the record, change the field in Rust, then upsert it back.
+        // Same read-increment-write pattern as increment_access.
         for mut fact in existing {
             fact.provenance.confidence = confidence;
             self.insert_fact(&fact)?;

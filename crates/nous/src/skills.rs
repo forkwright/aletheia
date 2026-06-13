@@ -10,7 +10,7 @@
 /// Extracts a concise task description from the latest user message.
 ///
 /// The result is used as the BM25 query for skill search, so brevity
-/// is preferred. Trims whitespace, strips punctuation that `CozoDB` FTS
+/// is preferred. Trims whitespace, strips punctuation that Krites FTS
 /// cannot parse, and truncates at a word boundary.
 ///
 /// `max_context_chars` comes from [`taxis::config::AgentBehaviorDefaults::skills_max_context_chars`].
@@ -45,7 +45,7 @@ pub(crate) fn extract_task_context(content: &str) -> String {
         .to_owned()
 }
 
-/// Strip characters that `CozoDB` FTS (tantivy) cannot parse.
+/// Strip characters that Krites FTS (tantivy) cannot parse.
 ///
 /// Keeps alphanumeric chars, whitespace, hyphens, and underscores.
 /// Collapses runs of whitespace into a single space.

@@ -13,7 +13,6 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::default::Default;
 use std::fmt::{Debug, Formatter};
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -35,7 +34,7 @@ use crate::error::InternalResult as Result;
 use crate::fixed_rule::DEFAULT_FIXED_RULES;
 use crate::fts::TokenizerCache;
 use crate::runtime::callback::{CallbackDeclaration, CallbackOp, EventCallbackRegistry};
-use crate::runtime::error::{InvalidOperationSnafu, QueryKilledSnafu, UnsupportedSnafu};
+use crate::runtime::error::{InvalidOperationSnafu, QueryKilledSnafu};
 use crate::runtime::relation::RelationId;
 use crate::storage::Storage;
 use crate::storage::temp::TempStorage;
@@ -380,49 +379,6 @@ impl<'s, S: Storage<'s>> Db<S> {
             .clone();
     }
 
-    /// Backup the running database.
-    ///
-    /// # Errors
-    ///
-    /// Always returns `Unsupported` (storage-sqlite removed).
-    #[must_use = "backup can fail"]
-    pub fn backup_db(&'s self, _out_file: impl AsRef<Path>) -> Result<()> {
-        UnsupportedSnafu {
-            operation: "backup",
-            reason: "requires the removed 'storage-sqlite' feature",
-        }
-        .fail()?
-    }
-    /// Restore from a backup.
-    ///
-    /// # Errors
-    ///
-    /// Always returns `Unsupported` (storage-sqlite removed).
-    #[must_use = "restore can fail"]
-    pub fn restore_backup(&'s self, _in_file: impl AsRef<Path>) -> Result<()> {
-        UnsupportedSnafu {
-            operation: "restore",
-            reason: "requires the removed 'storage-sqlite' feature",
-        }
-        .fail()?
-    }
-    /// Import data from relations in a backup file.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the import operation is not supported or fails.
-    #[must_use = "import can fail"]
-    pub fn import_from_backup(
-        &'s self,
-        _in_file: impl AsRef<Path>,
-        _relations: &[String],
-    ) -> Result<()> {
-        UnsupportedSnafu {
-            operation: "import_from_backup",
-            reason: "requires the removed 'storage-sqlite' feature",
-        }
-        .fail()?
-    }
     /// Register a custom fixed rule implementation.
     ///
     /// # Errors

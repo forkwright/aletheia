@@ -4,7 +4,7 @@
 use std::io::Write;
 
 use super::super::{KnowledgeConfig, KnowledgeStore, migration};
-use crate::test_fixtures::make_fact;
+use crate::test_fixtures::{make_entity, make_fact};
 
 #[cfg(feature = "storage-fjall")]
 #[test]
@@ -286,6 +286,52 @@ fn v15_migration_backfills_embedding_meta_as_assumed() {
     let meta = store.embedding_meta().expect("read embedding metadata");
     assert_eq!(meta.model, KnowledgeStore::ASSUMED_EMBEDDING_MODEL);
     assert_eq!(meta.dim, 4);
+}
+
+#[test]
+fn v18_migration_backfills_fact_entities_from_content() {
+    let store = make_store();
+
+    // Two entities whose ids are slug tokens of the fact content, plus one
+    // whose id does not appear in the content and must not be linked.
+    store
+        .insert_entity(&make_entity("alice", "Alice", "person"))
+        .expect("insert alice");
+    store
+        .insert_entity(&make_entity("rust", "Rust", "tool"))
+        .expect("insert rust");
+    store
+        .insert_entity(&make_entity("postgres", "Postgres", "tool"))
+        .expect("insert postgres");
+
+    // insert_fact does not create fact_entities edges — that link is made by
+    // extraction (#4675) or, for pre-existing rows, by this backfill.
+    let fact = make_fact("f-backfill", "alice", "alice prefers rust");
+    store.insert_fact(&fact).expect("insert fact");
+
+    let before = store
+        .list_entities_for_facts(std::slice::from_ref(&fact.id))
+        .expect("list before backfill");
+    assert!(
+        before.is_empty(),
+        "fact starts with no entity edges before the backfill"
+    );
+
+    store
+        .migrate_v17_to_v18()
+        .expect("v17->v18 backfill should succeed");
+
+    let after = store
+        .list_entities_for_facts(&[fact.id])
+        .expect("list after backfill");
+    let mut names: Vec<&str> = after.iter().map(|e| e.name.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        vec!["Alice", "Rust"],
+        "backfill links only entities whose id appears as a content token; \
+         'Postgres' is absent from the content and must not be linked"
+    );
 }
 
 #[test]

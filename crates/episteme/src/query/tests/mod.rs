@@ -2,7 +2,7 @@ use super::*;
 use crate::engine::DataValue;
 
 /// Normalize whitespace for comparison: collapse runs of whitespace to single
-/// space, trim, then remove spaces adjacent to brackets/braces (`CozoDB`
+/// space, trim, then remove spaces adjacent to brackets/braces (the engine
 /// ignores these formatting differences).
 fn normalize(s: &str) -> String {
     let collapsed: String = s.split_whitespace().fold(String::new(), |mut acc, word| {

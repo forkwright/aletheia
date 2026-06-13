@@ -103,6 +103,16 @@ impl std::str::FromStr for CausalRelationType {
 /// Edges are heuristically extracted from session text during finalize. The
 /// `evidence_session_id` records which session produced the evidence so
 /// the edge can be traced back to its source.
+///
+/// # Evidence provenance
+///
+/// `id` is a stable [`CausalEdgeId`] assigned at extraction and persisted with
+/// the edge, so the same edge keeps one identity across reads, exports, and
+/// replays. `evidence_session_id` links the edge to the session whose
+/// conversation supplied the causal evidence; that session ID is the same key
+/// used by trace ingestion and run records, so a causal explanation can be
+/// replayed back to the exact session (and its traces) that justified it. An
+/// edge with no known evidence session carries `None` rather than a placeholder.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CausalEdge {
     /// Unique identifier for this edge.

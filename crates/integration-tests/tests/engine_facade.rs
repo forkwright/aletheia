@@ -37,39 +37,47 @@ fn run_read_only_returns_data() {
 }
 
 #[test]
-fn backup_db_returns_unsupported_error() {
+fn relation_snapshot_round_trip_is_supported() {
     let db = Db::open_mem().expect("open mem");
-    let result = db.backup_db("/tmp/nonexistent.db");
-    assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("storage-sqlite"),
-        "expected mention of storage-sqlite, got: {msg}"
-    );
-}
+    db.run(
+        ":create source { id: Int => value: String }",
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("create source relation");
+    db.run(
+        r#"?[id, value] <- [[1, "alpha"], [2, "beta"]] :put source { id => value }"#,
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("insert source rows");
 
-#[test]
-fn restore_backup_returns_unsupported_error() {
-    let db = Db::open_mem().expect("open mem");
-    let result = db.restore_backup("/tmp/nonexistent.db");
-    assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("storage-sqlite"),
-        "expected mention of storage-sqlite, got: {msg}"
-    );
-}
+    let snapshot = db
+        .export_relations(["source"].iter())
+        .expect("export relation snapshot");
+    assert_eq!(snapshot["source"].rows.len(), 2);
 
-#[test]
-fn import_from_backup_returns_unsupported_error() {
-    let db = Db::open_mem().expect("open mem");
-    let result = db.import_from_backup("/tmp/nonexistent.db", &[]);
-    assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("storage-sqlite"),
-        "expected mention of storage-sqlite, got: {msg}"
-    );
+    let restored = Db::open_mem().expect("open restored mem");
+    restored
+        .run(
+            ":create source { id: Int => value: String }",
+            BTreeMap::new(),
+            ScriptMutability::Mutable,
+        )
+        .expect("create restored source relation");
+    restored
+        .import_relations(snapshot)
+        .expect("import relation snapshot");
+
+    let result = restored
+        .run_read_only(
+            "?[id, value] := *source{id, value} :order id",
+            BTreeMap::new(),
+        )
+        .expect("query restored rows");
+    assert_eq!(result.rows.len(), 2);
+    assert_eq!(result.rows[0][1], DataValue::from("alpha"));
+    assert_eq!(result.rows[1][1], DataValue::from("beta"));
 }
 
 #[test]

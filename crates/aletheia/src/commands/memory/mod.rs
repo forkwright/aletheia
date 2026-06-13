@@ -1443,7 +1443,8 @@ fn run_export_graph(
 
     // Determine if we need to load facts for sensitivity coloring or filtering.
     // WHY: scope and sensitivity are not yet columns in the Datalog facts schema
-    // (#3413). When that migration lands, these filters can push down to CozoDB.
+    // (#3413). When that migration lands, these filters can push down to the
+    // Datalog query layer.
     let need_fact_load = !is_operator || scope.is_some() || matches!(format, ExportFormat::Dot);
 
     let (entities, relationships, entity_sensitivities) = if need_fact_load {
