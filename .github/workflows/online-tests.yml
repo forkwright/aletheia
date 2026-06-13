@@ -1,0 +1,241 @@
+# WHY: test-full verifies the embedded candle embedding path against
+# HuggingFace-hosted BAAI/bge-small-en-v1.5 artifacts. It needs outbound network
+# and roughly 16 GB runner memory, so it lives outside the default PR gate.
+name: Online Tests
+
+on:
+  schedule:
+    - cron: "17 3 * * 1,4"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Blocking release gate or nonblocking quarantine retry tier.
+        required: true
+        default: blocking
+        type: choice
+        options:
+          - blocking
+          - quarantine
+  pull_request:
+    branches: [main]
+    types: [labeled, ready_for_review, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_TERM_COLOR: always
+  HF_HOME: ${{ github.workspace }}/.hf-cache
+  HF_HUB_CACHE: ${{ github.workspace }}/.hf-cache/hub
+  HF_MODEL_CACHE_KEY: BAAI-bge-small-en-v1.5
+  HF_MODEL_ID: BAAI/bge-small-en-v1.5
+
+jobs:
+  test-full:
+    name: test-full embedded embeddings
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'blocking') ||
+      (github.event_name == 'pull_request' &&
+        (contains(github.event.pull_request.labels.*.name, 'online-tests') ||
+         contains(github.event.pull_request.labels.*.name, 'test-full') ||
+         contains(github.event.pull_request.labels.*.name, 'release-blocking')))
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+          echo "free disk after reclaim:"
+          df -h / | tail -1
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: "1.94.0"
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: online-tests
+
+      - name: Restore HuggingFace artifact cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.HF_HOME }}
+          key: hf-${{ runner.os }}-${{ env.HF_MODEL_CACHE_KEY }}-config-tokenizer-safetensors-v1
+          restore-keys: |
+            hf-${{ runner.os }}-${{ env.HF_MODEL_CACHE_KEY }}-
+
+      - name: Configure git credentials for private fleet deps
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
+            exit 1
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
+        with:
+          tool: nextest
+
+      - name: Document online test contract
+        run: |
+          {
+            echo "### Online test contract"
+            echo
+            echo "- tier: blocking test-full"
+            echo "- command: cargo nextest run --workspace --features test-full"
+            echo "- embedded path: candle provider through BAAI/bge-small-en-v1.5"
+            echo "- artifacts: config.json, tokenizer.json, model.safetensors from HuggingFace Hub"
+            echo "- resources: outbound network and about 16 GB runner memory"
+            echo "- retry policy: two nextest retries; pass-on-retry is accepted as transient"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: cargo nextest run --workspace --features test-full
+        run: |
+          cargo nextest run --workspace --features test-full \
+            --build-jobs 4 \
+            --test-threads 4 \
+            --retries 2 \
+            --flaky-result pass \
+            --status-level retry \
+            --final-status-level flaky
+
+      - name: Record HuggingFace artifact provenance
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "${HF_HOME}"
+          mkdir -p online-test-provenance
+          {
+            echo "model_id=${HF_MODEL_ID}"
+            echo "provenance=HuggingFace Hub via Rust hf-hub cache"
+            echo "hf_home=${HF_HOME}"
+            echo "files=config.json tokenizer.json model.safetensors"
+            echo "commit=${GITHUB_SHA}"
+            echo "rustc=$(rustc -V 2>/dev/null || echo unavailable)"
+            echo "nextest=$(cargo nextest --version 2>/dev/null || echo unavailable)"
+            echo
+            mapfile -d '' files < <(
+              find -L "${HF_HOME}" -type f \
+                \( -name config.json -o -name tokenizer.json -o -name model.safetensors \) \
+                -print0 | sort -z
+            )
+            if [ "${#files[@]}" -eq 0 ]; then
+              echo "no HuggingFace artifacts found in ${HF_HOME}"
+            else
+              for file in "${files[@]}"; do
+                sha=$(sha256sum "$file" | awk '{print $1}')
+                size=$(stat -c%s "$file")
+                printf '%s  %s  %s bytes\n' "$sha" "$file" "$size"
+              done
+            fi
+          } > online-test-provenance/huggingface-artifacts.txt
+          cat online-test-provenance/huggingface-artifacts.txt
+          {
+            echo
+            echo "### HuggingFace artifact provenance"
+            echo
+            echo '```text'
+            cat online-test-provenance/huggingface-artifacts.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload online test provenance
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: online-test-provenance
+          path: online-test-provenance/
+          if-no-files-found: error
+
+  quarantine:
+    name: online-tests quarantine retry
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    continue-on-error: true
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'quarantine') ||
+      (github.event_name == 'pull_request' &&
+        contains(github.event.pull_request.labels.*.name, 'online-tests-quarantine'))
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+          echo "free disk after reclaim:"
+          df -h / | tail -1
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: "1.94.0"
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: online-tests-quarantine
+
+      - name: Restore HuggingFace artifact cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.HF_HOME }}
+          key: hf-${{ runner.os }}-${{ env.HF_MODEL_CACHE_KEY }}-config-tokenizer-safetensors-v1
+          restore-keys: |
+            hf-${{ runner.os }}-${{ env.HF_MODEL_CACHE_KEY }}-
+
+      - name: Configure git credentials for private fleet deps
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
+            exit 1
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
+        with:
+          tool: nextest
+
+      - name: Document quarantine policy
+        run: |
+          {
+            echo "### Online test quarantine"
+            echo
+            echo "- tier: nonblocking quarantine"
+            echo "- command: cargo nextest run --workspace --features test-full candle"
+            echo "- policy: retry three times and report pass-on-retry as a failure signal"
+            echo "- purpose: diagnose network/model-cache flakiness without satisfying release readiness"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: cargo nextest run --workspace --features test-full candle
+        run: |
+          cargo nextest run --workspace --features test-full candle \
+            --build-jobs 4 \
+            --test-threads 2 \
+            --retries 3 \
+            --flaky-result fail \
+            --status-level retry \
+            --final-status-level flaky
