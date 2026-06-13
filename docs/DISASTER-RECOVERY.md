@@ -260,7 +260,7 @@ rm -rf "$TMP_INSTANCE"
 | `scripts/deploy.sh --rollback` | Roll back to the most recent binary backup |
 | `scripts/rollback.sh` | Manual rollback (lighter-weight, no build step) |
 | `scripts/health-monitor.sh` | Service health, token expiry, and metrics monitor |
-| `scripts/backup-cron.sh` | Legacy script (non-functional; references removed `--export-json` flag) |
+| `scripts/backup-cron.sh` | removed legacy helper (historical note; use `aletheia backup`) |
 | `scripts/smoke-test.sh` | Offline CLI smoke test (good after reinstall) |
 | `crates/daemon/src/maintenance/instance_backup.rs` | Whole-instance backup set implementation |
 | `crates/daemon/src/maintenance/fjall_backup.rs` | Legacy fjall store verification and snapshot helper |

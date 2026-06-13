@@ -110,7 +110,7 @@ pub fn run(verbose: bool) {
     // WHY: CSS is embedded via include_str! rather than served from the asset
     // directory. External <link> tags resolve relative to the webview's base
     // URL, which depends on the binary's working directory at launch. When the
-    // binary is installed to a different path (e.g. ~/ergon/bin/proskenion),
+    // binary is installed to a different path (e.g. ~/.local/bin/proskenion),
     // the assets/ directory is not alongside it and the <link> tags 404
     // silently, producing an unstyled white page.
     let custom_head = format!(

@@ -75,7 +75,8 @@ cd <repo>
 git pull origin main
 cargo build --release
 systemctl --user stop aletheia
-cp target/release/aletheia ~/ergon/bin/aletheia
+mkdir -p ~/.local/bin
+cp target/release/aletheia ~/.local/bin/aletheia
 systemctl --user start aletheia
 curl -sf http://localhost:18789/api/health | jq .
 ```
@@ -131,7 +132,7 @@ aletheia backup --list   # list snapshots
 0 2 * * * /usr/bin/aletheia backup >> /var/log/aletheia-backup.log 2>&1
 ```
 
-> `scripts/backup-cron.sh` is legacy. It references the removed `--export-json` flag and is non-functional since the SQLite-to-fjall migration (#3446).
+Use the built-in backup command for cron or timer automation.
 
 ## Manual restore
 

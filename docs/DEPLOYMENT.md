@@ -473,9 +473,8 @@ Backups are stored in `instance/data/backups/`. Always back up before upgrading.
 
 The `--export-json` flag was removed during the SQLite-to-fjall migration
 (#3446, #4657). Session archives that are already JSON live under
-`instance/data/archive/sessions/`. The cron helper `scripts/backup-cron.sh`
-still references the removed flag and should not be installed until it is
-updated.
+`instance/data/archive/sessions/`. The retired cron helper
+`scripts/backup-cron.sh` was removed; use `aletheia backup` for automation.
 
 ---
 
