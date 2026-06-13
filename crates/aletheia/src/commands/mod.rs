@@ -93,9 +93,11 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::PromptAudit { action } => {
             prompt_audit::run(action, instance_root).map_err(Into::into)
         }
-        Command::Memory { url, action } => memory::run(action, &url, instance_root)
-            .await
-            .map_err(Into::into),
+        Command::Memory { url, token, action } => {
+            memory::run(action, &url, token.as_deref(), instance_root)
+                .await
+                .map_err(Into::into)
+        }
         Command::Tls { action } => tls::run(&action).map_err(Into::into),
         Command::Status { url } => status::run(&url, instance_root)
             .await

@@ -18,7 +18,10 @@ use crate::maintenance::{
 };
 use crate::probe::{ProbeAuditSummary, ProbeSet, build_probe_audit_prompt};
 use crate::prosoche::ProsocheCheck;
-use crate::prosoche_audit::{ProsocheAuditRunner, ProsocheState};
+use crate::prosoche_audit::{
+    AuditStorage, ConsistencyCheck, GoalAlignmentCheck, ProsocheAuditRunner, ProsocheState,
+    SessionQualityCheck, StalenessCheck,
+};
 use crate::runner::ExecutionResult;
 use crate::schedule::{BuiltinTask, TaskAction};
 
@@ -378,7 +381,18 @@ pub(crate) async fn execute_builtin_with_behavior(
         BuiltinTask::SelfAudit => {
             let audit_dir = maintenance
                 .map_or_else(default_prosoche_audit_dir, |m| m.prosoche_audit_dir.clone());
-            let runner = ProsocheAuditRunner::default_checks(audit_dir);
+            // WHY: InstinctPatternsCheck is a v1 stub that emits a fixed speculative finding
+            // without real gnomon weights. Exclude it from the default runner until it is
+            // backed by real data (#4572). Use ProsocheAuditRunner::new() to build the
+            // four production-ready checks explicitly.
+            let storage = AuditStorage::new(&audit_dir);
+            let checks: Vec<Arc<dyn crate::prosoche_audit::ProsocheCheck>> = vec![
+                Arc::new(ConsistencyCheck),
+                Arc::new(StalenessCheck::default()),
+                Arc::new(GoalAlignmentCheck),
+                Arc::new(SessionQualityCheck::default()),
+            ];
+            let runner = ProsocheAuditRunner::new(checks, storage);
             let state = ProsocheState {
                 nous_id: nous_id.to_owned(),
                 checked_at: jiff::Timestamp::now().to_string(),

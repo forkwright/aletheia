@@ -1,5 +1,9 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
+use std::fs;
+
+use sha2::{Digest as _, Sha256};
+
 use super::super::*;
 use super::{default_budget, setup_oikos};
 
@@ -336,5 +340,187 @@ async fn assemble_llm_malformed_manifest_is_skipped() {
             .iter()
             .any(|s| s.starts_with("_llm/")),
         "malformed manifest should cause graceful skip of all _llm content"
+    );
+}
+
+// --- source-hash validation tests ---
+
+/// Helper: compute the SHA-256 hex of a single file's bytes, matching the
+/// algorithm used by `scripts/llm-extract-l3.py` and
+/// `compute_crate_source_hash` (sorted `.rs` file paths, bytes concatenated).
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest
+        .iter()
+        .flat_map(|b| {
+            [
+                char::from_digit(u32::from(b >> 4), 16).unwrap_or('0'),
+                char::from_digit(u32::from(b & 0x0f), 16).unwrap_or('0'),
+            ]
+        })
+        .collect()
+}
+
+/// When the manifest records a wrong hash for a crate, the corresponding L3
+/// section must be skipped rather than injected with stale content.
+#[tokio::test]
+async fn assemble_llm_stale_hash_skips_section() {
+    let source_content = b"pub fn stale_api() {}";
+    let valid_hash = sha256_hex(source_content);
+
+    // Use a hash that does not match the actual source.
+    let wrong_hash = "0".repeat(64);
+    assert_ne!(
+        valid_hash, wrong_hash,
+        "wrong_hash must differ from valid_hash"
+    );
+
+    let manifest = format!(
+        "version = 1\n\n[levels.L3]\npath = \"L3-api-index\"\n\n\
+         [[crates]]\nname = \"nous\"\npath = \"crates/nous\"\n\
+         source_hash = \"{wrong_hash}\"\nl3_token_estimate = 100\n"
+    );
+
+    let (dir, oikos) = setup_oikos(
+        "test",
+        &[
+            ("SOUL.md", "identity"),
+            ("_llm:manifest.toml", &manifest),
+            (
+                "_llm:L3-api-index/nous.md",
+                "# nous\n\npub fn stale_api() {}",
+            ),
+        ],
+    );
+
+    // Write a real source file so the hash can be computed (and will differ
+    // from the all-zeros hash in the manifest).
+    let crate_src = dir.path().join("crates/nous/src");
+    fs::create_dir_all(&crate_src).expect("create crate src dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap test writes crate fixtures to a temp directory"
+    )]
+    fs::write(crate_src.join("lib.rs"), source_content).expect("write lib.rs");
+
+    let assembler = BootstrapAssembler::new(&oikos).with_llm_recipe(LlmRecipe::ColdStart);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble_conditional_with_recipe(
+            "test",
+            &mut budget,
+            Vec::new(),
+            TaskHint::General,
+            LlmRecipe::ColdStart,
+        )
+        .await
+        .expect("assemble should succeed even with stale hash");
+
+    assert!(
+        !result
+            .sections_included
+            .iter()
+            .any(|s| s.contains("nous.md")),
+        "stale L3 section should be skipped when source hash mismatches manifest"
+    );
+}
+
+/// When the manifest records the correct hash for a crate, the L3 section is
+/// injected normally.
+#[tokio::test]
+async fn assemble_llm_valid_hash_injects_section() {
+    let source_content = b"pub fn fresh_api() {}";
+    let valid_hash = sha256_hex(source_content);
+
+    let manifest = format!(
+        "version = 1\n\n[levels.L3]\npath = \"L3-api-index\"\n\n\
+         [[crates]]\nname = \"nous\"\npath = \"crates/nous\"\n\
+         source_hash = \"{valid_hash}\"\nl3_token_estimate = 100\n"
+    );
+
+    let (dir, oikos) = setup_oikos(
+        "test",
+        &[
+            ("SOUL.md", "identity"),
+            ("_llm:manifest.toml", &manifest),
+            (
+                "_llm:L3-api-index/nous.md",
+                "# nous\n\npub fn fresh_api() {}",
+            ),
+        ],
+    );
+
+    // Write the matching source file so the computed hash equals valid_hash.
+    let crate_src = dir.path().join("crates/nous/src");
+    fs::create_dir_all(&crate_src).expect("create crate src dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap test writes crate fixtures to a temp directory"
+    )]
+    fs::write(crate_src.join("lib.rs"), source_content).expect("write lib.rs");
+
+    let assembler = BootstrapAssembler::new(&oikos).with_llm_recipe(LlmRecipe::ColdStart);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble_conditional_with_recipe(
+            "test",
+            &mut budget,
+            Vec::new(),
+            TaskHint::General,
+            LlmRecipe::ColdStart,
+        )
+        .await
+        .expect("assemble should succeed");
+
+    assert!(
+        result
+            .sections_included
+            .iter()
+            .any(|s| s.contains("nous.md")),
+        "L3 section should be injected when source hash matches manifest"
+    );
+}
+
+/// When a crate directory does not exist, the L3 section is injected without
+/// hash validation rather than being silently dropped.
+#[tokio::test]
+async fn assemble_llm_missing_crate_dir_still_injects() {
+    let manifest = "version = 1\n\n[levels.L3]\npath = \"L3-api-index\"\n\n\
+         [[crates]]\nname = \"nous\"\npath = \"crates/nous\"\n\
+         source_hash = \"abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\"\n\
+         l3_token_estimate = 100\n";
+
+    let (_dir, oikos) = setup_oikos(
+        "test",
+        &[
+            ("SOUL.md", "identity"),
+            ("_llm:manifest.toml", manifest),
+            // Note: no crates/nous directory is created, so hash cannot be computed.
+            ("_llm:L3-api-index/nous.md", "# nous\n\npub fn api() {}"),
+        ],
+    );
+
+    let assembler = BootstrapAssembler::new(&oikos).with_llm_recipe(LlmRecipe::ColdStart);
+    let mut budget = default_budget();
+
+    let result = assembler
+        .assemble_conditional_with_recipe(
+            "test",
+            &mut budget,
+            Vec::new(),
+            TaskHint::General,
+            LlmRecipe::ColdStart,
+        )
+        .await
+        .expect("assemble should succeed when crate dir is absent");
+
+    assert!(
+        result
+            .sections_included
+            .iter()
+            .any(|s| s.contains("nous.md")),
+        "L3 section should still be injected when crate dir is absent (cannot verify hash)"
     );
 }

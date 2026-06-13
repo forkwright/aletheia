@@ -250,6 +250,8 @@ pub struct NousState {
     pub config_tx: tokio::sync::watch::Sender<AletheiaConfig>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
+    /// In-process broadcast bus for lifecycle domain events.
+    pub event_bus: Arc<EventBus>,
 }
 
 impl FromRef<Arc<AppState>> for NousState {
@@ -260,6 +262,7 @@ impl FromRef<Arc<AppState>> for NousState {
             config: Arc::clone(&state.config),
             config_tx: state.config_tx.clone(),
             oikos: Arc::clone(&state.oikos),
+            event_bus: Arc::clone(&state.event_bus),
         }
     }
 }

@@ -748,6 +748,44 @@ async fn lesson_extraction_persists_training_facts_to_real_fjall() {
     );
 }
 
+/// Regression: the default prosoche self-audit runner must not include the
+/// `InstinctPatternsCheck` stub, which emits a fixed speculative finding without
+/// real gnomon weights backing it (#4572).
+#[tokio::test]
+async fn self_audit_does_not_emit_instinct_patterns_findings() {
+    use crate::prosoche_audit::{
+        AuditStorage, ConsistencyCheck, GoalAlignmentCheck, ProsocheAuditRunner, ProsocheState,
+        SessionQualityCheck, StalenessCheck,
+    };
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let storage = AuditStorage::new(tmp.path());
+    let checks: Vec<std::sync::Arc<dyn crate::prosoche_audit::ProsocheCheck>> = vec![
+        std::sync::Arc::new(ConsistencyCheck),
+        std::sync::Arc::new(StalenessCheck::default()),
+        std::sync::Arc::new(GoalAlignmentCheck),
+        std::sync::Arc::new(SessionQualityCheck::default()),
+    ];
+    let runner = ProsocheAuditRunner::new(checks, storage);
+
+    let state = ProsocheState {
+        nous_id: "alice".to_owned(),
+        checked_at: "2026-06-12T00:00:00Z".to_owned(),
+        ..ProsocheState::default()
+    };
+
+    let report = runner.run_audit(&state).await;
+
+    assert!(
+        report
+            .findings
+            .iter()
+            .all(|f| f.source != "prosoche::InstinctPatternsCheck"),
+        "default runner must not include instinct-pattern stub findings; got: {:?}",
+        report.findings
+    );
+}
+
 #[tokio::test]
 async fn fact_extraction_without_store_returns_error() {
     let err = execute_builtin(

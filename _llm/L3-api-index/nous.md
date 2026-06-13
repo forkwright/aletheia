@@ -607,6 +607,8 @@ impl TokenBudget {
     ) -> Self;
     pub fn remaining (&self) -> u64;
     pub fn consume (&mut self, tokens: u64) -> bool;
+    pub fn force_consume (&mut self, tokens: u64);
+    pub fn adjusted_history_budget (&self) -> u64;
     pub fn can_fit (&self, tokens: u64) -> bool;
     pub fn consumed (&self) -> u64;
     pub fn system_budget (&self) -> u64;
@@ -2083,7 +2085,10 @@ pub struct HistoryResult {
     pub messages_loaded: usize,
     /// Total tokens consumed by loaded history.
     pub tokens_consumed: i64,
-    /// Whether history was truncated to fit budget.
+    /// Whether the `max_messages` count limit dropped eligible messages from
+    /// the token-budget window. Sessions limited by the token budget rather
+    /// than the count cap report `false` here; inspect `tokens_consumed`
+    /// relative to the budget for token-budget observability.
     pub truncated: bool,
 }
 ```

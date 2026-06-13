@@ -588,7 +588,7 @@ pub(super) fn open_knowledge_stores(
     oikos: &Oikos,
     cohorts: impl IntoIterator<Item = String>,
     embedding: &EmbeddingSettings,
-    admission_policy: taxis::config::AdmissionPolicyKind,
+    knowledge: &taxis::config::KnowledgeConfig,
 ) -> Result<std::collections::HashMap<String, Arc<mneme::knowledge_store::KnowledgeStore>>> {
     let mut stores = std::collections::HashMap::new();
     for cohort in cohorts {
@@ -597,7 +597,7 @@ pub(super) fn open_knowledge_stores(
             std::fs::create_dir_all(parent)
                 .whatever_context("failed to CREATE knowledge store directory")?;
         }
-        let knowledge_config = build_knowledge_config(embedding, admission_policy, false);
+        let knowledge_config = build_knowledge_config(embedding, knowledge, false);
         let store =
             match mneme::knowledge_store::KnowledgeStore::open_fjall(&kb_path, knowledge_config) {
                 Ok(s) => s,
@@ -621,20 +621,28 @@ pub(super) fn open_knowledge_stores(
     Ok(stores)
 }
 
-/// Build a `mneme::KnowledgeConfig` from the taxis admission policy kind.
+/// Build a `mneme::KnowledgeConfig` from the taxis knowledge config section.
 ///
-/// WHY: separates the taxis config enum (serializable, TOML-friendly) from the
-/// episteme runtime trait object so neither crate depends on the other directly.
+/// WHY: separates the taxis config structs (serializable, TOML-friendly) from
+/// the episteme runtime trait objects so neither crate depends on the other
+/// directly. Threshold fields from the TOML cascade are forwarded into
+/// [`mneme::admission::StructuredAdmissionConfig`] so operators can tune the
+/// admission gate without recompiling.
 #[cfg(feature = "recall")]
 pub(super) fn build_knowledge_config(
     embedding: &EmbeddingSettings,
-    kind: taxis::config::AdmissionPolicyKind,
+    knowledge: &taxis::config::KnowledgeConfig,
     allow_assumed_embedding_meta: bool,
 ) -> mneme::knowledge_store::KnowledgeConfig {
-    let policy: Box<dyn mneme::admission::AdmissionPolicy> = match kind {
+    let policy: Box<dyn mneme::admission::AdmissionPolicy> = match knowledge.admission_policy {
         taxis::config::AdmissionPolicyKind::Structured => {
             Box::new(mneme::admission::StructuredAdmissionPolicy::new(
-                mneme::admission::StructuredAdmissionConfig::default(),
+                mneme::admission::StructuredAdmissionConfig {
+                    threshold: knowledge.admission_threshold,
+                    min_confidence: knowledge.admission_min_confidence,
+                    content_hash_dedup: knowledge.admission_content_hash_dedup,
+                    ..Default::default()
+                },
             ))
         }
         // NOTE: Default and any future variants fall through to admit-all.

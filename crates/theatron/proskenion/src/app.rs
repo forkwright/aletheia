@@ -20,6 +20,7 @@ use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::platform::{CloseBehavior, HotkeyState, QuickInputState, TrayState, WindowState};
 use crate::state::tool_metrics::DateRange;
 use crate::views::chat::Chat;
+#[cfg(debug_assertions)]
 use crate::views::component_library::ComponentLibrary;
 use crate::views::connect::ConnectView;
 use crate::views::files::Files;
@@ -59,6 +60,7 @@ pub(crate) enum Route {
         Meta {},
         #[route("/settings")]
         Settings {},
+        #[cfg(debug_assertions)]
         #[route("/component-library")]
         ComponentLibrary {},
 }
@@ -240,4 +242,53 @@ fn start_window_state_writer() {
         let state = window_state.read().clone();
         writer.update(|w| *w = state);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Route;
+
+    /// Classify a route as operator-facing production navigation.
+    ///
+    /// This match is intentionally exhaustive so adding a new `Route` variant
+    /// forces an explicit decision about whether it belongs in the operator nav.
+    fn is_operator_route(route: Route) -> bool {
+        match route {
+            Route::Chat {}
+            | Route::Files {}
+            | Route::Planning {}
+            | Route::PlanningProject { .. }
+            | Route::Memory {}
+            | Route::Metrics {}
+            | Route::MetricsToolDetail { .. }
+            | Route::Ops {}
+            | Route::Sessions {}
+            | Route::Meta {}
+            | Route::Settings {} => true,
+            #[cfg(debug_assertions)]
+            Route::ComponentLibrary {} => false,
+        }
+    }
+
+    #[test]
+    fn production_route_inventory_excludes_component_library() {
+        assert!(is_operator_route(Route::Chat {}));
+        assert!(is_operator_route(Route::Files {}));
+        assert!(is_operator_route(Route::Planning {}));
+        assert!(is_operator_route(Route::PlanningProject {
+            project_id: "test".to_string(),
+        }));
+        assert!(is_operator_route(Route::Memory {}));
+        assert!(is_operator_route(Route::Metrics {}));
+        assert!(is_operator_route(Route::MetricsToolDetail {
+            tool_name: "test".to_string(),
+        }));
+        assert!(is_operator_route(Route::Ops {}));
+        assert!(is_operator_route(Route::Sessions {}));
+        assert!(is_operator_route(Route::Meta {}));
+        assert!(is_operator_route(Route::Settings {}));
+
+        #[cfg(debug_assertions)]
+        assert!(!is_operator_route(Route::ComponentLibrary {}));
+    }
 }

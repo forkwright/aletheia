@@ -114,6 +114,27 @@ impl TokenBudget {
         true
     }
 
+    /// Consume tokens unconditionally, even when the system budget is exhausted.
+    ///
+    /// Use this for content that must be included regardless of budget (e.g. Required
+    /// sections, file-ref expansion debt) so that downstream callers — history
+    /// allocation, recall sizing — see the accurate over-budget amount via
+    /// [`Self::adjusted_history_budget`] and [`Self::remaining`].
+    pub fn force_consume(&mut self, tokens: u64) {
+        self.consumed = self.consumed.saturating_add(tokens);
+    }
+
+    /// Tokens reserved for conversation history, reduced by any over-budget debt.
+    ///
+    /// When bootstrap content exceeds `system_budget` (Required-section inclusion
+    /// or file-ref expansion), the excess is charged against the history reserve so
+    /// that the total allocation stays within the context window.
+    #[must_use]
+    pub fn adjusted_history_budget(&self) -> u64 {
+        let debt = self.consumed.saturating_sub(self.system_budget);
+        self.reserved_for_history.saturating_sub(debt)
+    }
+
     /// Check if the given number of tokens fits in the remaining budget.
     #[must_use]
     pub fn can_fit(&self, tokens: u64) -> bool {
@@ -497,6 +518,49 @@ mod tests {
     fn time_budget_is_send() {
         fn assert_send<T: Send>() {}
         assert_send::<TimeBudget>();
+    }
+
+    #[test]
+    fn force_consume_tracks_over_budget_tokens() {
+        // WHY(#4623): force_consume must record tokens even when system_budget
+        // is already exhausted, so downstream stages see the true remaining budget.
+        let mut budget = TokenBudget::new(200_000, 0.6, 16_384, 100);
+        // consume exactly the system_budget
+        assert!(budget.consume(100));
+        assert_eq!(budget.remaining(), 0);
+        // force_consume pushes consumed past the cap
+        budget.force_consume(50);
+        assert_eq!(budget.consumed(), 150);
+        // remaining saturates at 0 — never underflows
+        assert_eq!(budget.remaining(), 0);
+    }
+
+    #[test]
+    fn adjusted_history_budget_deducts_over_budget_debt() {
+        // WHY(#4623): When bootstrap overruns system_budget (Required sections or
+        // file-ref expansion), the excess must be deducted from history_budget so
+        // downstream stages allocate against the real available window.
+        let mut budget = TokenBudget::new(200_000, 0.6, 16_384, 100);
+        let original_history = budget.history_budget();
+        // force_consume 200 tokens into a 100-token cap — 100-token debt
+        budget.force_consume(200);
+        let debt = 200_u64.saturating_sub(100);
+        assert_eq!(
+            budget.adjusted_history_budget(),
+            original_history.saturating_sub(debt),
+            "history budget must be reduced by the over-budget debt amount"
+        );
+    }
+
+    #[test]
+    fn adjusted_history_budget_equals_history_budget_when_within_cap() {
+        let mut budget = TokenBudget::new(200_000, 0.6, 16_384, 40_000);
+        assert!(budget.consume(10_000));
+        assert_eq!(
+            budget.adjusted_history_budget(),
+            budget.history_budget(),
+            "adjusted_history_budget must equal history_budget when consumption is within cap"
+        );
     }
 
     #[test]

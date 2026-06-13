@@ -3,6 +3,7 @@
 pub(crate) mod chat;
 pub(crate) mod chat_helpers;
 pub(crate) mod chat_selection;
+#[cfg(debug_assertions)]
 pub(crate) mod component_library;
 pub(crate) mod connect;
 pub(crate) mod files;

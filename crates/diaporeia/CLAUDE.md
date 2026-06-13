@@ -52,7 +52,7 @@ MCP server interface for external AI agents via the Model Context Protocol. 1.5K
 | `repomix_pack` | Expensive | Operator | No | Pack crate source into compressed context. Requires Operator role. Returns packed XML with metadata. |
 | `repomix_template_get` | Cheap | Agent | No | Get a repomix template definition by name. Requires Agent role. |
 | `repomix_templates_list` | Cheap | Agent | No | List available repomix templates. Requires Agent role. |
-| `session_create` | Expensive | Operator | Yes | Create a new session for a nous agent |
+| `session_create` | Expensive | Operator | No | Create a new session for a nous agent |
 | `session_history` | Cheap | Agent | No | Get conversation history for a session |
 | `session_list` | Cheap | Agent | No | List sessions, optionally filtered by nous agent ID |
 | `session_message` | Expensive | Operator | Yes | Send a message to a nous agent session and get the response. Note: response is not streamed — the full result is returned after the turn completes. For streaming, use the HTTP SSE endpoint. |

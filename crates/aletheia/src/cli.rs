@@ -88,6 +88,9 @@ pub(crate) enum Command {
         #[arg(long, default_value = "http://127.0.0.1:18789")]
         // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
         url: String,
+        /// Bearer token for API routes that require authentication
+        #[arg(long, env = "ALETHEIA_API_TOKEN")]
+        token: Option<String>,
         #[command(subcommand)]
         action: memory::Action,
     },

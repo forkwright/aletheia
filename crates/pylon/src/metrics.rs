@@ -51,6 +51,15 @@ static HTTP_REQUEST_DURATION_SECONDS: LazyLock<HttpDurationFamily> =
 static ACTIVE_SESSIONS: LazyLock<Gauge> = LazyLock::new(Gauge::default);
 static UPTIME_SECONDS: LazyLock<Gauge<f64, AtomicU64>> = LazyLock::new(Gauge::default);
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+pub(crate) struct EventBusDropLabels {
+    pub(crate) topic: String,
+    pub(crate) cause: String,
+}
+
+static EVENT_BUS_DROPS_TOTAL: LazyLock<Family<EventBusDropLabels, Counter>> =
+    LazyLock::new(Family::default);
+
 /// Register this crate's metrics with the shared registry.
 ///
 /// Called once at startup from the binary crate's `register_all_metrics`.
@@ -76,6 +85,21 @@ pub fn register(registry: &mut Registry) {
         "Server uptime in seconds",
         UPTIME_SECONDS.clone(),
     );
+    registry.register(
+        "aletheia_event_bus_drops",
+        "Total domain events dropped due to no active subscribers",
+        EVENT_BUS_DROPS_TOTAL.clone(),
+    );
+}
+
+/// Record a dropped event-bus publish (no active receivers).
+pub(crate) fn record_event_bus_drop(topic: &str, cause: &str) {
+    EVENT_BUS_DROPS_TOTAL
+        .get_or_create(&EventBusDropLabels {
+            topic: topic.to_owned(),
+            cause: cause.to_owned(),
+        })
+        .inc();
 }
 
 /// Register metrics on the shared wrapper.

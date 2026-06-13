@@ -134,7 +134,6 @@ pub(crate) fn Layout() -> Element {
                 NavItem { to: Route::Ops {}, icon: "⚙\u{fe0f}", label: "Ops", shortcut: "Ctrl+6", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Meta {}, icon: "💡", label: "Insights", shortcut: "", collapsed: *sidebar_collapsed.read() }
                 NavItem { to: Route::Settings {}, icon: "🔧", label: "Settings", shortcut: "", collapsed: *sidebar_collapsed.read() }
-                NavItem { to: Route::ComponentLibrary {}, icon: "◫", label: "Components", shortcut: "", collapsed: *sidebar_collapsed.read() }
 
                 // WHY: agent presence persists across route changes; the roster
                 // sits below nav so it reads as a distinct shaded panel.

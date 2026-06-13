@@ -27,6 +27,8 @@ use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use std::time::{Duration, Instant, SystemTime};
 
+use sha2::{Digest as _, Sha256};
+
 use serde::Deserialize;
 use snafu::IntoError as _;
 use tracing::{debug, info, warn};
@@ -513,12 +515,12 @@ const DEFAULT_OUTPUT_STYLE: &str = "\
 /// exist and where they live. Parsing it lets the bootstrap assembler
 /// discover levels dynamically rather than hardcoding paths.
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    dead_code,
-    reason = "fields deserialized from manifest for future use but not yet consumed"
-)]
 struct LlmManifest {
     #[serde(default)]
+    #[expect(
+        dead_code,
+        reason = "deserialized for schema completeness; not yet consumed"
+    )]
     version: u32,
     #[serde(default)]
     levels: HashMap<String, LlmLevel>,
@@ -527,28 +529,87 @@ struct LlmManifest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    dead_code,
-    reason = "fields deserialized from manifest for future use but not yet consumed"
-)]
 struct LlmLevel {
     path: String,
     #[serde(default)]
+    #[expect(
+        dead_code,
+        reason = "deserialized for schema completeness; not yet consumed"
+    )]
     generator: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[expect(
-    dead_code,
-    reason = "fields deserialized from manifest for future use but not yet consumed"
-)]
 struct LlmManifestCrate {
     name: String,
+    /// Path to the crate source directory, relative to the workspace root (oikos root).
     path: String,
-    #[serde(rename = "source_hash")]
-    _source_hash: String,
-    #[serde(rename = "l3_token_estimate")]
-    _l3_token_estimate: u64,
+    /// SHA-256 of all `.rs` source files in sorted order; used to detect stale generated context.
+    source_hash: String,
+    #[expect(
+        dead_code,
+        reason = "token estimate preserved for future budget-aware selection; not yet consumed"
+    )]
+    l3_token_estimate: u64,
+}
+
+/// Compute the SHA-256 source hash for a crate directory.
+///
+/// Reads all `.rs` files under `crate_dir` in sorted path order and feeds their
+/// contents into a single SHA-256 digest, matching the algorithm used by
+/// `scripts/llm-extract-l3.py` when it writes `manifest.toml`. Returns the
+/// lowercase hex string, or `None` when the directory cannot be read.
+///
+/// WHY: The manifest records this hash as a staleness guard. Comparing the
+/// live hash against the manifest entry lets the bootstrap assembler skip L3
+/// sections whose source has diverged from the generated content.
+async fn compute_crate_source_hash(crate_dir: &Path) -> Option<String> {
+    let mut rs_paths: Vec<PathBuf> = Vec::new();
+    collect_rs_files(crate_dir, &mut rs_paths);
+    if rs_paths.is_empty() {
+        return None;
+    }
+    rs_paths.sort();
+
+    let mut hasher = Sha256::new();
+    for path in &rs_paths {
+        match tokio::fs::read(&path).await {
+            Ok(bytes) => hasher.update(&bytes),
+            Err(e) => {
+                warn!(path = %path.display(), error = %e, "failed to read source file for hash check");
+                return None;
+            }
+        }
+    }
+    let digest = hasher.finalize();
+    let hex: String = digest
+        .iter()
+        .flat_map(|b| {
+            [
+                char::from_digit(u32::from(b >> 4), 16).unwrap_or('0'),
+                char::from_digit(u32::from(b & 0x0f), 16).unwrap_or('0'),
+            ]
+        })
+        .collect();
+    Some(hex)
+}
+
+/// Collect all `.rs` files under `dir` recursively into `out`.
+///
+/// Uses synchronous directory traversal; intended to be called once per
+/// validation check. Non-readable directories are silently skipped.
+fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rs_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(path);
+        }
+    }
 }
 
 /// Assembles the bootstrap system prompt from oikos workspace files.
@@ -802,7 +863,10 @@ impl<'a> BootstrapAssembler<'a> {
                 // persona drift when the system prompt is compressed under token
                 // pressure. An over-budget Required section is always better than a
                 // missing one — the model cannot know who it is without it.
-                budget.consume(section.tokens);
+                // WHY(#4623): force_consume tracks the over-budget debt so that
+                // downstream stages (history, recall) see the accurate remaining budget
+                // via adjusted_history_budget() rather than an artificially inflated one.
+                budget.force_consume(section.tokens);
                 warn!(
                     section = section.name,
                     tokens = section.tokens,
@@ -851,6 +915,23 @@ impl<'a> BootstrapAssembler<'a> {
 
         let system_prompt = organon::interp::expand_file_refs(&system_prompt, self.oikos.root())
             .map_err(|e| crate::error::InterpSnafu.into_error(e))?;
+
+        // WHY(#4623): file-ref expansion can grow the prompt beyond the pre-expansion
+        // token estimate. Re-estimate the actual prompt size and force-consume any
+        // extra tokens so that downstream stages (history, recall) see the true
+        // remaining budget via adjusted_history_budget().
+        let expanded_tokens = self.estimator.estimate(&system_prompt);
+        let pre_expansion_consumed = budget.consumed();
+        if expanded_tokens > pre_expansion_consumed {
+            let expansion_debt = expanded_tokens - pre_expansion_consumed;
+            budget.force_consume(expansion_debt);
+            warn!(
+                expansion_debt,
+                expanded_tokens,
+                pre_expansion_consumed,
+                "file-ref expansion exceeded pre-expansion token estimate; carrying debt forward"
+            );
+        }
 
         let section_names: Vec<String> = included.iter().map(|s| s.name.clone()).collect();
         let total_tokens = budget.consumed();
@@ -1130,6 +1211,15 @@ impl<'a> BootstrapAssembler<'a> {
             }
         };
 
+        // Build a map of crate name → expected source hash from the manifest.
+        // WHY: used during L3 injection to skip sections whose source has
+        // changed since the generated index was last written.
+        let crate_hash_index: HashMap<String, (String, String)> = manifest
+            .crates
+            .iter()
+            .map(|c| (c.name.clone(), (c.path.clone(), c.source_hash.clone())))
+            .collect();
+
         let mut sections = Vec::new();
 
         // --- L1: workspace manifest files at _llm/ root ---
@@ -1210,6 +1300,28 @@ impl<'a> BootstrapAssembler<'a> {
                         .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
                     {
                         continue;
+                    }
+
+                    // Derive the crate name from the L3 filename (strip `.md`).
+                    let crate_name = name.trim_end_matches(".md");
+
+                    // Validate source hash when the manifest carries an entry
+                    // for this crate. If the live hash differs from the recorded
+                    // hash, the generated L3 content is stale — skip it and
+                    // warn so operators know a regeneration is needed.
+                    if let Some((crate_path, expected_hash)) = crate_hash_index.get(crate_name) {
+                        let crate_dir = self.oikos.root().join(crate_path);
+                        if let Some(actual_hash) = compute_crate_source_hash(&crate_dir).await
+                            && actual_hash != *expected_hash
+                        {
+                            warn!(
+                                section = format!("_llm/{}/{name}", l3_level.path),
+                                crate_name,
+                                "skipping stale L3 section: source hash mismatch \
+                                 (regenerate with: uv run scripts/llm-extract-l3.py)"
+                            );
+                            continue;
+                        }
                     }
 
                     match tokio::fs::read_to_string(&path).await {

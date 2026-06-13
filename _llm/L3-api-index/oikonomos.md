@@ -42,6 +42,7 @@ pub trait DaemonBridge : Send + Sync {
 ```rust
 pub struct Coordinator {
     max_children: usize,
+    current_children: usize,
 }
 ```
 
@@ -49,6 +50,11 @@ pub struct Coordinator {
 impl Coordinator {
     pub fn new (max_children: usize) -> Self;
     pub fn max_children (&self) -> usize;
+    pub fn current_children (&self) -> usize;
+    pub fn can_spawn (&self) -> bool;
+    pub fn remaining_capacity (&self) -> usize;
+    pub fn record_spawn (&mut self);
+    pub fn record_exit (&mut self);
 }
 ```
 
@@ -1630,9 +1636,10 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub enabled: bool,
 
-    /// Reserved child-agent concurrency limit.
+    /// Maximum concurrent child agents.
     ///
-    /// The current runtime stores this value but does not spawn child agents.
+    /// The `Coordinator` enforces this cap via `can_spawn()` before each
+    /// child-agent dispatch. Defaults to 3.
     #[serde(default = "default_max_children")]
     pub max_children: usize,
 
