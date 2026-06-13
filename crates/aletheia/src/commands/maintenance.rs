@@ -193,8 +193,12 @@ async fn run_task(
                 .prune()
                 .whatever_context("prompt audit rotation failed")?;
             println!(
-                "prompt-audit-rotation: {} files pruned, {} bytes freed",
-                report.files_pruned, report.bytes_freed
+                "prompt-audit-rotation: {} files pruned, {} retained, {} malformed skipped, {} fallback-pruned, {} bytes freed",
+                report.files_pruned,
+                report.files_retained,
+                report.malformed_files_skipped,
+                report.fallback_files_pruned,
+                report.bytes_freed
             );
         }
         ManualMaintenanceTask::NousSelfAudit => run_self_audit(),

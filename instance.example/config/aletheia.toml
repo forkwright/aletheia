@@ -157,6 +157,26 @@ workspace = "nous/main"
 #   extended            — reserved for the 1-hour cache (currently behaves
 #                         the same as `ephemeral`).
 
+# --- Prompt audit retention and filtered-fact identifiers ---
+# The prompt audit log stores request metadata only: prompt hash and size,
+# model/provider, token estimate, included fact IDs, optional filtered fact
+# IDs, and tool names. It never stores prompt or message content.
+# [promptAudit]
+# enabled = true
+# retentionDays = 90
+# includeFilteredIds = true  # true stores withheld fact IDs+sensitivity labels; false writes []
+
+# --- Training capture screening provenance ---
+# When training capture and the PII filter are enabled, each new JSONL row
+# records pii_filter_applied, pii_redaction_count, and pii_policy_ref.
+# Downstream jobs can reject unscreened rows without rejecting clean rows
+# that were checked by the current policy.
+# [training]
+# enabled = false
+# path = "data/training"
+# max_shard_bytes = 52428800
+# pii_filter_enabled = true
+
 # --- LLM providers ---
 # Declarative providers used by the runtime registry. Local OpenAI-compatible
 # servers list both the operator-facing alias and the exact model id returned

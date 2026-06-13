@@ -42,10 +42,28 @@ use regex::Regex;
 const MARKER_PREFIX: &str = "[REDACTED:";
 const MARKER_SUFFIX: &str = "]";
 
+/// Stable reference for the redaction policy used in training records.
+pub const POLICY_REF: &str = "nous-training-pii-v1";
+
 /// Build the redaction marker for a given kind.
 #[must_use]
 pub fn marker(kind: &str) -> String {
     format!("{MARKER_PREFIX}{kind}{MARKER_SUFFIX}")
+}
+
+/// Summary of a PII/secret redaction pass.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RedactionReport {
+    /// Number of replacements made across all patterns.
+    pub redaction_count: u32,
+}
+
+impl RedactionReport {
+    /// Whether at least one replacement occurred.
+    #[must_use]
+    pub fn changed(self) -> bool {
+        self.redaction_count > 0
+    }
 }
 
 /// A single PII/secret pattern with its redaction kind label.
@@ -194,7 +212,7 @@ fn luhn_valid(digits: &str) -> bool {
 }
 
 /// Redact credit card numbers, but only when Luhn-valid.
-fn redact_credit_cards(input: &str) -> String {
+fn redact_credit_cards(input: &str) -> (String, u32) {
     #[expect(
         clippy::expect_used,
         reason = "credit_card pattern is always present in PATTERNS (construction invariant)"
@@ -205,54 +223,63 @@ fn redact_credit_cards(input: &str) -> String {
         .expect("credit_card pattern is present in PATTERNS")
         .re;
     let m = marker("credit_card");
-    re.replace_all(input, |caps: &regex::Captures<'_>| {
-        let raw = caps.get(0).map_or("", |m| m.as_str());
-        let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
-        // Credit cards are 13–19 digits.
-        if (13..=19).contains(&digits.len()) && luhn_valid(&digits) {
-            m.clone()
-        } else {
-            raw.to_owned()
-        }
-    })
-    .into_owned()
+    let mut redaction_count = 0u32;
+    let redacted = re
+        .replace_all(input, |caps: &regex::Captures<'_>| {
+            let raw = caps.get(0).map_or("", |m| m.as_str());
+            let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
+            // Credit cards are 13–19 digits.
+            if (13..=19).contains(&digits.len()) && luhn_valid(&digits) {
+                redaction_count = redaction_count.saturating_add(1);
+                m.clone()
+            } else {
+                raw.to_owned()
+            }
+        })
+        .into_owned();
+    (redacted, redaction_count)
 }
 
 /// Redact PII and secret patterns from `input`.
 ///
 /// Returns a tuple of (`redacted_text`, `did_redact`). `did_redact` is
-/// `true` iff any pattern matched and produced a replacement. The
-/// boolean lets callers mark the record's `pii_redacted` flag even
-/// when no pattern fires (policy-applied, no matches) by OR-ing with
-/// the configured policy state.
+/// `true` iff any pattern matched and produced a replacement.
 ///
 /// WHY return `(String, bool)`: callers need both the scrubbed text
 /// and whether anything was scrubbed. Returning only `String` would
 /// force a separate `contains(MARKER_PREFIX)` pass.
 #[must_use]
 pub fn redact(input: &str) -> (String, bool) {
+    let (redacted, report) = redact_with_report(input);
+    (redacted, report.changed())
+}
+
+/// Redact PII and secret patterns from `input`, returning replacement count.
+#[must_use]
+pub fn redact_with_report(input: &str) -> (String, RedactionReport) {
     let mut current = input.to_owned();
-    let mut changed = false;
+    let mut redaction_count = 0u32;
 
     for pat in PATTERNS.iter() {
         if pat.kind == "credit_card" {
             // WHY: credit cards go through the Luhn-gated redactor to
             // avoid clobbering long numeric strings that happen to be
             // 13+ digits (e.g. session ids, hashes).
-            let next = redact_credit_cards(&current);
-            if next != current {
-                changed = true;
+            let (next, count) = redact_credit_cards(&current);
+            if count > 0 {
+                redaction_count = redaction_count.saturating_add(count);
                 current = next;
             }
             continue;
         }
         if pat.re.is_match(&current) {
-            changed = true;
+            let count = u32::try_from(pat.re.find_iter(&current).count()).unwrap_or(u32::MAX);
+            redaction_count = redaction_count.saturating_add(count);
             current = pat.re.replace_all(&current, marker(pat.kind)).into_owned();
         }
     }
 
-    (current, changed)
+    (current, RedactionReport { redaction_count })
 }
 
 #[cfg(test)]

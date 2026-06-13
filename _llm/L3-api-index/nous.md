@@ -216,6 +216,13 @@ pub struct FilteredFact {
 ```
 
 ```rust
+pub struct PromptAuditRecordOptions {
+    /// Whether filtered fact identifiers are persisted in the audit row.
+    pub include_filtered_ids: bool,
+}
+```
+
+```rust
 pub struct PromptAuditRecord {
     /// When the request was assembled (UTC).
     pub timestamp: Timestamp,
@@ -269,14 +276,17 @@ pub struct PromptAuditLog {
     /// is a no-op that does not touch the filesystem.
     enabled: bool,
     log_dir: PathBuf,
+    record_options: PromptAuditRecordOptions,
 }
 ```
 
 ```rust
 impl PromptAuditLog {
     pub fn new (log_dir: PathBuf, enabled: bool) -> Self;
+    pub fn from_settings (log_dir: PathBuf, settings: &taxis::config::PromptAuditSettings) -> Self;
     pub fn log_dir (&self) -> &Path;
     pub fn enabled (&self) -> bool;
+    pub fn record_options (&self) -> PromptAuditRecordOptions;
     pub fn log_request (&self, record: &PromptAuditRecord) -> Result<()>;
 }
 ```
@@ -4188,12 +4198,34 @@ impl TrainingCapture {
 
 ## `src/training/pii.rs`
 
+> Stable reference for the redaction policy used in training records.
+```rust
+pub const POLICY_REF: &str = "nous-training-pii-v1";
+```
+
 ```rust
 pub fn marker (kind: &str) -> String
 ```
 
 ```rust
+pub struct RedactionReport {
+    /// Number of replacements made across all patterns.
+    pub redaction_count: u32,
+}
+```
+
+```rust
+impl RedactionReport {
+    pub fn changed (self) -> bool;
+}
+```
+
+```rust
 pub fn redact (input: &str) -> (String, bool)
+```
+
+```rust
+pub fn redact_with_report (input: &str) -> (String, RedactionReport)
 ```
 
 ## `src/tuning/evidence.rs`

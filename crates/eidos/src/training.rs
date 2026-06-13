@@ -82,8 +82,9 @@ impl Default for TrainingConfig {
 
 /// Current schema version for [`TrainingRecord`].
 ///
-/// Bump this constant when the persisted record shape changes incompatibly.
-pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 4;
+/// Version 5 adds durable PII-screening provenance while preserving
+/// deserialization defaults for older JSONL rows.
+pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 5;
 
 /// Outcome of a single tool invocation during a turn.
 ///
@@ -207,14 +208,30 @@ pub struct TrainingRecord {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_surface_hashes: Vec<String>,
 
-    /// Whether PII/secret redaction was applied to `user_message` and
-    /// `assistant_response` before persistence.
+    /// Whether `user_message` or `assistant_response` changed during
+    /// PII/secret redaction before persistence.
     ///
-    /// WHY persist as a field: downstream training jobs need to know
-    /// whether a record has been scrubbed so they can refuse to
-    /// re-process unredacted corpora if the redaction policy changes.
+    /// This is mutation status only. Use `pii_filter_applied` to distinguish
+    /// clean-but-screened rows from rows written without screening.
     #[serde(default, skip_serializing_if = "is_false")]
     pub pii_redacted: bool,
+    /// Whether the PII/secret filter evaluated this record before persistence.
+    ///
+    /// Downstream corpus readers can reject unscreened rows while accepting
+    /// clean rows that were checked by the configured policy.
+    #[serde(default)]
+    pub pii_filter_applied: bool,
+    /// Number of replacements made by the PII/secret filter.
+    ///
+    /// Zero means either the filter found no sensitive content or the row is
+    /// unscreened; `pii_filter_applied` disambiguates those cases.
+    #[serde(default)]
+    pub pii_redaction_count: u32,
+    /// Stable policy reference used for this screening pass.
+    ///
+    /// `None` for legacy rows and rows captured with the filter disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pii_policy_ref: Option<String>,
 }
 
 /// Serde skip helper for boolean fields defaulting to `false`.
@@ -276,6 +293,9 @@ mod tests {
             }),
             tool_surface_hashes: vec!["ts1:test".to_owned()],
             pii_redacted: true,
+            pii_filter_applied: true,
+            pii_redaction_count: 1,
+            pii_policy_ref: Some("nous-training-pii-v1".to_owned()),
         };
 
         let json = serde_json::to_string(&record).expect("serialize");
@@ -291,6 +311,9 @@ mod tests {
         assert!(back.recall_signals.is_some());
         assert_eq!(back.tool_surface_hashes, vec!["ts1:test"]);
         assert!(back.pii_redacted);
+        assert!(back.pii_filter_applied);
+        assert_eq!(back.pii_redaction_count, 1);
+        assert_eq!(back.pii_policy_ref.as_deref(), Some("nous-training-pii-v1"));
     }
 
     #[test]
@@ -313,6 +336,9 @@ mod tests {
             recall_signals: None,
             tool_surface_hashes: Vec::new(),
             pii_redacted: false,
+            pii_filter_applied: false,
+            pii_redaction_count: 0,
+            pii_policy_ref: None,
         };
 
         let json = serde_json::to_string(&record).expect("serialize");
@@ -345,6 +371,18 @@ mod tests {
             !json.contains("pii_redacted"),
             "false bool should be skipped"
         );
+        assert!(
+            json.contains("\"pii_filter_applied\":false"),
+            "screening status should be explicit"
+        );
+        assert!(
+            json.contains("\"pii_redaction_count\":0"),
+            "redaction count should be explicit"
+        );
+        assert!(
+            !json.contains("pii_policy_ref"),
+            "disabled/unscreened policy ref should be skipped"
+        );
 
         let back: TrainingRecord = serde_json::from_str(&json).expect("deserialize");
         assert!(back.turn_type.is_none());
@@ -352,6 +390,9 @@ mod tests {
         assert!(back.tool_outcomes.is_none());
         assert!(back.recall_signals.is_none());
         assert!(!back.pii_redacted);
+        assert!(!back.pii_filter_applied);
+        assert_eq!(back.pii_redaction_count, 0);
+        assert!(back.pii_policy_ref.is_none());
     }
 
     #[test]
@@ -370,5 +411,8 @@ mod tests {
         assert!(record.tool_outcomes.is_none());
         assert!(record.recall_signals.is_none());
         assert!(!record.pii_redacted);
+        assert!(!record.pii_filter_applied);
+        assert_eq!(record.pii_redaction_count, 0);
+        assert!(record.pii_policy_ref.is_none());
     }
 }

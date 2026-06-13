@@ -517,9 +517,9 @@ impl RuntimeBuilder {
             .log_dir
             .clone()
             .unwrap_or_else(|| self.oikos.logs().join("prompt-audit"));
-        let audit_log = Arc::new(nous::audit::PromptAuditLog::new(
+        let audit_log = Arc::new(nous::audit::PromptAuditLog::from_settings(
             audit_log_dir,
-            self.config.prompt_audit.enabled,
+            &self.config.prompt_audit,
         ));
         let after_action_store = Arc::new(AfterActionStore::new(
             self.oikos.logs().join("after-actions"),

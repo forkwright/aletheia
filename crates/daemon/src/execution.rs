@@ -580,14 +580,21 @@ pub(crate) async fn execute_builtin_with_behavior(
 
             tracing::info!(
                 files_pruned = report.files_pruned,
+                files_retained = report.files_retained,
+                malformed_files_skipped = report.malformed_files_skipped,
+                fallback_files_pruned = report.fallback_files_pruned,
                 bytes_freed = report.bytes_freed,
                 "maintenance: prompt audit rotation complete"
             );
             Ok(ExecutionResult {
                 success: true,
                 output: Some(format!(
-                    "{} files pruned, {} bytes freed",
-                    report.files_pruned, report.bytes_freed
+                    "{} files pruned, {} retained, {} malformed skipped, {} fallback-pruned, {} bytes freed",
+                    report.files_pruned,
+                    report.files_retained,
+                    report.malformed_files_skipped,
+                    report.fallback_files_pruned,
+                    report.bytes_freed
                 )),
             })
         }

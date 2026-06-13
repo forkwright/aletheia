@@ -94,7 +94,15 @@ fn build_audit_record_includes_filtered_recall_facts() {
         tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
-    let record = build_audit_record(&ctx, &session, &config, &providers, &tools, &tool_ctx);
+    let record = build_audit_record(
+        &ctx,
+        &session,
+        &config,
+        &providers,
+        &tools,
+        &tool_ctx,
+        PromptAuditRecordOptions::default(),
+    );
 
     assert_eq!(record.deployment_target, "cloud");
     assert!(record.tool_surface_hash.starts_with("ts1:"));
@@ -105,6 +113,54 @@ fn build_audit_record_includes_filtered_recall_facts() {
         .expect("one filtered fact should be present");
     assert_eq!(filtered.id, "fact-internal");
     assert_eq!(filtered.sensitivity, "internal");
+}
+
+#[test]
+fn build_audit_record_omits_filtered_recall_facts_when_disabled() {
+    let config = crate::config::NousConfig::default();
+    let session = crate::session::SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
+    let ctx = crate::pipeline::PipelineContext {
+        recall_result: Some(crate::recall::RecallStageResult {
+            candidates_found: 2,
+            results_injected: 1,
+            tokens_consumed: 4,
+            recall_section: Some("## Recalled Knowledge\n- public".to_owned()),
+            fact_ids: vec!["fact-public".to_owned()],
+            deployment_target: hermeneus::provider::DeploymentTarget::Cloud,
+            filtered_facts: vec![crate::recall::RecallFilteredFact {
+                id: "fact-internal".to_owned(),
+                sensitivity: mneme::knowledge::FactSensitivity::Internal,
+            }],
+        }),
+        ..crate::pipeline::PipelineContext::default()
+    };
+    let providers = hermeneus::provider::ProviderRegistry::new();
+    let tools = organon::registry::ToolRegistry::new();
+    let tool_ctx = organon::types::ToolContext {
+        nous_id: koina::id::NousId::new("alice").expect("valid synthetic nous id"),
+        session_id: koina::id::SessionId::new(),
+        turn_number: 0,
+        workspace: std::path::PathBuf::from("/tmp/aletheia-test"),
+        allowed_roots: vec![std::path::PathBuf::from("/tmp")],
+        services: None,
+        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
+    };
+
+    let record = build_audit_record(
+        &ctx,
+        &session,
+        &config,
+        &providers,
+        &tools,
+        &tool_ctx,
+        PromptAuditRecordOptions {
+            include_filtered_ids: false,
+        },
+    );
+
+    assert_eq!(record.fact_ids_included, vec!["fact-public"]);
+    assert!(record.fact_ids_filtered.is_empty());
 }
 
 #[test]

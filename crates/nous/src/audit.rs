@@ -97,6 +97,29 @@ pub struct FilteredFact {
     pub sensitivity: FactSensitivity,
 }
 
+/// Prompt-audit record construction options resolved from operator config.
+#[derive(Debug, Clone, Copy)]
+pub struct PromptAuditRecordOptions {
+    /// Whether filtered fact identifiers are persisted in the audit row.
+    pub include_filtered_ids: bool,
+}
+
+impl Default for PromptAuditRecordOptions {
+    fn default() -> Self {
+        Self {
+            include_filtered_ids: true,
+        }
+    }
+}
+
+impl From<&taxis::config::PromptAuditSettings> for PromptAuditRecordOptions {
+    fn from(settings: &taxis::config::PromptAuditSettings) -> Self {
+        Self {
+            include_filtered_ids: settings.include_filtered_ids,
+        }
+    }
+}
+
 /// One append-only audit record per outbound `CompletionRequest`.
 ///
 /// See module docs for the sovereignty contract on what is and is not logged.
@@ -179,6 +202,7 @@ pub struct PromptAuditLog {
     /// is a no-op that does not touch the filesystem.
     enabled: bool,
     log_dir: PathBuf,
+    record_options: PromptAuditRecordOptions,
 }
 
 #[derive(Debug)]
@@ -200,6 +224,18 @@ impl PromptAuditLog {
             inner: Mutex::new(PromptAuditLogInner { current: None }),
             enabled,
             log_dir,
+            record_options: PromptAuditRecordOptions::default(),
+        }
+    }
+
+    /// Create a new audit log from resolved prompt-audit settings.
+    #[must_use]
+    pub fn from_settings(log_dir: PathBuf, settings: &taxis::config::PromptAuditSettings) -> Self {
+        Self {
+            inner: Mutex::new(PromptAuditLogInner { current: None }),
+            enabled: settings.enabled,
+            log_dir,
+            record_options: PromptAuditRecordOptions::from(settings),
         }
     }
 
@@ -213,6 +249,12 @@ impl PromptAuditLog {
     #[must_use]
     pub fn enabled(&self) -> bool {
         self.enabled
+    }
+
+    /// Return record construction options for this log.
+    #[must_use]
+    pub fn record_options(&self) -> PromptAuditRecordOptions {
+        self.record_options
     }
 
     /// Append a record to today's JSONL file.
@@ -290,6 +332,7 @@ pub(crate) fn build_audit_record(
     providers: &hermeneus::provider::ProviderRegistry,
     tools: &organon::registry::ToolRegistry,
     tool_ctx: &organon::types::ToolContext,
+    options: PromptAuditRecordOptions,
 ) -> PromptAuditRecord {
     let system_prompt = ctx.system_prompt.as_deref();
     let system_prompt_bytes = system_prompt.map_or(0, str::len);
@@ -337,15 +380,19 @@ pub(crate) fn build_audit_record(
         .as_ref()
         .map(|r| r.fact_ids.clone())
         .unwrap_or_default();
-    let fact_ids_filtered = ctx.recall_result.as_ref().map_or_else(Vec::new, |r| {
-        r.filtered_facts
-            .iter()
-            .map(|fact| FilteredFact {
-                id: fact.id.clone(),
-                sensitivity: fact.sensitivity.as_str().to_owned(),
-            })
-            .collect()
-    });
+    let fact_ids_filtered = if options.include_filtered_ids {
+        ctx.recall_result.as_ref().map_or_else(Vec::new, |r| {
+            r.filtered_facts
+                .iter()
+                .map(|fact| FilteredFact {
+                    id: fact.id.clone(),
+                    sensitivity: fact.sensitivity.as_str().to_owned(),
+                })
+                .collect()
+        })
+    } else {
+        Vec::new()
+    };
 
     // WHY: token estimate uses the same per-message estimate the pipeline
     // already computed, plus the system-prompt byte length divided by a

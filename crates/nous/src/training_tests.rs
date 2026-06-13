@@ -77,6 +77,9 @@ fn training_capture_writes_jsonl() {
         recall_signals: None,
         tool_surface_hashes: Vec::new(),
         pii_redacted: false,
+        pii_filter_applied: false,
+        pii_redaction_count: 0,
+        pii_policy_ref: None,
     };
     capture.write_record(&record).expect("write");
 
@@ -119,6 +122,9 @@ fn training_capture_appends() {
             recall_signals: None,
             tool_surface_hashes: Vec::new(),
             pii_redacted: false,
+            pii_filter_applied: false,
+            pii_redaction_count: 0,
+            pii_policy_ref: None,
         };
         capture.write_record(&record).expect("write");
     }
@@ -159,6 +165,9 @@ fn shard_rotation_on_size_limit() {
             recall_signals: None,
             tool_surface_hashes: Vec::new(),
             pii_redacted: false,
+            pii_filter_applied: false,
+            pii_redaction_count: 0,
+            pii_policy_ref: None,
         };
         capture.write_record(&record).expect("write");
     }
@@ -538,10 +547,13 @@ fn pii_filter_redacts_user_message_when_enabled() {
     assert!(!parsed.user_message.contains("leaky@example.com"));
     assert!(parsed.user_message.contains("[REDACTED:email]"));
     assert!(parsed.pii_redacted);
+    assert!(parsed.pii_filter_applied);
+    assert_eq!(parsed.pii_redaction_count, 1);
+    assert_eq!(parsed.pii_policy_ref.as_deref(), Some(pii::POLICY_REF));
 }
 
 #[test]
-fn pii_filter_preserves_clean_content() {
+fn pii_filter_preserves_clean_content_with_screening_provenance() {
     let dir = tempfile::tempdir().expect("tempdir");
     let config = TrainingConfig {
         enabled: true,
@@ -564,6 +576,9 @@ fn pii_filter_preserves_clean_content() {
     let parsed: TrainingRecord =
         serde_json::from_str(content.lines().next().expect("line")).expect("parse");
     assert!(!parsed.pii_redacted);
+    assert!(parsed.pii_filter_applied);
+    assert_eq!(parsed.pii_redaction_count, 0);
+    assert_eq!(parsed.pii_policy_ref.as_deref(), Some(pii::POLICY_REF));
     assert_eq!(parsed.user_message, "tell me a joke");
 }
 
@@ -591,6 +606,36 @@ fn pii_filter_disabled_passes_through() {
         serde_json::from_str(content.lines().next().expect("line")).expect("parse");
     assert!(parsed.user_message.contains("risky@example.com"));
     assert!(!parsed.pii_redacted);
+    assert!(!parsed.pii_filter_applied);
+    assert_eq!(parsed.pii_redaction_count, 0);
+    assert!(parsed.pii_policy_ref.is_none());
+}
+
+#[test]
+fn pii_policy_ref_serializes_when_filter_applied() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = TrainingConfig {
+        enabled: true,
+        path: "training".to_owned(),
+        max_shard_bytes: 50 * 1024 * 1024,
+        pii_filter_enabled: true,
+        author_classifier_enabled: false,
+        author_classifier_threshold: 0.85,
+    };
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        user_message: "plain text",
+        assistant_response: "plain response",
+        ..good_input()
+    });
+    assert!(captured);
+
+    let content = std::fs::read_to_string(capture.file_path()).expect("read");
+    let line = content.lines().next().expect("line");
+    assert!(line.contains("\"pii_filter_applied\":true"));
+    assert!(line.contains("\"pii_redaction_count\":0"));
+    assert!(line.contains("\"pii_policy_ref\":\"nous-training-pii-v1\""));
 }
 
 // -- CaptureStopReason parsing ------------------------------------------------
@@ -648,6 +693,9 @@ fn training_record_serde_roundtrip() {
         recall_signals: None,
         tool_surface_hashes: Vec::new(),
         pii_redacted: false,
+        pii_filter_applied: false,
+        pii_redaction_count: 0,
+        pii_policy_ref: None,
     };
 
     let json = serde_json::to_string(&record).expect("serialize");

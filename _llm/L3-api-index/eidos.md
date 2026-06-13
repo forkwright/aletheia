@@ -1570,9 +1570,10 @@ pub struct TrainingConfig {
 
 > Current schema version for [`TrainingRecord`].
 > 
-> Bump this constant when the persisted record shape changes incompatibly.
+> Version 5 adds durable PII-screening provenance while preserving
+> deserialization defaults for older JSONL rows.
 ```rust
-pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 4;
+pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 5;
 ```
 
 ```rust
@@ -1677,14 +1678,30 @@ pub struct TrainingRecord {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_surface_hashes: Vec<String>,
 
-    /// Whether PII/secret redaction was applied to `user_message` and
-    /// `assistant_response` before persistence.
+    /// Whether `user_message` or `assistant_response` changed during
+    /// PII/secret redaction before persistence.
     ///
-    /// WHY persist as a field: downstream training jobs need to know
-    /// whether a record has been scrubbed so they can refuse to
-    /// re-process unredacted corpora if the redaction policy changes.
+    /// This is mutation status only. Use `pii_filter_applied` to distinguish
+    /// clean-but-screened rows from rows written without screening.
     #[serde(default, skip_serializing_if = "is_false")]
     pub pii_redacted: bool,
+    /// Whether the PII/secret filter evaluated this record before persistence.
+    ///
+    /// Downstream corpus readers can reject unscreened rows while accepting
+    /// clean rows that were checked by the configured policy.
+    #[serde(default)]
+    pub pii_filter_applied: bool,
+    /// Number of replacements made by the PII/secret filter.
+    ///
+    /// Zero means either the filter found no sensitive content or the row is
+    /// unscreened; `pii_filter_applied` disambiguates those cases.
+    #[serde(default)]
+    pub pii_redaction_count: u32,
+    /// Stable policy reference used for this screening pass.
+    ///
+    /// `None` for legacy rows and rows captured with the filter disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pii_policy_ref: Option<String>,
 }
 ```
 

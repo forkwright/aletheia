@@ -576,8 +576,12 @@ pub struct PromptAuditSettings {
     pub log_dir: Option<PathBuf>,
     /// Days to retain JSONL files before the daemon prunes them.
     pub retention_days: u32,
-    /// Whether the IDs of facts filtered by the sensitivity policy (#3404)
-    /// are included in each record. Default: `true`.
+    /// Whether the IDs and sensitivity labels of facts filtered by the
+    /// sensitivity policy (#3404) are included in each record. Default: `true`.
+    ///
+    /// Set to `false` to retain included fact IDs while writing an empty
+    /// `fact_ids_filtered` list, avoiding persistence of identifiers for facts
+    /// withheld from the prompt.
     pub include_filtered_ids: bool,
 }
 
