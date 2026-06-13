@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "ca0667914a7db2ebb321c41d2b8b78be5d7e57cde335aa7116cb2ed8e98b5b41"
+source_hash = "a2d33f7f72385014eae75f46380e0337b58461f29c4d65b0d20a3cef0c7217d0"
 l3_token_estimate = 167
 
 [[crates]]
@@ -68,14 +68,14 @@ l3_token_estimate = 2624
 [[crates]]
 name = "dokimion"
 path = "crates/eval"
-source_hash = "f52b0b5d044542d3eeb0bf8e3185373e0d6c9eeefe9a9891b9f1961f252ec117"
-l3_token_estimate = 8198
+source_hash = "443e502fd1681bf68cb2598f6cf1966d58e8f6cf6de9a1c5662e1e65dd4757b5"
+l3_token_estimate = 9985
 
 [[crates]]
 name = "eidos"
 path = "crates/eidos"
-source_hash = "87c77416bf821e6107ed73a027c6092149b193d760ac3743c3443226c32ac225"
-l3_token_estimate = 13338
+source_hash = "b1fef82c52706696e389c61ba365bb6a502c2034a98c6695ef60b2811d565771"
+l3_token_estimate = 13731
 
 [[crates]]
 name = "energeia"
@@ -110,7 +110,7 @@ l3_token_estimate = 13465
 [[crates]]
 name = "integration-tests"
 path = "crates/integration-tests"
-source_hash = "0a647e87af60920a507baeea71441b5c10910f215b436f5bca3c61491973cddc"
+source_hash = "b80a4c2f9fc9e6cd6d79aff277823c15daaf1af69644005320a50ddf384f3318"
 l3_token_estimate = 1170
 
 [[crates]]
@@ -152,8 +152,8 @@ l3_token_estimate = 34702
 [[crates]]
 name = "oikonomos"
 path = "crates/daemon"
-source_hash = "dcbf56653c5310cbdb292dcb3d2eb8f85ab244af5cf8ddbc57ddd332c8130493"
-l3_token_estimate = 12508
+source_hash = "0a82d708105fd2de54c0c5b0651be95c6474ec77a14880ebbc6c7ff1b03ae267"
+l3_token_estimate = 13906
 
 [[crates]]
 name = "organon"
@@ -272,8 +272,8 @@ l3_token_estimate = 19338
 [[crates]]
 name = "skene"
 path = "crates/theatron/skene"
-source_hash = "42235e724462fbb3a9e1acdee8b013cf75c05dee0b6bd8fb01be962ee92b5fa1"
-l3_token_estimate = 5424
+source_hash = "6afc27d09463ab102e7b6e8d76198e84041396961821670f9a96f332efdc4917"
+l3_token_estimate = 6186
 
 [[crates]]
 name = "symbolon"
@@ -290,8 +290,8 @@ l3_token_estimate = 24816
 [[crates]]
 name = "theatron"
 path = "crates/theatron"
-source_hash = "7f084edabe7f4df255335771517756c34811d36c31b6abce5b03128112052193"
-l3_token_estimate = 22337
+source_hash = "095b6690af59e0cb0fa134c46efb3afd07f3b85bfa761f37cddffa2c25fdaed0"
+l3_token_estimate = 23101
 
 [[crates]]
 name = "thesauros"
