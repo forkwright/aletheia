@@ -103,6 +103,15 @@ pub struct PackToolDef {
     /// Input parameter schema.
     #[serde(default)]
     pub input_schema: Option<PackInputSchema>,
+    /// Capability groups for tool gating. Defaults to `["command"]`.
+    #[serde(default)]
+    pub groups: Vec<String>,
+    /// Operational intent tags. Defaults to `["execute"]`.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Reversibility metadata. Defaults to `irreversible`.
+    #[serde(default)]
+    pub reversibility: Option<String>,
 }
 
 fn default_tool_timeout() -> u64 {
@@ -442,6 +451,9 @@ name = "query_redshift"
 description = "Execute read-only SQL against Redshift"
 command = "tools/query_redshift.sh"
 timeout = 60000
+groups = ["read"]
+tags = ["recon", "fetch"]
+reversibility = "fully_reversible"
 
 [tools.input_schema]
 required = ["sql"]
@@ -472,6 +484,12 @@ description = "Table name"
         assert_eq!(manifest.tools.len(), 2);
         assert_eq!(manifest.tools[0].name, "query_redshift");
         assert_eq!(manifest.tools[0].timeout, 60_000);
+        assert_eq!(manifest.tools[0].groups, vec!["read"]);
+        assert_eq!(manifest.tools[0].tags, vec!["recon", "fetch"]);
+        assert_eq!(
+            manifest.tools[0].reversibility.as_deref(),
+            Some("fully_reversible")
+        );
         assert!(manifest.tools[0].input_schema.is_some());
         let schema = manifest.tools[0].input_schema.as_ref().unwrap();
         assert_eq!(schema.required, vec!["sql"]);
@@ -506,11 +524,17 @@ description = "Table name"
                 )]),
                 required: vec!["query".to_owned()],
             }),
+            groups: vec!["read".to_owned()],
+            tags: vec!["recon".to_owned()],
+            reversibility: Some("fully_reversible".to_owned()),
         };
         let json = serde_json::to_string(&tool).unwrap();
         let back: PackToolDef = serde_json::from_str(&json).unwrap();
         assert_eq!(back.name, "test_tool");
         assert_eq!(back.timeout, 45_000);
+        assert_eq!(back.groups, vec!["read"]);
+        assert_eq!(back.tags, vec!["recon"]);
+        assert_eq!(back.reversibility.as_deref(), Some("fully_reversible"));
         assert_eq!(
             back.input_schema.unwrap().properties["query"].property_type,
             "string"

@@ -38,6 +38,27 @@ fn make_executable(dir: &TempDir, path: &str) {
     fs::set_permissions(&full, perms).expect("set executable permissions");
 }
 
+fn test_runner() -> SubprocessRunner {
+    SubprocessRunner::new(organon::sandbox::SandboxConfig {
+        enabled: false,
+        nproc_limit: 4096,
+        ..organon::sandbox::SandboxConfig::default()
+    })
+}
+
+fn test_ctx(dir: &TempDir) -> ToolContext {
+    ToolContext {
+        nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
+        session_id: koina::id::SessionId::new(),
+        turn_number: 0,
+        workspace: dir.path().to_path_buf(),
+        allowed_roots: vec![],
+        services: None,
+        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
+    }
+}
+
 fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
     LoadedPack {
         manifest: PackManifest {
@@ -50,6 +71,19 @@ fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
         },
         sections: vec![],
         root: dir.path().to_path_buf(),
+    }
+}
+
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct EnvCleanup;
+
+impl Drop for EnvCleanup {
+    #[expect(unsafe_code, reason = "test serializes process environment mutation")]
+    fn drop(&mut self) {
+        unsafe {
+            std::env::remove_var("ALETHEIA_TOKEN");
+        }
     }
 }
 
@@ -170,6 +204,9 @@ fn register_pack_tools_success() {
         command: "tools/echo.sh".to_owned(),
         timeout: 5000,
         input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -179,6 +216,66 @@ fn register_pack_tools_success() {
     assert_eq!(registry.definitions().len(), 1);
     assert_eq!(registry.definitions()[0].name.as_str(), "echo_tool");
     assert_eq!(registry.definitions()[0].category, ToolCategory::Domain);
+    assert_eq!(registry.definitions()[0].groups, vec![ToolGroupId::Command]);
+    assert_eq!(registry.definitions()[0].tags, vec![ToolTag::Execute]);
+    assert_eq!(
+        registry.definitions()[0].reversibility,
+        Reversibility::Irreversible
+    );
+}
+
+#[test]
+fn register_pack_tools_applies_declared_capability_metadata() {
+    let dir = setup_pack_dir(&[("tools/read.sh", "#!/bin/sh\necho ok")]);
+    make_executable(&dir, "tools/read.sh");
+
+    let tool = PackToolDef {
+        name: "read_tool".to_owned(),
+        description: "Read tool".to_owned(),
+        command: "tools/read.sh".to_owned(),
+        timeout: 5000,
+        input_schema: None,
+        groups: vec!["read".to_owned()],
+        tags: vec!["recon".to_owned(), "fetch".to_owned()],
+        reversibility: Some("fully_reversible".to_owned()),
+    };
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let errors = register_pack_tools(&[pack], &mut registry);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let def = &registry.definitions()[0];
+    assert_eq!(def.groups, vec![ToolGroupId::Read]);
+    assert_eq!(def.tags, vec![ToolTag::Recon, ToolTag::Fetch]);
+    assert_eq!(def.reversibility, Reversibility::FullyReversible);
+}
+
+#[test]
+fn register_pack_tools_rejects_unknown_capability_metadata() {
+    let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
+    make_executable(&dir, "tools/test.sh");
+
+    let tool = PackToolDef {
+        name: "bad_group".to_owned(),
+        description: "Bad group".to_owned(),
+        command: "tools/test.sh".to_owned(),
+        timeout: 5000,
+        input_schema: None,
+        groups: vec!["superuser".to_owned()],
+        tags: Vec::new(),
+        reversibility: None,
+    };
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let errors = register_pack_tools(&[pack], &mut registry);
+    assert_eq!(errors.len(), 1);
+    assert!(
+        errors[0].to_string().contains("unknown tool group"),
+        "unexpected error: {}",
+        errors[0]
+    );
+    assert!(registry.definitions().is_empty());
 }
 
 #[test]
@@ -190,6 +287,9 @@ fn register_pack_tools_skips_missing_command() {
         command: "tools/nonexistent.sh".to_owned(),
         timeout: 5000,
         input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -219,6 +319,9 @@ fn register_pack_tools_skips_bad_schema() {
             )]),
             required: vec![],
         }),
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -240,6 +343,7 @@ async fn shell_executor_runs_script() {
             .canonicalize()
             .expect("canonicalize echo.sh path"),
         pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
         timeout_ms: 5000,
     };
 
@@ -283,6 +387,7 @@ async fn shell_executor_nonzero_exit_is_error() {
             .canonicalize()
             .expect("canonicalize fail.sh path"),
         pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
         timeout_ms: 5000,
     };
 
@@ -309,6 +414,86 @@ async fn shell_executor_nonzero_exit_is_error() {
     assert!(result.is_error);
 }
 
+#[tokio::test]
+async fn shell_executor_keeps_stderr_out_of_llm_visible_result() {
+    let dir = setup_pack_dir(&[(
+        "tools/fail.sh",
+        "#!/bin/sh\necho stdout-only\necho 'SECRET_TOKEN /home/alice/private' >&2\nexit 1",
+    )]);
+    make_executable(&dir, "tools/fail.sh");
+
+    let executor = ShellToolExecutor {
+        command_path: dir
+            .path()
+            .join("tools/fail.sh")
+            .canonicalize()
+            .expect("canonicalize fail.sh path"),
+        pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
+        timeout_ms: 5000,
+    };
+    let input = ToolInput {
+        name: ToolName::new("fail_tool").expect("fail_tool is a valid tool name"),
+        tool_use_id: "toolu_stderr".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+
+    let result = executor
+        .execute(&input, &test_ctx(&dir))
+        .await
+        .expect("executor should return result");
+    assert!(result.is_error);
+    let text = result.content.text_summary();
+    assert!(text.contains("stdout-only"));
+    assert!(!text.contains("SECRET_TOKEN"));
+    assert!(!text.contains("/home/alice/private"));
+    let diagnostics = result.diagnostics.expect("diagnostics should be present");
+    assert!(diagnostics.stderr.is_none());
+}
+
+#[test]
+#[expect(unsafe_code, reason = "test serializes process environment mutation")]
+fn shell_executor_clears_sensitive_parent_environment() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    unsafe {
+        std::env::set_var("ALETHEIA_TOKEN", "SECRET_TOKEN");
+    }
+    let _cleanup = EnvCleanup;
+
+    let dir = setup_pack_dir(&[(
+        "tools/env.sh",
+        "#!/bin/sh\nprintf '%s' \"${ALETHEIA_TOKEN-unset}\"",
+    )]);
+    make_executable(&dir, "tools/env.sh");
+
+    let executor = ShellToolExecutor {
+        command_path: dir
+            .path()
+            .join("tools/env.sh")
+            .canonicalize()
+            .expect("canonicalize env.sh path"),
+        pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
+        timeout_ms: 5000,
+    };
+    let input = ToolInput {
+        name: ToolName::new("env_tool").expect("env_tool is a valid tool name"),
+        tool_use_id: "toolu_env_strip".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let ctx = test_ctx(&dir);
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let result = runtime
+        .block_on(executor.execute(&input, &ctx))
+        .expect("executor should return result");
+    assert!(!result.is_error);
+    assert_eq!(result.content.text_summary(), "unset");
+}
+
 #[test]
 fn register_empty_packs() {
     let mut registry = ToolRegistry::new();
@@ -328,6 +513,9 @@ fn error_count_per_pack_not_cumulative() {
             command: "tools/nonexistent.sh".to_owned(),
             timeout: 5000,
             input_schema: None,
+            groups: Vec::new(),
+            tags: Vec::new(),
+            reversibility: None,
         }],
     );
 
@@ -341,6 +529,9 @@ fn error_count_per_pack_not_cumulative() {
             command: "tools/ok.sh".to_owned(),
             timeout: 5000,
             input_schema: None,
+            groups: Vec::new(),
+            tags: Vec::new(),
+            reversibility: None,
         }],
     );
 
@@ -372,6 +563,7 @@ async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
             .canonicalize()
             .expect("canonicalize cat.sh path"),
         pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
         timeout_ms: 5000,
     };
 
@@ -466,6 +658,7 @@ async fn shell_executor_does_not_expand_env_vars_in_arguments() {
             .canonicalize()
             .expect("canonicalize cat.sh path"),
         pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
         timeout_ms: 5000,
     };
 
@@ -510,6 +703,7 @@ async fn shell_executor_timeout_returns_error() {
             .canonicalize()
             .expect("canonicalize slow.sh path"),
         pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
         timeout_ms: 100,
     };
 
@@ -552,6 +746,7 @@ async fn shell_executor_records_nonzero_duration() {
             .canonicalize()
             .expect("canonicalize sleep.sh path"),
         pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
         timeout_ms: 5000,
     };
 
@@ -603,6 +798,7 @@ async fn shell_executor_truncates_at_char_boundary() {
             .canonicalize()
             .expect("canonicalize multibyte.sh path"),
         pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
         timeout_ms: 5000,
     };
 

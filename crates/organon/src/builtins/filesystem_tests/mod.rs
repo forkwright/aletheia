@@ -32,3 +32,19 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
         arguments: args,
     }
 }
+
+fn test_sandbox() -> crate::sandbox::SandboxConfig {
+    crate::sandbox::SandboxConfig {
+        enabled: false,
+        nproc_limit: 4096,
+        ..crate::sandbox::SandboxConfig::default()
+    }
+}
+
+fn grep_executor() -> GrepExecutor {
+    GrepExecutor::new(crate::subprocess::SubprocessRunner::new(test_sandbox()))
+}
+
+fn find_executor() -> FindExecutor {
+    FindExecutor::new(crate::subprocess::SubprocessRunner::new(test_sandbox()))
+}

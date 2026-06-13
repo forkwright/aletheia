@@ -39,7 +39,7 @@ use crate::error::Result;
 
 mod tool_registry;
 
-pub(super) use tool_registry::build_tool_registry;
+pub(super) use tool_registry::{build_tool_registry, sandbox_config};
 
 #[expect(
     clippy::too_many_lines,

@@ -690,7 +690,7 @@ output_cost_per_mtok = 75.0
 
 ## packs
 
-Array of filesystem paths to external domain packs. Each path should be a directory containing `pack.toml`. See [PACKS.md](PACKS.md).
+Array of filesystem paths to external domain packs. Each path should be a directory containing `pack.toml`. Relative paths resolve from the instance root (`$ALETHEIA_ROOT` or `./instance`); absolute paths are used as-is. See [PACKS.md](PACKS.md).
 
 ```toml
 packs = [

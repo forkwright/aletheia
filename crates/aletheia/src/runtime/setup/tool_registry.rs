@@ -56,27 +56,7 @@ pub(in crate::runtime) fn build_tool_registry(
     after_action_log_dir: Option<std::path::PathBuf>,
 ) -> Result<BuiltToolRegistry> {
     let mut registry = ToolRegistry::new();
-    let sandbox_settings = &config.sandbox;
-    let sandbox = organon::sandbox::SandboxConfig {
-        enabled: sandbox_settings.enabled,
-        enforcement: match sandbox_settings.enforcement {
-            taxis::config::SandboxEnforcementMode::Enforcing => {
-                organon::sandbox::SandboxEnforcement::Enforcing
-            }
-            _ => organon::sandbox::SandboxEnforcement::Permissive,
-        },
-        allowed_root: sandbox_settings.allowed_root.clone(),
-        extra_read_paths: sandbox_settings.extra_read_paths.clone(),
-        extra_write_paths: sandbox_settings.extra_write_paths.clone(),
-        extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
-        egress: match sandbox_settings.egress {
-            taxis::config::EgressPolicy::Deny => organon::sandbox::EgressPolicy::Deny,
-            taxis::config::EgressPolicy::Allowlist => organon::sandbox::EgressPolicy::Allowlist,
-            _ => organon::sandbox::EgressPolicy::Allow,
-        },
-        egress_allowlist: sandbox_settings.egress_allowlist.clone(),
-        nproc_limit: sandbox_settings.nproc_limit,
-    };
+    let sandbox = sandbox_config(config);
     #[cfg(feature = "energeia")]
     let energeia_services = register_builtin_tools(
         &mut registry,
@@ -101,6 +81,32 @@ pub(in crate::runtime) fn build_tool_registry(
         #[cfg(feature = "energeia")]
         energeia_services,
     })
+}
+
+pub(in crate::runtime) fn sandbox_config(
+    config: &AletheiaConfig,
+) -> organon::sandbox::SandboxConfig {
+    let sandbox_settings = &config.sandbox;
+    organon::sandbox::SandboxConfig {
+        enabled: sandbox_settings.enabled,
+        enforcement: match sandbox_settings.enforcement {
+            taxis::config::SandboxEnforcementMode::Enforcing => {
+                organon::sandbox::SandboxEnforcement::Enforcing
+            }
+            _ => organon::sandbox::SandboxEnforcement::Permissive,
+        },
+        allowed_root: sandbox_settings.allowed_root.clone(),
+        extra_read_paths: sandbox_settings.extra_read_paths.clone(),
+        extra_write_paths: sandbox_settings.extra_write_paths.clone(),
+        extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
+        egress: match sandbox_settings.egress {
+            taxis::config::EgressPolicy::Deny => organon::sandbox::EgressPolicy::Deny,
+            taxis::config::EgressPolicy::Allowlist => organon::sandbox::EgressPolicy::Allowlist,
+            _ => organon::sandbox::EgressPolicy::Allow,
+        },
+        egress_allowlist: sandbox_settings.egress_allowlist.clone(),
+        nproc_limit: sandbox_settings.nproc_limit,
+    }
 }
 
 #[cfg(feature = "energeia")]

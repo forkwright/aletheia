@@ -82,6 +82,11 @@ pub fn register_all (registry: &mut ToolRegistry) -> Result<()>
 >    cycle (the registry owns the `tool_schema` executor, which cannot safely
 >    hold a back-reference to the same registry).
 > 
+> Callers that register additional tools after this function (for example
+> domain packs or external HTTP/MCP tools) should call
+> [`ToolRegistry::finalize_tool_schema`] to refresh the snapshot with the
+> complete tool set.
+> 
 > # Errors
 > 
 > Returns an error if any built-in tool name collides with an
@@ -204,6 +209,20 @@ pub enum Error {
         tool: String,
         allowed: Vec<crate::types::ToolGroupId>,
         tool_groups: Vec<crate::types::ToolGroupId>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// `tool_schema` has not been registered yet.
+    #[snafu(display("tool_schema is not registered"))]
+    ToolSchemaNotRegistered {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Lock guarding the `tool_schema` snapshot was poisoned.
+    #[snafu(display("tool_schema snapshot lock poisoned"))]
+    SchemaSnapshotPoisoned {
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -669,6 +688,9 @@ pub trait ToolExecutor : Send + Sync {
 pub struct ToolRegistry {
     // kanon:ignore RUST/pub-visibility
     tools: IndexMap<ToolName, RegisteredTool>,
+    /// Snapshot state for the `tool_schema` meta-tool.  `None` until
+    /// `tool_schema` is registered.
+    tool_schema_snapshot: Option<ToolSchemaSnapshot>,
 }
 ```
 
@@ -757,6 +779,7 @@ impl ToolRegistry {
         dry_run: bool,
     ) -> Result<ToolCallMetadata>;
     pub fn lazy_tool_catalog (&self) -> Vec<(ToolName, String)>;
+    pub fn finalize_tool_schema (&mut self) -> Result<()>;
     pub fn is_daemon_safe (&self, name: &ToolName) -> bool;
     pub fn daemon_safe_tools (&self) -> Vec<&ToolDef>;
 }
@@ -879,6 +902,83 @@ pub fn apply_sandbox (
     _cmd: &mut std::process::Command,
     policy: SandboxPolicy,
 ) -> std::io::Result<()>
+```
+
+## `src/subprocess.rs`
+
+```rust
+pub struct SubprocessRequest {
+    program: OsString,
+    args: Vec<OsString>,
+    current_dir: PathBuf,
+    stdin: Option<Vec<u8>>,
+    timeout: Duration,
+    max_output_bytes: usize,
+    extra_read_paths: Vec<PathBuf>,
+    extra_write_paths: Vec<PathBuf>,
+    extra_exec_paths: Vec<PathBuf>,
+}
+```
+
+```rust
+impl SubprocessRequest {
+    pub fn new (program: impl Into<OsString>, current_dir: impl Into<PathBuf>) -> Self;
+    pub fn arg (mut self, arg: impl Into<OsString>) -> Self;
+    pub fn args <I, S> (mut self, args: I) -> Self where
+        I: IntoIterator<Item = S>,
+        S: Into<OsString>,;
+    pub fn stdin_bytes (mut self, stdin: impl Into<Vec<u8>>) -> Self;
+    pub fn timeout (mut self, timeout: Duration) -> Self;
+    pub fn max_output_bytes (mut self, max_output_bytes: usize) -> Self;
+    pub fn allow_read_path (mut self, path: impl Into<PathBuf>) -> Self;
+    pub fn allow_write_path (mut self, path: impl Into<PathBuf>) -> Self;
+    pub fn allow_exec_path (mut self, path: impl Into<PathBuf>) -> Self;
+}
+```
+
+```rust
+pub struct SubprocessOutput {
+    /// Process exit code, or `-1` when the platform did not provide one.
+    pub exit_code: i32,
+    /// Captured stdout, bounded by the request limit.
+    pub stdout: String,
+    /// Captured stderr, bounded by the request limit.
+    pub stderr: String,
+    /// Wall-clock duration of the subprocess.
+    pub duration: Duration,
+}
+```
+
+```rust
+pub enum SubprocessError {
+    /// Sandbox setup failed before the process was spawned.
+    SandboxSetup(std::io::Error),
+    /// Process spawn failed.
+    Spawn(std::io::Error),
+    /// Writing stdin failed.
+    Stdin(std::io::Error),
+    /// Waiting for the process failed.
+    Wait(std::io::Error),
+    /// The process exceeded its wall-clock timeout.
+    Timeout(Duration),
+}
+```
+
+```rust
+pub struct SubprocessRunner {
+    sandbox: SandboxConfig,
+}
+```
+
+```rust
+impl SubprocessRunner {
+    pub fn new (sandbox: SandboxConfig) -> Self;
+    pub fn run (
+        &self,
+        request: SubprocessRequest,
+        ctx: &ToolContext,
+    ) -> Result<SubprocessOutput, SubprocessError>;
+}
 ```
 
 ## `src/testing.rs`

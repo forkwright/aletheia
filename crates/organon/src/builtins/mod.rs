@@ -104,6 +104,11 @@ pub fn register_all(registry: &mut ToolRegistry) -> Result<()> {
 ///    cycle (the registry owns the `tool_schema` executor, which cannot safely
 ///    hold a back-reference to the same registry).
 ///
+/// Callers that register additional tools after this function (for example
+/// domain packs or external HTTP/MCP tools) should call
+/// [`ToolRegistry::finalize_tool_schema`] to refresh the snapshot with the
+/// complete tool set.
+///
 /// # Errors
 ///
 /// Returns an error if any built-in tool name collides with an
@@ -203,12 +208,12 @@ pub(crate) fn register_domain_tools(
     #[cfg(feature = "computer-use")]
     computer_use::register(registry, &sandbox)?;
 
-    workspace::register(registry, sandbox)?;
+    workspace::register(registry, sandbox.clone())?;
     memory::register(registry)?;
     communication::register(registry)?;
-    filesystem::register(registry)?;
+    filesystem::register_with_sandbox(registry, sandbox.clone())?;
     fs_ops::register(registry)?;
-    git_ops::register(registry)?;
+    git_ops::register_with_sandbox(registry, sandbox)?;
     http_client::register(registry)?;
     view_file::register(registry)?;
     agent::register(registry)?;

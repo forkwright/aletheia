@@ -20,7 +20,7 @@ l3_token_estimate = 5778
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "a2d33f7f72385014eae75f46380e0337b58461f29c4d65b0d20a3cef0c7217d0"
+source_hash = "ee71b7cfcfa0f417fde0d562c9eba5659caa5dd5adcc676e238b42dae5e38c86"
 l3_token_estimate = 167
 
 [[crates]]
@@ -158,8 +158,8 @@ l3_token_estimate = 13906
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "657b6708c9ed381d7248fcc78009483313d70d1ba3457e938d60963d48db9970"
-l3_token_estimate = 12871
+source_hash = "df2d99ade7839f6f4398a399a65e9dd0f9f696867cde75485e4e8a62065d3159"
+l3_token_estimate = 13625
 
 [[crates]]
 name = "poiesis-charts"
@@ -296,5 +296,5 @@ l3_token_estimate = 23101
 [[crates]]
 name = "thesauros"
 path = "crates/thesauros"
-source_hash = "b721527439f4ccac128a15f76f285d0801b1a38020db34d1284441b1806d66ff"
-l3_token_estimate = 2194
+source_hash = "a8a97100041ce8cfd4f8906798e11a03d6665eedb0fb7e44d48005f81f6d4941"
+l3_token_estimate = 2387

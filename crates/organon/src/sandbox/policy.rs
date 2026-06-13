@@ -22,6 +22,41 @@ use std::path::PathBuf;
 
 use super::config::{EgressPolicy, SandboxEnforcement, SandboxPolicy};
 
+/// Status of a sandbox guarantee for operator diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GuaranteeStatus {
+    /// The guarantee is enforced for this execution.
+    Active,
+    /// The guarantee is requested but cannot be fully enforced; execution continues.
+    Degraded,
+    /// The guarantee is requested but unavailable; enforcing mode blocks execution.
+    Unavailable,
+    /// The guarantee was not requested (e.g., egress=allow).
+    Unrestricted,
+}
+
+impl std::fmt::Display for GuaranteeStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Active => write!(f, "active"),
+            Self::Degraded => write!(f, "degraded"),
+            Self::Unavailable => write!(f, "unavailable"),
+            Self::Unrestricted => write!(f, "unrestricted"),
+        }
+    }
+}
+
+/// Per-guarantee status for a sandbox policy.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SandboxGuarantees {
+    /// Filesystem access restriction via Landlock.
+    pub(crate) landlock: GuaranteeStatus,
+    /// Dangerous syscall blocking via seccomp.
+    pub(crate) seccomp: GuaranteeStatus,
+    /// Network egress restriction.
+    pub(crate) egress: GuaranteeStatus,
+}
+
 /// Check whether an IP address is loopback.
 fn is_loopback(addr: &IpAddr) -> bool {
     match addr {
@@ -50,10 +85,27 @@ impl SandboxPolicy {
     /// on failure; on unsupported kernels, logs and continues based on
     /// enforcement mode.
     pub(crate) fn apply(&self) -> std::io::Result<()> {
-        self.apply_egress()?;
-        self.apply_landlock()?;
-        self.apply_seccomp()?;
+        self.apply_egress()
+            .or_else(|e| self.degrade_or_fail("egress", &e))?;
+        self.apply_landlock()
+            .or_else(|e| self.degrade_or_fail("landlock", &e))?;
+        self.apply_seccomp()
+            .or_else(|e| self.degrade_or_fail("seccomp", &e))?;
         Ok(())
+    }
+
+    fn degrade_or_fail(
+        &self,
+        guarantee: &'static str,
+        err: &std::io::Error,
+    ) -> std::io::Result<()> {
+        if self.enforcement == SandboxEnforcement::Permissive {
+            Ok(())
+        } else {
+            Err(std::io::Error::other(format!(
+                "{guarantee} sandbox setup failed: {err}"
+            )))
+        }
     }
 
     /// Apply network egress restrictions via Linux network namespaces.
@@ -141,7 +193,15 @@ impl SandboxPolicy {
             ],
         )]);
 
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         let arch = target_arch();
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let arch = {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "seccomp target architecture unsupported",
+            ));
+        };
         let filter = SeccompFilter::new(
             rules,
             SeccompAction::Allow,
@@ -298,7 +358,15 @@ impl SandboxPolicy {
             SeccompAction::Errno(1u32 /* EPERM */)
         };
 
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         let arch = target_arch();
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let arch = {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "seccomp target architecture unsupported",
+            ));
+        };
 
         let filter = SeccompFilter::new(rules, SeccompAction::Allow, action, arch)
             .map_err(|e| std::io::Error::other(format!("seccomp filter creation failed: {e}")))?;
@@ -322,7 +390,10 @@ impl SandboxPolicy {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn target_arch() -> seccompiler::TargetArch {
     #[cfg(target_arch = "x86_64")]
     {
@@ -343,12 +414,72 @@ fn target_arch() -> seccompiler::TargetArch {
 static LANDLOCK_ABI: std::sync::LazyLock<Option<i32>> = std::sync::LazyLock::new(|| {
     let abi = probe_landlock_abi();
     if let Some(v) = abi {
-        tracing::info!(landlock_abi = v, "Landlock ABI v{v} available");
+        tracing::debug!(landlock_abi = v, "Landlock ABI v{v} available");
     } else {
-        tracing::info!("Landlock not available on this kernel");
+        tracing::debug!("Landlock not available on this kernel");
     }
     abi
 });
+
+/// Probe the status of each sandbox guarantee for the given policy.
+///
+/// Returns a snapshot suitable for operator diagnostics. The result reflects
+/// kernel capabilities and platform support; it does not guarantee that every
+/// child-side mechanism will succeed at runtime.
+#[cfg(target_os = "linux")]
+#[must_use]
+fn probe_guarantees(policy: &SandboxPolicy) -> SandboxGuarantees {
+    let landlock = match *LANDLOCK_ABI {
+        Some(_) => GuaranteeStatus::Active,
+        None => {
+            if policy.enforcement == SandboxEnforcement::Enforcing {
+                GuaranteeStatus::Unavailable
+            } else {
+                GuaranteeStatus::Degraded
+            }
+        }
+    };
+    let seccomp = seccomp_guarantee_status(policy);
+    let egress = match policy.egress {
+        EgressPolicy::Allow => GuaranteeStatus::Unrestricted,
+        _ => seccomp,
+    };
+    SandboxGuarantees {
+        landlock,
+        seccomp,
+        egress,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+#[must_use]
+fn probe_guarantees(policy: &SandboxPolicy) -> SandboxGuarantees {
+    let status = if policy.enforcement == SandboxEnforcement::Enforcing {
+        GuaranteeStatus::Unavailable
+    } else {
+        GuaranteeStatus::Degraded
+    };
+    SandboxGuarantees {
+        landlock: status,
+        seccomp: status,
+        egress: match policy.egress {
+            EgressPolicy::Allow => GuaranteeStatus::Unrestricted,
+            _ => status,
+        },
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[must_use]
+fn seccomp_guarantee_status(policy: &SandboxPolicy) -> GuaranteeStatus {
+    if cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+        GuaranteeStatus::Active
+    } else if policy.enforcement == SandboxEnforcement::Enforcing {
+        GuaranteeStatus::Unavailable
+    } else {
+        GuaranteeStatus::Degraded
+    }
+}
 
 /// Probe the kernel for the highest Landlock ABI version it supports.
 ///
@@ -373,22 +504,37 @@ pub fn probe_landlock_abi() -> Option<i32> {
     // ABI probe pattern. The kernel does not dereference the pointer for this call.
     #[expect(unsafe_code, reason = "inline asm syscall to probe Landlock ABI")]
     let ret: isize = unsafe {
-        let r: isize;
         #[cfg(target_arch = "x86_64")]
-        core::arch::asm!(
-            "syscall",
-            inlateout("rax") 444isize => r, // SYS_landlock_create_ruleset
-            in("rdi") 0usize,               // null ruleset
-            in("rsi") 0usize,               // size 0
-            in("rdx") LANDLOCK_CREATE_RULESET_VERSION,
-            lateout("rcx") _,
-            lateout("r11") _,
-        );
-        #[cfg(not(target_arch = "x86_64"))]
         {
-            r = -1; // NOTE: landlock only probed on x86_64 for now
+            let r: isize;
+            core::arch::asm!(
+                "syscall",
+                inlateout("rax") 444isize => r, // SYS_landlock_create_ruleset
+                in("rdi") 0usize,                // null ruleset
+                in("rsi") 0usize,                // size 0
+                in("rdx") LANDLOCK_CREATE_RULESET_VERSION,
+                lateout("rcx") _,
+                lateout("r11") _,
+            );
+            r
         }
-        r
+        #[cfg(target_arch = "aarch64")]
+        {
+            let mut x0: usize = 0;
+            core::arch::asm!(
+                "svc 0",
+                in("x8") 444usize, // SYS_landlock_create_ruleset
+                inlateout("x0") 0usize => x0,
+                in("x1") 0usize,
+                in("x2") LANDLOCK_CREATE_RULESET_VERSION,
+                options(nostack, preserves_flags)
+            );
+            x0 as isize
+        }
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            -1isize
+        }
     };
     if ret >= 1 {
         i32::try_from(ret).ok()
@@ -404,65 +550,20 @@ pub fn probe_landlock_abi() -> Option<i32> {
     None
 }
 
-/// Apply sandbox restrictions to a [`std::process::Command`] via `pre_exec`.
-///
-/// Returns an error if enforcement is strict and Landlock is unavailable or
-/// the kernel ABI is incompatible. Logs a warning and skips sandbox setup
-/// when enforcement is permissive and Landlock is unavailable.
-///
-/// # Errors
-///
-/// Returns `Err` when `enforcement == Enforcing` and Landlock is not available
-/// on the running kernel, naming the ABI mismatch so the error is actionable.
-///
-/// # Safety
-///
-/// This uses [`std::os::unix::process::CommandExt::pre_exec`] which runs
-/// between fork and exec in the child process. The underlying Landlock and
-/// seccomp syscalls are async-signal-safe, but the crate wrappers perform
-/// heap allocations. See the inline `SAFETY` and `WARNING` comments for the
-/// full risk analysis.
 #[cfg(target_os = "linux")]
-pub fn apply_sandbox(
-    // kanon:ignore RUST/pub-visibility
-    cmd: &mut std::process::Command,
-    policy: SandboxPolicy,
-) -> std::io::Result<()> {
-    use std::os::unix::process::CommandExt;
-
-    if !policy.enabled {
-        // WHY: Log when sandbox is completely disabled so operators see it clearly.
-        tracing::warn!("sandbox disabled: tool execution runs without any restrictions");
-        return Ok(());
-    }
-
-    // WHY: LANDLOCK_ABI initializes on first access, logging the result once.
-    // Re-probing on every call is unnecessary; the kernel ABI is stable.
-    let kernel_abi = *LANDLOCK_ABI;
-
-    match (kernel_abi, policy.enforcement) {
-        (None, SandboxEnforcement::Permissive) => {
-            // WHY: Log in the parent process where tracing infrastructure is live.
-            // The pre_exec closure runs post-fork in a signal-handler context where
-            // logging is not safe.
+fn warn_sandbox_degradation(guarantees: SandboxGuarantees, policy: &SandboxPolicy) {
+    match (guarantees.landlock, policy.enforcement) {
+        (GuaranteeStatus::Degraded, SandboxEnforcement::Permissive) => {
+            // WHY: pre_exec cannot safely log; warn in the parent where tracing works.
             tracing::warn!(
                 enforcement = "permissive",
-                "Landlock unavailable, sandboxing disabled (enforcement=permissive); \
+                "Landlock unavailable, filesystem sandbox degraded; \
                  set enforcement=enforcing and ensure kernel supports Landlock (5.13+)"
             );
-            return Ok(());
         }
-        (None, SandboxEnforcement::Enforcing) => {
-            return Err(std::io::Error::other(
-                "Landlock not available on this kernel (ABI probe returned none); \
-                 tool execution blocked by strict sandbox enforcement. \
-                 Set enforcement=permissive to run without sandboxing.",
-            ));
-        }
-        // WHY: Warn ONCE per process (not per call, which spams the log) when
-        // Landlock is available but enforcement is permissive, so operators know
-        // syscall violations are only logged, not blocked.
-        (Some(_), SandboxEnforcement::Permissive) => {
+        // WHY: Warn ONCE per process when Landlock is available but enforcement is permissive,
+        // so operators know syscall violations are only logged, not blocked.
+        (GuaranteeStatus::Active, SandboxEnforcement::Permissive) => {
             use std::sync::atomic::{AtomicBool, Ordering};
             static WARNED: AtomicBool = AtomicBool::new(false);
             if !WARNED.swap(true, Ordering::Relaxed) {
@@ -473,10 +574,26 @@ pub fn apply_sandbox(
                 );
             }
         }
-        // NOTE: Landlock ABI available and enforcement=enforcing, proceed with sandbox setup
-        (Some(_), SandboxEnforcement::Enforcing) => {}
+        _ => {}
     }
+    if guarantees.seccomp == GuaranteeStatus::Degraded {
+        tracing::warn!(
+            enforcement = "permissive",
+            "seccomp unavailable on this architecture; syscall sandbox degraded"
+        );
+    }
+    if guarantees.egress == GuaranteeStatus::Degraded {
+        tracing::warn!(
+            enforcement = "permissive",
+            egress = ?policy.egress,
+            "egress filtering degraded on this architecture"
+        );
+    }
+    warn_egress_policy(policy);
+}
 
+#[cfg(target_os = "linux")]
+fn warn_egress_policy(policy: &SandboxPolicy) {
     // WHY: Log egress policy warnings in the parent where tracing works.
     // The pre_exec closure cannot safely use tracing.
     match policy.egress {
@@ -503,6 +620,75 @@ pub fn apply_sandbox(
         }
         EgressPolicy::Allow => {}
     }
+}
+
+/// Apply sandbox restrictions to a [`std::process::Command`] via `pre_exec`.
+///
+/// Returns an error if enforcement is enforcing and a requested sandbox
+/// guarantee cannot be provided. Logs guarantee status and degrades safely
+/// when enforcement is permissive.
+///
+/// # Errors
+///
+/// Returns `Err` when `enforcement == Enforcing` and a guarantee (Landlock,
+/// seccomp, or egress filtering) is unavailable on the running kernel or
+/// platform.
+///
+/// # Safety
+///
+/// This uses [`std::os::unix::process::CommandExt::pre_exec`] which runs
+/// between fork and exec in the child process. The underlying Landlock and
+/// seccomp syscalls are async-signal-safe, but the crate wrappers perform
+/// heap allocations. See the inline `SAFETY` and `WARNING` comments for the
+/// full risk analysis.
+#[cfg(target_os = "linux")]
+pub fn apply_sandbox(
+    // kanon:ignore RUST/pub-visibility
+    cmd: &mut std::process::Command,
+    policy: SandboxPolicy,
+) -> std::io::Result<()> {
+    use std::os::unix::process::CommandExt;
+
+    if !policy.enabled {
+        // WHY: Log when sandbox is completely disabled so operators see it clearly.
+        tracing::warn!("sandbox disabled: tool execution runs without any restrictions");
+        return Ok(());
+    }
+
+    let guarantees = probe_guarantees(&policy);
+    tracing::info!(
+        landlock = %guarantees.landlock,
+        seccomp = %guarantees.seccomp,
+        egress = %guarantees.egress,
+        enforcement = ?policy.enforcement,
+        "sandbox guarantees"
+    );
+
+    if policy.enforcement == SandboxEnforcement::Enforcing {
+        if guarantees.landlock == GuaranteeStatus::Unavailable {
+            return Err(std::io::Error::other(
+                "Landlock not available on this kernel (ABI probe returned none); \
+                 tool execution blocked by enforcing sandbox. \
+                 Set enforcement=permissive to run without sandboxing.",
+            ));
+        }
+        if guarantees.seccomp == GuaranteeStatus::Unavailable {
+            return Err(std::io::Error::other(
+                "seccomp target architecture unsupported; \
+                 tool execution blocked by enforcing sandbox. \
+                 Set enforcement=permissive to run without syscall sandboxing.",
+            ));
+        }
+        if guarantees.egress == GuaranteeStatus::Unavailable {
+            return Err(std::io::Error::other(
+                "egress filtering unavailable on this platform; \
+                 tool execution blocked by enforcing sandbox. \
+                 Set enforcement=permissive or egress=allow to run without egress filtering.",
+            ));
+        }
+    }
+
+    warn_sandbox_degradation(guarantees, &policy);
 
     // SAFETY: The closure runs between fork and exec in the child process.
     // The Landlock and seccomp syscalls themselves (landlock_create_ruleset,
@@ -538,6 +724,28 @@ pub fn apply_sandbox(
     _cmd: &mut std::process::Command,
     policy: SandboxPolicy,
 ) -> std::io::Result<()> {
+    if !policy.enabled {
+        tracing::warn!("sandbox disabled: tool execution runs without any restrictions");
+        return Ok(());
+    }
+
+    let guarantees = probe_guarantees(&policy);
+    tracing::info!(
+        landlock = %guarantees.landlock,
+        seccomp = %guarantees.seccomp,
+        egress = %guarantees.egress,
+        enforcement = ?policy.enforcement,
+        "sandbox guarantees"
+    );
+
+    if policy.enforcement == SandboxEnforcement::Enforcing {
+        return Err(std::io::Error::other(
+            "sandbox enforcement unavailable on non-Linux platforms; \
+             tool execution blocked by enforcing sandbox. \
+             Set enforcement=permissive to run without sandboxing.",
+        ));
+    }
+
     // WHY: Landlock, seccomp, and network namespaces are Linux-only kernel
     // interfaces. On other platforms the sandbox is a no-op. Log once per
     // process so operators know sandbox enforcement is absent.

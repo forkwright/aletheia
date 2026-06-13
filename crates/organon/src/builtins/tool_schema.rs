@@ -21,6 +21,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{Arc, RwLock};
 
 use indexmap::IndexMap;
 
@@ -35,15 +36,18 @@ use crate::types::{
 
 // ── Executor ─────────────────────────────────────────────────────────────────
 
-/// Pre-computed map of `tool_name → serialized JSON schema string`.
+/// Shared map of `tool_name → serialized JSON schema string`.
 ///
 /// WHY: The executor captures a snapshot of schemas at registration time rather
 /// than holding an `Arc<ToolRegistry>` (which would create a self-referential
 /// ownership cycle — the registry owns the executor that would own the registry).
-/// Schemas are static for the session lifetime, so this snapshot is valid and
-/// avoids the cycle entirely.
+/// The snapshot is wrapped in a lock so the registry can publish a finalized
+/// snapshot after domain packs and external tools are registered, without
+/// breaking the ownership boundary between the registry and its executors.
+type ToolSchemaSnapshot = crate::registry::ToolSchemaSnapshot;
+
 struct ToolSchemaExecutor {
-    schemas: HashMap<String, String>,
+    schemas: ToolSchemaSnapshot,
 }
 
 impl ToolExecutor for ToolSchemaExecutor {
@@ -59,7 +63,13 @@ impl ToolExecutor for ToolSchemaExecutor {
                 return Ok(ToolResult::error("missing required field: tool_name"));
             };
 
-            match self.schemas.get(tool_name_str) {
+            let Ok(schemas) = self.schemas.read() else {
+                return Ok(ToolResult::error(
+                    "tool_schema snapshot lock is poisoned".to_owned(),
+                ));
+            };
+
+            match schemas.get(tool_name_str) {
                 Some(schema_json) => {
                     tracing::debug!(
                         tool.name = tool_name_str,
@@ -141,14 +151,22 @@ pub(crate) fn register_with_pairs(
     pairs: Vec<(String, String)>,
 ) -> Result<()> {
     let schema_count = pairs.len();
-    let schemas: HashMap<String, String> = pairs.into_iter().collect();
+    let schemas: ToolSchemaSnapshot = Arc::new(RwLock::new(
+        pairs.into_iter().collect::<HashMap<String, String>>(),
+    ));
 
     tracing::info!(
         schema_count,
         "tool_schema: registered with {schema_count} pre-computed schemas"
     );
 
-    registry.register(tool_schema_def(), Box::new(ToolSchemaExecutor { schemas }))?;
+    registry.register(
+        tool_schema_def(),
+        Box::new(ToolSchemaExecutor {
+            schemas: Arc::clone(&schemas),
+        }),
+    )?;
+    registry.set_tool_schema_snapshot(Some(schemas));
     Ok(())
 }
 
@@ -158,15 +176,21 @@ pub(crate) fn register_with_pairs(
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::HashSet;
+    use std::future::Future;
+    use std::pin::Pin;
     use std::sync::{Arc, RwLock};
 
+    use indexmap::IndexMap;
     use koina::id::{NousId, SessionId, ToolName};
 
     use crate::builtins::register_all_with_sandbox;
-    use crate::registry::ToolRegistry;
+    use crate::registry::{ToolExecutor, ToolRegistry};
     use crate::sandbox::SandboxConfig;
     use crate::testing::install_crypto_provider;
-    use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolServices};
+    use crate::types::{
+        InputSchema, PropertyDef, PropertyType, Reversibility, ServerToolConfig, ToolCategory,
+        ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolServices, ToolTag,
+    };
 
     fn mock_ctx() -> ToolContext {
         install_crypto_provider();
@@ -376,6 +400,126 @@ mod tests {
         assert!(
             ratio <= 0.50,
             "expected ≥50% size reduction: summary={summary_bytes}B schema={schema_bytes}B ratio={ratio:.2}"
+        );
+    }
+
+    // ── late registration ────────────────────────────────────────────────────
+
+    struct LateTool;
+
+    impl ToolExecutor for LateTool {
+        fn execute<'a>(
+            &'a self,
+            _input: &'a ToolInput,
+            _ctx: &'a ToolContext,
+        ) -> Pin<Box<dyn Future<Output = crate::error::Result<ToolResult>> + Send + 'a>> {
+            Box::pin(async { Ok(ToolResult::text("late tool executed")) })
+        }
+    }
+
+    fn late_tool_def(name: &str, property: &str) -> ToolDef {
+        let mut properties = IndexMap::new();
+        properties.insert(
+            property.to_owned(),
+            PropertyDef {
+                property_type: PropertyType::String,
+                description: format!("Example property for {name}"),
+                enum_values: None,
+                default: None,
+            },
+        );
+
+        ToolDef {
+            name: ToolName::new(name).expect("valid late tool name"),
+            description: format!("Late-registered tool: {name}"),
+            extended_description: None,
+            input_schema: InputSchema {
+                properties,
+                required: vec![property.to_owned()],
+            },
+            category: ToolCategory::Research,
+            reversibility: Reversibility::FullyReversible,
+            auto_activate: false,
+            groups: vec![ToolGroupId::Read],
+            tags: vec![ToolTag::Fetch],
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_schema_returns_error_for_late_tool_before_finalize() {
+        let mut reg = ToolRegistry::new();
+        register_all_with_sandbox(&mut reg, SandboxConfig::default()).expect("register builtins");
+        reg.register(late_tool_def("late_tool", "value"), Box::new(LateTool))
+            .expect("register late tool");
+
+        let input = ToolInput {
+            name: ToolName::from_static("tool_schema"),
+            tool_use_id: "toolu_late_before".to_owned(),
+            arguments: serde_json::json!({ "tool_name": "late_tool" }),
+        };
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+        assert!(
+            result.is_error,
+            "late-registered tool must not be visible before finalize"
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_schema_returns_schema_for_late_tool_after_finalize() {
+        let mut reg = ToolRegistry::new();
+        register_all_with_sandbox(&mut reg, SandboxConfig::default()).expect("register builtins");
+        reg.register(late_tool_def("late_pack_tool", "query"), Box::new(LateTool))
+            .expect("register late tool");
+        reg.finalize_tool_schema()
+            .expect("finalize tool_schema after late registration");
+
+        let input = ToolInput {
+            name: ToolName::from_static("tool_schema"),
+            tool_use_id: "toolu_late_after".to_owned(),
+            arguments: serde_json::json!({ "tool_name": "late_pack_tool" }),
+        };
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+        assert!(
+            !result.is_error,
+            "expected success for late tool after finalize"
+        );
+
+        let text = result.content.text_summary();
+        assert!(
+            text.contains("query"),
+            "expected schema to contain 'query' property, got: {text}"
+        );
+
+        let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+        assert_eq!(
+            parsed.get("type").and_then(|v| v.as_str()),
+            Some("object"),
+            "schema must have type=object at root"
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_schema_still_resolves_builtin_after_finalize() {
+        let mut reg = ToolRegistry::new();
+        register_all_with_sandbox(&mut reg, SandboxConfig::default()).expect("register builtins");
+        reg.register(
+            late_tool_def("late_http_tool", "endpoint"),
+            Box::new(LateTool),
+        )
+        .expect("register late tool");
+        reg.finalize_tool_schema()
+            .expect("finalize tool_schema after late registration");
+
+        let input = ToolInput {
+            name: ToolName::from_static("tool_schema"),
+            tool_use_id: "toolu_builtin_after".to_owned(),
+            arguments: serde_json::json!({ "tool_name": "read" }),
+        };
+        let result = reg.execute(&input, &mock_ctx()).await.expect("execute");
+        assert!(!result.is_error, "built-in tool must still resolve");
+        assert!(
+            result.content.text_summary().contains("path"),
+            "expected read schema to contain 'path'"
         );
     }
 }

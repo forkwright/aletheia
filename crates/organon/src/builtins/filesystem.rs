@@ -1,12 +1,11 @@
 //! Filesystem navigation tools: grep, find, ls.
 
+use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
 use std::future::Future;
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use indexmap::IndexMap;
 
@@ -14,8 +13,8 @@ use koina::defaults::MAX_OUTPUT_BYTES;
 use koina::id::ToolName;
 
 use crate::error::Result;
-use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::subprocess::{SubprocessError, SubprocessOutput, SubprocessRequest, SubprocessRunner};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -70,58 +69,37 @@ fn truncate_output(mut output: String) -> String {
 
 /// WHY: Subprocess commands (grep, find, ls) must not run indefinitely.
 /// A 60-second wall-clock timeout prevents hung processes from consuming
-/// resources. On timeout the [`ProcessGuard`] kills and reaps the child.
+/// resources. On timeout the shared runner kills and reaps the child.
 const SUBPROCESS_TIMEOUT: Duration = Duration::from_mins(1);
 
-fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
-    // NOTE: Wrap in ProcessGuard so the child is killed and reaped on any early
-    // return (I/O error, panic, timeout, etc.) before we reach wait().
-    let mut guard = ProcessGuard::new(cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?);
-
-    let deadline = Instant::now() + SUBPROCESS_TIMEOUT;
-
-    // WHY: Poll for completion to enforce the wall-clock timeout. If the child
-    // exceeds the deadline, the guard's drop kills it and we return a timeout error.
-    let status = loop {
-        match guard.get_mut().try_wait() {
-            Ok(Some(s)) => break s,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    // Guard drop handles kill + reap
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "subprocess timed out after 60s",
-                    ));
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(e) => return Err(e),
-        }
-    };
-
-    let mut stdout = String::new();
-    if let Some(ref mut pipe) = guard.get_mut().stdout {
-        let _ = pipe.read_to_string(&mut stdout);
-    }
-    let mut stderr = String::new();
-    if let Some(ref mut pipe) = guard.get_mut().stderr {
-        let _ = pipe.read_to_string(&mut stderr);
-    }
-
-    // NOTE: Process already exited via try_wait; detach to avoid kill on drop.
-    #[expect(
-        clippy::zombie_processes,
-        reason = "process already reaped via try_wait in poll loop above"
-    )]
-    let _ = guard.detach();
-    Ok(std::process::Output {
-        status,
-        stdout: stdout.into_bytes(),
-        stderr: stderr.into_bytes(),
-    })
+fn run_command(
+    runner: &SubprocessRunner,
+    ctx: &ToolContext,
+    request: SubprocessRequest,
+) -> std::result::Result<SubprocessOutput, SubprocessError> {
+    runner.run(
+        request
+            .timeout(SUBPROCESS_TIMEOUT)
+            .max_output_bytes(MAX_OUTPUT_BYTES),
+        ctx,
+    )
 }
 
-struct GrepExecutor;
+struct GrepExecutor {
+    runner: SubprocessRunner,
+    rg_program: OsString,
+    grep_program: OsString,
+}
+
+impl GrepExecutor {
+    fn new(runner: SubprocessRunner) -> Self {
+        Self {
+            runner,
+            rg_program: OsString::from("rg"),
+            grep_program: OsString::from("grep"),
+        }
+    }
+}
 
 impl ToolExecutor for GrepExecutor {
     fn execute<'a>(
@@ -155,19 +133,37 @@ impl ToolExecutor for GrepExecutor {
             // re-validate the resolved target.
             let path = canonicalize_and_revalidate(path, ctx, &input.name)?;
 
-            let output = try_rg(pattern, &path, max_results, case_sensitive, glob_filter)
-                .or_else(|_| try_grep_fallback(pattern, &path, case_sensitive, glob_filter));
+            let output = try_rg(
+                &self.runner,
+                ctx,
+                RgRequest {
+                    program: self.rg_program.as_os_str(),
+                    pattern,
+                    path: &path,
+                    max_results,
+                    case_sensitive,
+                    glob_filter,
+                },
+            )
+            .or_else(|_| {
+                try_grep_fallback(
+                    &self.runner,
+                    ctx,
+                    &self.grep_program,
+                    pattern,
+                    &path,
+                    case_sensitive,
+                    glob_filter,
+                )
+            });
 
             match output {
                 Ok(out) => {
-                    let code = out.status.code().unwrap_or(-1);
-                    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-
-                    if code == 1 && stdout.trim().is_empty() {
+                    if out.exit_code == 1 && out.stdout.trim().is_empty() {
                         return Ok(ToolResult::text("No matches found."));
                     }
 
-                    let text = truncate_output(stdout);
+                    let text = truncate_output(out.stdout);
                     // WHY: Enforce the line limit in case the backend (grep fallback) doesn't
                     // natively support --max-count.
                     let n = usize::try_from(max_results).unwrap_or(usize::MAX);
@@ -180,7 +176,7 @@ impl ToolExecutor for GrepExecutor {
                     });
                     Ok(ToolResult::text(text))
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Ok(ToolResult::error(
+                Err(SubprocessError::Timeout(_)) => Ok(ToolResult::error(
                     "grep timed out after 60s: try a narrower path or pattern".to_owned(),
                 )),
                 Err(e) => Ok(ToolResult::error(format!("grep failed: {e}"))),
@@ -189,49 +185,85 @@ impl ToolExecutor for GrepExecutor {
     }
 }
 
-fn try_rg(
-    pattern: &str,
-    path: &Path,
+#[derive(Clone, Copy)]
+struct RgRequest<'a> {
+    program: &'a OsStr,
+    pattern: &'a str,
+    path: &'a Path,
     max_results: u64,
     case_sensitive: bool,
-    glob_filter: Option<&str>,
-) -> std::io::Result<std::process::Output> {
-    let mut cmd = Command::new("rg");
-    cmd.arg("--no-heading")
-        .arg("--line-number")
-        .arg("--max-count")
-        .arg(max_results.to_string());
+    glob_filter: Option<&'a str>,
+}
 
-    if !case_sensitive {
-        cmd.arg("--ignore-case");
+fn try_rg(
+    runner: &SubprocessRunner,
+    ctx: &ToolContext,
+    request: RgRequest<'_>,
+) -> std::result::Result<SubprocessOutput, SubprocessError> {
+    let mut args = vec![
+        "--no-heading".to_owned(),
+        "--line-number".to_owned(),
+        "--max-count".to_owned(),
+        request.max_results.to_string(),
+    ];
+
+    if !request.case_sensitive {
+        args.push("--ignore-case".to_owned());
     }
-    if let Some(g) = glob_filter {
-        cmd.arg("--glob").arg(g);
+    if let Some(g) = request.glob_filter {
+        args.push("--glob".to_owned());
+        args.push(g.to_owned());
     }
 
-    cmd.arg(pattern).arg(path);
-    run_command(&mut cmd)
+    args.push(request.pattern.to_owned());
+    args.push(request.path.to_string_lossy().into_owned());
+    run_command(
+        runner,
+        ctx,
+        SubprocessRequest::new(request.program.to_os_string(), ctx.workspace.clone()).args(args),
+    )
 }
 
 fn try_grep_fallback(
+    runner: &SubprocessRunner,
+    ctx: &ToolContext,
+    program: &OsStr,
     pattern: &str,
     path: &Path,
     case_sensitive: bool,
     glob_filter: Option<&str>,
-) -> std::io::Result<std::process::Output> {
-    let mut cmd = Command::new("grep");
-    cmd.arg("-rn");
+) -> std::result::Result<SubprocessOutput, SubprocessError> {
+    let mut args = vec!["-rn".to_owned()];
     if !case_sensitive {
-        cmd.arg("-i");
+        args.push("-i".to_owned());
     }
     if let Some(glob) = glob_filter {
-        cmd.arg(format!("--include={glob}"));
+        args.push(format!("--include={glob}"));
     }
-    cmd.arg(pattern).arg(path);
-    run_command(&mut cmd)
+    args.push(pattern.to_owned());
+    args.push(path.to_string_lossy().into_owned());
+    run_command(
+        runner,
+        ctx,
+        SubprocessRequest::new(program.to_os_string(), ctx.workspace.clone()).args(args),
+    )
 }
 
-struct FindExecutor;
+struct FindExecutor {
+    runner: SubprocessRunner,
+    fd_program: OsString,
+    find_program: OsString,
+}
+
+impl FindExecutor {
+    fn new(runner: SubprocessRunner) -> Self {
+        Self {
+            runner,
+            fd_program: OsString::from("fd"),
+            find_program: OsString::from("find"),
+        }
+    }
+}
 
 impl ToolExecutor for FindExecutor {
     fn execute<'a>(
@@ -261,16 +293,36 @@ impl ToolExecutor for FindExecutor {
 
             let path = canonicalize_and_revalidate(path, ctx, &input.name)?;
 
-            let output = try_fd(pattern, &path, max_results, type_filter, max_depth)
-                .or_else(|_| try_find_fallback(pattern, &path, type_filter, max_depth));
+            let output = try_fd(
+                &self.runner,
+                ctx,
+                FdRequest {
+                    program: self.fd_program.as_os_str(),
+                    pattern,
+                    path: &path,
+                    max_results,
+                    type_filter,
+                    max_depth,
+                },
+            )
+            .or_else(|_| {
+                try_find_fallback(
+                    &self.runner,
+                    ctx,
+                    &self.find_program,
+                    pattern,
+                    &path,
+                    type_filter,
+                    max_depth,
+                )
+            });
 
             match output {
                 Ok(out) => {
-                    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-                    if stdout.trim().is_empty() {
+                    if out.stdout.trim().is_empty() {
                         return Ok(ToolResult::text("No files found."));
                     }
-                    let text = truncate_output(stdout);
+                    let text = truncate_output(out.stdout);
                     // WHY: Enforce the result limit in case the backend (find fallback) doesn't
                     // natively support --max-results.
                     let n = usize::try_from(max_results).unwrap_or(usize::MAX);
@@ -283,7 +335,7 @@ impl ToolExecutor for FindExecutor {
                     });
                     Ok(ToolResult::text(text))
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Ok(ToolResult::error(
+                Err(SubprocessError::Timeout(_)) => Ok(ToolResult::error(
                     "find timed out after 60s: try a narrower path or pattern".to_owned(),
                 )),
                 Err(e) => Ok(ToolResult::error(format!("find failed: {e}"))),
@@ -297,50 +349,68 @@ fn is_glob_pattern(pattern: &str) -> bool {
     pattern.contains('*') || pattern.contains('?') || pattern.contains('[') || pattern.contains('{')
 }
 
-fn try_fd(
-    pattern: &str,
-    path: &Path,
+#[derive(Clone, Copy)]
+struct FdRequest<'a> {
+    program: &'a OsStr,
+    pattern: &'a str,
+    path: &'a Path,
     max_results: u64,
-    type_filter: Option<&str>,
+    type_filter: Option<&'a str>,
     max_depth: Option<u64>,
-) -> std::io::Result<std::process::Output> {
-    let mut cmd = Command::new("fd");
+}
+
+fn try_fd(
+    runner: &SubprocessRunner,
+    ctx: &ToolContext,
+    request: FdRequest<'_>,
+) -> std::result::Result<SubprocessOutput, SubprocessError> {
+    let mut args = Vec::new();
     // NOTE: --no-ignore: workspace dirs live under gitignored paths (instance/).
     // --glob: only when the pattern uses glob metacharacters (*, ?, [, {).
     //         Otherwise fd's default regex mode gives better substring matching.
-    cmd.arg("--no-ignore");
-    if is_glob_pattern(pattern) {
-        cmd.arg("--glob");
+    args.push("--no-ignore".to_owned());
+    if is_glob_pattern(request.pattern) {
+        args.push("--glob".to_owned());
     }
-    cmd.arg(pattern)
-        .arg(path)
-        .arg("--max-results")
-        .arg(max_results.to_string());
+    args.push(request.pattern.to_owned());
+    args.push(request.path.to_string_lossy().into_owned());
+    args.push("--max-results".to_owned());
+    args.push(request.max_results.to_string());
 
-    if let Some(t) = type_filter {
-        cmd.arg("--type").arg(t);
+    if let Some(t) = request.type_filter {
+        args.push("--type".to_owned());
+        args.push(t.to_owned());
     }
-    if let Some(d) = max_depth {
-        cmd.arg("--max-depth").arg(d.to_string());
+    if let Some(d) = request.max_depth {
+        args.push("--max-depth".to_owned());
+        args.push(d.to_string());
     }
 
-    run_command(&mut cmd)
+    run_command(
+        runner,
+        ctx,
+        SubprocessRequest::new(request.program.to_os_string(), ctx.workspace.clone()).args(args),
+    )
 }
 
 fn try_find_fallback(
+    runner: &SubprocessRunner,
+    ctx: &ToolContext,
+    program: &OsStr,
     pattern: &str,
     path: &Path,
     type_filter: Option<&str>,
     max_depth: Option<u64>,
-) -> std::io::Result<std::process::Output> {
-    let mut cmd = Command::new("find");
-    cmd.arg(path);
+) -> std::result::Result<SubprocessOutput, SubprocessError> {
+    let mut args = vec![path.to_string_lossy().into_owned()];
 
     if let Some(d) = max_depth {
-        cmd.arg("-maxdepth").arg(d.to_string());
+        args.push("-maxdepth".to_owned());
+        args.push(d.to_string());
     }
     if let Some(t) = type_filter {
-        cmd.arg("-type").arg(t);
+        args.push("-type".to_owned());
+        args.push(t.to_owned());
     }
 
     // NOTE: fd uses regex/substring matching by default; map to find's glob matching.
@@ -352,8 +422,13 @@ fn try_find_fallback(
     } else {
         format!("*{pattern}*")
     };
-    cmd.arg("-name").arg(name_pattern);
-    run_command(&mut cmd)
+    args.push("-name".to_owned());
+    args.push(name_pattern);
+    run_command(
+        runner,
+        ctx,
+        SubprocessRequest::new(program.to_os_string(), ctx.workspace.clone()).args(args),
+    )
 }
 
 struct LsExecutor;
@@ -458,9 +533,25 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 }
 
 /// Register filesystem tools (`grep`, `find`, `ls`) into the registry.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "unit tests use default registration; runtime injects sandbox config"
+    )
+)]
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(grep_def(), Box::new(GrepExecutor))?;
-    registry.register(find_def(), Box::new(FindExecutor))?;
+    register_with_sandbox(registry, crate::sandbox::SandboxConfig::default())
+}
+
+/// Register filesystem tools with a shared subprocess sandbox config.
+pub(crate) fn register_with_sandbox(
+    registry: &mut ToolRegistry,
+    sandbox: crate::sandbox::SandboxConfig,
+) -> Result<()> {
+    let runner = SubprocessRunner::new(sandbox);
+    registry.register(grep_def(), Box::new(GrepExecutor::new(runner.clone())))?;
+    registry.register(find_def(), Box::new(FindExecutor::new(runner)))?;
     registry.register(ls_def(), Box::new(LsExecutor))?;
     Ok(())
 }

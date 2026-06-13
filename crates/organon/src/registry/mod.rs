@@ -1,8 +1,9 @@
 //! Tool registry: the single source of truth for available tools.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use indexmap::IndexMap;
@@ -17,6 +18,15 @@ use crate::types::{
     ToolCallMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolGroupPolicy, ToolInput,
     ToolOutcome, ToolResult, ToolTag,
 };
+
+/// Shared, mutable snapshot used by the `tool_schema` meta-tool.
+///
+/// WHY: The registry owns the `tool_schema` executor, so the executor cannot
+/// hold a reference back to the registry.  A lock-protected map lets the
+/// registry publish a finalized snapshot after all late tools (domain packs,
+/// external HTTP/MCP tools) have been registered without creating an ownership
+/// cycle.
+pub(crate) type ToolSchemaSnapshot = Arc<RwLock<HashMap<String, String>>>;
 
 /// The trait tool implementations must satisfy.
 ///
@@ -81,6 +91,9 @@ struct RegisteredTool {
 pub struct ToolRegistry {
     // kanon:ignore RUST/pub-visibility
     tools: IndexMap<ToolName, RegisteredTool>,
+    /// Snapshot state for the `tool_schema` meta-tool.  `None` until
+    /// `tool_schema` is registered.
+    tool_schema_snapshot: Option<ToolSchemaSnapshot>,
 }
 
 impl Default for ToolRegistry {
@@ -96,6 +109,7 @@ impl ToolRegistry {
         // kanon:ignore RUST/pub-visibility
         Self {
             tools: IndexMap::new(),
+            tool_schema_snapshot: None,
         }
     }
 
@@ -780,6 +794,64 @@ impl ToolRegistry {
             .filter(|t| !t.def.auto_activate && t.def.name.as_str() != "enable_tool")
             .map(|t| (t.def.name.clone(), t.def.description.clone()))
             .collect()
+    }
+
+    /// Attach the shared snapshot used by the `tool_schema` executor.
+    ///
+    /// WHY: The registry must be able to refresh the snapshot after late tools
+    /// are registered.  Keeping the `Arc` here avoids a back-reference from the
+    /// executor to the registry.
+    pub(crate) fn set_tool_schema_snapshot(&mut self, snapshot: Option<ToolSchemaSnapshot>) {
+        self.tool_schema_snapshot = snapshot;
+    }
+
+    /// Finalize the `tool_schema` snapshot to include every tool currently
+    /// registered in the registry.
+    ///
+    /// Call this after all late registrations (domain packs, external HTTP/MCP
+    /// tools) are complete so `tool_schema` can serve schemas for the complete
+    /// tool set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `tool_schema` has not been registered, or if the
+    /// snapshot lock is poisoned.
+    pub fn finalize_tool_schema(&mut self) -> Result<()> {
+        let snapshot = self
+            .tool_schema_snapshot
+            .as_ref()
+            .ok_or_else(|| error::ToolSchemaNotRegisteredSnafu.build())?;
+
+        let schemas: HashMap<String, String> = self
+            .definitions()
+            .into_iter()
+            .filter_map(|def| {
+                let schema = def.input_schema.to_json_schema();
+                match serde_json::to_string_pretty(&schema) {
+                    Ok(json) => Some((def.name.as_str().to_owned(), json)),
+                    Err(e) => {
+                        tracing::warn!(
+                            tool.name = def.name.as_str(),
+                            error = %e,
+                            "tool_schema: failed to serialize schema during finalize; tool will be unavailable via tool_schema"
+                        );
+                        None
+                    }
+                }
+            })
+            .collect();
+
+        let schema_count = schemas.len();
+        let mut guard = snapshot
+            .write()
+            .map_err(|_poisoned| error::SchemaSnapshotPoisonedSnafu.build())?;
+        *guard = schemas;
+
+        tracing::info!(
+            schema_count,
+            "tool_schema: finalized snapshot with {schema_count} schemas"
+        );
+        Ok(())
     }
 
     /// Check whether a tool is allowed under the daemon's trust boundaries.

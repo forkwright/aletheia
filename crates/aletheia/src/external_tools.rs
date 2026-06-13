@@ -25,11 +25,9 @@ use tracing::{info, warn};
 
 use koina::id::ToolName;
 use organon::registry::{ToolExecutor, ToolRegistry};
-#[cfg(feature = "mcp")]
-use organon::types::ToolGroupId;
 use organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolInput, ToolResult, ToolTag,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 pub(crate) use taxis::config::{
     ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
@@ -183,7 +181,7 @@ async fn register_single_tool(
         category: ToolCategory::Research,
         reversibility: Reversibility::FullyReversible,
         auto_activate: false,
-        groups: vec![],
+        groups: vec![ToolGroupId::Mcp],
         tags: vec![ToolTag::Fetch],
     };
 
@@ -805,7 +803,9 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
 
         // NOTE: verify the tool is actually in the registry
         let tool_name = ToolName::new("semantic_scholar").expect("valid name");
-        assert!(registry.get_def(&tool_name).is_some());
+        let def = registry.get_def(&tool_name).expect("tool def");
+        assert_eq!(def.groups, vec![ToolGroupId::Mcp]);
+        assert!(def.tags.contains(&ToolTag::Fetch));
     }
 
     #[test]
