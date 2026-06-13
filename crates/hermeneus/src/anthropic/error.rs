@@ -18,7 +18,7 @@ const MAX_ERROR_BODY_LOG_BYTES: usize = 512;
 ///
 /// Consumes the response body to extract the Anthropic error detail.
 /// Logs status, model, credential source class, request-id, and a truncated
-/// body at WARN — no credential-derived token material is logged.
+/// body at WARN; no credential-derived token material is logged.
 #[tracing::instrument(skip_all)]
 pub(crate) async fn map_error_response(
     response: Response,
@@ -41,7 +41,7 @@ pub(crate) async fn map_error_response(
         }
     };
 
-    // WHY(#4885): truncate before logging — raw bodies can contain prompt
+    // WHY(#4885): truncate before logging; raw bodies can contain prompt
     // or tool-payload fragments. No token prefix is logged.
     let body_truncated = crate::secret::truncate_error_body(&body, MAX_ERROR_BODY_LOG_BYTES);
 
@@ -58,7 +58,9 @@ pub(crate) async fn map_error_response(
         .ok()
         .map(|e| e.error.message);
 
-    let message = detail.unwrap_or_else(|| format!("HTTP {status}"));
+    let message = detail
+        .map(|message| crate::secret::truncate_error_body(&message, MAX_ERROR_BODY_LOG_BYTES))
+        .unwrap_or_else(|| format!("HTTP {status}"));
 
     match status {
         401 => error::AuthFailedSnafu { message }.build(),

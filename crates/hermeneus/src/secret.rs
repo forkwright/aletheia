@@ -206,7 +206,7 @@ pub fn redact_in_json(value: &mut serde_json::Value) {
 
 /// Truncate a provider error body to at most `max_bytes` bytes for safe logging.
 ///
-/// Appends `[…N bytes]` when the body is truncated so operators know the log
+/// Appends `[truncated N bytes]` when the body is truncated so operators know the log
 /// entry is incomplete. Walks back to a UTF-8 character boundary so the
 /// truncated slice is always valid text.
 pub(crate) fn truncate_error_body(body: &str, max_bytes: usize) -> String {
@@ -220,7 +220,7 @@ pub(crate) fn truncate_error_body(body: &str, max_bytes: usize) -> String {
     }
     let remaining = body.len() - end;
     let prefix = body.get(..end).unwrap_or_default();
-    format!("{prefix}[…{remaining} bytes]")
+    format!("{prefix}[truncated {remaining} bytes]")
 }
 
 /// Heuristic: treat long alphanumeric strings without whitespace as sensitive.
@@ -375,7 +375,10 @@ mod tests {
         let body = "x".repeat(600);
         let result = truncate_error_body(&body, 500);
         assert!(result.starts_with(&"x".repeat(500)));
-        assert!(result.contains("[…"), "must include truncation marker");
+        assert!(
+            result.contains("[truncated "),
+            "must include truncation marker"
+        );
         assert!(result.contains("bytes]"), "must include byte count");
     }
 
@@ -389,6 +392,9 @@ mod tests {
         // The euro sign starts at byte 498 and ends at 501 — max_bytes=500
         // falls inside it. We must back up to 498, not split the char.
         assert!(std::str::from_utf8(result.as_bytes().get(..498).unwrap_or(b"")).is_ok());
-        assert!(result.contains("[…"), "must include truncation marker");
+        assert!(
+            result.contains("[truncated "),
+            "must include truncation marker"
+        );
     }
 }

@@ -448,8 +448,8 @@ impl OpenAiProvider {
                 Err(err) => {
                     self.health.record_error(&err);
                     if content_started {
-                        // WHY(#4887): content already delivered — retry would duplicate output.
-                        tracing::error!("SSE error after content started streaming — cannot retry");
+                        // WHY(#4887): content already delivered; retry would duplicate output.
+                        tracing::error!("SSE error after content started streaming; cannot retry");
                         record_stream_failure(start, attempt, &self.config.name, request);
                         return Err(err);
                     }
