@@ -135,7 +135,9 @@ def check_env_contract() -> None:
 # credential chain and excluded by the ALETHEIA_/SEMANTIC_SCHOLAR capture below.
 ENV_SCAN_GLOBS = (
     "shared/bin/*",
+    "shared/bin/tests/*.bats",
     "scripts/*.sh",
+    "scripts/*.py",
     "shared/templates/**/*",
     "instance.example/**/*",
 )
