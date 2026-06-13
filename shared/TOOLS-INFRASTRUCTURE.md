@@ -1,10 +1,10 @@
 # Shared Tools
 
-All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
+All agents have access to shared scripts and built-in commands:
 
 | Tool | Purpose |
 |------|---------|
-| aletheia-backup | Timestamped backup of all Aletheia state (config, sessions, workspaces) |
+| `aletheia backup` | Whole-instance backup (config, sessions, workspaces) |
 | credential-refresh | Auto-refresh Anthropic OAuth tokens before expiry |
 | gcal | Google Calendar event query |
 | pplx | Perplexity pro-search |
@@ -18,7 +18,7 @@ All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
 | System | Location | Purpose |
 |--------|----------|---------|
 | KnowledgeStore | mneme (embedded Datalog engine) | Long-term extracted memories, entity relationships, vector search |
-| Blackboard | sessions.db | Cross-agent shared state (TTL-based, SQLite) |
+| Blackboard | instance data store | Cross-agent shared state |
 
 ## Built-in runtime tools
 

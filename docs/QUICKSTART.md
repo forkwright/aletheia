@@ -195,18 +195,29 @@ Everything runs locally. The embedded knowledge engine, session store, and embed
 
 ## Optional: systemd service
 
-For always-on operation, install the included systemd user service:
+For always-on operation, install the included systemd user service. The
+committed unit verifies with `systemd-analyze verify` and defaults to
+`~/.local/bin/aletheia` plus `~/aletheia/instance`.
 
 ```bash
 mkdir -p ~/.config/systemd/user
 cp instance.example/services/aletheia.service ~/.config/systemd/user/aletheia.service
 ```
 
-Edit the service file to match your paths. The default expects the binary at `~/.local/bin/aletheia` and the instance at `~/aletheia/instance`. Key lines to customize:
+Edit the service file if your paths differ. Keep comments on their own lines;
+systemd does not support inline comments on directive lines. Key lines to
+customize:
 
 ```ini
 EnvironmentFile=-%h/aletheia/instance/config/env
-ExecStart=%h/.local/bin/aletheia -r %h/aletheia/instance
+ExecStart=/usr/bin/env %h/.local/bin/aletheia -r %h/aletheia/instance
+ReadWritePaths=%h/aletheia/instance
+```
+
+Verify the edited unit before enabling it:
+
+```bash
+systemd-analyze verify ~/.config/systemd/user/aletheia.service
 ```
 
 Then enable and start:

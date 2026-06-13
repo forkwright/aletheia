@@ -60,8 +60,6 @@ DEFAULT_ALLOWLIST=(
     # WHY: multilingual FTS stopword fixtures legitimately include common
     # non-English words that overlap with private fleet hostnames.
     '^crates/krites/src/fts/tokenizer/stop_word_filter/stopwords/'
-    # WHY: operator-specific template; mirrors .gitleaks.toml allowlist.
-    '^shared/'
     '^instance\.example/'
     '^infrastructure/runtime/'
     '^infrastructure/prosoche/'

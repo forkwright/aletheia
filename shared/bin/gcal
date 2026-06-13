@@ -172,7 +172,7 @@ Options:
 Examples:
   gcal today
   gcal today -c you@example.com
-  gcal week -c family13408790289857991137@group.calendar.google.com""")
+  gcal week -c team-calendar@example.com""")
 
 
 def main():

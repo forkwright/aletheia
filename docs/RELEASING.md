@@ -17,6 +17,10 @@ The canonical version lives in `Cargo.toml` at `[workspace.package].version`. Al
    - Verifies proskenion's standalone theatron pins match the root workspace
    - Runs the full test suite
    - Builds cross-platform binaries (4 targets)
+   - Packages the binary with public license, security, docs, examples, and
+     manifest files
+   - Inspects the tarball before upload so missing required contents fail the
+     release job
    - Generates SHA256 checksums per binary
    - Generates and attaches an SBOM (SPDX)
    - Uploads everything to the GitHub Release
@@ -103,7 +107,14 @@ The tag push builds binaries the same way. Merge the hotfix branch back to `main
 
 ## Binary verification
 
-Each binary has a `.sha256` companion file attached to the GitHub Release.
+Each binary and tarball has a `.sha256` companion file attached to the GitHub
+Release. The tarball is self-describing: it includes `LICENSE`, `LICENSE-DOCS`,
+`README.md`, `SECURITY.md`, `CHANGELOG.md`, `Cargo.toml`, `Cargo.lock`,
+`deny.toml`, `docs/`, `instance.example/`, and `PACKAGE-MANIFEST.txt`.
+
+`PACKAGE-MANIFEST.txt` records the version, target triple, source commit,
+feature set, provenance/SBOM asset names, and SHA256, mode, and size for each
+packaged file except the manifest itself.
 
 ```bash
 # Download binary and checksum

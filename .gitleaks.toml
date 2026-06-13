@@ -46,9 +46,18 @@ paths = [
   '''target/''',
   # WHY: redact.rs files contain intentional fake credentials for PII-scrubbing tests.
   '''crates/[^/]+/src/redact\.rs''',
+  # WHY: PII-redaction tests contain intentional synthetic secret and phone shapes.
+  '''crates/nous/src/training/pii\.rs''',
+  # WHY: credential API tests use synthetic token-like values and assert redaction.
+  '''crates/pylon/src/tests/credentials\.rs''',
+  '''crates/pylon/src/handlers/health\.rs''',
+  # WHY: local dispatch transcripts are gitignored and may contain scanner output.
+  '''^\.dispatch.*''',
   # WHY: runbook and checklist contain example CLI commands with synthetic values.
   '''docs/RUNBOOK\.md''',
   '''docs/CUTOVER_CHECKLIST\.md''',
+  # WHY: quickstart contains synthetic Signal examples already marked for the PII scanner.
+  '''docs/QUICKSTART\.md''',
   # WHY: spec documents use example phone numbers and tokens for illustration.
   '''docs/specs/''',
   # WHY: infrastructure/runtime contains docs, i18n translation files, and test
@@ -56,8 +65,4 @@ paths = [
   '''infrastructure/runtime/''',
   # WHY: prosoche config examples demonstrate operator configuration with fake values.
   '''infrastructure/prosoche/''',
-  # WHY: shared/ contains personal operational scripts and local-dev config files
-  # (API tokens set as env-var defaults, MCP server configs). Not part of the
-  # distributed codebase — operator-specific, equivalent to instance/.
-  '''shared/''',
 ]

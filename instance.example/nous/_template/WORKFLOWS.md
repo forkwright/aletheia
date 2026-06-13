@@ -48,7 +48,7 @@
 | `nous-health` | Agent health check |
 | `config-reload` | Reload config without restart |
 | `credential-refresh` | Rotate OAuth tokens |
-| `aletheia-backup` | Instance backup |
+| `aletheia backup` | Instance backup |
 | `aletheia-export` | Autarkeia export |
 
 ---

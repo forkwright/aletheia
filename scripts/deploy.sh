@@ -11,8 +11,8 @@ set -euo pipefail
 #   No flags:    build + copy + restart (full deploy)
 #
 # Path discovery (first match wins):
-#   Instance root:  "$ALETHEIA_ROOT" > ~/ergon/instance > ~/aletheia/instance
-#   Binary dest:    "$ALETHEIA_BINARY" > ~/ergon/bin/aletheia > ~/.local/bin/aletheia
+#   Instance root:  "$ALETHEIA_ROOT" > ~/aletheia/instance
+#   Binary dest:    "$ALETHEIA_BINARY" > ~/.local/bin/aletheia
 #
 # Prerequisites: cargo, curl, jq, systemctl
 
@@ -22,12 +22,10 @@ export CARGO_TARGET_DIR="$REPO_ROOT/target"
 # Instance root: env var, then common locations, then fail
 if [[ -n "${ALETHEIA_ROOT:-}" ]]; then
     INSTANCE_ROOT="$ALETHEIA_ROOT"
-elif [ -d "$HOME/ergon/instance" ]; then
-    INSTANCE_ROOT="$HOME/ergon/instance"
 elif [ -d "$HOME/aletheia/instance" ]; then
     INSTANCE_ROOT="$HOME/aletheia/instance"
 else
-    echo "[deploy] ERROR: No instance root found. Set ALETHEIA_ROOT or create ~/ergon/instance/" >&2
+    echo "[deploy] ERROR: No instance root found. Set ALETHEIA_ROOT or create ~/aletheia/instance/" >&2
     exit 1
 fi
 
@@ -36,8 +34,6 @@ BINARY_SRC="$REPO_ROOT/target/release/aletheia"
 # Binary destination: env var, then common locations
 if [[ -n "${ALETHEIA_BINARY:-}" ]]; then
     BINARY_DST="$ALETHEIA_BINARY"
-elif [ -d "$HOME/ergon/bin" ]; then
-    BINARY_DST="$HOME/ergon/bin/aletheia"
 else
     BINARY_DST="$HOME/.local/bin/aletheia"
 fi
