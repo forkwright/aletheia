@@ -58,9 +58,10 @@ pub(crate) async fn map_error_response(
         .ok()
         .map(|e| e.error.message);
 
-    let message = detail
-        .map(|message| crate::secret::truncate_error_body(&message, MAX_ERROR_BODY_LOG_BYTES))
-        .unwrap_or_else(|| format!("HTTP {status}"));
+    let message = detail.map_or_else(
+        || format!("HTTP {status}"),
+        |message| crate::secret::truncate_error_body(&message, MAX_ERROR_BODY_LOG_BYTES),
+    );
 
     match status {
         401 => error::AuthFailedSnafu { message }.build(),
