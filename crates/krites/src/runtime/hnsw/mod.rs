@@ -41,3 +41,6 @@ pub(crate) use types::HnswIndexManifest;
 pub(super) fn idx_to_i64(idx: usize) -> i64 {
     i64::try_from(idx).unwrap_or(i64::MAX)
 }
+
+#[cfg(test)]
+mod tests;

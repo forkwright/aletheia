@@ -31,10 +31,10 @@
     reason = "usize↔i64 for seq counters: values never exceed i64::MAX in practice"
 )]
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase};
+use fjall::{KeyspaceCreateOptions, PersistMode, SingleWriterTxDatabase};
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::{debug, info, instrument, warn};
@@ -118,6 +118,7 @@ const PARTITIONS: &[&str] = &[
 /// `TempDir` that is cleaned up on drop).
 pub struct SessionStore {
     db: Arc<SingleWriterTxDatabase>,
+    path: PathBuf,
     /// Shared write mutex — see [`koina::fjall::FjallDb::write_lock`].
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
@@ -138,7 +139,7 @@ impl SessionStore {
             }
             .build()
         })?;
-        Ok(Self::from_fjall_db(fdb))
+        Ok(Self::from_fjall_db(fdb, path.to_path_buf()))
     }
 
     /// Open an ephemeral session store backed by a `TempDir` (for testing).
@@ -157,15 +158,39 @@ impl SessionStore {
             }
             .build()
         })?;
-        Ok(Self::from_fjall_db(fdb))
+        let path = fdb
+            ._temp_dir
+            .as_ref()
+            .map_or_else(std::env::temp_dir, |dir| dir.path().to_path_buf());
+        Ok(Self::from_fjall_db(fdb, path))
     }
 
-    fn from_fjall_db(fdb: koina::fjall::FjallDb) -> Self {
+    fn from_fjall_db(fdb: koina::fjall::FjallDb, path: PathBuf) -> Self {
         Self {
             db: Arc::new(fdb.db),
+            path,
             write_lock: fdb.write_lock,
             _temp_dir: fdb._temp_dir,
         }
+    }
+
+    /// Path used when opening this Fjall session store.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Flush the WAL to stable storage so committed writes survive power loss.
+    ///
+    /// Call this after every `tx.commit()` on the critical write path.
+    /// Blackboard writes intentionally skip this — they are an ephemeral cache
+    /// tier and are acceptable to lose on an unclean shutdown.
+    fn ensure_durable(&self) -> Result<()> {
+        self.db.persist(PersistMode::SyncAll).map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall persist: {e}"),
+            }
+            .build()
+        })
     }
 
     // ── Partition helpers ─────────────────────────────────────────────────
@@ -236,6 +261,7 @@ impl SessionStore {
             }
             .build()
         })?;
+        self.ensure_durable()?;
         Ok(())
     }
 
@@ -436,22 +462,42 @@ impl SessionStore {
                 .build()
             })?;
 
-            if session.status != SessionStatus::Active {
-                let old_updated_at = session.updated_at.clone();
-                session.status = SessionStatus::Active;
-                session.updated_at = now_iso();
-
-                let mut tx = self.db.write_tx();
-                Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-                Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
-                tx.commit().map_err(|e| {
-                    error::StorageSnafu {
-                        message: format!("fjall reactivate session: {e}"),
+            match session.status {
+                SessionStatus::Active => {}
+                SessionStatus::Archived => {
+                    // WHY: Archived sessions are lifecycle-closed by operator or
+                    // policy action. Silently reactivating them loses the intent
+                    // of the archival and can resurface stale context to the
+                    // agent. Callers must explicitly unarchive via the dedicated
+                    // endpoint before resuming the session.
+                    return Err(error::SessionIsArchivedSnafu {
+                        id: session.id.clone(),
                     }
-                    .build()
-                })?;
+                    .build());
+                }
+                _ => {
+                    let old_updated_at = session.updated_at.clone();
+                    session.status = SessionStatus::Active;
+                    session.updated_at = now_iso();
 
-                info!(id = session.id, nous_id, session_key, "reactivated session");
+                    let mut tx = self.db.write_tx();
+                    Self::update_session_nous_index(
+                        &mut tx,
+                        &sessions_part,
+                        &session,
+                        &old_updated_at,
+                    );
+                    Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
+                    tx.commit().map_err(|e| {
+                        error::StorageSnafu {
+                            message: format!("fjall reactivate session: {e}"),
+                        }
+                        .build()
+                    })?;
+                    self.ensure_durable()?;
+
+                    info!(id = session.id, nous_id, session_key, "reactivated session");
+                }
             }
 
             return Ok(session);
@@ -580,6 +626,7 @@ impl SessionStore {
             }
             .build()
         })?;
+        self.ensure_durable()?;
         Ok(())
     }
 
@@ -824,6 +871,7 @@ impl SessionStore {
             }
             .build()
         })?;
+        self.ensure_durable()?;
 
         debug!(session_id, seq, %role, token_estimate, "appended message");
         Ok(seq as i64) // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
@@ -1266,6 +1314,7 @@ impl SessionStore {
             }
             .build()
         })?;
+        self.ensure_durable()?;
         Ok(())
     }
 
@@ -1568,6 +1617,84 @@ impl SessionStore {
         Ok(count)
     }
 
+    /// Remove message rows whose owning session record no longer exists.
+    ///
+    /// Returns the number of primary message rows deleted. Companion
+    /// `distilled:*` and `next_seq:*` keys are also removed, but are not counted
+    /// as messages.
+    ///
+    /// # Errors
+    /// Returns an error if the message/session scan, JSON decoding, delete
+    /// transaction, or durability flush fails.
+    pub fn cleanup_orphan_messages(&self, cutoff_iso: &str) -> Result<u64> {
+        use std::collections::BTreeSet;
+
+        use fjall::Readable;
+
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let messages_part = self.partition("messages")?;
+        let sessions_part = self.partition("sessions")?;
+        let snap = self.db.read_tx();
+
+        let mut keys_to_delete: BTreeSet<Vec<u8>> = BTreeSet::new();
+        let mut primary_message_count: u64 = 0;
+        for guard in snap.range::<&str, _>(&messages_part, ..) {
+            let (key, value) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall cleanup_orphan_messages scan: {e}")))?;
+            let key_str = String::from_utf8(key.to_vec()).map_err(|e| {
+                storage_error(format!(
+                    "fjall cleanup_orphan_messages invalid message key: {e}"
+                ))
+            })?;
+            if key_str.starts_with("next_seq:") || key_str.starts_with("distilled:") {
+                continue;
+            }
+            let Some((session_id, _seq)) = key_str.split_once(':') else {
+                continue;
+            };
+            if snap
+                .get(&sessions_part, session_id.as_bytes())
+                .map_err(|e| {
+                    storage_error(format!("fjall cleanup_orphan_messages session lookup: {e}"))
+                })?
+                .is_some()
+            {
+                continue;
+            }
+            let message =
+                serde_json::from_slice::<Message>(&value).context(error::StoredJsonSnafu)?;
+            if message.created_at.as_str() >= cutoff_iso {
+                continue;
+            }
+
+            keys_to_delete.insert(key.to_vec());
+            keys_to_delete.insert(format!("distilled:{key_str}").into_bytes());
+            keys_to_delete.insert(format!("next_seq:{session_id}").into_bytes());
+            primary_message_count = primary_message_count.saturating_add(1);
+        }
+        drop(snap);
+
+        if !keys_to_delete.is_empty() {
+            let mut tx = self.db.write_tx();
+            for key in &keys_to_delete {
+                tx.remove(&messages_part, key.as_slice());
+            }
+            tx.commit().map_err(|e| {
+                error::StorageSnafu {
+                    message: format!("fjall cleanup_orphan_messages: {e}"),
+                }
+                .build()
+            })?;
+            self.ensure_durable()?;
+        }
+
+        Ok(primary_message_count)
+    }
+
     /// Delete a blackboard entry. Only the original author can delete.
     #[instrument(skip(self))]
     pub fn blackboard_delete(&self, key: &str, author: &str) -> Result<bool> {
@@ -1785,16 +1912,27 @@ impl SessionStore {
             }
         }
 
-        // WHY: a forced overwrite with a different updated_at must remove the
-        // stale nous index entry so listings don't duplicate or shadow the import.
+        // WHY: a forced overwrite must remove every stale secondary index entry
+        // that would be orphaned after the write. Two index types can go stale:
+        //
+        // - `idx:key:{nous_id}:{session_key}` — orphaned when `nous_id` or
+        //   `session_key` changes; the new write inserts the updated key index
+        //   below but the old entry is never removed otherwise.
+        //
+        // - `idx:nous:{nous_id}:upd:{ts}:{id}` — orphaned when `nous_id` or
+        //   `updated_at` changes; both are embedded in the key prefix.
         let mut tx = self.db.write_tx();
         if let Some(prev_bytes) = existing_self {
             let prev: Session =
                 serde_json::from_slice(&prev_bytes).context(error::StoredJsonSnafu)?;
-            if prev.updated_at != session.updated_at {
-                let stale_idx =
+            if prev.nous_id != session.nous_id || prev.session_key != session.session_key {
+                let stale_key_idx = Self::session_key_index_key(&prev.nous_id, &prev.session_key);
+                tx.remove(&sessions_part, stale_key_idx.as_str());
+            }
+            if prev.nous_id != session.nous_id || prev.updated_at != session.updated_at {
+                let stale_nous_idx =
                     Self::session_nous_index_key(&prev.nous_id, &prev.updated_at, &prev.id);
-                tx.remove(&sessions_part, stale_idx.as_str());
+                tx.remove(&sessions_part, stale_nous_idx.as_str());
             }
         }
 
@@ -1816,6 +1954,7 @@ impl SessionStore {
             }
             .build()
         })?;
+        self.ensure_durable()?;
 
         metrics::record_session_created(&session.nous_id, session.session_type.as_str());
         info!(

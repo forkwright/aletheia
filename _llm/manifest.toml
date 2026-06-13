@@ -14,13 +14,13 @@ generator = "scripts/llm-extract-l3.py"
 [[crates]]
 name = "agora"
 path = "crates/agora"
-source_hash = "8749ffe713a484c82782c51b17b628477a7f29a3f1f5d48bb5e9f431d681ca8b"
-l3_token_estimate = 5778
+source_hash = "f8751a83e2ce34b5bac104930e3be8bd90989f011018529949d3b48f6a3a19c3"
+l3_token_estimate = 5780
 
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "c6df9bd64d8a1034405e4ba570c80147ef1ce67f935cc46d60b71f319ea88161"
+source_hash = "39ebe5db942d70a498710c0446300ef212c778951672bd7256044c3526f04492"
 l3_token_estimate = 167
 
 [[crates]]
@@ -44,14 +44,14 @@ l3_token_estimate = 1960
 [[crates]]
 name = "aletheia-routing"
 path = "crates/aletheia-routing"
-source_hash = "982981d31bf7b830ec6c1a171fa033f6814e0788a97162ec8cea3e8bccde00e2"
+source_hash = "23af7fa88d27bfeccf063f56c3bc1612ab9176bd93ae1bfa830d9b71aeecc393"
 l3_token_estimate = 2427
 
 [[crates]]
 name = "aletheia-sessions-migrate"
 path = "crates/aletheia-sessions-migrate"
-source_hash = "233e6e5650c5a8cb35b9971371ec3dbacaa3cb2cdfe2fa994a41fb4edd6f1b84"
-l3_token_estimate = 4438
+source_hash = "d69a135c90074f24f12dc45bf30897c87daa7fd7d9bc3f50edf3302883c129b7"
+l3_token_estimate = 4998
 
 [[crates]]
 name = "dianoia"
@@ -80,8 +80,8 @@ l3_token_estimate = 13776
 [[crates]]
 name = "energeia"
 path = "crates/energeia"
-source_hash = "c276fa4ed9bdc8f7a85d3f3cb9b40b5a2522d187c123745518f8ec43efcc30d5"
-l3_token_estimate = 20179
+source_hash = "28624a772cf53ededfc2da03e61f53bd101a4d1aae64ec08430d76494d769bf2"
+l3_token_estimate = 20790
 
 [[crates]]
 name = "episteme"
@@ -98,8 +98,8 @@ l3_token_estimate = 1107
 [[crates]]
 name = "graphe"
 path = "crates/graphe"
-source_hash = "18ced7a7296444339f2740180a1cc4aea17be519dbb423afb56e6283846f3deb"
-l3_token_estimate = 5922
+source_hash = "ac4b0143e5c084018b1395b0a93e4c88ce14ad6ccda732582f701faf7ae48eec"
+l3_token_estimate = 6076
 
 [[crates]]
 name = "hermeneus"
@@ -128,8 +128,8 @@ l3_token_estimate = 8444
 [[crates]]
 name = "krites"
 path = "crates/krites"
-source_hash = "f5cc78ec567522483ec627a0153ef4f10602a4129fe795abe0e8d2bb1a6152d9"
-l3_token_estimate = 10081
+source_hash = "a30efd102099af2576474487b9f287e59686e788b91b2f48a3c4e856c542dd66"
+l3_token_estimate = 10092
 
 [[crates]]
 name = "melete"
@@ -146,8 +146,8 @@ l3_token_estimate = 51
 [[crates]]
 name = "nous"
 path = "crates/nous"
-source_hash = "15a118de8069c22395b68f590bbfd957b667c3bcd0f3a97768b869e48f656a1d"
-l3_token_estimate = 34874
+source_hash = "ac1d6e46cb366c07c71db7c48af3773294e1f0eeb0a86036567247e3e047500d"
+l3_token_estimate = 34891
 
 [[crates]]
 name = "oikonomos"
@@ -158,8 +158,8 @@ l3_token_estimate = 14117
 [[crates]]
 name = "organon"
 path = "crates/organon"
-source_hash = "5564cef2f3570bdb6d943e05f7964616a33f1c043abc159ec191f2a7a2c82480"
-l3_token_estimate = 14847
+source_hash = "6c4d49ef9069349e6955f926c405ad76174b91cb175f73a1793f568a8fce71c5"
+l3_token_estimate = 14938
 
 [[crates]]
 name = "poiesis-charts"
@@ -266,7 +266,7 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "49b3f2c00eed797b3b3aefe3008b9b2a8229054c0a37ae6ed2c2b4cb21a46183"
+source_hash = "99f6d5fa6d08d2bbcf5641245a83ad82dec8747bfbaa05cf2dc563e15442c8ea"
 l3_token_estimate = 19338
 
 [[crates]]
@@ -284,8 +284,8 @@ l3_token_estimate = 7142
 [[crates]]
 name = "taxis"
 path = "crates/taxis"
-source_hash = "ebc17e052a3f22ed225eea03af482c90ec8add8b43295bd93b9bf589328f29d6"
-l3_token_estimate = 24835
+source_hash = "fd2325a729bdedb0cbf0c1a2b1a556d36cc931ab7bdb9e25797868d03cf2fdc1"
+l3_token_estimate = 25089
 
 [[crates]]
 name = "theatron"

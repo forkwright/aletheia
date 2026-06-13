@@ -25,6 +25,20 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Attempted to use an archived session via the normal message path without
+    /// explicitly reactivating it first.
+    ///
+    /// Callers must call the unarchive endpoint (`POST /sessions/{id}/unarchive`)
+    /// before resuming an archived session.
+    #[snafu(display(
+        "session '{id}' is archived; use POST /sessions/{id}/unarchive to reactivate"
+    ))]
+    SessionIsArchived {
+        id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Storage backend error (fjall LSM-tree).
     #[snafu(display("storage error: {message}"))]
     Storage {
@@ -432,6 +446,7 @@ pub struct FactEntityEdge {
 ```rust
 pub struct SessionStore {
     db: Arc<SingleWriterTxDatabase>,
+    path: PathBuf,
     /// Shared write mutex — see [`koina::fjall::FjallDb::write_lock`].
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
@@ -443,6 +458,7 @@ pub struct SessionStore {
 impl SessionStore {
     pub fn open (path: &Path) -> Result<Self>;
     pub fn open_in_memory () -> Result<Self>;
+    pub fn path (&self) -> &Path;
     pub fn ping (&self) -> Result<()>;
     pub fn find_session (&self, nous_id: &str, session_key: &str) -> Result<Option<Session>>;
     pub fn find_session_by_id (&self, id: &str) -> Result<Option<Session>>;
@@ -521,6 +537,7 @@ impl SessionStore {
     pub fn blackboard_read (&self, key: &str) -> Result<Option<BlackboardRow>>;
     pub fn blackboard_list (&self) -> Result<Vec<BlackboardRow>>;
     pub fn cleanup_expired_entries (&self) -> Result<u64>;
+    pub fn cleanup_orphan_messages (&self, cutoff_iso: &str) -> Result<u64>;
     pub fn blackboard_delete (&self, key: &str, author: &str) -> Result<bool>;
 }
 ```

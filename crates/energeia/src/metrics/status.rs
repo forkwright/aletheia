@@ -5,16 +5,23 @@
 //! - Queue depth (number of running dispatches)
 //! - Recent dispatch outcomes (last N dispatches, newest first)
 //! - Per-project summary of active and recent activity
+//! - Crash-recovery counters for stale dispatches and cron fires
 
 #[cfg(feature = "storage-fjall")]
 use std::collections::HashMap;
 
 #[cfg(feature = "storage-fjall")]
+use crate::cron::{CronFireRecord, CronLockStore};
+#[cfg(feature = "storage-fjall")]
+use crate::error;
+#[cfg(feature = "storage-fjall")]
 use crate::error::Result;
 #[cfg(feature = "storage-fjall")]
 use crate::store::records::{DispatchRecord, DispatchStatus, SessionRecord};
 #[cfg(feature = "storage-fjall")]
-use crate::store::{EnergeiaStore, SCAN_LIMIT_DISPATCHES, SCAN_LIMIT_SESSIONS};
+use crate::store::{
+    EnergeiaStore, SCAN_LIMIT_DISPATCHES, SCAN_LIMIT_SESSIONS, stale_running_dispatch_threshold,
+};
 
 /// Point-in-time status dashboard.
 #[derive(Debug, Clone)]
@@ -26,10 +33,37 @@ pub struct StatusDashboard {
     pub active_dispatches: u64,
     /// Alias for `active_dispatches`; number of prompts awaiting completion.
     pub queue_depth: u64,
+    /// Number of running dispatches older than the startup reconciliation threshold.
+    pub stale_running_dispatches: u64,
     /// Recent dispatch outcomes (newest first), up to `RECENT_LIMIT`.
     pub recent_outcomes: Vec<RecentOutcome>,
     /// Per-project summary aggregated from active and recent dispatches.
     pub by_project: Vec<ProjectSummary>,
+    /// Cron fire crash-recovery status when cron state is available.
+    #[cfg(feature = "storage-fjall")]
+    pub cron: Option<CronStatus>,
+}
+
+/// Cron fire crash-recovery status.
+#[cfg(feature = "storage-fjall")]
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct CronStatus {
+    /// Number of unfinished cron fires older than the stale threshold.
+    pub stale_fire_count: u64,
+    /// Last recorded fire for each configured task.
+    pub task_fires: Vec<CronTaskFireStatus>,
+}
+
+/// Last persisted fire state for one cron task.
+#[cfg(feature = "storage-fjall")]
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct CronTaskFireStatus {
+    /// Cron task name.
+    pub task_name: String,
+    /// Last persisted fire record, if this task has ever acquired a fire lock.
+    pub last_fire_record: Option<CronFireRecord>,
 }
 
 /// Summary of a single dispatch run for the recent history list.
@@ -83,10 +117,34 @@ const RECENT_LIMIT: usize = 50;
 ///
 /// Returns `Error::Store` if any underlying store read fails.
 pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard> {
+    compute_status_dashboard_inner(store, None)
+}
+
+#[cfg(feature = "storage-fjall")]
+/// Build a real-time status dashboard snapshot with cron fire state.
+///
+/// # Errors
+///
+/// Returns `Error::Store` if any underlying store read fails.
+pub fn compute_status_dashboard_with_cron(
+    store: &EnergeiaStore,
+    cron_lock_store: &CronLockStore,
+    cron_task_names: &[String],
+) -> Result<StatusDashboard> {
+    compute_status_dashboard_inner(store, Some((cron_lock_store, cron_task_names)))
+}
+
+#[cfg(feature = "storage-fjall")]
+fn compute_status_dashboard_inner(
+    store: &EnergeiaStore,
+    cron: Option<(&CronLockStore, &[String])>,
+) -> Result<StatusDashboard> {
     let now = jiff::Timestamp::now();
 
     let all_dispatches = store.list_dispatches(SCAN_LIMIT_DISPATCHES)?;
     let all_sessions = store.list_all_sessions(SCAN_LIMIT_SESSIONS)?;
+    let stale_running_dispatches =
+        u64::from(store.stale_running_dispatch_count(stale_running_dispatch_threshold())?);
 
     let mut sessions_by_dispatch: HashMap<&str, Vec<&SessionRecord>> = HashMap::new();
     for s in &all_sessions {
@@ -122,13 +180,46 @@ pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard
         .collect();
 
     let by_project = build_project_summaries(&all_dispatches, &sessions_by_dispatch);
+    let cron = cron
+        .map(|(lock_store, task_names)| build_cron_status(now, lock_store, task_names))
+        .transpose()?;
 
     Ok(StatusDashboard {
         computed_at: now,
         active_dispatches,
         queue_depth,
+        stale_running_dispatches,
         recent_outcomes,
         by_project,
+        cron,
+    })
+}
+
+#[cfg(feature = "storage-fjall")]
+fn build_cron_status(
+    now: jiff::Timestamp,
+    lock_store: &CronLockStore,
+    task_names: &[String],
+) -> Result<CronStatus> {
+    let started_before = now
+        .checked_sub(stale_running_dispatch_threshold())
+        .map_err(|e| {
+            error::StoreSnafu {
+                message: format!("duration subtraction in cron status: {e}"),
+            }
+            .build()
+        })?;
+    let stale_fire_count = u64::from(lock_store.stale_fire_count(started_before)?);
+    let mut task_fires = Vec::with_capacity(task_names.len());
+    for task_name in task_names {
+        task_fires.push(CronTaskFireStatus {
+            task_name: task_name.clone(),
+            last_fire_record: lock_store.last_fire_record(task_name)?,
+        });
+    }
+    Ok(CronStatus {
+        stale_fire_count,
+        task_fires,
     })
 }
 
@@ -202,6 +293,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::cron::{CronFireRecord, CronLockStore};
     use crate::store::EnergeiaStore;
     use crate::store::records::SessionUpdate;
     use crate::types::{DispatchSpec, SessionStatus};
@@ -229,8 +321,10 @@ mod tests {
         let dashboard = compute_status_dashboard(&store).unwrap();
         assert_eq!(dashboard.active_dispatches, 0);
         assert_eq!(dashboard.queue_depth, 0);
+        assert_eq!(dashboard.stale_running_dispatches, 0);
         assert!(dashboard.recent_outcomes.is_empty());
         assert!(dashboard.by_project.is_empty());
+        assert!(dashboard.cron.is_none());
     }
 
     #[test]
@@ -323,5 +417,59 @@ mod tests {
             .find(|p| p.project == "acme")
             .unwrap();
         assert_eq!(acme.active_dispatches, 1);
+    }
+
+    #[test]
+    fn status_dashboard_includes_stale_counts_and_last_fire_record() {
+        let (_dir, store) = setup();
+        let cron_dir = TempDir::new().unwrap();
+        let lock_db =
+            koina::fjall::FjallDb::open(cron_dir.path(), &["cron_locks", "cron_fire_state"])
+                .unwrap();
+        let partition = lock_db
+            .db
+            .keyspace("cron_fire_state", fjall::KeyspaceCreateOptions::default)
+            .unwrap();
+
+        let spec = spec("acme");
+        let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+        store
+            .backdate_dispatch_for_test(&dispatch_id, jiff::SignedDuration::from_hours(2))
+            .unwrap();
+
+        let started_at = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(2))
+            .unwrap();
+        let record = CronFireRecord {
+            scheduled_at: started_at,
+            started_at,
+            finished_at: None,
+            succeeded: None,
+        };
+        let value = rmp_serde::to_vec(&record).unwrap();
+        let mut tx = lock_db.db.write_tx();
+        tx.insert(&partition, b"nightly", value.as_slice());
+        tx.commit().unwrap();
+
+        let lock_store = CronLockStore::open(std::sync::Arc::new(lock_db.db)).unwrap();
+        let task_names = vec!["nightly".to_owned()];
+        let dashboard =
+            compute_status_dashboard_with_cron(&store, &lock_store, &task_names).unwrap();
+
+        assert_eq!(dashboard.stale_running_dispatches, 1);
+        let Some(cron) = dashboard.cron else {
+            panic!("cron status included");
+        };
+        assert_eq!(cron.stale_fire_count, 1);
+        assert_eq!(cron.task_fires.len(), 1);
+        let Some(task_fire) = cron.task_fires.first() else {
+            panic!("nightly task fire status included");
+        };
+        assert_eq!(task_fire.task_name, "nightly");
+        let Some(last_fire) = task_fire.last_fire_record.as_ref() else {
+            panic!("last fire record included");
+        };
+        assert_eq!(last_fire.scheduled_at, started_at);
+        assert_eq!(last_fire.succeeded, None);
     }
 }

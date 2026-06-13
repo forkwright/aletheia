@@ -7,7 +7,7 @@
 
 use crate::error::Error;
 use crate::test_fixtures::test_store;
-use crate::types::{BlackboardRow, Role, SessionStatus};
+use crate::types::{BlackboardRow, Message, Role, SessionStatus};
 
 fn write_raw(store: &super::SessionStore, partition_name: &str, key: &str, value: &[u8]) {
     let partition = store.partition(partition_name).expect("partition opens");
@@ -175,7 +175,9 @@ fn update_session_status() {
 }
 
 #[test]
-fn find_or_create_reactivates_archived() {
+fn find_or_create_rejects_archived() {
+    // Archived sessions must not be implicitly reactivated through the normal
+    // message path. The caller must use the explicit unarchive endpoint first.
     let store = test_store();
     store
         .create_session("ses-1", "syn", "main", None, None)
@@ -184,13 +186,31 @@ fn find_or_create_reactivates_archived() {
         .update_session_status("ses-1", SessionStatus::Archived)
         .expect("archive");
 
+    let err = store
+        .find_or_create_session("ses-new", "syn", "main", None, None)
+        .expect_err("archived session must not be silently reactivated");
+    assert!(
+        matches!(err, Error::SessionIsArchived { ref id, .. } if id == "ses-1"),
+        "expected SessionIsArchived, got: {err}"
+    );
+}
+
+#[test]
+fn find_or_create_reactivates_distilled() {
+    // Distilled sessions (not Archived) may still be reactivated implicitly
+    // since distillation is an internal lifecycle event, not an operator action.
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .update_session_status("ses-1", SessionStatus::Distilled)
+        .expect("distill");
+
     let session = store
         .find_or_create_session("ses-new", "syn", "main", None, None)
-        .expect("find_or_create");
-    assert_eq!(
-        session.id, "ses-1",
-        "should return existing, not create new"
-    );
+        .expect("distilled session should be reactivated");
+    assert_eq!(session.id, "ses-1", "should return existing session");
     assert_eq!(session.status, SessionStatus::Active);
 }
 
@@ -623,6 +643,38 @@ fn delete_session_removes_all_data() {
 }
 
 #[test]
+fn cleanup_orphan_messages_removes_messages_without_session() {
+    let store = test_store();
+    let message = Message {
+        id: 1,
+        session_id: "orphan".to_owned(),
+        seq: 1,
+        role: Role::User,
+        content: "orphaned".to_owned(),
+        tool_call_id: None,
+        tool_name: None,
+        token_estimate: 1,
+        is_distilled: false,
+        created_at: "1970-01-01T00:00:00Z".to_owned(),
+    };
+    let bytes = serde_json::to_vec(&message).expect("serialize message");
+    write_raw(&store, "messages", "orphan:00000000000000000001", &bytes);
+    write_raw(&store, "messages", "next_seq:orphan", &1u64.to_be_bytes());
+
+    let cleaned = store
+        .cleanup_orphan_messages("2000-01-01T00:00:00Z")
+        .expect("cleanup orphan messages");
+
+    assert_eq!(cleaned, 1);
+    assert!(
+        store
+            .get_history_raw("orphan", None)
+            .expect("orphan history")
+            .is_empty()
+    );
+}
+
+#[test]
 fn ping_succeeds() {
     let store = test_store();
     store.ping().expect("ping should succeed");
@@ -895,5 +947,78 @@ mod portability {
         assert_eq!(listed.len(), 1, "imported session must be discoverable");
         assert_eq!(listed[0].updated_at, "2020-01-01T00:00:00Z");
         assert_eq!(listed[0].status, SessionStatus::Archived);
+    }
+
+    #[test]
+    fn force_import_with_changed_session_key_removes_stale_key_index() {
+        // Regression: force-overwrite with a new session_key left the old
+        // idx:key entry pointing at the moved session, causing find_session to
+        // ghost-find a session that reported a different key.
+        let store = test_store();
+        let mut original = import_session_record(
+            "ses-key-move",
+            SessionStatus::Active,
+            "2024-06-01T00:00:00Z",
+        );
+        original.session_key = "original-key".to_owned();
+        store
+            .import_session(&original, false)
+            .expect("first import");
+
+        let mut moved = original.clone();
+        moved.session_key = "new-key".to_owned();
+        moved.updated_at = "2024-06-02T00:00:00Z".to_owned();
+        store.import_session(&moved, true).expect("force overwrite");
+
+        // Stale key index must be gone.
+        let ghost = store
+            .find_session("syn", "original-key")
+            .expect("find on stale key");
+        assert!(
+            ghost.is_none(),
+            "stale idx:key must be removed after force-overwrite with new session_key"
+        );
+
+        // New key index must resolve correctly.
+        let live = store
+            .find_session("syn", "new-key")
+            .expect("find on new key");
+        assert!(live.is_some(), "new session_key must be findable");
+        assert_eq!(live.unwrap().id, "ses-key-move");
+    }
+
+    #[test]
+    fn force_import_with_changed_nous_id_removes_stale_nous_index() {
+        let store = test_store();
+        let mut original = import_session_record(
+            "ses-nous-move",
+            SessionStatus::Active,
+            "2024-06-01T00:00:00Z",
+        );
+        original.nous_id = "nous-a".to_owned();
+        original.session_key = "mk".to_owned();
+        store
+            .import_session(&original, false)
+            .expect("first import");
+
+        let mut retargeted = original.clone();
+        retargeted.nous_id = "nous-b".to_owned();
+        store
+            .import_session(&retargeted, true)
+            .expect("force overwrite");
+
+        // Old nous-a should have no sessions left.
+        let old_listing = store.list_sessions(Some("nous-a")).expect("list nous-a");
+        assert!(
+            old_listing.iter().all(|s| s.id != "ses-nous-move"),
+            "stale idx:nous entry must be removed after nous_id change"
+        );
+
+        // New nous-b must list the session.
+        let new_listing = store.list_sessions(Some("nous-b")).expect("list nous-b");
+        assert!(
+            new_listing.iter().any(|s| s.id == "ses-nous-move"),
+            "session must appear under new nous_id after force-overwrite"
+        );
     }
 }

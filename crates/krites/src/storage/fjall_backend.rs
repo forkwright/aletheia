@@ -97,6 +97,7 @@ impl<'s> Storage<'s> for FjallStorage {
             Ok(FjallTx::Writer(Box::new(FjallWriteTx {
                 tx: Some(tx),
                 keyspace: &self.keyspace,
+                db: Arc::clone(&self.db),
             })))
         } else {
             let snapshot = self.db.read_tx();
@@ -133,6 +134,13 @@ impl<'s> Storage<'s> for FjallStorage {
             }
             .build()
         })?;
+        self.db.persist(fjall::PersistMode::SyncAll).map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "fjall",
+                message: format!("batch persist: {e}"),
+            }
+            .build()
+        })?;
         Ok(())
     }
 }
@@ -151,6 +159,7 @@ pub struct FjallReadTx<'s> {
 pub struct FjallWriteTx<'s> {
     tx: Option<fjall::SingleWriterWriteTx<'s>>,
     keyspace: &'s fjall::SingleWriterTxKeyspace,
+    db: Arc<fjall::SingleWriterTxDatabase>,
 }
 
 // SAFETY: `FjallReadTx` and `FjallWriteTx` borrow fjall internals that are not
@@ -177,6 +186,11 @@ pub struct FjallWriteTx<'s> {
 //    is a long-lived handle used only as a lookup key for reads; fjall already
 //    provides thread-safe access to the keyspace through its own internal
 //    synchronization.
+//
+// 4. `FjallWriteTx::db` is `Arc<fjall::SingleWriterTxDatabase>`. The database
+//    handle itself is `Send + Sync` — fjall routes all write-path mutation
+//    through its own internal mutex. Sharing the Arc across threads for the
+//    sole purpose of calling `persist()` after commit is sound.
 //
 // If fjall upstream changes `SingleWriterWriteTx` internals or adds native
 // `Sync`, revisit this boundary before changing the exact fjall version pin in
@@ -332,6 +346,13 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                         TransactionFailedSnafu {
                             backend: "fjall",
                             message: format!("commit: {e}"),
+                        }
+                        .build()
+                    })?;
+                    w.db.persist(fjall::PersistMode::SyncAll).map_err(|e| {
+                        TransactionFailedSnafu {
+                            backend: "fjall",
+                            message: format!("persist: {e}"),
                         }
                         .build()
                     })?;
@@ -949,7 +970,11 @@ mod tests {
     fn tx_ref_returns_error_when_tx_is_none() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
         let keyspace: &fjall::SingleWriterTxKeyspace = &db.db.keyspace;
-        let write_tx = FjallWriteTx { tx: None, keyspace };
+        let write_tx = FjallWriteTx {
+            tx: None,
+            keyspace,
+            db: Arc::clone(&db.db.db),
+        };
         let result = write_tx.tx_ref();
         assert!(
             result.is_err(),

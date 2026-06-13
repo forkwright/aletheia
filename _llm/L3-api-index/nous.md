@@ -1405,6 +1405,10 @@ impl DegradedMode {
 pub fn is_transient_llm_error (err: &error::Error) -> bool
 ```
 
+```rust
+pub fn is_storage_failure (err: &error::Error) -> bool
+```
+
 > Attempt to build a degraded [`TurnResult`] when the LLM provider is down.
 > 
 > # Behaviour

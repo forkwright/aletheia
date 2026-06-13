@@ -249,6 +249,19 @@ impl CronTask {
 }
 ```
 
+```rust
+pub struct CronFireRecord {
+    /// Scheduled fire timestamp (lock window key).
+    pub scheduled_at: Timestamp,
+    /// Wall-clock time the lock was acquired and the callback was spawned.
+    pub started_at: Timestamp,
+    /// Wall-clock time the callback task finished; `None` if still in progress.
+    pub finished_at: Option<Timestamp>,
+    /// Whether the callback returned without panic; `None` if still in progress.
+    pub succeeded: Option<bool>,
+}
+```
+
 > Fjall-backed lock store that persists the last-fired timestamp per task.
 > 
 > A mutex serializes lock acquisition within a single process; the fjall
@@ -265,6 +278,15 @@ impl CronLockStore {
     pub fn open (db: Arc<fjall::SingleWriterTxDatabase>) -> Result<Self>;
     pub fn try_acquire (&self, task_name: &str, scheduled_time: Timestamp) -> Result<bool>;
     pub fn last_fired (&self, task_name: &str) -> Result<Option<Timestamp>>;
+    pub fn record_fire_started (&self, task_name: &str, scheduled_at: Timestamp) -> Result<()>;
+    pub fn record_fire_finished (
+        &self,
+        task_name: &str,
+        scheduled_at: Timestamp,
+        succeeded: bool,
+    ) -> Result<()>;
+    pub fn last_fire_record (&self, task_name: &str) -> Result<Option<CronFireRecord>>;
+    pub fn stale_fire_count (&self, started_before: Timestamp) -> Result<u32>;
 }
 ```
 
@@ -994,12 +1016,19 @@ pub fn compute_health_report (store: &EnergeiaStore, window_days: u32) -> Result
 ```rust
 pub struct MetricsService {
     store: Arc<EnergeiaStore>,
+    cron_lock_store: Option<Arc<CronLockStore>>,
+    cron_task_names: Vec<String>,
 }
 ```
 
 ```rust
 impl MetricsService {
     pub fn new (store: Arc<EnergeiaStore>) -> Self;
+    pub fn with_cron_lock_store (
+        mut self,
+        cron_lock_store: Arc<CronLockStore>,
+        cron_task_names: Vec<String>,
+    ) -> Self;
     pub fn health_report (&self, window_days: u32) -> Result<HealthReport>;
     pub fn cost_report (&self, window_days: u32) -> Result<CostReport>;
     pub fn status_dashboard (&self) -> Result<StatusDashboard>;
@@ -1061,10 +1090,33 @@ pub struct StatusDashboard {
     pub active_dispatches: u64,
     /// Alias for `active_dispatches`; number of prompts awaiting completion.
     pub queue_depth: u64,
+    /// Number of running dispatches older than the startup reconciliation threshold.
+    pub stale_running_dispatches: u64,
     /// Recent dispatch outcomes (newest first), up to `RECENT_LIMIT`.
     pub recent_outcomes: Vec<RecentOutcome>,
     /// Per-project summary aggregated from active and recent dispatches.
     pub by_project: Vec<ProjectSummary>,
+    /// Cron fire crash-recovery status when cron state is available.
+    #[cfg(feature = "storage-fjall")]
+    pub cron: Option<CronStatus>,
+}
+```
+
+```rust
+pub struct CronStatus {
+    /// Number of unfinished cron fires older than the stale threshold.
+    pub stale_fire_count: u64,
+    /// Last recorded fire for each configured task.
+    pub task_fires: Vec<CronTaskFireStatus>,
+}
+```
+
+```rust
+pub struct CronTaskFireStatus {
+    /// Cron task name.
+    pub task_name: String,
+    /// Last persisted fire record, if this task has ever acquired a fire lock.
+    pub last_fire_record: Option<CronFireRecord>,
 }
 ```
 
@@ -1113,6 +1165,19 @@ pub struct ProjectSummary {
 > Returns `Error::Store` if any underlying store read fails.
 ```rust
 pub fn compute_status_dashboard (store: &EnergeiaStore) -> Result<StatusDashboard>
+```
+
+> Build a real-time status dashboard snapshot with cron fire state.
+> 
+> # Errors
+> 
+> Returns `Error::Store` if any underlying store read fails.
+```rust
+pub fn compute_status_dashboard_with_cron (
+    store: &EnergeiaStore,
+    cron_lock_store: &CronLockStore,
+    cron_task_names: &[String],
+) -> Result<StatusDashboard>
 ```
 
 ## `src/orchestrator/config.rs`
@@ -2298,6 +2363,10 @@ pub enum ConflictStrategy {
 
 ## `src/store/fjall_store.rs`
 
+```rust
+pub fn stale_running_dispatch_threshold () -> jiff::SignedDuration
+```
+
 > State persistence layer wrapping a fjall keyspace.
 > 
 > All dispatch, session, lesson, observation, and CI validation records are
@@ -2306,13 +2375,13 @@ pub enum ConflictStrategy {
 ```rust
 pub struct EnergeiaStore {
     keyspace: Arc<fjall::Keyspace>,
+    db: fjall::Database,
 }
 ```
 
 ```rust
 impl EnergeiaStore {
     pub fn new (db: &fjall::Database) -> Result<Self>;
-    pub fn from_keyspace (keyspace: Arc<fjall::Keyspace>) -> Self;
     pub fn partition_name () -> &'static str;
     pub fn create_session (
         &self,
@@ -2354,6 +2423,11 @@ impl EnergeiaStore {
         session: &SessionRecord,
         outcome: &SessionOutcome,
     ) -> Result<Fact>;
+    pub fn reconcile_stale_running_dispatches (
+        &self,
+        threshold: jiff::SignedDuration,
+    ) -> Result<u32>;
+    pub fn stale_running_dispatch_count (&self, threshold: jiff::SignedDuration) -> Result<u32>;
     pub fn list_qa_verdicts_for_dispatch (
         &self,
         dispatch_id: &DispatchId,

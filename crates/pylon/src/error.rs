@@ -264,6 +264,15 @@ macro_rules! impl_from_error {
 
 impl_from_error!(mneme::error::Error, |err| {
     SessionNotFound { id, .. } => SessionNotFoundSnafu { id }.build(),
+    // WHY: archived sessions cannot receive messages without explicit unarchival.
+    // 409 Conflict is correct — the resource exists but is in a state that
+    // prevents the requested operation.
+    SessionIsArchived { ref id, .. } => ConflictSnafu {
+        message: format!(
+            "session '{id}' is archived; use POST /sessions/{id}/unarchive to reactivate"
+        ),
+    }
+    .build(),
     FactNotFound { id, .. } => NotFoundSnafu {
         path: format!("fact/{id}"),
     }
@@ -871,6 +880,30 @@ mod tests {
         let api_err = ApiError::from(mneme_err);
         let response = api_err.into_response();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn mneme_session_is_archived_maps_to_409() {
+        let mneme_err = mneme::error::Error::SessionIsArchived {
+            id: "ses-arc-01".to_owned(),
+            location: snafu::location!(),
+        };
+        let api_err = ApiError::from(mneme_err);
+        let response = api_err.into_response();
+        assert_eq!(
+            response.status(),
+            StatusCode::CONFLICT,
+            "archived session access must return 409 Conflict"
+        );
+        let msg = body_message(response);
+        assert!(
+            msg.contains("archived"),
+            "conflict message must mention archived state: {msg}"
+        );
+        assert!(
+            msg.contains("unarchive"),
+            "conflict message must hint at unarchive endpoint: {msg}"
+        );
     }
 
     #[test]

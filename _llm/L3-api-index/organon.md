@@ -51,12 +51,21 @@ pub struct EnergeiaServices {
     pub orchestrator: Arc<Orchestrator>,
     /// State persistence store for lessons, observations, and CI validations.
     pub store: Arc<EnergeiaStore>,
+    /// Cron fire state store for scheduler observability.
+    pub cron_lock_store: Option<Arc<CronLockStore>>,
+    /// Configured cron task names to include in status output.
+    pub cron_task_names: Vec<String>,
 }
 ```
 
 ```rust
 impl EnergeiaServices {
     pub fn new (orchestrator: Arc<Orchestrator>, store: Arc<EnergeiaStore>) -> Self;
+    pub fn with_cron_lock_store (
+        mut self,
+        cron_lock_store: Arc<CronLockStore>,
+        cron_task_names: Vec<String>,
+    ) -> Self;
 }
 ```
 

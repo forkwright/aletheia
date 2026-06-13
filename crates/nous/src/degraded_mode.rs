@@ -13,6 +13,16 @@
 //!
 //! In both cases the result carries [`DegradedMode`] so the TUI and API can
 //! render it differently (greyed out, warning banner, etc.).
+//!
+//! # Hard-failing errors
+//!
+//! Not every error activates the degraded fallback. Only transient LLM
+//! provider failures (identified by [`is_transient_llm_error`]) enter the
+//! degraded path. Storage failures (session store, competence store,
+//! uncertainty store, working-checkpoint store) **always propagate as hard
+//! errors** — they signal that the runtime's own persistence layer is broken
+//! and cannot be masked with cached content. Use [`is_storage_failure`] to
+//! identify these explicitly for observability and alerting purposes.
 
 use tracing::{info, warn};
 
@@ -61,6 +71,27 @@ pub fn is_transient_llm_error(err: &error::Error) -> bool {
         error::Error::Llm { source, .. } => matches!(source.action(), ErrorAction::Retry { .. }),
         _ => false,
     }
+}
+
+/// Determine whether a `nous::Error` originates from a storage layer failure.
+///
+/// Storage failures are always hard errors — they indicate the runtime's own
+/// persistence layer is broken and cannot be masked with cached LLM output.
+/// Unlike transient LLM errors, storage failures must propagate immediately
+/// so the operator is alerted and can take corrective action (e.g., disk
+/// recovery, store rebuild).
+///
+/// Use this predicate in observability hooks (metrics, alerting) to
+/// distinguish storage failures from provider outages.
+#[must_use]
+pub fn is_storage_failure(err: &error::Error) -> bool {
+    matches!(
+        err,
+        error::Error::Store { .. }
+            | error::Error::CompetenceStore { .. }
+            | error::Error::UncertaintyStore { .. }
+            | error::Error::WorkingCheckpointStore { .. }
+    )
 }
 
 /// Attempt to build a degraded [`TurnResult`] when the LLM provider is down.
@@ -180,9 +211,31 @@ mod tests {
     }
 
     fn store_error() -> error::Error {
-        error::PipelineStageSnafu {
-            stage: "execute",
-            message: "no provider",
+        use snafu::IntoError as _;
+        let mneme_err = mneme::error::Error::Storage {
+            message: "disk full".to_owned(),
+            location: snafu::location!(),
+        };
+        error::StoreSnafu.into_error(mneme_err)
+    }
+
+    fn competence_store_error() -> error::Error {
+        error::CompetenceStoreSnafu {
+            message: "competence store unavailable",
+        }
+        .build()
+    }
+
+    fn uncertainty_store_error() -> error::Error {
+        error::UncertaintyStoreSnafu {
+            message: "uncertainty store unavailable",
+        }
+        .build()
+    }
+
+    fn working_checkpoint_store_error() -> error::Error {
+        error::WorkingCheckpointStoreSnafu {
+            message: "checkpoint store unavailable",
         }
         .build()
     }
@@ -198,8 +251,64 @@ mod tests {
     }
 
     #[test]
-    fn non_llm_error_is_not_transient() {
+    fn store_error_is_not_transient() {
         assert!(!is_transient_llm_error(&store_error()));
+    }
+
+    #[test]
+    fn pipeline_stage_error_is_not_transient() {
+        let err = error::PipelineStageSnafu {
+            stage: "execute",
+            message: "no provider",
+        }
+        .build();
+        assert!(!is_transient_llm_error(&err));
+    }
+
+    #[test]
+    fn store_error_is_storage_failure() {
+        assert!(is_storage_failure(&store_error()));
+    }
+
+    #[test]
+    fn competence_store_error_is_storage_failure() {
+        assert!(is_storage_failure(&competence_store_error()));
+    }
+
+    #[test]
+    fn uncertainty_store_error_is_storage_failure() {
+        assert!(is_storage_failure(&uncertainty_store_error()));
+    }
+
+    #[test]
+    fn working_checkpoint_store_error_is_storage_failure() {
+        assert!(is_storage_failure(&working_checkpoint_store_error()));
+    }
+
+    #[test]
+    fn llm_rate_limit_is_not_storage_failure() {
+        assert!(!is_storage_failure(&llm_rate_limit_error()));
+    }
+
+    #[test]
+    fn llm_auth_error_is_not_storage_failure() {
+        assert!(!is_storage_failure(&llm_auth_error()));
+    }
+
+    #[test]
+    fn storage_failures_are_not_transient_llm_errors() {
+        let storage_errors = [
+            store_error(),
+            competence_store_error(),
+            uncertainty_store_error(),
+            working_checkpoint_store_error(),
+        ];
+        for err in &storage_errors {
+            assert!(
+                !is_transient_llm_error(err),
+                "storage failure must not activate degraded LLM path: {err}"
+            );
+        }
     }
 
     #[test]

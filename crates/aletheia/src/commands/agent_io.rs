@@ -290,6 +290,13 @@ fn knowledge_config_for_oikos(oikos: &Oikos) -> mneme::knowledge_store::Knowledg
     )
 }
 
+#[derive(Debug, Default)]
+struct KnowledgeImportCounts {
+    facts: usize,
+    entities: usize,
+    relationships: usize,
+}
+
 /// Enumerate the agent's typed knowledge from the live store.
 ///
 /// Returns `None` when the `recall` feature is disabled or when the
@@ -360,11 +367,15 @@ fn export_knowledge(
 
 /// Hydrate typed knowledge into the live store.
 #[cfg(feature = "recall")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "assembles embedding provider, knowledge store, and inserts facts/entities/relationships with backfill"
+)]
 fn import_knowledge(
     oikos: &Oikos,
     nous_id: &str,
     knowledge: &mneme::portability::KnowledgeExport,
-) -> Result<()> {
+) -> Result<KnowledgeImportCounts> {
     use mneme::embedding::{EmbeddingConfig, create_provider};
     use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
@@ -426,7 +437,24 @@ fn import_knowledge(
     let store = KnowledgeStore::open_fjall(&knowledge_path, knowledge_config)
         .with_whatever_context(|_| format!("failed to open knowledge store for {nous_id}"))?;
 
-    for fact in &knowledge.facts {
+    // WHY: retarget every fact's nous_id to the destination agent. Without
+    // this rewrite, facts imported via --target-id are stored under the
+    // source agent's nous_id and will never surface in recall for the target.
+    let facts: Vec<_> = knowledge
+        .facts
+        .iter()
+        .map(|f| {
+            if f.nous_id == nous_id {
+                f.clone()
+            } else {
+                let mut retargeted = f.clone();
+                nous_id.clone_into(&mut retargeted.nous_id);
+                retargeted
+            }
+        })
+        .collect();
+
+    for fact in &facts {
         store
             .insert_fact(fact)
             .with_whatever_context(|_| format!("import fact {:?}", fact.id))?;
@@ -453,7 +481,7 @@ fn import_knowledge(
     }
 
     if let Some(provider) = embedding_provider.as_ref() {
-        let inserted = store.backfill_fact_embeddings(&knowledge.facts, provider.as_ref());
+        let inserted = store.backfill_fact_embeddings(&facts, provider.as_ref());
         tracing::info!(
             nous_id,
             fact_count = knowledge.facts.len(),
@@ -467,7 +495,11 @@ fn import_knowledge(
             "imported facts restored without vector embeddings"
         );
     }
-    Ok(())
+    Ok(KnowledgeImportCounts {
+        facts: facts.len(),
+        entities: knowledge.entities.len(),
+        relationships: knowledge.relationships.len(),
+    })
 }
 
 #[cfg(not(feature = "recall"))]
@@ -475,8 +507,32 @@ fn import_knowledge(
     _oikos: &Oikos,
     _nous_id: &str,
     _knowledge: &mneme::portability::KnowledgeExport,
-) -> Result<()> {
-    Ok(())
+) -> Result<KnowledgeImportCounts> {
+    Ok(KnowledgeImportCounts::default())
+}
+
+#[derive(Debug, Default)]
+struct ImportSummary {
+    workspace_files: usize,
+    sessions: usize,
+    facts: usize,
+    entities: usize,
+    relationships: usize,
+    skipped_categories: Vec<&'static str>,
+}
+
+fn print_import_summary(nous_id: &str, source: &Path, summary: &ImportSummary) {
+    println!("Imported agent '{nous_id}' from {}", source.display());
+    println!("  Workspace: {} files", summary.workspace_files);
+    println!("  Sessions: {}", summary.sessions);
+    println!("  Facts: {}", summary.facts);
+    println!("  Entities: {}", summary.entities);
+    println!("  Relationships: {}", summary.relationships);
+    if summary.skipped_categories.is_empty() {
+        println!("  Skipped: none");
+    } else {
+        println!("  Skipped: {}", summary.skipped_categories.join(", "));
+    }
 }
 
 #[expect(
@@ -835,6 +891,46 @@ fn parse_message_role(
     }
 }
 
+/// Validate an agent file's data integrity before making any filesystem changes.
+///
+/// Catches malformed session IDs, blank session keys, and empty fact content
+/// while the operation is still fully reversible. Call this before any I/O so
+/// a corrupt export is rejected without leaving partial state on disk.
+fn preflight_agent_file(file: &mneme::portability::AgentFile) -> Result<()> {
+    for (i, session) in file.sessions.iter().enumerate() {
+        if session.id.trim().is_empty() {
+            whatever!("session[{i}].id must not be empty");
+        }
+        if session.session_key.trim().is_empty() {
+            whatever!(
+                "session[{i}] (id: {:?}) session_key must not be empty",
+                session.id
+            );
+        }
+    }
+
+    if let Some(knowledge) = &file.knowledge {
+        for (i, fact) in knowledge.facts.iter().enumerate() {
+            if fact.content.trim().is_empty() {
+                whatever!(
+                    "knowledge.facts[{i}] (id: {:?}) content must not be empty",
+                    fact.id
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Name of the resume-marker file written inside the nous directory when a
+/// session import begins and removed when it completes successfully.
+///
+/// If this file is present on entry it means a previous import was interrupted
+/// mid-session-import. Re-running the import will automatically use force mode
+/// for session import so already-persisted sessions are overwritten cleanly
+/// instead of returning "session already exists" errors.
+const IMPORT_RESUME_MARKER: &str = ".nous-import-in-progress";
+
 #[expect(
     clippy::too_many_lines,
     reason = "import orchestrates config, workspace, and session store — sequential by nature"
@@ -864,6 +960,10 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     for path in &agent_file.workspace.binary_files {
         validate_workspace_relative_path(path)?;
     }
+    // WHY: preflight before any I/O so a corrupt export is rejected without
+    // leaving partial state on disk (no workspace files partially written,
+    // no config half-updated, no orphaned session records).
+    preflight_agent_file(&agent_file)?;
 
     let nous_id = args
         .target_id
@@ -885,6 +985,18 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
             agent_file.workspace.binary_files.len()
         );
         println!("Sessions: {}", agent_file.sessions.len());
+        let facts = agent_file.knowledge.as_ref().map_or(0, |k| k.facts.len());
+        let entities = agent_file
+            .knowledge
+            .as_ref()
+            .map_or(0, |k| k.entities.len());
+        let relationships = agent_file
+            .knowledge
+            .as_ref()
+            .map_or(0, |k| k.relationships.len());
+        println!("Facts: {facts}");
+        println!("Entities: {entities}");
+        println!("Relationships: {relationships}");
         let total_msgs: usize = agent_file.sessions.iter().map(|s| s.messages.len()).sum();
         let total_notes: usize = agent_file.sessions.iter().map(|s| s.notes.len()).sum();
         println!("Messages: {total_msgs}");
@@ -901,6 +1013,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
+    let mut summary = ImportSummary::default();
 
     let nous_dir = oikos.nous_dir(&nous_id);
     if nous_dir.exists() && !args.force {
@@ -911,7 +1024,9 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     }
 
     // Scaffold workspace from agent file.
-    if !args.skip_workspace {
+    if args.skip_workspace {
+        summary.skipped_categories.push("workspace");
+    } else {
         std::fs::create_dir_all(&nous_dir)
             .with_whatever_context(|_| format!("failed to create {}", nous_dir.display()))?;
         for (path, content) in &agent_file.workspace.files {
@@ -923,6 +1038,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
             }
             koina::fs::write_restricted(&target, content.as_bytes())
                 .with_whatever_context(|_| format!("failed to write {}", target.display()))?;
+            summary.workspace_files += 1;
         }
     }
 
@@ -1037,7 +1153,25 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         .with_whatever_context(|_| format!("failed to write {}", config_path.display()))?;
 
     // Import sessions into graphe.
-    if !args.skip_sessions {
+    if args.skip_sessions {
+        summary.skipped_categories.push("sessions");
+    } else {
+        let resume_marker = nous_dir.join(IMPORT_RESUME_MARKER);
+        let resuming = resume_marker.exists();
+        // WHY: if a previous import was interrupted mid-session-import, the
+        // marker file exists. Auto-using force mode lets re-runs overwrite
+        // already-partially-imported sessions without requiring the caller to
+        // know to pass --force. Silent loss is still prevented because
+        // import_session with force=true overwrites rather than deletes.
+        let import_force = args.force || resuming;
+        if resuming {
+            eprintln!("  INFO: resuming interrupted import for '{nous_id}'");
+        }
+        std::fs::create_dir_all(&nous_dir)
+            .with_whatever_context(|_| format!("failed to create {}", nous_dir.display()))?;
+        koina::fs::write_restricted(&resume_marker, b"")
+            .with_whatever_context(|_| "failed to write import resume marker")?;
+
         let sessions_db = oikos.sessions_db();
         let store = mneme::store::SessionStore::open(&sessions_db).with_whatever_context(|_| {
             format!("failed to open session store at {}", sessions_db.display())
@@ -1092,7 +1226,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                         },
                         artefact_meta: None,
                     },
-                    args.force,
+                    import_force,
                 )
                 .with_whatever_context(|_| format!("failed to import session {}", session.id))?;
 
@@ -1169,16 +1303,29 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                     eprintln!("  WARN: failed to add note: {e}");
                 }
             }
+            summary.sessions += 1;
         }
 
-        if let Some(knowledge) = &agent_file.knowledge {
-            import_knowledge(&oikos, &nous_id, knowledge)?;
-        }
+        // Best-effort: remove marker on success. On failure the marker remains
+        // so a re-run auto-enables force mode and resumes safely.
+        let _ = std::fs::remove_file(&resume_marker);
     }
 
-    println!("Imported agent '{nous_id}' from {}", args.file.display());
-    println!("  Workspace: {} files", agent_file.workspace.files.len());
-    println!("  Sessions: {}", agent_file.sessions.len());
+    // WHY: knowledge import is independent of session import. Previously this
+    // was nested inside `if !args.skip_sessions`, which silently dropped all
+    // facts when the caller only wanted to skip session history. Knowledge
+    // (facts, entities, relationships) is typed data that belongs to the agent
+    // regardless of whether session history is restored.
+    if let Some(knowledge) = &agent_file.knowledge {
+        let counts = import_knowledge(&oikos, &nous_id, knowledge)?;
+        summary.facts = counts.facts;
+        summary.entities = counts.entities;
+        summary.relationships = counts.relationships;
+        #[cfg(not(feature = "recall"))]
+        summary.skipped_categories.push("knowledge");
+    }
+
+    print_import_summary(&nous_id, &args.file, &summary);
 
     Ok(())
 }
@@ -2605,7 +2752,11 @@ workspace = "nous/{agent_id}"
         std::fs::create_dir_all(oikos.config()).unwrap();
         std::fs::create_dir_all(oikos.data()).unwrap();
 
-        let agent_file = sample_agent_file();
+        let mut agent_file = sample_agent_file();
+        #[cfg(feature = "recall")]
+        {
+            agent_file.knowledge = Some(sample_knowledge_export("imported-agent"));
+        }
         let json = serde_json::to_string(&agent_file).unwrap();
         let agent_path = dir.path().join("test.agent.json");
         std::fs::write(&agent_path, json).unwrap();
@@ -2625,6 +2776,59 @@ workspace = "nous/{agent_id}"
         let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
         let sessions = store.list_sessions(Some("imported-agent")).unwrap();
         assert!(sessions.is_empty(), "sessions should be skipped");
+
+        #[cfg(feature = "recall")]
+        {
+            let facts = imported_facts(&oikos, "imported-agent");
+            assert_eq!(facts.len(), 1, "knowledge facts should still import");
+            assert_eq!(facts[0].content, "Imported agent prefers Rust");
+        }
+    }
+
+    #[cfg(feature = "recall")]
+    #[test]
+    fn import_agent_retargets_fact_nous_id_to_target_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let mut agent_file = sample_agent_file();
+        agent_file.knowledge = Some(mneme::portability::KnowledgeExport {
+            facts: vec![
+                sample_fact("fact-retarget-001", "imported-agent", "first imported fact"),
+                sample_fact(
+                    "fact-retarget-002",
+                    "imported-agent",
+                    "second imported fact",
+                ),
+            ],
+            entities: vec![],
+            relationships: vec![],
+            fact_entity_edges: vec![],
+        });
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("retarget.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: Some("dest-nous".to_owned()),
+            skip_sessions: true,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: false,
+        };
+
+        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+
+        let facts = imported_facts(&oikos, "dest-nous");
+        assert_eq!(facts.len(), 2, "all facts should import for target nous");
+        assert!(
+            facts.iter().all(|fact| fact.nous_id == "dest-nous"),
+            "every fact must be rewritten to the target nous"
+        );
     }
 
     /// Regression for #4241: a `.agent.json` whose `nous.id` contains
@@ -2793,6 +2997,36 @@ workspace = "nous/{agent_id}"
                 last_accessed_at: None,
             },
         }
+    }
+
+    #[cfg(feature = "recall")]
+    fn sample_knowledge_export(nous_id: &str) -> mneme::portability::KnowledgeExport {
+        mneme::portability::KnowledgeExport {
+            facts: vec![sample_fact(
+                "fact-import-001",
+                nous_id,
+                "Imported agent prefers Rust",
+            )],
+            entities: vec![],
+            relationships: vec![],
+            fact_entity_edges: vec![],
+        }
+    }
+
+    #[cfg(feature = "recall")]
+    fn imported_facts(oikos: &Oikos, nous_id: &str) -> Vec<mneme::knowledge::Fact> {
+        let knowledge_path = knowledge_path_for_nous(oikos, nous_id);
+        let store = mneme::knowledge_store::KnowledgeStore::open_fjall(
+            &knowledge_path,
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .unwrap();
+        store
+            .list_all_facts(i64::MAX)
+            .unwrap()
+            .into_iter()
+            .filter(|fact| fact.nous_id == nous_id)
+            .collect()
     }
 
     #[cfg(feature = "recall")]

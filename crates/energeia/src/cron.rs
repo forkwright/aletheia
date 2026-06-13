@@ -13,6 +13,9 @@
 //! | `cron.lock.failed` | error | `task_name`, `error` | Fjall I/O failure during lock acquisition |
 //! | `cron.sleep` | info | `task_name`, `next`, `sleep_ms` | Scheduler computed next wake time |
 //! | `cron.shutdown` | info | | Cancellation token triggered |
+//! | `cron.fire.started` | info | `task_name`, `scheduled` | Fire state persisted as Started |
+//! | `cron.fire.finished` | info | `task_name`, `scheduled`, `succeeded` | Fire state persisted as Finished |
+//! | `cron.fire.stale` | warn | `task_name`, `started_at` | Started fire with no Finished record detected |
 
 use std::collections::HashSet;
 use std::future::Future;
@@ -23,6 +26,7 @@ use compact_str::CompactString;
 use fjall::Readable;
 use jiff::{SignedDuration, Timestamp, Zoned, tz::TimeZone};
 use rand::RngExt;
+use serde::{Deserialize, Serialize};
 use snafu::IntoError;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
@@ -88,6 +92,27 @@ impl CronTask {
 /// Partition name for cron lock records.
 const LOCK_PARTITION: &str = "cron_locks";
 
+/// Partition name for per-task fire state records (one record per task).
+const FIRE_STATE_PARTITION: &str = "cron_fire_state";
+
+/// Persistent state for the most recent cron fire of a task.
+///
+/// The record is written when the lock is acquired (`started_at` set,
+/// `finished_at`/`succeeded` are `None`) and updated when the callback
+/// task completes. A record with `finished_at == None` that is older
+/// than the stale threshold indicates a crashed or interrupted fire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CronFireRecord {
+    /// Scheduled fire timestamp (lock window key).
+    pub scheduled_at: Timestamp,
+    /// Wall-clock time the lock was acquired and the callback was spawned.
+    pub started_at: Timestamp,
+    /// Wall-clock time the callback task finished; `None` if still in progress.
+    pub finished_at: Option<Timestamp>,
+    /// Whether the callback returned without panic; `None` if still in progress.
+    pub succeeded: Option<bool>,
+}
+
 /// Fjall-backed lock store that persists the last-fired timestamp per task.
 ///
 /// A mutex serializes lock acquisition within a single process; the fjall
@@ -102,10 +127,12 @@ impl CronLockStore {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Store`] if the partition cannot be opened.
+    /// Returns [`Error::Store`] if either partition cannot be opened.
     pub fn open(db: Arc<fjall::SingleWriterTxDatabase>) -> Result<Self> {
         db.keyspace(LOCK_PARTITION, fjall::KeyspaceCreateOptions::default)
             .map_err(|e| store_err("open cron_locks partition", e))?;
+        db.keyspace(FIRE_STATE_PARTITION, fjall::KeyspaceCreateOptions::default)
+            .map_err(|e| store_err("open cron_fire_state partition", e))?;
         Ok(Self {
             db,
             lock: parking_lot::Mutex::new(()),
@@ -147,6 +174,152 @@ impl CronLockStore {
     /// Returns [`Error::Store`] on fjall I/O failure.
     pub fn last_fired(&self, task_name: &str) -> Result<Option<Timestamp>> {
         self.get_last_fired(task_name)
+    }
+
+    /// Record the start of a cron fire for `task_name`.
+    ///
+    /// Called after the lock is acquired so a crash between lock acquisition
+    /// and callback completion leaves an auditable `Started` record.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Store`] on fjall I/O failure.
+    pub fn record_fire_started(&self, task_name: &str, scheduled_at: Timestamp) -> Result<()> {
+        let record = CronFireRecord {
+            scheduled_at,
+            started_at: Timestamp::now(),
+            finished_at: None,
+            succeeded: None,
+        };
+        let value = rmp_serde::to_vec(&record).map_err(|e| {
+            error::SerializationSnafu {
+                message: format!("serialize CronFireRecord: {e}"),
+            }
+            .build()
+        })?;
+        let partition = self
+            .db
+            .keyspace(FIRE_STATE_PARTITION, fjall::KeyspaceCreateOptions::default)
+            .map_err(|e| store_err("open cron_fire_state partition", e))?;
+        let mut tx = self.db.write_tx();
+        tx.insert(&partition, task_name.as_bytes(), value.as_slice());
+        tx.commit()
+            .map_err(|e| store_err("commit cron fire start", e))?;
+        tracing::info!(task = %task_name, scheduled = %scheduled_at, "cron.fire.started");
+        Ok(())
+    }
+
+    /// Update the fire state for `task_name` to Finished.
+    ///
+    /// Called when the spawned callback task exits (normally or via panic).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Store`] on fjall I/O failure.
+    pub fn record_fire_finished(
+        &self,
+        task_name: &str,
+        scheduled_at: Timestamp,
+        succeeded: bool,
+    ) -> Result<()> {
+        let existing = self.last_fire_record(task_name)?;
+        let started_at = existing.map_or(scheduled_at, |r| r.started_at);
+        let record = CronFireRecord {
+            scheduled_at,
+            started_at,
+            finished_at: Some(Timestamp::now()),
+            succeeded: Some(succeeded),
+        };
+        let value = rmp_serde::to_vec(&record).map_err(|e| {
+            error::SerializationSnafu {
+                message: format!("serialize CronFireRecord: {e}"),
+            }
+            .build()
+        })?;
+        let partition = self
+            .db
+            .keyspace(FIRE_STATE_PARTITION, fjall::KeyspaceCreateOptions::default)
+            .map_err(|e| store_err("open cron_fire_state partition", e))?;
+        let mut tx = self.db.write_tx();
+        tx.insert(&partition, task_name.as_bytes(), value.as_slice());
+        tx.commit()
+            .map_err(|e| store_err("commit cron fire finish", e))?;
+        tracing::info!(
+            task = %task_name,
+            scheduled = %scheduled_at,
+            succeeded = %succeeded,
+            "cron.fire.finished"
+        );
+        Ok(())
+    }
+
+    /// Read the most recent fire record for `task_name`, if any.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Store`] on fjall I/O failure.
+    pub fn last_fire_record(&self, task_name: &str) -> Result<Option<CronFireRecord>> {
+        let partition = self
+            .db
+            .keyspace(FIRE_STATE_PARTITION, fjall::KeyspaceCreateOptions::default)
+            .map_err(|e| store_err("open cron_fire_state partition", e))?;
+        let snap = self.db.read_tx();
+        match snap
+            .get(&partition, task_name.as_bytes())
+            .map(|opt| opt.map(|s| s.to_vec()))
+            .map_err(|e| store_err("read cron fire record", e))?
+        {
+            Some(bytes) => {
+                let record = rmp_serde::from_slice::<CronFireRecord>(&bytes).map_err(|e| {
+                    error::SerializationSnafu {
+                        message: format!("deserialize CronFireRecord for {task_name}: {e}"),
+                    }
+                    .build()
+                })?;
+                Ok(Some(record))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Count tasks whose most recent fire is still in the `Started` state
+    /// (no `finished_at`) and whose `started_at` is older than `started_before`.
+    ///
+    /// A non-zero count indicates processes that crashed between lock
+    /// acquisition and callback completion.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Store`] on fjall I/O failure.
+    pub fn stale_fire_count(&self, started_before: Timestamp) -> Result<u32> {
+        let partition = self
+            .db
+            .keyspace(FIRE_STATE_PARTITION, fjall::KeyspaceCreateOptions::default)
+            .map_err(|e| store_err("open cron_fire_state partition", e))?;
+        let snap = self.db.read_tx();
+        let mut count = 0u32;
+        for guard in snap.prefix(&partition, b"") {
+            let (key, value) = guard
+                .into_inner()
+                .map_err(|e| store_err("fire state prefix scan", e))?;
+            let record = rmp_serde::from_slice::<CronFireRecord>(&value).map_err(|e| {
+                let task = String::from_utf8_lossy(&key);
+                error::SerializationSnafu {
+                    message: format!("deserialize CronFireRecord for {task}: {e}"),
+                }
+                .build()
+            })?;
+            if record.finished_at.is_none() && record.started_at < started_before {
+                let task = String::from_utf8_lossy(&key);
+                tracing::warn!(
+                    task = %task,
+                    started_at = %record.started_at,
+                    "cron.fire.stale"
+                );
+                count = count.saturating_add(1);
+            }
+        }
+        Ok(count)
     }
 
     fn get_last_fired(&self, task_name: &str) -> Result<Option<Timestamp>> {
@@ -343,13 +516,36 @@ impl CronScheduler {
         );
         let span = tracing::info_span!("cron_fire", task = %task.name);
         let in_flight = Arc::clone(&self.in_flight);
+        let lock_store = Arc::clone(&self.lock_store);
         let track_overlap = self.overlap_policy == OverlapPolicy::SkipIfInFlight;
         if track_overlap {
             in_flight.lock().insert(task.name.clone());
         }
+
+        // WHY: Record Started before spawning so a process crash between here
+        // and callback completion leaves an auditable record that stale_fire_count
+        // can surface. The lock was already acquired by try_fire; this is a
+        // complementary durability marker.
+        if let Err(e) = lock_store.record_fire_started(task.name.as_str(), base_scheduled) {
+            tracing::warn!(task = %task.name, error = %e, "failed to record cron fire start");
+        }
+
+        let task_name = task.name.clone();
         let task_for_callback = task.clone();
         tokio::spawn(async move {
-            on_fire(task_for_callback).instrument(span).await;
+            // WHY: Wrap callback in a child task so panics surface as JoinError
+            // rather than propagating to the outer fire task. This lets us
+            // reliably record Finished state even when the callback panics.
+            let inner = tokio::task::spawn(on_fire(task_for_callback).instrument(span));
+            let succeeded = inner.await.is_ok();
+
+            if !succeeded {
+                tracing::error!(task = %task_name, scheduled = %base_scheduled, "cron task callback panicked");
+            }
+            if let Err(e) = lock_store.record_fire_finished(&task_name, base_scheduled, succeeded) {
+                tracing::warn!(task = %task_name, error = %e, "failed to record cron fire finish");
+            }
+
             if track_overlap {
                 in_flight.lock().remove(task.name.as_str());
             }
@@ -671,5 +867,65 @@ mod tests {
         store.try_acquire("task-d", now).unwrap();
         let read = store.last_fired("task-d").unwrap();
         assert_eq!(read, Some(now));
+    }
+
+    #[test]
+    fn fire_record_started_then_finished() {
+        let store = dummy_lock_store();
+        let scheduled = Timestamp::now();
+        assert!(store.last_fire_record("task-e").unwrap().is_none());
+
+        store.record_fire_started("task-e", scheduled).unwrap();
+        let started = store.last_fire_record("task-e").unwrap().unwrap();
+        assert_eq!(started.scheduled_at, scheduled);
+        assert!(started.finished_at.is_none());
+        assert!(started.succeeded.is_none());
+
+        store
+            .record_fire_finished("task-e", scheduled, true)
+            .unwrap();
+        let finished = store.last_fire_record("task-e").unwrap().unwrap();
+        assert!(finished.finished_at.is_some());
+        assert_eq!(finished.succeeded, Some(true));
+    }
+
+    #[test]
+    fn stale_fire_count_detects_unfinished_starts() {
+        let store = dummy_lock_store();
+        let scheduled = Timestamp::now();
+
+        // Unfinished fire — should be detected as stale.
+        store.record_fire_started("task-stale", scheduled).unwrap();
+
+        // Finished fire — must not count.
+        store.record_fire_started("task-done", scheduled).unwrap();
+        store
+            .record_fire_finished("task-done", scheduled, true)
+            .unwrap();
+
+        // Use Timestamp::MAX so that any started_at passes the threshold; the
+        // only distinction between stale and not-stale is the presence of finished_at.
+        let count = store.stale_fire_count(Timestamp::MAX).unwrap();
+        assert_eq!(
+            count, 1,
+            "only the unfinished fire should be counted as stale"
+        );
+    }
+
+    #[test]
+    fn fire_record_overwritten_on_new_fire() {
+        let store = dummy_lock_store();
+        let t1 = Timestamp::now()
+            .checked_sub(SignedDuration::from_hours(1))
+            .unwrap();
+        let t2 = Timestamp::now();
+
+        store.record_fire_started("task-f", t1).unwrap();
+        store.record_fire_finished("task-f", t1, false).unwrap();
+        store.record_fire_started("task-f", t2).unwrap();
+
+        let rec = store.last_fire_record("task-f").unwrap().unwrap();
+        assert_eq!(rec.scheduled_at, t2);
+        assert!(rec.finished_at.is_none());
     }
 }

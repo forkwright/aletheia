@@ -123,6 +123,33 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "destination '{}' is incomplete: previous migration left {} behind. \
+         Pass --force to remove the leftover staging directory and rerun, \
+         or inspect it manually",
+        path.display(),
+        marker
+    ))]
+    MigrationIncomplete {
+        path: PathBuf,
+        marker: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display(
+        "atomic rename failed: {} -> {}: {source}",
+        source_path.display(),
+        dest_path.display()
+    ))]
+    AtomicRenameFailed {
+        source_path: PathBuf,
+        dest_path: PathBuf,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display(
         "{field} value {value} cannot be encoded as a u64 (must be non-negative and fit in 64 bits)"
     ))]
     NumericRange {

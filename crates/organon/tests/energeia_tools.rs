@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
+use energeia::cron::CronLockStore;
 use energeia::engine::{SessionEvent, SessionResult};
 use energeia::http::mock::{MockEngine, MockOutcome};
 use energeia::orchestrator::{Orchestrator, OrchestratorConfig};
@@ -59,6 +60,12 @@ fn setup() -> (TempDir, Arc<EnergeiaServices>) {
     let tmp = TempDir::new().unwrap();
     let db = fjall::Database::builder(tmp.path()).open().unwrap();
     let store = Arc::new(EnergeiaStore::new(&db).unwrap());
+    let cron_db_path = tmp.path().join("cron");
+    let cron_db = koina::fjall::FjallDb::open(&cron_db_path, &["cron_locks"]).unwrap();
+    let cron_lock_store = Arc::new(CronLockStore::open(Arc::new(cron_db.db)).unwrap());
+    cron_lock_store
+        .record_fire_started("nightly", jiff::Timestamp::now())
+        .unwrap();
 
     // One success outcome for any dispatch.
     let engine = Arc::new(MockEngine::new(vec![MockOutcome::Success {
@@ -78,7 +85,10 @@ fn setup() -> (TempDir, Arc<EnergeiaServices>) {
     let orchestrator =
         Arc::new(Orchestrator::new(engine, qa, config).with_store(Arc::clone(&store)));
 
-    let services = Arc::new(EnergeiaServices::new(orchestrator, store));
+    let services = Arc::new(
+        EnergeiaServices::new(orchestrator, store)
+            .with_cron_lock_store(cron_lock_store, vec!["nightly".to_owned()]),
+    );
 
     (tmp, services)
 }
@@ -263,6 +273,33 @@ async fn all_nine_tools_return_non_error() {
     );
     let result = registry.execute(&input, &ctx).await.unwrap();
     assert_non_error(&result, "metron (cost)");
+
+    let input = make_input(
+        "metron",
+        serde_json::json!({
+            "report_type": "status"
+        }),
+    );
+    let result = registry.execute(&input, &ctx).await.unwrap();
+    assert_non_error(&result, "metron (status)");
+    let json = result_json(&result);
+    assert_eq!(
+        json.pointer("/stale_running_dispatches"),
+        Some(&serde_json::json!(0))
+    );
+    assert_eq!(
+        json.pointer("/cron/stale_fire_count"),
+        Some(&serde_json::json!(0))
+    );
+    assert_eq!(
+        json.pointer("/cron/task_fires/0/task_name"),
+        Some(&serde_json::json!("nightly"))
+    );
+    assert!(
+        json.pointer("/cron/task_fires/0/last_fire_record/succeeded")
+            .is_some(),
+        "last fire record must expose success/failure state"
+    );
 
     // ── 10. dromeus dry_run — Orchestrator::dry_run ──────────────────────────
     let spec = serde_json::json!([

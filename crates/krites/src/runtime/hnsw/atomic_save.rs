@@ -38,12 +38,14 @@ fn save_err(reason: String) -> crate::error::InternalError {
 /// 3. Atomically rename the temp file to `target_path`.
 /// 4. `fsync` the parent directory (Unix) so the rename is durable.
 ///
-/// If any step fails, the temp file is cleaned up and `target_path` is
-/// untouched.
+/// If any step before the rename fails, the temp file is cleaned up and
+/// `target_path` is untouched. After a successful rename, `target_path`
+/// already holds the new content; a failure to fsync the parent directory
+/// is propagated but the target file is left in place.
 ///
 /// # Errors
 ///
-/// Returns an error if the write, fsync, or rename fails.
+/// Returns an error if the write, fsync, rename, or directory fsync fails.
 pub(crate) fn atomic_write(target_path: &Path, data: &[u8]) -> Result<()> {
     let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
     let temp_path = temp_path_for(target_path);
@@ -68,12 +70,13 @@ pub(crate) fn atomic_write(target_path: &Path, data: &[u8]) -> Result<()> {
         )));
     }
 
-    if let Err(e) = fsync_dir(parent) {
-        // WHY: propagate directory fsync errors instead of silently ignoring
-        // them. A failed dir fsync means the rename may not survive a crash.
-        let _ = std::fs::remove_file(target_path);
-        return Err(e);
-    }
+    // WHY: The rename already succeeded, so `target_path` contains the new
+    // content (the temp file was fsynced before renaming). Removing it here
+    // would violate the contract that a failed atomic write leaves the
+    // target untouched and could destroy the only durable copy. Propagate
+    // the error so the caller knows the directory entry may not survive a
+    // crash, but leave the target file in place.
+    fsync_dir(parent)?;
 
     debug!(
         path = %target_path.display(),
@@ -276,5 +279,27 @@ mod tests {
 
         // Temp file should be gone.
         assert!(!temp.exists(), "temp file cleaned up after recovery");
+    }
+
+    #[test]
+    fn load_state_rejects_truncated_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("state.msgpack");
+
+        // Write an incomplete MessagePack payload so deserialization fails.
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&target)
+            .unwrap_or_else(|_| unreachable!("open for truncated write must succeed"));
+        std::io::Write::write_all(&mut file, &[0x93, 0x01, 0x02])
+            .unwrap_or_else(|_| unreachable!("write must succeed"));
+
+        let result: Result<Option<Vec<u64>>> = load_state(&target);
+        assert!(
+            result.is_err(),
+            "truncated MessagePack must fail deserialization"
+        );
     }
 }

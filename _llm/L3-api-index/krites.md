@@ -1445,6 +1445,7 @@ pub struct FjallReadTx<'s> {
 pub struct FjallWriteTx<'s> {
     tx: Option<fjall::SingleWriterWriteTx<'s>>,
     keyspace: &'s fjall::SingleWriterTxKeyspace,
+    db: Arc<fjall::SingleWriterTxDatabase>,
 }
 ```
 
