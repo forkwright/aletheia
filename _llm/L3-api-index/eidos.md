@@ -1572,7 +1572,7 @@ pub struct TrainingConfig {
 > 
 > Bump this constant when the persisted record shape changes incompatibly.
 ```rust
-pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 3;
+pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 4;
 ```
 
 ```rust
@@ -1672,6 +1672,10 @@ pub struct TrainingRecord {
     /// were referenced in the output).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recall_signals: Option<RecallSignals>,
+
+    /// Opaque effective tool-surface hash refs observed during this turn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_surface_hashes: Vec<String>,
 
     /// Whether PII/secret redaction was applied to `user_message` and
     /// `assistant_response` before persistence.

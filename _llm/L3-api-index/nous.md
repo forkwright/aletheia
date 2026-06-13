@@ -249,6 +249,9 @@ pub struct PromptAuditRecord {
     pub fact_ids_filtered: Vec<FilteredFact>,
     /// Names of tools exposed to the model for this request.
     pub tool_names: Vec<String>,
+    /// Opaque hash of the effective tool surface exposed to the model.
+    #[serde(default)]
+    pub tool_surface_hash: String,
     /// Request identifier propagated from pylon middleware (#3384).
     #[serde(default)]
     pub request_id: Option<String>,
@@ -2514,6 +2517,8 @@ pub struct TurnResult {
     /// `after_action` can record the correct provider in the empirical store
     /// without re-running routing logic at finalize time.
     pub model_used: String,
+    /// Opaque effective tool-surface hash refs observed during this turn.
+    pub tool_surface_hashes: Vec<String>,
 }
 ```
 
@@ -4081,6 +4086,9 @@ pub struct CaptureInput<'a> {
     ///
     /// `None` means the recall stage was skipped or produced no result.
     pub recall_signals: Option<RecallSignals>,
+
+    /// Opaque effective tool-surface hash refs observed during this turn.
+    pub tool_surface_hashes: &'a [String],
 }
 ```
 
