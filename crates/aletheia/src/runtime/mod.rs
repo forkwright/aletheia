@@ -636,6 +636,7 @@ impl RuntimeBuilder {
                     .with_whatever_context(|_| "failed to open system daemon task-state store")?;
             let mut daemon_runner = TaskRunner::new("system", daemon_token)
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
+                .with_watchdog_settings(&self.config.maintenance.watchdog)
                 .with_state_store(system_state_store)
                 .with_maintenance(maintenance_config.clone());
             let retention_executor = Arc::new(
@@ -736,6 +737,7 @@ impl RuntimeBuilder {
                     daemon_bridge.clone(),
                 )
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
+                .with_watchdog_settings(&self.config.maintenance.watchdog)
                 .with_state_store(
                     oikonomos::state::TaskStateStore::open(
                         &task_state_root.join(task_state_component(&agent_def.id)),

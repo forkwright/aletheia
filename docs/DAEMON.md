@@ -24,7 +24,7 @@
 | Maintenance | `maintenance/` | Trace rotation, drift detection, DB monitoring, retention, knowledge maintenance, fact-extraction persistence |
 | Coordination | `coordination.rs` | Reserved child-agent concurrency boundary; no spawn/join lifecycle is wired yet |
 | Triggers | `triggers.rs` | Reserved external trigger boundary; no file watcher or webhook dispatch is wired yet |
-| Watchdog | `watchdog.rs` | Tested process heartbeat monitor library; not wired into runtime startup yet |
+| Watchdog | `watchdog.rs` | Per-task heartbeat monitor wired into `TaskRunner` when enabled |
 | State | `state.rs` | fjall persistence, workspace config, single-instance locking |
 
 ### What oikonomos does NOT do
@@ -39,7 +39,7 @@
 
 Oikonomos and dianoia are siblings, not parent/child:
 
-- **Oikonomos**: runs on a clock. Schedules tasks, fires on cron expressions, manages maintenance. Runtime liveness uses the systemd watchdog heartbeat; the per-process watchdog library is not started yet.
+- **Oikonomos**: runs on a clock. Schedules tasks, fires on cron expressions, manages maintenance. Runtime liveness uses the systemd watchdog heartbeat, and the per-task watchdog monitors in-flight daemon tasks when `[maintenance.watchdog].enabled = true`.
 - **Dianoia**: runs on intent. Orchestrates multi-step plans, allocates attention across projects, detects stuck states. Think project manager.
 
 They share no code. Oikonomos calls nous actors via `DaemonBridge`; dianoia will coordinate via the planning adapter. Both are leaf crates with no cross-dependency.
@@ -123,7 +123,7 @@ Active windows restrict execution to time ranges (e.g., `active_window: Some((8,
 - 3 consecutive failures auto-disable the task
 - Catch-up mode: missed cron windows within 24h are executed on startup
 - Systemd watchdog heartbeat covers whole-service liveness when the service unit enables `WatchdogSec`
-- The per-process watchdog library is tested but not yet started by runtime, so it does not auto-restart daemon tasks today
+- The per-task watchdog cancels and reschedules hung in-flight daemon tasks when `maintenance.watchdog.enabled` is true
 
 ---
 

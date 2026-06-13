@@ -476,31 +476,25 @@ journalctl --user -u aletheia --since "1 hour ago" | grep "systemd watchdog"
 systemctl --user show aletheia -p WatchdogUSec -p Type
 ```
 
-### Daemon process watchdog (not wired)
+### Daemon process watchdog (live when enabled)
 
-`crates/daemon/src/watchdog.rs` contains a tested process-watchdog library for
-registered processes, per-process heartbeats, restart backoff, and states such
-as `Healthy`, `Hung`, `Restarting`, and `Abandoned`.
+When `[maintenance.watchdog].enabled = true`, each `TaskRunner` constructs a
+per-task watchdog. The runner registers an in-flight task when it spawns,
+unregisters it when it completes, and lets the watchdog cancel and reschedule
+the task when no heartbeat arrives before `heartbeat_timeout_secs`.
 
-That library is **not wired into runtime startup yet**. The daemon does not
-construct `Watchdog`, register the system runner or agent runners with it, or
-send per-process heartbeats. The `[maintenance.watchdog]` config fields are
-reserved for that future integration; enabling them does not start a monitor or
-produce per-process restart logs today.
+Expected implementation-level log messages:
 
-Do not expect these implementation-level log messages in production yet:
+| Message | Meaning |
+|---------|---------|
+| `watchdog: registered process` | An in-flight daemon task is now monitored |
+| `watchdog: hung process detected - no heartbeat` | The task exceeded the heartbeat timeout |
+| `watchdog: restarting process` | The watchdog requested cancellation and restart |
+| `watchdog: process restarted successfully` | Restart command was accepted by the runner |
+| `watchdog: restart failed - applying backoff` | Restart command failed and backoff applies |
+| `watchdog: max restarts exceeded - abandoning process` | The task exceeded `max_restarts` |
 
-| Future message | Current status |
-|----------------|----------------|
-| `watchdog: registered process` | Not emitted by runtime |
-| `watchdog: hung process detected - no heartbeat` | Not emitted by runtime |
-| `watchdog: restarting process` | Not emitted by runtime |
-| `watchdog: process restarted successfully` | Not emitted by runtime |
-| `watchdog: process recovered - heartbeat received` | Not emitted by runtime |
-| `watchdog: restart failed - applying backoff` | Not emitted by runtime |
-| `watchdog: max restarts exceeded - abandoning process` | Not emitted by runtime |
-
-Reserved config shape:
+Config shape:
 
 ```toml
 [maintenance.watchdog]
