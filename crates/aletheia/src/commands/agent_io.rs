@@ -187,6 +187,12 @@ pub(crate) struct ReviewSkillsArgs {
     /// Fact ID of the pending skill (required for approve/reject)
     #[arg(short, long)]
     pub fact_id: Option<String>,
+    /// Reviewer actor recorded on approve/reject decisions
+    #[arg(long)]
+    pub reviewer: Option<String>,
+    /// Optional review reason recorded on approve/reject decisions
+    #[arg(long)]
+    pub reason: Option<String>,
     /// Server URL for lock detection
     #[arg(long, default_value = "http://127.0.0.1:18789")]
     // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
@@ -1778,19 +1784,7 @@ pub(crate) async fn review_skills(
                 for fact in &pending {
                     match PendingSkill::from_json(&fact.content) {
                         Ok(ps) => {
-                            println!("  ID: {}", fact.id);
-                            println!("  Name: {}", ps.skill.name);
-                            println!(
-                                "  Description: {}",
-                                ps.skill.description.lines().next().unwrap_or("")
-                            );
-                            println!("  Tools: {}", ps.skill.tools_used.join(", "));
-                            println!("  Tags: {}", ps.skill.domain_tags.join(", "));
-                            println!("  Steps: {}", ps.skill.steps.len());
-                            println!("  Status: {}", ps.status);
-                            println!("  Candidate: {}", ps.candidate_id);
-                            println!("  Extracted: {}", ps.extracted_at);
-                            println!();
+                            print_pending_skill_for_review(fact, &ps);
                         }
                         Err(e) => {
                             eprintln!("  SKIP {}: failed to parse: {e}", fact.id);
@@ -1803,8 +1797,9 @@ pub(crate) async fn review_skills(
                     crate::error::Error::msg("--fact-id required for approve action")
                 })?;
                 let fact_id = mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
+                let review = skill_review_input(args)?;
                 let new_id = store
-                    .approve_pending_skill(&fact_id, nous_id)
+                    .approve_pending_skill(&fact_id, nous_id, review)
                     .whatever_context("failed to approve skill")?;
                 println!("Approved: {fid} → new skill fact: {new_id}");
             }
@@ -1813,8 +1808,9 @@ pub(crate) async fn review_skills(
                     crate::error::Error::msg("--fact-id required for reject action")
                 })?;
                 let fact_id = mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
+                let review = skill_review_input(args)?;
                 store
-                    .reject_pending_skill(&fact_id)
+                    .reject_pending_skill(&fact_id, nous_id, review)
                     .whatever_context("failed to reject skill")?;
                 println!("Rejected: {fid}");
             }
@@ -1833,6 +1829,131 @@ pub(crate) async fn review_skills(
             "review-skills requires the 'recall' feature (KnowledgeStore). \
              Build with: cargo build --features recall"
         );
+    }
+}
+
+#[cfg(feature = "recall")]
+const REVIEW_INPUT_PREVIEW_CHARS: usize = 160;
+
+#[cfg(feature = "recall")]
+fn print_pending_skill_for_review(fact: &mneme::knowledge::Fact, ps: &mneme::skills::PendingSkill) {
+    println!("  ID: {}", fact.id);
+    println!("  Name: {}", ps.skill.name);
+    println!(
+        "  Description: {}",
+        ps.skill.description.lines().next().unwrap_or("")
+    );
+    println!("  Tools: {}", ps.skill.tools_used.join(", "));
+    println!("  Tags: {}", ps.skill.domain_tags.join(", "));
+    println!("  Steps: {}", ps.skill.steps.len());
+    println!("  Status: {}", ps.status);
+    println!("  Candidate: {}", ps.candidate_id);
+    let source_session = ps
+        .source_session_id
+        .as_deref()
+        .or(fact.provenance.source_session_id.as_deref())
+        .or_else(|| ps.source_evidence.session_refs.first().map(String::as_str))
+        .unwrap_or("unknown");
+    println!("  Source session: {source_session}");
+    if !ps.source_evidence.session_refs.is_empty() {
+        println!(
+            "  Evidence sessions: {}",
+            ps.source_evidence.session_refs.join(", ")
+        );
+    }
+    if !ps.source_evidence.sequence_hashes.is_empty() {
+        println!(
+            "  Sequence hashes: {}",
+            ps.source_evidence.sequence_hashes.join(", ")
+        );
+    }
+    if let Some(ref audit) = ps.extraction_audit {
+        println!(
+            "  Extraction: prompt {}:{}, response {}:{}",
+            audit.user_prompt_ref.algorithm,
+            audit.user_prompt_ref.digest,
+            audit.response_ref.algorithm,
+            audit.response_ref.digest
+        );
+    }
+    if let Some(observation) = ps.source_evidence.observations.first() {
+        println!("  Evidence tools:");
+        for tool in &observation.tool_calls {
+            print_tool_evidence_for_review(tool);
+        }
+    }
+    println!("  Extracted: {}", ps.extracted_at);
+    println!();
+}
+
+#[cfg(feature = "recall")]
+fn print_tool_evidence_for_review(tool: &mneme::skills::ToolCallRecord) {
+    let input = tool
+        .redacted_input
+        .as_ref()
+        .and_then(|value| serde_json::to_string(value).ok())
+        .map_or_else(
+            || "{}".to_owned(),
+            |value| truncate_for_review(&value, REVIEW_INPUT_PREVIEW_CHARS),
+        );
+    let result = tool.result_ref.as_ref().map_or_else(
+        || "none".to_owned(),
+        |ref_| format!("{}:{}", ref_.algorithm, ref_.digest),
+    );
+    let status = if tool.is_error { "error" } else { "ok" };
+    println!(
+        "    - {} [{}] input={} result_ref={}",
+        tool.tool_name, status, input, result
+    );
+}
+
+#[cfg(feature = "recall")]
+fn skill_review_input(args: &ReviewSkillsArgs) -> Result<mneme::skills::SkillReviewInput> {
+    let reviewer = args
+        .reviewer
+        .as_deref()
+        .and_then(non_empty_trimmed)
+        .map(str::to_owned)
+        .or_else(derive_skill_reviewer)
+        .ok_or_else(|| {
+            crate::error::Error::msg(
+                "reviewer required: pass --reviewer or set ALETHEIA_REVIEWER, GIT_AUTHOR_NAME, USER, or USERNAME",
+            )
+        })?;
+    let reason = args
+        .reason
+        .as_deref()
+        .and_then(non_empty_trimmed)
+        .map(str::to_owned);
+    Ok(mneme::skills::SkillReviewInput::new(reviewer, reason))
+}
+
+#[cfg(feature = "recall")]
+fn derive_skill_reviewer() -> Option<String> {
+    ["ALETHEIA_REVIEWER", "GIT_AUTHOR_NAME", "USER", "USERNAME"]
+        .iter()
+        .filter_map(|key| std::env::var(key).ok())
+        .find_map(|value| non_empty_trimmed(&value).map(str::to_owned))
+}
+
+#[cfg(feature = "recall")]
+fn non_empty_trimmed(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+#[cfg(feature = "recall")]
+fn truncate_for_review(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
     }
 }
 

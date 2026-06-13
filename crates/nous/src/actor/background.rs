@@ -166,7 +166,7 @@ impl NousActor {
     pub(super) fn maybe_spawn_skill_analysis(
         &mut self,
         tool_calls: &[crate::pipeline::ToolCall],
-        session_key: &str,
+        source_session_id: &str,
     ) {
         use mneme::skills::{ToolCallRecord, TrackResult};
 
@@ -177,11 +177,17 @@ impl NousActor {
         let records: Vec<ToolCallRecord> = tool_calls
             .iter()
             .map(|tc| {
-                if tc.is_error {
+                let record = if tc.is_error {
                     ToolCallRecord::errored(&tc.name, tc.duration_ms)
                 } else {
                     ToolCallRecord::new(&tc.name, tc.duration_ms)
-                }
+                };
+                record.with_evidence(
+                    &tc.id,
+                    &tc.input,
+                    tc.result.as_deref(),
+                    tc.receipt.as_deref(),
+                )
             })
             .collect();
 
@@ -189,7 +195,7 @@ impl NousActor {
         let result =
             self.services
                 .candidate_tracker
-                .track_sequence(&records, session_key, &nous_id);
+                .track_sequence(&records, source_session_id, &nous_id);
 
         match result {
             TrackResult::Rejected => {
@@ -202,8 +208,8 @@ impl NousActor {
                 info!(count, "skill analysis: candidate recurrence updated");
             }
             TrackResult::Promoted(candidate_id) => {
-                info!(candidate_id = %candidate_id, "skill analysis: candidate promoted, spawning LLM extraction");
-                self.spawn_skill_extraction(&candidate_id, &records);
+                info!(candidate_id = %candidate_id, "skill analysis: candidate promoted, spawning extraction");
+                self.spawn_skill_extraction(&candidate_id, &records, source_session_id);
             }
             _ => {
                 // WHY: TrackResult is #[non_exhaustive]; future variants are silently ignored here.
@@ -216,6 +222,7 @@ impl NousActor {
         &mut self,
         candidate_id: &str,
         tool_calls: &[mneme::skills::ToolCallRecord],
+        source_session_id: &str,
     ) {
         let Some(ref extraction_config) = self.pipeline_config.extraction else {
             return;
@@ -227,6 +234,7 @@ impl NousActor {
         let nous_id = self.id.clone();
         let candidate_id = candidate_id.to_owned();
         let tool_calls = tool_calls.to_vec();
+        let source_session_id = source_session_id.to_owned();
         let tracker = Arc::clone(&self.services.candidate_tracker);
         #[cfg(feature = "knowledge-store")]
         let knowledge_store = self.stores.knowledge_store.clone();
@@ -250,6 +258,7 @@ impl NousActor {
                         &nous_id,
                         &candidate_id,
                         &tool_calls,
+                        &source_session_id,
                         &tracker,
                         #[cfg(feature = "knowledge-store")]
                         knowledge_store.as_ref(),
@@ -735,13 +744,18 @@ async fn run_extraction(
     clippy::too_many_lines,
     reason = "three-phase skill extraction pipeline: extract, persist, lifecycle; splitting would obscure the sequential flow"
 )]
-/// Run LLM skill extraction as a background task. Logs results, never panics.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "background skill extraction runner needs provider state, ids, evidence, tracker, and optional store"
+)]
+/// Run skill extraction as a background task. Logs results, never panics.
 async fn run_skill_extraction(
     model: &str,
     providers: Arc<ProviderRegistry>,
     nous_id: &str,
     candidate_id: &str,
     tool_calls: &[mneme::skills::ToolCallRecord],
+    source_session_id: &str,
     tracker: &mneme::skills::CandidateTracker,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
@@ -756,11 +770,22 @@ async fn run_skill_extraction(
     let provider = crate::extraction::HermeneusSkillExtractionProvider::new(providers, model);
     let extractor = SkillExtractor::new(provider);
 
-    // NOTE: only current-turn tool calls available; historical sequences not yet collected
-    let sequences = vec![tool_calls.to_vec()];
+    let sequences = if candidate.evidence.is_empty() {
+        vec![tool_calls.to_vec()]
+    } else {
+        candidate
+            .evidence
+            .iter()
+            .map(|item| item.tool_calls.clone())
+            .collect()
+    };
 
-    match extractor.extract_skill(candidate, &sequences).await {
-        Ok(extracted) => {
+    match extractor
+        .extract_skill_with_audit(candidate, &sequences, Some(model))
+        .await
+    {
+        Ok(result) => {
+            let extracted = result.skill;
             info!(
                 nous_id = %nous_id,
                 skill_name = %extracted.name,
@@ -789,7 +814,14 @@ async fn run_skill_extraction(
                     }
                 }
 
-                let pending = mneme::skills::PendingSkill::new(&extracted, candidate_id);
+                let mut pending = mneme::skills::PendingSkill::new_with_provenance(
+                    &extracted,
+                    candidate,
+                    result.audit,
+                );
+                if pending.source_session_id.is_none() {
+                    pending.source_session_id = Some(source_session_id.to_owned());
+                }
                 match pending.to_json() {
                     Ok(content) => {
                         use mneme::knowledge::{
@@ -819,7 +851,7 @@ async fn run_skill_extraction(
                             provenance: FactProvenance {
                                 confidence: 0.6, // Pending review: moderate confidence
                                 tier: mneme::knowledge::EpistemicTier::Inferred,
-                                source_session_id: None,
+                                source_session_id: pending.source_session_id.clone(),
                                 stability_hours: 720.0,
                             },
                             lifecycle: FactLifecycle {

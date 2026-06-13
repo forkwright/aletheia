@@ -7,6 +7,36 @@ use super::marshal::{
 };
 
 #[cfg(feature = "mneme-engine")]
+fn normalize_review_input(
+    input: crate::skills::SkillReviewInput,
+) -> crate::error::Result<crate::skills::SkillReviewInput> {
+    let reviewer = input.reviewer.trim().to_owned();
+    if reviewer.is_empty() {
+        return Err(crate::error::EngineQuerySnafu {
+            message: "skill review reviewer must not be empty".to_owned(),
+        }
+        .build());
+    }
+    let reason = input
+        .reason
+        .map(|reason| reason.trim().to_owned())
+        .filter(|reason| !reason.is_empty());
+    Ok(crate::skills::SkillReviewInput { reviewer, reason })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn pending_source_session_id(
+    pending_skill: &crate::skills::PendingSkill,
+    pending_fact: &crate::knowledge::Fact,
+) -> Option<String> {
+    pending_skill
+        .source_session_id
+        .clone()
+        .or_else(|| pending_fact.provenance.source_session_id.clone())
+        .or_else(|| pending_skill.source_evidence.session_refs.first().cloned())
+}
+
+#[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Find skills by domain tags, ordered by confidence then access count.
     ///
@@ -197,7 +227,9 @@ impl KnowledgeStore {
         &self,
         pending_fact_id: &crate::id::FactId,
         nous_id: &str,
+        review: crate::skills::SkillReviewInput,
     ) -> crate::error::Result<crate::id::FactId> {
+        let review = normalize_review_input(review)?;
         let pending_facts = self.find_pending_skills(nous_id)?;
         let pending = pending_facts
             .iter()
@@ -216,7 +248,9 @@ impl KnowledgeStore {
                 }
                 .build()
             })?;
-        "approved".clone_into(&mut pending_skill.status);
+        let decision = crate::skills::SkillReviewDecision::new("approved", review);
+        pending_skill.record_review(decision.clone());
+        let source_session_id = pending_source_session_id(&pending_skill, pending);
 
         let new_id = crate::id::FactId::new(koina::ulid::Ulid::new().to_string())
             .context(crate::error::InvalidIdSnafu)?;
@@ -233,8 +267,8 @@ impl KnowledgeStore {
             nous_id: nous_id.to_owned(),
             content: skill_json,
             fact_type: "skill".to_owned(),
-            scope: None,
-            project_id: None,
+            scope: pending.scope,
+            project_id: pending.project_id.clone(),
             temporal: crate::knowledge::FactTemporal {
                 valid_from: now,
                 valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),
@@ -243,7 +277,7 @@ impl KnowledgeStore {
             provenance: crate::knowledge::FactProvenance {
                 confidence: 0.8,
                 tier: crate::knowledge::EpistemicTier::Verified,
-                source_session_id: None,
+                source_session_id: source_session_id.clone(),
                 stability_hours: 2190.0,
             },
             lifecycle: crate::knowledge::FactLifecycle {
@@ -256,11 +290,36 @@ impl KnowledgeStore {
                 access_count: 0,
                 last_accessed_at: None,
             },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
-            visibility: crate::knowledge::Visibility::Private,
+            sensitivity: pending.sensitivity,
+            visibility: pending.visibility,
         };
 
+        let mut reviewed_pending = pending.clone();
+        reviewed_pending.content = pending_skill.to_json().map_err(|e| {
+            crate::error::EngineQuerySnafu {
+                message: format!("failed to serialize reviewed pending skill: {e}"),
+            }
+            .build()
+        })?;
+        reviewed_pending
+            .provenance
+            .source_session_id
+            .clone_from(&source_session_id);
+        self.insert_fact(&reviewed_pending)?;
         self.insert_fact(&approved_fact)?;
+        self.insert_review_audit_fact(
+            nous_id,
+            &crate::skills::SkillReviewAudit {
+                pending_fact_id: pending_fact_id.to_string(),
+                approved_fact_id: Some(new_id.to_string()),
+                candidate_id: pending_skill.candidate_id.clone(),
+                skill_name: pending_skill.skill.name.clone(),
+                decision,
+                source_session_id,
+                source_evidence: pending_skill.source_evidence.clone(),
+                extraction_audit: pending_skill.extraction_audit.clone(),
+            },
+        )?;
 
         self.forget_fact(pending_fact_id, crate::knowledge::ForgetReason::Outdated)?;
 
@@ -272,9 +331,107 @@ impl KnowledgeStore {
     pub fn reject_pending_skill(
         &self,
         pending_fact_id: &crate::id::FactId,
+        nous_id: &str,
+        review: crate::skills::SkillReviewInput,
     ) -> crate::error::Result<()> {
+        let review = normalize_review_input(review)?;
+        let pending_facts = self.find_pending_skills(nous_id)?;
+        let pending = pending_facts
+            .iter()
+            .find(|f| f.id == *pending_fact_id)
+            .ok_or_else(|| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("pending skill not found: {pending_fact_id}"),
+                }
+                .build()
+            })?;
+        let mut pending_skill =
+            crate::skills::PendingSkill::from_json(&pending.content).map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("failed to parse pending skill: {e}"),
+                }
+                .build()
+            })?;
+        let decision = crate::skills::SkillReviewDecision::new("rejected", review);
+        pending_skill.record_review(decision.clone());
+        let source_session_id = pending_source_session_id(&pending_skill, pending);
+
+        let mut reviewed_pending = pending.clone();
+        reviewed_pending.content = pending_skill.to_json().map_err(|e| {
+            crate::error::EngineQuerySnafu {
+                message: format!("failed to serialize reviewed pending skill: {e}"),
+            }
+            .build()
+        })?;
+        reviewed_pending
+            .provenance
+            .source_session_id
+            .clone_from(&source_session_id);
+        self.insert_fact(&reviewed_pending)?;
+        self.insert_review_audit_fact(
+            nous_id,
+            &crate::skills::SkillReviewAudit {
+                pending_fact_id: pending_fact_id.to_string(),
+                approved_fact_id: None,
+                candidate_id: pending_skill.candidate_id.clone(),
+                skill_name: pending_skill.skill.name.clone(),
+                decision,
+                source_session_id,
+                source_evidence: pending_skill.source_evidence.clone(),
+                extraction_audit: pending_skill.extraction_audit.clone(),
+            },
+        )?;
         self.forget_fact(pending_fact_id, crate::knowledge::ForgetReason::Incorrect)?;
         Ok(())
+    }
+
+    fn insert_review_audit_fact(
+        &self,
+        nous_id: &str,
+        audit: &crate::skills::SkillReviewAudit,
+    ) -> crate::error::Result<crate::id::FactId> {
+        let audit_id = crate::id::FactId::new(koina::ulid::Ulid::new().to_string())
+            .context(crate::error::InvalidIdSnafu)?;
+        let content = audit.to_json().map_err(|e| {
+            crate::error::EngineQuerySnafu {
+                message: format!("failed to serialize skill review audit: {e}"),
+            }
+            .build()
+        })?;
+        let now = jiff::Timestamp::now();
+        let fact = crate::knowledge::Fact {
+            id: audit_id.clone(),
+            nous_id: nous_id.to_owned(),
+            content,
+            fact_type: "skill_review_audit".to_owned(),
+            scope: None,
+            project_id: None,
+            temporal: crate::knowledge::FactTemporal {
+                valid_from: now,
+                valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),
+                recorded_at: now,
+            },
+            provenance: crate::knowledge::FactProvenance {
+                confidence: 1.0,
+                tier: crate::knowledge::EpistemicTier::Verified,
+                source_session_id: audit.source_session_id.clone(),
+                stability_hours: 8760.0,
+            },
+            lifecycle: crate::knowledge::FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: crate::knowledge::FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
+            sensitivity: crate::knowledge::FactSensitivity::Internal,
+            visibility: crate::knowledge::Visibility::Private,
+        };
+        self.insert_fact(&fact)?;
+        Ok(audit_id)
     }
 
     /// Compute decay scores for all active skills of a nous and apply retirement.

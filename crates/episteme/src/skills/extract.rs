@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 
 use crate::skill::SkillContent;
-use crate::skills::{SkillCandidate, ToolCallRecord};
+use crate::skills::{
+    ContentEvidenceRef, SkillCandidate, ToolCallRecord, candidate::SkillObservationEvidence,
+};
 
 /// Errors from the skill extraction pipeline.
 #[derive(Debug, Snafu)]
@@ -58,9 +60,34 @@ pub trait SkillExtractionProvider: Send + Sync {
     >;
 }
 
-/// A skill definition extracted by the LLM, before human review.
+/// Result of an extraction pass with durable audit references.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillExtractionResult {
+    /// Parsed skill extracted from the provider response.
+    pub skill: ExtractedSkill,
+    /// Content-addressed audit references for the extraction pass.
+    pub audit: SkillExtractionAudit,
+}
+
+/// Audit references for a skill extraction pass.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillExtractionAudit {
+    /// Model identifier used for the extraction request, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Content-addressed reference to the system prompt.
+    pub system_prompt_ref: ContentEvidenceRef,
+    /// Content-addressed reference to the user prompt.
+    pub user_prompt_ref: ContentEvidenceRef,
+    /// Content-addressed reference to the raw provider response.
+    pub response_ref: ContentEvidenceRef,
+    /// When the extraction response was received.
+    pub extracted_at: jiff::Timestamp,
+}
+
+/// A skill definition extracted by the provider, before human review.
 ///
-/// This is the raw LLM output, parsed from JSON. It gets converted to
+/// This is the raw provider output, parsed from JSON. It gets converted to
 /// [`SkillContent`] for storage as a fact with `fact_type = "skill"`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtractedSkill {
@@ -120,16 +147,41 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
     ///
     /// # Errors
     ///
-    /// Returns an error if the LLM call fails or if the response cannot be parsed.
+    /// Returns an error if the provider call fails or if the response cannot be parsed.
     pub async fn extract_skill(
         &self,
         candidate: &SkillCandidate,
         tool_call_sequences: &[Vec<ToolCallRecord>],
     ) -> Result<ExtractedSkill, SkillExtractionError> {
+        let result = self
+            .extract_skill_with_audit(candidate, tool_call_sequences, None)
+            .await?;
+        Ok(result.skill)
+    }
+
+    /// Extract a skill and return prompt/response audit references.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the LLM call fails or if the response cannot be parsed.
+    pub async fn extract_skill_with_audit(
+        &self,
+        candidate: &SkillCandidate,
+        tool_call_sequences: &[Vec<ToolCallRecord>],
+        model: Option<&str>,
+    ) -> Result<SkillExtractionResult, SkillExtractionError> {
         let system = EXTRACTION_SYSTEM_PROMPT;
         let user_message = build_extraction_prompt(candidate, tool_call_sequences);
         let response = self.provider.complete(system, &user_message).await?;
-        parse_skill_response(&response)
+        let audit = SkillExtractionAudit {
+            model: model.map(str::to_owned),
+            system_prompt_ref: ContentEvidenceRef::sha256("extraction_system_prompt", system),
+            user_prompt_ref: ContentEvidenceRef::sha256("extraction_user_prompt", &user_message),
+            response_ref: ContentEvidenceRef::sha256("extraction_response", &response),
+            extracted_at: jiff::Timestamp::now(),
+        };
+        let skill = parse_skill_response(&response)?;
+        Ok(SkillExtractionResult { skill, audit })
     }
 }
 
@@ -356,6 +408,24 @@ fn build_extraction_prompt(
         "- Sessions observed: {}",
         candidate.session_refs.len()
     );
+    if !candidate.session_refs.is_empty() {
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
+        let _ = writeln!(
+            prompt,
+            "- Session refs: {}",
+            candidate.session_refs.join(", ")
+        );
+    }
+    if !candidate.evidence.is_empty() {
+        let hashes = candidate
+            .evidence
+            .iter()
+            .map(|item| item.sequence_hash.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
+        let _ = writeln!(prompt, "- Sequence hashes: {hashes}");
+    }
     // kanon:ignore RUST/no-silent-result-swallow — String::write is infallible
     let _ = writeln!(prompt);
 
@@ -431,6 +501,148 @@ pub struct PendingSkill {
     pub status: String,
     /// When the skill was extracted.
     pub extracted_at: jiff::Timestamp,
+    /// Primary source session for fact provenance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_session_id: Option<String>,
+    /// Candidate and tool-call evidence that caused extraction.
+    #[serde(default)]
+    pub source_evidence: SkillSourceEvidence,
+    /// Prompt/response audit references for extraction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extraction_audit: Option<SkillExtractionAudit>,
+    /// Review decision attached when the pending skill is approved or rejected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<SkillReviewDecision>,
+}
+
+/// Candidate evidence stored with pending and review-audit records.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SkillSourceEvidence {
+    /// Candidate ID that triggered extraction.
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
+    pub candidate_id: String,
+    /// Nous ID that owns the candidate.
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
+    pub nous_id: String,
+    /// Number of matching observations when extraction was triggered.
+    pub recurrence_count: u32,
+    /// Source sessions where the pattern appeared.
+    pub session_refs: Vec<String>,
+    /// Representative normalized tool sequence.
+    pub normalized_sequence: Vec<String>,
+    /// Representative signature hash from the sequence signature.
+    pub signature_hash: u64,
+    /// SHA-256 hashes for redacted observed sequences.
+    pub sequence_hashes: Vec<String>,
+    /// Redacted observation records used for review.
+    pub observations: Vec<SkillObservationEvidence>,
+}
+
+impl SkillSourceEvidence {
+    /// Build source evidence from a promoted candidate snapshot.
+    #[must_use]
+    pub fn from_candidate(candidate: &SkillCandidate) -> Self {
+        Self {
+            candidate_id: candidate.id.clone(),
+            nous_id: candidate.nous_id.clone(),
+            recurrence_count: candidate.recurrence_count,
+            session_refs: candidate.session_refs.clone(),
+            normalized_sequence: candidate.signature.normalized.clone(),
+            signature_hash: candidate.signature.hash,
+            sequence_hashes: candidate
+                .evidence
+                .iter()
+                .map(|item| item.sequence_hash.clone())
+                .collect(),
+            observations: candidate.evidence.clone(),
+        }
+    }
+}
+
+/// Reviewer metadata supplied for approve/reject operations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillReviewInput {
+    /// Reviewer actor or operator identifier.
+    pub reviewer: String,
+    /// Optional human-readable decision reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl SkillReviewInput {
+    /// Create review metadata.
+    #[must_use]
+    pub fn new(reviewer: impl Into<String>, reason: Option<String>) -> Self {
+        Self {
+            reviewer: reviewer.into(),
+            reason,
+        }
+    }
+}
+
+/// Durable decision record for a pending skill review.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillReviewDecision {
+    /// Reviewer actor or operator identifier.
+    pub reviewer: String,
+    /// Review action: `"approved"` or `"rejected"`.
+    pub action: String,
+    /// Optional human-readable decision reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// When the decision was recorded.
+    pub reviewed_at: jiff::Timestamp,
+}
+
+impl SkillReviewDecision {
+    /// Create a review decision with the current timestamp.
+    #[must_use]
+    pub fn new(action: impl Into<String>, input: SkillReviewInput) -> Self {
+        Self {
+            reviewer: input.reviewer,
+            action: action.into(),
+            reason: input.reason,
+            reviewed_at: jiff::Timestamp::now(),
+        }
+    }
+}
+
+/// Append-only audit fact content for a skill review decision.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillReviewAudit {
+    /// Pending skill fact ID reviewed by the decision.
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
+    pub pending_fact_id: String,
+    /// Approved skill fact ID, present for approvals.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
+    pub approved_fact_id: Option<String>,
+    /// Candidate ID that produced the pending skill.
+    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
+    pub candidate_id: String,
+    /// Reviewed skill name.
+    pub skill_name: String,
+    /// Review decision metadata.
+    pub decision: SkillReviewDecision,
+    /// Primary source session for the reviewed skill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_session_id: Option<String>,
+    /// Candidate and tool-call evidence used for the review.
+    pub source_evidence: SkillSourceEvidence,
+    /// Extraction audit references, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extraction_audit: Option<SkillExtractionAudit>,
+}
+
+impl SkillReviewAudit {
+    /// Serialize to JSON for storage as an audit fact.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`serde_json::Error`] if serialization fails.
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
 }
 
 /// Raw deserialization type for [`PendingSkill`].
@@ -440,6 +652,14 @@ struct PendingSkillRaw {
     candidate_id: String,
     status: String,
     extracted_at: jiff::Timestamp,
+    #[serde(default)]
+    source_session_id: Option<String>,
+    #[serde(default)]
+    source_evidence: SkillSourceEvidence,
+    #[serde(default)]
+    extraction_audit: Option<SkillExtractionAudit>,
+    #[serde(default)]
+    review: Option<SkillReviewDecision>,
 }
 
 impl From<PendingSkillRaw> for PendingSkill {
@@ -449,6 +669,10 @@ impl From<PendingSkillRaw> for PendingSkill {
             candidate_id: raw.candidate_id,
             status: raw.status,
             extracted_at: raw.extracted_at,
+            source_session_id: raw.source_session_id,
+            source_evidence: raw.source_evidence,
+            extraction_audit: raw.extraction_audit,
+            review: raw.review,
         }
     }
 }
@@ -462,7 +686,37 @@ impl PendingSkill {
             candidate_id: candidate_id.to_owned(),
             status: "pending_review".to_owned(),
             extracted_at: jiff::Timestamp::now(),
+            source_session_id: None,
+            source_evidence: SkillSourceEvidence::default(),
+            extraction_audit: None,
+            review: None,
         }
+    }
+
+    /// Create a new pending skill with source evidence and extraction audit refs.
+    #[must_use]
+    pub fn new_with_provenance(
+        extracted: &ExtractedSkill,
+        candidate: &SkillCandidate,
+        extraction_audit: SkillExtractionAudit,
+    ) -> Self {
+        let source_evidence = SkillSourceEvidence::from_candidate(candidate);
+        Self {
+            skill: extracted.to_skill_content(),
+            candidate_id: candidate.id.clone(),
+            status: "pending_review".to_owned(),
+            extracted_at: extraction_audit.extracted_at,
+            source_session_id: source_evidence.session_refs.first().cloned(),
+            source_evidence,
+            extraction_audit: Some(extraction_audit),
+            review: None,
+        }
+    }
+
+    /// Attach a review decision and update status.
+    pub fn record_review(&mut self, decision: SkillReviewDecision) {
+        self.status.clone_from(&decision.action);
+        self.review = Some(decision);
     }
 
     /// Serialize to JSON for storage in a fact's `content` field.

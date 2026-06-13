@@ -29,6 +29,7 @@ use crate::skills::{
     SequenceSignature, ToolCallRecord,
     heuristics::score_sequence,
     signature::{sequence_signature, signature_similarity},
+    tool_sequence_hash,
 };
 
 /// Minimum recurrence count to promote a candidate to a skill.
@@ -36,6 +37,35 @@ pub(crate) const PROMOTION_THRESHOLD: u32 = 3;
 
 /// Similarity threshold for merging two sequences into the same candidate.
 pub(crate) const SIMILARITY_THRESHOLD: f64 = 0.8;
+
+/// Maximum observation snapshots retained for one candidate.
+const MAX_EVIDENCE_OBSERVATIONS: usize = 12;
+
+/// Evidence for one observed tool-call sequence behind a skill candidate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillObservationEvidence {
+    /// Persisted source session ID for the observed sequence.
+    pub session_id: String,
+    /// SHA-256 hash over the redacted tool-call sequence.
+    pub sequence_hash: String,
+    /// Redacted tool-call details for reviewer inspection.
+    pub tool_calls: Vec<ToolCallRecord>,
+    /// When this observation was recorded.
+    pub observed_at: jiff::Timestamp,
+}
+
+impl SkillObservationEvidence {
+    /// Build evidence from a source session and redacted tool-call sequence.
+    #[must_use]
+    pub fn new(session_id: &str, tool_calls: &[ToolCallRecord]) -> Self {
+        Self {
+            session_id: session_id.to_owned(),
+            sequence_hash: tool_sequence_hash(tool_calls),
+            tool_calls: tool_calls.to_vec(),
+            observed_at: jiff::Timestamp::now(),
+        }
+    }
+}
 
 /// A tracked pattern that has been seen at least once and may be promoted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +90,9 @@ pub struct SkillCandidate {
     pub heuristic_score: f64,
     /// Detected pattern type from the first observation.
     pub pattern_type: Option<crate::skills::PatternType>,
+    /// Redacted observation evidence retained for review and audit.
+    #[serde(default)]
+    pub evidence: Vec<SkillObservationEvidence>,
 }
 
 impl SkillCandidate {
@@ -159,6 +192,7 @@ impl CandidateTracker {
 
         let sig = sequence_signature(tool_calls);
         let now = jiff::Timestamp::now();
+        let observation = SkillObservationEvidence::new(session_id, tool_calls);
 
         let mut candidates = self.candidates.lock().unwrap_or_else(|e| {
             tracing::warn!("CandidateTracker lock poisoned, recovering");
@@ -172,6 +206,10 @@ impl CandidateTracker {
             existing.last_seen = now;
             if !existing.session_refs.contains(&session_id.to_owned()) {
                 existing.session_refs.push(session_id.to_owned());
+            }
+            existing.evidence.push(observation);
+            if existing.evidence.len() > MAX_EVIDENCE_OBSERVATIONS {
+                existing.evidence.remove(0);
             }
 
             let new_count = existing.recurrence_count;
@@ -194,6 +232,7 @@ impl CandidateTracker {
             last_seen: now,
             heuristic_score: score.total,
             pattern_type: score.pattern_type,
+            evidence: vec![observation],
         });
 
         TrackResult::New
