@@ -218,3 +218,63 @@ async fn run_completion_timeout_returns_error() {
     assert!(err.to_string().contains("timed out"));
     let _ = fs::remove_file(&script);
 }
+
+/// Return `true` if the process with `pid` still exists (Linux-only).
+#[cfg(target_os = "linux")]
+fn is_process_alive(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{pid}")).exists()
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn run_completion_subprocess_killed_on_future_drop() {
+    // WHY(#4884): kill_on_drop ensures the Codex subprocess terminates when
+    // the caller's future is dropped (actor cancellation, timeout path, etc.).
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NONCE: AtomicU64 = AtomicU64::new(0);
+    let nonce = NONCE.fetch_add(1, Ordering::Relaxed);
+    let pid_path = std::env::temp_dir().join(format!(
+        "hermeneus_codex_killondrop_{}_{nonce}.txt",
+        std::process::id()
+    ));
+    let pid_path_str = pid_path.display().to_string();
+    let script = write_script(
+        "kill_on_drop",
+        &format!("echo $$ > {pid_path_str}\nsleep 30"),
+    );
+
+    let pid_path_clone = pid_path.clone();
+    let binary = script.clone();
+    let handle = tokio::spawn(async move {
+        run_completion(&binary, None, "prompt", Duration::from_secs(30)).await
+    });
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if pid_path_clone.exists() {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for subprocess PID file"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    let pid: u32 = fs::read_to_string(&pid_path_clone)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+
+    handle.abort();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    assert!(
+        !is_process_alive(pid),
+        "Codex subprocess (pid={pid}) should be dead after future drop"
+    );
+
+    let _ = fs::remove_file(&script);
+    let _ = fs::remove_file(&pid_path);
+}

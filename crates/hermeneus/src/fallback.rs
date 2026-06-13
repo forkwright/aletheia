@@ -73,29 +73,43 @@ pub async fn complete_with_fallback(
     }
 
     for fallback_model in &config.fallback_models {
-        tracing::warn!(
-            primary = %primary,
-            fallback = %fallback_model,
-            reason = %last_error.as_ref().map_or("unknown", |_| "retryable error on previous model"),
-            "falling back to alternative model"
-        );
-
         let mut fallback_req = request.clone();
         fallback_req.model = fallback_model.clone();
 
-        match provider.complete(&fallback_req).await {
-            Ok(resp) => return Ok(resp),
-            Err(e) => {
-                if !e.is_retryable() {
-                    return Err(e);
-                }
+        // WHY(#4882): each fallback model gets the same number of attempts as the primary,
+        // so a transient overload on fallback-1 does not permanently skip fallback-2 when
+        // retrying the same model once would have succeeded.
+        for fallback_attempt in 0..config.retries_before_fallback.max(1) {
+            if fallback_attempt == 0 {
+                tracing::warn!(
+                    primary = %primary,
+                    fallback = %fallback_model,
+                    reason = %last_error.as_ref().map_or("unknown", |_| "retryable error on previous model"),
+                    "falling back to alternative model"
+                );
+            } else {
                 tracing::warn!(
                     model = %fallback_model,
-                    error = %e,
-                    "fallback model failed with retryable error"
+                    attempt = fallback_attempt,
+                    "retrying fallback model"
                 );
-                attempt_errors.push(format!("{fallback_model}: {e}"));
-                last_error = Some(e);
+            }
+
+            match provider.complete(&fallback_req).await {
+                Ok(resp) => return Ok(resp),
+                Err(e) => {
+                    if !e.is_retryable() {
+                        return Err(e);
+                    }
+                    tracing::warn!(
+                        model = %fallback_model,
+                        attempt = fallback_attempt,
+                        error = %e,
+                        "fallback model failed with retryable error"
+                    );
+                    attempt_errors.push(format!("{fallback_model}: {e}"));
+                    last_error = Some(e);
+                }
             }
         }
     }
@@ -304,8 +318,14 @@ mod tests {
 
     #[tokio::test]
     async fn all_models_fail_returns_aggregate_error() {
-        let provider =
-            MockFallbackProvider::new(vec![retryable_error(), retryable_error(), server_error()]);
+        // WHY(#4882): with retries_before_fallback=2, each model gets 2 attempts;
+        // 4 responses needed (2 primary + 2 fallback-1).
+        let provider = MockFallbackProvider::new(vec![
+            retryable_error(),
+            retryable_error(),
+            server_error(),
+            server_error(),
+        ]);
         let config = FallbackConfig {
             fallback_models: vec!["fallback-1".to_owned()],
             retries_before_fallback: 2,
@@ -326,7 +346,34 @@ mod tests {
                 && msg.contains("fallback-1"),
             "aggregate fallback error should name the failed models"
         );
-        assert_eq!(provider.call_count(), 3);
+        assert_eq!(provider.call_count(), 4);
+    }
+
+    #[tokio::test]
+    async fn fallback_model_is_retried_before_moving_on() {
+        // WHY(#4882): verify fallback model gets retries_before_fallback attempts
+        // before the chain advances to the next fallback.
+        let provider = MockFallbackProvider::new(vec![
+            retryable_error(),         // primary attempt 1
+            retryable_error(),         // primary attempt 2 (retries_before_fallback=2)
+            server_error(),            // fallback-1 attempt 1 fails
+            ok_response("fallback-1"), // fallback-1 attempt 2 succeeds
+        ]);
+        let config = FallbackConfig {
+            fallback_models: vec!["fallback-1".to_owned()],
+            retries_before_fallback: 2,
+        };
+
+        let resp = complete_with_fallback(&provider, &make_request("primary-model"), &config)
+            .await
+            .unwrap();
+
+        assert_eq!(resp.model, "fallback-1");
+        assert_eq!(provider.call_count(), 4);
+        assert_eq!(
+            provider.called_models(),
+            vec!["primary-model", "primary-model", "fallback-1", "fallback-1"]
+        );
     }
 
     #[tokio::test]

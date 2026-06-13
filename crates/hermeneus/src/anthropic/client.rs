@@ -55,6 +55,9 @@ pub struct AnthropicProvider {
     cc_profile: Option<super::cc_profile::CcProfile>,
     /// Per-request timeout for non-streaming completions.
     non_streaming_timeout: Duration,
+    /// Default retry delay in milliseconds for SSE stream errors (rate-limit,
+    /// overload). Configurable via `providerBehavior.sseDefaultRetryMs` (#4886).
+    sse_retry_ms: u64,
     /// Prompt cache policy (#3410). When `Disabled`, all `cache_control`
     /// markers are scrubbed before the wire request is built so operator
     /// content never enters Anthropic's prompt cache.
@@ -210,6 +213,7 @@ impl AnthropicProvider {
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
             non_streaming_timeout: NON_STREAMING_TIMEOUT,
+            sse_retry_ms: super::error::SSE_DEFAULT_RETRY_MS,
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
             model_refs: model_refs(config),
@@ -267,6 +271,7 @@ impl AnthropicProvider {
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
             non_streaming_timeout: NON_STREAMING_TIMEOUT,
+            sse_retry_ms: super::error::SSE_DEFAULT_RETRY_MS,
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
             model_refs: model_refs(config),
@@ -296,8 +301,7 @@ impl AnthropicProvider {
     ) -> Result<Self> {
         let mut this = Self::with_credential_provider(provider, config)?;
         this.non_streaming_timeout = behavior.non_streaming_timeout;
-        // TODO(#2183): thread sse_retry_ms through the SSE error mapper
-        // once it supports per-instance configuration.
+        this.sse_retry_ms = behavior.sse_retry_ms;
         Ok(this)
     }
 
@@ -377,7 +381,7 @@ impl AnthropicProvider {
                 tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
-            let (token_prefix, credential_source) = self.credential_log_info();
+            let credential_source = self.credential_source();
             let headers = self.build_headers()?;
 
             let mut response = match self
@@ -400,13 +404,9 @@ impl AnthropicProvider {
 
             if !response.status().is_success() {
                 let status = response.status().as_u16();
-                let err = super::error::map_error_response(
-                    response,
-                    &request.model,
-                    &token_prefix,
-                    &credential_source,
-                )
-                .await;
+                let err =
+                    super::error::map_error_response(response, &request.model, &credential_source)
+                        .await;
                 self.health.record_error(&err);
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
                     #[expect(
@@ -433,20 +433,25 @@ impl AnthropicProvider {
             let mut accumulator = StreamAccumulator::new();
             let mut content_started = false;
 
-            let stream_result = parse_sse_response(&mut response, &mut accumulator, &mut |event| {
-                if matches!(
-                    event,
-                    StreamEvent::TextDelta { .. }
-                        | StreamEvent::ThinkingDelta { .. }
-                        | StreamEvent::InputJsonDelta { .. }
-                ) {
-                    if ttft.is_none() {
-                        ttft = Some(start.elapsed());
+            let stream_result = parse_sse_response(
+                &mut response,
+                &mut accumulator,
+                &mut |event| {
+                    if matches!(
+                        event,
+                        StreamEvent::TextDelta { .. }
+                            | StreamEvent::ThinkingDelta { .. }
+                            | StreamEvent::InputJsonDelta { .. }
+                    ) {
+                        if ttft.is_none() {
+                            ttft = Some(start.elapsed());
+                        }
+                        content_started = true;
                     }
-                    content_started = true;
-                }
-                on_event(event);
-            })
+                    on_event(event);
+                },
+                self.sse_retry_ms,
+            )
             .await;
 
             match stream_result {
@@ -569,24 +574,16 @@ impl AnthropicProvider {
         }))
     }
 
-    /// Return `(token_prefix, credential_source)` strings for diagnostic logging.
+    /// Return the credential source class string for diagnostic logging.
     ///
-    /// The token prefix is the first 4 characters of the current secret value;
-    /// the credential source is the [`CredentialSource`] display string.
-    /// Returns empty strings when no credential is available.
+    /// Returns an empty string when no credential is available.
     ///
-    /// // WHY: Only the first 4 characters of the token are logged to avoid
-    /// // leaking credential material in logs while still allowing operators to
-    /// // distinguish between different tokens (e.g., after a refresh rotation).
-    fn credential_log_info(&self) -> (String, String) {
+    /// WHY(#4885): only the source class (e.g. "oauth", "api-key") is logged,
+    /// never a token prefix or any credential-derived material.
+    fn credential_source(&self) -> String {
         match self.credential_provider.get_credential() {
-            Some(cred) => {
-                let s = cred.secret.expose_secret();
-                let prefix = s.get(..4.min(s.len())).unwrap_or("").to_owned();
-                let source = cred.source.to_string();
-                (prefix, source)
-            }
-            None => (String::new(), String::new()),
+            Some(cred) => cred.source.to_string(),
+            None => String::new(),
         }
     }
 
@@ -849,7 +846,7 @@ impl AnthropicProvider {
                 tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
-            let (token_prefix, credential_source) = self.credential_log_info();
+            let credential_source = self.credential_source();
             let mut headers = self.build_headers()?;
             if let Ok(val) = HeaderValue::from_str(&idempotency_key) {
                 headers.insert("idempotency-key", val);
@@ -941,13 +938,9 @@ impl AnthropicProvider {
                 return parsed;
             }
 
-            let err = super::error::map_error_response(
-                response,
-                &request.model,
-                &token_prefix,
-                &credential_source,
-            )
-            .await;
+            let err =
+                super::error::map_error_response(response, &request.model, &credential_source)
+                    .await;
             self.health.record_error(&err);
 
             if status == 401 || ((400..500).contains(&status) && status != 429) {

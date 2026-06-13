@@ -16,6 +16,24 @@ use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::response::{ResponsesResponse, TokenDetails, parse_arguments};
 
+/// Format an error and its full source chain into a single message string.
+///
+/// WHY(#4887): reqwest's Display only shows the outer error message (e.g.
+/// "error decoding response body") but hides the underlying cause ("connection
+/// reset by peer"). `is_retryable()` scans the message for keywords like
+/// "reset" and "connection", so including the chain makes network-drop errors
+/// retryable before content starts.
+fn error_chain_message(prefix: &str, err: &dyn std::error::Error) -> String {
+    use std::fmt::Write;
+    let mut msg = format!("{prefix}: {err}");
+    let mut source = err.source();
+    while let Some(s) = source {
+        let _ = write!(msg, ": {s}");
+        source = s.source();
+    }
+    msg
+}
+
 #[derive(Debug, Deserialize)]
 struct ChatStreamChunk {
     #[serde(default)]
@@ -274,7 +292,7 @@ pub(crate) async fn parse_chat_sse_response(
     loop {
         let chunk = response.chunk().await.map_err(|e| {
             error::ApiRequestSnafu {
-                message: format!("stream read error: {e}"),
+                message: error_chain_message("stream read error", &e),
             }
             .build()
         })?;
@@ -588,7 +606,7 @@ pub(crate) async fn parse_responses_sse_response(
     loop {
         let chunk = response.chunk().await.map_err(|e| {
             error::ApiRequestSnafu {
-                message: format!("stream read error: {e}"),
+                message: error_chain_message("stream read error", &e),
             }
             .build()
         })?;

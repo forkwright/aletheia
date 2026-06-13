@@ -159,6 +159,10 @@ pub(crate) async fn run_completion(
         .arg("--dangerously-skip-permissions")
         .arg("--max-turns")
         .arg("1")
+        // WHY(#4884): killing the child on drop ensures caller cancellation
+        // (timeout, actor shutdown, future drop) terminates the subprocess
+        // rather than leaving it running outside Aletheia's lifecycle.
+        .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -432,6 +436,9 @@ pub(crate) async fn run_streaming(
         .arg("--dangerously-skip-permissions")
         .arg("--max-turns")
         .arg("1")
+        // WHY(#4884): same kill_on_drop contract as run_completion — drop
+        // propagates SIGKILL so no subprocess survives actor cancellation.
+        .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

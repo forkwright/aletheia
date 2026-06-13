@@ -533,6 +533,195 @@ async fn streaming_does_not_retry_non_retryable_http_error() {
 }
 
 #[tokio::test]
+#[expect(
+    deprecated,
+    reason = "set_linger(Duration::ZERO) sends RST immediately and does not block; test-only"
+)]
+async fn streaming_retries_sse_connection_reset_before_content() {
+    // WHY(#4887): SSE-level connection errors before any content delta must be
+    // retried, mirroring the Anthropic path. Verify by having the server reset the
+    // connection after sending HTTP 200 headers (so the SSE body parser sees the
+    // error, not the HTTP status check), then serve a valid response on retry.
+    //
+    // WHY: bind the listener before spawning so the port is ready for attempt 0;
+    // a post-spawn bind races with the client and wastes the only retry slot on
+    // "connection refused" before the RST attempt can happen.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind test listener");
+    let addr = listener.local_addr().expect("read port");
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let call_count_server = Arc::clone(&call_count);
+
+    let good_sse = concat!(
+        "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"Ok\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-sse-retry\",\"model\":\"gpt-5\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Ok\"}]}],\"usage\":{\"input_tokens\":3,\"output_tokens\":1,\"total_tokens\":4}}}\n\n"
+    );
+
+    let server = tokio::spawn(async move {
+        // Attempt 1: send HTTP 200 headers then RST — SSE body parser gets a connection error.
+        {
+            let (mut socket, _) = listener.accept().await.expect("accept attempt 1");
+            call_count_server.fetch_add(1, Ordering::SeqCst);
+            // Drain the HTTP request headers.
+            let mut buf = vec![0_u8; 4096];
+            loop {
+                let n = socket.read(&mut buf).await.expect("read request");
+                if n == 0 || buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            // Send HTTP 200 with SSE content-type but no body — then RST.
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\n")
+                .await
+                .expect("write headers");
+            // set_linger(Some(ZERO)) makes the OS send RST on close, giving reqwest
+            // a retryable "connection reset" error from the SSE body reader.
+            socket
+                .set_linger(Some(std::time::Duration::ZERO))
+                .expect("set linger");
+            drop(socket); // RST sent here
+        }
+
+        // Attempt 2: serve a valid SSE response.
+        {
+            let (mut socket, _) = listener.accept().await.expect("accept attempt 2");
+            call_count_server.fetch_add(1, Ordering::SeqCst);
+            let mut buf = vec![0_u8; 4096];
+            loop {
+                let n = socket.read(&mut buf).await.expect("read request 2");
+                if n == 0 || buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                good_sse.len(),
+                good_sse
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write good sse");
+        }
+    });
+
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "test-openai-sse-retry".to_owned(),
+        base_url: format!("http://{addr}/v1"),
+        models: vec!["gpt-5".to_owned()],
+        max_retries: 1,
+        api_family: OpenAiApiFamily::Responses,
+        ..OpenAiProviderConfig::default()
+    })
+    .expect("construct provider");
+
+    let mut events = Vec::new();
+    let resp = provider
+        .complete_streaming(&basic_request("gpt-5"), &mut |event| events.push(event))
+        .await
+        .expect("streaming must retry and succeed");
+
+    server.await.expect("server task completes");
+
+    assert_eq!(
+        call_count.load(Ordering::SeqCst),
+        2,
+        "must retry once after pre-content SSE connection error"
+    );
+    assert_eq!(resp.id, "resp-sse-retry");
+    assert!(
+        events.iter().any(
+            |e| matches!(e, crate::anthropic::StreamEvent::TextDelta { text } if text == "Ok")
+        )
+    );
+}
+
+#[tokio::test]
+#[expect(
+    deprecated,
+    reason = "set_linger(Duration::ZERO) sends RST immediately and does not block; test-only"
+)]
+async fn streaming_does_not_retry_sse_error_after_content_started() {
+    // WHY(#4887): once any content delta has been delivered, retrying would
+    // duplicate output. Verify that a connection RST after the first delta
+    // propagates immediately with call_count == 1.
+    let reserved = std::net::TcpListener::bind("127.0.0.1:0").expect("reserve test port");
+    let addr = reserved.local_addr().expect("read reserved port");
+    drop(reserved);
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let call_count_server = Arc::clone(&call_count);
+
+    let server = tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
+        let (mut socket, _) = listener.accept().await.expect("accept");
+        call_count_server.fetch_add(1, Ordering::SeqCst);
+
+        let mut buf = vec![0_u8; 4096];
+        loop {
+            let n = socket.read(&mut buf).await.expect("read request");
+            if n == 0 || buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                break;
+            }
+        }
+
+        // Send HTTP 200 + one text delta, then RST.
+        let headers = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\n";
+        let delta = "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"Hi\"}\n\n";
+        socket
+            .write_all(headers.as_bytes())
+            .await
+            .expect("write headers");
+        socket
+            .write_all(delta.as_bytes())
+            .await
+            .expect("write delta");
+        socket.flush().await.expect("flush");
+        // Brief pause to let reqwest read the delta before RST.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        // RST rather than FIN so reqwest gets a retryable "connection reset" error.
+        socket
+            .set_linger(Some(std::time::Duration::ZERO))
+            .expect("set linger");
+        drop(socket); // content_started gate must prevent retry
+    });
+
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "test-openai-content-gate".to_owned(),
+        base_url: format!("http://{addr}/v1"),
+        models: vec!["gpt-5".to_owned()],
+        max_retries: 2,
+        api_family: OpenAiApiFamily::Responses,
+        ..OpenAiProviderConfig::default()
+    })
+    .expect("construct provider");
+
+    let mut events = Vec::new();
+    let err = provider
+        .complete_streaming(&basic_request("gpt-5"), &mut |event| events.push(event))
+        .await
+        .expect_err("mid-stream error must propagate, not retry");
+
+    server.await.expect("server task completes");
+
+    assert_eq!(
+        call_count.load(Ordering::SeqCst),
+        1,
+        "must not retry after content has been delivered to on_event"
+    );
+    assert!(
+        events.iter().any(
+            |e| matches!(e, crate::anthropic::StreamEvent::TextDelta { text } if text == "Hi")
+        ),
+        "first delta must have been delivered before the error: {events:?}"
+    );
+    assert!(!err.to_string().is_empty(), "error must propagate: {err:?}");
+}
+
+#[tokio::test]
 async fn server_tools_request_is_rejected_before_transport() {
     let server = MockServer::start().await;
     let provider = mock_provider(&server, vec!["qwen".to_owned()]);

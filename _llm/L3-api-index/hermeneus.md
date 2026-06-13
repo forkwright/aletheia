@@ -107,6 +107,9 @@ pub struct AnthropicProvider {
     cc_profile: Option<super::cc_profile::CcProfile>,
     /// Per-request timeout for non-streaming completions.
     non_streaming_timeout: Duration,
+    /// Default retry delay in milliseconds for SSE stream errors (rate-limit,
+    /// overload). Configurable via `providerBehavior.sseDefaultRetryMs` (#4886).
+    sse_retry_ms: u64,
     /// Prompt cache policy (#3410). When `Disabled`, all `cache_control`
     /// markers are scrubbed before the wire request is built so operator
     /// content never enters Anthropic's prompt cache.

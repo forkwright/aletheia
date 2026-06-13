@@ -213,6 +213,63 @@ fn build_kimi_command_uses_validated_headless_invocation_and_scrubs_api_key() {
     assert_eq!(moonshot, Some(None));
 }
 
+#[test]
+fn build_kimi_command_includes_model_arg_when_provided() {
+    // WHY(#4880): the resolved model must appear as --model <name> so the
+    // subprocess uses the same model that response attribution records.
+    let cwd = Path::new("/tmp");
+    let cmd = build_kimi_command(Path::new("/usr/bin/kimi"), cwd, Some("kimi-k2"));
+    let args: Vec<_> = cmd
+        .as_std()
+        .get_args()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    let model_pos = args
+        .iter()
+        .position(|a| a == "--model")
+        .expect("--model flag must be present when model is Some");
+    assert_eq!(
+        args.get(model_pos + 1).map(String::as_str),
+        Some("kimi-k2"),
+        "--model must be followed by the model name"
+    );
+}
+
+#[tokio::test]
+async fn run_completion_passes_model_to_subprocess() {
+    // WHY(#4880): verify the subprocess receives --model kimi-k2 when
+    // the process config specifies Some("kimi-k2").
+    let script = write_script(
+        "completion_model_arg",
+        r#"# Find the --model argument position and check next arg
+i=1
+while [ $i -le $# ]; do
+    eval "arg=\$$i"
+    if [ "$arg" = "--model" ]; then
+        i=$((i+1))
+        eval "model=\$$i"
+        printf '{"role":"assistant","content":[{"type":"text","text":"model=%s"}]}\n' "$model"
+        exit 0
+    fi
+    i=$((i+1))
+done
+printf 'no --model arg\n' >&2
+exit 3"#,
+    );
+
+    let cwd = std::env::temp_dir();
+    let config = KimiProcessConfig {
+        kimi_binary: &script,
+        cwd: &cwd,
+        model: Some("kimi-k2"),
+        timeout: Duration::from_secs(10),
+    };
+    let output = run_completion(&config, None, "prompt", 0).await.unwrap();
+    assert_eq!(output.result_text, "model=kimi-k2");
+
+    fs::remove_file(&script).unwrap();
+}
+
 #[tokio::test]
 async fn run_completion_uses_stub_kimi_shape() {
     let script = write_script(

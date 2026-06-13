@@ -83,6 +83,10 @@ pub(crate) async fn run_completion(
         .arg("never")
         .arg("--json")
         .arg("-")
+        // WHY(#4884): kill_on_drop ensures the subprocess is terminated if the
+        // future is dropped (timeout, actor cancellation) rather than becoming
+        // an orphan outside Aletheia's process lifecycle.
+        .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
