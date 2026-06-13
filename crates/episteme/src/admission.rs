@@ -234,7 +234,7 @@ impl StructuredAdmissionPolicy {
         // INVARIANT: lock is never held across await points; no risk of deadlock here.
         self.seen_hashes
             .lock()
-            .map_or(false, |guard| guard.contains(&hash))
+            .is_ok_and(|guard| guard.contains(&hash))
     }
 
     /// Record the content hash of an admitted fact.
