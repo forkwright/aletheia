@@ -160,6 +160,20 @@ fn build_energeia_services(
         energeia::store::EnergeiaStore::new(&db)
             .whatever_context("failed to initialize energeia store partitions")?,
     );
+    let reconciled = store
+        .reconcile_stale_running_dispatches(energeia::store::stale_running_dispatch_threshold())
+        .whatever_context("failed to reconcile stale energeia dispatches at startup")?;
+    info!(
+        reconciled,
+        "reconciled stale Running energeia dispatches at startup"
+    );
+    let cron_lock_store = super::super::cron_executor::open_lock_store(oikos)?;
+    let cron_task_names = config
+        .dispatch
+        .cron_tasks
+        .iter()
+        .map(|task| task.name.clone())
+        .collect();
 
     let default_model = &config.agents.defaults.model_defaults.model.primary;
     let engine: Arc<dyn energeia::engine::DispatchEngine> =
@@ -177,6 +191,7 @@ fn build_energeia_services(
     );
 
     Ok(Arc::new(
-        organon::builtins::energeia::EnergeiaServices::new(orchestrator, store),
+        organon::builtins::energeia::EnergeiaServices::new(orchestrator, store)
+            .with_cron_lock_store(cron_lock_store, cron_task_names),
     ))
 }

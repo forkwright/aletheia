@@ -366,17 +366,23 @@ fn record_training_data_produces_fact() {
 // ── Store construction tests ──
 
 #[test]
-fn from_keyspace_works() {
+fn store_roundtrip_across_reopen() {
     let temp_dir = TempDir::new().unwrap();
-    let db = fjall::Database::builder(temp_dir.path()).open().unwrap();
-    let ks = db
-        .keyspace("energeia", fjall::KeyspaceCreateOptions::default)
-        .unwrap();
-    let store = EnergeiaStore::from_keyspace(Arc::new(ks));
-
     let spec = sample_dispatch_spec();
-    let id = store.create_dispatch("acme", &spec).unwrap();
-    assert!(store.get_dispatch(&id).unwrap().is_some());
+    let dispatch_id = {
+        let db = fjall::Database::builder(temp_dir.path()).open().unwrap();
+        let store = EnergeiaStore::new(&db).unwrap();
+        let id = store.create_dispatch("acme", &spec).unwrap();
+        assert!(store.get_dispatch(&id).unwrap().is_some());
+        id
+    };
+    // Reopen the database and verify the record survived.
+    let db2 = fjall::Database::builder(temp_dir.path()).open().unwrap();
+    let store2 = EnergeiaStore::new(&db2).unwrap();
+    assert!(
+        store2.get_dispatch(&dispatch_id).unwrap().is_some(),
+        "dispatch record must survive database reopen"
+    );
 }
 
 #[test]
@@ -394,4 +400,73 @@ fn store_is_send_sync() {
         fn assert<T: Send + Sync>() {}
         assert::<EnergeiaStore>();
     };
+}
+
+// ── Stale running dispatch reconciliation ──
+
+#[test]
+fn reconcile_stale_running_dispatches_marks_old_as_failed() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+
+    let stale_id = store.create_dispatch("acme", &spec).unwrap();
+    let fresh_id = store.create_dispatch("acme", &spec).unwrap();
+    let done_id = store.create_dispatch("acme", &spec).unwrap();
+
+    store
+        .backdate_dispatch_for_test(&stale_id, jiff::SignedDuration::from_hours(2))
+        .unwrap();
+    store
+        .finish_dispatch(&done_id, DispatchStatus::Completed)
+        .unwrap();
+
+    let threshold = jiff::SignedDuration::from_hours(1);
+    let count = store.reconcile_stale_running_dispatches(threshold).unwrap();
+    assert_eq!(
+        count, 1,
+        "exactly one stale Running dispatch should be reconciled"
+    );
+
+    let stale = store.get_dispatch(&stale_id).unwrap().unwrap();
+    assert_eq!(
+        stale.status,
+        DispatchStatus::Failed,
+        "stale dispatch must become Failed"
+    );
+
+    let fresh = store.get_dispatch(&fresh_id).unwrap().unwrap();
+    assert_eq!(
+        fresh.status,
+        DispatchStatus::Running,
+        "recent dispatch must stay Running"
+    );
+
+    let done = store.get_dispatch(&done_id).unwrap().unwrap();
+    assert_eq!(
+        done.status,
+        DispatchStatus::Completed,
+        "completed dispatch must be unchanged"
+    );
+}
+
+#[test]
+fn stale_running_dispatch_count_does_not_mutate() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+
+    let id = store.create_dispatch("acme", &spec).unwrap();
+    store
+        .backdate_dispatch_for_test(&id, jiff::SignedDuration::from_hours(3))
+        .unwrap();
+
+    let threshold = jiff::SignedDuration::from_hours(1);
+    let count = store.stale_running_dispatch_count(threshold).unwrap();
+    assert_eq!(count, 1);
+
+    let after = store.get_dispatch(&id).unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        DispatchStatus::Running,
+        "count must not mutate records"
+    );
 }

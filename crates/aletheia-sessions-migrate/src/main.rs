@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use aletheia_sessions_migrate::migrate::{FIELD_MAPPING_DOC, run_dry_run};
-use aletheia_sessions_migrate::{run_migration, run_verification};
+use aletheia_sessions_migrate::{run_verification, stage_migration};
 use anyhow::Result;
 use clap::Parser;
 use tracing::{error, info};
@@ -122,17 +122,19 @@ fn run(cli: &Cli) -> Result<()> {
         return Ok(());
     }
 
-    let report = run_migration(&cli.source, &cli.dest, cli.force)?;
-    report::print_migration(&report);
+    let staged = stage_migration(&cli.source, &cli.dest, cli.force)?;
 
     if cli.verify {
-        info!("running --verify pass");
-        let v = run_verification(&cli.source, &cli.dest, cli.samples)?;
+        info!("running --verify pass against staged destination");
+        let v = staged.verify(&cli.source, cli.samples)?;
         report::print_verification(&v);
         if !v.ok() {
             anyhow::bail!("verification failed: {} mismatch(es)", v.mismatches.len());
         }
     }
+
+    let report = staged.publish()?;
+    report::print_migration(&report);
 
     Ok(())
 }

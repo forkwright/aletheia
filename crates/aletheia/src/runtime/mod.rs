@@ -670,13 +670,21 @@ impl RuntimeBuilder {
             #[cfg(feature = "energeia")]
             if !self.config.dispatch.cron_tasks.is_empty() {
                 if let Some(services) = energeia_services.as_ref() {
-                    cron_executor::start(
-                        &self.config.dispatch.cron_tasks,
-                        Arc::clone(&services.orchestrator),
-                        &self.oikos,
-                        &task_tracker,
-                        &shutdown_token,
-                    )?;
+                    if let Some(cron_lock_store) = services.cron_lock_store.as_ref() {
+                        cron_executor::start(
+                            &self.config.dispatch.cron_tasks,
+                            Arc::clone(&services.orchestrator),
+                            &self.oikos,
+                            Arc::clone(cron_lock_store),
+                            &task_tracker,
+                            &shutdown_token,
+                        )?;
+                    } else {
+                        warn!(
+                            cron_tasks = self.config.dispatch.cron_tasks.len(),
+                            "dispatch cron tasks configured but cron lock store unavailable; recurring dispatch not started"
+                        );
+                    }
                 } else {
                     warn!(
                         cron_tasks = self.config.dispatch.cron_tasks.len(),

@@ -213,6 +213,19 @@ impl Destination {
         })
     }
 
+    /// Flush all writes to durable storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::FjallOp`] if the persist call fails.
+    pub fn persist(&self) -> Result<()> {
+        self.db
+            .db
+            .persist(fjall::PersistMode::SyncAll)
+            .map_err(fjall_op_err("persist destination"))?;
+        Ok(())
+    }
+
     /// Persist all rows to fjall in one pass. Returns a per-table count.
     ///
     /// Sessions are written with their secondary indices. Messages are
@@ -607,7 +620,7 @@ fn session_nous_index_key(nous_id: &str, updated_at: &str, session_id: &str) -> 
     format!("idx:nous:{nous_id}:upd:{ts}:{session_id}")
 }
 
-fn is_empty_or_absent(path: &Path) -> Result<bool> {
+pub(crate) fn is_empty_or_absent(path: &Path) -> Result<bool> {
     if !path.exists() {
         return Ok(true);
     }

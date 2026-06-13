@@ -55,5 +55,7 @@ pub mod source;
 pub mod verify;
 
 pub use error::{Error, Result};
-pub use migrate::{MigrationPlan, MigrationReport, run_migration};
+pub use migrate::{
+    MigrationPlan, MigrationReport, StagedMigration, run_migration, stage_migration,
+};
 pub use verify::{VerificationReport, run_verification};

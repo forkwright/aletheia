@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use aletheia_routing::types::TaskCategory;
 use jiff::Timestamp;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -41,6 +42,8 @@ struct AfterActionSessionOutcome {
     turns: u32,
     cost_cents: u64,
     pr_url: Option<String>,
+    model: Option<String>,
+    category: Option<String>,
 }
 
 /// Post-processing stage: record metrics, assemble result, finish store record,
@@ -149,12 +152,11 @@ async fn append_after_action_record(ctx: &PipelineContext) -> Result<(), Pipelin
             stage: "post_processing",
         })?;
 
-    let after_actions_dir = log_dir.join("after-actions");
-    tokio::fs::create_dir_all(&after_actions_dir)
+    tokio::fs::create_dir_all(log_dir)
         .await
         .map_err(|e| {
             crate::error::IoSnafu {
-                path: after_actions_dir.clone(),
+                path: log_dir.clone(),
             }
             .into_error(e)
         })
@@ -163,7 +165,7 @@ async fn append_after_action_record(ctx: &PipelineContext) -> Result<(), Pipelin
         })?;
 
     let date = Timestamp::now().strftime("%Y-%m-%d").to_string();
-    let path = after_actions_dir.join(format!("{date}.jsonl"));
+    let path = log_dir.join(format!("{date}.jsonl"));
 
     let mut file = tokio::fs::OpenOptions::new()
         .create(true)
@@ -203,6 +205,11 @@ fn build_after_action_record(ctx: &PipelineContext) -> Result<AfterActionRecord,
             turns: o.num_turns,
             cost_cents: usd_to_cents(o.cost_usd),
             pr_url: o.pr_url.clone(),
+            model: o.model.clone(),
+            category: ctx
+                .prompt_map
+                .get(&o.prompt_number)
+                .map(|prompt| TaskCategory::from_prompt(&prompt.body).to_string()),
         })
         .collect();
 
@@ -460,15 +467,7 @@ mod tests {
             .await
             .expect("post_processing must succeed");
 
-        let after_actions = tmp.path().join("after-actions");
-        assert!(
-            after_actions.exists(),
-            "after-actions directory should be created"
-        );
-
-        let entries: Vec<_> = std::fs::read_dir(&after_actions)
-            .expect("read dir")
-            .collect();
+        let entries: Vec<_> = std::fs::read_dir(tmp.path()).expect("read dir").collect();
         assert_eq!(entries.len(), 1, "exactly one JSONL file should exist");
 
         let path = entries[0].as_ref().expect("valid entry").path();
@@ -529,6 +528,8 @@ mod tests {
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0]["status"], "success");
         assert_eq!(outcomes[0]["turns"], 10);
+        assert_eq!(outcomes[0]["model"], "claude-3-5-sonnet");
+        assert_eq!(outcomes[0]["category"], "feature");
     }
 
     #[tokio::test]
@@ -569,10 +570,7 @@ mod tests {
                 .expect("post_processing must succeed");
         }
 
-        let after_actions = tmp.path().join("after-actions");
-        let entries: Vec<_> = std::fs::read_dir(&after_actions)
-            .expect("read dir")
-            .collect();
+        let entries: Vec<_> = std::fs::read_dir(tmp.path()).expect("read dir").collect();
         assert_eq!(entries.len(), 1, "same-day dispatches share one file");
 
         let path = entries[0].as_ref().expect("valid entry").path();
@@ -599,9 +597,7 @@ mod tests {
         }];
 
         // Seed an old file to simulate a prior day's log.
-        let after_actions = tmp.path().join("after-actions");
-        std::fs::create_dir_all(&after_actions).expect("create dir");
-        let old_file = after_actions.join("2026-04-16.jsonl");
+        let old_file = tmp.path().join("2026-04-16.jsonl");
         std::fs::write(&old_file, "{\"old\":true}\n").expect("write old file");
 
         let mut ctx =
@@ -621,9 +617,7 @@ mod tests {
             .await
             .expect("post_processing must succeed");
 
-        let entries: Vec<_> = std::fs::read_dir(&after_actions)
-            .expect("read dir")
-            .collect();
+        let entries: Vec<_> = std::fs::read_dir(tmp.path()).expect("read dir").collect();
         assert_eq!(entries.len(), 2, "old file and new file should both exist");
 
         let mut found_old = false;
@@ -678,10 +672,9 @@ mod tests {
             .await
             .expect("post_processing must succeed");
 
-        let after_actions = log_dir.join("after-actions");
         assert!(
-            after_actions.exists(),
-            "missing after-actions directory should be created"
+            log_dir.exists(),
+            "missing after-action log directory should be created"
         );
     }
 }

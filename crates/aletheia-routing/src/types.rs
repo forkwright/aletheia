@@ -38,6 +38,22 @@ impl std::fmt::Display for TaskCategory {
     }
 }
 
+impl std::str::FromStr for TaskCategory {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "refactor" => Self::Refactor,
+            "bug" => Self::Bug,
+            "docs" => Self::Docs,
+            "test" => Self::Test,
+            "chore" => Self::Chore,
+            // "feature" and any unrecognised string -> Feature
+            _ => Self::Feature,
+        })
+    }
+}
+
 impl TaskCategory {
     /// Infer a category from a prompt body or description via keyword matching.
     ///

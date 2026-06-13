@@ -20,12 +20,28 @@ struct ChannelMessageLabels {
     status: String,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ProviderFailureLabels {
+    channel_id: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct HandlerFailureLabels {
+    channel_id: String,
+}
+
 // ── Metric families ──
 
 static CHANNEL_MESSAGES_TOTAL: LazyLock<Family<ChannelMessageLabels, Counter>> =
     LazyLock::new(Family::default);
 
 static ACTIVE_SUBSCRIPTIONS: LazyLock<Gauge> = LazyLock::new(Gauge::default);
+
+static PROVIDER_FAILURES_TOTAL: LazyLock<Family<ProviderFailureLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static HANDLER_FAILURES_TOTAL: LazyLock<Family<HandlerFailureLabels, Counter>> =
+    LazyLock::new(Family::default);
 
 // ── Registration ──
 
@@ -40,6 +56,16 @@ pub fn register(registry: &mut Registry) {
         "aletheia_active_subscriptions",
         "Number of active channel subscriptions",
         ACTIVE_SUBSCRIPTIONS.clone(),
+    );
+    registry.register(
+        "aletheia_provider_failures",
+        "Total provider polling task failures",
+        PROVIDER_FAILURES_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_handler_failures",
+        "Total inbound-message handler task failures",
+        HANDLER_FAILURES_TOTAL.clone(),
     );
 }
 
@@ -60,6 +86,30 @@ pub(crate) fn record_channel_message(channel_id: &str, success: bool) {
 pub(crate) fn set_active_subscriptions(count: i64) {
     ACTIVE_SUBSCRIPTIONS.set(count);
 }
+
+/// Record a provider polling task failure.
+pub(crate) fn record_provider_failure(channel_id: &str) {
+    PROVIDER_FAILURES_TOTAL
+        .get_or_create(&ProviderFailureLabels {
+            channel_id: channel_id.to_owned(),
+        })
+        .inc();
+}
+
+/// Record an inbound-message handler task failure.
+pub(crate) fn record_handler_failure(channel_id: &str) {
+    HANDLER_FAILURES_TOTAL
+        .get_or_create(&HandlerFailureLabels {
+            channel_id: channel_id.to_owned(),
+        })
+        .inc();
+}
+
+/// Serializes tests that read or write `ACTIVE_SUBSCRIPTIONS` to prevent
+/// cross-test gauge interference when the full test suite runs in parallel.
+#[cfg(test)]
+pub(crate) static GAUGE_TEST_LOCK: std::sync::LazyLock<std::sync::Mutex<()>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
 
 #[cfg(test)]
 mod tests {
@@ -108,11 +158,37 @@ mod tests {
 
     #[test]
     fn register_and_set_active_subscriptions() {
+        let _guard = super::GAUGE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let r = fresh_registry();
         set_active_subscriptions(42);
         let out = encode(&r);
         assert!(
             out.contains("aletheia_active_subscriptions 42"),
+            "got: {out}"
+        );
+        set_active_subscriptions(0);
+    }
+
+    #[test]
+    fn register_and_record_provider_failure() {
+        let r = fresh_registry();
+        record_provider_failure("_test_provider");
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_provider_failures_total{channel_id=\"_test_provider\"} 1"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_handler_failure() {
+        let r = fresh_registry();
+        record_handler_failure("_test_handler");
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_handler_failures_total{channel_id=\"_test_handler\"} 1"),
             "got: {out}"
         );
     }

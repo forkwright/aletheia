@@ -398,14 +398,9 @@ fn merge_stats(target: &mut RollingStats, source: &RollingStats) {
 /// Returns [`TaskCategory::Feature`] for unrecognised strings so that new
 /// categories added in future PRs degrade gracefully on old store data.
 pub(crate) fn parse_category(s: &str) -> TaskCategory {
-    match s {
-        "refactor" => TaskCategory::Refactor,
-        "bug" => TaskCategory::Bug,
-        "docs" => TaskCategory::Docs,
-        "test" => TaskCategory::Test,
-        "chore" => TaskCategory::Chore,
-        // "feature" and any unrecognised string → Feature
-        _ => TaskCategory::Feature,
+    match s.parse::<TaskCategory>() {
+        Ok(category) => category,
+        Err(_) => TaskCategory::Feature,
     }
 }
 
@@ -611,6 +606,36 @@ mod tests {
         assert_eq!(stats.total, 10);
         assert_eq!(stats.successes, 8);
         assert!((stats.success_rate().unwrap() - 0.8).abs() < 0.001);
+    }
+
+    /// Dispatch JSONL records without a model field are skipped.
+    #[tokio::test]
+    async fn refresh_skips_records_without_model() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut no_model = session_line("provider-y", "success", "feature");
+        no_model
+            .get_mut("session_outcomes")
+            .unwrap()
+            .get_mut(0)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("model");
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &[no_model]);
+
+        let store = AfterActionStore::new(tmp.path().to_owned());
+        store.refresh().await.unwrap();
+
+        assert!(
+            store
+                .rolling_stats(
+                    &ProviderId::new("provider-y"),
+                    &TaskCategory::Feature,
+                    Duration::from_hours(168),
+                )
+                .await
+                .is_none()
+        );
     }
 
     /// Interactive-path outcomes are recorded into the same store.

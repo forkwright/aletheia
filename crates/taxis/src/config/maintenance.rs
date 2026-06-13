@@ -194,11 +194,45 @@ impl Default for DiskSpaceSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-#[derive(Default)]
 #[serde(deny_unknown_fields)]
 pub struct RetentionSettings {
     /// Whether automatic retention enforcement (session cleanup) runs.
     pub enabled: bool,
+    /// Number of days after `updated_at` before a closed session is eligible
+    /// for deletion. `None` means no session cleanup runs regardless of
+    /// `enabled`.
+    #[serde(alias = "sessionMaxAgeDays", alias = "session_max_age_days")]
+    pub closed_session_ttl_days: Option<u32>,
+    /// Number of days after which orphaned messages are eligible for cleanup.
+    #[serde(
+        alias = "orphanMessageMaxAgeDays",
+        alias = "orphan_message_max_age_days"
+    )]
+    pub orphan_message_max_age_days: Option<u32>,
+    /// Maximum sessions to retain per agent. `0` means unlimited.
+    #[serde(alias = "maxSessionsPerNous", alias = "max_sessions_per_nous")]
+    pub max_sessions_per_nous: u32,
+    /// When `true` (the default), closed sessions are exported to a JSON
+    /// archive before hard deletion. Set to `false` only when immediate
+    /// deletion without an archive artifact is explicitly desired.
+    #[serde(default = "default_archive_before_delete")]
+    pub archive_before_delete: bool,
+}
+
+fn default_archive_before_delete() -> bool {
+    true
+}
+
+impl Default for RetentionSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            closed_session_ttl_days: None,
+            orphan_message_max_age_days: None,
+            max_sessions_per_nous: 0,
+            archive_before_delete: true,
+        }
+    }
 }
 
 /// Sandbox configuration for tool command execution.

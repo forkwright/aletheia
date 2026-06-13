@@ -109,10 +109,32 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
 
     // Tier 3: environment variables, ALETHEIA_ prefix, `__` splitting nested keys.
     let applied_env_vars = apply_env_overlay(&mut root, "ALETHEIA_", "__");
+    mirror_data_retention(&mut root);
 
     serde_json::from_value::<AletheiaConfig>(root).context(ConfigLoadSnafu {
         reason: deserialize_reason(&applied_env_vars),
     })
+}
+
+fn mirror_data_retention(root: &mut JsonValue) {
+    let Some(retention) = root
+        .get("data")
+        .and_then(|data| data.get("retention"))
+        .cloned()
+    else {
+        return;
+    };
+
+    let Some(root_map) = root.as_object_mut() else {
+        return;
+    };
+    let maintenance = root_map
+        .entry("maintenance".to_owned())
+        .or_insert_with(|| JsonValue::Object(serde_json::Map::new()));
+    let Some(maintenance_map) = maintenance.as_object_mut() else {
+        return;
+    };
+    maintenance_map.insert("retention".to_owned(), retention);
 }
 
 /// Deep-merge `src` into `dst`. Objects merge by key; everything else replaces.
@@ -698,5 +720,38 @@ mod tests {
             config.gateway.port, 5555,
             "env var should override in-memory toml port"
         );
+    }
+
+    #[test]
+    fn load_config_with_mirrors_data_retention_to_maintenance() {
+        let jail = EnvJail::new();
+        let oikos = Oikos::from_root(jail.directory());
+        let toml_path = oikos.config().join("aletheia.toml");
+
+        let mut fs = TestSystem::new();
+        fs.add_file(
+            toml_path,
+            br"
+[data.retention]
+enabled = true
+sessionMaxAgeDays = 90
+orphanMessageMaxAgeDays = 30
+maxSessionsPerNous = 200
+archiveBeforeDelete = true
+",
+        );
+
+        let config = load_config_with(&oikos, &fs).unwrap_or_else(|e| panic!("load: {e}"));
+        assert!(config.maintenance.retention.enabled);
+        assert_eq!(
+            config.maintenance.retention.closed_session_ttl_days,
+            Some(90)
+        );
+        assert_eq!(
+            config.maintenance.retention.orphan_message_max_age_days,
+            Some(30)
+        );
+        assert_eq!(config.maintenance.retention.max_sessions_per_nous, 200);
+        assert!(config.maintenance.retention.archive_before_delete);
     }
 }

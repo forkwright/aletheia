@@ -28,6 +28,20 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Attempted to use an archived session via the normal message path without
+    /// explicitly reactivating it first.
+    ///
+    /// Callers must call the unarchive endpoint (`POST /sessions/{id}/unarchive`)
+    /// before resuming an archived session.
+    #[snafu(display(
+        "session '{id}' is archived; use POST /sessions/{id}/unarchive to reactivate"
+    ))]
+    SessionIsArchived {
+        id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Storage backend error (fjall LSM-tree).
     #[snafu(display("storage error: {message}"))]
     Storage {

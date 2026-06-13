@@ -34,12 +34,16 @@ pub mod status;
 use std::sync::Arc;
 
 #[cfg(feature = "storage-fjall")]
+use crate::cron::CronLockStore;
+#[cfg(feature = "storage-fjall")]
 use crate::error::Result;
 #[cfg(feature = "storage-fjall")]
 use crate::store::EnergeiaStore;
 
 pub use cost::{CostReport, DailyVelocity, ProjectCost};
 pub use health::{HealthMetric, HealthReport, HealthStatus};
+#[cfg(feature = "storage-fjall")]
+pub use status::{CronStatus, CronTaskFireStatus};
 pub use status::{ProjectSummary, RecentOutcome, StatusDashboard};
 
 /// Entry point for energeia metrics reporting.
@@ -53,6 +57,8 @@ pub use status::{ProjectSummary, RecentOutcome, StatusDashboard};
 #[cfg(feature = "storage-fjall")]
 pub struct MetricsService {
     store: Arc<EnergeiaStore>,
+    cron_lock_store: Option<Arc<CronLockStore>>,
+    cron_task_names: Vec<String>,
 }
 
 #[cfg(feature = "storage-fjall")]
@@ -60,7 +66,23 @@ impl MetricsService {
     /// Create a new `MetricsService` backed by the given store.
     #[must_use]
     pub fn new(store: Arc<EnergeiaStore>) -> Self {
-        Self { store }
+        Self {
+            store,
+            cron_lock_store: None,
+            cron_task_names: Vec::new(),
+        }
+    }
+
+    /// Attach cron fire state for status dashboards.
+    #[must_use]
+    pub fn with_cron_lock_store(
+        mut self,
+        cron_lock_store: Arc<CronLockStore>,
+        cron_task_names: Vec<String>,
+    ) -> Self {
+        self.cron_lock_store = Some(cron_lock_store);
+        self.cron_task_names = cron_task_names;
+        self
     }
 
     /// Compute the 7 pipeline health metrics.
@@ -92,6 +114,13 @@ impl MetricsService {
     ///
     /// Returns `Error::Store` if any store read fails.
     pub fn status_dashboard(&self) -> Result<StatusDashboard> {
+        if let Some(cron_lock_store) = self.cron_lock_store.as_ref() {
+            return status::compute_status_dashboard_with_cron(
+                &self.store,
+                cron_lock_store,
+                &self.cron_task_names,
+            );
+        }
         status::compute_status_dashboard(&self.store)
     }
 }

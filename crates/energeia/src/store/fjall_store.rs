@@ -24,6 +24,9 @@ pub(crate) const SCAN_LIMIT_QA_VERDICTS: usize = 200_000;
 use crate::store::schema;
 use crate::types::{DispatchSpec, SessionOutcome, SessionStatus};
 
+/// Number of hours after which a `Running` dispatch is considered stale.
+const STALE_RUNNING_DISPATCH_THRESHOLD_HOURS: i64 = 1;
+
 /// Partition name for energeia state within the shared fjall database.
 const PARTITION_NAME: &str = "energeia";
 
@@ -45,6 +48,12 @@ fn serialize_msgpack<T: serde::Serialize>(value: &T, context: &str) -> Result<Ve
     rmp_serde::to_vec(value).map_err(|e| ser_err(context, e))
 }
 
+/// Runtime policy threshold for stale `Running` dispatch reconciliation.
+#[must_use]
+pub fn stale_running_dispatch_threshold() -> jiff::SignedDuration {
+    jiff::SignedDuration::from_hours(STALE_RUNNING_DISPATCH_THRESHOLD_HOURS)
+}
+
 /// State persistence layer wrapping a fjall keyspace.
 ///
 /// All dispatch, session, lesson, observation, and CI validation records are
@@ -52,6 +61,7 @@ fn serialize_msgpack<T: serde::Serialize>(value: &T, context: &str) -> Result<Ve
 /// efficient prefix scans.
 pub struct EnergeiaStore {
     keyspace: Arc<fjall::Keyspace>,
+    db: fjall::Database,
 }
 
 // NOTE: Storage methods stay `pub` for external tooling: steward workflows,
@@ -68,15 +78,19 @@ impl EnergeiaStore {
             .map_err(|e| store_err("open partition", e))?;
         Ok(Self {
             keyspace: Arc::new(keyspace),
+            db: db.clone(),
         })
     }
 
-    /// Create a store from an already-opened keyspace.
+    /// Flush the WAL to stable storage so committed writes survive power loss.
     ///
-    /// Use this when the caller manages partition lifecycle (e.g., in tests).
-    #[must_use]
-    pub fn from_keyspace(keyspace: Arc<fjall::Keyspace>) -> Self {
-        Self { keyspace }
+    /// Call this after every `keyspace.insert()` on the operational write path
+    /// (dispatch state transitions, session status changes). Analytics records
+    /// (lessons, observations) tolerate WAL-only durability.
+    fn ensure_durable(&self) -> Result<()> {
+        self.db
+            .persist(fjall::PersistMode::SyncAll)
+            .map_err(|e| store_err("fjall persist", e))
     }
 
     /// The underlying keyspace name.
@@ -115,6 +129,7 @@ impl EnergeiaStore {
         self.keyspace
             .insert(key.as_bytes(), value)
             .map_err(|e| store_err("write dispatch", e))?;
+        self.ensure_durable()?;
 
         Ok(id)
     }
@@ -150,6 +165,7 @@ impl EnergeiaStore {
         self.keyspace
             .insert(key.as_bytes(), value)
             .map_err(|e| store_err("update dispatch", e))?;
+        self.ensure_durable()?;
 
         Ok(())
     }
@@ -207,6 +223,7 @@ impl EnergeiaStore {
         self.keyspace
             .insert(key.as_bytes(), value)
             .map_err(|e| store_err("write session", e))?;
+        self.ensure_durable()?;
 
         Ok(id)
     }
@@ -250,6 +267,7 @@ impl EnergeiaStore {
         self.keyspace
             .insert(key_str.as_bytes(), value)
             .map_err(|e| store_err("update session", e))?;
+        self.ensure_durable()?;
 
         Ok(())
     }
@@ -495,6 +513,77 @@ impl EnergeiaStore {
         Ok(fact)
     }
 
+    // ── Startup reconciliation ──
+
+    /// Mark Running dispatch records older than `threshold` as `Failed`.
+    ///
+    /// Call at startup before accepting new dispatches so interrupted runs from
+    /// a previous process do not remain `Running` indefinitely. Returns the
+    /// number of records reconciled.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read or write failure.
+    pub fn reconcile_stale_running_dispatches(
+        &self,
+        threshold: jiff::SignedDuration,
+    ) -> Result<u32> {
+        let cutoff = jiff::Timestamp::now().checked_sub(threshold).map_err(|e| {
+            error::StoreSnafu {
+                message: format!("duration subtraction in reconcile_stale_running_dispatches: {e}"),
+            }
+            .build()
+        })?;
+        let all = queries::list_dispatches(&self.keyspace, SCAN_LIMIT_DISPATCHES)?;
+        let stale: Vec<_> = all
+            .into_iter()
+            .filter(|d| {
+                d.status == crate::store::records::DispatchStatus::Running && d.created_at < cutoff
+            })
+            .collect();
+        let count = u32::try_from(stale.len()).unwrap_or(u32::MAX);
+        for record in &stale {
+            if let Err(e) =
+                self.finish_dispatch(&record.id, crate::store::records::DispatchStatus::Failed)
+            {
+                tracing::warn!(
+                    dispatch_id = %record.id,
+                    error = %e,
+                    "failed to reconcile stale Running dispatch"
+                );
+            } else {
+                tracing::info!(
+                    dispatch_id = %record.id,
+                    created_at = %record.created_at,
+                    "reconciled stale Running dispatch as Failed"
+                );
+            }
+        }
+        Ok(count)
+    }
+
+    /// Count Running dispatch records older than `threshold` without modifying them.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub fn stale_running_dispatch_count(&self, threshold: jiff::SignedDuration) -> Result<u32> {
+        let cutoff = jiff::Timestamp::now().checked_sub(threshold).map_err(|e| {
+            error::StoreSnafu {
+                message: format!("duration subtraction in stale_running_dispatch_count: {e}"),
+            }
+            .build()
+        })?;
+        let all = queries::list_dispatches(&self.keyspace, SCAN_LIMIT_DISPATCHES)?;
+        let count = all
+            .into_iter()
+            .filter(|d| {
+                d.status == crate::store::records::DispatchStatus::Running && d.created_at < cutoff
+            })
+            .count();
+        Ok(u32::try_from(count).unwrap_or(u32::MAX))
+    }
+
     // ── Bulk scan (metrics / reporting) ──
 
     /// List all dispatch records ordered by ULID (time-ascending), up to `limit`.
@@ -586,6 +675,36 @@ impl EnergeiaStore {
             what: format!("session {id}"),
         }
         .build())
+    }
+
+    /// Back-date a dispatch record's `created_at` by the given duration.
+    ///
+    /// Used in tests to simulate records created long before `now` so that
+    /// stale-dispatch detection thresholds can be exercised without real waits.
+    #[cfg(test)]
+    pub(crate) fn backdate_dispatch_for_test(
+        &self,
+        id: &DispatchId,
+        amount: jiff::SignedDuration,
+    ) -> Result<()> {
+        let mut record = self.get_dispatch(id)?.ok_or_else(|| {
+            error::NotFoundSnafu {
+                what: format!("dispatch {id}"),
+            }
+            .build()
+        })?;
+        record.created_at = record.created_at.checked_sub(amount).map_err(|e| {
+            error::StoreSnafu {
+                message: format!("duration subtraction in backdate_dispatch_for_test: {e}"),
+            }
+            .build()
+        })?;
+        let key = schema::dispatch_key(id);
+        let value = serialize_msgpack(&record, "backdated dispatch")?;
+        self.keyspace
+            .insert(key.as_bytes(), value)
+            .map_err(|e| store_err("write backdated dispatch", e))?;
+        Ok(())
     }
 }
 

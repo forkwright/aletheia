@@ -65,6 +65,7 @@ pub struct Destination {
 ```rust
 impl Destination {
     pub fn open (path: &Path, force: bool) -> Result<Self>;
+    pub fn persist (&self) -> Result<()>;
     pub fn write_all (
         &self,
         sessions: &[(Session, LegacyExtras)],
@@ -208,6 +209,33 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "destination '{}' is incomplete: previous migration left {} behind. \
+         Pass --force to remove the leftover staging directory and rerun, \
+         or inspect it manually",
+        path.display(),
+        marker
+    ))]
+    MigrationIncomplete {
+        path: PathBuf,
+        marker: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display(
+        "atomic rename failed: {} -> {}: {source}",
+        source_path.display(),
+        dest_path.display()
+    ))]
+    AtomicRenameFailed {
+        source_path: PathBuf,
+        dest_path: PathBuf,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display(
         "{field} value {value} cannot be encoded as a u64 (must be non-negative and fit in 64 bits)"
     ))]
     NumericRange {
@@ -269,6 +297,29 @@ pub struct MigrationReport {
 }
 ```
 
+> A migration that has been written to a staging directory but not yet
+> published to the final destination.
+> 
+> Dropping the guard without calling [`Self::publish`] removes the staging
+> directory and restores any backup created for `--force` overwrites.
+```rust
+pub struct StagedMigration {
+    staging_dir: PathBuf,
+    final_dir: PathBuf,
+    backup_dir: Option<PathBuf>,
+    report: MigrationReport,
+    published: bool,
+}
+```
+
+```rust
+impl StagedMigration {
+    pub fn report (&self) -> &MigrationReport;
+    pub fn verify (&self, source: &Path, samples: usize) -> Result<VerificationReport>;
+    pub fn publish (mut self) -> Result<MigrationReport>;
+}
+```
+
 > Open the source `SQLite` DB read-only with a sane busy-timeout.
 > 
 > # Errors
@@ -288,15 +339,34 @@ pub fn open_source (path: &Path) -> Result<Connection>
 pub fn run_dry_run (source: &Path) -> Result<MigrationPlan>
 ```
 
-> Run a full migration. Reads source, validates, writes fjall.
+> Run a full migration. Reads source, validates, writes fjall to a staging
+> directory, then atomically renames it to `dest`.
 > 
 > # Errors
 > 
-> Propagates schema validation failures, source read errors, and any
-> fjall write failure as the structured error type defined in
-> [`crate::error`].
+> Propagates schema validation failures, source read errors, any fjall
+> write failure, or an atomic-rename error as the structured error type
+> defined in [`crate::error`].
 ```rust
 pub fn run_migration (source: &Path, dest: &Path, force: bool) -> Result<MigrationReport>
+```
+
+> Stage a full migration without publishing it.
+> 
+> Returns a [`StagedMigration`] guard that owns the staging directory.
+> Call [`StagedMigration::publish`] to atomically rename the staging
+> directory to `dest`. Dropping the guard without publishing cleans up
+> the staging directory and restores any backup created for a `--force`
+> overwrite.
+> 
+> # Errors
+> 
+> Returns [`crate::error::Error::MigrationIncomplete`] when a previous
+> run left a staging directory behind and `force` is false,
+> [`crate::error::Error::DestinationNotEmpty`] when `dest` is non-empty
+> and `force` is false, or any source/fjall error.
+```rust
+pub fn stage_migration (source: &Path, dest: &Path, force: bool) -> Result<StagedMigration>
 ```
 
 ## `src/schema.rs`

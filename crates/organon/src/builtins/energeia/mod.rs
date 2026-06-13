@@ -9,7 +9,7 @@
 //! - mathesis → EnergeiaStore::query_lessons / add_lesson
 //! - prographe → prompt template rendering, not queue allocation or file writes
 //! - schedion → empty PromptDag + compute_frontier until a prompt path is supplied
-//! - metron → MetricsService health / cost / velocity
+//! - metron → MetricsService health / cost / velocity / status
 
 mod dispatch;
 mod metrics;
@@ -49,6 +49,10 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
         ),
         None => (None, None),
     };
+    let (cron_lock_store, cron_task_names) = match services {
+        Some(svc) => (svc.cron_lock_store.clone(), svc.cron_task_names.clone()),
+        None => (None, Vec::new()),
+    };
 
     registry.register(
         dispatch::dromeus_def(),
@@ -82,7 +86,11 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
     )?;
     registry.register(
         metrics::metron_def(),
-        Box::new(metrics::MetronExecutor { store }),
+        Box::new(metrics::MetronExecutor {
+            store,
+            cron_lock_store,
+            cron_task_names,
+        }),
     )?;
     Ok(())
 }

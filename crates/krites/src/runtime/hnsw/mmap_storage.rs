@@ -501,19 +501,51 @@ impl MmapVectorStorage {
         #[cfg(unix)]
         {
             use std::os::unix::fs::FileExt;
-            // INVARIANT: self.count * stride fits in usize (already materialized); on 64-bit
-            // targets usize == u64 width, on 32-bit targets the conversion still saturates
-            // cleanly because usize::MAX <= u64::MAX.
-            let offset = u64::try_from(self.count * stride).unwrap_or(u64::MAX);
-            self.file
+
+            let old_byte_len = self
+                .count
+                .checked_mul(stride)
+                .and_then(|n| u64::try_from(n).ok())
+                .ok_or_else(|| {
+                    io_err(
+                        "mmap_storage",
+                        "current storage size exceeds addressable range".to_string(),
+                    )
+                })?;
+            let offset = old_byte_len;
+
+            let written = self
+                .file
                 .write_at(bytes, offset)
                 .map_err(|e| io_err("mmap_storage", format!("write failed: {e}")))?;
-            let new_len = (self.count + 1) * stride;
-            let new_len_u64 = u64::try_from(new_len).unwrap_or(u64::MAX);
+            if written != bytes.len() {
+                // WHY: A partial append leaves the file layout inconsistent;
+                // roll back to the last known-good length before reporting.
+                self.file.set_len(old_byte_len).ok();
+                return Err(io_err(
+                    "mmap_storage",
+                    format!("short write: wrote {written} of {} bytes", bytes.len()),
+                ));
+            }
+
+            let new_byte_len = (self.count + 1)
+                .checked_mul(stride)
+                .and_then(|n| u64::try_from(n).ok())
+                .ok_or_else(|| {
+                    io_err(
+                        "mmap_storage",
+                        "new storage size exceeds addressable range".to_string(),
+                    )
+                })?;
             self.file
-                .set_len(new_len_u64)
+                .set_len(new_byte_len)
                 .map_err(|e| io_err("mmap_storage", format!("set_len failed: {e}")))?;
-            self.remap(new_len)?;
+            self.remap(usize::try_from(new_byte_len).map_err(|_e| {
+                io_err(
+                    "mmap_storage",
+                    "mapped length exceeds addressable range".to_string(),
+                )
+            })?)?;
         }
 
         #[cfg(not(unix))]
@@ -578,6 +610,8 @@ impl MmapVectorStorage {
 
 #[cfg(test)]
 mod tests {
+    use std::fs::OpenOptions;
+
     use super::*;
 
     #[test]
@@ -704,6 +738,29 @@ mod tests {
             .unwrap_or_else(|_| unreachable!("INVARIANT: valid path and dim=4 should not fail"));
         assert!(storage.is_empty(), "empty file yields empty storage");
         assert!(storage.get(0).is_none(), "no vectors in empty storage");
+    }
+
+    #[test]
+    fn open_rejects_corrupted_file() {
+        let dir = tempfile::tempdir().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
+        let path = dir.path().join("vectors.bin");
+
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap_or_else(|_| unreachable!("INVARIANT: open for corrupt write must succeed"));
+        std::io::Write::write_all(&mut file, &[0x01])
+            .unwrap_or_else(|_| unreachable!("INVARIANT: corrupt write must succeed"));
+
+        let result = MmapVectorStorage::open(&path, 2);
+        assert!(
+            result.is_err(),
+            "file size not a multiple of stride must error"
+        );
     }
 
     /// Stress test: 16 threads × 1000 reads against a shared `MmapVectorStorage`.

@@ -24,8 +24,25 @@ use crate::error::Result;
 const LOCK_DB_DIR: &str = "cron-locks.fjall";
 const LOCK_PARTITION: &str = "cron_locks";
 
-/// Start the cron executor: open the lock store, build `CronTask`s from the
-/// enabled config entries, and spawn the scheduler loop on `task_tracker`.
+pub(super) fn open_lock_store(oikos: &Oikos) -> Result<Arc<CronLockStore>> {
+    let lock_db_path = oikos.data().join(LOCK_DB_DIR);
+    if let Some(parent) = lock_db_path.parent() {
+        std::fs::create_dir_all(parent).with_whatever_context(|_| {
+            format!("failed to CREATE cron lock dir {}", parent.display())
+        })?;
+    }
+    let fjall_db = koina::fjall::FjallDb::open(&lock_db_path, &[LOCK_PARTITION])
+        .with_whatever_context(|_| {
+            format!("failed to open cron lock db at {}", lock_db_path.display())
+        })?;
+    Ok(Arc::new(
+        CronLockStore::open(Arc::new(fjall_db.db))
+            .whatever_context("failed to open cron lock store")?,
+    ))
+}
+
+/// Start the cron executor: build `CronTask`s from the enabled config entries
+/// and spawn the scheduler loop on `task_tracker`.
 ///
 /// Returns `Ok(())` and logs at info level when no enabled tasks are present
 /// — the daemon should remain healthy without any cron configuration.
@@ -33,6 +50,7 @@ pub(super) fn start(
     tasks: &[CronTaskConfig],
     orchestrator: Arc<Orchestrator>,
     oikos: &Oikos,
+    lock_store: Arc<CronLockStore>,
     task_tracker: &TaskTracker,
     shutdown_token: &CancellationToken,
 ) -> Result<()> {
@@ -64,21 +82,6 @@ pub(super) fn start(
         );
         return Ok(());
     }
-
-    let lock_db_path = oikos.data().join(LOCK_DB_DIR);
-    if let Some(parent) = lock_db_path.parent() {
-        std::fs::create_dir_all(parent).with_whatever_context(|_| {
-            format!("failed to CREATE cron lock dir {}", parent.display())
-        })?;
-    }
-    let fjall_db = koina::fjall::FjallDb::open(&lock_db_path, &[LOCK_PARTITION])
-        .with_whatever_context(|_| {
-            format!("failed to open cron lock db at {}", lock_db_path.display())
-        })?;
-    let lock_store = Arc::new(
-        CronLockStore::open(Arc::new(fjall_db.db))
-            .whatever_context("failed to open cron lock store")?,
-    );
 
     let theke = oikos.theke();
     let tasks_started = cron_tasks.len();

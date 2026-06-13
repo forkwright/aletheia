@@ -152,7 +152,7 @@ pub enum Error {
 ```rust
 pub struct ChannelListener {
     rx: Option<mpsc::Receiver<InboundMessage>>,
-    handles: JoinSet<()>,
+    handles: Option<JoinSet<()>>,
     /// Maximum concurrent inbound-message handler tasks.
     max_concurrent_handlers: usize,
 }
