@@ -15,15 +15,10 @@ use taxis::registry::{self, ParameterTier};
 
 use crate::error::Result;
 
-/// Bundled default-config snapshots, embedded at compile time so version-pair
-/// diffs work from any installed binary (not just a source checkout).
-///
-/// Adding a new snapshot is one line: drop a `vX.Y.Z.toml` under
-/// `instance.example/versions/` and append it here.
-const BUNDLED_SNAPSHOTS: &[(&str, &str)] = &[(
-    "v0.19.0",
-    include_str!("../../../../instance.example/versions/v0.19.0.toml"),
-)];
+// INVARIANT: the generated table embeds bundled default-config snapshots for
+// installed binaries. It is derived from `instance.example/versions/*.toml`
+// plus the current workspace version and `instance.example/config/aletheia.toml`.
+include!(concat!(env!("OUT_DIR"), "/bundled_config_snapshots.rs"));
 
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {
@@ -478,6 +473,17 @@ mod tests {
             toml::from_str::<toml::Value>(body)
                 .unwrap_or_else(|e| panic!("bundled snapshot {version} must parse as TOML: {e}"));
         }
+    }
+
+    #[test]
+    fn bundled_snapshots_include_current_workspace_version() {
+        let current = format!("v{}", env!("CARGO_PKG_VERSION"));
+        let body = bundled_snapshot(&current)
+            .unwrap_or_else(|| panic!("bundled snapshots must include {current}"));
+        assert_eq!(
+            body,
+            include_str!("../../../../instance.example/config/aletheia.toml")
+        );
     }
 
     #[test]

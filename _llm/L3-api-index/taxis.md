@@ -1649,6 +1649,13 @@ pub struct WorkspaceSettings {
 ```
 
 ```rust
+pub struct DataConfig {
+    /// Retention policy mirrored into `maintenance.retention` for compatibility.
+    pub retention: RetentionSettings,
+}
+```
+
+```rust
 pub struct AletheiaConfig {
     /// Agent definitions and shared defaults.
     pub agents: AgentsConfig,
@@ -1660,6 +1667,9 @@ pub struct AletheiaConfig {
     /// deployments choose which tree the gateway exposes (theke vault, agent
     /// workspace, ...) without code changes.
     pub workspace: WorkspaceSettings,
+    /// Runtime data lifecycle settings.
+    #[serde(skip_serializing_if = "DataConfig::is_default")]
+    pub data: DataConfig,
     /// Messaging transport configuration (Signal, etc.).
     pub channels: ChannelsConfig,
     /// Routes mapping channel sources to nous agents.
@@ -1886,13 +1896,23 @@ pub struct SignalConfig {
 
 ```rust
 pub struct SignalAccountConfig {
+    /// Operator-facing display label for this account.
+    pub name: Option<String>,
     /// Whether this account is active.
     pub enabled: bool,
+    /// Signal account phone number used for signal-cli JSON-RPC calls.
+    pub account: Option<String>,
     /// Hostname for the signal-cli JSON-RPC HTTP interface.
+    #[serde(alias = "http_host")]
     pub http_host: String,
     /// Port for the signal-cli JSON-RPC HTTP interface.
+    #[serde(alias = "http_port")]
     pub http_port: u16,
+    /// Optional path to the signal-cli binary for startup diagnostics.
+    #[serde(alias = "cli_path")]
+    pub cli_path: Option<PathBuf>,
     /// Whether to auto-start the receive loop for this account on server boot.
+    #[serde(alias = "auto_start")]
     pub auto_start: bool,
 }
 ```
@@ -1914,12 +1934,16 @@ pub struct MatrixAccountConfig {
     pub homeserver: String,
     /// Environment variable that contains the Matrix access token.
     // kanon:ignore RUST/plain-string-secret
+    #[serde(alias = "access_token_env")]
     pub access_token_env: String,
     /// Matrix user ID for this account. Used to ignore echoed self messages.
+    #[serde(alias = "user_id")]
     pub user_id: Option<String>,
     /// Whether to auto-start the `/sync` receive loop on server boot.
+    #[serde(alias = "auto_start")]
     pub auto_start: bool,
     /// Optional initial `/sync` since token.
+    #[serde(alias = "initial_since")]
     pub initial_since: Option<String>,
 }
 ```

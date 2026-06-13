@@ -742,6 +742,11 @@ archiveBeforeDelete = true
         );
 
         let config = load_config_with(&oikos, &fs).unwrap_or_else(|e| panic!("load: {e}"));
+        assert!(config.data.retention.enabled);
+        assert_eq!(config.data.retention.closed_session_ttl_days, Some(90));
+        assert_eq!(config.data.retention.orphan_message_max_age_days, Some(30));
+        assert_eq!(config.data.retention.max_sessions_per_nous, 200);
+        assert!(config.data.retention.archive_before_delete);
         assert!(config.maintenance.retention.enabled);
         assert_eq!(
             config.maintenance.retention.closed_session_ttl_days,

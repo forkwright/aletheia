@@ -275,7 +275,11 @@ http_port = 8080
 auto_start = true
 ```
 
-The following fields are **not implemented** in the current runtime: `dm_policy`, `group_policy`, `require_mention`, `send_read_receipts`, and `text_chunk_limit`. They are accepted by the typed config but are not read by `build_signal_provider`; inbound Signal routing and message handling are controlled by the channel bindings (see [bindings](#bindings)) and by signal-cli's own settings until these policy fields are wired.
+The following policy fields are **not implemented** in the current runtime and
+are not accepted by the strict config schema: `dm_policy`, `group_policy`,
+`require_mention`, `send_read_receipts`, and `text_chunk_limit`. Inbound Signal
+routing and message handling are controlled by the channel bindings (see
+[bindings](#bindings)) and by signal-cli's own settings.
 
 ---
 

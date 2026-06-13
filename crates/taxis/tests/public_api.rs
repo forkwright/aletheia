@@ -205,6 +205,9 @@ fn signal_account_defaults_to_port_8080_enabled() {
     let a = SignalAccountConfig::default();
     assert_eq!(a.http_port, 8080);
     assert!(a.enabled);
+    assert!(a.name.is_none());
+    assert!(a.account.is_none());
+    assert!(a.cli_path.is_none());
 }
 
 #[test]

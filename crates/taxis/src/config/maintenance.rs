@@ -191,7 +191,7 @@ impl Default for DiskSpaceSettings {
 }
 
 /// Data retention execution settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
