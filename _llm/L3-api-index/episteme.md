@@ -91,12 +91,38 @@ pub struct StructuredAdmissionConfig {
     pub min_confidence: f64,
     /// Maximum age in hours before a fact is considered stale. Default: 2160 (90 days).
     pub max_age_hours: f64,
+    /// SHA-256 content-hash deduplication: facts whose normalized content
+    /// hashes to a value already seen by this policy instance are rejected with
+    /// [`RejectionFactor::LowNovelty`]. Set to `false` to disable.
+    ///
+    /// Default: `true`. The hash set is bounded by the number of admitted facts
+    /// so memory growth tracks the knowledge graph itself.
+    pub content_hash_dedup: bool,
 }
 ```
 
+> Five-factor admission policy based on A-MAC (arxiv 2603.04549).
+> 
+> Evaluates each fact against utility, confidence, novelty, recency, and
+> content type prior. The combined weighted score must exceed the configured
+> threshold for admission.
+> 
+> Novelty is checked via a SHA-256 content hash: if the normalized content of
+> the incoming fact has been seen before (i.e., its hash is already in the
+> internal set), it is scored as zero novelty and fast-rejected with
+> [`RejectionFactor::LowNovelty`]. Admitted facts have their hash recorded so
+> future duplicates are caught.
+> 
+> This is a heuristic gate  -  it catches obvious low-value insertions without
+> requiring LLM evaluation. The weights and thresholds are tunable via
+> [`StructuredAdmissionConfig`].
 ```rust
 pub struct StructuredAdmissionPolicy {
     config: StructuredAdmissionConfig,
+    /// SHA-256 hashes of content strings already admitted, used for exact-duplicate
+    /// detection. Guarded by a `Mutex` so the policy can implement `Sync` while
+    /// mutating the set on each call.
+    seen_hashes: Mutex<HashSet<[u8; 32]>>,
 }
 ```
 

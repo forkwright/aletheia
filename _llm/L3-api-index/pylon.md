@@ -2580,6 +2580,8 @@ pub struct NousState {
     pub config_tx: tokio::sync::watch::Sender<AletheiaConfig>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
+    /// In-process broadcast bus for lifecycle domain events.
+    pub event_bus: Arc<EventBus>,
 }
 ```
 
