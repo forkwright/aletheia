@@ -749,7 +749,7 @@ async fn lesson_extraction_persists_training_facts_to_real_fjall() {
 }
 
 /// Regression: the default prosoche self-audit runner must not include the
-/// InstinctPatternsCheck stub, which emits a fixed speculative finding without
+/// `InstinctPatternsCheck` stub, which emits a fixed speculative finding without
 /// real gnomon weights backing it (#4572).
 #[tokio::test]
 async fn self_audit_does_not_emit_instinct_patterns_findings() {

@@ -1311,16 +1311,16 @@ impl<'a> BootstrapAssembler<'a> {
                     // warn so operators know a regeneration is needed.
                     if let Some((crate_path, expected_hash)) = crate_hash_index.get(crate_name) {
                         let crate_dir = self.oikos.root().join(crate_path);
-                        if let Some(actual_hash) = compute_crate_source_hash(&crate_dir).await {
-                            if actual_hash != *expected_hash {
-                                warn!(
-                                    section = format!("_llm/{}/{name}", l3_level.path),
-                                    crate_name,
-                                    "skipping stale L3 section: source hash mismatch \
-                                     (regenerate with: uv run scripts/llm-extract-l3.py)"
-                                );
-                                continue;
-                            }
+                        if let Some(actual_hash) = compute_crate_source_hash(&crate_dir).await
+                            && actual_hash != *expected_hash
+                        {
+                            warn!(
+                                section = format!("_llm/{}/{name}", l3_level.path),
+                                crate_name,
+                                "skipping stale L3 section: source hash mismatch \
+                                 (regenerate with: uv run scripts/llm-extract-l3.py)"
+                            );
+                            continue;
                         }
                     }
 
