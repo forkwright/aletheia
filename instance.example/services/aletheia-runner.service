@@ -28,11 +28,12 @@ RestartSec=10
 SupplementaryGroups=docker
 
 # WHY: WorkingDirectory must be the runner root so ./run.sh can find its
-# relative paths (_work, _diag, externals/…). CUSTOMIZE: change to your
-# runner installation path.
-WorkingDirectory=%h/actions-runner-aletheia  # CUSTOMIZE: path to runner
+# relative paths (_work, _diag, externals/…).
+# NOTE: Change this path if your runner lives elsewhere.
+WorkingDirectory=%h/actions-runner-aletheia
 
-ExecStart=%h/actions-runner-aletheia/run.sh  # CUSTOMIZE: path to run.sh
+# NOTE: Change this path if run.sh lives elsewhere.
+ExecStart=/usr/bin/env %h/actions-runner-aletheia/run.sh
 
 StandardOutput=journal
 StandardError=journal

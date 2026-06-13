@@ -146,7 +146,8 @@ cp target/release/aletheia "$HOME/.local/bin/aletheia"
 # 6. Reinstall the systemd unit
 mkdir -p "$HOME/.config/systemd/user"
 cp instance.example/services/aletheia.service "$HOME/.config/systemd/user/aletheia.service"
-# Edit paths in the unit file if your layout differs from the defaults.
+# Edit ExecStart, EnvironmentFile, and ReadWritePaths if your layout differs.
+systemd-analyze verify "$HOME/.config/systemd/user/aletheia.service"
 
 # 7. Start and verify
 systemctl --user daemon-reload
