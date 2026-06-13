@@ -2633,15 +2633,42 @@ impl ApiClient {
 }
 ```
 
+## `skene/src/api/error.rs`
+
+```rust
+pub struct ServerErrorDetail {
+    /// Machine-readable error code (e.g. `"session_not_found"`).
+    pub code: String,
+    /// Human-readable error message.
+    pub message: String,
+    /// Per-request correlation ID for tracing errors across logs and
+    /// client reports.
+    pub request_id: Option<String>,
+    /// Optional structured details (e.g. retry timing, validation
+    /// errors from pylon's `FieldError` list).
+    pub details: Option<serde_json::Value>,
+}
+```
+
+```rust
+pub fn parse_pylon_error_body (body: &str) -> Option<ServerErrorDetail>
+```
+
 ## `skene/src/api/routes.rs`
 
 > Template for `GET` project verification.
+> 
+> `{project_id}` is a placeholder  -  do not interpolate directly.
+> Use [`project_verification_path`] to build an encoded path.
 ```rust
 pub const PROJECT_VERIFICATION_TEMPLATE: &str =
         "/api/v1/planning/projects/{project_id}/verification";
 ```
 
 > Template for `POST` project verification refresh.
+> 
+> `{project_id}` is a placeholder  -  do not interpolate directly.
+> Use [`project_verification_refresh_path`] to build an encoded path.
 ```rust
 pub const PROJECT_VERIFICATION_REFRESH_TEMPLATE: &str =
         "/api/v1/planning/projects/{project_id}/verification/refresh";
@@ -2956,6 +2983,30 @@ pub enum SseEvent {
     Error {
         /// Error message.
         message: String,
+    },
+    /// An SSE event payload could not be decoded.
+    ///
+    /// Surfaces JSON parse failures as a typed event instead of
+    /// silently dropping them, so UIs can log or render protocol-drift
+    /// diagnostics without losing raw data.
+    DecodeError {
+        /// Wire event type string from the SSE `event:` field.
+        event_type: String,
+        /// Raw `data:` payload that failed to decode.
+        raw_data: String,
+        /// Decode error description.
+        error: String,
+    },
+    /// An SSE event type not recognized by this client was received.
+    ///
+    /// Surfaces unknown event types as a typed variant instead of
+    /// silently dropping them, so UIs can observe server-side additions
+    /// without losing the raw event data.
+    UnknownEvent {
+        /// Wire event type string from the SSE `event:` field.
+        event_type: String,
+        /// Raw `data:` payload.
+        raw_data: String,
     },
 }
 ```
@@ -3330,6 +3381,40 @@ pub enum StreamEvent {
     },
     /// An error occurred during streaming.
     Error(String),
+    /// A stream event payload could not be decoded.
+    ///
+    /// Surfaces JSON parse failures and other decode errors as a typed
+    /// event instead of silently dropping them, so UIs can render
+    /// protocol-drift diagnostics and export raw data for debugging.
+    DecodeError {
+        /// Wire event type string from the SSE `event:` field.
+        event_type: String,
+        /// Raw `data:` payload that failed to decode.
+        raw_data: String,
+        /// Decode error description.
+        error: String,
+    },
+    /// An event type not recognized by this client was received.
+    ///
+    /// Surfaces unknown events as a typed variant instead of silently
+    /// dropping them, so UIs can observe protocol additions from newer
+    /// server versions without losing the raw data.
+    UnknownEvent {
+        /// Wire event type string from the SSE `event:` field.
+        event_type: String,
+        /// Raw `data:` payload.
+        raw_data: String,
+    },
+}
+```
+
+```rust
+pub struct StreamEnvelope {
+    /// SSE wire-level event ID from the `id:` field, if the server
+    /// supplied one. Pass as `Last-Event-ID` on reconnect.
+    pub event_id: Option<String>,
+    /// Parsed semantic payload.
+    pub payload: StreamEvent,
 }
 ```
 

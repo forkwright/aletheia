@@ -4,6 +4,9 @@
 # Points git at scripts/githooks/ (version-controlled, so every clone gets the
 # same fmt/clippy/_llm pre-push + instance-guard pre-commit). Auto-run by .envrc
 # on direnv load; run manually if you don't use direnv.
+#
+# core.hooksPath=scripts/githooks is the ONLY hook mechanism used in this repo.
+# Do NOT run `pre-commit install` — the pre-commit framework is not used here.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 git config core.hooksPath scripts/githooks

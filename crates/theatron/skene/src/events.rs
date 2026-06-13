@@ -104,6 +104,46 @@ pub enum StreamEvent {
     },
     /// An error occurred during streaming.
     Error(String),
+    /// A stream event payload could not be decoded.
+    ///
+    /// Surfaces JSON parse failures and other decode errors as a typed
+    /// event instead of silently dropping them, so UIs can render
+    /// protocol-drift diagnostics and export raw data for debugging.
+    DecodeError {
+        /// Wire event type string from the SSE `event:` field.
+        event_type: String,
+        /// Raw `data:` payload that failed to decode.
+        raw_data: String,
+        /// Decode error description.
+        error: String,
+    },
+    /// An event type not recognized by this client was received.
+    ///
+    /// Surfaces unknown events as a typed variant instead of silently
+    /// dropping them, so UIs can observe protocol additions from newer
+    /// server versions without losing the raw data.
+    UnknownEvent {
+        /// Wire event type string from the SSE `event:` field.
+        event_type: String,
+        /// Raw `data:` payload.
+        raw_data: String,
+    },
+}
+
+/// A parsed stream event with its SSE transport envelope.
+///
+/// Carries the wire-level event identity (`event_id`) alongside the
+/// semantic payload so clients can implement replay-safe reconnection
+/// without re-parsing the raw SSE stream. Expose the `event_id` as
+/// `Last-Event-ID` on reconnect to resume from the last successfully
+/// delivered event.
+#[derive(Debug)]
+pub struct StreamEnvelope {
+    /// SSE wire-level event ID from the `id:` field, if the server
+    /// supplied one. Pass as `Last-Event-ID` on reconnect.
+    pub event_id: Option<String>,
+    /// Parsed semantic payload.
+    pub payload: StreamEvent,
 }
 
 #[cfg(test)]
@@ -169,5 +209,63 @@ mod tests {
             assert!(is_error);
             assert_eq!(duration_ms, 150);
         }
+    }
+
+    #[test]
+    fn stream_event_decode_error_fields() {
+        let event = StreamEvent::DecodeError {
+            event_type: "text_delta".to_string(),
+            raw_data: "{broken".to_string(),
+            error: "expected value at line 1 column 1".to_string(),
+        };
+        if let StreamEvent::DecodeError {
+            event_type,
+            raw_data,
+            error,
+        } = event
+        {
+            assert_eq!(event_type, "text_delta");
+            assert_eq!(raw_data, "{broken");
+            assert!(!error.is_empty());
+        } else {
+            panic!("expected DecodeError");
+        }
+    }
+
+    #[test]
+    fn stream_event_unknown_event_fields() {
+        let event = StreamEvent::UnknownEvent {
+            event_type: "custom:v2".to_string(),
+            raw_data: r#"{"data":1}"#.to_string(),
+        };
+        if let StreamEvent::UnknownEvent {
+            event_type,
+            raw_data,
+        } = event
+        {
+            assert_eq!(event_type, "custom:v2");
+            assert!(!raw_data.is_empty());
+        } else {
+            panic!("expected UnknownEvent");
+        }
+    }
+
+    #[test]
+    fn stream_envelope_carries_event_id() {
+        let envelope = StreamEnvelope {
+            event_id: Some("evt-42".to_string()),
+            payload: StreamEvent::TextDelta("hi".to_string()),
+        };
+        assert_eq!(envelope.event_id.as_deref(), Some("evt-42"));
+        assert!(matches!(envelope.payload, StreamEvent::TextDelta(_)));
+    }
+
+    #[test]
+    fn stream_envelope_event_id_may_be_absent() {
+        let envelope = StreamEnvelope {
+            event_id: None,
+            payload: StreamEvent::Error("oops".to_string()),
+        };
+        assert!(envelope.event_id.is_none());
     }
 }

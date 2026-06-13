@@ -300,6 +300,30 @@ pub enum SseEvent {
         /// Error message.
         message: String,
     },
+    /// An SSE event payload could not be decoded.
+    ///
+    /// Surfaces JSON parse failures as a typed event instead of
+    /// silently dropping them, so UIs can log or render protocol-drift
+    /// diagnostics without losing raw data.
+    DecodeError {
+        /// Wire event type string from the SSE `event:` field.
+        event_type: String,
+        /// Raw `data:` payload that failed to decode.
+        raw_data: String,
+        /// Decode error description.
+        error: String,
+    },
+    /// An SSE event type not recognized by this client was received.
+    ///
+    /// Surfaces unknown event types as a typed variant instead of
+    /// silently dropping them, so UIs can observe server-side additions
+    /// without losing the raw event data.
+    UnknownEvent {
+        /// Wire event type string from the SSE `event:` field.
+        event_type: String,
+        /// Raw `data:` payload.
+        raw_data: String,
+    },
 }
 
 /// A turn currently in progress, reported in the `init` SSE event.
