@@ -97,6 +97,14 @@ jobs:
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo fmt --all -- --check
 
+      - name: Cargo publish policy
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: scripts/check-cargo-publish-policy.py
+
+      - name: Proskenion flake wiring
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: scripts/check-proskenion-flake.py
+
       - name: cargo clippy
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo clippy --workspace --all-targets -- -D warnings

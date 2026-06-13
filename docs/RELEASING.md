@@ -6,6 +6,19 @@ Semantic Versioning. Pre-1.0, MINOR bumps may include breaking changes with docu
 
 The canonical version lives in `Cargo.toml` at `[workspace.package].version`. All crates inherit it via `version.workspace = true`.
 
+## Cargo publish policy
+
+Aletheia ships binaries and release archives, not crates.io packages. Every
+in-repo Rust package must set `publish = false` unless a release plan first
+adds public package metadata, dependency publishability, README/docs, and a
+semver policy for that crate.
+
+Run the guard before changing manifests:
+
+```bash
+scripts/check-cargo-publish-policy.py
+```
+
 ## Automated release process
 
 1. Merge conventional-commit-formatted PRs to `main`

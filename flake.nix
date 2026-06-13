@@ -7,115 +7,152 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane.url = "github:ipetkov/crane";
+    crane = {
+      url = "github:ipetkov/crane";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, rust-overlay, crane }:
+  outputs = { nixpkgs, rust-overlay, crane, ... }:
     let
-      system = "x86_64-linux";
-      overlays = [ (import rust-overlay) ];
-      pkgs = import nixpkgs { inherit system overlays; };
-
+      supportedSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+      forEachSystem = nixpkgs.lib.genAttrs supportedSystems;
       rustVersion = "1.94.0";
-      rustToolchain = pkgs.rust-bin.stable.${rustVersion}.default.override {
-        extensions = [ "rust-src" "rust-analyzer" ];
-      };
+      proskenionManifest = builtins.fromTOML (
+        builtins.readFile ./crates/theatron/proskenion/Cargo.toml
+      );
+      proskenionPackage = proskenionManifest.package;
+      proskenionName = proskenionPackage.name;
+      proskenionVersion = proskenionPackage.version;
+      proskenionCargoArgs = "--manifest-path crates/theatron/proskenion/Cargo.toml -p ${proskenionName}";
 
-      craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+      perSystem =
+        system:
+        let
+          overlays = [ (import rust-overlay) ];
+          pkgs = import nixpkgs {
+            inherit system overlays;
+            config = { };
+          };
 
-      # Native libraries required by WGPU/Blitz at build and runtime.
-      wgpuNativeDeps = [
-        pkgs.vulkan-loader
-        pkgs.libxkbcommon
-        pkgs.wayland
+          rustToolchain = pkgs.rust-bin.stable.${rustVersion}.default.override {
+            extensions = [
+              "rust-src"
+              "rust-analyzer"
+            ];
+          };
 
-        # X11
-        pkgs.xorg.libX11
-        pkgs.xorg.libXcursor
-        pkgs.xorg.libXrandr
-        pkgs.xorg.libXi
-        pkgs.xorg.libxcb
+          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
-        # Font rendering
-        pkgs.fontconfig
-        pkgs.freetype
-      ];
+          wgpuNativeDeps = [
+            pkgs.vulkan-loader
+            pkgs.libxkbcommon
+            pkgs.wayland
 
-      # Build-time tools needed by native crates (C compilation, linking).
-      nativeBuildDeps = [
-        pkgs.pkg-config
-        pkgs.cmake
-        pkgs.rustPlatform.bindgenHook
-        pkgs.pandoc
-      ];
+            pkgs.xorg.libX11
+            pkgs.xorg.libXcursor
+            pkgs.xorg.libXrandr
+            pkgs.xorg.libXi
+            pkgs.xorg.libxcb
 
-      # Shared source filter: include Rust sources, Cargo manifests,
-      # Dioxus config, and any asset files.
-      src = pkgs.lib.cleanSourceWith {
-        src = craneLib.path ./.;
-        filter = path: type:
-          (craneLib.filterCargoSources path type)
-          || builtins.match ".*Dioxus\\.toml$" path != null
-          || builtins.match ".*\\.css$" path != null
-          || builtins.match ".*\\.html$" path != null;
-      };
+            pkgs.fontconfig
+            pkgs.freetype
+          ];
 
-      commonArgs = {
-        inherit src;
-        strictDeps = true;
-        nativeBuildInputs = nativeBuildDeps;
-        buildInputs = wgpuNativeDeps;
-      };
+          nativeBuildDeps = [
+            pkgs.pkg-config
+            pkgs.cmake
+            pkgs.rustPlatform.bindgenHook
+            pkgs.pandoc
+          ];
 
-      # Build workspace dependencies (cached separately from source).
-      cargoArtifacts = craneLib.buildDepsOnly (commonArgs // {
-        pname = "aletheia-workspace";
-        version = "0.11.0";
-      });
+          src = pkgs.lib.cleanSourceWith {
+            src = craneLib.path ./.;
+            filter =
+              path: type:
+              (craneLib.filterCargoSources path type)
+              || builtins.match ".*/Dioxus\\.toml$" path != null
+              || builtins.match ".*/assets/.*" path != null;
+          };
 
-      aletheia-desktop = craneLib.buildPackage (commonArgs // {
-        inherit cargoArtifacts;
-        pname = "aletheia-desktop";
-        version = "0.11.0";
+          commonArgs = {
+            inherit src;
+            strictDeps = true;
+            nativeBuildInputs = nativeBuildDeps;
+            buildInputs = wgpuNativeDeps;
+            cargoExtraArgs = proskenionCargoArgs;
+          };
 
-        cargoExtraArgs = "-p theatron-desktop";
+          cargoArtifacts = craneLib.buildDepsOnly (
+            commonArgs
+            // {
+              pname = "${proskenionName}-deps";
+              version = proskenionVersion;
+            }
+          );
 
-        # WHY: Nix sandbox has no GPU. The build only needs headers and
-        # link stubs, not a running GPU. Runtime GPU access is the user's
-        # responsibility.
-        doCheck = false;
-      });
+          proskenion = craneLib.buildPackage (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              pname = proskenionName;
+              version = proskenionVersion;
+
+              # WHY: Nix sandbox has no GPU. The build only needs headers and
+              # link stubs, not a running GPU. Runtime GPU access is the user's
+              # responsibility.
+              doCheck = false;
+            }
+          );
+
+          proskenionShell = craneLib.devShell {
+            inputsFrom = [ proskenion ];
+
+            packages = [
+              pkgs.dioxus-cli
+              pkgs.cargo-deny
+              pkgs.cargo-watch
+              pkgs.pandoc
+              pkgs.wayland-protocols
+              pkgs.wayland-scanner
+            ];
+
+            # WHY: WGPU discovers the Vulkan ICD loader and GPU-adjacent
+            # libraries via LD_LIBRARY_PATH at runtime. Without this, the
+            # desktop app cannot find the Vulkan driver on NixOS.
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath wgpuNativeDeps;
+          };
+
+          proskenionMetadataCheck = pkgs.runCommand "proskenion-flake-metadata" { } ''
+            test "${proskenionName}" = "proskenion"
+            test -n "${proskenionVersion}"
+            touch "$out"
+          '';
+        in
+        {
+          packages = {
+            inherit proskenion;
+            default = proskenion;
+          };
+
+          devShells = {
+            proskenion = proskenionShell;
+            default = proskenionShell;
+          };
+
+          checks = {
+            proskenion-flake-metadata = proskenionMetadataCheck;
+          };
+        };
+
+      systemOutputs = forEachSystem perSystem;
     in
     {
-      packages.${system} = {
-        inherit aletheia-desktop;
-        default = aletheia-desktop;
-      };
-
-      devShells.${system}.default = craneLib.devShell {
-        # Inherit build inputs so native libraries are available.
-        inputsFrom = [ aletheia-desktop ];
-
-        packages = [
-          # Dioxus CLI for hot-patching development
-          pkgs.dioxus-cli
-
-          # Build tooling
-          pkgs.cargo-deny
-          pkgs.cargo-watch
-          pkgs.pandoc
-
-          # Wayland session support
-          pkgs.wayland-protocols
-          pkgs.wayland-scanner
-        ];
-
-        # WHY: WGPU discovers the Vulkan ICD loader and GPU-adjacent
-        # libraries via LD_LIBRARY_PATH at runtime. Without this, the
-        # desktop app cannot find the Vulkan driver on NixOS.
-        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath wgpuNativeDeps;
-      };
-
-
+      packages = nixpkgs.lib.mapAttrs (_: output: output.packages) systemOutputs;
+      devShells = nixpkgs.lib.mapAttrs (_: output: output.devShells) systemOutputs;
+      checks = nixpkgs.lib.mapAttrs (_: output: output.checks) systemOutputs;
     };
 }

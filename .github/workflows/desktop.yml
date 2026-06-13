@@ -73,6 +73,9 @@ jobs:
       - name: Check proskenion theatron pins
         run: scripts/check-proskenion-pins.py
 
+      - name: Check proskenion flake wiring
+        run: scripts/check-proskenion-flake.py
+
       - name: cargo fmt --check
         run: cargo fmt --manifest-path crates/theatron/proskenion/Cargo.toml --all -- --check
 

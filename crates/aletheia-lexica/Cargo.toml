@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Static lexicon and data constants for Aletheia"
+publish = false
 
 [lints]
 workspace = true
