@@ -85,7 +85,7 @@ mod tests {
         bus.publish(DomainEvent::new("test.topic", serde_json::json!({})));
     }
 
-    /// Verify that a lagging subscriber receives RecvError::Lagged when the channel
+    /// Verify that a lagging subscriber receives `RecvError::Lagged` when the channel
     /// fills up, proving that slow/disconnected subscribers are handled gracefully.
     #[test]
     fn lagging_subscriber_gets_lagged_error() {
