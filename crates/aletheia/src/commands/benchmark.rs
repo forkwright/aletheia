@@ -10,8 +10,8 @@ use serde::Serialize;
 use snafu::prelude::*;
 
 use dokimion::benchmarks::{
-    BenchmarkMetadata, BenchmarkReport, BenchmarkRunner, BenchmarkRunnerConfig, EvalClient,
-    MemoryBenchmark,
+    BenchmarkMetadata, BenchmarkReport, BenchmarkRunner, BenchmarkRunnerConfig,
+    BenchmarkValidationOptions, BenchmarkValidationReport, EvalClient, MemoryBenchmark,
 };
 use episteme::rl::{LongMemEvalReward, MemoryOutcome, RewardFn};
 
@@ -71,6 +71,9 @@ pub(crate) struct RunArgs {
     /// Query the knowledge store after ingestion and compute Recall@k / NDCG@k
     #[arg(long)]
     pub retrieval_k: Option<usize>,
+    /// Allow incomplete benchmark records and report validation warnings.
+    #[arg(long)]
+    pub best_effort_dataset: bool,
     /// LLM-as-judge endpoint (OpenAI-compatible). If set, each answer is judged.
     #[arg(long, env = "ALETHEIA_JUDGE_ENDPOINT")]
     pub judge_endpoint: Option<String>,
@@ -130,27 +133,43 @@ fn validate_args(args: &RunArgs) -> Result<()> {
 
 async fn run_longmemeval(args: RunArgs) -> Result<()> {
     validate_args(&args)?;
-    let dataset = dokimion::benchmarks::load_longmemeval(&args.dataset)
-        .await
-        .whatever_context("failed to load LongMemEval dataset")?;
-    run_benchmark(&dataset, &args).await
+    let (dataset, validation) = dokimion::benchmarks::load_longmemeval_with_options(
+        &args.dataset,
+        validation_options(&args),
+    )
+    .await
+    .whatever_context("failed to load LongMemEval dataset")?;
+    run_benchmark(&dataset, &args, validation).await
 }
 
 async fn run_locomo(args: RunArgs) -> Result<()> {
     validate_args(&args)?;
-    let dataset = dokimion::benchmarks::load_locomo(&args.dataset)
-        .await
-        .whatever_context("failed to load LoCoMo dataset")?;
-    run_benchmark(&dataset, &args).await
+    let (dataset, validation) =
+        dokimion::benchmarks::load_locomo_with_options(&args.dataset, validation_options(&args))
+            .await
+            .whatever_context("failed to load LoCoMo dataset")?;
+    run_benchmark(&dataset, &args, validation).await
 }
 
-async fn run_benchmark(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Result<()> {
+fn validation_options(args: &RunArgs) -> BenchmarkValidationOptions {
+    BenchmarkValidationOptions {
+        dataset_path: Some(args.dataset.display().to_string()),
+        allow_best_effort: args.best_effort_dataset,
+        require_retrieval_evidence: args.retrieval_k.is_some(),
+    }
+}
+
+async fn run_benchmark(
+    benchmark: &dyn MemoryBenchmark,
+    args: &RunArgs,
+    validation: BenchmarkValidationReport,
+) -> Result<()> {
     let client = EvalClient::new(&args.url, args.token.clone());
 
     // Collect system metadata before running.
-    let metadata = collect_metadata(&client, benchmark, args).await;
+    let metadata = collect_metadata(&client, benchmark, args, validation).await;
     let config_hash = dokimion::provenance::sha256_hex_str(&format!(
-        "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
+        "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\nbest_effort_dataset={}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
         benchmark.name(),
         args.dataset.display(),
         args.url,
@@ -159,6 +178,7 @@ async fn run_benchmark(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Resul
         args.timeout,
         args.json,
         args.retrieval_k,
+        args.best_effort_dataset,
         args.judge_endpoint.is_some(),
         args.judge_model,
         args.judge_api_key.is_some(),
@@ -183,6 +203,7 @@ async fn run_benchmark(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Resul
                 api_key: args.judge_api_key.clone(),
                 max_tokens: 256,
                 temperature: 0.0,
+                timeout: Duration::from_secs(args.timeout),
             });
 
     let config = BenchmarkRunnerConfig {
@@ -249,6 +270,12 @@ struct BenchmarkBaselineSummary {
     mean_f1: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     judge_accuracy: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    judge_attempted: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    judge_scored: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    judge_errors: Option<usize>,
 }
 
 impl BenchmarkBaselineSummary {
@@ -263,6 +290,9 @@ impl BenchmarkBaselineSummary {
             exact_match_rate: report.exact_match_rate(),
             mean_f1: report.mean_f1(),
             judge_accuracy: report.judge_accuracy(),
+            judge_attempted: report.judge_summary.map(|summary| summary.attempted),
+            judge_scored: report.judge_summary.map(|summary| summary.scored),
+            judge_errors: report.judge_summary.map(|summary| summary.errors),
         }
     }
 }
@@ -303,6 +333,7 @@ async fn collect_metadata(
     client: &EvalClient,
     benchmark: &dyn MemoryBenchmark,
     args: &RunArgs,
+    validation: BenchmarkValidationReport,
 ) -> BenchmarkMetadata {
     let version = client
         .health()
@@ -325,6 +356,8 @@ async fn collect_metadata(
         timeout_secs: args.timeout,
         dataset_hash: dataset_hash(&args.dataset).await,
         git_sha: option_env!("GITHUB_SHA").map(str::to_owned),
+        dataset_best_effort: args.best_effort_dataset,
+        dataset_validation: Some(validation),
     }
 }
 
@@ -369,6 +402,13 @@ fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSu
             meta.total_questions,
             meta.timeout_secs
         );
+        if meta.dataset_best_effort {
+            let warnings = meta
+                .dataset_validation
+                .as_ref()
+                .map_or(0, |validation| validation.warnings.len());
+            println!("Dataset validation: best-effort ({warnings} warning(s))");
+        }
     } else {
         println!("Questions: {}", report.total);
     }
@@ -425,8 +465,15 @@ fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSu
     }
 
     // Optional judge accuracy
-    if let Some(judge_acc) = report.judge_accuracy() {
-        println!("\nLLM-as-judge accuracy: {:.1}%", judge_acc * 100.0);
+    if let (Some(judge_acc), Some(summary)) = (report.judge_accuracy(), report.judge_summary) {
+        println!(
+            "\nLLM-as-judge accuracy: {:.1}% ({} correct / {} attempted; {} parsed, {} errors)",
+            judge_acc * 100.0,
+            summary.correct,
+            summary.attempted,
+            summary.scored,
+            summary.errors
+        );
     }
 
     if let Some(surface) = reward_surface {
@@ -510,6 +557,7 @@ mod tests {
             baseline_out: None,
             baseline_in: None,
             retrieval_k: None,
+            best_effort_dataset: false,
             judge_endpoint: None,
             judge_model: "gpt-4o".to_owned(),
             judge_api_key: None,
@@ -592,6 +640,7 @@ mod tests {
                     error_message: None,
                     actual_answer: "blue".to_owned(),
                     expected_answers: vec!["blue".to_owned()],
+                    expected_evidence_refs: Vec::new(),
                     score: BenchmarkScore {
                         exact_match: true,
                         f1: 1.0,
@@ -599,6 +648,7 @@ mod tests {
                     },
                     judge_score: None,
                     retrieved_facts: None,
+                    retrieval_scoring: None,
                     recall_at_k: None,
                     ndcg_at_k: None,
                 },
@@ -609,6 +659,7 @@ mod tests {
                     error_message: None,
                     actual_answer: "green".to_owned(),
                     expected_answers: vec!["red".to_owned()],
+                    expected_evidence_refs: Vec::new(),
                     score: BenchmarkScore {
                         exact_match: false,
                         f1: 0.0,
@@ -616,6 +667,7 @@ mod tests {
                     },
                     judge_score: None,
                     retrieved_facts: None,
+                    retrieval_scoring: None,
                     recall_at_k: None,
                     ndcg_at_k: None,
                 },

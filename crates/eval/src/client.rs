@@ -400,7 +400,7 @@ pub struct HistoryMessage {
 #[derive(Debug, Clone, Deserialize)]
 pub struct KnowledgeSearchResponse {
     /// Matching facts ordered by relevance.
-    #[serde(default)]
+    #[serde(default, alias = "results")]
     pub facts: Vec<KnowledgeFact>,
 }
 
@@ -416,6 +416,9 @@ pub struct KnowledgeFact {
     /// Confidence score (0.0 to 1.0).
     #[serde(default)]
     pub confidence: f64,
+    /// Search relevance score.
+    #[serde(default)]
+    pub score: f64,
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ l3_token_estimate = 5780
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "ae8cae546c4620b263dd7c6be25a81ef9cb5be9a2311bbe6443bcad90fa63bb6"
+source_hash = "e34e628ff52426d3e6ebd310ad64e9188a55482e58f4e04d5cc31bffa94effc8"
 l3_token_estimate = 167
 
 [[crates]]
@@ -68,8 +68,8 @@ l3_token_estimate = 2624
 [[crates]]
 name = "dokimion"
 path = "crates/eval"
-source_hash = "8da58e84baee9aa4d4f50466a862a86134ac73dd7992035a5e048ceff0b98822"
-l3_token_estimate = 9985
+source_hash = "c9442e45a0f5f5432127a4aa9552ddf0e980ff444d5914f87a12343062925590"
+l3_token_estimate = 12324
 
 [[crates]]
 name = "eidos"

@@ -7,7 +7,9 @@
 #![allow(clippy::indexing_slicing, reason = "integration test boilerplate")]
 
 use dokimion::benchmarks::longmemeval::LongMemEvalDataset;
-use dokimion::benchmarks::{BenchmarkRunner, BenchmarkRunnerConfig, EvalClient, MemoryBenchmark};
+use dokimion::benchmarks::{
+    BenchmarkRunner, BenchmarkRunnerConfig, EvalClient, RetrievalScoringMode,
+};
 use wiremock::matchers::{method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -117,7 +119,7 @@ async fn setup_slow_mock_server(answer_text: &str, delay: std::time::Duration) -
 const SAMPLE_DATASET: &str = r#"[
     {
         "question_id": "q1",
-        "question_type": "factual",
+        "question_type": "single-session-user",
         "question": "What color did the user mention?",
         "answer": "blue",
         "haystack_sessions": [
@@ -219,7 +221,7 @@ async fn runner_preserves_question_metadata_in_results() -> TestResult {
 
     let question = &report.questions[0];
     assert_eq!(question.id, "q1");
-    assert_eq!(question.category, "factual");
+    assert_eq!(question.category, "single-session-user");
     assert_eq!(question.expected_answers, vec!["blue".to_owned()]);
     Ok(())
 }
@@ -236,24 +238,86 @@ async fn runner_produces_per_category_breakdown() -> TestResult {
 
     let per_cat = report.per_category();
     assert_eq!(per_cat.len(), 1);
-    assert_eq!(per_cat[0].0, "factual");
-    assert!(per_cat[0].1 > 0.99, "factual EM should be 1.0");
+    assert_eq!(per_cat[0].0, "single-session-user");
+    assert!(per_cat[0].1 > 0.99, "single-session-user EM should be 1.0");
     Ok(())
 }
 
 #[tokio::test]
-async fn runner_handles_empty_dataset() -> TestResult {
-    init_crypto();
-    let server = setup_mock_server("anything").await;
-    let client = EvalClient::new(server.uri(), None);
-    let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default());
+async fn runner_rejects_empty_dataset_before_execution() -> TestResult {
+    let result = LongMemEvalDataset::from_bytes(b"[]");
+    assert!(result.is_err());
+    assert!(
+        result
+            .err()
+            .is_some_and(|err| err.to_string().contains("at least one question"))
+    );
+    Ok(())
+}
 
-    let dataset = LongMemEvalDataset::from_bytes(b"[]")?;
-    assert!(dataset.is_empty());
+#[tokio::test]
+async fn runner_scores_retrieval_against_evidence_ids() -> TestResult {
+    init_crypto();
+    let server = setup_mock_server("blue").await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/knowledge/search"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "results": [
+                {
+                    "id": "fact-blue",
+                    "content": "The user stores their favorite pigment in memory.",
+                    "confidence": 0.92,
+                    "tier": "active",
+                    "fact_type": "user",
+                    "score": 0.81
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let client = EvalClient::new(server.uri(), None);
+    let config = BenchmarkRunnerConfig {
+        retrieval_k: Some(1),
+        ..Default::default()
+    };
+    let runner = BenchmarkRunner::new(client, config);
+
+    let dataset = LongMemEvalDataset::from_bytes(
+        r#"[
+            {
+                "question_id": "q1",
+                "question_type": "single-session-user",
+                "question": "What color did the user mention?",
+                "answer": "blue",
+                "evidence_ids": ["fact-blue"],
+                "haystack_sessions": [
+                    [
+                        {"role": "user", "content": "My favorite color is blue"}
+                    ]
+                ]
+            }
+        ]"#
+        .as_bytes(),
+    )?;
     let report = runner.run(&dataset).await?;
 
-    assert_eq!(report.total, 0);
-    assert!((report.exact_match_rate()).abs() < f64::EPSILON);
-    assert!((report.mean_f1()).abs() < f64::EPSILON);
+    let question = &report.questions[0];
+    let recall = question
+        .recall_at_k
+        .ok_or_else(|| std::io::Error::other("missing recall"))?;
+    assert!((recall - 1.0).abs() < f64::EPSILON);
+    let scoring = question
+        .retrieval_scoring
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("missing retrieval scoring"))?;
+    assert_eq!(scoring.mode, RetrievalScoringMode::EvidenceId);
+    assert!(!scoring.fallback_used);
+    let retrieved = &question
+        .retrieved_facts
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("missing retrieved facts"))?[0];
+    assert_eq!(retrieved.id.as_deref(), Some("fact-blue"));
+    assert!((retrieved.score - 0.81).abs() < f64::EPSILON);
+    assert!(!retrieved.content_sha256.is_empty());
     Ok(())
 }
