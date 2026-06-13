@@ -632,7 +632,8 @@ fn classify_auto_merge_and_review() {
 /// and proves `AutoMerge` works *with* embeddings; this test feeds embed=0.0
 /// and proves `AutoMerge` is unreachable *without* them. The pair flips green→red
 /// the moment a real embedding path is wired (per the operator decision in
-/// `planning/research/memory-dedup-reachability.md`), making the change visible.
+/// `kanon/projects/aletheia/planning/research/memory-dedup-reachability.md`),
+/// making the change visible.
 #[test]
 fn auto_merge_unreachable_under_production_embedding_closure() {
     let entities = vec![

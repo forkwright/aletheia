@@ -787,7 +787,8 @@ pub struct PublishedFactId(pub String);
 /// to its original (publisher-private) source.
 ///
 /// Verification and contestation are tracked here; the original `Fact` is
-/// untouched. See R716 Phase 3 design (`planning/research/knowledge-sharing.md`).
+/// untouched. See R716 Phase 3 design
+/// (`kanon/projects/aletheia/planning/research/knowledge-sharing.md`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublishedFact {
     /// Stable identifier for this published fact.
