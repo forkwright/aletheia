@@ -39,7 +39,7 @@ scan_pattern() {
         report "${path}:${lineno}: retired ${label} reference: ${line}"
     done < <(rg --line-number --no-heading --color=never \
         --glob '!scripts/check-docs-retired-backup.sh' \
-        -- "${pattern}" docs instance.example shared scripts crates || true)
+        -- "${pattern}" docs instance.example shared scripts crates _llm || true)
 }
 
 scan_pattern "--export-json flag" '--export-json'
