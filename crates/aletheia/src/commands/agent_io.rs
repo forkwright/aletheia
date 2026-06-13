@@ -125,6 +125,10 @@ pub(crate) struct ImportArgs {
     /// Show what would be imported without making changes
     #[arg(long)]
     pub dry_run: bool,
+    /// Allow unknown session status, session type, or message role values
+    /// to be silently defaulted instead of failing the import.
+    #[arg(long)]
+    pub allow_unknown_values: bool,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -745,6 +749,91 @@ fn capitalize(s: &str) -> String {
     }
 }
 
+/// Typed errors raised while validating and importing an agent file.
+#[derive(Debug, Snafu)]
+enum ImportError {
+    #[snafu(display(
+        "agent file is version {version} but importer requires v{expected}. \
+         Re-export from the source instance; there is no in-place migration. See #4163."
+    ))]
+    VersionMismatch { version: u32, expected: u32 },
+
+    #[snafu(display("unknown {field} value {value:?} in session {session_id}"))]
+    UnknownValue {
+        field: &'static str,
+        value: String,
+        session_id: String,
+    },
+}
+
+fn import_error(err: &ImportError) -> crate::error::Error {
+    crate::error::Error::msg(err.to_string())
+}
+
+fn parse_session_status(
+    value: &str,
+    session_id: &str,
+    allow_unknown: bool,
+) -> std::result::Result<SessionStatus, ImportError> {
+    match value {
+        "active" => Ok(SessionStatus::Active),
+        "archived" => Ok(SessionStatus::Archived),
+        "distilled" => Ok(SessionStatus::Distilled),
+        other if allow_unknown => {
+            eprintln!("  WARN: unknown status '{other}', defaulting to 'active'");
+            Ok(SessionStatus::Active)
+        }
+        other => Err(ImportError::UnknownValue {
+            field: "session_status",
+            value: other.to_owned(),
+            session_id: session_id.to_owned(),
+        }),
+    }
+}
+
+fn parse_session_type(
+    value: &str,
+    session_id: &str,
+    allow_unknown: bool,
+) -> std::result::Result<SessionType, ImportError> {
+    match value {
+        "primary" => Ok(SessionType::Primary),
+        "background" => Ok(SessionType::Background),
+        "ephemeral" => Ok(SessionType::Ephemeral),
+        other if allow_unknown => {
+            eprintln!("  WARN: unknown session_type '{other}', defaulting to 'primary'");
+            Ok(SessionType::Primary)
+        }
+        other => Err(ImportError::UnknownValue {
+            field: "session_type",
+            value: other.to_owned(),
+            session_id: session_id.to_owned(),
+        }),
+    }
+}
+
+fn parse_message_role(
+    value: &str,
+    session_id: &str,
+    allow_unknown: bool,
+) -> std::result::Result<Role, ImportError> {
+    match value {
+        "system" => Ok(Role::System),
+        "user" => Ok(Role::User),
+        "assistant" => Ok(Role::Assistant),
+        "tool_result" => Ok(Role::ToolResult),
+        other if allow_unknown => {
+            eprintln!("  WARN: unknown role '{other}', defaulting to 'user'");
+            Ok(Role::User)
+        }
+        other => Err(ImportError::UnknownValue {
+            field: "message_role",
+            value: other.to_owned(),
+            session_id: session_id.to_owned(),
+        }),
+    }
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "import orchestrates config, workspace, and session store — sequential by nature"
@@ -756,15 +845,11 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     let agent_file: mneme::portability::AgentFile =
         serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
 
-    if agent_file.version < mneme::portability::AGENT_FILE_VERSION {
-        whatever!(
-            "agent file is version {} but importer requires v{}.\n\
-             v1 files are silently lossy on session status, timestamps, and \
-             message metadata. Re-export from the source instance — there is no \
-             in-place migration. See #4163.",
-            agent_file.version,
-            mneme::portability::AGENT_FILE_VERSION,
-        );
+    if agent_file.version != mneme::portability::AGENT_FILE_VERSION {
+        return Err(import_error(&ImportError::VersionMismatch {
+            version: agent_file.version,
+            expected: mneme::portability::AGENT_FILE_VERSION,
+        }));
     }
 
     // WARNING(#4241): if --target-id is absent, the imported nous.id is
@@ -958,24 +1043,15 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         })?;
 
         for session in &agent_file.sessions {
-            let status = match session.status.as_str() {
-                "active" => SessionStatus::Active,
-                "archived" => SessionStatus::Archived,
-                "distilled" => SessionStatus::Distilled,
-                other => {
-                    eprintln!("  WARN: unknown status '{other}', defaulting to 'active'");
-                    SessionStatus::Active
-                }
-            };
-            let session_type = match session.session_type.as_str() {
-                "primary" => SessionType::Primary,
-                "background" => SessionType::Background,
-                "ephemeral" => SessionType::Ephemeral,
-                other => {
-                    eprintln!("  WARN: unknown session_type '{other}', defaulting to 'primary'");
-                    SessionType::Primary
-                }
-            };
+            let status =
+                parse_session_status(&session.status, &session.id, args.allow_unknown_values)
+                    .map_err(|e| import_error(&e))?;
+            let session_type = parse_session_type(
+                &session.session_type,
+                &session.id,
+                args.allow_unknown_values,
+            )
+            .map_err(|e| import_error(&e))?;
 
             let imported = store
                 .import_session(
@@ -1010,16 +1086,8 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                 .with_whatever_context(|_| format!("failed to import session {}", session.id))?;
 
             for msg in &session.messages {
-                let role = match msg.role.as_str() {
-                    "system" => Role::System,
-                    "user" => Role::User,
-                    "assistant" => Role::Assistant,
-                    "tool_result" => Role::ToolResult,
-                    other => {
-                        eprintln!("  WARN: unknown role '{other}', defaulting to 'user'");
-                        Role::User
-                    }
-                };
+                let role = parse_message_role(&msg.role, &session.id, args.allow_unknown_values)
+                    .map_err(|e| import_error(&e))?;
                 store
                     .insert_message_raw(&mneme::types::Message {
                         id: msg.seq,
@@ -2009,6 +2077,7 @@ workspace = "nous/{agent_id}"
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
+                allow_unknown_values: false,
             },
         )
         .unwrap();
@@ -2082,6 +2151,7 @@ workspace = "nous/{agent_id}"
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
+                allow_unknown_values: false,
             },
         )
         .unwrap();
@@ -2199,6 +2269,7 @@ workspace = "nous/{agent_id}"
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
+                allow_unknown_values: false,
             },
         )
         .unwrap();
@@ -2447,6 +2518,7 @@ workspace = "nous/{agent_id}"
             skip_workspace: false,
             force: false,
             dry_run: false,
+            allow_unknown_values: false,
         };
 
         import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
@@ -2491,6 +2563,7 @@ workspace = "nous/{agent_id}"
             skip_workspace: false,
             force: false,
             dry_run: false,
+            allow_unknown_values: false,
         };
 
         import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
@@ -2522,6 +2595,7 @@ workspace = "nous/{agent_id}"
             skip_workspace: true,
             force: false,
             dry_run: false,
+            allow_unknown_values: false,
         };
         let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
         let msg = err.to_string();
@@ -2556,6 +2630,7 @@ workspace = "nous/{agent_id}"
             skip_workspace: false,
             force: false,
             dry_run: false,
+            allow_unknown_values: false,
         };
         let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
         let msg = err.to_string();
@@ -2583,6 +2658,7 @@ workspace = "nous/{agent_id}"
             skip_workspace: true,
             force: false,
             dry_run: false,
+            allow_unknown_values: false,
         };
         let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
         let msg = err.to_string();
@@ -2611,6 +2687,7 @@ workspace = "nous/{agent_id}"
             skip_workspace: true,
             force: false,
             dry_run: false,
+            allow_unknown_values: false,
         };
 
         import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
@@ -2824,6 +2901,7 @@ workspace = "nous/{agent_id}"
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
+                allow_unknown_values: false,
             },
         )
         .unwrap();
@@ -3029,6 +3107,7 @@ workspace = "nous/{agent_id}"
                 // import must overwrite it; the [embedding] config still applies.
                 force: true,
                 dry_run: false,
+                allow_unknown_values: false,
             },
         )
         .unwrap();
@@ -3163,6 +3242,7 @@ workspace = "nous/{agent_id}"
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
+                allow_unknown_values: false,
             },
         )
         .unwrap();
@@ -3194,5 +3274,223 @@ workspace = "nous/{agent_id}"
         obj2.remove("generator");
 
         assert_eq!(v1, v2, "second export must be identical to first");
+    }
+
+    fn minimal_agent_file() -> AgentFile {
+        AgentFile {
+            version: mneme::portability::AGENT_FILE_VERSION,
+            exported_at: "2026-03-05T12:00:00Z".to_owned(),
+            generator: "aletheia-rust/0.10.0".to_owned(),
+            nous: NousInfo {
+                id: "imported-agent".to_owned(),
+                name: Some("Imported Agent".to_owned()),
+                model: Some("claude-sonnet-4-6".to_owned()),
+                config: serde_json::json!({"domains": ["general"]}),
+            },
+            workspace: WorkspaceData {
+                files: HashMap::new(),
+                binary_files: vec![],
+            },
+            sessions: vec![],
+            memory: None,
+            knowledge: None,
+        }
+    }
+
+    fn single_session_agent_file(status: &str, session_type: &str, role: &str) -> AgentFile {
+        let mut file = minimal_agent_file();
+        file.sessions = vec![ExportedSession {
+            id: "ses-001".to_owned(),
+            session_key: "main".to_owned(),
+            status: status.to_owned(),
+            session_type: session_type.to_owned(),
+            message_count: 1,
+            token_count_estimate: 10,
+            distillation_count: 0,
+            created_at: "2026-03-05T10:00:00Z".to_owned(),
+            updated_at: "2026-03-05T11:00:00Z".to_owned(),
+            working_state: None,
+            distillation_priming: None,
+            notes: vec![],
+            messages: vec![ExportedMessage {
+                role: role.to_owned(),
+                content: "hello".to_owned(),
+                seq: 1,
+                token_estimate: 10,
+                is_distilled: false,
+                created_at: "2026-03-05T10:00:00Z".to_owned(),
+                tool_call_id: None,
+                tool_name: None,
+            }],
+            usage_records: None,
+        }];
+        file
+    }
+
+    #[test]
+    fn import_rejects_future_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let mut agent_file = minimal_agent_file();
+        agent_file.version = mneme::portability::AGENT_FILE_VERSION + 1;
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("future.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: true,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: false,
+        };
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("agent file is version"), "got: {msg}");
+        assert!(msg.contains("requires v"), "got: {msg}");
+    }
+
+    #[test]
+    fn import_rejects_old_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let mut agent_file = minimal_agent_file();
+        agent_file.version = mneme::portability::AGENT_FILE_VERSION - 1;
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("old.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: true,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: false,
+        };
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("agent file is version"), "got: {msg}");
+        assert!(msg.contains("requires v"), "got: {msg}");
+    }
+
+    #[test]
+    fn import_rejects_unknown_session_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let agent_file = single_session_agent_file("bad-status", "primary", "user");
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("bad-status.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: false,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: false,
+        };
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown session_status"), "got: {msg}");
+    }
+
+    #[test]
+    fn import_rejects_unknown_session_type() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let agent_file = single_session_agent_file("active", "bad-type", "user");
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("bad-type.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: false,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: false,
+        };
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown session_type"), "got: {msg}");
+    }
+
+    #[test]
+    fn import_rejects_unknown_message_role() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let agent_file = single_session_agent_file("active", "primary", "bad-role");
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("bad-role.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: false,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: false,
+        };
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown message_role"), "got: {msg}");
+    }
+
+    #[test]
+    fn import_accepts_unknown_values_with_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let agent_file = single_session_agent_file("bad-status", "bad-type", "bad-role");
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("lossy.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: false,
+            skip_workspace: true,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: true,
+        };
+        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+
+        let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
+        let sessions = store.list_sessions(Some("imported-agent")).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].status, SessionStatus::Active);
+        assert_eq!(sessions[0].session_type, SessionType::Primary);
+        let history = store.get_history(&sessions[0].id, None).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].role, Role::User);
     }
 }

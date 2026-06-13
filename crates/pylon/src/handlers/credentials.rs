@@ -203,6 +203,7 @@ pub async fn rotate_credentials(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Credential not found"),
+        (status = 409, description = "Cannot remove the last primary credential for the provider"),
     ),
     security(("bearer_auth" = []))
 )]
@@ -258,6 +259,10 @@ fn map_symbolon_error(err: symbolon::error::Error) -> ApiError {
         },
         symbolon::error::Error::Duplicate { entity, id, .. } => ApiError::Conflict {
             message: format!("duplicate {entity}: {id}"),
+            location: snafu::location!(),
+        },
+        symbolon::error::Error::RemoveLastPrimary { provider, .. } => ApiError::Conflict {
+            message: format!("cannot remove the last primary credential for provider '{provider}'"),
             location: snafu::location!(),
         },
         symbolon::error::Error::PermissionDenied { .. } => ApiError::Forbidden {

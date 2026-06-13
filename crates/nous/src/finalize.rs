@@ -428,6 +428,9 @@ mod tests {
             .expect("create session");
         let mut session2 = session.clone();
         session2.id = "ses-2".to_owned();
+        // WHY(#4895): session id is bound to one (nous_id, session_key); session2
+        // must match the row created above or find_or_create_session fails closed.
+        session2.session_key = "main-2".to_owned();
 
         // NOTE: One tool call: user + tool_call + tool_result + assistant = 4
         let result = result_with_tools();

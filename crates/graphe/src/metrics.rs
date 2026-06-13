@@ -14,7 +14,6 @@ use prometheus_client::registry::Registry;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct SessionLabels {
-    nous_id: String,
     session_type: String,
 }
 
@@ -51,10 +50,11 @@ pub fn register(registry: &mut Registry) {
 /// Record a session creation.
 ///
 /// Compiled for the fjall store backend; called on successful session creation.
-pub(crate) fn record_session_created(nous_id: &str, session_type: &str) {
+/// The `nous_id` parameter is intentionally not recorded as a label — agent/user
+/// identifiers must not appear in default Prometheus exports.
+pub(crate) fn record_session_created(_nous_id: &str, session_type: &str) {
     SESSIONS_TOTAL
         .get_or_create(&SessionLabels {
-            nous_id: nous_id.to_owned(),
             session_type: session_type.to_owned(),
         })
         .inc();
@@ -95,14 +95,16 @@ mod tests {
     #[test]
     fn register_and_record_session_created() {
         let r = fresh_registry();
-        record_session_created("_test_nous", "primary");
-        record_session_created("_test_nous", "primary");
+        record_session_created("_test_nous_a", "primary");
+        record_session_created("_test_nous_b", "primary");
         let out = encode(&r);
         assert!(
-            out.contains(
-                "aletheia_sessions_total{nous_id=\"_test_nous\",session_type=\"primary\"} 2"
-            ),
+            out.contains("aletheia_sessions_total{session_type=\"primary\"} 2"),
             "got: {out}"
+        );
+        assert!(
+            !out.contains("_test_nous"),
+            "raw nous_id must not appear in default metrics: {out}"
         );
     }
 

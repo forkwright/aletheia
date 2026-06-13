@@ -228,30 +228,41 @@ impl SessionStore {
 
     fn write_session(&self, session: &Session) -> Result<()> {
         let sessions = self.partition("sessions")?;
-        // WHY: stamp provenance before serialising so metadata travels with the record.
-        let mut stamped = session.clone();
-        stamped.artefact_meta = Some(stamped.stamp());
-        let data = serde_json::to_vec(&stamped).context(error::StoredJsonSnafu)?;
-
         let mut tx = self.db.write_tx();
-        tx.insert(&sessions, session.id.as_str(), data.as_slice());
-        tx.insert(
-            &sessions,
-            Self::session_key_index_key(&session.nous_id, &session.session_key).as_str(),
-            session.id.as_bytes(),
-        );
-        tx.insert(
-            &sessions,
-            Self::session_nous_index_key(&session.nous_id, &session.updated_at, &session.id)
-                .as_str(),
-            b"",
-        );
+        Self::write_session_in_tx(&mut tx, &sessions, session)?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall session write: {e}"),
             }
             .build()
         })?;
+        Ok(())
+    }
+
+    /// Stamp, serialize, and write a session row plus both secondary indexes
+    /// inside an existing write transaction.
+    fn write_session_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        sessions: &fjall::SingleWriterTxKeyspace,
+        session: &Session,
+    ) -> Result<()> {
+        // WHY: stamp provenance before serialising so metadata travels with the record.
+        let mut stamped = session.clone();
+        stamped.artefact_meta = Some(stamped.stamp());
+        let data = serde_json::to_vec(&stamped).context(error::StoredJsonSnafu)?;
+
+        tx.insert(sessions, session.id.as_str(), data.as_slice());
+        tx.insert(
+            sessions,
+            Self::session_key_index_key(&session.nous_id, &session.session_key).as_str(),
+            session.id.as_bytes(),
+        );
+        tx.insert(
+            sessions,
+            Self::session_nous_index_key(&session.nous_id, &session.updated_at, &session.id)
+                .as_str(),
+            b"",
+        );
         Ok(())
     }
 
@@ -324,6 +335,14 @@ impl SessionStore {
             .write_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        if self.read_session_by_raw_id(id)?.is_some() {
+            return Err(error::StorageSnafu {
+                message: format!("UNIQUE constraint failed: session id {id} already exists"),
+            }
+            .build());
+        }
+
         let session_type = SessionType::from_key(session_key);
         let now = now_iso();
 
@@ -386,6 +405,20 @@ impl SessionStore {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
+
+        if let Some(existing) = self.read_session_by_raw_id(id)?
+            && (existing.nous_id != nous_id || existing.session_key != session_key)
+        {
+            return Err(error::StorageSnafu {
+                message: format!(
+                    "UNIQUE constraint failed: session id {id} already exists \
+                     for ({}, {})",
+                    existing.nous_id, existing.session_key
+                ),
+            }
+            .build());
+        }
+
         let idx_key = Self::session_key_index_key(nous_id, session_key);
 
         if let Some(existing_id_bytes) = self.get_bytes(&sessions_part, &idx_key)? {
@@ -408,16 +441,9 @@ impl SessionStore {
                 session.status = SessionStatus::Active;
                 session.updated_at = now_iso();
 
-                let data = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
                 let mut tx = self.db.write_tx();
-                tx.insert(&sessions_part, session.id.as_str(), data.as_slice());
                 Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-                let new_nous_key = Self::session_nous_index_key(
-                    &session.nous_id,
-                    &session.updated_at,
-                    &session.id,
-                );
-                tx.insert(&sessions_part, new_nous_key.as_str(), b"");
+                Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
                 tx.commit().map_err(|e| {
                     error::StorageSnafu {
                         message: format!("fjall reactivate session: {e}"),
@@ -545,12 +571,9 @@ impl SessionStore {
         session.status = status;
         session.updated_at = now_iso();
 
-        let data = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
         let mut tx = self.db.write_tx();
-        tx.insert(&sessions_part, id, data.as_slice());
         Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-        let new_nous_key = Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
-        tx.insert(&sessions_part, new_nous_key.as_str(), b"");
+        Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall commit failed (session_status write): {e}"),
@@ -576,12 +599,9 @@ impl SessionStore {
         session.origin.display_name = Some(display_name.to_owned());
         session.updated_at = now_iso();
 
-        let data = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
         let mut tx = self.db.write_tx();
-        tx.insert(&sessions_part, id, data.as_slice());
         Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-        let new_nous_key = Self::session_nous_index_key(&session.nous_id, &session.updated_at, id);
-        tx.insert(&sessions_part, new_nous_key.as_str(), b"");
+        Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall commit failed (display_name write): {e}"),
@@ -619,57 +639,74 @@ impl SessionStore {
 
         let mut tx = self.db.write_tx();
 
-        let msg_prefix = format!("{id}:");
-        let msg_upper = format!("{id};\x00");
+        // WHY: collect child keys before any mutation; abort entirely on scan
+        // error so parent and child rows stay consistent (all-or-nothing).
+        let child_prefix = format!("{id}:");
+        let child_upper = format!("{id};\x00");
+
         let msg_keys: Vec<Vec<u8>> = tx
-            .range(&messages_part, msg_prefix.as_str()..msg_upper.as_str())
-            .filter_map(|g| g.into_inner().ok())
-            .map(|(k, _v)| k.to_vec())
+            .range(&messages_part, child_prefix.as_str()..child_upper.as_str())
+            .map(|g| {
+                g.into_inner()
+                    .map(|(k, _v)| k.to_vec())
+                    .map_err(|e| storage_error(format!("fjall delete_session messages scan: {e}")))
+            })
+            .collect::<Result<_>>()?;
+
+        let usage_keys: Vec<Vec<u8>> = tx
+            .range(&usage_part, child_prefix.as_str()..child_upper.as_str())
+            .map(|g| {
+                g.into_inner()
+                    .map(|(k, _v)| k.to_vec())
+                    .map_err(|e| storage_error(format!("fjall delete_session usage scan: {e}")))
+            })
+            .collect::<Result<_>>()?;
+
+        let dist_keys: Vec<Vec<u8>> = tx
+            .range(
+                &distillations_part,
+                child_prefix.as_str()..child_upper.as_str(),
+            )
+            .map(|g| {
+                g.into_inner().map(|(k, _v)| k.to_vec()).map_err(|e| {
+                    storage_error(format!("fjall delete_session distillations scan: {e}"))
+                })
+            })
+            .collect::<Result<_>>()?;
+
+        let note_keys: Vec<Vec<u8>> = tx
+            .range(&notes_part, child_prefix.as_str()..child_upper.as_str())
+            .map(|g| {
+                g.into_inner()
+                    .map(|(k, _v)| k.to_vec())
+                    .map_err(|e| storage_error(format!("fjall delete_session notes scan: {e}")))
+            })
+            .collect::<Result<_>>()?;
+        let id_prefix = child_prefix;
+        let gid_keys: Vec<Vec<u8>> = tx
+            .range(&notes_part, "gid:".."gid;\x00")
+            .map(|g| {
+                g.into_inner()
+                    .map(|(k, v)| (k.to_vec(), v.starts_with(id_prefix.as_bytes())))
+                    .map_err(|e| storage_error(format!("fjall delete_session gid-index scan: {e}")))
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .filter_map(|(k, is_match)| if is_match { Some(k) } else { None })
             .collect();
+
         for key in &msg_keys {
             tx.remove(&messages_part, key.as_slice());
         }
         tx.remove(&messages_part, format!("next_seq:{id}").as_str());
 
-        let usage_prefix = format!("{id}:");
-        let usage_upper = format!("{id};\x00");
-        let usage_keys: Vec<Vec<u8>> = tx
-            .range(&usage_part, usage_prefix.as_str()..usage_upper.as_str())
-            .filter_map(|g| g.into_inner().ok())
-            .map(|(k, _v)| k.to_vec())
-            .collect();
         for key in &usage_keys {
             tx.remove(&usage_part, key.as_slice());
         }
 
-        let dist_prefix = format!("{id}:");
-        let dist_upper = format!("{id};\x00");
-        let dist_keys: Vec<Vec<u8>> = tx
-            .range(
-                &distillations_part,
-                dist_prefix.as_str()..dist_upper.as_str(),
-            )
-            .filter_map(|g| g.into_inner().ok())
-            .map(|(k, _v)| k.to_vec())
-            .collect();
         for key in &dist_keys {
             tx.remove(&distillations_part, key.as_slice());
         }
-
-        let notes_prefix = format!("{id}:");
-        let notes_upper = format!("{id};\x00");
-        let note_keys: Vec<Vec<u8>> = tx
-            .range(&notes_part, notes_prefix.as_str()..notes_upper.as_str())
-            .filter_map(|g| g.into_inner().ok())
-            .map(|(k, _v)| k.to_vec())
-            .collect();
-        let id_prefix = format!("{id}:");
-        let gid_keys: Vec<Vec<u8>> = tx
-            .range(&notes_part, "gid:".."gid;\x00")
-            .filter_map(|g| g.into_inner().ok())
-            .filter(|(_k, v)| v.starts_with(id_prefix.as_bytes()))
-            .map(|(k, _v)| k.to_vec())
-            .collect();
         for key in &note_keys {
             tx.remove(&notes_part, key.as_slice());
         }
@@ -772,7 +809,6 @@ impl SessionStore {
         session.metrics.message_count += 1;
         session.metrics.token_count_estimate += token_estimate;
         session.updated_at = now_iso();
-        let session_data = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
 
         let counters_part = self.partition("counters")?;
 
@@ -780,11 +816,8 @@ impl SessionStore {
         tx.insert(&messages_part, msg_key.as_str(), msg_data.as_slice());
         tx.insert(&messages_part, next_seq_key.as_str(), encode_u64(seq));
         tx.insert(&counters_part, "msg_id", encode_u64(msg_id_counter));
-        tx.insert(&sessions_part, session_id, session_data.as_slice());
         Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-        let new_nous_key =
-            Self::session_nous_index_key(&session.nous_id, &session.updated_at, session_id);
-        tx.insert(&sessions_part, new_nous_key.as_str(), b"");
+        Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall append_message commit: {e}"),
@@ -999,11 +1032,12 @@ impl SessionStore {
         {
             let mut session: Session =
                 serde_json::from_slice(&bytes).context(error::StoredJsonSnafu)?;
+            let old_updated_at = session.updated_at.clone();
             session.metrics.token_count_estimate = total_tokens;
             session.metrics.message_count = msg_count;
             session.updated_at = now_iso();
-            let updated = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
-            tx.insert(&sessions_part, session_id, updated.as_slice());
+            Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
+            Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
         }
 
         tx.commit().map_err(|e| {
@@ -1105,11 +1139,12 @@ impl SessionStore {
         {
             let mut session: Session =
                 serde_json::from_slice(&bytes).context(error::StoredJsonSnafu)?;
+            let old_updated_at = session.updated_at.clone();
             session.metrics.token_count_estimate = total_tokens;
             session.metrics.message_count = msg_count;
             session.updated_at = now_iso();
-            let updated = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
-            tx.insert(&sessions_part, session_id, updated.as_slice());
+            Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
+            Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
         }
 
         tx.commit().map_err(|e| {
@@ -1177,11 +1212,12 @@ impl SessionStore {
         {
             let mut session: Session =
                 serde_json::from_slice(&bytes).context(error::StoredJsonSnafu)?;
+            let old_updated_at = session.updated_at.clone();
             session.metrics.distillation_count += 1;
             session.metrics.last_distilled_at = Some(rec.created_at.clone());
             session.updated_at = now_iso();
-            let updated = serde_json::to_vec(&session).context(error::StoredJsonSnafu)?;
-            tx.insert(&sessions_part, session_id, updated.as_slice());
+            Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
+            Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
         }
 
         tx.commit().map_err(|e| {

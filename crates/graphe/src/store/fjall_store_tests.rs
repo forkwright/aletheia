@@ -55,6 +55,53 @@ fn create_session_unique_constraint() {
 }
 
 #[test]
+fn create_session_rejects_duplicate_raw_id() {
+    let store = test_store();
+    store
+        .create_session("ses-1", "alice", "main", None, None)
+        .expect("first create");
+    let result = store.create_session("ses-1", "alice", "other", None, None);
+    assert!(result.is_err(), "duplicate raw id must fail");
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("UNIQUE constraint failed: session id ses-1 already exists"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn create_session_rejects_duplicate_raw_id_different_owner() {
+    let store = test_store();
+    store
+        .create_session("ses-1", "alice", "main", None, None)
+        .expect("first create");
+    let result = store.create_session("ses-1", "bob", "main", None, None);
+    assert!(
+        result.is_err(),
+        "duplicate raw id under different nous must fail"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("UNIQUE constraint failed: session id ses-1 already exists"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn find_or_create_session_idempotent() {
+    let store = test_store();
+    let first = store
+        .find_or_create_session("ses-1", "alice", "main", None, None)
+        .expect("first");
+    let second = store
+        .find_or_create_session("ses-1", "alice", "main", None, None)
+        .expect("second");
+    assert_eq!(first.id, second.id);
+    assert_eq!(first.nous_id, second.nous_id);
+    assert_eq!(first.session_key, second.session_key);
+}
+
+#[test]
 fn append_and_retrieve_messages() {
     let store = test_store();
     store
@@ -204,6 +251,205 @@ fn insert_distillation_summary() {
     assert_eq!(history[0].role, Role::System);
     assert!(history[0].content.contains("Distillation #1"));
     assert_eq!(history[1].content, "msg3");
+}
+
+#[test]
+fn distillation_refreshes_nous_index() {
+    let store = test_store();
+    store
+        .create_session("ses-a", "alice", "main", None, None)
+        .expect("create a");
+    // Give ses-b a slightly older initial timestamp by creating it second.
+    store
+        .create_session("ses-b", "alice", "secondary", None, None)
+        .expect("create b");
+
+    store
+        .append_message("ses-a", Role::User, "old 1", None, None, 100)
+        .expect("append");
+    store
+        .append_message("ses-a", Role::User, "old 2", None, None, 150)
+        .expect("append");
+    store
+        .append_message("ses-a", Role::User, "keep this", None, None, 50)
+        .expect("append");
+
+    // Run all three distillation paths on ses-a.
+    store
+        .mark_messages_distilled("ses-a", &[1, 2])
+        .expect("mark distilled");
+    store
+        .insert_distillation_summary("ses-a", "[Distillation]\n\nSummary")
+        .expect("insert summary");
+    store
+        .record_distillation("ses-a", 3, 2, 300, 60, None)
+        .expect("record distillation");
+
+    let listed = store.list_sessions(Some("alice")).expect("list");
+    assert_eq!(listed.len(), 2, "both sessions must remain indexed");
+    let ids: Vec<&str> = listed.iter().map(|session| session.id.as_str()).collect();
+    assert!(
+        ids.contains(&"ses-a"),
+        "distilled session must remain indexed"
+    );
+    assert!(ids.contains(&"ses-b"), "other session must remain indexed");
+    assert_eq!(
+        ids.iter().filter(|id| **id == "ses-a").count(),
+        1,
+        "distilled session must not have stale duplicate index rows"
+    );
+}
+
+#[test]
+fn list_sessions_no_duplicates_after_distillation() {
+    let store = test_store();
+    store
+        .create_session("ses-1", "alice", "main", None, None)
+        .expect("create");
+
+    store
+        .append_message("ses-1", Role::User, "old 1", None, None, 100)
+        .expect("append");
+    store
+        .append_message("ses-1", Role::User, "old 2", None, None, 150)
+        .expect("append");
+    store
+        .append_message("ses-1", Role::User, "keep this", None, None, 50)
+        .expect("append");
+
+    store
+        .mark_messages_distilled("ses-1", &[1, 2])
+        .expect("mark distilled");
+    store
+        .insert_distillation_summary("ses-1", "[Distillation]\n\nSummary")
+        .expect("insert summary");
+    store
+        .record_distillation("ses-1", 3, 2, 300, 60, None)
+        .expect("record distillation");
+
+    let listed = store.list_sessions(Some("alice")).expect("list");
+    assert_eq!(
+        listed.len(),
+        1,
+        "exactly one entry after all distillation writes"
+    );
+    assert_eq!(listed[0].id, "ses-1");
+}
+
+#[test]
+fn session_provenance_updates_on_mutation_paths() {
+    let store = test_store();
+    store
+        .create_session("ses-meta", "alice", "main", None, None)
+        .expect("create");
+
+    let initial = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let initial_meta = initial.artefact_meta.expect("created session is stamped");
+    assert_eq!(initial_meta.generated_at, initial.updated_at);
+    assert_eq!(initial_meta.row_counts.get("messages"), Some(&0));
+    assert_eq!(initial_meta.row_counts.get("distillations"), Some(&0));
+
+    store
+        .append_message("ses-meta", Role::User, "old 1", None, None, 100)
+        .expect("append");
+    store
+        .append_message("ses-meta", Role::Assistant, "old 2", None, None, 150)
+        .expect("append");
+    store
+        .append_message("ses-meta", Role::User, "keep this", None, None, 50)
+        .expect("append");
+    let after_append = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let append_meta = after_append.artefact_meta.expect("append is stamped");
+    assert_eq!(append_meta.generated_at, after_append.updated_at);
+    assert_eq!(append_meta.row_counts.get("messages"), Some(&3));
+
+    store
+        .update_session_status("ses-meta", SessionStatus::Archived)
+        .expect("archive");
+    let after_status = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let status_meta = after_status.artefact_meta.expect("status is stamped");
+    assert_eq!(status_meta.generated_at, after_status.updated_at);
+    assert_eq!(status_meta.row_counts.get("messages"), Some(&3));
+
+    store
+        .update_display_name("ses-meta", "Display")
+        .expect("rename");
+    let after_rename = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let rename_meta = after_rename.artefact_meta.expect("rename is stamped");
+    assert_eq!(rename_meta.generated_at, after_rename.updated_at);
+    assert_eq!(rename_meta.row_counts.get("messages"), Some(&3));
+
+    store
+        .mark_messages_distilled("ses-meta", &[1, 2])
+        .expect("mark distilled");
+    store
+        .insert_distillation_summary("ses-meta", "[Distillation]\n\nSummary")
+        .expect("summary");
+    store
+        .record_distillation("ses-meta", 3, 2, 300, 60, None)
+        .expect("record");
+
+    let after_distill = store
+        .find_session_by_id("ses-meta")
+        .expect("find")
+        .expect("session");
+    let distill_meta = after_distill
+        .artefact_meta
+        .expect("distillation is stamped");
+    assert_eq!(distill_meta.generated_at, after_distill.updated_at);
+    assert_eq!(
+        distill_meta.row_counts.get("messages"),
+        Some(&u64::try_from(after_distill.metrics.message_count).unwrap())
+    );
+    assert_eq!(distill_meta.row_counts.get("distillations"), Some(&1));
+}
+
+#[test]
+fn delete_session_removes_all_child_rows() {
+    let store = test_store();
+    store
+        .create_session("ses-del", "alice", "main", None, None)
+        .expect("create");
+
+    store
+        .append_message("ses-del", Role::User, "hello", None, None, 10)
+        .expect("append");
+    store
+        .append_message("ses-del", Role::Assistant, "world", None, None, 20)
+        .expect("append");
+
+    let deleted = store.delete_session("ses-del").expect("delete");
+    assert!(deleted, "delete must return true for an existing session");
+
+    let history = store.get_history("ses-del", None).expect("history");
+    assert!(
+        history.is_empty(),
+        "messages must be removed with the session"
+    );
+
+    let sessions = store.list_sessions(Some("alice")).expect("list");
+    assert!(
+        sessions.is_empty(),
+        "session must not appear in listing after deletion"
+    );
+
+    let second_delete = store.delete_session("ses-del").expect("second delete");
+    assert!(
+        !second_delete,
+        "deleting a non-existent session must return false"
+    );
 }
 
 #[test]
