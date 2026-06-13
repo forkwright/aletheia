@@ -62,8 +62,8 @@ l3_token_estimate = 7702
 [[crates]]
 name = "diaporeia"
 path = "crates/diaporeia"
-source_hash = "2b6f8b8a2d93240658054abd086ac2255461b55cfa91cf3414b74b75116e8574"
-l3_token_estimate = 2623
+source_hash = "60467aad2598a4887f4dab9cfc02307f703fb149ebbc62fc5b623360ff5c46ce"
+l3_token_estimate = 2624
 
 [[crates]]
 name = "dokimion"
@@ -266,7 +266,7 @@ l3_token_estimate = 1354
 [[crates]]
 name = "pylon"
 path = "crates/pylon"
-source_hash = "e638c11695bb20f00f07b2885f3ae30893cf4cfb2aa1bcbad40e90efd5603aaf"
+source_hash = "7cddf72a7f62c695e6dee31866df123b257c32e1166d579b15e7815b886d852f"
 l3_token_estimate = 19338
 
 [[crates]]
