@@ -99,7 +99,7 @@ jobs:
             echo "### Online test contract"
             echo
             echo "- tier: blocking test-full"
-            echo "- command: cargo nextest run --workspace --features test-full"
+            echo "- command: cargo nextest run --profile ci --workspace --features test-full"
             echo "- embedded path: candle provider through BAAI/bge-small-en-v1.5"
             echo "- artifacts: config.json, tokenizer.json, model.safetensors from HuggingFace Hub"
             echo "- resources: outbound network and about 16 GB runner memory"
@@ -108,13 +108,23 @@ jobs:
 
       - name: cargo nextest run --workspace --features test-full
         run: |
-          cargo nextest run --workspace --features test-full \
+          cargo nextest run --profile ci --workspace --features test-full \
             --build-jobs 4 \
             --test-threads 4 \
             --retries 2 \
             --flaky-result pass \
             --status-level retry \
             --final-status-level flaky
+
+      - name: Upload nextest failure artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nextest-online-test-full
+          path: |
+            target/nextest/ci/junit.xml
+            target/nextest/**/*.log
+          if-no-files-found: warn
 
       - name: Record HuggingFace artifact provenance
         if: always()
@@ -225,17 +235,27 @@ jobs:
             echo "### Online test quarantine"
             echo
             echo "- tier: nonblocking quarantine"
-            echo "- command: cargo nextest run --workspace --features test-full candle"
+            echo "- command: cargo nextest run --profile ci --workspace --features test-full candle"
             echo "- policy: retry three times and report pass-on-retry as a failure signal"
             echo "- purpose: diagnose network/model-cache flakiness without satisfying release readiness"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: cargo nextest run --workspace --features test-full candle
         run: |
-          cargo nextest run --workspace --features test-full candle \
+          cargo nextest run --profile ci --workspace --features test-full candle \
             --build-jobs 4 \
             --test-threads 2 \
             --retries 3 \
             --flaky-result fail \
             --status-level retry \
             --final-status-level flaky
+
+      - name: Upload nextest failure artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nextest-online-quarantine
+          path: |
+            target/nextest/ci/junit.xml
+            target/nextest/**/*.log
+          if-no-files-found: warn

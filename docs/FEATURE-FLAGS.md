@@ -44,7 +44,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **eidos** | `test-support` | no | `test_fixtures` module (Fact/Entity/Relationship builders) | - |
 | **energeia** | `storage-fjall` | no | fjall storage for dispatch orchestration | `dep:fjall`, `koina/fjall` |
 | **energeia** | `test-core` | no | - | `storage-fjall` |
-| **energeia** | `test-full` | no | - | - |
+| **energeia** | `test-full` | no | - | `test-core` |
 | **episteme** | `default` | **yes** | `graph-algo`, `reranker` | - |
 | **episteme** | `graph-algo` | no | Graph algorithms | - |
 | **episteme** | `reranker` | no | HTTP cross-encoder reranker | `dep:reqwest`, `dep:rustls`, `dep:tokio` |
@@ -91,7 +91,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **krites** | `hot-reload` | no | Rule hot-reloading | `dep:notify`, `dep:arc-swap` |
 | **krites** | `storage-fjall` | no | fjall storage backend | `dep:fjall` |
 | **krites** | `test-core` | no | - | `storage-fjall` |
-| **krites** | `test-full` | no | - | - |
+| **krites** | `test-full` | no | - | `test-core` |
 | **melete** | `test-core` | no | - | - |
 | **melete** | `test-full` | no | - | - |
 | **mneme** | `default` | **yes** | `graph-algo`, `mneme-engine`, `portability` | - |
@@ -130,7 +130,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **pylon** | `tls` | no | TLS termination via `axum-server` | `dep:axum-server` |
 | **pylon** | `knowledge-store` | no | Knowledge-store HTTP handlers | `nous/knowledge-store` |
 | **pylon** | `test-core` | no | - | `knowledge-store` |
-| **pylon** | `test-full` | no | - | - |
+| **pylon** | `test-full` | no | - | `test-core` |
 | **symbolon** | `default` | **yes** | *(empty)* | - |
 | **symbolon** | `keyring` | no | OS keyring integration | `dep:keyring` |
 | **symbolon** | `test-support` | no | Test helpers | - |
@@ -223,7 +223,10 @@ aletheia/embed-candle
 
 Feature scope matters. `cargo test --workspace --all-features` activates every feature on every workspace member. `cargo test -p aletheia --all-features` activates only the `aletheia` package features, plus dependency features reached through its passthroughs. Use dependency features such as `organon/computer-use` directly only when building or testing that dependency crate.
 
-Every workspace crate declares `test-core` and `test-full`. Most crates leave them empty; crates with storage- or ML-dependent tests wire them to the relevant engine features.
+Workspace crates with gated test dependencies declare `test-core` and
+`test-full`. Crates with storage- or ML-dependent tests wire them to the
+relevant engine features, and non-empty `test-core` features must be included
+from `test-full`.
 
 | Tier | Feature flag | Approx. tests | What it adds |
 |------|--------------|---------------|--------------|
@@ -239,10 +242,10 @@ Every workspace crate declares `test-core` and `test-full`. Most crates leave th
 | `aletheia` | `mneme/test-core`, `nous/test-core`, `pylon/test-core` | `test-core` + `mneme/test-full` + `online-tests` |
 | `mneme` | `mneme-engine`, `storage-fjall` | `test-core` + `embed-candle` + `online-tests` |
 | `episteme` | `mneme-engine` | `test-core` + `embed-candle` + `online-tests` |
-| `energeia` | `storage-fjall` | - |
-| `krites` | `storage-fjall` | - |
+| `energeia` | `storage-fjall` | `test-core` |
+| `krites` | `storage-fjall` | `test-core` |
 | `nous` | `knowledge-store` | `test-core` |
-| `pylon` | `knowledge-store` | - |
+| `pylon` | `knowledge-store` | `test-core` |
 | `integration-tests` | `engine-tests` (→ `mneme/mneme-engine`) | `test-core` |
 
 ### How to run
@@ -251,8 +254,8 @@ Every workspace crate declares `test-core` and `test-full`. Most crates leave th
 # Fast developer loop (pure unit tests)
 cargo test --workspace
 
-# CI minimum: includes storage/engine integration tests
-cargo test --workspace --features test-core
+# CI minimum: includes storage/engine integration tests and JUnit output
+cargo nextest run --profile ci --workspace --features test-core
 
 # Full suite: includes ML tests (needs ~16 GB RAM)
 cargo test --workspace --features test-full

@@ -1,12 +1,10 @@
-# WHY (#4278): kanon's WORKFLOW/no-ai-attribution rule catches AI-indicator
-# leaks in commit messages during `kanon gate`, but only commit messages and
-# only if gate ran locally. PR bodies are a separate surface — GitHub squashes
-# the PR body into the merge commit, so an emoji in the PR body becomes an
-# emoji in main's git history even with clean commits.
+# WHY (#4278): generated-output attribution markers can leak through commit
+# messages and PR metadata. PR bodies are a separate surface — GitHub squashes
+# the PR body into the merge commit, so a marker in the PR body can become part
+# of main's git history even with clean commits.
 #
-# This is the defense-in-depth gate. Mirrors the basanos::ai_attribution regex
-# verbatim so the rule moves in lock-step with the source-of-truth check.
-# Required-check enablement is an operator action (Settings → Branches).
+# The forbidden pattern is checked in at .github/no-ai-attribution-patterns.txt
+# and consumed directly by both scan surfaces below.
 name: No AI Attribution
 
 on:
@@ -36,7 +34,7 @@ jobs:
         if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'release-please[bot]' || github.event.pull_request.user.login == 'github-actions[bot]' }}
         env:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: echo "AI attribution check waived for trusted automation PR author ${PR_AUTHOR}."
+        run: echo "Attribution check waived for trusted automation PR author ${PR_AUTHOR}."
 
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
@@ -44,37 +42,33 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # WHY: regex mirrors kanon `crates/basanos/src/ai_attribution.rs`
-      # `ai_attribution_pattern()` verbatim. Basanos owns the source-of-truth
-      # pattern (used by both the `WORKFLOW/no-ai-attribution` lint rule and
-      # the MCP forge-tool guards). If basanos updates its pattern, this gate
-      # must update too; there is no automated cross-repo sync, so any drift
-      # observed should be filed as a friction issue against this workflow.
-      - name: Scan PR body and title for AI attribution
+      - name: Scan PR body and title for attribution markers
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PATTERN_FILE: .github/no-ai-attribution-patterns.txt
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
-          # Mirror of basanos::ai_attribution::AI_ATTRIBUTION_PATTERN.
-          # POSIX ERE; case-insensitive applied via grep -i.
-          PATTERN='Co-Authored-By:[[:space:]]+.*(Claude|GPT|Codex|Kimi|Moonshot|Gemini|Anthropic|OpenAI)|🤖|🧠|Generated with .*Claude|Generated with .*Codex|claude\.com/claude-code'
+          if [ ! -s "$PATTERN_FILE" ]; then
+            echo "::error::Missing attribution pattern source: ${PATTERN_FILE}"
+            exit 1
+          fi
 
           BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body)
           TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title)
 
           fail=0
 
-          if printf '%s' "$BODY" | grep -niE "$PATTERN"; then
-            echo "::error::PR body contains AI generation indicator(s) above."
-            echo "::error::Remove the indicator(s) from the PR body and push or edit again."
+          if printf '%s' "$BODY" | grep -niE -f "$PATTERN_FILE"; then
+            echo "::error::PR body contains attribution marker(s) above."
+            echo "::error::Remove the marker(s) from the PR body and push or edit again."
             fail=1
           fi
 
-          if printf '%s' "$TITLE" | grep -niE "$PATTERN"; then
-            echo "::error::PR title contains AI generation indicator(s) above."
+          if printf '%s' "$TITLE" | grep -niE -f "$PATTERN_FILE"; then
+            echo "::error::PR title contains attribution marker(s) above."
             fail=1
           fi
 
@@ -82,25 +76,26 @@ jobs:
             exit 1
           fi
 
-          echo "PR body and title clean of AI attribution."
+          echo "PR body and title clean of attribution markers."
 
-      - name: Scan PR commits for AI attribution
+      - name: Scan PR commits for attribution markers
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
+        env:
+          PATTERN_FILE: .github/no-ai-attribution-patterns.txt
         run: |
           set -euo pipefail
 
-          PATTERN='Co-Authored-By:[[:space:]]+.*(Claude|GPT|Codex|Kimi|Moonshot|Gemini|Anthropic|OpenAI)|🤖|🧠|Generated with .*Claude|Generated with .*Codex|claude\.com/claude-code'
+          if [ ! -s "$PATTERN_FILE" ]; then
+            echo "::error::Missing attribution pattern source: ${PATTERN_FILE}"
+            exit 1
+          fi
 
-          # WHY: defense-in-depth — `kanon gate` already enforces
-          # WORKFLOW/no-ai-attribution on the commit-message range when run
-          # locally. This re-scan in CI catches the case where gate was
-          # skipped or stamped manually.
           commits=$(git log --format="%H" "origin/${{ github.base_ref }}..HEAD")
           fail=0
           for sha in $commits; do
             message=$(git log -1 --format="%B" "$sha")
-            if printf '%s' "$message" | grep -niE "$PATTERN"; then
-              echo "::error::Commit $sha contains AI generation indicator(s) above."
+            if printf '%s' "$message" | grep -niE -f "$PATTERN_FILE"; then
+              echo "::error::Commit $sha contains attribution marker(s) above."
               fail=1
             fi
           done
@@ -109,4 +104,4 @@ jobs:
             exit 1
           fi
 
-          echo "All PR commits clean of AI attribution."
+          echo "All PR commits clean of attribution markers."

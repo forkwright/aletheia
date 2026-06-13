@@ -129,6 +129,13 @@ The SBOM (`aletheia-sbom.spdx.json`) is also attached to each release, listing a
 ## Supply chain
 
 - `cargo-audit` and `cargo-deny` run on every PR (`.github/workflows/security.yml`)
+- CodeQL runs before merge through `.github/workflows/codeql-pr.yml` when a PR
+  touches Rust source, Cargo manifests or lockfile, GitHub workflows,
+  `.github/codeql/`, Dependabot config, `.github/SECURITY.md`, or
+  `.github/pii-patterns.txt`. The
+  `codeql-pr` job is the required-check surface: it reports not applicable only
+  when no CodeQL-relevant paths changed, and it does not waive dependency-bot
+  permission failures as green.
 - `deny.toml` enforces license policy and advisory checks
 - `Cargo.lock` is committed and pinned
 - All GitHub Actions are pinned to version tags (no `@main` references)

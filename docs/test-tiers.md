@@ -25,12 +25,12 @@ its passthroughs.
 A small set of tests call `CandelProvider::new`, which downloads model weights
 from `huggingface.co` at test time. macOS GitHub runners intermittently fail
 DNS lookup for HuggingFace, so these tests are gated behind a dedicated
-`online-tests` feature (see #3683) and **excluded** from the default CI matrix.
+`online-tests` feature (see #3683) and **excluded** from the default PR gate.
 
 - `--features test-core`: fast deterministic gate, no external network.
 - `--features test-core,online-tests`: adds the HuggingFace-network candle
-  tests. No CI workflow currently enables `online-tests` — run this tier
-  locally or manually when validating the candle download path.
+  tests. The Online Tests workflow runs this path through `test-full` on its
+  schedule, on manual dispatch, and on labeled PRs.
 - `--features test-full`: everything, including `online-tests`.
 
 ## Usage
@@ -39,8 +39,8 @@ DNS lookup for HuggingFace, so these tests are gated behind a dedicated
 # Developer workflow: fast feedback loop
 cargo test --workspace
 
-# CI minimum: includes storage/engine integration tests
-cargo test --workspace --features test-core
+# CI minimum: includes storage/engine integration tests and JUnit output
+cargo nextest run --profile ci --workspace --features test-core
 
 # Full suite: everything including ML tests (needs ~16 GB RAM)
 cargo test --workspace --features test-full
@@ -48,11 +48,14 @@ cargo test --workspace --features test-full
 
 ## How it works
 
-Every crate in the workspace defines `test-core = [...]` and `test-full = [...]`
-features. Crates with no gated tests leave these empty. Crates with storage-
-dependent tests wire `test-core` to their engine features (e.g.,
-`test-core = ["mneme-engine", "hnsw_rs", "storage-fjall"]`). The root `aletheia`
-crate propagates features down to dependencies.
+Workspace crates with gated test dependencies define `test-core = [...]` and
+`test-full = [...]` features. Crates with no gated tests may omit the tier
+features or leave them empty. Crates with storage-dependent tests wire
+`test-core` to their engine features (e.g.,
+`test-core = ["mneme-engine", "hnsw_rs", "storage-fjall"]`). If `test-core` is
+non-empty, `test-full` must include `test-core`; `scripts/check-test-tier-features.py`
+enforces that relationship. The root `aletheia` crate propagates features down
+to dependencies.
 
 NOTE: The `aletheia` binary's default features (`recall`, `embed-candle`,
 `storage-fjall`) enable mneme-engine and embed-candle for all workspace members
@@ -60,23 +63,30 @@ via Cargo feature unification. This means `cargo test --workspace` (default
 tier) already runs engine and ML tests. The tier distinction matters most for
 per-crate testing (`cargo test -p <crate> --features test-core`).
 
-The `--features test-core` flag on `cargo test --workspace` activates the
-feature in every workspace member simultaneously, which is why every crate
-must declare the feature even if empty.
+The `--features test-core` flag on `cargo test --workspace` activates matching
+workspace member features simultaneously, which is why crates with gated tests
+must keep the tier names consistent.
 
 ## CI configuration
 
-The PR gate (`.github/workflows/gate-attestation.yml`) enforces the
-**test-core** tier: `cargo nextest run --workspace --features test-core`,
-after CI-exact fmt and clippy. The release pipeline
+The PR gate (`.github/workflows/gate-attestation.yml`) first validates test-tier
+feature wiring with `scripts/check-test-tier-features.py`, then enforces the
+**test-core** tier with
+`cargo nextest run --profile ci --workspace --features test-core`, after
+CI-exact fmt and clippy. The `ci` nextest profile writes JUnit output to
+`target/nextest/ci/junit.xml`; the gate uploads that file and nextest logs when
+tests fail. The release pipeline
 (`.github/workflows/release.yml`) additionally runs
 `cargo test --workspace --exclude proskenion` and a `feature-check` matrix
 that compiles a set of optional per-crate features (aletheia `mcp` /
 provider features / `energeia`, organon `computer-use` / `bookkeeper` /
 `energeia` / `z3`, hermeneus provider features) one at a time.
 
-No workflow currently exercises the `online-tests` or `test-full` tiers;
-they are local/manual tiers.
+The Online Tests workflow exercises `test-full` on its schedule, by manual
+dispatch, and for PRs labeled `online-tests`, `test-full`, or
+`release-blocking`. It also uses the `ci` nextest profile and uploads nextest
+failure artifacts. The default PR gate remains the deterministic `test-core`
+tier.
 
 ## Adding gated tests
 
