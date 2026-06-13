@@ -1,8 +1,8 @@
 //! Runtime context and service locator passed to tool executors.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use hermeneus::secret::SecretVault;
 
@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use koina::id::{NousId, SessionId, ToolName};
 use taxis::config::ToolLimitsConfig;
+
+use crate::surface::EffectiveToolSurface;
 
 use super::services::{
     BlackboardStore, CrossNousService, KnowledgeSearchService, MessageService, NoteStore,
@@ -177,4 +179,68 @@ pub struct ToolContext {
     pub active_tools: Arc<RwLock<HashSet<ToolName>>>,
     /// Deployment-tunable tool size and timeout limits from taxis config.
     pub tool_config: Arc<ToolLimitsConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SurfaceBindingKey {
+    nous_id: String,
+    session_id: String,
+    turn_number: u64,
+}
+
+/// Scoped guard for an effective-surface binding.
+pub struct EffectiveSurfaceBinding {
+    key: SurfaceBindingKey,
+}
+
+impl ToolContext {
+    /// Bind an effective surface for this context until the returned guard drops.
+    #[must_use]
+    pub fn bind_effective_surface(
+        &self,
+        surface: Arc<EffectiveToolSurface>,
+    ) -> EffectiveSurfaceBinding {
+        let key = self.surface_binding_key();
+        let mut guard = surface_bindings().write().unwrap_or_else(|poisoned| {
+            tracing::warn!("effective tool surface binding lock poisoned, recovering");
+            poisoned.into_inner()
+        });
+        guard.insert(key.clone(), surface);
+        EffectiveSurfaceBinding { key }
+    }
+
+    /// Return the effective surface currently bound for this context.
+    #[must_use]
+    pub fn effective_surface(&self) -> Option<Arc<EffectiveToolSurface>> {
+        let key = self.surface_binding_key();
+        let guard = surface_bindings().read().unwrap_or_else(|poisoned| {
+            tracing::warn!("effective tool surface binding lock poisoned, recovering");
+            poisoned.into_inner()
+        });
+        guard.get(&key).cloned()
+    }
+
+    fn surface_binding_key(&self) -> SurfaceBindingKey {
+        SurfaceBindingKey {
+            nous_id: self.nous_id.as_ref().to_owned(),
+            session_id: self.session_id.to_string(),
+            turn_number: self.turn_number,
+        }
+    }
+}
+
+impl Drop for EffectiveSurfaceBinding {
+    fn drop(&mut self) {
+        let mut guard = surface_bindings().write().unwrap_or_else(|poisoned| {
+            tracing::warn!("effective tool surface binding lock poisoned, recovering");
+            poisoned.into_inner()
+        });
+        guard.remove(&self.key);
+    }
+}
+
+fn surface_bindings() -> &'static RwLock<HashMap<SurfaceBindingKey, Arc<EffectiveToolSurface>>> {
+    static BINDINGS: OnceLock<RwLock<HashMap<SurfaceBindingKey, Arc<EffectiveToolSurface>>>> =
+        OnceLock::new();
+    BINDINGS.get_or_init(|| RwLock::new(HashMap::new()))
 }

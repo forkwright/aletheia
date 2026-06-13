@@ -83,7 +83,7 @@ impl Default for TrainingConfig {
 /// Current schema version for [`TrainingRecord`].
 ///
 /// Bump this constant when the persisted record shape changes incompatibly.
-pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 3;
+pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 4;
 
 /// Outcome of a single tool invocation during a turn.
 ///
@@ -203,6 +203,10 @@ pub struct TrainingRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recall_signals: Option<RecallSignals>,
 
+    /// Opaque effective tool-surface hash refs observed during this turn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_surface_hashes: Vec<String>,
+
     /// Whether PII/secret redaction was applied to `user_message` and
     /// `assistant_response` before persistence.
     ///
@@ -270,6 +274,7 @@ mod tests {
                     was_referenced: true,
                 }],
             }),
+            tool_surface_hashes: vec!["ts1:test".to_owned()],
             pii_redacted: true,
         };
 
@@ -284,6 +289,7 @@ mod tests {
         assert_eq!(back.quality_score, Some(0.85));
         assert_eq!(back.tool_outcomes.as_deref().map(<[_]>::len), Some(1));
         assert!(back.recall_signals.is_some());
+        assert_eq!(back.tool_surface_hashes, vec!["ts1:test"]);
         assert!(back.pii_redacted);
     }
 
@@ -305,6 +311,7 @@ mod tests {
             quality_score: None,
             tool_outcomes: None,
             recall_signals: None,
+            tool_surface_hashes: Vec::new(),
             pii_redacted: false,
         };
 
@@ -329,6 +336,10 @@ mod tests {
         assert!(
             !json.contains("recall_signals"),
             "None fields should be skipped"
+        );
+        assert!(
+            !json.contains("tool_surface_hashes"),
+            "empty hash refs should be skipped"
         );
         assert!(
             !json.contains("pii_redacted"),

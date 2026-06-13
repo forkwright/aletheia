@@ -1,7 +1,7 @@
 // kanon:ignore RUST/file-too-long — manager orchestration; actor lifecycle extraction planned in #3753
 //! Manages all nous actor instances.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 // WHY: lock held only during synchronous .take() on Option<JoinHandle>: no await while locked
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -257,6 +257,7 @@ impl NousManager {
         // WHY: Validate before creating the actor so a validation failure (e.g.,
         // missing SOUL.md) never produces a zombie ActorEntry that delays restart
         // for the full health-check backoff cycle (#3248).
+        self.validate_tool_allowlist(&config)?;
         actor::validate_workspace(&self.oikos, &id).await?;
 
         let extra_bootstrap = {
@@ -379,6 +380,52 @@ impl NousManager {
     #[must_use]
     pub fn get_config(&self, nous_id: &str) -> Option<&NousConfig> {
         self.actors.get(nous_id).map(|e| &e.config)
+    }
+
+    fn validate_tool_allowlist(&self, config: &NousConfig) -> crate::error::Result<()> {
+        let Some(allowlist) = config.tool_allowlist.as_ref() else {
+            return Ok(());
+        };
+
+        let mut known: HashSet<String> = self
+            .tools
+            .definitions()
+            .into_iter()
+            .map(|def| def.name.as_str().to_owned())
+            .collect();
+        known.extend(config.server_tools.iter().map(|tool| tool.name.clone()));
+        if let Some(services) = self.tool_services.as_ref() {
+            known.extend(
+                services
+                    .lazy_tool_catalog
+                    .iter()
+                    .map(|(name, _description)| name.as_str().to_owned()),
+            );
+            if services.server_tool_config.web_search {
+                known.insert("web_search".to_owned());
+            }
+            if services.server_tool_config.code_execution {
+                known.insert("code_execution".to_owned());
+            }
+        }
+
+        let unknown: Vec<&str> = allowlist
+            .iter()
+            .map(String::as_str)
+            .filter(|name| !known.contains(*name))
+            .collect();
+        if unknown.is_empty() {
+            return Ok(());
+        }
+
+        Err(crate::error::ConfigSnafu {
+            message: format!(
+                "agent '{}' tool_allowlist references unknown tools: {}",
+                config.id,
+                unknown.join(", ")
+            ),
+        }
+        .build())
     }
 
     /// All stored configs.

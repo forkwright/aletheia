@@ -1,10 +1,12 @@
 //! Turn execution: handles individual turns with panic boundary protection.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use koina::id::{NousId, SessionId};
+use organon::surface::SurfaceInputs;
 use organon::types::ToolContext;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -605,10 +607,29 @@ impl NousActor {
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
         let tool_estimator =
             crate::budget::CharEstimator::new(u64::from(self.config.generation.chars_per_token));
-        if let Some(section) = crate::bootstrap::tools::tool_summary_bootstrap_section(
-            &self.services.tools,
-            &tool_estimator,
-        ) {
+        let active_snapshot = tool_ctx.active_tools.read().map_or_else(
+            |poisoned| poisoned.into_inner().clone(),
+            |guard| guard.clone(),
+        );
+        let active = if active_snapshot.is_empty() {
+            HashSet::new()
+        } else {
+            active_snapshot
+        };
+        let surface = self.services.tools.effective_surface(SurfaceInputs {
+            policy: &self.config.tool_groups,
+            allowlist: self.config.tool_allowlist.as_deref(),
+            active: &active,
+            server_tools: &self.config.server_tools,
+            server_tool_config: self
+                .services
+                .tool_services
+                .as_deref()
+                .map(|services| &services.server_tool_config),
+        });
+        if let Some(section) =
+            crate::bootstrap::tools::tool_summary_bootstrap_section(&surface, &tool_estimator)
+        {
             extra_bootstrap.push(section);
         }
 

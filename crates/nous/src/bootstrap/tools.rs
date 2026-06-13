@@ -4,8 +4,7 @@
 //! - **Summary**: name + one-liner, included in bootstrap for all tools
 //! - **Expanded**: full description + parameters, loaded on demand
 
-use organon::registry::ToolRegistry;
-use organon::types::ToolDef;
+use organon::surface::{EffectiveToolSurface, SurfaceEntry};
 
 use super::{BootstrapSection, BootstrapSlot, SectionPriority};
 use crate::budget::CharEstimator;
@@ -34,34 +33,44 @@ pub(crate) struct ToolExpanded {
 
 /// Generate compact summaries for all registered tools.
 #[must_use]
-pub(crate) fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
-    registry
-        .definitions()
-        .iter()
-        .map(|def| ToolSummary {
-            name: def.name.as_str().to_owned(),
-            one_liner: extract_one_liner(&def.description),
+pub(crate) fn summarize_tools(surface: &EffectiveToolSurface) -> Vec<ToolSummary> {
+    surface
+        .callable_registry_entries()
+        .into_iter()
+        .map(|entry| ToolSummary {
+            name: entry.name.as_str().to_owned(),
+            one_liner: extract_one_liner(&entry.description),
         })
         .collect()
 }
 
 /// Generate expanded descriptions for selected tool definitions.
 #[must_use]
-pub(crate) fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
-    defs.iter()
-        .map(|def| ToolExpanded {
-            name: def.name.as_str().to_owned(),
-            description: def
-                .extended_description
-                .as_deref()
-                .unwrap_or(&def.description)
-                .to_owned(),
-            parameters: def
+pub(crate) fn expand_tools(entries: &[&SurfaceEntry]) -> Vec<ToolExpanded> {
+    entries
+        .iter()
+        .map(|entry| ToolExpanded {
+            name: entry.name.as_str().to_owned(),
+            description: entry.description.clone(),
+            parameters: entry
                 .input_schema
-                .properties
-                .iter()
-                .map(|(name, prop)| (name.clone(), prop.description.clone()))
-                .collect(),
+                .as_ref()
+                .and_then(|schema| schema.get("properties"))
+                .and_then(serde_json::Value::as_object)
+                .map(|properties| {
+                    properties
+                        .iter()
+                        .map(|(name, property)| {
+                            let description = property
+                                .get("description")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("")
+                                .to_owned();
+                            (name.clone(), description)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
         })
         .collect()
 }
@@ -105,12 +114,12 @@ pub(crate) fn format_tool_summary_section(
 /// Build a budgeted bootstrap section from the live tool registry.
 #[must_use]
 pub(crate) fn tool_summary_bootstrap_section(
-    registry: &ToolRegistry,
+    surface: &EffectiveToolSurface,
     estimator: &CharEstimator,
 ) -> Option<BootstrapSection> {
-    let summaries = summarize_tools(registry);
-    let definitions = registry.definitions();
-    let expanded = expand_tools(&definitions);
+    let summaries = summarize_tools(surface);
+    let entries = surface.callable_registry_entries();
+    let expanded = expand_tools(&entries);
     let content = format_tool_summary_section(&summaries, &expanded);
     if content.is_empty() {
         return None;
@@ -152,6 +161,22 @@ fn extract_one_liner(description: &str) -> String {
 mod tests {
     use super::*;
 
+    use std::collections::HashSet;
+
+    use organon::registry::ToolRegistry;
+    use organon::surface::{EffectiveToolSurface, SurfaceInputs};
+    use organon::types::{ToolGroupId, ToolGroupPolicy};
+
+    fn surface_for(registry: &ToolRegistry) -> EffectiveToolSurface {
+        registry.effective_surface(SurfaceInputs {
+            policy: &ToolGroupPolicy::groups(vec![ToolGroupId::Read]),
+            allowlist: None,
+            active: &HashSet::new(),
+            server_tools: &[],
+            server_tool_config: None,
+        })
+    }
+
     #[test]
     fn extract_one_liner_short_description() {
         assert_eq!(extract_one_liner("Read a file."), "Read a file.");
@@ -174,7 +199,8 @@ mod tests {
     #[test]
     fn summarize_empty_registry() {
         let registry = ToolRegistry::new();
-        let summaries = summarize_tools(&registry);
+        let surface = surface_for(&registry);
+        let summaries = summarize_tools(&surface);
         assert!(summaries.is_empty());
     }
 
@@ -216,7 +242,7 @@ mod tests {
                     },
                     category: organon::types::ToolCategory::Workspace,
                     reversibility: organon::types::Reversibility::FullyReversible,
-                    auto_activate: false,
+                    auto_activate: true,
                     groups: vec![organon::types::ToolGroupId::Read],
                     tags: Vec::new(),
                 },
@@ -224,7 +250,8 @@ mod tests {
             )
             .expect("register tool");
 
-        let section = tool_summary_bootstrap_section(&registry, &CharEstimator::default())
+        let surface = surface_for(&registry);
+        let section = tool_summary_bootstrap_section(&surface, &CharEstimator::default())
             .expect("summary section");
         assert_eq!(section.name, "tools-summary");
         assert_eq!(section.slot, BootstrapSlot::Tools);
@@ -234,6 +261,34 @@ mod tests {
                 .contains("- **read_file**: Read a file from disk.")
         );
         assert!(section.tokens > 0);
+    }
+
+    #[test]
+    fn inactive_tool_is_absent_from_bootstrap_section() {
+        let mut registry = ToolRegistry::new();
+        registry
+            .register(
+                organon::types::ToolDef {
+                    name: koina::id::ToolName::new("lazy_read").expect("valid tool name"),
+                    description: "Read lazily. Extra details.".to_owned(),
+                    extended_description: None,
+                    input_schema: organon::types::InputSchema {
+                        properties: indexmap::IndexMap::new(),
+                        required: Vec::new(),
+                    },
+                    category: organon::types::ToolCategory::Workspace,
+                    reversibility: organon::types::Reversibility::FullyReversible,
+                    auto_activate: false,
+                    groups: vec![organon::types::ToolGroupId::Read],
+                    tags: Vec::new(),
+                },
+                Box::new(NoopExecutor),
+            )
+            .expect("register tool");
+
+        let surface = surface_for(&registry);
+        let section = tool_summary_bootstrap_section(&surface, &CharEstimator::default());
+        assert!(section.is_none());
     }
 
     struct NoopExecutor;

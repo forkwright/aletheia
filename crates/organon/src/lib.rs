@@ -27,6 +27,8 @@ pub mod registry;
 pub mod sandbox;
 /// Shared sandboxed subprocess runner for built-ins and extension tools.
 pub mod subprocess;
+/// Effective tool surface resolution shared by prompt, provider, and dispatch paths.
+pub mod surface;
 /// Test support: mock executors and component spec validation framework.
 ///
 /// Enabled by the `test-support` Cargo feature. Never compiled into release builds.

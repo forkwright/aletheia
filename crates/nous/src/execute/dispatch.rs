@@ -1,7 +1,6 @@
 // kanon:ignore RUST/file-too-long — provider dispatch loop; extraction into submodules tracked in #3752
 //! Dispatch helpers: tool execution, signal classification, message conversion.
 
-use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -14,7 +13,10 @@ use hermeneus::secret::substitute_in_json;
 use hermeneus::types::{ContentBlock, ToolDefinition, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
 use organon::registry::ToolRegistry;
-use organon::types::{ApprovalRequirement, ToolContext, ToolGroupPolicy, ToolInput};
+use organon::surface::{
+    DenialReason, EffectiveToolSurface, SurfaceAvailability, SurfaceEntryKind, SurfaceLookup,
+};
+use organon::types::{ApprovalRequirement, ToolContext, ToolInput};
 
 use crate::approval::{ApprovalChoice, ApprovalGate};
 use crate::error;
@@ -31,21 +33,24 @@ pub(super) struct DispatchResult {
 
 #[derive(Debug, Clone)]
 pub(super) struct ToolDispatchPolicy {
-    allowlist: Option<Vec<String>>,
-    group_policy: ToolGroupPolicy,
-    active_tools: Arc<HashSet<ToolName>>,
+    surface: Arc<EffectiveToolSurface>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ToolPolicyDenial {
+    Unknown,
     Allowlist { available: String },
     Group { message: String },
     Inactive,
+    ServerTool,
 }
 
 impl ToolPolicyDenial {
     fn message(&self, tool_name: &str) -> String {
         match self {
+            Self::Unknown => {
+                format!("unknown_tool: tool '{tool_name}' is not in the effective tool surface")
+            }
             Self::Allowlist { available } => {
                 format!(
                     "Tool '{tool_name}' is not available for this role. Available tools: {available}"
@@ -57,57 +62,58 @@ impl ToolPolicyDenial {
                     "Tool '{tool_name}' is not active for this turn. Use enable_tool before calling it."
                 )
             }
+            Self::ServerTool => {
+                format!(
+                    "unknown_tool: provider server tool '{tool_name}' cannot be called as a local tool"
+                )
+            }
         }
     }
 
     const fn log_reason(&self) -> &'static str {
         match self {
+            Self::Unknown => "unknown_tool",
             Self::Allowlist { .. } => "role policy",
             Self::Group { .. } => "group policy",
             Self::Inactive => "activation policy",
+            Self::ServerTool => "server tool",
         }
     }
 }
 
 impl ToolDispatchPolicy {
-    pub(super) fn new(
-        allowlist: Option<&[String]>,
-        group_policy: &ToolGroupPolicy,
-        active_tools: Arc<HashSet<ToolName>>,
-    ) -> Self {
-        Self {
-            allowlist: allowlist.map(<[String]>::to_vec),
-            group_policy: group_policy.clone(),
-            active_tools,
-        }
+    pub(super) fn new(surface: Arc<EffectiveToolSurface>) -> Self {
+        Self { surface }
     }
 
     #[cfg(test)]
-    pub(super) fn allow_all_for_tests() -> Self {
+    pub(super) fn allow_all_for_tests(registry: &ToolRegistry) -> Self {
+        let active = std::collections::HashSet::new();
+        let policy = organon::types::ToolGroupPolicy::AllowAll {
+            reason: "execute test helper".to_owned(),
+        };
         Self {
-            allowlist: None,
-            group_policy: ToolGroupPolicy::AllowAll {
-                reason: "execute test helper".to_owned(),
-            },
-            active_tools: Arc::new(HashSet::new()),
+            surface: Arc::new(registry.effective_surface(organon::surface::SurfaceInputs {
+                policy: &policy,
+                allowlist: None,
+                active: &active,
+                server_tools: &[],
+                server_tool_config: None,
+            })),
         }
     }
 
-    pub(super) fn tool_definitions(&self, tools: &ToolRegistry) -> Vec<ToolDefinition> {
+    pub(super) fn tool_definitions(&self) -> Vec<ToolDefinition> {
         #[cfg(feature = "deferred-schemas")]
-        let mut tool_defs = tools.to_hermeneus_tools_summaries_filtered_for_policy(
-            &self.active_tools,
-            &self.group_policy,
-        );
+        let tool_defs = self.surface.provider_summaries();
         #[cfg(not(feature = "deferred-schemas"))]
-        let mut tool_defs =
-            tools.to_hermeneus_tools_filtered_for_policy(&self.active_tools, &self.group_policy);
-
-        if let Some(allowlist) = &self.allowlist {
-            tool_defs.retain(|td| allowlist.iter().any(|a| a == &td.name));
-        }
+        let tool_defs = self.surface.provider_tools();
 
         tool_defs
+    }
+
+    pub(super) fn server_tool_definitions(&self) -> Vec<hermeneus::types::ServerToolDefinition> {
+        self.surface.provider_server_tools()
     }
 
     pub(super) fn filter_tool_uses(
@@ -154,32 +160,34 @@ impl ToolDispatchPolicy {
         tool_name: &str,
         tool_input: &serde_json::Value,
     ) -> Option<ToolPolicyDenial> {
-        if let Some(allowlist) = &self.allowlist
-            && !allowlist.iter().any(|allowed| allowed == tool_name)
-        {
-            return Some(ToolPolicyDenial::Allowlist {
-                available: allowlist.join(", "),
-            });
-        }
-
         let Ok(tool_name_id) = ToolName::new(tool_name) else {
-            return Some(ToolPolicyDenial::Group {
-                message: format!("Invalid tool name: {tool_name}"),
-            });
+            return Some(ToolPolicyDenial::Unknown);
         };
+
+        match self.surface.lookup(&tool_name_id) {
+            SurfaceLookup::Unknown => return Some(ToolPolicyDenial::Unknown),
+            SurfaceLookup::Denied(entry) => {
+                return Some(denial_for_availability(&entry.availability, &self.surface));
+            }
+            SurfaceLookup::Inactive(_) => return Some(ToolPolicyDenial::Inactive),
+            SurfaceLookup::Callable(entry) if entry.kind == SurfaceEntryKind::Server => {
+                return Some(ToolPolicyDenial::ServerTool);
+            }
+            SurfaceLookup::Callable(_) => {}
+        }
 
         let call_input = ToolInput {
             name: tool_name_id.clone(),
             tool_use_id: tool_id.to_owned(),
             arguments: tool_input.clone(),
         };
-        match tools.permits_call(&call_input, &self.group_policy) {
+        match tools.permits_call(&call_input, self.surface.policy()) {
             Ok(true) => {}
             Ok(false) => {
                 return Some(ToolPolicyDenial::Group {
                     message: format!(
                         "Tool '{tool_name}' is not in your allowed tool groups. Policy: {}",
-                        self.group_policy.description()
+                        self.surface.policy().description()
                     ),
                 });
             }
@@ -190,16 +198,30 @@ impl ToolDispatchPolicy {
             }
         }
 
-        let def = tools.get_def(&tool_name_id)?;
-
-        if !def.auto_activate
-            && !self.active_tools.contains(&def.name)
-            && def.name.as_str() != "enable_tool"
-        {
-            return Some(ToolPolicyDenial::Inactive);
-        }
-
         None
+    }
+}
+
+fn denial_for_availability(
+    availability: &SurfaceAvailability,
+    surface: &EffectiveToolSurface,
+) -> ToolPolicyDenial {
+    match availability.denial_reason() {
+        Some(DenialReason::Allowlist) => ToolPolicyDenial::Allowlist {
+            available: surface
+                .allowlist()
+                .map(|values| values.join(", "))
+                .unwrap_or_default(),
+        },
+        Some(DenialReason::GroupPolicy) => ToolPolicyDenial::Group {
+            message: format!(
+                "Tool is not in your allowed tool groups. Policy: {}",
+                surface.policy().description()
+            ),
+        },
+        None => ToolPolicyDenial::Group {
+            message: "Tool call denied by policy".to_owned(),
+        },
     }
 }
 
@@ -846,9 +868,24 @@ pub(super) async fn dispatch_tools(
             tool_use_id: tool_id.clone(),
             arguments: substituted_args,
         };
-        let approval = tools
-            .approval_requirement_for_input(&approval_input)
-            .unwrap_or(ApprovalRequirement::Mandatory);
+        let approval = match tools.approval_requirement_for_input(&approval_input) {
+            Ok(approval) => approval,
+            Err(e) => {
+                record_denied_call(
+                    all_tool_calls,
+                    &mut tool_results,
+                    stream_tx,
+                    tool_ctx,
+                    DeniedToolCall {
+                        id: tool_id,
+                        name: tool_name,
+                        input: tool_input,
+                        message: format!("tool_policy: Tool '{tool_name}' call rejected: {e}"),
+                    },
+                );
+                continue;
+            }
+        };
 
         // WHY(#3958, ADR-005): one decision boundary protects streaming,
         // fallback, and batch dispatch. Unknown future requirements block.

@@ -6,6 +6,8 @@
 
 pub(crate) mod params;
 
+use std::collections::HashSet;
+
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::service::RequestContext;
@@ -15,6 +17,7 @@ use tracing::Instrument as _;
 
 use koina::http::BEARER_PREFIX;
 use koina::id::SessionId;
+use organon::surface::{SurfaceAvailability, SurfaceInputs};
 use symbolon::types::Role;
 
 use crate::error::{
@@ -684,33 +687,45 @@ impl DiaporeiaServer {
             })
             .map_err(rmcp::ErrorData::from)?;
 
-        let defs = self.state.tool_registry.definitions();
+        let active = HashSet::new();
+        let surface = self.state.tool_registry.effective_surface(SurfaceInputs {
+            policy: &config.tool_groups,
+            allowlist: config.tool_allowlist.as_deref(),
+            active: &active,
+            server_tools: &config.server_tools,
+            server_tool_config: None,
+        });
 
-        // Filter tools by allowlist if configured for this agent
-        let filtered_defs: Vec<_> = if let Some(allowlist) = &config.tool_allowlist {
-            let allow_set: std::collections::HashSet<&str> =
-                allowlist.iter().map(String::as_str).collect();
-            defs.iter()
-                .filter(|d| allow_set.contains(d.name.as_str()))
-                .collect()
-        } else {
-            defs.iter().collect()
-        };
-
-        let tools: Vec<serde_json::Value> = filtered_defs
+        let tools: Vec<serde_json::Value> = surface
+            .entries()
             .iter()
-            .map(|d| {
+            .map(|entry| {
+                let denial_reason = match entry.availability {
+                    SurfaceAvailability::Denied(reason) => Some(reason.as_str()),
+                    SurfaceAvailability::Callable | SurfaceAvailability::Inactive => None,
+                };
                 serde_json::json!({
-                    "name": d.name.as_str(),
-                    "description": d.description,
-                    "category": format!("{:?}", d.category),
+                    "name": entry.name.as_str(),
+                    "description": entry.description,
+                    "category": entry.category.map(|category| category.to_string()),
+                    "groups": entry.groups.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                    "reversibility": entry.reversibility.to_string(),
+                    "approval": entry.approval.to_string(),
+                    "auto_activate": entry.auto_activate,
+                    "availability": entry.availability.as_str(),
+                    "denial_reason": denial_reason,
+                    "kind": entry.kind.as_str(),
                 })
             })
             .collect();
 
-        let json = serde_json::to_string_pretty(&tools)
-            .context(SerializationSnafu {})
-            .map_err(rmcp::ErrorData::from)?;
+        let json = serde_json::to_string_pretty(&serde_json::json!({
+            "nous_id": params.nous_id,
+            "surface_hash": surface.hash().as_str(),
+            "tools": tools,
+        }))
+        .context(SerializationSnafu {})
+        .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,

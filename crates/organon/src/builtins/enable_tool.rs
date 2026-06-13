@@ -9,6 +9,7 @@ use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::surface::SurfaceLookup;
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -32,12 +33,16 @@ impl ToolExecutor for EnableToolExecutor {
         Box::pin(async {
             let name = extract_str(&input.arguments, "name", &input.name)?;
 
-            let Some(services) = ctx.services.as_deref() else {
-                return Ok(ToolResult::error("tool services not configured"));
-            };
-
             let Ok(tool_name) = ToolName::new(name) else {
                 return Ok(ToolResult::error(format!("invalid tool name: {name}")));
+            };
+
+            if let Some(surface) = ctx.effective_surface() {
+                return Ok(activate_from_surface(name, &tool_name, ctx, &surface));
+            }
+
+            let Some(services) = ctx.services.as_deref() else {
+                return Ok(ToolResult::error("tool services not configured"));
             };
 
             let local_entry = services
@@ -110,6 +115,58 @@ impl ToolExecutor for EnableToolExecutor {
     }
 }
 
+fn activate_from_surface(
+    raw_name: &str,
+    tool_name: &ToolName,
+    ctx: &ToolContext,
+    surface: &crate::surface::EffectiveToolSurface,
+) -> ToolResult {
+    let description = match surface.lookup(tool_name) {
+        SurfaceLookup::Inactive(entry) => entry.description.clone(),
+        SurfaceLookup::Callable(_) => {
+            return ToolResult::text(format!("'{raw_name}' is already active."));
+        }
+        SurfaceLookup::Denied(entry) => {
+            let reason = entry
+                .availability
+                .denial_reason()
+                .map_or("policy", crate::surface::DenialReason::as_str);
+            return ToolResult::error(format!("tool '{raw_name}' cannot be activated: {reason}"));
+        }
+        SurfaceLookup::Unknown => {
+            let available = surface
+                .lazy_catalog()
+                .into_iter()
+                .map(|(name, _description)| name.as_str().to_owned())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return ToolResult::error(format!(
+                "tool '{raw_name}' not found. Available tools: {available}"
+            ));
+        }
+    };
+
+    {
+        let Ok(mut active) = ctx.active_tools.write() else {
+            return ToolResult::error("internal error: active_tools lock poisoned");
+        };
+        if active.contains(tool_name) {
+            return ToolResult::text(format!("'{raw_name}' is already active."));
+        }
+        active.insert(tool_name.clone());
+    }
+
+    tracing::info!(
+        target_tool = %tool_name,
+        session_id = %ctx.session_id,
+        turn_number = ctx.turn_number,
+        source = "effective_surface",
+        "enable_tool: activated tool"
+    );
+
+    ToolResult::text(format!("Activated '{raw_name}': {description}"))
+}
+
 fn enable_tool_def() -> ToolDef {
     // WHY: enable_tool mutates the session's active tool surface, changing which
     // lazy tools and provider server tools are visible in later turns. It must
@@ -155,9 +212,11 @@ mod tests {
     use koina::id::{NousId, SessionId, ToolName};
 
     use crate::registry::ToolRegistry;
+    use crate::surface::SurfaceInputs;
     use crate::testing::install_crypto_provider;
     use crate::types::{
-        ApprovalRequirement, ServerToolConfig, ToolContext, ToolInput, ToolServices,
+        ApprovalRequirement, ServerToolConfig, ToolContext, ToolGroupPolicy, ToolInput,
+        ToolServices,
     };
 
     use super::*;
@@ -340,6 +399,43 @@ mod tests {
             active.contains(&ToolName::from_static("web_search")),
             "expected active.contains(&ToolName::from_static(\"web_search\")) to be true"
         );
+    }
+
+    #[tokio::test]
+    async fn enable_tool_uses_bound_effective_surface() {
+        let ctx = mock_ctx_with_server_tools(ServerToolConfig {
+            web_search: true,
+            web_search_max_uses: Some(5),
+            code_execution: false,
+        });
+        let active = HashSet::new();
+        let policy = ToolGroupPolicy::AllowAll {
+            reason: "test".to_owned(),
+        };
+        let registry = ToolRegistry::new();
+        let services = ctx.services.as_ref().expect("services");
+        let surface = Arc::new(registry.effective_surface(SurfaceInputs {
+            policy: &policy,
+            allowlist: None,
+            active: &active,
+            server_tools: &[],
+            server_tool_config: Some(&services.server_tool_config),
+        }));
+        let _binding = ctx.bind_effective_surface(surface);
+
+        let executor = EnableToolExecutor;
+        let result = executor
+            .execute(&make_input("web_search"), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(!result.is_error, "expected result.is_error to be false");
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let active = ctx.active_tools.read().expect("lock poisoned");
+        assert!(active.contains(&ToolName::from_static("web_search")));
     }
 
     #[tokio::test]

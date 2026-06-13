@@ -36,6 +36,7 @@ use std::sync::Mutex;
 
 use jiff::Timestamp;
 use jiff::civil::Date;
+use organon::surface::SurfaceInputs;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
@@ -133,6 +134,9 @@ pub struct PromptAuditRecord {
     pub fact_ids_filtered: Vec<FilteredFact>,
     /// Names of tools exposed to the model for this request.
     pub tool_names: Vec<String>,
+    /// Opaque hash of the effective tool surface exposed to the model.
+    #[serde(default)]
+    pub tool_surface_hash: String,
     /// Request identifier propagated from pylon middleware (#3384).
     #[serde(default)]
     pub request_id: Option<String>,
@@ -302,20 +306,31 @@ pub(crate) fn build_audit_record(
         .as_str()
         .to_owned();
 
-    // WHY: tool name list mirrors the filter in execute::resolve_active_server_tools
-    // so the audit reflects what the model will actually see this turn.
     let active_snapshot = tool_ctx
         .active_tools
         .read()
         .map_or_else(|poisoned| poisoned.into_inner().clone(), |g| g.clone());
-    let mut tool_names: Vec<String> = tools
-        .to_hermeneus_tools_filtered(&active_snapshot)
+    let surface = tools.effective_surface(SurfaceInputs {
+        policy: &config.tool_groups,
+        allowlist: config.tool_allowlist.as_deref(),
+        active: &active_snapshot,
+        server_tools: &config.server_tools,
+        server_tool_config: tool_ctx
+            .services
+            .as_deref()
+            .map(|services| &services.server_tool_config),
+    });
+    let mut tool_names: Vec<String> = surface
+        .provider_tools()
         .into_iter()
         .map(|td| td.name)
         .collect();
-    if let Some(allowlist) = &config.tool_allowlist {
-        tool_names.retain(|n| allowlist.iter().any(|a| a == n));
-    }
+    tool_names.extend(
+        surface
+            .provider_server_tools()
+            .into_iter()
+            .map(|tool| tool.name),
+    );
 
     let fact_ids_included = ctx
         .recall_result
@@ -365,6 +380,7 @@ pub(crate) fn build_audit_record(
         fact_ids_included,
         fact_ids_filtered,
         tool_names,
+        tool_surface_hash: surface.hash().as_str().to_owned(),
         // TODO(#3384): thread request_id from pylon middleware
         // through PipelineInput once the extraction path reaches nous.
         request_id: None,

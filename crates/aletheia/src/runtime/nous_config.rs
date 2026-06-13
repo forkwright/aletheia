@@ -159,7 +159,7 @@ pub(super) fn build_nous_runtime_config(
         cache_enabled: resolved.capabilities.cache_enabled,
         recall: resolved.recall.into(),
         recall_profile: resolved.recall_profile.into(),
-        tool_allowlist: None,
+        tool_allowlist: resolved.tool_allowlist,
         tool_groups: resolve_tool_group_policy(agent_id, &resolved.tool_groups),
         hooks: nous::config::HookConfig::default(),
         behavior: resolved.behavior,

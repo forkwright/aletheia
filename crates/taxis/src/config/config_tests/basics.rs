@@ -321,6 +321,25 @@ toolGroups = ["read", "verify"]
 }
 
 #[test]
+fn resolve_nous_preserves_agent_tool_allowlist() {
+    let toml = r#"
+[agents.defaults]
+toolGroups = "all"
+
+[[agents.list]]
+id = "restricted"
+workspace = "/tmp/restricted"
+toolAllowlist = ["read", "tool_schema"]
+"#;
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse config");
+    let resolved = resolve_nous(&config, "restricted");
+    assert_eq!(
+        resolved.tool_allowlist,
+        Some(vec!["read".to_owned(), "tool_schema".to_owned()])
+    );
+}
+
+#[test]
 fn empty_tool_groups_deserializes_to_deny_all() {
     let toml = r"
 [agents.defaults]

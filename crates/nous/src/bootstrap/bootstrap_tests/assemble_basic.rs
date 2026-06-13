@@ -10,6 +10,8 @@ use std::fs;
 use std::future::Future;
 use std::pin::Pin;
 
+use organon::surface::SurfaceInputs;
+use organon::types::{ToolGroupId, ToolGroupPolicy};
 use tempfile::TempDir;
 
 use super::super::*;
@@ -50,8 +52,17 @@ async fn assemble_with_tool_summary_extra_includes_live_registry_tools() {
         .register(test_tool_def("read_file"), Box::new(NoopToolExecutor))
         .expect("register tool");
     let estimator = crate::budget::CharEstimator::default();
+    let active = std::collections::HashSet::new();
+    let policy = ToolGroupPolicy::groups(vec![ToolGroupId::Read]);
+    let surface = registry.effective_surface(SurfaceInputs {
+        policy: &policy,
+        allowlist: None,
+        active: &active,
+        server_tools: &[],
+        server_tool_config: None,
+    });
     let tool_section =
-        tools::tool_summary_bootstrap_section(&registry, &estimator).expect("tool summary section");
+        tools::tool_summary_bootstrap_section(&surface, &estimator).expect("tool summary section");
 
     let result = assembler
         .assemble_with_extra("test", &mut budget, vec![tool_section])
@@ -84,7 +95,7 @@ fn test_tool_def(name: &str) -> organon::types::ToolDef {
         },
         category: organon::types::ToolCategory::Workspace,
         reversibility: organon::types::Reversibility::FullyReversible,
-        auto_activate: false,
+        auto_activate: true,
         groups: vec![organon::types::ToolGroupId::Read],
         tags: Vec::new(),
     }

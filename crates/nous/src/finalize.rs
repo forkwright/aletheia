@@ -257,6 +257,7 @@ mod tests {
             degraded: None,
             reasoning: String::new(),
             model_used: "test-model".to_owned(),
+            tool_surface_hashes: Vec::new(),
         }
     }
 
@@ -284,6 +285,7 @@ mod tests {
             degraded: None,
             reasoning: String::new(),
             model_used: "test-model".to_owned(),
+            tool_surface_hashes: Vec::new(),
         }
     }
 

@@ -214,6 +214,9 @@ pub struct CaptureInput<'a> {
     ///
     /// `None` means the recall stage was skipped or produced no result.
     pub recall_signals: Option<RecallSignals>,
+
+    /// Opaque effective tool-surface hash refs observed during this turn.
+    pub tool_surface_hashes: &'a [String],
 }
 
 impl CaptureInput<'_> {
@@ -779,6 +782,7 @@ impl TrainingCapture {
             quality_score,
             tool_outcomes: input.tool_outcomes,
             recall_signals: input.recall_signals,
+            tool_surface_hashes: input.tool_surface_hashes.to_vec(),
             pii_redacted,
         };
 
