@@ -17,7 +17,7 @@ cargo test --workspace
 
 ### Git rules
 
-- **Author:** `forkwright <forkwright@users.noreply.github.com>` (always)
+- **Author:** `Your Name <developer@example.com>` (always)
 - **Branch from main:** `git checkout -b <type>/<description> main`
 - **Rebase before push:** `git pull --rebase origin main`
 - **Commit format:** `<type>(<scope>): <description>` - types: feat, fix, refactor, docs, test, chore, ci, perf
