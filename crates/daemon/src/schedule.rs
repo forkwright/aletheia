@@ -86,7 +86,7 @@ pub enum TaskAction {
 
 /// Built-in maintenance tasks.
 #[non_exhaustive]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BuiltinTask {
     /// Prosoche attention check.
     Prosoche,

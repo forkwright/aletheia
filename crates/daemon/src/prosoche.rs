@@ -146,13 +146,6 @@ impl ProsocheCheck {
 
     /// Set the data directory for disk space checking.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "prosoche attention checks, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn with_data_dir(mut self, path: &Path) -> Self {
         self.data_dir = Some(path.to_path_buf());
         self
@@ -160,13 +153,6 @@ impl ProsocheCheck {
 
     /// Set database file paths for size checking.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "prosoche attention checks, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn with_db_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.db_paths = paths;
         self
@@ -179,13 +165,6 @@ impl ProsocheCheck {
     /// traversal paths (A-MemGuard consensus approach).
     #[must_use]
     #[cfg(feature = "knowledge-store")]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "prosoche attention checks, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn with_knowledge_store(
         mut self,
         store: Arc<episteme::knowledge_store::KnowledgeStore>,

@@ -9,8 +9,9 @@ use snafu::prelude::*;
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DerivedRulesConfig, DriftDetectionConfig,
     DriftDetector, FjallBackupConfig, InstanceBackupConfig, MaintenanceConfig,
-    PromptAuditRetentionConfig, PromptAuditRotator, ProposeRulesConfig, TraceRotationConfig,
-    TraceRotator,
+    MaintenanceTaskDefinition, ManualMaintenanceTask, PromptAuditRetentionConfig,
+    PromptAuditRotator, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
+    maintenance_task_by_id, manual_maintenance_task_ids, manual_maintenance_tasks,
 };
 use oikonomos::prosoche_audit::{ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
@@ -19,17 +20,6 @@ use taxis::oikos::Oikos;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
-
-/// Canonical list of all individual maintenance task names.
-const INDIVIDUAL_TASKS: &[&str] = &[
-    "trace-rotation",
-    "drift-detection",
-    "db-monitor",
-    "fjall-backup",
-    "prompt-audit-rotation",
-    "self-audit",
-    "prosoche-self-audit",
-];
 
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {
@@ -41,10 +31,9 @@ pub(crate) enum Action {
     },
     /// Run a specific maintenance task immediately
     Run {
-        /// Task name: one of the individual tasks below, or "all" to run every task.
+        /// Task name from the daemon maintenance registry, or "all" to run every manual task.
         ///
-        /// Individual tasks: trace-rotation, drift-detection, db-monitor,
-        /// fjall-backup, prompt-audit-rotation, self-audit, prosoche-self-audit
+        /// Use `maintenance status` to inspect scheduled daemon tasks.
         task: String,
         /// List individual files (drift-detection only)
         #[arg(long)]
@@ -101,23 +90,43 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
             }
         }
         Action::Run { task, verbose } => {
-            let tasks: Vec<&str> = if task == "all" {
-                INDIVIDUAL_TASKS.to_vec()
+            let tasks: Vec<&'static MaintenanceTaskDefinition> = if task == "all" {
+                manual_maintenance_tasks().collect()
             } else {
-                vec![task.as_str()]
+                vec![manual_task_definition(&task)?]
             };
-            for name in tasks {
-                run_task(name, &maint, verbose).await?;
+            for definition in tasks {
+                run_task(definition, &maint, verbose).await?;
             }
         }
     }
     Ok(())
 }
 
+fn manual_task_definition(name: &str) -> Result<&'static MaintenanceTaskDefinition> {
+    if let Some(definition) = maintenance_task_by_id(name)
+        && definition.manual_run().is_some()
+    {
+        return Ok(definition);
+    }
+
+    let valid = manual_maintenance_task_ids().join(", ");
+    whatever!("unknown task: {name}. Valid: {valid}, all")
+}
+
 /// Execute a single maintenance task by name.
-async fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Result<()> {
-    match name {
-        "trace-rotation" => {
+async fn run_task(
+    definition: &MaintenanceTaskDefinition,
+    maint: &MaintenanceConfig,
+    verbose: bool,
+) -> Result<()> {
+    let Some(manual_task) = definition.manual_run() else {
+        let valid = manual_maintenance_task_ids().join(", ");
+        whatever!("unknown task: {}. Valid: {valid}, all", definition.id())
+    };
+
+    match manual_task {
+        ManualMaintenanceTask::TraceRotation => {
             let report = TraceRotator::new(maint.trace_rotation.clone())
                 .rotate()
                 .whatever_context("trace rotation failed")?;
@@ -126,7 +135,7 @@ async fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Resul
                 report.files_rotated, report.files_pruned, report.bytes_freed
             );
         }
-        "drift-detection" => {
+        ManualMaintenanceTask::DriftDetection => {
             let report = DriftDetector::new(maint.drift_detection.clone())
                 .check()
                 .whatever_context("drift detection failed")?;
@@ -149,7 +158,7 @@ async fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Resul
                 );
             }
         }
-        "db-monitor" => {
+        ManualMaintenanceTask::DbMonitor => {
             let report = DbMonitor::new(maint.db_monitoring.clone())
                 .check()
                 .whatever_context("db monitor failed")?;
@@ -162,7 +171,7 @@ async fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Resul
                 );
             }
         }
-        "fjall-backup" => {
+        ManualMaintenanceTask::FjallBackup => {
             let manager =
                 oikonomos::maintenance::InstanceBackup::new(maint.instance_backup.clone());
             let report = manager
@@ -179,7 +188,7 @@ async fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Resul
                 None => println!("fjall-backup: skipped (source directory not found)"),
             }
         }
-        "prompt-audit-rotation" => {
+        ManualMaintenanceTask::PromptAuditRotation => {
             let report = PromptAuditRotator::new(maint.prompt_audit.clone())
                 .prune()
                 .whatever_context("prompt audit rotation failed")?;
@@ -188,12 +197,12 @@ async fn run_task(name: &str, maint: &MaintenanceConfig, verbose: bool) -> Resul
                 report.files_pruned, report.bytes_freed
             );
         }
-        "self-audit" => run_self_audit(),
-        "prosoche-self-audit" => run_prosoche_self_audit(maint).await,
-        other => {
-            let valid = INDIVIDUAL_TASKS.join(", ");
-            whatever!("unknown task: {other}. Valid: {valid}, all")
-        }
+        ManualMaintenanceTask::NousSelfAudit => run_self_audit(),
+        ManualMaintenanceTask::ProsocheSelfAudit => run_prosoche_self_audit(maint).await,
+        _ => whatever!(
+            "manual task {} is not supported by this CLI",
+            definition.id()
+        ),
     }
     Ok(())
 }
@@ -330,31 +339,26 @@ pub(crate) fn build_config(
 
 #[cfg(test)]
 mod tests {
-    use super::INDIVIDUAL_TASKS;
+    use std::collections::BTreeSet;
+
+    use oikonomos::maintenance::{maintenance_task_by_id, manual_maintenance_task_ids};
 
     #[test]
-    fn all_expansion_contains_every_individual_task() {
-        // The "all" expansion in `run` is literally `INDIVIDUAL_TASKS.to_vec()`;
-        // this test guarantees that every named task appears in that slice.
-        let expected = [
-            "trace-rotation",
-            "drift-detection",
-            "db-monitor",
-            "fjall-backup",
-            "prompt-audit-rotation",
-            "self-audit",
-            "prosoche-self-audit",
-        ];
-        for task in expected {
+    fn all_expansion_comes_from_registry_manual_tasks() {
+        let ids = manual_maintenance_task_ids();
+        assert!(!ids.is_empty(), "manual task registry must not be empty");
+
+        let unique: BTreeSet<_> = ids.iter().copied().collect();
+        assert_eq!(unique.len(), ids.len(), "manual task IDs must be unique");
+
+        for id in ids {
+            let Some(definition) = maintenance_task_by_id(id) else {
+                panic!("manual id '{id}' resolves");
+            };
             assert!(
-                INDIVIDUAL_TASKS.contains(&task),
-                "task '{task}' missing from INDIVIDUAL_TASKS"
+                definition.manual_run().is_some(),
+                "manual task '{id}' must carry a manual run handler"
             );
         }
-        assert_eq!(
-            INDIVIDUAL_TASKS.len(),
-            expected.len(),
-            "INDIVIDUAL_TASKS has unexpected extra entries"
-        );
     }
 }

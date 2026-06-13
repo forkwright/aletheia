@@ -676,6 +676,131 @@ impl PromptAuditRotator {
 }
 ```
 
+## `src/maintenance/registry.rs`
+
+```rust
+pub enum MaintenanceTaskOwner {
+    /// Core daemon maintenance owned by oikonomos.
+    Daemon,
+    /// Knowledge-graph maintenance owned by the graph executor.
+    KnowledgeGraph,
+    /// Routing statistics maintenance.
+    Routing,
+    /// Optional cron task family.
+    Cron,
+    /// Prosoche self-audit maintenance.
+    Prosoche,
+    /// Nous self-audit maintenance.
+    Nous,
+}
+```
+
+```rust
+pub enum MaintenanceConfigSection {
+    /// `maintenance.traceRotation`.
+    TraceRotation,
+    /// `maintenance.driftDetection`.
+    DriftDetection,
+    /// `maintenance.dbMonitoring`.
+    DbMonitoring,
+    /// `maintenance.retention`.
+    Retention,
+    /// `maintenance.knowledgeMaintenance`.
+    KnowledgeMaintenance,
+    /// `maintenance.backup`.
+    InstanceBackup,
+    /// `maintenance.proposeRules`.
+    ProposeRules,
+    /// `promptAudit`.
+    PromptAudit,
+    /// Runtime after-action store handle.
+    RoutingAfterActionStore,
+    /// `maintenance.cronTasks.evolution`.
+    CronEvolution,
+    /// `maintenance.cronTasks.reflection`.
+    CronReflection,
+    /// `maintenance.cronTasks.graphCleanup`.
+    CronGraphCleanup,
+    /// Prosoche audit storage.
+    ProsocheAudit,
+    /// Nous self-audit defaults.
+    NousSelfAudit,
+}
+```
+
+```rust
+pub enum MaintenanceTaskImplementationStatus {
+    /// The task has an executable implementation.
+    Implemented,
+    /// The task is intentionally visible in docs/status but is not runnable.
+    Planned,
+}
+```
+
+```rust
+pub enum ManualMaintenanceTask {
+    /// Run trace rotation.
+    TraceRotation,
+    /// Run instance drift detection.
+    DriftDetection,
+    /// Run database size monitoring.
+    DbMonitor,
+    /// Run whole-instance backup.
+    FjallBackup,
+    /// Run prompt audit log retention.
+    PromptAuditRotation,
+    /// Run nous self-audit checks.
+    NousSelfAudit,
+    /// Run prosoche self-audit checks.
+    ProsocheSelfAudit,
+}
+```
+
+```rust
+pub struct MaintenanceTaskDefinition {
+    id: &'static str,
+    name: &'static str,
+    owner: MaintenanceTaskOwner,
+    config_section: Option<MaintenanceConfigSection>,
+    docs_label: &'static str,
+    implementation_status: MaintenanceTaskImplementationStatus,
+    metrics: &'static [&'static str],
+    manual_run: Option<ManualMaintenanceTask>,
+    registration: MaintenanceTaskRegistration,
+}
+```
+
+```rust
+impl MaintenanceTaskDefinition {
+    pub fn id (&self) -> &'static str;
+    pub fn name (&self) -> &'static str;
+    pub fn owner (&self) -> MaintenanceTaskOwner;
+    pub fn config_section (&self) -> Option<MaintenanceConfigSection>;
+    pub fn docs_label (&self) -> &'static str;
+    pub fn implementation_status (&self) -> MaintenanceTaskImplementationStatus;
+    pub fn metrics (&self) -> &'static [&'static str];
+    pub fn manual_run (&self) -> Option<ManualMaintenanceTask>;
+    pub fn builtin (&self) -> Option<BuiltinTask>;
+}
+```
+
+```rust
+pub fn maintenance_task_registry () -> &'static [MaintenanceTaskDefinition]
+```
+
+> Return all manual-run maintenance tasks.
+```rust
+pub fn manual_maintenance_tasks () -> impl Iterator<Item = &'static MaintenanceTaskDefinition>
+```
+
+```rust
+pub fn manual_maintenance_task_ids () -> Vec<&'static str>
+```
+
+```rust
+pub fn maintenance_task_by_id (id: &str) -> Option<&'static MaintenanceTaskDefinition>
+```
+
 ## `src/maintenance/retention.rs`
 
 ```rust
@@ -959,9 +1084,6 @@ pub enum ProsocheCheckKind {
     /// Evaluate whether sessions produce actionable outcomes (error rate, completion rate).
     SessionQuality,
     /// Detect recurring patterns in agent behavior (loops, avoidance, over-confidence).
-    ///
-    /// v1: stub — defines the trait shape. Full semantics need gnomon weights.
-    /// Tracked in follow-up issue.
     InstinctPatterns,
 }
 ```
@@ -992,6 +1114,10 @@ pub struct ProsocheState {
     ///
     /// Used by [`SessionQualityCheck`] and [`GoalAlignmentCheck`].
     pub sessions: Vec<SessionSnapshot>,
+    /// Recent behavioral pattern counters sampled from runtime/session history.
+    ///
+    /// Used by [`InstinctPatternsCheck`].
+    pub behavior_patterns: Vec<BehaviorPatternSnapshot>,
     /// Recent facts for consistency and staleness checks.
     ///
     /// Each entry is `(fact_id, content, last_touched_days_ago)`.
@@ -1038,6 +1164,26 @@ pub struct SessionSnapshot {
     /// Used for goal-alignment keyword matching. Only hashes of this value are
     /// persisted in durable reports.
     pub turn_text: String,
+}
+```
+
+```rust
+pub struct BehaviorPatternSnapshot {
+    /// Session identifier that owns the behavior sample.
+    // kanon:ignore RUST/primitive-for-domain-id — BehaviorPatternSnapshot is an ephemeral audit input keyed by external session ids
+    pub session_id: String,
+    /// Tool calls attempted during the sampled window.
+    pub tool_call_count: u32,
+    /// Tool calls that returned errors during the sampled window.
+    pub tool_error_count: u32,
+    /// Repeated actions or near-identical attempts observed in the window.
+    pub repeated_action_count: u32,
+    /// Turns explicitly marked as stuck, looping, or making no progress.
+    pub no_progress_turns: u32,
+    /// Markers indicating deferral, skipping, or avoidance of the stated task.
+    pub avoidance_markers: u32,
+    /// High-confidence assertions or tool-selection claims.
+    pub confidence_claims: u32,
 }
 ```
 
@@ -1154,17 +1300,9 @@ pub struct SessionQualityCheck {
 
 > Detect recurring patterns in agent behavior.
 > 
-> v1: stub implementation. The trait shape and variant are correct; the
-> pattern detection logic requires gnomon behavioral weights and a session
-> history longer than what's available in `ProsocheState`.
-> 
-> # Follow-up
-> 
-> Full implementation tracked separately. When gnomon weights are available:
-> 1. Sample the last N session summaries.
-> 2. Run behavioural pattern detection (loop detection, avoidance bias,
->    over-confidence in tool selection).
-> 3. Emit `Speculative` findings for patterns that exceed a threshold.
+> v1 heuristic: combines typed behavior counters with lightweight text
+> markers inferred from recent session turn text. Typed counters carry
+> `Exploratory` evidence; text-only fallback findings remain `Speculative`.
 ```rust
 pub struct InstinctPatternsCheck;
 ```
@@ -1254,7 +1392,7 @@ pub struct CheckSummary {
 >        ├─ StalenessCheck::check()
 >        ├─ GoalAlignmentCheck::check()
 >        ├─ SessionQualityCheck::check()
->        └─ InstinctPatternsCheck::check()  (stub)
+>        └─ InstinctPatternsCheck::check()
 > ```
 ```rust
 pub struct ProsocheAuditRunner {
@@ -1312,6 +1450,8 @@ pub struct TaskRunner {
     maintenance: Option<MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    #[cfg(feature = "knowledge-store")]
+    knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
     /// In-flight tasks: `task_id` → [`InFlightTask`].
     in_flight: HashMap<String, InFlightTask>,
     /// Optional fjall-backed state store for cross-restart persistence.
@@ -1324,6 +1464,8 @@ pub struct TaskRunner {
     self_prompt_limiter: crate::self_prompt::SelfPromptLimiter,
     /// Self-prompt configuration (enabled, rate limits).
     self_prompt_config: crate::self_prompt::SelfPromptConfig,
+    /// Optional per-task watchdog supervisor.
+    watchdog: Option<TaskWatchdog>,
 }
 ```
 
@@ -1353,6 +1495,10 @@ impl TaskRunner {
         mut self,
         executor: Arc<dyn KnowledgeMaintenanceExecutor>,
     ) -> Self;
+    pub fn with_knowledge_store (
+        mut self,
+        store: Arc<episteme::knowledge_store::KnowledgeStore>,
+    ) -> Self;
     pub fn with_after_action_store (
         mut self,
         store: Arc<aletheia_routing::AfterActionStore>,
@@ -1360,6 +1506,9 @@ impl TaskRunner {
     pub fn with_state_store (mut self, store: crate::state::TaskStateStore) -> Self;
     pub fn with_output_mode (mut self, mode: DaemonOutputMode) -> Self;
     pub fn with_daemon_behavior (mut self, behavior: DaemonBehaviorConfig) -> Self;
+    pub fn with_watchdog_settings (mut self, settings: &taxis::config::WatchdogSettings) -> Self;
+    pub fn watchdog_status (&self) -> Vec<ProcessStatus>;
+    pub fn watchdog_restart_count (&self) -> usize;
     pub fn with_self_prompt (mut self, config: crate::self_prompt::SelfPromptConfig) -> Self;
     pub fn register_top_issue_self_prompt (
         &mut self,
@@ -1778,6 +1927,7 @@ pub struct WatchdogConfig {
 
 ```rust
 impl WatchdogConfig {
+    pub fn from_settings (settings: &taxis::config::WatchdogSettings) -> Self;
     pub fn with_daemon_behavior (mut self, behavior: &taxis::config::DaemonBehaviorConfig) -> Self;
 }
 ```

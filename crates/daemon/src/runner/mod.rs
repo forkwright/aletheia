@@ -12,6 +12,7 @@ use crate::bridge::DaemonBridge;
 use crate::error::Result;
 use crate::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor};
 use crate::schedule::{Schedule, TaskAction, TaskDef};
+use crate::watchdog::{ProcessStatus, WatchdogConfig};
 // WHY: tests use `use super::*` and reference BuiltinTask directly.
 #[cfg(test)]
 use crate::schedule::BuiltinTask;
@@ -36,10 +37,12 @@ mod lifecycle;
 mod output;
 mod persistence;
 mod registration;
+mod supervision;
 /// Systemd notify integration for daemon lifecycle signaling.
 pub mod systemd;
 mod tracking;
 pub(crate) use output::truncate_output;
+use supervision::TaskWatchdog;
 
 // kanon:ignore RUST/struct-too-many-fields — TaskRunner is a cohesive actor struct: all fields are required for per-nous task scheduling, execution, and lifecycle management
 /// Per-nous background task runner.
@@ -51,6 +54,8 @@ pub struct TaskRunner {
     maintenance: Option<MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    #[cfg(feature = "knowledge-store")]
+    knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
     /// In-flight tasks: `task_id` → [`InFlightTask`].
     in_flight: HashMap<String, InFlightTask>,
     /// Optional fjall-backed state store for cross-restart persistence.
@@ -63,6 +68,8 @@ pub struct TaskRunner {
     self_prompt_limiter: crate::self_prompt::SelfPromptLimiter,
     /// Self-prompt configuration (enabled, rate limits).
     self_prompt_config: crate::self_prompt::SelfPromptConfig,
+    /// Optional per-task watchdog supervisor.
+    watchdog: Option<TaskWatchdog>,
 }
 
 /// Tracks a task that is currently executing.
@@ -109,12 +116,15 @@ impl TaskRunner {
             maintenance: None,
             retention_executor: None,
             knowledge_executor: None,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             in_flight: HashMap::new(),
             state_store: None,
             output_mode: DaemonOutputMode::Full,
             daemon_behavior: DaemonBehaviorConfig::default(),
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
+            watchdog: None,
         }
     }
 
@@ -132,12 +142,15 @@ impl TaskRunner {
             maintenance: None,
             retention_executor: None,
             knowledge_executor: None,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             in_flight: HashMap::new(),
             state_store: None,
             output_mode: DaemonOutputMode::Full,
             daemon_behavior: DaemonBehaviorConfig::default(),
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
+            watchdog: None,
         }
     }
 
@@ -176,6 +189,17 @@ impl TaskRunner {
         self
     }
 
+    /// Attach a knowledge store for Prosoche memory consistency checks.
+    #[cfg(feature = "knowledge-store")]
+    #[must_use]
+    pub fn with_knowledge_store(
+        mut self,
+        store: Arc<episteme::knowledge_store::KnowledgeStore>,
+    ) -> Self {
+        self.knowledge_store = Some(store);
+        self
+    }
+
     /// Attach the empirical routing after-action store for periodic refresh.
     #[must_use]
     pub fn with_after_action_store(
@@ -210,6 +234,35 @@ impl TaskRunner {
     pub fn with_daemon_behavior(mut self, behavior: DaemonBehaviorConfig) -> Self {
         self.daemon_behavior = behavior;
         self
+    }
+
+    /// Configure the per-task watchdog from deployment settings.
+    #[must_use]
+    pub fn with_watchdog_settings(mut self, settings: &taxis::config::WatchdogSettings) -> Self {
+        if settings.enabled {
+            let config =
+                WatchdogConfig::from_settings(settings).with_daemon_behavior(&self.daemon_behavior);
+            self.watchdog = Some(TaskWatchdog::new(config, self.shutdown.child_token()));
+        }
+        self
+    }
+
+    /// Return current watchdog process statuses.
+    #[must_use]
+    pub fn watchdog_status(&self) -> Vec<ProcessStatus> {
+        self.watchdog
+            .as_ref()
+            .map(TaskWatchdog::status)
+            .unwrap_or_default()
+    }
+
+    /// Return the number of watchdog restart events recorded by this runner.
+    #[must_use]
+    pub fn watchdog_restart_count(&self) -> usize {
+        self.watchdog
+            .as_ref()
+            .map(|watchdog| watchdog.restart_log().len())
+            .unwrap_or_default()
     }
 
     /// Configure self-prompting behavior (rate-limited daemon-initiated follow-ups).

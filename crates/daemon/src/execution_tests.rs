@@ -337,6 +337,8 @@ async fn routing_store_refresh_builtin_refreshes_attached_store() {
             maintenance: Some(&config),
             retention_executor: None,
             knowledge_executor: None,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             daemon_behavior: &daemon_behavior,
             cancel: CancellationToken::new(),
         },
@@ -370,6 +372,82 @@ async fn prosoche_no_bridge_runs_local_check() {
             .as_deref()
             .unwrap_or_default()
             .contains("checked_at")
+    );
+}
+
+#[cfg(feature = "knowledge-store")]
+fn make_runtime_prosoche_fact() -> episteme::knowledge::Fact {
+    let now = jiff::Timestamp::now();
+    episteme::knowledge::Fact {
+        id: episteme::id::FactId::new("fact-runtime-prosoche-001").expect("valid id"),
+        nous_id: "test-nous".to_owned(),
+        fact_type: "observation".to_owned(),
+        content: "test content".to_owned(),
+        scope: None,
+        project_id: None,
+        temporal: episteme::knowledge::FactTemporal {
+            valid_from: now,
+            valid_to: episteme::knowledge::far_future(),
+            recorded_at: now,
+        },
+        provenance: episteme::knowledge::FactProvenance {
+            confidence: 0.9,
+            tier: episteme::knowledge::EpistemicTier::Verified,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: episteme::knowledge::FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: episteme::knowledge::FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: episteme::knowledge::FactSensitivity::Public,
+        visibility: episteme::knowledge::Visibility::Private,
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn prosoche_no_bridge_uses_context_knowledge_store() {
+    let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+    let fact = make_runtime_prosoche_fact();
+    store.insert_fact(&fact).expect("insert fact");
+
+    let daemon_behavior = taxis::config::DaemonBehaviorConfig::default();
+    let result = execute_builtin_with_behavior(
+        &BuiltinTask::Prosoche,
+        ExecutionContext {
+            nous_id: "test-nous",
+            bridge: None,
+            maintenance: None,
+            retention_executor: None,
+            knowledge_executor: None,
+            knowledge_store: Some(Arc::clone(&store)),
+            daemon_behavior: &daemon_behavior,
+            cancel: CancellationToken::new(),
+        },
+    )
+    .await
+    .expect("prosoche should run");
+
+    assert!(result.success);
+    let output = result.output.expect("prosoche output");
+    let parsed: crate::prosoche::ProsocheResult =
+        serde_json::from_str(&output).expect("prosoche JSON output");
+
+    assert!(
+        parsed.items.iter().any(|item| {
+            matches!(
+                item.category,
+                crate::prosoche::AttentionCategory::MemoryAnomaly
+            ) && item.summary.contains("Orphaned fact")
+        }),
+        "runtime Prosoche output should include store-backed memory anomaly: {parsed:?}"
     );
 }
 
@@ -748,31 +826,38 @@ async fn lesson_extraction_persists_training_facts_to_real_fjall() {
     );
 }
 
-/// Regression: the default prosoche self-audit runner must not include the
-/// `InstinctPatternsCheck` stub, which emits a fixed speculative finding without
-/// real gnomon weights backing it (#4572).
+/// Regression: the default prosoche self-audit runner must include the
+/// implemented instinct-pattern check without emitting fixed stub findings.
 #[tokio::test]
-async fn self_audit_does_not_emit_instinct_patterns_findings() {
+async fn self_audit_default_instinct_check_is_not_stub() {
     use crate::prosoche_audit::{
-        AuditStorage, ConsistencyCheck, GoalAlignmentCheck, ProsocheAuditRunner, ProsocheState,
-        SessionQualityCheck, StalenessCheck,
+        BehaviorPatternSnapshot, ProsocheAuditRunner, ProsocheState, SessionSnapshot,
     };
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let storage = AuditStorage::new(tmp.path());
-    let checks: Vec<std::sync::Arc<dyn crate::prosoche_audit::ProsocheCheck>> = vec![
-        std::sync::Arc::new(ConsistencyCheck),
-        std::sync::Arc::new(StalenessCheck::default()),
-        std::sync::Arc::new(GoalAlignmentCheck),
-        std::sync::Arc::new(SessionQualityCheck::default()),
-    ];
-    let runner = ProsocheAuditRunner::new(checks, storage);
+    let runner = ProsocheAuditRunner::default_checks(tmp.path());
 
-    let state = ProsocheState {
+    let mut state = ProsocheState {
         nous_id: "alice".to_owned(),
         checked_at: "2026-06-12T00:00:00Z".to_owned(),
         ..ProsocheState::default()
     };
+    state.sessions.push(SessionSnapshot {
+        session_id: "session-instinct".to_owned(),
+        turn_count: 8,
+        error_count: 4,
+        completed: false,
+        turn_text: "synthetic runtime session".to_owned(),
+    });
+    state.behavior_patterns.push(BehaviorPatternSnapshot {
+        session_id: "session-instinct".to_owned(),
+        tool_call_count: 6,
+        tool_error_count: 4,
+        repeated_action_count: 2,
+        no_progress_turns: 2,
+        avoidance_markers: 0,
+        confidence_claims: 0,
+    });
 
     let report = runner.run_audit(&state).await;
 
@@ -780,8 +865,17 @@ async fn self_audit_does_not_emit_instinct_patterns_findings() {
         report
             .findings
             .iter()
-            .all(|f| f.source != "prosoche::InstinctPatternsCheck"),
-        "default runner must not include instinct-pattern stub findings; got: {:?}",
+            .any(|f| f.source == "prosoche::InstinctPatternsCheck"),
+        "default runner must include real instinct-pattern findings; got: {:?}",
+        report.findings
+    );
+    assert!(
+        report.findings.iter().all(|finding| finding
+            .stats
+            .support
+            .as_ref()
+            .is_none_or(|support| !support.is_stub)),
+        "default runner must not emit stub findings; got: {:?}",
         report.findings
     );
 }

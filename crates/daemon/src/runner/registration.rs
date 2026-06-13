@@ -1,7 +1,6 @@
 //! Task registration: builtin task setup, maintenance tasks, cron tasks.
 
-use std::time::Duration;
-
+use crate::maintenance::registry::{MaintenanceRuntimeCapabilities, maintenance_task_registry};
 use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, apply_jitter};
 
 use super::{RegisteredTask, TaskRunner};
@@ -35,234 +34,30 @@ impl TaskRunner {
         let Some(config) = self.maintenance.clone() else {
             return;
         };
-        let has_executor = self.retention_executor.is_some();
-
-        if config.trace_rotation.enabled {
-            self.register_builtin(
-                "trace-rotation",
-                "Trace rotation",
-                Schedule::Cron("0 0 3 * * *".to_owned()),
-                BuiltinTask::TraceRotation,
-                true,
-            );
-        }
-
-        if config.drift_detection.enabled {
-            self.register_builtin(
-                "drift-detection",
-                "Instance drift detection",
-                Schedule::Cron("0 0 4 * * *".to_owned()),
-                BuiltinTask::DriftDetection,
-                true,
-            );
-        }
-
-        if config.db_monitoring.enabled {
-            self.register_builtin(
-                "db-monitor",
-                "Database size monitor",
-                Schedule::Interval(Duration::from_hours(6)),
-                BuiltinTask::DbSizeMonitor,
-                true,
-            );
-        }
-
-        if config.after_action_store.is_some() {
-            // WHY: ten minutes keeps empirical dispatch routing fresh without
-            // competing with per-turn writes or daily log rotation.
-            self.register_builtin(
-                "routing-store-refresh",
-                "Routing after-action store refresh",
-                Schedule::Interval(Duration::from_mins(10)),
-                BuiltinTask::RoutingStoreRefresh,
-                false,
-            );
-        }
-
-        if config.retention.enabled && has_executor {
-            self.register_builtin(
-                "retention-execution",
-                "Data retention cleanup",
-                Schedule::Cron("0 30 3 * * *".to_owned()),
-                BuiltinTask::RetentionExecution,
-                true,
-            );
-        }
-
-        if config.knowledge_maintenance.enabled && self.knowledge_executor.is_some() {
-            self.register_knowledge_maintenance_tasks();
-        }
-
-        if self.knowledge_executor.is_some() {
-            // WHY: lesson extraction produces durable facts; without a
-            // knowledge executor it cannot satisfy its persistence contract.
-            self.register_builtin(
-                "lesson-extraction",
-                "Lesson extraction from training data",
-                Schedule::Cron("0 0 5 * * *".to_owned()),
-                BuiltinTask::LessonExtraction,
-                true,
-            );
-
-            // WHY: operational facts must be retrievable from the knowledge
-            // graph after extraction, not just logged as transient metrics.
-            self.register_builtin(
-                "ops-fact-extraction",
-                "Operational fact extraction",
-                Schedule::Interval(Duration::from_mins(15)),
-                BuiltinTask::OpsFactExtraction,
-                false,
-            );
-        }
-
-        if config.instance_backup.enabled {
-            self.register_builtin(
-                "fjall-backup",
-                "Whole-instance backup",
-                Schedule::Interval(Duration::from_hours(config.instance_backup.interval_hours)),
-                BuiltinTask::FjallBackup,
-                true,
-            );
-        }
-
-        if config.propose_rules.enabled {
-            // WHY: weekly cadence balances freshness with noise — daily would flood
-            // the operator with near-identical proposals.
-            self.register_builtin(
-                "propose-rules",
-                "Rule proposal generation from observed patterns",
-                Schedule::Cron("0 0 3 * * SUN".to_owned()),
-                BuiltinTask::ProposeRules,
-                false,
-            );
-        }
-
-        if config.prompt_audit.enabled {
-            // WHY: daily cadence matches the log's per-day filenames; pruning
-            // more often wastes IO. Fires at 02:00 UTC to avoid overlapping
-            // with trace rotation (03:00) and drift detection (04:00).
-            self.register_builtin(
-                "prompt-audit-rotation",
-                "Prompt audit log retention",
-                Schedule::Cron("0 0 2 * * *".to_owned()),
-                BuiltinTask::PromptAuditRotation,
-                true,
-            );
-        }
-
-        self.register_cron_tasks(&config.cron);
-    }
-
-    /// Register cron tasks (evolution, reflection, graph cleanup) based on configuration.
-    ///
-    /// All cron tasks are disabled by default. Each is registered only if
-    /// its `enabled` flag is SET in the configuration.
-    fn register_cron_tasks(&mut self, config: &crate::cron::CronConfig) {
-        let has_bridge = self.bridge.is_some();
-
-        if config.evolution.enabled && has_bridge {
-            self.register_builtin(
-                "cron-evolution",
-                "Evolution: config variant search",
-                Schedule::Interval(config.evolution.interval),
-                BuiltinTask::EvolutionSearch,
-                false,
-            );
-        } else if config.evolution.enabled {
-            tracing::warn!(
-                task = "cron-evolution",
-                "skipping bridge-dependent cron task because no daemon bridge is configured"
-            );
-        }
-
-        if config.reflection.enabled && has_bridge {
-            self.register_builtin(
-                "cron-reflection",
-                "Reflection: self-evaluation",
-                Schedule::Interval(config.reflection.interval),
-                BuiltinTask::SelfReflection,
-                false,
-            );
-        } else if config.reflection.enabled {
-            tracing::warn!(
-                task = "cron-reflection",
-                "skipping bridge-dependent cron task because no daemon bridge is configured"
-            );
-        }
-
-        if config.graph_cleanup.enabled && self.knowledge_executor.is_some() {
-            self.register_builtin(
-                "cron-graph-cleanup",
-                "Graph cleanup: orphan removal",
-                Schedule::Interval(config.graph_cleanup.interval),
-                BuiltinTask::GraphCleanup,
-                false,
-            );
-        }
-    }
-
-    /// Register implemented knowledge maintenance tasks with their schedules.
-    fn register_knowledge_maintenance_tasks(&mut self) {
-        let (serendipity_enabled, serendipity_cadence, derived_interval) = {
-            let Some(config) = self.maintenance.as_ref() else {
-                return;
-            };
-            (
-                config.knowledge_maintenance.serendipity.enabled,
-                config.knowledge_maintenance.serendipity.cadence.clone(),
-                config
-                    .knowledge_maintenance
-                    .derived_rules
-                    .materialization_interval,
-            )
+        let capabilities = MaintenanceRuntimeCapabilities {
+            has_retention_executor: self.retention_executor.is_some(),
+            has_knowledge_executor: self.knowledge_executor.is_some(),
+            has_bridge: self.bridge.is_some(),
         };
-        let tasks: [(_, _, Schedule, BuiltinTask); 5] = [
-            (
-                "decay-refresh",
-                "Decay score refresh",
-                Schedule::Interval(Duration::from_hours(4)),
-                BuiltinTask::DecayRefresh,
-            ),
-            (
-                "entity-dedup",
-                "Entity deduplication",
-                Schedule::Interval(Duration::from_hours(6)),
-                BuiltinTask::EntityDedup,
-            ),
-            (
-                "graph-recompute",
-                "Graph score recomputation",
-                Schedule::Interval(Duration::from_hours(8)),
-                BuiltinTask::GraphRecompute,
-            ),
-            (
-                "skill-decay",
-                "Skill decay and retirement",
-                Schedule::Cron("0 0 6 * * *".to_owned()),
-                BuiltinTask::SkillDecay,
-            ),
-            (
-                "derived-facts-materialize",
-                "Derived Datalog rule materialization",
-                // WHY: the default interval balances freshness of IS-A closure /
-                // causal chains against the cost of a full Datalog fixpoint pass.
-                // It is configurable via `KnowledgeMaintenanceConfig::derived_rules`.
-                Schedule::Interval(derived_interval),
-                BuiltinTask::DerivedFactsMaterialize,
-            ),
-        ];
 
-        for (id, name, schedule, task) in tasks {
-            self.register_builtin(id, name, schedule, task, true);
-        }
+        for definition in maintenance_task_registry() {
+            if let Some(warning) = definition.skipped_warning(&config, capabilities) {
+                tracing::warn!(
+                    task = warning.task_id,
+                    reason = warning.reason,
+                    "skipping configured maintenance task"
+                );
+            }
 
-        if serendipity_enabled {
+            let Some(task) = definition.scheduled_task(&config, capabilities) else {
+                continue;
+            };
             self.register_builtin(
-                "serendipity-discovery",
-                "Serendipity discovery",
-                Schedule::Cron(serendipity_cadence),
-                BuiltinTask::SerendipityDiscovery,
-                true,
+                task.id,
+                task.name,
+                task.schedule,
+                task.builtin,
+                task.catch_up,
             );
         }
     }

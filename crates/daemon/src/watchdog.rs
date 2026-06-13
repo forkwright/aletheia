@@ -51,6 +51,17 @@ impl Default for WatchdogConfig {
 }
 
 impl WatchdogConfig {
+    /// Build watchdog config from deployment maintenance settings.
+    #[must_use]
+    pub fn from_settings(settings: &taxis::config::WatchdogSettings) -> Self {
+        Self {
+            heartbeat_timeout: Duration::from_secs(settings.heartbeat_timeout_secs),
+            check_interval: Duration::from_secs(settings.check_interval_secs.max(1)),
+            max_restarts: settings.max_restarts,
+            ..Self::default()
+        }
+    }
+
     /// Apply deployment-tunable backoff settings from taxis config.
     #[must_use]
     pub fn with_daemon_behavior(mut self, behavior: &taxis::config::DaemonBehaviorConfig) -> Self {
@@ -167,13 +178,6 @@ pub(crate) struct Watchdog {
 
 impl Watchdog {
     /// Create a new watchdog with the given configuration.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "watchdog process monitor, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn new(config: WatchdogConfig, shutdown: CancellationToken) -> Self {
         Self {
             processes: HashMap::new(),
@@ -183,14 +187,12 @@ impl Watchdog {
         }
     }
 
+    /// Return the configured health-check sweep interval.
+    pub(crate) fn check_interval(&self) -> Duration {
+        self.config.check_interval
+    }
+
     /// Register a process for monitoring.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "watchdog process monitor, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn register(&mut self, handle: std::sync::Arc<dyn ProcessHandle>) {
         let id = handle.id().to_owned();
         tracing::info!(process_id = %id, "watchdog: registered process");
@@ -206,14 +208,14 @@ impl Watchdog {
         );
     }
 
+    /// Remove a process from monitoring.
+    pub(crate) fn unregister(&mut self, process_id: &str) {
+        if self.processes.remove(process_id).is_some() {
+            tracing::info!(process_id = %process_id, "watchdog: unregistered process");
+        }
+    }
+
     /// Record a heartbeat from a process.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "watchdog process monitor, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn heartbeat(&mut self, process_id: &str) {
         if let Some(proc) = self.processes.get_mut(process_id) {
             proc.last_heartbeat = Instant::now();
@@ -228,13 +230,6 @@ impl Watchdog {
     }
 
     /// Return a snapshot of all watched process statuses.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "watchdog process monitor, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn status(&self) -> Vec<ProcessStatus> {
         self.processes
             .iter()
@@ -248,25 +243,11 @@ impl Watchdog {
     }
 
     /// Return the restart event log.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "watchdog process monitor, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn restart_log(&self) -> &[RestartEvent] {
         &self.restart_log
     }
 
     /// Report that a process exited unexpectedly.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "watchdog process monitor, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn report_exit(&mut self, process_id: &str, reason: &str) {
         if let Some(proc) = self.processes.get_mut(process_id) {
             tracing::warn!(
@@ -284,14 +265,8 @@ impl Watchdog {
     ///
     /// Cancel-safe at the loop boundary. `interval.tick()` is cancel-safe,
     /// and `CancellationToken::cancelled()` is cancel-safe.
+    #[cfg(test)]
     #[tracing::instrument(skip_all)]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "watchdog process monitor, tested and awaiting integration"
-        )
-    )]
     pub async fn run(&mut self) {
         tracing::info!(
             processes = self.processes.len(),
@@ -313,6 +288,14 @@ impl Watchdog {
                 }
             }
         }
+    }
+
+    /// Run one watchdog sweep.
+    pub(crate) async fn sweep(&mut self) {
+        if self.shutdown.is_cancelled() {
+            return;
+        }
+        self.check_processes().await;
     }
 
     /// Sweep all processes: detect hangs and trigger restarts.

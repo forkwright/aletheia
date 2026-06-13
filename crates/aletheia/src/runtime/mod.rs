@@ -636,6 +636,7 @@ impl RuntimeBuilder {
                     .with_whatever_context(|_| "failed to open system daemon task-state store")?;
             let mut daemon_runner = TaskRunner::new("system", daemon_token)
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
+                .with_watchdog_settings(&self.config.maintenance.watchdog)
                 .with_state_store(system_state_store)
                 .with_maintenance(maintenance_config.clone());
             let retention_executor = Arc::new(
@@ -645,6 +646,8 @@ impl RuntimeBuilder {
 
             #[cfg(feature = "recall")]
             if let Some(ks) = knowledge_store_for_daemon.as_ref() {
+                daemon_runner = daemon_runner.with_knowledge_store(Arc::clone(ks));
+
                 // WHY (#4165 Path A): hand the embedding provider to the
                 // dedup task so it can populate `entities.name_embedding`
                 // before scoring. Without this, the maintenance task
@@ -736,6 +739,7 @@ impl RuntimeBuilder {
                     daemon_bridge.clone(),
                 )
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
+                .with_watchdog_settings(&self.config.maintenance.watchdog)
                 .with_state_store(
                     oikonomos::state::TaskStateStore::open(
                         &task_state_root.join(task_state_component(&agent_def.id)),

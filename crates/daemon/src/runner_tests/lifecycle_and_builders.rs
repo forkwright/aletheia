@@ -870,3 +870,69 @@ async fn hung_bridge_task_cancels_token_before_abort() {
         "hung task should be recorded as a failure"
     );
 }
+
+#[tokio::test]
+async fn watchdog_enabled_restarts_hung_inflight_task() {
+    let token = CancellationToken::new();
+    let settings = taxis::config::WatchdogSettings {
+        enabled: true,
+        heartbeat_timeout_secs: 0,
+        check_interval_secs: 1,
+        max_restarts: 5,
+    };
+    let mut runner = TaskRunner::new("test-nous", token).with_watchdog_settings(&settings);
+
+    let task = TaskDef {
+        id: "watchdog-task".to_owned(),
+        name: "Watchdog task".to_owned(),
+        nous_id: "test-nous".to_owned(),
+        schedule: Schedule::Interval(Duration::from_secs(60)),
+        action: TaskAction::Command("sleep 60".to_owned()),
+        enabled: true,
+        ..TaskDef::default()
+    };
+    runner.register(task);
+
+    let task_cancel = CancellationToken::new();
+    let handle = tokio::spawn(async {
+        std::future::pending::<crate::error::Result<ExecutionResult>>().await
+    });
+    runner.in_flight.insert(
+        "watchdog-task".to_owned(),
+        InFlightTask {
+            handle,
+            cancel: task_cancel.clone(),
+            started_at: Instant::now(),
+            timeout: Duration::from_secs(60),
+            warned: false,
+        },
+    );
+    runner.register_watchdog_process("watchdog-task");
+
+    runner.check_task_watchdog().await;
+
+    assert!(
+        !runner.in_flight.contains_key("watchdog-task"),
+        "watchdog should remove the hung task from in-flight tracking"
+    );
+    assert!(
+        task_cancel.is_cancelled(),
+        "watchdog kill should cancel the task token"
+    );
+    assert_eq!(
+        runner.tasks[0].consecutive_failures, 1,
+        "watchdog kill should record a task failure"
+    );
+    assert_eq!(
+        runner.watchdog_restart_count(),
+        1,
+        "watchdog should record the restart event"
+    );
+    let next_run = runner.tasks[0]
+        .next_run
+        .expect("watchdog restart should schedule an immediate run");
+    assert!(
+        next_run <= jiff::Timestamp::now(),
+        "watchdog restart should be due immediately"
+    );
+}

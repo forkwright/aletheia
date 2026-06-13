@@ -37,6 +37,9 @@ impl TaskRunner {
         let watchdog_interval = sd_watchdog_interval();
         let mut watchdog_tick =
             tokio::time::interval(watchdog_interval.unwrap_or(Duration::from_secs(30)));
+        let process_watchdog_interval = self.process_watchdog_interval();
+        let mut process_watchdog_tick =
+            tokio::time::interval(process_watchdog_interval.unwrap_or(Duration::from_secs(30)));
 
         loop {
             tokio::select! {
@@ -53,6 +56,9 @@ impl TaskRunner {
                 _ = watchdog_tick.tick(), if watchdog_interval.is_some() => {
                     sd_notify_watchdog();
                 }
+                _ = process_watchdog_tick.tick(), if process_watchdog_interval.is_some() => {
+                    self.check_task_watchdog().await;
+                }
                 // SAFETY: cancel-safe. `CancellationToken::cancelled()` is cancel-safe;
                 // dropping the future before it fires has no side effects.
                 () = self.shutdown.cancelled() => {
@@ -66,7 +72,8 @@ impl TaskRunner {
         // after the runner exits. Without this, spawned tasks continue running
         // on the Tokio executor with no observer to collect their results.
         let in_flight_count = self.in_flight.len();
-        for (task_id, in_flight) in self.in_flight.drain() {
+        let drained: Vec<_> = self.in_flight.drain().collect();
+        for (task_id, in_flight) in drained {
             tracing::debug!(
                 task_id = %task_id,
                 cancelled = true,
@@ -74,6 +81,7 @@ impl TaskRunner {
             );
             in_flight.cancel.cancel();
             in_flight.handle.abort();
+            self.unregister_watchdog_process(&task_id);
         }
         if in_flight_count > 0 {
             tracing::info!(
@@ -155,6 +163,8 @@ impl TaskRunner {
             let maintenance = self.maintenance.clone();
             let retention_executor = self.retention_executor.clone();
             let knowledge_executor = self.knowledge_executor.clone();
+            #[cfg(feature = "knowledge-store")]
+            let knowledge_store = self.knowledge_store.clone();
             let daemon_behavior = self.daemon_behavior.clone();
 
             let span = tracing::info_span!(
@@ -177,6 +187,8 @@ impl TaskRunner {
                             maintenance: maintenance.as_ref(),
                             retention_executor,
                             knowledge_executor,
+                            #[cfg(feature = "knowledge-store")]
+                            knowledge_store,
                             daemon_behavior: &daemon_behavior,
                             cancel: task_cancel_child,
                         },
@@ -187,7 +199,7 @@ impl TaskRunner {
             );
 
             self.in_flight.insert(
-                task_id,
+                task_id.clone(),
                 InFlightTask {
                     handle,
                     cancel: task_cancel,
@@ -196,6 +208,7 @@ impl TaskRunner {
                     warned: false,
                 },
             );
+            self.register_watchdog_process(&task_id);
         }
     }
 }

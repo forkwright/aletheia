@@ -149,13 +149,21 @@ async fn in_flight_reported_in_status() {
 /// accepted by `aletheia maintenance run <id>`.
 #[test]
 fn maintenance_status_ids_accepted_by_run() {
-    let run_accepted: &[&str] = &["trace-rotation", "drift-detection", "db-monitor"];
-
     let token = CancellationToken::new();
     let mut config = MaintenanceConfig::default();
     config.trace_rotation.enabled = true;
     config.drift_detection.enabled = true;
     config.db_monitoring.enabled = true;
+    config.instance_backup.enabled = true;
+    config.prompt_audit.enabled = true;
+
+    let capabilities = crate::maintenance::registry::MaintenanceRuntimeCapabilities::default();
+    let manual_scheduled_ids: Vec<&str> = crate::maintenance::maintenance_task_registry()
+        .iter()
+        .filter(|definition| definition.manual_run().is_some())
+        .filter(|definition| definition.scheduled_task(&config, capabilities).is_some())
+        .map(crate::maintenance::MaintenanceTaskDefinition::id)
+        .collect();
 
     let mut runner = TaskRunner::new("system", token).with_maintenance(config);
     runner.register_maintenance_tasks();
@@ -163,9 +171,9 @@ fn maintenance_status_ids_accepted_by_run() {
     let statuses = runner.status();
     let status_ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
 
-    for id in run_accepted {
+    for id in manual_scheduled_ids {
         assert!(
-            status_ids.contains(id),
+            status_ids.contains(&id),
             "run-accepted id '{id}' not found in status output — IDs are mismatched"
         );
     }

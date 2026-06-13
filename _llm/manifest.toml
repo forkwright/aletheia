@@ -20,7 +20,7 @@ l3_token_estimate = 5780
 [[crates]]
 name = "aletheia"
 path = "crates/aletheia"
-source_hash = "39ebe5db942d70a498710c0446300ef212c778951672bd7256044c3526f04492"
+source_hash = "f8ce9768638cf361c21876d1a4a168728d5426204b0b48b0f4c52ad2737d05a5"
 l3_token_estimate = 167
 
 [[crates]]
@@ -152,8 +152,8 @@ l3_token_estimate = 34891
 [[crates]]
 name = "oikonomos"
 path = "crates/daemon"
-source_hash = "c0aeebef09f606dc59d199b0c47b4c1edb5f0b6d2953b39ca942614d92ec33b0"
-l3_token_estimate = 14117
+source_hash = "6d011ca03c0cbedf604bf1846da713dab132c796598fb9c59237d8c727827fa3"
+l3_token_estimate = 15256
 
 [[crates]]
 name = "organon"

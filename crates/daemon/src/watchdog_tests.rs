@@ -79,26 +79,26 @@ fn watchdog_config_default_values() {
 }
 
 #[test]
-fn runbook_separates_live_systemd_watchdog_from_unwired_process_watchdog() {
+fn runbook_documents_live_systemd_and_process_watchdogs() {
     assert!(
         RUNBOOK.contains("### Systemd watchdog heartbeat (live)"),
         "runbook must document the live service-level watchdog"
     );
     assert!(
-        RUNBOOK.contains("### Daemon process watchdog (not wired)"),
-        "runbook must document that the per-process watchdog is not runtime-wired"
+        RUNBOOK.contains("### Daemon process watchdog (live when enabled)"),
+        "runbook must document the live per-task watchdog"
     );
     assert!(
-        RUNBOOK.contains("not wired into runtime startup yet"),
-        "runbook must not describe the process watchdog as an operational feature"
+        RUNBOOK.contains("per-task watchdog"),
+        "runbook must describe the TaskRunner watchdog integration"
     );
     assert!(
         RUNBOOK.contains("individual daemon tasks"),
         "systemd watchdog docs must not imply per-process monitoring"
     );
     assert!(
-        RUNBOOK.contains("enabling them does not start a monitor"),
-        "reserved config fields must not be advertised as live toggles"
+        RUNBOOK.contains("enabled = false"),
+        "runbook must show the explicit watchdog toggle"
     );
 }
 

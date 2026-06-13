@@ -19,8 +19,7 @@ use crate::maintenance::{
 use crate::probe::{ProbeAuditSummary, ProbeSet, build_probe_audit_prompt};
 use crate::prosoche::ProsocheCheck;
 use crate::prosoche_audit::{
-    AuditStorage, ConsistencyCheck, GoalAlignmentCheck, ProsocheAuditRunner, ProsocheState,
-    SessionQualityCheck, StalenessCheck,
+    BehaviorPatternSnapshot, ProsocheAuditRunner, ProsocheState, SessionSnapshot,
 };
 use crate::runner::ExecutionResult;
 use crate::schedule::{BuiltinTask, TaskAction};
@@ -31,6 +30,8 @@ pub(crate) struct ExecutionContext<'a> {
     pub(crate) maintenance: Option<&'a MaintenanceConfig>,
     pub(crate) retention_executor: Option<Arc<dyn RetentionExecutor>>,
     pub(crate) knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    #[cfg(feature = "knowledge-store")]
+    pub(crate) knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
     pub(crate) daemon_behavior: &'a taxis::config::DaemonBehaviorConfig,
     pub(crate) cancel: CancellationToken,
 }
@@ -60,6 +61,8 @@ pub(crate) async fn execute_action(
             maintenance,
             retention_executor,
             knowledge_executor,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             daemon_behavior,
             cancel: CancellationToken::new(),
         },
@@ -133,6 +136,49 @@ fn default_prosoche_audit_dir() -> PathBuf {
     root.join("data").join("prosoche-audits")
 }
 
+fn prosoche_db_paths(maintenance: &MaintenanceConfig) -> Vec<PathBuf> {
+    let data_dir = &maintenance.db_monitoring.data_dir;
+    vec![data_dir.join("sessions.db"), data_dir.join("planning.db")]
+}
+
+fn build_prosoche_audit_state(nous_id: &str) -> ProsocheState {
+    let total = crate::metrics::cron_executions_total();
+    let successes = crate::metrics::cron_executions_ok();
+    let errors = crate::metrics::cron_executions_error();
+    let mut state = ProsocheState {
+        nous_id: nous_id.to_owned(),
+        checked_at: jiff::Timestamp::now().to_string(),
+        ..ProsocheState::default()
+    };
+
+    if total == 0 {
+        return state;
+    }
+
+    let session_id = format!("daemon-runtime:{nous_id}");
+    let turn_count = u32::try_from(total).unwrap_or(u32::MAX);
+    let error_count = u32::try_from(errors).unwrap_or(u32::MAX);
+    state.sessions.push(SessionSnapshot {
+        session_id: session_id.clone(),
+        turn_count,
+        error_count,
+        completed: errors == 0,
+        turn_text: format!(
+            "daemon runtime task executions total={total} successes={successes} errors={errors}"
+        ),
+    });
+    state.behavior_patterns.push(BehaviorPatternSnapshot {
+        session_id,
+        tool_call_count: turn_count,
+        tool_error_count: error_count,
+        repeated_action_count: 0,
+        no_progress_turns: 0,
+        avoidance_markers: 0,
+        confidence_claims: 0,
+    });
+    state
+}
+
 #[cfg(test)]
 #[tracing::instrument(skip_all)]
 pub(crate) async fn execute_builtin(
@@ -152,6 +198,8 @@ pub(crate) async fn execute_builtin(
             maintenance,
             retention_executor,
             knowledge_executor,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             daemon_behavior: &daemon_behavior,
             cancel: CancellationToken::new(),
         },
@@ -173,6 +221,8 @@ pub(crate) async fn execute_builtin_with_behavior(
     let maintenance = ctx.maintenance;
     let retention_executor = ctx.retention_executor;
     let knowledge_executor = ctx.knowledge_executor;
+    #[cfg(feature = "knowledge-store")]
+    let knowledge_store = ctx.knowledge_store;
     let daemon_behavior = ctx.daemon_behavior;
     let cancel = ctx.cancel;
 
@@ -208,10 +258,17 @@ pub(crate) async fn execute_builtin_with_behavior(
                     }
                 }
             } else {
-                let result = ProsocheCheck::new(nous_id)
-                    .with_daemon_behavior(daemon_behavior)
-                    .run()
-                    .await?;
+                let mut check = ProsocheCheck::new(nous_id).with_daemon_behavior(daemon_behavior);
+                if let Some(maintenance) = maintenance {
+                    check = check
+                        .with_data_dir(&maintenance.db_monitoring.data_dir)
+                        .with_db_paths(prosoche_db_paths(maintenance));
+                }
+                #[cfg(feature = "knowledge-store")]
+                if let Some(store) = knowledge_store {
+                    check = check.with_knowledge_store(store);
+                }
+                let result = check.run().await?;
                 Ok(ExecutionResult {
                     success: true,
                     output: Some(
@@ -381,23 +438,8 @@ pub(crate) async fn execute_builtin_with_behavior(
         BuiltinTask::SelfAudit => {
             let audit_dir = maintenance
                 .map_or_else(default_prosoche_audit_dir, |m| m.prosoche_audit_dir.clone());
-            // WHY: InstinctPatternsCheck is a v1 stub that emits a fixed speculative finding
-            // without real gnomon weights. Exclude it from the default runner until it is
-            // backed by real data (#4572). Use ProsocheAuditRunner::new() to build the
-            // four production-ready checks explicitly.
-            let storage = AuditStorage::new(&audit_dir);
-            let checks: Vec<Arc<dyn crate::prosoche_audit::ProsocheCheck>> = vec![
-                Arc::new(ConsistencyCheck),
-                Arc::new(StalenessCheck::default()),
-                Arc::new(GoalAlignmentCheck),
-                Arc::new(SessionQualityCheck::default()),
-            ];
-            let runner = ProsocheAuditRunner::new(checks, storage);
-            let state = ProsocheState {
-                nous_id: nous_id.to_owned(),
-                checked_at: jiff::Timestamp::now().to_string(),
-                ..ProsocheState::default()
-            };
+            let runner = ProsocheAuditRunner::default_checks(&audit_dir);
+            let state = build_prosoche_audit_state(nous_id);
             let report = runner.run_audit(&state).await;
             Ok(ExecutionResult {
                 success: true,
@@ -694,7 +736,7 @@ async fn execute_knowledge_task(
 
     let task_name = format!("{builtin:?}");
     let nous_id_owned = nous_id.to_owned();
-    let builtin_clone = builtin.clone();
+    let builtin_clone = *builtin;
 
     let report = tokio::task::spawn_blocking(move || {
         let _span = tracing::info_span!(

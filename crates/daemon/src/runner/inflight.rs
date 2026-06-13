@@ -56,6 +56,7 @@ impl TaskRunner {
                 in_flight.handle.abort();
 
                 self.in_flight.remove(&task_id);
+                self.unregister_watchdog_process(&task_id);
                 self.record_task_failure(&task_id, "cancelled: exceeded 2x timeout");
                 continue;
             }
@@ -92,6 +93,7 @@ impl TaskRunner {
                         self.record_task_failure(&task_id, &e.to_string());
                     }
                     Err(e) => {
+                        self.report_watchdog_exit(&task_id, &e.to_string());
                         tracing::warn!(
                             task_id = %task_id,
                             error = %e,
@@ -100,6 +102,7 @@ impl TaskRunner {
                         self.record_task_failure(&task_id, &e.to_string());
                     }
                 }
+                self.unregister_watchdog_process(&task_id);
             }
         }
     }

@@ -25,7 +25,7 @@ default = ["tui", "recall", "storage-fjall", "embed-candle", "cc-provider"]
 # cost and auth friction for local deployments. Enable with `--features mcp`.
 mcp = ["dep:diaporeia", "dep:rmcp"]
 # Recall pipeline: enables KnowledgeStore for vector search + extraction persistence.
-recall = ["nous/knowledge-store", "mneme/mneme-engine", "mneme/storage-fjall", "pylon/knowledge-store"]
+recall = ["nous/knowledge-store", "mneme/mneme-engine", "mneme/storage-fjall", "pylon/knowledge-store", "oikonomos/knowledge-store"]
 # fjall storage backend for mneme (LSM-tree, pure Rust, LZ4 compression).
 storage-fjall = ["mneme/storage-fjall"]
 # Local ML embeddings via candle.
