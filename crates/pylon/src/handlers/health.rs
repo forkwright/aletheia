@@ -941,6 +941,10 @@ mod tests {
         assert_eq!(String::from_utf8(decoded).unwrap(), r#"{"exp":1234567890}"#);
     }
 
+    #[expect(
+        clippy::as_conversions,
+        reason = "sextet is masked to 0..=63 and indexes the 64-entry table"
+    )]
     fn base64url_encode(input: &[u8]) -> String {
         const TABLE: &[u8; 64] =
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

@@ -715,6 +715,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Removing the last usable primary credential for a provider.
+    #[snafu(display("cannot remove the last primary credential for provider '{provider}'"))]
+    RemoveLastPrimary {
+        provider: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// JWT signing key is the insecure default placeholder.
     #[snafu(display(
         "insecure JWT signing key: default placeholder active with auth mode '{auth_mode}'. Set auth.jwt_secret in config or the ALETHEIA_JWT_SECRET env var. Generate one with: openssl rand -hex 32"

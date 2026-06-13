@@ -766,7 +766,7 @@ enum ImportError {
     },
 }
 
-fn import_error(err: ImportError) -> crate::error::Error {
+fn import_error(err: &ImportError) -> crate::error::Error {
     crate::error::Error::msg(err.to_string())
 }
 
@@ -846,7 +846,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
 
     if agent_file.version != mneme::portability::AGENT_FILE_VERSION {
-        return Err(import_error(ImportError::VersionMismatch {
+        return Err(import_error(&ImportError::VersionMismatch {
             version: agent_file.version,
             expected: mneme::portability::AGENT_FILE_VERSION,
         }));
@@ -1045,13 +1045,13 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         for session in &agent_file.sessions {
             let status =
                 parse_session_status(&session.status, &session.id, args.allow_unknown_values)
-                    .map_err(import_error)?;
+                    .map_err(|e| import_error(&e))?;
             let session_type = parse_session_type(
                 &session.session_type,
                 &session.id,
                 args.allow_unknown_values,
             )
-            .map_err(import_error)?;
+            .map_err(|e| import_error(&e))?;
 
             let imported = store
                 .import_session(
@@ -1087,7 +1087,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
 
             for msg in &session.messages {
                 let role = parse_message_role(&msg.role, &session.id, args.allow_unknown_values)
-                    .map_err(import_error)?;
+                    .map_err(|e| import_error(&e))?;
                 store
                     .insert_message_raw(&mneme::types::Message {
                         id: msg.seq,
@@ -3319,7 +3319,10 @@ workspace = "nous/{agent_id}"
                 token_estimate: 10,
                 is_distilled: false,
                 created_at: "2026-03-05T10:00:00Z".to_owned(),
+                tool_call_id: None,
+                tool_name: None,
             }],
+            usage_records: None,
         }];
         file
     }

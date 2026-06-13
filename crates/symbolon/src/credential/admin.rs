@@ -134,20 +134,28 @@ pub(crate) fn rotate(root: &Path, provider: &str) -> Result<Vec<ManagedCredentia
         .map_err(|source| io_error(&lock_path, source))?;
     recover_provider_rotation_locked(root, provider)?;
 
-    CredentialFile::load(&primary_path).ok_or_else(|| {
+    let primary_file = CredentialFile::load(&primary_path).ok_or_else(|| {
         error::NotFoundSnafu {
             entity: "credential".to_owned(),
             id: credential_id(provider, ManagedCredentialRole::Primary),
         }
         .build()
     })?;
-    CredentialFile::load(&backup_path).ok_or_else(|| {
+    let backup_file = CredentialFile::load(&backup_path).ok_or_else(|| {
         error::NotFoundSnafu {
             entity: "credential".to_owned(),
             id: credential_id(provider, ManagedCredentialRole::Backup),
         }
         .build()
     })?;
+
+    // WHY(#4874): `load` accepts legacy plaintext credentials, which lack the
+    // per-file `.json.key` sidecar encrypted credentials carry. The journaled
+    // swap requires a consistent sidecar state across the pair, so migrate any
+    // plaintext credential to encrypted (minting its sidecar) before rotating.
+    // The provider-wide exclusive lock above serializes this migration.
+    migrate_plaintext_to_encrypted(&primary_path, &primary_file)?;
+    migrate_plaintext_to_encrypted(&backup_path, &backup_file)?;
 
     let files = prepare_rotation_journal(root, provider, &primary_path, &backup_path)?;
     commit_rotation_from_journal(&files)?;
@@ -161,6 +169,20 @@ pub(crate) fn rotate(root: &Path, provider: &str) -> Result<Vec<ManagedCredentia
         entries.push(backup);
     }
     Ok(entries)
+}
+
+/// Re-save a credential as encrypted when it lacks its `.json.key` sidecar.
+///
+/// WHY: legacy plaintext credentials predate encryption-at-rest; rotating them
+/// against an encrypted counterpart would otherwise trip the journal's sidecar
+/// consistency invariant. Re-saving migrates the file in place and is a no-op
+/// once the sidecar exists.
+fn migrate_plaintext_to_encrypted(path: &Path, file: &CredentialFile) -> Result<()> {
+    let key_path = path.with_extension("json.key");
+    if !key_path.exists() {
+        file.save(path).map_err(|source| io_error(path, source))?;
+    }
+    Ok(())
 }
 
 pub(crate) fn remove(root: &Path, id: &str) -> Result<()> {
@@ -368,7 +390,13 @@ fn replace_with_copy(source: &Path, destination: &Path, temp: &Path) -> Result<(
 }
 
 fn copy_restricted(source: &Path, destination: &Path) -> std::io::Result<()> {
-    let bytes = std::fs::read(source)?;
+    use std::io::Read as _;
+
+    let mut bytes = Vec::new();
+    std::fs::OpenOptions::new()
+        .read(true)
+        .open(source)?
+        .read_to_end(&mut bytes)?;
     write_restricted(destination, &bytes)
 }
 
@@ -513,7 +541,7 @@ fn io_error(path: &Path, source: std::io::Error) -> error::Error {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -538,6 +566,47 @@ mod tests {
 
         remove(&root, "anthropic:backup").unwrap();
         assert!(list(&root).unwrap().is_empty());
+    }
+
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test seeds a legacy plaintext credential fixture (no sidecar)"
+    )]
+    fn rotate_migrates_legacy_plaintext_primary() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        std::fs::create_dir_all(&root).unwrap();
+        // Legacy plaintext primary (no .json.key sidecar) — load() supports this.
+        std::fs::write(
+            root.join("anthropic.json"),
+            br#"{"token":"sk-plaintext-primary"}"#,
+        )
+        .unwrap();
+        // Encrypted backup via the normal add path (mints a .json.key sidecar).
+        add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-encrypted-backup"),
+            ManagedCredentialRole::Backup,
+        )
+        .unwrap();
+
+        let rotated = rotate(&root, "anthropic").unwrap();
+        assert_eq!(rotated.len(), 2);
+        // The plaintext primary was migrated: both files now carry key sidecars.
+        assert!(root.join("anthropic.json.key").exists());
+        assert!(root.join("anthropic.backup.json.key").exists());
+        // Content swapped and still loadable.
+        let primary = CredentialFile::load(&root.join("anthropic.json")).unwrap();
+        let backup = CredentialFile::load(&root.join("anthropic.backup.json")).unwrap();
+        assert_eq!(primary.token.expose_secret(), "sk-encrypted-backup");
+        assert_eq!(backup.token.expose_secret(), "sk-plaintext-primary");
+        assert!(
+            rotated
+                .iter()
+                .all(|entry| !entry.redacted_preview.contains("sk-"))
+        );
     }
 
     #[test]
