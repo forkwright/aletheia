@@ -165,13 +165,6 @@ impl ProsocheCheck {
     /// traversal paths (A-MemGuard consensus approach).
     #[must_use]
     #[cfg(feature = "knowledge-store")]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "prosoche attention checks, tested and awaiting integration"
-        )
-    )]
     pub(crate) fn with_knowledge_store(
         mut self,
         store: Arc<episteme::knowledge_store::KnowledgeStore>,

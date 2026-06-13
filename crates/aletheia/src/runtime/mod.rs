@@ -646,6 +646,8 @@ impl RuntimeBuilder {
 
             #[cfg(feature = "recall")]
             if let Some(ks) = knowledge_store_for_daemon.as_ref() {
+                daemon_runner = daemon_runner.with_knowledge_store(Arc::clone(ks));
+
                 // WHY (#4165 Path A): hand the embedding provider to the
                 // dedup task so it can populate `entities.name_embedding`
                 // before scoring. Without this, the maintenance task

@@ -337,6 +337,8 @@ async fn routing_store_refresh_builtin_refreshes_attached_store() {
             maintenance: Some(&config),
             retention_executor: None,
             knowledge_executor: None,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             daemon_behavior: &daemon_behavior,
             cancel: CancellationToken::new(),
         },
@@ -370,6 +372,82 @@ async fn prosoche_no_bridge_runs_local_check() {
             .as_deref()
             .unwrap_or_default()
             .contains("checked_at")
+    );
+}
+
+#[cfg(feature = "knowledge-store")]
+fn make_runtime_prosoche_fact() -> episteme::knowledge::Fact {
+    let now = jiff::Timestamp::now();
+    episteme::knowledge::Fact {
+        id: episteme::id::FactId::new("fact-runtime-prosoche-001").expect("valid id"),
+        nous_id: "test-nous".to_owned(),
+        fact_type: "observation".to_owned(),
+        content: "test content".to_owned(),
+        scope: None,
+        project_id: None,
+        temporal: episteme::knowledge::FactTemporal {
+            valid_from: now,
+            valid_to: episteme::knowledge::far_future(),
+            recorded_at: now,
+        },
+        provenance: episteme::knowledge::FactProvenance {
+            confidence: 0.9,
+            tier: episteme::knowledge::EpistemicTier::Verified,
+            source_session_id: None,
+            stability_hours: 720.0,
+        },
+        lifecycle: episteme::knowledge::FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: episteme::knowledge::FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: episteme::knowledge::FactSensitivity::Public,
+        visibility: episteme::knowledge::Visibility::Private,
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn prosoche_no_bridge_uses_context_knowledge_store() {
+    let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+    let fact = make_runtime_prosoche_fact();
+    store.insert_fact(&fact).expect("insert fact");
+
+    let daemon_behavior = taxis::config::DaemonBehaviorConfig::default();
+    let result = execute_builtin_with_behavior(
+        &BuiltinTask::Prosoche,
+        ExecutionContext {
+            nous_id: "test-nous",
+            bridge: None,
+            maintenance: None,
+            retention_executor: None,
+            knowledge_executor: None,
+            knowledge_store: Some(Arc::clone(&store)),
+            daemon_behavior: &daemon_behavior,
+            cancel: CancellationToken::new(),
+        },
+    )
+    .await
+    .expect("prosoche should run");
+
+    assert!(result.success);
+    let output = result.output.expect("prosoche output");
+    let parsed: crate::prosoche::ProsocheResult =
+        serde_json::from_str(&output).expect("prosoche JSON output");
+
+    assert!(
+        parsed.items.iter().any(|item| {
+            matches!(
+                item.category,
+                crate::prosoche::AttentionCategory::MemoryAnomaly
+            ) && item.summary.contains("Orphaned fact")
+        }),
+        "runtime Prosoche output should include store-backed memory anomaly: {parsed:?}"
     );
 }
 

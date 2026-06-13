@@ -163,6 +163,8 @@ impl TaskRunner {
             let maintenance = self.maintenance.clone();
             let retention_executor = self.retention_executor.clone();
             let knowledge_executor = self.knowledge_executor.clone();
+            #[cfg(feature = "knowledge-store")]
+            let knowledge_store = self.knowledge_store.clone();
             let daemon_behavior = self.daemon_behavior.clone();
 
             let span = tracing::info_span!(
@@ -185,6 +187,8 @@ impl TaskRunner {
                             maintenance: maintenance.as_ref(),
                             retention_executor,
                             knowledge_executor,
+                            #[cfg(feature = "knowledge-store")]
+                            knowledge_store,
                             daemon_behavior: &daemon_behavior,
                             cancel: task_cancel_child,
                         },

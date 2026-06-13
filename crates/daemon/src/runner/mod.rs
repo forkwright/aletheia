@@ -54,6 +54,8 @@ pub struct TaskRunner {
     maintenance: Option<MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    #[cfg(feature = "knowledge-store")]
+    knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
     /// In-flight tasks: `task_id` → [`InFlightTask`].
     in_flight: HashMap<String, InFlightTask>,
     /// Optional fjall-backed state store for cross-restart persistence.
@@ -114,6 +116,8 @@ impl TaskRunner {
             maintenance: None,
             retention_executor: None,
             knowledge_executor: None,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             in_flight: HashMap::new(),
             state_store: None,
             output_mode: DaemonOutputMode::Full,
@@ -138,6 +142,8 @@ impl TaskRunner {
             maintenance: None,
             retention_executor: None,
             knowledge_executor: None,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             in_flight: HashMap::new(),
             state_store: None,
             output_mode: DaemonOutputMode::Full,
@@ -180,6 +186,17 @@ impl TaskRunner {
         executor: Arc<dyn KnowledgeMaintenanceExecutor>,
     ) -> Self {
         self.knowledge_executor = Some(executor);
+        self
+    }
+
+    /// Attach a knowledge store for Prosoche memory consistency checks.
+    #[cfg(feature = "knowledge-store")]
+    #[must_use]
+    pub fn with_knowledge_store(
+        mut self,
+        store: Arc<episteme::knowledge_store::KnowledgeStore>,
+    ) -> Self {
+        self.knowledge_store = Some(store);
         self
     }
 

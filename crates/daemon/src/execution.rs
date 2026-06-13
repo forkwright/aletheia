@@ -30,6 +30,8 @@ pub(crate) struct ExecutionContext<'a> {
     pub(crate) maintenance: Option<&'a MaintenanceConfig>,
     pub(crate) retention_executor: Option<Arc<dyn RetentionExecutor>>,
     pub(crate) knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    #[cfg(feature = "knowledge-store")]
+    pub(crate) knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
     pub(crate) daemon_behavior: &'a taxis::config::DaemonBehaviorConfig,
     pub(crate) cancel: CancellationToken,
 }
@@ -59,6 +61,8 @@ pub(crate) async fn execute_action(
             maintenance,
             retention_executor,
             knowledge_executor,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             daemon_behavior,
             cancel: CancellationToken::new(),
         },
@@ -194,6 +198,8 @@ pub(crate) async fn execute_builtin(
             maintenance,
             retention_executor,
             knowledge_executor,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
             daemon_behavior: &daemon_behavior,
             cancel: CancellationToken::new(),
         },
@@ -215,6 +221,8 @@ pub(crate) async fn execute_builtin_with_behavior(
     let maintenance = ctx.maintenance;
     let retention_executor = ctx.retention_executor;
     let knowledge_executor = ctx.knowledge_executor;
+    #[cfg(feature = "knowledge-store")]
+    let knowledge_store = ctx.knowledge_store;
     let daemon_behavior = ctx.daemon_behavior;
     let cancel = ctx.cancel;
 
@@ -255,6 +263,10 @@ pub(crate) async fn execute_builtin_with_behavior(
                     check = check
                         .with_data_dir(&maintenance.db_monitoring.data_dir)
                         .with_db_paths(prosoche_db_paths(maintenance));
+                }
+                #[cfg(feature = "knowledge-store")]
+                if let Some(store) = knowledge_store {
+                    check = check.with_knowledge_store(store);
                 }
                 let result = check.run().await?;
                 Ok(ExecutionResult {
