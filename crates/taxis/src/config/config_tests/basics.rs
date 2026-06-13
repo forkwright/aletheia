@@ -208,6 +208,41 @@ fn serde_roundtrip() {
 }
 
 #[test]
+fn data_retention_parses_strictly() {
+    let toml = r"
+[data.retention]
+enabled = true
+sessionMaxAgeDays = 90
+orphanMessageMaxAgeDays = 30
+maxSessionsPerNous = 200
+archiveBeforeDelete = true
+";
+
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse data retention config");
+
+    assert!(config.data.retention.enabled);
+    assert_eq!(config.data.retention.closed_session_ttl_days, Some(90));
+    assert_eq!(config.data.retention.orphan_message_max_age_days, Some(30));
+    assert_eq!(config.data.retention.max_sessions_per_nous, 200);
+    assert!(config.data.retention.archive_before_delete);
+}
+
+#[test]
+fn data_config_rejects_unknown_fields() {
+    let toml = r"
+[data]
+surprise = true
+";
+
+    let err = toml::from_str::<AletheiaConfig>(toml)
+        .expect_err("unknown data field should fail deserialization");
+    assert!(
+        err.to_string().contains("unknown field"),
+        "error should mention unknown field: {err}"
+    );
+}
+
+#[test]
 fn minimal_yaml_parses() {
     let yaml = r#"{"agents": {"list": []}}"#;
     let config: AletheiaConfig = serde_json::from_str(yaml).expect("parse minimal");
@@ -538,8 +573,16 @@ fn resolve_thinking_override() {
 fn signal_account_defaults() {
     let account = SignalAccountConfig::default();
     assert!(
+        account.name.is_none(),
+        "signal account display name should default to unset"
+    );
+    assert!(
         account.enabled,
         "signal account should be enabled by default"
+    );
+    assert!(
+        account.account.is_none(),
+        "signal account phone should default to unset"
     );
     assert_eq!(
         account.http_host, "localhost",
@@ -550,8 +593,58 @@ fn signal_account_defaults() {
         "signal account default port should be 8080"
     );
     assert!(
+        account.cli_path.is_none(),
+        "signal-cli path should default to auto-detect"
+    );
+    assert!(
         account.auto_start,
         "signal account should auto-start by default"
+    );
+}
+
+#[test]
+fn signal_account_documented_fields_parse_strictly() {
+    let toml = concat!(
+        "\n",
+        "[channels.signal.accounts.default]\n",
+        "name = \"Primary Signal\"\n",
+        "enabled = true\n",
+        "account = \"+15551234567\"\n", // pii-allow: synthetic Signal test number
+        "http_host = \"localhost\"\n",
+        "http_port = 8081\n",
+        "cli_path = \"/usr/bin/signal-cli\"\n",
+        "auto_start = false\n",
+    );
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse Signal account config");
+    let account = config
+        .channels
+        .signal
+        .accounts
+        .get("default")
+        .expect("default Signal account");
+
+    assert_eq!(account.name.as_deref(), Some("Primary Signal"));
+    assert_eq!(account.account.as_deref(), Some("+15551234567")); // pii-allow: synthetic Signal test number
+    assert_eq!(account.http_host, "localhost");
+    assert_eq!(account.http_port, 8081);
+    assert_eq!(
+        account.cli_path.as_deref(),
+        Some(std::path::Path::new("/usr/bin/signal-cli"))
+    );
+    assert!(!account.auto_start);
+}
+
+#[test]
+fn signal_account_rejects_unknown_fields() {
+    let toml = r"
+[channels.signal.accounts.default]
+surprise = true
+";
+    let err = toml::from_str::<AletheiaConfig>(toml)
+        .expect_err("unknown Signal account field should fail deserialization");
+    assert!(
+        err.to_string().contains("unknown field"),
+        "error should mention unknown field: {err}"
     );
 }
 

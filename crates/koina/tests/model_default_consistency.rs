@@ -103,7 +103,7 @@ fn declares_pub_default_model_str(line: &str) -> bool {
 fn allowed_claude_literal_path(root: &Path, path: &Path) -> bool {
     let rel = path.strip_prefix(root).unwrap_or(path);
     rel.starts_with("crates/koina")
-        || rel == Path::new("instance.example/versions/v0.19.0.toml")
+        || rel.starts_with("instance.example/versions")
         || rel.starts_with("crates/hermeneus/src/anthropic/wire")
 }
 

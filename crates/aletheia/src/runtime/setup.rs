@@ -1,6 +1,7 @@
 // kanon:ignore RUST/file-too-long — setup factories are cohesive initialization helpers; no natural split point
 //! Setup helpers: factory functions for providers, registries, and channels.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use snafu::prelude::*;
@@ -685,11 +686,42 @@ pub(super) fn build_signal_provider(
         if !account_cfg.enabled {
             continue;
         }
+        let Some(provider_account_id) = signal_provider_account_id(account_id, account_cfg) else {
+            warn!(
+                account = %account_id,
+                "Signal account config has an empty account field; skipping account"
+            );
+            continue;
+        };
+        let cli_path = resolve_signal_cli_path(account_cfg.cli_path.as_deref());
+        if account_cfg.cli_path.is_some() && cli_path.is_none() {
+            warn!(
+                account = %account_id,
+                display_name = %signal_account_display_name(account_id, account_cfg),
+                "configured signal-cli path is unavailable; skipping Signal account"
+            );
+            continue;
+        }
+        if account_cfg.cli_path.is_none() && cli_path.is_none() {
+            tracing::debug!(
+                account = %account_id,
+                "signal-cli not found on PATH; assuming the JSON-RPC daemon is managed externally"
+            );
+        }
+        let cli_path_label = cli_path
+            .as_ref()
+            .map_or_else(|| "external".to_owned(), |path| path.display().to_string());
         let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port); // SAFE: signal-cli daemon, defaults to localhost
         match SignalClient::with_timeouts(&base_url, rpc_timeout, health_timeout, receive_timeout) {
             Ok(client) => {
-                provider.add_account(account_id.clone(), client, account_cfg.auto_start);
-                info!(account = %account_id, auto_start = account_cfg.auto_start, "signal account added");
+                provider.add_account(provider_account_id, client, account_cfg.auto_start);
+                info!(
+                    account = %account_id,
+                    display_name = %signal_account_display_name(account_id, account_cfg),
+                    cli_path = %cli_path_label,
+                    auto_start = account_cfg.auto_start,
+                    "signal account added"
+                );
             }
             Err(e) => {
                 warn!(account = %account_id, error = %e, "failed to CREATE signal client");
@@ -698,6 +730,45 @@ pub(super) fn build_signal_provider(
     }
 
     Some(Arc::new(provider))
+}
+
+fn signal_provider_account_id(
+    account_id: &str,
+    account_cfg: &taxis::config::SignalAccountConfig,
+) -> Option<String> {
+    match account_cfg.account.as_deref() {
+        Some(account) if account.trim().is_empty() => None,
+        Some(account) => Some(account.to_owned()),
+        None => Some(account_id.to_owned()),
+    }
+}
+
+fn signal_account_display_name<'a>(
+    account_id: &'a str,
+    account_cfg: &'a taxis::config::SignalAccountConfig,
+) -> &'a str {
+    account_cfg
+        .name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(account_id)
+}
+
+fn resolve_signal_cli_path(configured: Option<&Path>) -> Option<PathBuf> {
+    match configured {
+        Some(path) if path.as_os_str().is_empty() => None,
+        Some(path) if path.is_file() => Some(path.to_path_buf()),
+        Some(path) if path.components().count() == 1 => find_on_path(path),
+        Some(_) => None,
+        None => find_on_path(Path::new("signal-cli")),
+    }
+}
+
+fn find_on_path(command: &Path) -> Option<PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    std::env::split_paths(&path_var)
+        .map(|dir| dir.join(command))
+        .find(|candidate| candidate.is_file())
 }
 
 pub(super) fn build_matrix_provider(
@@ -857,6 +928,7 @@ mod tests {
     use std::pin::Pin;
 
     use agora::types::{ChannelCapabilities, InboundMessage, ProbeResult, SendParams, SendResult};
+    use taxis::config::{MessagingConfig, SignalAccountConfig, SignalConfig};
     use tokio::sync::mpsc;
     use tokio::task::JoinSet;
 
@@ -931,6 +1003,56 @@ mod tests {
         assert!(message.contains("failed to register channel provider 'signal'"));
         let source = error.source().expect("duplicate channel source");
         assert!(source.to_string().contains("duplicate channel: signal"));
+    }
+
+    #[test]
+    fn build_signal_provider_uses_configured_signal_account() {
+        let mut signal = SignalConfig::default();
+        signal.accounts.insert(
+            "default".to_owned(),
+            SignalAccountConfig {
+                name: Some("Primary Signal".to_owned()),
+                account: Some("+15551234567".to_owned()), // pii-allow: synthetic Signal test number
+                cli_path: Some(std::env::current_exe().expect("current test binary path")),
+                ..SignalAccountConfig::default()
+            },
+        );
+
+        let provider = build_signal_provider(&signal, &MessagingConfig::default())
+            .expect("Signal provider should build");
+        let debug = format!("{provider:?}");
+
+        assert!(
+            debug.contains("+15551234567"), // pii-allow: synthetic Signal test number
+            "configured Signal account should become the provider account: {debug}"
+        );
+        assert!(
+            !debug.contains("default_account: Some(\"default\")"),
+            "provider should not send the account label as the signal-cli account: {debug}"
+        );
+    }
+
+    #[test]
+    fn build_signal_provider_skips_bad_configured_cli_path() {
+        let mut signal = SignalConfig::default();
+        signal.accounts.insert(
+            "default".to_owned(),
+            SignalAccountConfig {
+                cli_path: Some(PathBuf::from(
+                    "/definitely/missing/aletheia-test-signal-cli",
+                )),
+                ..SignalAccountConfig::default()
+            },
+        );
+
+        let provider = build_signal_provider(&signal, &MessagingConfig::default())
+            .expect("Signal provider should still build");
+        let debug = format!("{provider:?}");
+
+        assert!(
+            debug.contains("accounts: []"),
+            "bad configured cli_path should keep the account out of the provider: {debug}"
+        );
     }
 
     #[test]
