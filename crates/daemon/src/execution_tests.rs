@@ -780,7 +780,7 @@ async fn self_audit_does_not_emit_instinct_patterns_findings() {
         report
             .findings
             .iter()
-            .all(|f| f.check_kind != crate::prosoche_audit::ProsocheCheckKind::InstinctPatterns),
+            .all(|f| f.source != "prosoche::InstinctPatternsCheck"),
         "default runner must not include instinct-pattern stub findings; got: {:?}",
         report.findings
     );

@@ -1311,8 +1311,8 @@ impl<'a> BootstrapAssembler<'a> {
                     // warn so operators know a regeneration is needed.
                     if let Some((crate_path, expected_hash)) = crate_hash_index.get(crate_name) {
                         let crate_dir = self.oikos.root().join(crate_path);
-                        match compute_crate_source_hash(&crate_dir).await {
-                            Some(actual_hash) if actual_hash != *expected_hash => {
+                        if let Some(actual_hash) = compute_crate_source_hash(&crate_dir).await {
+                            if actual_hash != *expected_hash {
                                 warn!(
                                     section = format!("_llm/{}/{name}", l3_level.path),
                                     crate_name,
@@ -1320,15 +1320,6 @@ impl<'a> BootstrapAssembler<'a> {
                                      (regenerate with: uv run scripts/llm-extract-l3.py)"
                                 );
                                 continue;
-                            }
-                            None => {
-                                // Could not compute hash (missing crate dir or read
-                                // error). Treat as valid so the L3 content is still
-                                // injected; the warning already fired inside
-                                // compute_crate_source_hash.
-                            }
-                            Some(_) => {
-                                // Hash matches — proceed to inject.
                             }
                         }
                     }

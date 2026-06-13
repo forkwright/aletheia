@@ -95,8 +95,8 @@ impl From<DataValue> for JsonValue {
 mod tests {
     use super::*;
 
-    /// Regression: DataValue::Bot previously panicked during JSON export.
-    /// Verified fix: Bot must map to JsonValue::Null, not unreachable.
+    /// Regression: `DataValue::Bot` previously panicked during JSON export.
+    /// Verified fix: Bot must map to `JsonValue::Null`, not unreachable.
     #[test]
     fn data_value_bot_exports_as_null_not_panic() {
         assert_eq!(JsonValue::from(DataValue::Bot), JsonValue::Null);

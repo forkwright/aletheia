@@ -397,6 +397,10 @@ async fn assemble_llm_stale_hash_skips_section() {
     // from the all-zeros hash in the manifest).
     let crate_src = dir.path().join("crates/nous/src");
     fs::create_dir_all(&crate_src).expect("create crate src dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap test writes crate fixtures to a temp directory"
+    )]
     fs::write(crate_src.join("lib.rs"), source_content).expect("write lib.rs");
 
     let assembler = BootstrapAssembler::new(&oikos).with_llm_recipe(LlmRecipe::ColdStart);
@@ -450,6 +454,10 @@ async fn assemble_llm_valid_hash_injects_section() {
     // Write the matching source file so the computed hash equals valid_hash.
     let crate_src = dir.path().join("crates/nous/src");
     fs::create_dir_all(&crate_src).expect("create crate src dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap test writes crate fixtures to a temp directory"
+    )]
     fs::write(crate_src.join("lib.rs"), source_content).expect("write lib.rs");
 
     let assembler = BootstrapAssembler::new(&oikos).with_llm_recipe(LlmRecipe::ColdStart);

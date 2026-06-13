@@ -555,6 +555,7 @@ async fn required_section_over_budget_debt_tracked() {
     let assembler = BootstrapAssembler::new(&oikos);
     // bootstrap_cap of 10 tokens is far too small for large_soul
     let mut budget = TokenBudget::new(200_000, 0.6, 16_384, 10);
+    let expected_prefix = "x".repeat(20);
 
     let result = assembler
         .assemble("test", &mut budget)
@@ -562,7 +563,7 @@ async fn required_section_over_budget_debt_tracked() {
         .expect("assemble should succeed even when Required section overruns budget");
 
     assert!(
-        result.system_prompt.contains(&large_soul[..20]),
+        result.system_prompt.contains(&expected_prefix),
         "Required SOUL.md must appear in system prompt despite budget exhaustion"
     );
     assert!(
@@ -588,13 +589,10 @@ async fn file_ref_expansion_debt_carried_into_budget() {
     // the debt visible in adjusted_history_budget.
     let dir = TempDir::new().expect("create temp dir");
     let root = dir.path();
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
-    )]
     fs::create_dir_all(root.join("nous/test")).expect("create nous/test dir");
     // large_content is ~500 tokens at 4 chars/token
     let large_content = "y".repeat(2000);
+    let expected_prefix = "y".repeat(20);
     #[expect(
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
@@ -607,15 +605,7 @@ async fn file_ref_expansion_debt_carried_into_budget() {
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
     )]
     fs::write(root.join("nous/test/SOUL.md"), soul_content).expect("write SOUL.md");
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
-    )]
     fs::create_dir_all(root.join("shared")).expect("create shared dir");
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
-    )]
     fs::create_dir_all(root.join("theke")).expect("create theke dir");
 
     let oikos = Oikos::from_root(root);
@@ -630,7 +620,7 @@ async fn file_ref_expansion_debt_carried_into_budget() {
         .expect("assemble should succeed with file-ref expansion");
 
     assert!(
-        result.system_prompt.contains(&large_content[..20]),
+        result.system_prompt.contains(&expected_prefix),
         "expanded file-ref content must appear in the assembled system prompt"
     );
     // The expanded prompt is ~500 tokens; pre-expansion consumed was much less.
