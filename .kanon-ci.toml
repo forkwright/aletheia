@@ -31,11 +31,19 @@
 # `<canonical-state-doc>/phases/aletheia-05e-forge-cutover.md`.
 
 [pipeline]
-stages = ["cargo fmt", "cargo check", "cargo clippy", "cargo nextest", "kanon lint writing", "kanon lint workflow", "dokimasia"]
+stages = ["cargo fmt", "cargo publish policy", "proskenion flake", "cargo check", "cargo clippy", "cargo nextest", "kanon lint writing", "kanon lint workflow", "dokimasia"]
 
 [stages."cargo fmt"]
 cmd = "cargo fmt --all -- --check"
 timeout_secs = 300
+
+[stages."cargo publish policy"]
+cmd = "scripts/check-cargo-publish-policy.py"
+timeout_secs = 60
+
+[stages."proskenion flake"]
+cmd = "scripts/check-proskenion-flake.py"
+timeout_secs = 60
 
 [stages."cargo check"]
 cmd = "cargo check --workspace --features test-core --all-targets --jobs 8"

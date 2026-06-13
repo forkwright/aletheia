@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+publish = false
 
 # WHY: token estimation runs on every system prompt assembly and history
 # truncation; surface regressions early.

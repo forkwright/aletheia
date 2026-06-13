@@ -39,6 +39,15 @@ cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml
 cargo build -p proskenion --manifest-path crates/theatron/proskenion/Cargo.toml --release
 ```
 
+For a Nix development environment, allow direnv or enter the shell directly:
+
+```bash
+direnv allow
+nix develop .#proskenion
+```
+
+The flake package and shell both target the standalone `proskenion` manifest.
+
 ## Contract and smoke checks
 
 The desktop crate is outside the main workspace, so acceptance uses two focused checks instead of a full GUI driver:
