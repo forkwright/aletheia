@@ -283,13 +283,13 @@ pub(crate) async fn execute_command(app: &mut App) {
             app.scroll_to_bottom();
         }
         "compact" => {
-            execute_compact(app).await;
+            execute_compact(app);
         }
         "recall" | "r" => {
             if args.is_empty() {
                 app.viewport.error_toast = Some(ErrorToast::new("Usage: :recall <query>".into()));
             } else {
-                execute_recall(app, args).await;
+                execute_recall(app, args);
             }
         }
         "model" => {
@@ -368,52 +368,16 @@ fn execute_model(app: &mut App) {
     }
 }
 
-async fn execute_compact(app: &mut App) {
-    let session_id = match &app.dashboard.focused_session_id {
-        Some(id) => id.clone(),
-        None => {
-            app.viewport.error_toast = Some(ErrorToast::new("No active session to compact".into()));
-            return;
-        }
-    };
-
-    let client = app.client.clone();
-    match client.compact(&session_id).await {
-        Ok(()) => {
-            app.viewport.error_toast = Some(ErrorToast::new("Distillation triggered".into()));
-        }
-        Err(e) => {
-            app.viewport.error_toast = Some(ErrorToast::new(format!("Compact failed: {e}")));
-        }
-    }
+fn execute_compact(app: &mut App) {
+    app.viewport.error_toast = Some(ErrorToast::new(
+        "Session distillation API not available - pending pylon support.".into(),
+    ));
 }
 
-async fn execute_recall(app: &mut App, query: &str) {
-    let nous_id = match &app.dashboard.focused_agent {
-        Some(id) => id.clone(),
-        None => {
-            app.viewport.error_toast = Some(ErrorToast::new("No agent focused for recall".into()));
-            return;
-        }
-    };
-
-    let client = app.client.clone();
-    let query = query.to_string();
-    match client.recall(&nous_id, &query).await {
-        Ok(result) => {
-            // SAFETY: sanitized at ingestion: recall results from memory API.
-            let clean = sanitize_for_display(&result).into_owned();
-            let display = if clean.len() > 200 {
-                format!("{}...", safe_truncate(&clean, 200))
-            } else {
-                clean
-            };
-            app.viewport.error_toast = Some(ErrorToast::new(display));
-        }
-        Err(e) => {
-            app.viewport.error_toast = Some(ErrorToast::new(format!("Recall failed: {e}")));
-        }
-    }
+fn execute_recall(app: &mut App, _query: &str) {
+    app.viewport.error_toast = Some(ErrorToast::new(
+        "Semantic recall API not available - pending pylon support.".into(),
+    ));
 }
 
 async fn execute_rename(app: &mut App, name: &str) {
@@ -499,17 +463,6 @@ async fn execute_unarchive(app: &mut App) {
             app.viewport.error_toast = Some(ErrorToast::new(format!("Unarchive failed: {e}")));
         }
     }
-}
-
-fn safe_truncate(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    s.get(..end).unwrap_or(s)
 }
 
 pub(crate) fn execute_export_from_msg(app: &mut App) {
@@ -723,33 +676,5 @@ mod tests {
             app.interaction.command_palette.input.starts_with("quit")
                 || !app.interaction.command_palette.suggestions.is_empty()
         );
-    }
-
-    #[test]
-    fn safe_truncate_ascii() {
-        assert_eq!(safe_truncate("hello", 3), "hel");
-        assert_eq!(safe_truncate("hello", 10), "hello");
-        assert_eq!(safe_truncate("hello", 5), "hello");
-    }
-
-    #[test]
-    fn safe_truncate_multibyte() {
-        let s = "hello\u{00e9}world"; // e-accent is 2 bytes
-        let result = safe_truncate(s, 6);
-        // Should not split the multi-byte char
-        assert!(result.is_char_boundary(result.len()));
-        assert_eq!(result, "hello");
-    }
-
-    #[test]
-    fn safe_truncate_empty() {
-        assert_eq!(safe_truncate("", 5), "");
-    }
-
-    #[test]
-    fn safe_truncate_emoji() {
-        let s = "\u{1F600}test"; // emoji is 4 bytes
-        let result = safe_truncate(s, 2);
-        assert!(result.is_char_boundary(result.len()));
     }
 }

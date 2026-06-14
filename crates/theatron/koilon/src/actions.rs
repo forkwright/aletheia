@@ -1,5 +1,4 @@
-/// App action methods: message sending, tab completion, scroll state, cursor helpers.
-use tracing::Instrument;
+//! App action methods: message sending, tab completion, scroll state, cursor helpers.
 
 /// Maximum number of per-agent scroll states retained in memory.
 /// Entries beyond this cap are pruned to agents currently in the active roster.
@@ -19,7 +18,7 @@ use skene::api::streaming;
 
 use crate::app::App;
 use crate::state::virtual_scroll::estimate_message_height;
-use crate::state::{ChatMessage, MessageKind, SavedScrollState, TabCompletion};
+use crate::state::{ChatMessage, MessageKind, QueuedMessage, SavedScrollState, TabCompletion};
 
 impl App {
     #[tracing::instrument(skip(self, text), fields(agent = ?self.dashboard.focused_agent))]
@@ -30,20 +29,9 @@ impl App {
         };
 
         if self.connection.active_turn_id.is_some() {
-            if let Some(ref session_id) = self.dashboard.focused_session_id {
-                let client = self.client.clone();
-                let session_id = session_id.clone();
-                let text = text.to_string();
-                let span = tracing::info_span!("queue_message", %session_id);
-                self.background_tasks.spawn(
-                    async move {
-                        if let Err(e) = client.queue_message(&session_id, &text).await {
-                            tracing::error!("failed to queue message: {e}");
-                        }
-                    }
-                    .instrument(span),
-                );
-            }
+            self.interaction.queued_messages.push(QueuedMessage {
+                text: text.to_string(),
+            });
             return;
         }
 

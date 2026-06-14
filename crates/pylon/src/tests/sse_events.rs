@@ -172,6 +172,8 @@ fn tui_event_message_complete_type() {
             output_tokens: 5,
             cache_read_tokens: 0,
             cache_write_tokens: 0,
+            stop_reason: "end_turn".to_owned(),
+            error: None,
         },
     };
     assert_eq!(event.event_type(), "message_complete");
@@ -215,6 +217,8 @@ fn tui_event_message_complete_serialization() {
             output_tokens: 50,
             cache_read_tokens: 10,
             cache_write_tokens: 20,
+            stop_reason: "end_turn".to_owned(),
+            error: None,
         },
     };
     let json = serde_json::to_value(&event).unwrap();
@@ -225,6 +229,8 @@ fn tui_event_message_complete_serialization() {
     assert_eq!(outcome["tool_calls"], 2);
     assert_eq!(outcome["cache_read_tokens"], 10);
     assert_eq!(outcome["cache_write_tokens"], 20);
+    assert_eq!(outcome["stop_reason"], "end_turn");
+    assert!(outcome.get("error").is_none());
 }
 
 #[test]
