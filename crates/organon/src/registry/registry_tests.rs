@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use koina::id::{NousId, SessionId};
 
 use super::*;
+use crate::surface::ENABLE_TOOL;
 use crate::types::{
     ApprovalRequirement, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
     ToolCallCapabilityRule,
@@ -342,7 +343,7 @@ fn filtered_tools_respects_auto_activate() {
     )
     .expect("register");
     reg.register(
-        make_def_with_activate("enable_tool", ToolCategory::System, true),
+        make_def_with_activate(ENABLE_TOOL, ToolCategory::System, true),
         e3,
     )
     .expect("register");
@@ -355,7 +356,7 @@ fn filtered_tools_respects_auto_activate() {
         "expected names.contains(&\"read\") to be true"
     );
     assert!(
-        names.contains(&"enable_tool"),
+        names.contains(&ENABLE_TOOL),
         "expected names.contains(&\"enable_tool\") to be true"
     );
     assert!(
@@ -399,7 +400,7 @@ fn filtered_tools_always_includes_enable_tool() {
     let mut reg = ToolRegistry::new();
     let (e1, _) = mock_executor("ok");
     reg.register(
-        make_def_with_activate("enable_tool", ToolCategory::System, false),
+        make_def_with_activate(ENABLE_TOOL, ToolCategory::System, false),
         e1,
     )
     .expect("register");
@@ -408,7 +409,7 @@ fn filtered_tools_always_includes_enable_tool() {
     let tools = reg.to_hermeneus_tools_filtered(&active);
     assert_eq!(tools.len(), 1, "expected tools.len() to equal 1");
     assert_eq!(
-        tools[0].name, "enable_tool",
+        tools[0].name, ENABLE_TOOL,
         "expected tools[0].name to equal \"enable_tool\""
     );
 }
@@ -637,7 +638,7 @@ fn lazy_tool_catalog_excludes_auto_activate_and_enable_tool() {
     )
     .expect("register");
     reg.register(
-        make_def_with_activate("enable_tool", ToolCategory::System, true),
+        make_def_with_activate(ENABLE_TOOL, ToolCategory::System, true),
         e3,
     )
     .expect("register");
