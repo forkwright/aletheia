@@ -372,11 +372,37 @@ fn default_max_tool_result_bytes() -> u32 {
     koina::defaults::MAX_TOOL_RESULT_BYTES
 }
 
+fn resolve_consecutive_mistake_limit(raw: Option<&str>) -> u32 {
+    const VAR: &str = "KOINA_CONSECUTIVE_MISTAKE_LIMIT";
+    const DEFAULT: u32 = koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT;
+
+    match raw {
+        Some(s) => {
+            if let Ok(v) = s.parse::<u32>() {
+                v
+            } else {
+                tracing::warn!(
+                    env_var = VAR,
+                    value = %s,
+                    fallback = DEFAULT,
+                    "ignoring malformed {}='{}'; using default {}",
+                    VAR,
+                    s,
+                    DEFAULT
+                );
+                DEFAULT
+            }
+        }
+        None => DEFAULT,
+    }
+}
+
 fn default_consecutive_mistake_limit() -> u32 {
-    std::env::var("KOINA_CONSECUTIVE_MISTAKE_LIMIT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT)
+    resolve_consecutive_mistake_limit(
+        std::env::var("KOINA_CONSECUTIVE_MISTAKE_LIMIT")
+            .ok()
+            .as_deref(),
+    )
 }
 
 impl Default for NousConfig {
@@ -680,5 +706,24 @@ mod tests {
             config.generation.prosoche_model,
             koina::models::task_role_default(koina::models::TaskRole::Prosoche)
         );
+    }
+
+    #[test]
+    fn consecutive_mistake_limit_env_override_honored_when_valid() {
+        assert_eq!(resolve_consecutive_mistake_limit(Some("7")), 7);
+        assert_eq!(resolve_consecutive_mistake_limit(Some("0")), 0);
+    }
+
+    #[test]
+    fn consecutive_mistake_limit_env_override_falls_back_when_malformed() {
+        let default = koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT;
+        assert_eq!(resolve_consecutive_mistake_limit(None), default);
+        assert_eq!(resolve_consecutive_mistake_limit(Some("")), default);
+        assert_eq!(
+            resolve_consecutive_mistake_limit(Some("not-a-number")),
+            default
+        );
+        assert_eq!(resolve_consecutive_mistake_limit(Some("-3")), default);
+        assert_eq!(resolve_consecutive_mistake_limit(Some(" 5 ")), default);
     }
 }
