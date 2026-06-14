@@ -281,6 +281,37 @@ are not accepted by the strict config schema: `dm_policy`, `group_policy`,
 routing and message handling are controlled by the channel bindings (see
 [bindings](#bindings)) and by signal-cli's own settings.
 
+### channels.matrix
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable Matrix channel |
+| `accounts` | map<string, account> | `{}` | Named Matrix account configs |
+
+### channels.matrix.accounts.*
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable this account |
+| `homeserver` | string | `""` | Matrix homeserver base URL |
+| `access_token_env` | string | `""` | Environment variable holding the Matrix access token |
+| `user_id` | string | -- | Matrix user ID (used to ignore echoed self messages) |
+| `auto_start` | bool | `true` | Auto-start `/sync` receive loop on server boot |
+| `initial_since` | string | -- | Optional initial `/sync` since token |
+
+```toml
+[channels.matrix]
+enabled = true
+
+[channels.matrix.accounts.default]
+homeserver = "https://matrix.example.org"
+access_token_env = "ALETHEIA_MATRIX_TOKEN"
+user_id = "@aletheia:example.org"
+auto_start = true
+```
+
+The Matrix access token is read from the environment variable named by `access_token_env` at server startup. The token is never written to the config file or logs.
+
 ---
 
 ## bindings

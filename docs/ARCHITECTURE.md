@@ -59,7 +59,7 @@ aletheia
 │   ├── episteme   -  knowledge pipeline: extraction, recall, consolidation, embeddings
 │   └── krites     -  embedded Datalog engine + HNSW vectors (mneme-engine feature gate)
 ├── hermeneus      -  LLM provider registry, fallback chains, loop guard, credentials
-├── organon        -  tool registry + 67 built-in tools (default) + receipt ledger
+├── organon        -  tool registry + built-in tools (see `crates/organon/src/builtins/`) + receipt ledger
 ├── nous           -  agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia        -  planning / project orchestration
 ├── pylon          -  Axum HTTP gateway, SSE streaming, auth enforcement
@@ -154,7 +154,7 @@ generated inventory is `_llm/L1-workspace.md`.
 | `krites` | `crates/krites` | Embedded Datalog and graph query engine with HNSW support | eidos |
 | `mneme` | `crates/mneme` | Thin facade re-exporting eidos, graphe, episteme, krites | eidos, graphe, episteme, krites |
 | `hermeneus` | `crates/hermeneus` | LLM provider registry, fallback chains, token redaction, provider trait, loop guard | koina, taxis |
-| `organon` | `crates/organon` | Tool registry, tool definitions, tags, HMAC receipts, 67 built-in tools (default), sandbox | koina, hermeneus |
+| `organon` | `crates/organon` | Tool registry, tool definitions, tags, HMAC receipts, built-in tools, sandbox | koina, hermeneus |
 | `symbolon` | `crates/symbolon` | JWT tokens, password hashing, admin auth facade, RBAC policies | koina |
 | `melete` | `crates/melete` | Context distillation, compression strategies, token budget management | hermeneus |
 | `agora` | `crates/agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |

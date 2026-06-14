@@ -12,7 +12,7 @@
 
 ## Runtime
 - **hermeneus** - LLM client: streaming, retries, health tracking
-- **organon** - tool registry, sandbox, HMAC receipts, 67 built-in tools (default)
+- **organon** - tool registry, sandbox, HMAC receipts, built-in tools (see ARCHITECTURE.md for count)
 - **melete** - context distillation / summarization
 - **thesauros** - domain pack loader
 - **nous** - agent runtime: actor model, working memory, turn pipeline, per-stage timeouts

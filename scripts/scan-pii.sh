@@ -44,7 +44,10 @@ DEFAULT_ALLOWLIST=(
     '^scripts/scan-pii\.sh$'
     '^tests/pii-scanner/'
     '^docs/specs/'
-    '^docs/CHANGELOG\.md$'
+    # WHY: release-please generates CHANGELOG.md at the repo root from merged PR
+    # titles; historical entries reflect already-public commit subjects and cannot
+    # be rewritten without re-running release-please. The root path is canonical.
+    '^CHANGELOG\.md$'
     '^docs/CONFIGURATION\.md$'
     '^docs/QUICKSTART\.md$'
     '^docs/RUNBOOK\.md$'

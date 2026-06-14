@@ -1,0 +1,36 @@
+name: PR Title PII Guard
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title-guard:
+    name: fleet hostname guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check PR title for fleet hostnames
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # WHY: fleet hostnames (menos/metis/verda/nomos) reach the public CHANGELOG
+          # via release-please, which generates entries from merged PR titles.
+          # Catching them here prevents hostname leakage before merge.
+          PATTERN='\b(menos|metis|verda|nomos)\b'
+          if echo "${PR_TITLE}" | grep -qiE "${PATTERN}"; then
+            echo "pr-title-pii: PR title contains a private fleet hostname." >&2
+            echo "  Title: ${PR_TITLE}" >&2
+            echo "  Matched pattern: ${PATTERN}" >&2
+            echo "  Use a neutral description that does not reference internal machine names." >&2
+            exit 1
+          fi
+          echo "pr-title-pii: clean"

@@ -21,4 +21,4 @@
 
 ## Recent changes
 
-Shared TestHarness and a 15-scenario substrate canary suite cover operator-independent runtime claims.
+Shared TestHarness and a 25-scenario substrate canary suite cover operator-independent runtime claims.
