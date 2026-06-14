@@ -421,6 +421,7 @@ fn execution_result_serde_roundtrips_through_json() {
     let original = ExecutionResult {
         success: true,
         output: Some("ok".to_owned()),
+        errors: 0,
     };
     let json = serde_json::to_string(&original).expect("serialize ExecutionResult");
     let back: ExecutionResult = serde_json::from_str(&json).expect("deserialize ExecutionResult");
@@ -440,6 +441,9 @@ fn task_status_serde_roundtrips_through_json() {
         consecutive_failures: 0,
         in_flight: false,
         last_error: None,
+        last_errors: 0,
+        available: true,
+        reason: None,
     };
     let json = serde_json::to_string(&original).expect("serialize TaskStatus");
     let back: TaskStatus = serde_json::from_str(&json).expect("deserialize TaskStatus");

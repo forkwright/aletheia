@@ -81,6 +81,10 @@ fn validate_workspace_relative_path(path: &str) -> Result<()> {
     Ok(())
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "CLI flags — each bool is a distinct switch"
+)]
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ExportArgs {
     /// Agent (nous) ID to export
@@ -101,6 +105,10 @@ pub(crate) struct ExportArgs {
     /// Overwrite existing output file without prompting
     #[arg(long)]
     pub force: bool,
+    /// Allow the export to succeed when a populated data slot (e.g. typed
+    /// knowledge) cannot be enumerated. The output file is marked as partial.
+    #[arg(long)]
+    pub allow_partial: bool,
 }
 
 #[expect(
@@ -299,9 +307,10 @@ struct KnowledgeImportCounts {
 
 /// Enumerate the agent's typed knowledge from the live store.
 ///
-/// Returns `None` when the `recall` feature is disabled or when the
-/// knowledge store on disk is empty/unavailable — the export still succeeds
-/// without typed knowledge, the slot just stays unset.
+/// Returns `None` when the `recall` feature is disabled or when no knowledge
+/// store exists on disk for this agent. Returns an error when a store exists
+/// but cannot be opened or enumerated, so callers can decide whether to fail
+/// or produce a partial export.
 #[cfg(feature = "recall")]
 fn export_knowledge(
     oikos: &Oikos,
@@ -316,9 +325,13 @@ fn export_knowledge(
     }
 
     let config = knowledge_config_for_oikos(oikos);
-    let Ok(store) = KnowledgeStore::open_fjall(&knowledge_path, config) else {
-        return Ok(None);
-    };
+    let store =
+        KnowledgeStore::open_fjall(&knowledge_path, config).with_whatever_context(|_| {
+            format!(
+                "failed to open knowledge store at {}",
+                knowledge_path.display()
+            )
+        })?;
 
     let facts: Vec<mneme::knowledge::Fact> = store
         .list_all_facts(i64::MAX)
@@ -344,10 +357,6 @@ fn export_knowledge(
     let relationships = store
         .list_relationships_between_entities(&entity_ids)
         .with_whatever_context(|_| format!("failed to list relationships for '{nous_id}'"))?;
-
-    if facts.is_empty() && entities.is_empty() && relationships.is_empty() {
-        return Ok(None);
-    }
 
     Ok(Some(KnowledgeExport {
         facts,
@@ -531,7 +540,10 @@ fn print_import_summary(nous_id: &str, source: &Path, summary: &ImportSummary) {
     if summary.skipped_categories.is_empty() {
         println!("  Skipped: none");
     } else {
-        println!("  Skipped: {}", summary.skipped_categories.join(", "));
+        println!("  Skipped:");
+        for category in &summary.skipped_categories {
+            println!("    - {category}");
+        }
     }
 }
 
@@ -541,7 +553,8 @@ fn print_import_summary(nous_id: &str, source: &Path, summary: &ImportSummary) {
 )]
 pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
     use mneme::portability::{
-        AgentFile, ExportedMessage, ExportedNote, ExportedSession, ExportedUsageRecord, NousInfo,
+        AgentFile, ExportMetadata, ExportedMessage, ExportedNote, ExportedSession,
+        ExportedUsageRecord, NousInfo, OmittedSection, TruncationRecord,
     };
 
     let oikos = super::resolve_oikos(instance_root)?;
@@ -578,11 +591,14 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         Some(i64::try_from(args.max_messages).unwrap_or(i64::MAX))
     };
     let mut sessions = Vec::new();
+    let mut archived_skipped = 0usize;
+    let mut truncations: Vec<TruncationRecord> = Vec::new();
     for session in store
         .list_sessions(Some(&args.nous_id))
         .whatever_context("failed to list sessions")?
     {
         if !args.archived && session.status != SessionStatus::Active {
+            archived_skipped += 1;
             continue;
         }
 
@@ -604,6 +620,17 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
                 tool_name: msg.tool_name,
             })
             .collect();
+
+        if let Some(limit) = limit
+            && session.metrics.message_count > limit
+        {
+            truncations.push(TruncationRecord {
+                section: "session_messages".to_owned(),
+                item_id: Some(session.id.clone()),
+                limit: args.max_messages,
+                original: usize::try_from(session.metrics.message_count).ok(),
+            });
+        }
 
         let usage_records = store
             .get_usage_for_session(&session.id)
@@ -666,9 +693,42 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     // Facts/Entities/Relationships). Vectors + opaque graph (`memory`) are a
     // known v2 gap; the schema slots let them be closed without another
     // version bump.
-    let knowledge = export_knowledge(&oikos, &args.nous_id)?;
+    let mut omitted_sections: Vec<OmittedSection> = Vec::new();
+    if archived_skipped > 0 {
+        omitted_sections.push(OmittedSection {
+            section: "sessions".to_owned(),
+            reason: "archived_excluded".to_owned(),
+            count: Some(archived_skipped),
+        });
+    }
+
+    let knowledge = match export_knowledge(&oikos, &args.nous_id) {
+        Ok(k) => k,
+        Err(err) => {
+            if args.allow_partial {
+                eprintln!(
+                    "  WARN: typed knowledge omitted because the knowledge store \
+                     could not be opened. Re-run without --allow-partial to fail. \
+                     error={err}"
+                );
+                omitted_sections.push(OmittedSection {
+                    section: "knowledge".to_owned(),
+                    reason: "store_unavailable".to_owned(),
+                    count: None,
+                });
+                None
+            } else {
+                return Err(err);
+            }
+        }
+    };
 
     let exported_at = jiff::Timestamp::now().to_string();
+    let export_metadata = Some(ExportMetadata {
+        lossless: omitted_sections.is_empty() && truncations.is_empty(),
+        omitted_sections,
+        truncations,
+    });
     let agent_file = AgentFile {
         version: mneme::portability::AGENT_FILE_VERSION,
         exported_at: exported_at.clone(),
@@ -688,6 +748,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         sessions,
         memory: None,
         knowledge,
+        export_metadata,
     };
 
     let output = args
@@ -719,6 +780,38 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     println!("Exported agent '{}' to {}", args.nous_id, output.display());
     println!("  Workspace: {} files", agent_file.workspace.files.len());
     println!("  Sessions: {}", agent_file.sessions.len());
+    if let Some(k) = &agent_file.knowledge {
+        println!("  Facts: {}", k.facts.len());
+        println!("  Entities: {}", k.entities.len());
+        println!("  Relationships: {}", k.relationships.len());
+    }
+    if let Some(meta) = &agent_file.export_metadata {
+        if meta.lossless {
+            println!("  Export: lossless");
+        } else {
+            println!("  Export: PARTIAL");
+            for omitted in &meta.omitted_sections {
+                if let Some(count) = omitted.count {
+                    let unit = if count == 1 { "item" } else { "items" };
+                    println!(
+                        "  Omitted: {} ({}) — {} {}",
+                        omitted.section, omitted.reason, count, unit
+                    );
+                } else {
+                    println!("  Omitted: {} ({})", omitted.section, omitted.reason);
+                }
+            }
+            for trunc in &meta.truncations {
+                let original = trunc
+                    .original
+                    .map_or_else(String::new, |o| format!(" (was {o})"));
+                println!(
+                    "  Truncated: {} for {:?} to {}{}",
+                    trunc.section, trunc.item_id, trunc.limit, original
+                );
+            }
+        }
+    }
 
     Ok(())
 }
@@ -922,6 +1015,44 @@ fn preflight_agent_file(file: &mneme::portability::AgentFile) -> Result<()> {
     Ok(())
 }
 
+/// Report partial-export metadata before any filesystem or store mutation.
+///
+/// WHY(#5102/#4965): the import must not silently restore an export that the
+/// producer already marked as truncated or incomplete. Reporting happens after
+/// validation but before the first write so the operator can abort.
+fn report_partial_export(file: &mneme::portability::AgentFile) {
+    let Some(meta) = &file.export_metadata else {
+        return;
+    };
+    if meta.lossless {
+        return;
+    }
+
+    eprintln!("  WARN: importing a partial agent export.");
+    for omitted in &meta.omitted_sections {
+        if let Some(count) = omitted.count {
+            eprintln!(
+                "    Omitted section: {} — {} ({} items)",
+                omitted.section, omitted.reason, count
+            );
+        } else {
+            eprintln!(
+                "    Omitted section: {} — {}",
+                omitted.section, omitted.reason
+            );
+        }
+    }
+    for trunc in &meta.truncations {
+        let original = trunc
+            .original
+            .map_or_else(String::new, |o| format!(" (was {o})"));
+        eprintln!(
+            "    Truncated: {} for {:?} to {}{}",
+            trunc.section, trunc.item_id, trunc.limit, original
+        );
+    }
+}
+
 /// Name of the resume-marker file written inside the nous directory when a
 /// session import begins and removed when it completes successfully.
 ///
@@ -964,6 +1095,9 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     // leaving partial state on disk (no workspace files partially written,
     // no config half-updated, no orphaned session records).
     preflight_agent_file(&agent_file)?;
+
+    // WHY(#5102/#4965): validate/report partial sections before any mutation.
+    report_partial_export(&agent_file);
 
     let nous_id = args
         .target_id
@@ -1811,8 +1945,8 @@ mod tests {
     use std::fmt::Write as _;
 
     use mneme::portability::{
-        AgentFile, ExportedMessage, ExportedNote, ExportedSession, ExportedUsageRecord, NousInfo,
-        WorkspaceData,
+        AgentFile, ExportMetadata, ExportedMessage, ExportedNote, ExportedSession,
+        ExportedUsageRecord, NousInfo, OmittedSection, WorkspaceData,
     };
 
     use super::*;
@@ -2076,6 +2210,7 @@ mod tests {
             }],
             memory: None,
             knowledge: None,
+            export_metadata: None,
         }
     }
 
@@ -2161,6 +2296,7 @@ workspace = "nous/{agent_id}"
             max_messages: 0,
             compact: false,
             force: false,
+            allow_partial: false,
         };
         export_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
 
@@ -2218,6 +2354,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -2335,6 +2472,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -2453,6 +2591,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -2571,6 +2710,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -2637,6 +2777,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3172,6 +3313,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3315,6 +3457,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3373,6 +3516,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3513,6 +3657,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3545,6 +3690,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3582,6 +3728,7 @@ workspace = "nous/{agent_id}"
             sessions: vec![],
             memory: None,
             knowledge: None,
+            export_metadata: None,
         }
     }
 
@@ -3780,5 +3927,366 @@ workspace = "nous/{agent_id}"
         let history = store.get_history(&sessions[0].id, None).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].role, Role::User);
+    }
+
+    /// WHY(#5102/#4965): an existing knowledge store that cannot be opened must
+    /// fail the export by default; the operator can opt into a partial export
+    /// with `--allow-partial`.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn export_fails_on_unopenable_knowledge_store_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        // Create a file where the knowledge store directory should be.
+        let knowledge_path = knowledge_path_for_nous(&oikos, "alice");
+        std::fs::create_dir_all(knowledge_path.parent().unwrap()).unwrap();
+        std::fs::write(&knowledge_path, b"not a fjall database").unwrap();
+
+        let output = dir.path().join("alice.agent.json");
+        let result = export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: false,
+                force: false,
+                allow_partial: false,
+            },
+        );
+
+        assert!(
+            result.is_err(),
+            "default export must fail when knowledge store cannot be opened"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("knowledge store") || msg.contains("failed to open"),
+            "got: {msg}"
+        );
+        assert!(
+            !output.exists(),
+            "partial file must not be written when --allow-partial is not set"
+        );
+    }
+
+    /// WHY(#5102/#4965): `--allow-partial` lets the export succeed and records
+    /// the knowledge omission in machine-readable metadata.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn export_allows_partial_for_unopenable_knowledge_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let knowledge_path = knowledge_path_for_nous(&oikos, "alice");
+        std::fs::create_dir_all(knowledge_path.parent().unwrap()).unwrap();
+        std::fs::write(&knowledge_path, b"not a fjall database").unwrap();
+
+        let output = dir.path().join("alice.agent.json");
+        export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: false,
+                force: false,
+                allow_partial: true,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&output).unwrap()).unwrap();
+        let meta = exported
+            .export_metadata
+            .expect("partial export must include metadata");
+        assert!(
+            !meta.lossless,
+            "partial export must not claim to be lossless"
+        );
+        let knowledge_omitted = meta
+            .omitted_sections
+            .iter()
+            .any(|o| o.section == "knowledge" && o.reason == "store_unavailable");
+        assert!(knowledge_omitted, "metadata must record knowledge omission");
+    }
+
+    /// WHY(#5102/#4965): a missing knowledge store is different from an
+    /// unopenable store. It produces no knowledge slot but is still lossless.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn export_succeeds_when_knowledge_store_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let output = dir.path().join("alice.agent.json");
+        export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: false,
+                force: false,
+                allow_partial: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&output).unwrap()).unwrap();
+        assert!(
+            exported.knowledge.is_none(),
+            "missing store => no knowledge slot"
+        );
+        let meta = exported.export_metadata.expect("export metadata present");
+        assert!(
+            meta.lossless,
+            "missing knowledge store is not a partial export"
+        );
+        assert!(meta.omitted_sections.is_empty());
+    }
+
+    /// WHY(#5102/#4965): an empty knowledge store is explicitly represented as
+    /// an empty object so consumers can distinguish "present but empty" from
+    /// "never configured".
+    #[cfg(feature = "recall")]
+    #[test]
+    fn export_succeeds_when_knowledge_store_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let knowledge_path = knowledge_path_for_nous(&oikos, "alice");
+        std::fs::create_dir_all(knowledge_path.parent().unwrap()).unwrap();
+        mneme::knowledge_store::KnowledgeStore::open_fjall(
+            &knowledge_path,
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .unwrap();
+
+        let output = dir.path().join("alice.agent.json");
+        export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: false,
+                force: false,
+                allow_partial: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&output).unwrap()).unwrap();
+        let knowledge = exported
+            .knowledge
+            .expect("empty store => empty knowledge object");
+        assert!(knowledge.facts.is_empty());
+        assert!(knowledge.entities.is_empty());
+        assert!(knowledge.relationships.is_empty());
+        let meta = exported.export_metadata.expect("export metadata present");
+        assert!(meta.lossless, "empty knowledge store is still lossless");
+    }
+
+    /// WHY(#5102/#4965): a populated knowledge store is exported with counts
+    /// and marked lossless.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn export_records_typed_knowledge_counts() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+        seed_typed_knowledge(&source_oikos, "alice");
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&export_path).unwrap()).unwrap();
+        let knowledge = exported.knowledge.expect("knowledge present");
+        assert_eq!(knowledge.facts.len(), 1);
+        assert_eq!(knowledge.entities.len(), 2);
+        assert_eq!(knowledge.relationships.len(), 1);
+        let meta = exported.export_metadata.expect("metadata present");
+        assert!(meta.lossless);
+    }
+
+    /// WHY(#5102/#4965): `--max-messages` truncation is recorded in metadata.
+    #[test]
+    fn export_records_message_truncation_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+
+        let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
+        let session = store
+            .create_session("ses-trunc", "alice", "main", None, Some("mock-model"))
+            .unwrap();
+        for i in 0..5 {
+            store
+                .append_message(&session.id, Role::User, &format!("msg {i}"), None, None, 1)
+                .unwrap();
+        }
+        drop(store);
+
+        let output = dir.path().join("alice.agent.json");
+        export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 2,
+                compact: false,
+                force: false,
+                allow_partial: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&output).unwrap()).unwrap();
+        assert_eq!(exported.sessions[0].messages.len(), 2);
+        let meta = exported.export_metadata.expect("metadata present");
+        assert!(!meta.lossless);
+        let trunc = meta
+            .truncations
+            .iter()
+            .find(|t| t.section == "session_messages" && t.item_id.as_deref() == Some(&session.id))
+            .expect("truncation recorded");
+        assert_eq!(trunc.limit, 2);
+        assert_eq!(trunc.original, Some(5));
+    }
+
+    /// WHY(#5102/#4965): excluding archived sessions is no longer silent; the
+    /// export metadata records the omission.
+    #[test]
+    fn export_records_archived_session_omission() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+
+        let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
+        let active = store
+            .create_session("ses-active", "alice", "main", None, Some("mock-model"))
+            .unwrap();
+        store
+            .append_message(&active.id, Role::User, "active", None, None, 1)
+            .unwrap();
+        let archived = store
+            .create_session(
+                "ses-archived",
+                "alice",
+                "archived",
+                None,
+                Some("mock-model"),
+            )
+            .unwrap();
+        store
+            .append_message(&archived.id, Role::User, "archived", None, None, 1)
+            .unwrap();
+        store
+            .update_session_status(&archived.id, SessionStatus::Archived)
+            .unwrap();
+        drop(store);
+
+        let output = dir.path().join("alice.agent.json");
+        export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: false,
+                force: false,
+                allow_partial: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&output).unwrap()).unwrap();
+        assert_eq!(exported.sessions.len(), 1);
+        let meta = exported.export_metadata.expect("metadata present");
+        assert!(!meta.lossless);
+        let omitted = meta
+            .omitted_sections
+            .iter()
+            .find(|o| o.section == "sessions" && o.reason == "archived_excluded")
+            .expect("archived omission recorded");
+        assert_eq!(omitted.count, Some(1));
+    }
+
+    /// WHY(#5102/#4965): import validates and reports partial exports before
+    /// mutating the destination instance, while preserving the existing import
+    /// behavior for the data that is present.
+    #[test]
+    fn import_reports_partial_export_metadata_before_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let mut agent_file = minimal_agent_file();
+        agent_file.export_metadata = Some(ExportMetadata {
+            lossless: false,
+            omitted_sections: vec![OmittedSection {
+                section: "knowledge".to_owned(),
+                reason: "store_unavailable".to_owned(),
+                count: None,
+            }],
+            truncations: vec![],
+        });
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("partial.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        import_agent(
+            Some(&dir.path().to_path_buf()),
+            &ImportArgs {
+                file: agent_path,
+                target_id: None,
+                skip_sessions: true,
+                skip_workspace: true,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+            },
+        )
+        .unwrap();
+
+        // Existing behavior: config entry is written even for a partial export.
+        let config = std::fs::read_to_string(oikos.config().join("aletheia.toml")).unwrap();
+        assert!(config.contains(r#"id = "imported-agent""#));
     }
 }

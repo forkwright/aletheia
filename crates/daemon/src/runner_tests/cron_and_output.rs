@@ -89,7 +89,7 @@ fn task_metrics_on_success() {
     let mut runner = TaskRunner::new("test-nous", token);
     runner.register(make_echo_task("metrics-task"));
 
-    runner.record_task_completion("metrics-task", Duration::from_millis(42));
+    runner.record_task_completion("metrics-task", Duration::from_millis(42), 0);
 
     let statuses = runner.status();
     assert_eq!(statuses[0].run_count, 1);
@@ -121,6 +121,7 @@ async fn in_flight_reported_in_status() {
             tokio::time::sleep(Duration::from_mins(1)).await;
             Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: None,
             })
         }
@@ -287,7 +288,7 @@ fn with_state_store_persists_across_restarts() {
         let store = crate::state::TaskStateStore::open(&db_path).expect("open store");
         let mut runner = TaskRunner::new("test-nous", token).with_state_store(store);
         runner.register(make_echo_task("persist-task"));
-        runner.record_task_completion("persist-task", Duration::from_millis(10));
+        runner.record_task_completion("persist-task", Duration::from_millis(10), 0);
 
         let statuses = runner.status();
         assert_eq!(statuses[0].run_count, 1);

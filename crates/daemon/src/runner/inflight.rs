@@ -25,6 +25,9 @@ impl TaskRunner {
                 consecutive_failures: t.consecutive_failures,
                 in_flight: self.in_flight.contains_key(&t.def.id),
                 last_error: t.last_error.clone(),
+                last_errors: t.last_errors,
+                available: true,
+                reason: None,
             })
             .collect()
     }
@@ -81,7 +84,7 @@ impl TaskRunner {
                     Ok(Ok(result)) => {
                         self.log_result(&task_id, &result);
                         self.maybe_queue_self_prompt(&task_id, &result);
-                        self.record_task_completion(&task_id, duration);
+                        self.record_task_completion(&task_id, duration, result.errors);
                     }
                     Ok(Err(e)) => {
                         tracing::warn!(
