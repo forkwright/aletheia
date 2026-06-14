@@ -44,8 +44,9 @@ pub struct DaemonConfig {
 
     /// Maximum concurrent child agents.
     ///
-    /// The `Coordinator` enforces this cap via `can_spawn()` before each
-    /// child-agent dispatch. Defaults to 3.
+    /// Reserved value. This cap is not enforced at runtime; Coordinator
+    /// integration that will enforce it via `can_spawn()` before each
+    /// child-agent dispatch is planned. Defaults to 3.
     #[serde(default = "default_max_children")]
     pub max_children: usize,
 
