@@ -7,6 +7,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::routing::DispatchRoutingConfig;
+
 /// Configuration for the dispatch orchestrator.
 ///
 /// Controls concurrency limits, budget defaults, and timeouts that apply to
@@ -32,6 +34,8 @@ pub struct OrchestratorConfig {
     /// `None` disables idle timeout detection.
     #[serde(with = "duration_ms_option")]
     pub session_idle_timeout: Option<Duration>,
+    #[serde(default)]
+    pub(crate) routing: DispatchRoutingConfig,
     /// Maximum number of corrective prompt retries per failed prompt.
     /// Defaults to 0 (no corrective attempts unless explicitly configured).
     pub max_corrective_retries: u32,
@@ -62,6 +66,7 @@ impl Default for OrchestratorConfig {
             default_budget_turns: None,
             max_duration: None,
             session_idle_timeout: Some(Duration::from_mins(10)),
+            routing: DispatchRoutingConfig::default(),
             max_corrective_retries: 0,
             role: None,
             standards_dir: None,

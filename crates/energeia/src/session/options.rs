@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::AgentOptions;
+use crate::routing::DispatchRoutingConfig;
 use crate::types::SessionStatus;
 
 /// Progress bridge event for a child prompt session.
@@ -48,6 +49,8 @@ pub struct EngineConfig {
     /// How long to wait for session events before declaring a timeout.
     /// `None` disables timeout detection.
     pub idle_timeout: Option<Duration>,
+    pub(crate) routing: DispatchRoutingConfig,
+    pub(crate) after_action_log_dir: Option<PathBuf>,
     /// Cancellation token shared by the dispatch group.
     pub cancel: Option<CancellationToken>,
     /// Optional parent bridge for child-session progress events.
@@ -64,6 +67,8 @@ impl EngineConfig {
             options,
             additional_dirs: Vec::new(),
             idle_timeout: None,
+            routing: DispatchRoutingConfig::default(),
+            after_action_log_dir: None,
             cancel: None,
             child_progress_tx: None,
         }
@@ -116,6 +121,18 @@ impl EngineConfig {
     #[must_use]
     pub fn idle_timeout(mut self, timeout: Duration) -> Self {
         self.idle_timeout = Some(timeout);
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn routing(mut self, routing: DispatchRoutingConfig) -> Self {
+        self.routing = routing;
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn after_action_log_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.after_action_log_dir = dir;
         self
     }
 
@@ -180,6 +197,7 @@ mod tests {
         assert_eq!(config.options.max_turns, Some(50));
         assert_eq!(config.options.permission_mode.as_deref(), Some("plan"));
         assert_eq!(config.additional_dirs.len(), 1);
+        assert!(config.after_action_log_dir.is_none());
         assert_eq!(
             config.additional_dirs.first(),
             Some(&PathBuf::from("/tmp/shared"))
@@ -194,6 +212,7 @@ mod tests {
         assert!(config.options.model.is_none());
         assert!(config.additional_dirs.is_empty());
         assert!(config.idle_timeout.is_none());
+        assert!(config.after_action_log_dir.is_none());
         assert!(config.child_progress_tx.is_none());
     }
 

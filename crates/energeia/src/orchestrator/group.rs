@@ -71,6 +71,7 @@ pub(crate) async fn execute_group(
             }
 
             let mgr = SessionManager::new(engine, Arc::clone(&budget), policy);
+            let opts = routed_options(opts, &prompt).await;
 
             let outcome = match mgr.execute(&prompt, &opts).await {
                 Ok(outcome) => outcome,
@@ -145,6 +146,23 @@ pub(crate) async fn execute_group(
     outcomes
 }
 
+async fn routed_options(mut options: EngineConfig, prompt: &PromptSpec) -> EngineConfig {
+    let routed_model = if options.options.model.is_none() {
+        options
+            .routing
+            .model_for_prompt(&prompt.body, options.after_action_log_dir.as_deref())
+            .await
+    } else {
+        None
+    };
+
+    if let Some(model) = routed_model {
+        options.options.model = Some(model);
+    }
+
+    options
+}
+
 fn skipped_outcome(prompt: &PromptSpec, reason: &str) -> SessionOutcome {
     SessionOutcome {
         prompt_number: prompt.number,
@@ -171,12 +189,17 @@ fn skipped_outcome(prompt: &PromptSpec, reason: &str) -> SessionOutcome {
     reason = "test assertions on known-length collections"
 )]
 mod tests {
+    use std::future::Future;
+    use std::pin::Pin;
     use std::sync::Arc;
 
     use tokio_util::sync::CancellationToken;
 
     use crate::budget::Budget;
-    use crate::engine::{AgentOptions, SessionEvent, SessionResult};
+    use crate::engine::{
+        AgentOptions, DispatchEngine, SessionEvent, SessionHandle, SessionResult, SessionSpec,
+    };
+    use crate::error::{self, Result};
     use crate::http::mock::{MockEngine, MockOutcome};
     use crate::prompt::PromptSpec;
     use crate::resume::ResumePolicy;
@@ -219,6 +242,99 @@ mod tests {
 
     fn default_config() -> EngineConfig {
         EngineConfig::new(AgentOptions::new())
+    }
+
+    struct RecordingEngine {
+        models: Arc<tokio::sync::Mutex<Vec<Option<String>>>>,
+    }
+
+    impl RecordingEngine {
+        fn new(models: Arc<tokio::sync::Mutex<Vec<Option<String>>>>) -> Self {
+            Self { models }
+        }
+    }
+
+    impl DispatchEngine for RecordingEngine {
+        fn spawn_session<'a>(
+            &'a self,
+            _spec: &'a SessionSpec,
+            options: &'a AgentOptions,
+        ) -> Pin<Box<dyn Future<Output = Result<Box<dyn SessionHandle>>> + Send + 'a>> {
+            Box::pin(async move {
+                self.models.lock().await.push(options.model.clone());
+                let handle =
+                    RecordingHandle::new("routed-session".to_owned(), options.model.clone());
+                let boxed: Box<dyn SessionHandle> = Box::new(handle);
+                Ok(boxed)
+            })
+        }
+
+        fn resume_session<'a>(
+            &'a self,
+            _session_id: &'a str,
+            _prompt: &'a str,
+            _options: &'a AgentOptions,
+        ) -> Pin<Box<dyn Future<Output = Result<Box<dyn SessionHandle>>> + Send + 'a>> {
+            Box::pin(async {
+                Err(error::EngineSnafu {
+                    detail: "resume not supported by RecordingEngine".to_owned(),
+                }
+                .build())
+            })
+        }
+    }
+
+    struct RecordingHandle {
+        session_id: String,
+        result: Option<SessionResult>,
+    }
+
+    impl RecordingHandle {
+        fn new(session_id: String, model: Option<String>) -> Self {
+            Self {
+                session_id: session_id.clone(),
+                result: Some(SessionResult {
+                    session_id,
+                    cost_usd: 0.01,
+                    num_turns: 1,
+                    duration_ms: 100,
+                    success: true,
+                    result_text: Some("done".to_owned()),
+                    model,
+                    cache_hit_tokens: 0,
+                    cache_miss_tokens: 0,
+                }),
+            }
+        }
+    }
+
+    impl SessionHandle for RecordingHandle {
+        fn session_id(&self) -> &str {
+            &self.session_id
+        }
+
+        fn next_event<'a>(
+            &'a mut self,
+        ) -> Pin<Box<dyn Future<Output = Option<SessionEvent>> + Send + 'a>> {
+            Box::pin(async { None })
+        }
+
+        fn wait(
+            mut self: Box<Self>,
+        ) -> Pin<Box<dyn Future<Output = Result<SessionResult>> + Send>> {
+            Box::pin(async move {
+                self.result.take().ok_or_else(|| {
+                    error::EngineSnafu {
+                        detail: "RecordingHandle: wait called more than once".to_owned(),
+                    }
+                    .build()
+                })
+            })
+        }
+
+        fn abort<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
+            Box::pin(async { Ok(()) })
+        }
     }
 
     #[tokio::test]
@@ -288,6 +404,36 @@ mod tests {
         assert_eq!(outcomes[0].status, SessionStatus::Success);
         assert_eq!(outcomes[1].status, SessionStatus::Failed);
         assert_eq!(outcomes[2].status, SessionStatus::Success);
+    }
+
+    #[tokio::test]
+    async fn group_applies_routed_model_to_session_options() {
+        let models = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let engine = Arc::new(RecordingEngine::new(Arc::clone(&models)));
+        let budget = Arc::new(Budget::new(None, None, None));
+        let cancel = CancellationToken::new();
+        let prompts = vec![sample_prompt_spec(1)];
+        let mut config = default_config();
+        config.routing.default_provider = "routed-model".to_owned();
+
+        let outcomes = execute_group(
+            &prompts,
+            engine,
+            budget,
+            &ResumePolicy::default(),
+            &config,
+            1,
+            &cancel,
+        )
+        .await;
+
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].status, SessionStatus::Success);
+        let models = models.lock().await;
+        assert_eq!(
+            models.first().and_then(|model| model.as_deref()),
+            Some("routed-model")
+        );
     }
 
     #[tokio::test]
