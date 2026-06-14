@@ -151,7 +151,7 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
     // path used the non-canonical form.
     let allowed = ctx.allowed_roots.iter().any(|root| {
         let canon_root = root.canonicalize().unwrap_or_else(|_| normalize(root));
-        canonical.starts_with(&canon_root) || normalized.starts_with(&canon_root)
+        canonical.starts_with(&canon_root)
     });
 
     if !allowed {
