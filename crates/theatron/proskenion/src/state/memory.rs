@@ -1215,12 +1215,17 @@ pub(crate) struct FactHealth {
 
 impl FactHealth {
     /// Compute the strip from the currently loaded facts.
+    ///
+    /// `backend_total` is the authoritative server-reported total; the loaded
+    /// subset may be partial, so other counts are scoped to what we currently
+    /// hold. Callers should label the strip as "loaded view" when the subset
+    /// is known to be partial.
     #[must_use]
-    pub(crate) fn compute(facts: &[Fact]) -> Self {
-        let total = facts.len();
+    pub(crate) fn compute(facts: &[Fact], backend_total: usize) -> Self {
+        let loaded_total = facts.len();
         let active: Vec<&Fact> = facts.iter().filter(|f| !f.is_forgotten).collect();
         let active_count = active.len();
-        let forgotten = total - active_count;
+        let forgotten = loaded_total - active_count;
         let stale = active
             .iter()
             .filter(|f| age_in_days(&f.recorded_at).is_some_and(|d| d > 30))
@@ -1233,7 +1238,7 @@ impl FactHealth {
         };
         Self {
             active: active_count,
-            total,
+            total: backend_total,
             stale,
             low_confidence,
             forgotten,
@@ -1285,15 +1290,117 @@ impl FactReviewMode {
     }
 }
 
+/// Authoritative payload returned by a successful facts fetch.
+#[derive(Debug, Clone)]
+pub(crate) struct FactListData {
+    /// Loaded facts (already client-side filtered by type/tier if applicable).
+    pub facts: Vec<Fact>,
+    /// Active facts among the loaded subset.
+    pub active_count: usize,
+    /// Authoritative total reported by the server.
+    pub total_count: usize,
+    /// `true` when the payload came from the legacy bare-array wire shape.
+    ///
+    /// WHY: the backend originally returned `[Fact]` directly; this path is
+    /// preserved for compatibility but is visibly distinct from a successful
+    /// envelope parse and from a decode failure.
+    pub legacy_array: bool,
+}
+
+/// Classification of a facts fetch failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FactListErrorKind {
+    /// Network/transport failure (no HTTP response arrived).
+    Connection,
+    /// HTTP response with a non-2xx status code.
+    Non2xx(u16),
+    /// Response body could not be decoded as the expected envelope or legacy array.
+    Decode,
+    /// Data is stale/unavailable (e.g., previous load exists but refresh failed).
+    Unavailable,
+}
+
+/// Structured error surfaced in the memory UI.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FactListError {
+    pub kind: FactListErrorKind,
+    pub message: String,
+}
+
+/// Lifecycle state for the memory fact list.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum FactListState {
+    /// Fetch in progress; previous data, if any, is shown dimmed/stale.
+    Loading,
+    /// Fresh data loaded from the `{facts, total}` envelope.
+    Loaded,
+    /// Server returned success with zero facts.
+    Empty,
+    /// Fetch or decode failed.
+    Error(FactListError),
+}
+
+/// Response envelope from `/api/v1/knowledge/facts`.
+#[derive(Debug, serde::Deserialize)]
+struct FactsResponse {
+    #[serde(default)]
+    facts: Vec<Fact>,
+    #[serde(default)]
+    total: usize,
+}
+
+/// Parse the facts endpoint response.
+///
+/// Tries the authoritative `{facts, total}` envelope first, then the legacy
+/// bare-array shape. A legacy-array success is still a success, but callers
+/// can flag it in the UI because it lacks server-reported totals.
+pub(crate) fn parse_facts_response(text: &str) -> Result<FactListData, FactListError> {
+    match serde_json::from_str::<FactsResponse>(text) {
+        Ok(resp) => {
+            let active_count = resp.facts.iter().filter(|f| !f.is_forgotten).count();
+            let total_count = if resp.total == 0 {
+                resp.facts.len()
+            } else {
+                resp.total
+            };
+            Ok(FactListData {
+                facts: resp.facts,
+                active_count,
+                total_count,
+                legacy_array: false,
+            })
+        }
+        Err(envelope_err) => match serde_json::from_str::<Vec<Fact>>(text) {
+            Ok(list) => {
+                let active_count = list.iter().filter(|f| !f.is_forgotten).count();
+                Ok(FactListData {
+                    facts: list,
+                    active_count,
+                    total_count: list.len(),
+                    legacy_array: true,
+                })
+            }
+            Err(array_err) => Err(FactListError {
+                kind: FactListErrorKind::Decode,
+                message: format!("envelope: {envelope_err}; legacy array: {array_err}"),
+            }),
+        },
+    }
+}
+
 /// Paginated fact list with sort and filter state (default memory surface).
 #[derive(Debug, Clone)]
 pub(crate) struct FactListStore {
     /// All loaded facts (the strip + filters derive from these).
     pub facts: Vec<Fact>,
-    /// Total active facts reported by the server.
+    /// Active facts among the loaded subset.
     pub active_count: usize,
-    /// Total facts including forgotten ones reported by the server.
+    /// Authoritative total including forgotten facts reported by the server.
     pub total_count: usize,
+    /// Current lifecycle state of the fetch.
+    pub state: FactListState,
+    /// `true` if the current payload came from the legacy bare-array shape.
+    pub legacy_array: bool,
     /// Current sort field.
     pub sort: FactSort,
     /// Free-text content filter.
@@ -1314,6 +1421,8 @@ impl Default for FactListStore {
             facts: Vec::new(),
             active_count: 0,
             total_count: 0,
+            state: FactListState::Empty,
+            legacy_array: false,
             sort: FactSort::default(),
             search_query: String::new(),
             type_filter: Vec::new(),
@@ -1328,14 +1437,27 @@ impl FactListStore {
     /// Maximum facts fetched per request (the store is ~hundreds of facts).
     pub(crate) const FETCH_LIMIT: usize = 500;
 
-    /// Replace the fact list with fresh data.
-    ///
-    /// `active_count` and `total_count` are reported separately so the UI can
-    /// distinguish active facts from all facts when forgotten review is on.
-    pub(crate) fn load(&mut self, facts: Vec<Fact>, active_count: usize, total_count: usize) {
-        self.facts = facts;
-        self.active_count = active_count;
-        self.total_count = total_count;
+    /// Mark the store as loading, preserving any existing data as stale.
+    pub(crate) fn set_loading(&mut self) {
+        self.state = FactListState::Loading;
+    }
+
+    /// Replace the fact list with fresh data and update lifecycle state.
+    pub(crate) fn load(&mut self, data: FactListData) {
+        self.facts = data.facts;
+        self.active_count = data.active_count;
+        self.total_count = data.total_count;
+        self.legacy_array = data.legacy_array;
+        self.state = if self.facts.is_empty() && self.total_count == 0 {
+            FactListState::Empty
+        } else {
+            FactListState::Loaded
+        };
+    }
+
+    /// Record a fetch or decode failure, preserving existing data as stale.
+    pub(crate) fn set_error(&mut self, error: FactListError) {
+        self.state = FactListState::Error(error);
     }
 
     /// Reset all filters and search; review mode is preserved.
@@ -1370,9 +1492,12 @@ impl FactListStore {
     }
 
     /// Health strip derived from the loaded facts.
+    ///
+    /// Uses the authoritative server-reported total so the strip does not
+    /// pretend a partial loaded subset is the entire memory store.
     #[must_use]
     pub(crate) fn health(&self) -> FactHealth {
-        FactHealth::compute(&self.facts)
+        FactHealth::compute(&self.facts, self.total_count)
     }
 
     /// Server-facing value for the `include_forgotten` query parameter.
@@ -1749,7 +1874,7 @@ mod tests {
             make_fact("b", 0.2, false),
             make_fact("c", 0.5, true),
         ];
-        let health = FactHealth::compute(&facts);
+        let health = FactHealth::compute(&facts, facts.len());
         assert_eq!(health.active, 2);
         assert_eq!(health.total, 3);
         assert_eq!(health.forgotten, 1);
@@ -1758,9 +1883,22 @@ mod tests {
     }
 
     #[test]
+    fn fact_health_uses_authoritative_backend_total() {
+        let facts = vec![make_fact("a", 0.9, false)];
+        let health = FactHealth::compute(&facts, 100);
+        assert_eq!(health.active, 1);
+        assert_eq!(health.total, 100);
+    }
+
+    #[test]
     fn fact_list_store_filters_and_clear() {
         let mut store = FactListStore::default();
-        store.load(vec![make_fact("a", 0.9, false)], 1, 1);
+        store.load(FactListData {
+            facts: vec![make_fact("a", 0.9, false)],
+            active_count: 1,
+            total_count: 1,
+            legacy_array: false,
+        });
         assert!(!store.has_active_filters());
 
         store.search_query = "x".to_string();
@@ -1777,14 +1915,15 @@ mod tests {
     #[test]
     fn fact_review_mode_filters_visible_facts() {
         let mut store = FactListStore::default();
-        store.load(
-            vec![
+        store.load(FactListData {
+            facts: vec![
                 make_fact("active", 0.9, false),
                 make_fact("forgotten", 0.5, true),
             ],
-            1,
-            2,
-        );
+            active_count: 1,
+            total_count: 2,
+            legacy_array: false,
+        });
 
         store.review_mode = FactReviewMode::Active;
         assert_eq!(store.visible().len(), 1);
@@ -1864,5 +2003,111 @@ mod tests {
         .expect("partial fact parses");
         assert_eq!(fact.scope, Some(MemoryScope::User));
         assert_eq!(fact.forget_reason, Some(ForgetReason::UserRequested));
+    }
+
+    // ── Fact list fetch state + parsing ──
+
+    #[test]
+    fn parse_facts_response_successful_envelope() {
+        let json = r#"{
+            "facts": [
+                {"id":"f1","content":"first","fact_type":"observation","confidence":0.8},
+                {"id":"f2","content":"second","fact_type":"preference","confidence":0.9,"is_forgotten":true}
+            ],
+            "total": 10
+        }"#;
+        let data = parse_facts_response(json).expect("envelope parses");
+        assert_eq!(data.facts.len(), 2);
+        assert_eq!(data.active_count, 1);
+        assert_eq!(data.total_count, 10);
+        assert!(!data.legacy_array);
+    }
+
+    #[test]
+    fn parse_facts_response_empty_envelope_is_empty_state() {
+        let data = parse_facts_response(r#"{"facts":[],"total":0}"#).expect("empty envelope parses");
+        assert!(data.facts.is_empty());
+        assert_eq!(data.active_count, 0);
+        assert_eq!(data.total_count, 0);
+        assert!(!data.legacy_array);
+    }
+
+    #[test]
+    fn parse_facts_response_legacy_array_is_success_marked_legacy() {
+        let json = r#"[
+            {"id":"f1","content":"legacy","fact_type":"observation"}
+        ]"#;
+        let data = parse_facts_response(json).expect("legacy array parses");
+        assert_eq!(data.facts.len(), 1);
+        assert_eq!(data.total_count, 1);
+        assert!(data.legacy_array);
+    }
+
+    #[test]
+    fn parse_facts_response_broken_json_is_decode_error() {
+        let err = parse_facts_response("not json").expect_err("broken json fails");
+        assert_eq!(err.kind, FactListErrorKind::Decode);
+        assert!(!err.message.is_empty());
+    }
+
+    #[test]
+    fn fact_list_store_load_sets_loaded_state() {
+        let mut store = FactListStore::default();
+        store.load(FactListData {
+            facts: vec![make_fact("a", 0.9, false)],
+            active_count: 1,
+            total_count: 1,
+            legacy_array: false,
+        });
+        assert_eq!(store.state, FactListState::Loaded);
+        assert!(!store.legacy_array);
+    }
+
+    #[test]
+    fn fact_list_store_load_empty_sets_empty_state() {
+        let mut store = FactListStore::default();
+        store.load(FactListData {
+            facts: Vec::new(),
+            active_count: 0,
+            total_count: 0,
+            legacy_array: false,
+        });
+        assert_eq!(store.state, FactListState::Empty);
+    }
+
+    #[test]
+    fn fact_list_store_set_error_preserves_stale_data() {
+        let mut store = FactListStore::default();
+        store.load(FactListData {
+            facts: vec![make_fact("a", 0.9, false)],
+            active_count: 1,
+            total_count: 1,
+            legacy_array: false,
+        });
+        store.set_error(FactListError {
+            kind: FactListErrorKind::Non2xx(503),
+            message: "service unavailable".to_string(),
+        });
+        assert_eq!(store.facts.len(), 1);
+        assert_eq!(
+            store.state,
+            FactListState::Error(FactListError {
+                kind: FactListErrorKind::Non2xx(503),
+                message: "service unavailable".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn fact_list_store_set_error_connection_kind_round_trips() {
+        let mut store = FactListStore::default();
+        store.set_error(FactListError {
+            kind: FactListErrorKind::Connection,
+            message: "offline".to_string(),
+        });
+        assert_eq!(store.state, FactListState::Error(FactListError {
+            kind: FactListErrorKind::Connection,
+            message: "offline".to_string(),
+        }));
     }
 }

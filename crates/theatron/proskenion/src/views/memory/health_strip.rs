@@ -56,7 +56,7 @@ fn HealthStat(
 
 /// Slim health strip: total / stale / low-confidence / forgotten / avg-confidence.
 #[component]
-pub(crate) fn HealthStrip(health: FactHealth) -> Element {
+pub(crate) fn HealthStrip(health: FactHealth, is_subset: bool) -> Element {
     // WHY: counts read neutral at zero and escalate to a warning/error token
     // once any item needs attention — a glance answers "is my memory healthy?".
     let stale_color = if health.stale > 0 {
@@ -77,7 +77,11 @@ pub(crate) fn HealthStrip(health: FactHealth) -> Element {
     let avg_color = confidence_color(health.avg_confidence);
     let avg_label = format!("{:.0}%", health.avg_confidence * 100.0);
 
-    let total_label = format!("{} / {}", health.active, health.total);
+    let total_label = if is_subset {
+        format!("{} / {} (loaded)", health.active, health.total)
+    } else {
+        format!("{} / {}", health.active, health.total)
+    };
 
     rsx! {
         div {

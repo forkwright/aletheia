@@ -4,7 +4,8 @@
 use dioxus::prelude::*;
 
 use crate::state::memory::{
-    Fact, FactListStore, FactReviewMode, FactSort, confidence_color, format_confidence,
+    Fact, FactListErrorKind, FactListState, FactListStore, FactReviewMode, FactSort,
+    confidence_color, format_confidence,
 };
 use crate::state::sessions::format_relative_time;
 use crate::views::memory::curation::{
@@ -139,6 +140,40 @@ const FORGOTTEN_TAG_STYLE: &str = "\
     font-weight: var(--weight-medium);\
 ";
 
+const ERROR_BANNER_STYLE: &str = "\
+    display: flex; \
+    align-items: center; \
+    justify-content: space-between; \
+    gap: var(--space-3); \
+    padding: var(--space-3); \
+    margin-bottom: var(--space-2); \
+    border: 1px solid var(--status-error); \
+    border-radius: var(--radius-md); \
+    background: var(--status-error-bg); \
+    color: var(--text-primary); \
+    font-size: var(--text-sm);\
+";
+
+const RETRY_BTN_STYLE: &str = "\
+    background: var(--bg-surface); \
+    color: var(--text-primary); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-sm); \
+    cursor: pointer; \
+    flex-shrink: 0;\
+";
+
+const LEGACY_BADGE_STYLE: &str = "\
+    font-size: var(--text-xs); \
+    padding: 1px var(--space-2); \
+    border-radius: var(--radius-lg); \
+    background: var(--status-warning-bg); \
+    color: var(--status-warning); \
+    font-weight: var(--weight-medium);\
+";
+
 /// Which curation dialog is open, keyed by fact.
 #[derive(Clone, PartialEq)]
 enum CurationDialog {
@@ -174,6 +209,16 @@ fn Badge(label: String, color: &'static str) -> Element {
     }
 }
 
+/// Human-readable title for a fetch/decode error kind.
+fn error_title(kind: FactListErrorKind) -> &'static str {
+    match kind {
+        FactListErrorKind::Connection => "Connection failed",
+        FactListErrorKind::Non2xx(_) => "Server error",
+        FactListErrorKind::Decode => "Decode failed",
+        FactListErrorKind::Unavailable => "Memory unavailable",
+    }
+}
+
 /// Fact list panel: sort control, rows, and inline curation dialogs.
 #[component]
 pub(crate) fn FactList(
@@ -181,15 +226,20 @@ pub(crate) fn FactList(
     on_sort_change: EventHandler<FactSort>,
     /// Fired after any mutation succeeds, so the parent can refetch.
     on_mutated: EventHandler<()>,
+    /// Fired when the operator asks to retry a failed fetch.
+    on_retry: EventHandler<()>,
 ) -> Element {
     let mut dialog = use_signal(|| CurationDialog::None);
 
     let store = list_store.read();
+    let state = store.state.clone();
     let sort = store.sort;
     let review_mode = store.review_mode;
     let visible: Vec<Fact> = store.visible().into_iter().cloned().collect();
     let active_count = store.active_count;
     let total_count = store.total_count;
+    let legacy_array = store.legacy_array;
+    let has_data = !store.facts.is_empty();
     drop(store);
 
     let shown = visible.len();
@@ -200,40 +250,106 @@ pub(crate) fn FactList(
         FactReviewMode::All => format!("{shown} of {total_count} facts ({active_count} active)"),
     };
 
+    let current_error = if let FactListState::Error(err) = state.clone() {
+        Some(err)
+    } else {
+        None
+    };
+
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
-            div {
-                style: "{SORT_BAR_STYLE}",
-                span { "Sort:" }
-                select {
-                    style: "{SORT_SELECT_STYLE}",
-                    value: "{sort.label()}",
-                    onchange: move |evt: Event<FormData>| {
-                        let label = evt.value();
-                        for s in FactSort::ALL {
-                            if s.label() == label {
-                                on_sort_change.call(*s);
-                                break;
-                            }
+            if let Some(ref err) = current_error {
+                div {
+                    style: "{ERROR_BANNER_STYLE}",
+                    div {
+                        style: "display: flex; align-items: center; gap: var(--space-2);",
+                        span { style: "color: var(--status-error); font-weight: var(--weight-semibold);", "⚠" }
+                        div {
+                            style: "display: flex; flex-direction: column; gap: 2px; flex: 1;",
+                            span { style: "font-weight: var(--weight-medium);", "{error_title(err.kind)}" }
+                            span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "{err.message}" }
                         }
-                    },
-                    for s in FactSort::ALL {
-                        option { value: "{s.label()}", selected: *s == sort, "{s.label()}" }
                     }
-                }
-                span {
-                    style: "margin-left: auto;",
-                    "{count_label}"
+                    button {
+                        style: "{RETRY_BTN_STYLE}",
+                        onclick: move |_| on_retry.call(()),
+                        "Retry"
+                    }
                 }
             }
 
-            if visible.is_empty() {
+            if state == FactListState::Loading && !has_data {
                 div {
                     style: "{EMPTY_STYLE}",
-                    "No facts match these filters yet."
+                    "Loading memories…"
+                }
+            } else if state == FactListState::Empty {
+                div {
+                    style: "{EMPTY_STYLE} flex-direction: column; gap: var(--space-3);",
+                    span { "No memories found." }
+                    button {
+                        style: "{RETRY_BTN_STYLE}",
+                        onclick: move |_| on_retry.call(()),
+                        "Refresh"
+                    }
+                }
+            } else if matches!(state, FactListState::Error(_)) && !has_data {
+                div {
+                    style: "{EMPTY_STYLE} flex-direction: column; gap: var(--space-3);",
+                    span { "Could not load memories." }
+                    button {
+                        style: "{RETRY_BTN_STYLE}",
+                        onclick: move |_| on_retry.call(()),
+                        "Retry"
+                    }
                 }
             } else {
+                div {
+                    style: "{SORT_BAR_STYLE}",
+                    span { "Sort:" }
+                    select {
+                        style: "{SORT_SELECT_STYLE}",
+                        value: "{sort.label()}",
+                        onchange: move |evt: Event<FormData>| {
+                            let label = evt.value();
+                            for s in FactSort::ALL {
+                                if s.label() == label {
+                                    on_sort_change.call(*s);
+                                    break;
+                                }
+                            }
+                        },
+                        for s in FactSort::ALL {
+                            option { value: "{s.label()}", selected: *s == sort, "{s.label()}" }
+                        }
+                    }
+                    if legacy_array {
+                        span {
+                            style: "{LEGACY_BADGE_STYLE}",
+                            title: "Loaded from legacy array format",
+                            "legacy"
+                        }
+                    }
+                    span {
+                        style: "margin-left: auto;",
+                        "{count_label}"
+                    }
+                }
+
+                if state == FactListState::Loading {
+                    div {
+                        style: "{SORT_BAR_STYLE} border-bottom: none; justify-content: center; color: var(--text-muted);",
+                        "Refreshing…"
+                    }
+                }
+
+                if visible.is_empty() {
+                    div {
+                        style: "{EMPTY_STYLE}",
+                        "No facts match these filters yet."
+                    }
+                } else {
                 div {
                     style: "{SCROLL_AREA_STYLE}",
                     for fact in visible.iter() {

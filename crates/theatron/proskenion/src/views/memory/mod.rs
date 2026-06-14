@@ -17,7 +17,8 @@ use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::memory::{
     Entity, EntityDetailStore, EntityListStore, EntityMemory, EntityNavigationHistory, EntitySort,
-    Fact, FactListStore, FactSort, Relationship,
+    Fact, FactListData, FactListError, FactListErrorKind, FactListState, FactListStore, FactSort,
+    Relationship, parse_facts_response,
 };
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::memory::detail::EntityDetail;
@@ -242,6 +243,8 @@ pub(crate) fn Memory() -> Element {
         drop(store);
 
         spawn(async move {
+            fact_store.write().set_loading();
+
             let client = authenticated_client(&cfg);
             let base = cfg.server_url.trim_end_matches('/');
 
@@ -274,29 +277,56 @@ pub(crate) fn Memory() -> Element {
 
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
+                    let status = resp.status();
                     let text = match resp.text().await {
                         Ok(t) => t,
                         Err(e) => {
-                            tracing::warn!("failed to read facts response: {e}");
+                            tracing::warn!(status = %status, "failed to read facts response: {e}");
+                            fact_store.write().set_error(FactListError {
+                                kind: FactListErrorKind::Decode,
+                                message: format!("failed to read response body: {e}"),
+                            });
                             return;
                         }
                     };
-                    let (facts, total) = parse_facts_response(&text);
-                    // WHY: apply any additional client-side type/tier narrowing
-                    // beyond the single server hint so multi-select reads true.
-                    let filtered: Vec<Fact> = facts
-                        .into_iter()
-                        .filter(|f| type_filter.is_empty() || type_filter.contains(&f.fact_type))
-                        .filter(|f| tier_filter.is_empty() || tier_filter.contains(&f.tier))
-                        .collect();
-                    let active_count = filtered.iter().filter(|f| !f.is_forgotten).count();
-                    fact_store.write().load(filtered, active_count, total);
+                    match parse_facts_response(&text) {
+                        Ok(data) => {
+                            // WHY: apply any additional client-side type/tier narrowing
+                            // beyond the single server hint so multi-select reads true.
+                            let filtered: Vec<Fact> = data
+                                .facts
+                                .into_iter()
+                                .filter(|f| type_filter.is_empty() || type_filter.contains(&f.fact_type))
+                                .filter(|f| tier_filter.is_empty() || tier_filter.contains(&f.tier))
+                                .collect();
+                            let active_count = filtered.iter().filter(|f| !f.is_forgotten).count();
+                            fact_store.write().load(FactListData {
+                                facts: filtered,
+                                active_count,
+                                total_count: data.total_count,
+                                legacy_array: data.legacy_array,
+                            });
+                        }
+                        Err(err) => {
+                            tracing::warn!(error = %err.message, "failed to parse facts response");
+                            fact_store.write().set_error(err);
+                        }
+                    }
                 }
                 Ok(resp) => {
-                    tracing::warn!(status = %resp.status(), "facts request failed");
+                    let status = resp.status();
+                    tracing::warn!(status = %status, "facts request failed");
+                    fact_store.write().set_error(FactListError {
+                        kind: FactListErrorKind::Non2xx(status.as_u16()),
+                        message: format!("server returned {status}"),
+                    });
                 }
                 Err(e) => {
                     tracing::warn!("facts connection error: {e}");
+                    fact_store.write().set_error(FactListError {
+                        kind: FactListErrorKind::Connection,
+                        message: format!("could not reach server: {e}"),
+                    });
                 }
             }
         });
@@ -488,7 +518,11 @@ pub(crate) fn Memory() -> Element {
     let can_forward = nav_history.read().can_go_forward();
     let breadcrumbs: Vec<String> = nav_history.read().breadcrumbs().to_vec();
     let fact_count = fact_store.read().total_count;
-    let health = fact_store.read().health();
+    let (health, health_is_subset) = {
+        let store = fact_store.read();
+        let subset = store.facts.len() != store.total_count && store.total_count > 0;
+        (store.health(), subset)
+    };
 
     rsx! {
         div {
@@ -566,7 +600,7 @@ pub(crate) fn Memory() -> Element {
 
             if active_tab == MemoryTab::Facts {
                 // ── Facts surface: health strip + filters + list ──
-                HealthStrip { health }
+                HealthStrip { health, is_subset: health_is_subset }
                 FactFilters {
                     list_store: fact_store,
                     on_search_change: move |_query: String| {
@@ -587,6 +621,9 @@ pub(crate) fn Memory() -> Element {
                         fetch_facts();
                     },
                     on_mutated: move |_| {
+                        fetch_facts();
+                    },
+                    on_retry: move |_| {
                         fetch_facts();
                     },
                 }
@@ -716,43 +753,6 @@ pub(crate) fn Memory() -> Element {
                 }
             }
         }
-    }
-}
-
-/// Response wrapper for the facts endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct FactsResponse {
-    #[serde(default)]
-    facts: Vec<Fact>,
-    #[serde(default)]
-    total: usize,
-}
-
-/// Parse the `{facts, total}` envelope, falling back to a bare array.
-fn parse_facts_response(text: &str) -> (Vec<Fact>, usize) {
-    match serde_json::from_str::<FactsResponse>(text) {
-        Ok(resp) => {
-            let total = if resp.total == 0 {
-                resp.facts.len()
-            } else {
-                resp.total
-            };
-            (resp.facts, total)
-        }
-        Err(wrapped_err) => match serde_json::from_str::<Vec<Fact>>(text) {
-            Ok(list) => {
-                let total = list.len();
-                (list, total)
-            }
-            Err(array_err) => {
-                tracing::warn!(
-                    wrapped_error = %wrapped_err,
-                    array_error = %array_err,
-                    "failed to parse facts response"
-                );
-                (Vec::new(), 0)
-            }
-        },
     }
 }
 
