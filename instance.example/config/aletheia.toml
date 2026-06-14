@@ -273,15 +273,15 @@ models = [
 # [gateway.bodyLimit]
 # maxBytes = 1048576           # 1 MB default
 
-# --- Local LLM provider ---
-# OpenAI-compatible endpoint for local model inference (vLLM, etc.).
-# Models are routed here when prefixed with "local/" (e.g. "local/qwen3.5-27b").
-# Requires the `local-llm` feature flag at compile time.
-# [localProvider]
-# enabled = false
+# --- Local LLM provider (deprecated) ---
+# WARNING: [localProvider] is a legacy pass-through section accepted but not validated.
+# Use [[providers]] with providerType = "openai-compatible" instead. See AIR-GAPPED.md.
+#
+# [[providers]]
+# name = "local"
+# providerType = "openai-compatible"
 # baseUrl = "http://localhost:8000/v1"
-# model = "qwen3.5-27b"            # default model for "local/" requests
-# timeoutSecs = 120
+# models = ["qwen3.5-27b"]
 
 # --- External tools ---
 # Pluggable external tool registry. Agents discover available tools at session

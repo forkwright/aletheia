@@ -115,8 +115,8 @@ present. Configure it in `instance/config/aletheia.toml`:
 ```toml
 [maintenance.backup]
 enabled = true
-interval_hours = 24
-retention_count = 7
+backupIntervalHours = 24
+backupRetentionCount = 7
 ```
 
 ## Manual backup

@@ -13,7 +13,7 @@ The canary issue summarizes the policy as auth, rate-limit, trace, handler. The 
 The router file states that route and middleware assembly stays together because order is part of correctness:
 
 ```text
-crates/pylon/src/router.rs:42
+crates/pylon/src/router.rs:43
 // NOTE(#940): 130+ lines: route and middleware layer assembly where ordering matters.
 // Extraction would obscure the middleware stack ordering that is critical for correctness.
 ```
@@ -29,7 +29,7 @@ per-handler exceptions.
 Extra routes are merged before global layers so the same protections apply to external routers:
 
 ```text
-crates/pylon/src/router.rs:170
+crates/pylon/src/router.rs:228
 // WHY: Extra routes are merged BEFORE middleware layers so they benefit from
 // the same global protections (rate limiting, CSRF, compression, tracing,
 // metrics, error enrichment) as pylon's own routes (#3226).
@@ -38,7 +38,7 @@ crates/pylon/src/router.rs:170
 The route tree applies subtree auth for knowledge routes and handler-level auth for protected session and API handlers. The reusable auth middleware validates bearer tokens and stores claims so handlers do not re-validate:
 
 ```text
-crates/pylon/src/router.rs:91
+crates/pylon/src/router.rs:102
 .route_layer(axum::middleware::from_fn_with_state(
     Arc::clone(&state),
     require_bearer_auth,
@@ -46,7 +46,7 @@ crates/pylon/src/router.rs:91
 ```
 
 ```text
-crates/pylon/src/middleware/mod.rs:27
+crates/pylon/src/middleware/mod.rs:28
 /// Middleware that validates bearer auth for an entire router subtree.
 ///
 /// The validated claims are cached in request extensions so handlers that also
@@ -66,7 +66,7 @@ pub async fn create(
 Rate limiting is applied globally after route construction and before the later response-shaping/observability layers in the builder. The per-user limiter is installed before the per-IP limiter in code, and Axum/Tower layering means later layers wrap earlier layers on the request path. The important policy is that rate limiting happens before expensive handlers and before handler-level business side effects:
 
 ```text
-crates/pylon/src/router.rs:177
+crates/pylon/src/router.rs:235
 if security.rate_limit.per_user.enabled {
     let user_limiter = Arc::new(UserRateLimiter::new(security.rate_limit.per_user.clone()));
     spawn_stale_cleanup(Arc::clone(&user_limiter), shutdown.clone());
@@ -75,7 +75,7 @@ if security.rate_limit.per_user.enabled {
 ```
 
 ```text
-crates/pylon/src/router.rs:185
+crates/pylon/src/router.rs:243
 if security.rate_limit.enabled {
     let limiter = Arc::new(
         RateLimiter::new(security.rate_limit.requests_per_minute)
@@ -96,14 +96,14 @@ if let Some(retry_after_secs) = limiter.check(&client) {
 Tracing and request-id propagation are deliberately adjacent. Request IDs must be injected before the trace layer observes the request so the span includes the correlation id:
 
 ```text
-crates/pylon/src/router.rs:228
+crates/pylon/src/router.rs:287
 router = router.layer(
     TraceLayer::new_for_http()
         .make_span_with(|request: &axum::http::Request<_>| {
 ```
 
 ```text
-crates/pylon/src/router.rs:256
+crates/pylon/src/router.rs:315
 // WARNING: Must be before trace layer so the span includes the ID.
 router = router.layer(axum::middleware::from_fn(inject_request_id));
 ```
@@ -140,8 +140,8 @@ Outer layers have their own invariants. Security headers must wrap every respons
 ## References
 
 - [forkwright/aletheia#4039](https://github.com/forkwright/aletheia/issues/4039) - ADR canary issue requesting ADR-003.
-- `crates/pylon/src/router.rs:42` and `crates/pylon/docs/handlers.md:12` - router construction and documented outermost-first stack.
-- `crates/pylon/src/router.rs:170`, `crates/pylon/src/router.rs:177`, `crates/pylon/src/router.rs:185`, `crates/pylon/src/router.rs:228`, `crates/pylon/src/router.rs:256` - route merge, rate-limit, trace, and request-id layer anchors.
-- `crates/pylon/src/middleware/mod.rs:27` and `crates/pylon/src/extract.rs:29` - bearer auth route layer and handler claim extraction.
+- `crates/pylon/src/router.rs:43` and `crates/pylon/docs/handlers.md:12` - router construction and documented outermost-first stack.
+- `crates/pylon/src/router.rs:228`, `crates/pylon/src/router.rs:235`, `crates/pylon/src/router.rs:243`, `crates/pylon/src/router.rs:287`, `crates/pylon/src/router.rs:315` - route merge, rate-limit, trace, and request-id layer anchors.
+- `crates/pylon/src/middleware/mod.rs:28` and `crates/pylon/src/extract.rs:29` - bearer auth route layer and handler claim extraction.
 - `crates/pylon/src/middleware/rate_limiter.rs:170` and `crates/pylon/src/middleware/user_rate_limiter.rs:406` - rate-limit short-circuit policy and per-IP ceiling.
 - Michael Nygard, "Documenting Architecture Decisions" - lightweight decision record practice used by this ADR.
