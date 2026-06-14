@@ -17,7 +17,7 @@ Sorted by criticality (highest sovereignty impact first).
 | `claude` CLI subprocess → Anthropic (indirect) | stdio (spawns `claude`, which manages its own HTTPS) | Indirect outbound | Prompts, conversation context, OAuth tokens (handled by CC) | LLM call when `CcProvider` is configured | `crates/hermeneus/src/cc/provider.rs:1` (architecture); `crates/hermeneus/src/cc/process.rs:110` (subprocess spawn) |
 | Anthropic server-side `web_search` | HTTPS (inside Anthropic API response) | Indirect outbound | Search queries, result snippets, citations | LLM response requests a `web_search` server tool use | `crates/organon/src/types/context.rs:38` (catalog entry); `crates/organon/src/types/context.rs:65` (tool definition); `crates/nous/src/execute/mod.rs:118` (response extraction) |
 | `console.anthropic.com` | HTTPS | Outbound | Refresh token, access token, OAuth client credentials | Background refresh when OAuth credential nears expiry; or `aletheia credential refresh` | `crates/symbolon/src/credential/mod.rs:48` (endpoint constant); `crates/symbolon/src/credential/refresh.rs:471` (token refresh POST) |
-| Configurable OAuth provider (PKCE / device code) | HTTPS | Outbound | Authorization codes, device codes, access tokens | `aletheia credential login` (PKCE) or `aletheia credential device-code` | `crates/symbolon/src/credential/pkce.rs:361` (authorization URL build); `crates/symbolon/src/credential/pkce.rs:612` (code→token exchange); `crates/symbolon/src/credential/device_code.rs:220` (device authorization POST); `crates/symbolon/src/credential/device_code.rs:285` (token polling POST) |
+| Configurable OAuth provider (PKCE / device code) | HTTPS | Outbound | Authorization codes, device codes, access tokens | Library functions `pkce_login` / device code flow in `crates/symbolon` (not yet exposed as CLI commands) | `crates/symbolon/src/credential/pkce.rs:361` (authorization URL build); `crates/symbolon/src/credential/pkce.rs:612` (code→token exchange); `crates/symbolon/src/credential/device_code.rs:220` (device authorization POST); `crates/symbolon/src/credential/device_code.rs:285` (token polling POST) |
 | HuggingFace Hub (`hf-hub` internal endpoint) | HTTPS (via `ureq`) | Outbound | Model files: `config.json`, `tokenizer.json`, `model.safetensors` | First initialization of the `candle` embedding provider | `crates/episteme/src/embedding.rs:165` (hub API init); `crates/episteme/src/embedding.rs:173` (`config.json` download); `crates/episteme/src/embedding.rs:179` (`tokenizer.json` download); `crates/episteme/src/embedding.rs:185` (`model.safetensors` download) |
 | `api.github.com` | HTTPS | Outbound | Public issue metadata (title, state, labels, milestone) | Agent uses `issue_scan` or `issue_triage` built-in tool | `crates/organon/src/builtins/triage/mod.rs:359` (URL template); `crates/organon/src/builtins/triage/mod.rs:369` (HTTP GET) |
 | Arbitrary URLs (`web_fetch` tool) | HTTPS/HTTP | Outbound | Arbitrary web page body (HTML, markdown, etc.) | Agent uses `web_fetch` built-in tool | `crates/organon/src/builtins/research.rs:130` (protocol guard); `crates/organon/src/builtins/research.rs:77` (HTTP GET execution); `crates/organon/src/builtins/research.rs:141` (automatic redirects disabled) |
@@ -36,7 +36,7 @@ Sorted by criticality (highest sovereignty impact first).
 - **Operator-triggered:**
   - `claude` CLI subprocess - triggered by LLM calls when CC provider is selected.
   - Anthropic server-side `web_search` - triggered by the LLM during inference.
-  - Configurable OAuth PKCE / device code - triggered by credential login commands.
+  - Configurable OAuth PKCE / device code - triggered by provider-specific login flows (library-level; no CLI command exposed yet).
   - `api.github.com` - triggered by `issue_scan` / `issue_triage` tool use.
   - Arbitrary URLs (`web_fetch`) - triggered by `web_fetch` tool use.
   - External tool endpoints - triggered by configured external tool invocations.
@@ -54,7 +54,7 @@ Sorted by criticality (highest sovereignty impact first).
 | `claude` CLI subprocess | Yes | Do not select `cc` provider; use direct API key or another provider |
 | Anthropic server-side `web_search` | Yes | Do not enable `web_search` in server tool config |
 | `console.anthropic.com` | Partial (URL is hard-coded for Anthropic OAuth) | Do not use OAuth credentials; use static API key instead |
-| Configurable OAuth PKCE / device code | Partial (URLs are configurable per provider) | Do not run login commands; use static API key |
+| Configurable OAuth PKCE / device code | Partial (URLs are configurable per provider) | Use a static API key; PKCE / device-code flows are not exposed as CLI commands |
 | HuggingFace Hub | Partial (model repo is configurable) | Use a pre-cached model directory (`HF_HOME`), or air-gap the host |
 | `api.github.com` | No (host is hard-coded) | Do not enable or invoke `issue_scan` / `issue_triage` |
 | Arbitrary URLs (`web_fetch`) | No (arbitrary by design) | Do not invoke `web_fetch`; SSRF guards reject blocked hostnames and URLs that resolve to internal ranges |
@@ -78,7 +78,7 @@ Known limitation: DNS can change after validation and before the subsequent TCP 
 | Listener | Protocol | Default Port | Purpose | Source reference |
 |----------|----------|-------------|---------|------------------|
 | Pylon HTTP gateway | HTTP/HTTPS | 18789 | REST API, SSE streams, OpenAPI docs, Prometheus metrics | `crates/pylon/src/server.rs:218` (TCP bind); `crates/pylon/src/router.rs:117` (API route nest) |
-| PKCE OAuth callback (transient) | HTTP | random ephemeral loopback port | Receives OAuth authorization code during `credential login` | `crates/symbolon/src/credential/pkce.rs:496` (local TCP bind) |
+| PKCE OAuth callback (transient) | HTTP | random ephemeral loopback port | Receives OAuth authorization code during a PKCE OAuth login flow (library-level; not exposed as a CLI command) | `crates/symbolon/src/credential/pkce.rs:496` (local TCP bind) |
 
 ---
 
