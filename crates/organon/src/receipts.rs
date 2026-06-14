@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn malformed_receipt_decode_fails() {
+    fn malformed_base64url_receipt_yields_decode_error() {
         let signer = make_signer();
         let ts = jiff::Timestamp::now();
         let err = signer
