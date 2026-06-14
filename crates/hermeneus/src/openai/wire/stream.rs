@@ -739,7 +739,9 @@ mod tests {
                     input.is_object(),
                     "malformed streaming arguments must be an object, not a string: {input:?}"
                 );
-                let obj = input.as_object().expect("object");
+                let Some(obj) = input.as_object() else {
+                    panic!("malformed streaming arguments should produce an object: {input:?}");
+                };
                 assert!(
                     obj.get("_parse_error")
                         .and_then(|v| v.as_str())

@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn is_private_ip_flags_bare_zero_v4() {
-        assert!(is_private_ip(&IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))));
+        assert!(is_private_ip(&IpAddr::V4(Ipv4Addr::UNSPECIFIED)));
     }
 
     #[derive(Default)]
