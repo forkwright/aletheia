@@ -387,7 +387,7 @@ impl std::fmt::Display for ToolTag {
 /// use koina::id::ToolName;
 ///
 /// let def = ToolDef {
-///     name: ToolName::new("read_file").unwrap(),
+///     name: ToolName::new("read_file").expect("valid static tool name"),
 ///     description: "Read a file from disk.".into(),
 ///     extended_description: None,
 ///     input_schema: InputSchema {
@@ -559,7 +559,7 @@ impl std::fmt::Display for Reversibility {
 impl Reversibility {
     /// Whether this tool's effects can be simulated in a dry run.
     #[must_use]
-    pub fn supports_dry_run(self) -> bool {
+    pub(crate) fn supports_dry_run(self) -> bool {
         matches!(self, Self::FullyReversible | Self::Reversible)
     }
 }
@@ -1009,7 +1009,7 @@ pub struct ToolInput {
     missing_docs,
     reason = "stats struct fields are self-documenting by name"
 )]
-pub struct ToolStats {
+pub(crate) struct ToolStats {
     pub total_calls: u32,
     pub total_duration_ms: u64,
     pub error_count: u32,
@@ -1022,23 +1022,8 @@ pub struct ToolStats {
 }
 
 impl ToolStats {
-    /// Record a tool execution (binary-outcome variant).
-    ///
-    /// Retained for call sites that only know `is_error`; prefer
-    /// [`ToolStats::record_outcome`] to capture partial-success
-    /// state explicitly.
-    pub fn record(&mut self, name: &str, duration_ms: u64, is_error: bool) {
-        // kanon:ignore RUST/pub-visibility
-        let outcome = if is_error {
-            ToolOutcome::failure(String::new())
-        } else {
-            ToolOutcome::Success
-        };
-        self.record_outcome(name, duration_ms, &outcome);
-    }
-
     /// Record a tool execution with full outcome detail.
-    pub fn record_outcome(&mut self, name: &str, duration_ms: u64, outcome: &ToolOutcome) {
+    pub(crate) fn record_outcome(&mut self, name: &str, duration_ms: u64, outcome: &ToolOutcome) {
         // kanon:ignore RUST/pub-visibility
         self.total_calls += 1;
         self.total_duration_ms += duration_ms;
@@ -1052,7 +1037,7 @@ impl ToolStats {
 
     /// Top N tools by call count.
     #[must_use]
-    pub fn top_tools(&self, n: usize) -> Vec<(&str, u32)> {
+    pub(crate) fn top_tools(&self, n: usize) -> Vec<(&str, u32)> {
         // kanon:ignore RUST/pub-visibility
         let mut sorted: Vec<_> = self
             .calls_by_tool
