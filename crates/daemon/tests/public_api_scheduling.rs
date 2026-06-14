@@ -256,6 +256,7 @@ fn retention_executor_trait_is_implementable_from_integration_tests() {
             messages_cleaned: 22,
             blackboard_entries_cleaned: 44,
             bytes_freed: 33,
+            cap_sessions_cleaned: 0,
         },
     });
 

@@ -106,18 +106,29 @@ impl RetentionExecutor for SessionRetentionAdapter {
 
         let blackboard_entries_cleaned = cleanup_blackboard_entries(&store)?;
         let mut counters = RetentionCounters::default();
+        let mut cap_sessions_cleaned = 0u32;
 
         if settings.enabled {
             counters.messages_cleaned = counters
                 .messages_cleaned
                 .saturating_add(cleanup_orphan_messages(&store, &settings)?);
             counters.add(&cleanup_closed_sessions(&store, &settings)?);
+
+            // WHY(#5134): enforce the per-agent session cap after TTL-based
+            // cleanup so the most recent N sessions per agent are retained
+            // regardless of age. `0` means unlimited.
+            if settings.max_sessions_per_nous > 0 {
+                let cap_counters = cleanup_per_agent_cap(&store, &settings)?;
+                cap_sessions_cleaned = cap_counters.sessions_cleaned;
+                counters.add(&cap_counters);
+            }
         }
 
         Ok(RetentionSummary {
             sessions_cleaned: counters.sessions_cleaned,
             messages_cleaned: counters.messages_cleaned,
             blackboard_entries_cleaned,
+            cap_sessions_cleaned,
             bytes_freed: counters.bytes_freed,
         })
     }
@@ -202,6 +213,77 @@ fn cleanup_closed_sessions(
             "session retention pass completed"
         );
     }
+    Ok(counters)
+}
+
+/// Enforce the per-agent session cap (#5134).
+///
+/// For each agent, retains the most recently updated `max_sessions_per_nous`
+/// non-active sessions and removes the rest. Active sessions are always
+/// preserved and never counted against the cap. When `archive_before_delete`
+/// is set, each removed session is exported to a JSON archive before deletion.
+fn cleanup_per_agent_cap(
+    store: &SessionStore,
+    settings: &RetentionSettings,
+) -> oikonomos::error::Result<RetentionCounters> {
+    let cap = usize::try_from(settings.max_sessions_per_nous).unwrap_or(usize::MAX);
+    if cap == 0 {
+        return Ok(RetentionCounters::default());
+    }
+
+    let archive_dir = archive_dir_for_store(store)?;
+    let all_sessions = store
+        .list_sessions(None)
+        .map_err(|e| retention_failure(format!("list sessions failed: {e}")))?;
+
+    // Group eligible (non-active) sessions by owning agent.
+    let mut by_agent: std::collections::HashMap<String, Vec<Session>> =
+        std::collections::HashMap::new();
+    for session in all_sessions {
+        // WHY: active sessions are live and must never be capped.
+        if session.status == SessionStatus::Active {
+            continue;
+        }
+        by_agent
+            .entry(session.nous_id.clone())
+            .or_default()
+            .push(session);
+    }
+
+    let mut counters = RetentionCounters::default();
+
+    for (nous_id, mut sessions) in by_agent {
+        if sessions.len() <= cap {
+            continue;
+        }
+
+        // WHY: lexicographic comparison is correct for fixed-format ISO 8601
+        // UTC timestamps; sort newest-first so the cap retains the freshest.
+        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+
+        for session in sessions.into_iter().skip(cap) {
+            let archive_stats = if settings.archive_before_delete {
+                Some(write_session_archive(store, &archive_dir, &session)?)
+            } else {
+                None
+            };
+            store.delete_session(&session.id).map_err(|e| {
+                retention_failure(format!(
+                    "delete capped session '{}' failed: {e}",
+                    session.id
+                ))
+            })?;
+            counters.sessions_cleaned = counters.sessions_cleaned.saturating_add(1);
+            record_session_cleanup(&mut counters, &session, archive_stats);
+        }
+
+        info!(
+            nous_id = %nous_id,
+            cap,
+            "session retention enforced per-agent session cap"
+        );
+    }
+
     Ok(counters)
 }
 
