@@ -8,7 +8,8 @@
 //!
 //! # Architecture
 //!
-//! - [`engine::DispatchEngine`] — session execution backend (Agent SDK HTTP/SSE)
+//! - [`engine::DispatchEngine`] — session execution backend (currently: Claude
+//!   CLI subprocess; target: Agent SDK HTTP/SSE)
 //! - [`http`] — subprocess-based `DispatchEngine` implementation and mock engine
 //! - [`session`] — per-prompt session management: spawn, monitor, resume, budget enforce
 //! - [`qa::QaGate`] — quality assurance evaluation (mechanical + LLM)
