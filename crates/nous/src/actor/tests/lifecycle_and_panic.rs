@@ -418,6 +418,7 @@ async fn turn_records_after_action_outcome_in_empirical_store() {
         if let Some(stats) = store
             .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
             .await
+            .expect("rolling stats query")
         {
             assert_eq!(stats.successes, 1);
             assert_eq!(stats.failures, 0);

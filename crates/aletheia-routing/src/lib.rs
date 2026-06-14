@@ -251,13 +251,17 @@ mod tests {
         assert!(router.after_action(&decision, &outcome).is_ok());
 
         for _ in 0..10 {
-            if let Some(stats) = store
+            match store
                 .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
                 .await
             {
-                assert_eq!(stats.successes, 1);
-                assert_eq!(stats.total, 1);
-                return;
+                Ok(Some(stats)) => {
+                    assert_eq!(stats.successes, 1);
+                    assert_eq!(stats.total, 1);
+                    return;
+                }
+                Ok(None) => {}
+                Err(error) => panic!("rolling stats query failed: {error}"),
             }
             tokio::task::yield_now().await;
         }
