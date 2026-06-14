@@ -359,14 +359,19 @@ If CSRF protection is enabled (default in the example config), state-changing re
 
 ### Server can't find the instance directory
 
-The server looks for `instance/` in the current directory, or you can specify it explicitly:
+The server looks for the instance root using this precedence order (first match wins):
+
+1. `-r / --instance-root` CLI flag
+2. `ALETHEIA_ROOT` environment variable
+3. `~/aletheia/instance` (default)
 
 ```bash
-aletheia -r /absolute/path/to/instance
+aletheia -r /absolute/path/to/instance      # explicit flag
+ALETHEIA_ROOT=/srv/aletheia aletheia serve  # env var
+aletheia serve                               # uses ~/aletheia/instance
 ```
 
-You can also set the `ALETHEIA_ROOT` environment variable. It must point to the
-instance root, not to the source checkout or `target/` directory.
+`ALETHEIA_ROOT` must point to the instance root, not the source checkout or `target/` directory. Helper scripts (`shared/bin/start.sh`, `scripts/deploy.sh`, `scripts/health-monitor.sh`) follow the same precedence.
 
 ### Signal channel log spam
 
