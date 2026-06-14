@@ -191,12 +191,17 @@ impl KnowledgeStore {
     /// Approve a pending skill: move it from `skill_pending` to `skill`.
     ///
     /// Supersedes the pending fact and creates a new fact with `fact_type = "skill"`.
+    /// Records the review decision on both the forgotten pending fact and the
+    /// approved skill so the provenance chain remains auditable.
+    ///
     /// Returns the new fact ID.
-    #[instrument(skip(self))]
+    #[instrument(skip(self, reason))]
     pub fn approve_pending_skill(
         &self,
         pending_fact_id: &crate::id::FactId,
         nous_id: &str,
+        reviewer_actor: &str,
+        reason: Option<&str>,
     ) -> crate::error::Result<crate::id::FactId> {
         let pending_facts = self.find_pending_skills(nous_id)?;
         let pending = pending_facts
@@ -218,16 +223,49 @@ impl KnowledgeStore {
             })?;
         "approved".clone_into(&mut pending_skill.status);
 
+        let now = jiff::Timestamp::now();
+        let decision = crate::skills::ReviewDecision {
+            actor: reviewer_actor.to_owned(),
+            action: "approved".to_owned(),
+            reason: reason.map(ToOwned::to_owned),
+            decided_at: now,
+        };
+        pending_skill.review_decision = Some(decision.clone());
+
+        // WHY: Update the pending fact content so the review decision survives
+        // even after the pending fact is forgotten; this preserves the audit trail
+        // in `audit_all_facts` / `list_forgotten` queries.
+        let pending_content = serde_json::to_string(&pending_skill).map_err(|e| {
+            crate::error::EngineQuerySnafu {
+                message: format!("failed to serialize updated pending skill: {e}"),
+            }
+            .build()
+        })?;
+        let mut updated_pending = pending.clone();
+        updated_pending.content = pending_content;
+        self.insert_fact(&updated_pending)?;
+
         let new_id = crate::id::FactId::new(koina::ulid::Ulid::new().to_string())
             .context(crate::error::InvalidIdSnafu)?;
-        let skill_json = serde_json::to_string(&pending_skill.skill).map_err(|e| {
+
+        let source_session_id = pending_skill
+            .source_evidence
+            .first()
+            .map(|ev| ev.session_id.clone());
+
+        let mut approved_skill = pending_skill.skill.clone();
+        approved_skill.pending_fact_id = Some(pending_fact_id.to_string());
+        approved_skill.source_evidence = pending_skill.source_evidence.clone();
+        approved_skill.extraction_audit = pending_skill.extraction_audit.clone();
+        approved_skill.review_decision = Some(decision);
+
+        let skill_json = serde_json::to_string(&approved_skill).map_err(|e| {
             crate::error::EngineQuerySnafu {
                 message: format!("failed to serialize skill: {e}"),
             }
             .build()
         })?;
 
-        let now = jiff::Timestamp::now();
         let approved_fact = crate::knowledge::Fact {
             id: new_id.clone(),
             nous_id: nous_id.to_owned(),
@@ -243,7 +281,7 @@ impl KnowledgeStore {
             provenance: crate::knowledge::FactProvenance {
                 confidence: 0.8,
                 tier: crate::knowledge::EpistemicTier::Verified,
-                source_session_id: None,
+                source_session_id,
                 stability_hours: 2190.0,
             },
             lifecycle: crate::knowledge::FactLifecycle {
@@ -268,11 +306,47 @@ impl KnowledgeStore {
     }
 
     /// Reject a pending skill: mark it as forgotten.
-    #[instrument(skip(self))]
+    ///
+    /// Records the review decision in the pending fact content before forgetting
+    /// so the rejection remains auditable.
+    #[instrument(skip(self, reason))]
     pub fn reject_pending_skill(
         &self,
         pending_fact_id: &crate::id::FactId,
+        reviewer_actor: &str,
+        reason: Option<&str>,
     ) -> crate::error::Result<()> {
+        let mut facts = self.read_facts_by_id(pending_fact_id.as_str())?;
+        let pending = facts.pop().ok_or_else(|| {
+            crate::error::FactNotFoundSnafu {
+                id: pending_fact_id.to_string(),
+            }
+            .build()
+        })?;
+        let mut pending_skill =
+            crate::skills::PendingSkill::from_json(&pending.content).map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("failed to parse pending skill: {e}"),
+                }
+                .build()
+            })?;
+        "rejected".clone_into(&mut pending_skill.status);
+        pending_skill.review_decision = Some(crate::skills::ReviewDecision {
+            actor: reviewer_actor.to_owned(),
+            action: "rejected".to_owned(),
+            reason: reason.map(ToOwned::to_owned),
+            decided_at: jiff::Timestamp::now(),
+        });
+        let content = serde_json::to_string(&pending_skill).map_err(|e| {
+            crate::error::EngineQuerySnafu {
+                message: format!("failed to serialize rejected pending skill: {e}"),
+            }
+            .build()
+        })?;
+        let mut updated = pending;
+        updated.content = content;
+        self.insert_fact(&updated)?;
+
         self.forget_fact(pending_fact_id, crate::knowledge::ForgetReason::Incorrect)?;
         Ok(())
     }

@@ -168,7 +168,7 @@ impl NousActor {
         tool_calls: &[crate::pipeline::ToolCall],
         session_key: &str,
     ) {
-        use mneme::skills::{ToolCallRecord, TrackResult};
+        use mneme::skills::{ToolCallRecord, TrackResult, sha256_hex};
 
         if tool_calls.is_empty() {
             return;
@@ -177,13 +177,52 @@ impl NousActor {
         let records: Vec<ToolCallRecord> = tool_calls
             .iter()
             .map(|tc| {
-                if tc.is_error {
-                    ToolCallRecord::errored(&tc.name, tc.duration_ms)
-                } else {
-                    ToolCallRecord::new(&tc.name, tc.duration_ms)
-                }
+                let input_hash = match serde_json::to_string(&tc.input) {
+                    Ok(serialized) => Some(sha256_hex(serialized.as_bytes())),
+                    Err(error) => {
+                        warn!(tool_name = %tc.name, %error, "failed to hash tool input for skill evidence");
+                        None
+                    }
+                };
+                let result_hash = tc.result.as_ref().map(|r| sha256_hex(r.as_bytes()));
+                ToolCallRecord::with_hashes(
+                    &tc.name,
+                    tc.duration_ms,
+                    tc.is_error,
+                    input_hash,
+                    result_hash,
+                )
             })
             .collect();
+
+        let turn_sequence_hash = {
+            let mut material = String::with_capacity(records.len() * 64);
+            for tc in &records {
+                material.push_str(&tc.tool_name);
+                material.push('|');
+                material.push_str(if tc.is_error { "true" } else { "false" });
+                material.push('|');
+                material.push_str(&tc.duration_ms.to_string());
+                material.push('|');
+                match &tc.tool_input_hash {
+                    Some(hash) => {
+                        material.push_str("some:");
+                        material.push_str(hash);
+                    }
+                    None => material.push_str("none"),
+                }
+                material.push('|');
+                match &tc.tool_result_hash {
+                    Some(hash) => {
+                        material.push_str("some:");
+                        material.push_str(hash);
+                    }
+                    None => material.push_str("none"),
+                }
+                material.push('\n');
+            }
+            sha256_hex(material.as_bytes())
+        };
 
         let nous_id = self.id.clone();
         let result =
@@ -203,7 +242,12 @@ impl NousActor {
             }
             TrackResult::Promoted(candidate_id) => {
                 info!(candidate_id = %candidate_id, "skill analysis: candidate promoted, spawning LLM extraction");
-                self.spawn_skill_extraction(&candidate_id, &records);
+                self.spawn_skill_extraction(
+                    &candidate_id,
+                    session_key,
+                    &records,
+                    &turn_sequence_hash,
+                );
             }
             _ => {
                 // WHY: TrackResult is #[non_exhaustive]; future variants are silently ignored here.
@@ -215,7 +259,9 @@ impl NousActor {
     fn spawn_skill_extraction(
         &mut self,
         candidate_id: &str,
+        session_key: &str,
         tool_calls: &[mneme::skills::ToolCallRecord],
+        turn_sequence_hash: &str,
     ) {
         let Some(ref extraction_config) = self.pipeline_config.extraction else {
             return;
@@ -226,6 +272,8 @@ impl NousActor {
         let providers = Arc::clone(&self.services.providers);
         let nous_id = self.id.clone();
         let candidate_id = candidate_id.to_owned();
+        let session_key = session_key.to_owned();
+        let turn_sequence_hash = turn_sequence_hash.to_owned();
         let tool_calls = tool_calls.to_vec();
         let tracker = Arc::clone(&self.services.candidate_tracker);
         #[cfg(feature = "knowledge-store")]
@@ -249,6 +297,8 @@ impl NousActor {
                         providers,
                         &nous_id,
                         &candidate_id,
+                        &session_key,
+                        &turn_sequence_hash,
                         &tool_calls,
                         &tracker,
                         #[cfg(feature = "knowledge-store")]
@@ -769,11 +819,13 @@ async fn run_skill_extraction(
     providers: Arc<ProviderRegistry>,
     nous_id: &str,
     candidate_id: &str,
+    session_key: &str,
+    turn_sequence_hash: &str,
     tool_calls: &[mneme::skills::ToolCallRecord],
     tracker: &mneme::skills::CandidateTracker,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
-    use mneme::skills::SkillExtractor;
+    use mneme::skills::{SkillEvidence, SkillExtractor};
 
     let candidates = tracker.candidates_for(nous_id);
     let Some(candidate) = candidates.iter().find(|c| c.id == candidate_id) else {
@@ -788,7 +840,7 @@ async fn run_skill_extraction(
     let sequences = vec![tool_calls.to_vec()];
 
     match extractor.extract_skill(candidate, &sequences).await {
-        Ok(extracted) => {
+        Ok((extracted, mut audit)) => {
             info!(
                 nous_id = %nous_id,
                 skill_name = %extracted.name,
@@ -817,7 +869,33 @@ async fn run_skill_extraction(
                     }
                 }
 
-                let pending = mneme::skills::PendingSkill::new(&extracted, candidate_id);
+                let mut evidence = Vec::with_capacity(1);
+                evidence.push(SkillEvidence {
+                    session_id: session_key.to_owned(),
+                    turn_sequence_hash: Some(turn_sequence_hash.to_owned()),
+                    tool_calls: tool_calls.to_vec(),
+                });
+                // WHY: Include the candidate's other session refs when available
+                // so reviewers can see the full recurrence pattern, not just the
+                // turn that triggered promotion.
+                for session_id in &candidate.session_refs {
+                    if *session_id == session_key {
+                        continue;
+                    }
+                    evidence.push(SkillEvidence {
+                        session_id: session_id.clone(),
+                        turn_sequence_hash: None,
+                        tool_calls: vec![],
+                    });
+                }
+
+                audit.model = Some(model.to_owned());
+                let pending = mneme::skills::PendingSkill::with_provenance(
+                    &extracted,
+                    candidate_id,
+                    evidence,
+                    audit,
+                );
                 match pending.to_json() {
                     Ok(content) => {
                         use mneme::knowledge::{
@@ -847,7 +925,7 @@ async fn run_skill_extraction(
                             provenance: FactProvenance {
                                 confidence: 0.6, // Pending review: moderate confidence
                                 tier: mneme::knowledge::EpistemicTier::Inferred,
-                                source_session_id: None,
+                                source_session_id: Some(session_key.to_owned()),
                                 stability_hours: 720.0,
                             },
                             lifecycle: FactLifecycle {
@@ -885,7 +963,8 @@ async fn run_skill_extraction(
 
             #[cfg(not(feature = "knowledge-store"))]
             {
-                let _ = candidate_id; // WHY: suppress unused-variable warning in non-knowledge-store builds
+                // WHY: suppress unused-variable warnings in non-knowledge-store builds.
+                let _ = (candidate_id, session_key, turn_sequence_hash);
                 info!("skill extracted but knowledge-store feature disabled, not persisting");
             }
         }

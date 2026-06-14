@@ -294,11 +294,13 @@ pub mod skill {
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
 pub mod skills {
     pub use episteme::skills::{
-        CandidateTracker, PendingSkill, SkillExtractor, ToolCallRecord, TrackResult,
+        CandidateTracker, ExtractionAudit, PendingSkill, ReviewDecision, SkillEvidence,
+        SkillExtractor, ToolCallRecord, TrackResult, sha256_hex,
     };
 
     /// Skill extraction provider types.
     pub mod extract {
+        pub use episteme::skills::ExtractionAudit;
         pub use episteme::skills::extract::{
             LlmCallSnafu, PendingSkill, SkillExtractionError, SkillExtractionProvider,
         };

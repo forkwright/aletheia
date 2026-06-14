@@ -18,6 +18,10 @@ fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&st
         origin: "seeded".to_owned(),
         triggers: vec![],
         always: false,
+        pending_fact_id: None,
+        source_evidence: vec![],
+        extraction_audit: None,
+        review_decision: None,
     })
     .expect("skill content serializes to JSON");
     Fact {
@@ -277,4 +281,162 @@ fn skill_decay_high_usage_survives_longer() {
         high_survived,
         "high-usage skill should survive 50-day decay, active={active}, retired={retired}"
     );
+}
+
+fn make_pending_skill_fact(
+    id: &str,
+    nous_id: &str,
+    skill_name: &str,
+    session_id: &str,
+) -> (Fact, crate::skills::PendingSkill) {
+    use crate::skills::{ExtractionAudit, PendingSkill, SkillEvidence, ToolCallRecord, sha256_hex};
+
+    let extracted = crate::skills::extract::ExtractedSkill {
+        name: skill_name.to_owned(),
+        description: format!("Skill: {skill_name}"),
+        steps: vec!["step 1".to_owned()],
+        tools_used: vec!["Read".to_owned()],
+        domain_tags: vec!["test".to_owned()],
+        when_to_use: "For tests".to_owned(),
+    };
+    let audit = ExtractionAudit {
+        prompt_hash: sha256_hex(b"prompt"),
+        response_hash: Some(sha256_hex(b"response")),
+        model: Some("test-model".to_owned()),
+        extracted_at: test_ts("2026-03-01T00:00:00Z"),
+    };
+    let evidence = vec![SkillEvidence {
+        session_id: session_id.to_owned(),
+        turn_sequence_hash: Some(sha256_hex(b"seq")),
+        tool_calls: vec![ToolCallRecord::with_hashes(
+            "Read",
+            100,
+            false,
+            Some(sha256_hex(b"input")),
+            Some(sha256_hex(b"result")),
+        )],
+    }];
+    let pending = PendingSkill::with_provenance(&extracted, "cand-test", evidence, audit);
+    let content = pending.to_json().expect("pending skill serializes to JSON");
+    let fact = Fact {
+        id: crate::id::FactId::new(id).expect("valid test id"),
+        nous_id: nous_id.to_owned(),
+        content,
+        fact_type: "skill_pending".to_owned(),
+        temporal: FactTemporal {
+            valid_from: test_ts("2026-03-01"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.6,
+            tier: EpistemicTier::Inferred,
+            source_session_id: Some(session_id.to_owned()),
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: crate::knowledge::FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
+        scope: None,
+        project_id: None,
+    };
+    (fact, pending)
+}
+
+#[test]
+fn approve_pending_skill_transfers_provenance() {
+    let store = make_store();
+    let session_id = "session-approve";
+    let (pending_fact, _) = make_pending_skill_fact("ps-1", "alice", "approve-skill", session_id);
+    store
+        .insert_fact(&pending_fact)
+        .expect("insert pending skill");
+
+    let new_id = store
+        .approve_pending_skill(
+            &crate::id::FactId::new("ps-1").expect("valid test id"),
+            "alice",
+            "reviewer-alice",
+            Some("looks useful"),
+        )
+        .expect("approve pending skill");
+
+    let skills = store
+        .find_skills_for_nous("alice", 100)
+        .expect("query skills");
+    let approved = skills
+        .iter()
+        .find(|f| f.id == new_id)
+        .expect("approved skill exists");
+    assert_eq!(
+        approved.provenance.source_session_id.as_deref(),
+        Some(session_id)
+    );
+
+    let content =
+        serde_json::from_str::<crate::skill::SkillContent>(&approved.content).expect("parse skill");
+    assert_eq!(
+        content.pending_fact_id.as_deref(),
+        Some("ps-1"),
+        "approved skill should link back to pending fact"
+    );
+    assert_eq!(content.source_evidence.len(), 1);
+    assert_eq!(content.source_evidence[0].session_id, session_id);
+    assert!(content.extraction_audit.is_some());
+    let decision = content
+        .review_decision
+        .expect("approved skill should record review decision");
+    assert_eq!(decision.actor, "reviewer-alice");
+    assert_eq!(decision.action, "approved");
+    assert_eq!(decision.reason.as_deref(), Some("looks useful"));
+}
+
+#[test]
+fn reject_pending_skill_records_review_decision() {
+    let store = make_store();
+    let session_id = "session-reject";
+    let (pending_fact, _) = make_pending_skill_fact("ps-2", "alice", "reject-skill", session_id);
+    store
+        .insert_fact(&pending_fact)
+        .expect("insert pending skill");
+
+    store
+        .reject_pending_skill(
+            &crate::id::FactId::new("ps-2").expect("valid test id"),
+            "reviewer-bob",
+            Some("not generalizable"),
+        )
+        .expect("reject pending skill");
+
+    let pending_facts = store.find_pending_skills("alice").expect("query pending");
+    assert!(
+        pending_facts.is_empty(),
+        "rejected skill should no longer be pending"
+    );
+
+    let rejected = store
+        .audit_all_facts("alice", 10)
+        .expect("audit query")
+        .into_iter()
+        .find(|f| f.id.as_str() == "ps-2")
+        .expect("rejected pending fact remains in audit trail");
+    assert!(rejected.lifecycle.is_forgotten);
+    let content = serde_json::from_str::<crate::skills::PendingSkill>(&rejected.content)
+        .expect("parse pending");
+    assert_eq!(content.status, "rejected");
+    let decision = content
+        .review_decision
+        .expect("rejected skill should record review decision");
+    assert_eq!(decision.actor, "reviewer-bob");
+    assert_eq!(decision.action, "rejected");
+    assert_eq!(decision.reason.as_deref(), Some("not generalizable"));
 }

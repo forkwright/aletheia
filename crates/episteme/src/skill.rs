@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::skills::{ExtractionAudit, ReviewDecision, SkillEvidence};
+
 /// Decay score thresholds for skill lifecycle management.
 ///
 /// These are compile-time defaults. Callers should prefer the values from
@@ -111,6 +113,18 @@ pub struct SkillContent {
     /// When `false` (default), the skill is lazy-loaded via `skill_read`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub always: bool,
+    /// For learned skills, the pending skill fact ID that was approved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_fact_id: Option<String>,
+    /// Evidence from the sessions that produced the learned skill pattern.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_evidence: Vec<SkillEvidence>,
+    /// Audit record for the LLM extraction pass, if this skill was extracted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extraction_audit: Option<ExtractionAudit>,
+    /// Review decision recorded when the skill was approved or rejected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_decision: Option<ReviewDecision>,
 }
 
 /// Errors from SKILL.md parsing.
@@ -237,6 +251,10 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
         origin: "seeded".to_owned(),
         triggers: fm.triggers,
         always: fm.always,
+        pending_fact_id: None,
+        source_evidence: vec![],
+        extraction_audit: None,
+        review_decision: None,
     })
 }
 

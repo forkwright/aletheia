@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 
 use crate::skill::SkillContent;
-use crate::skills::{SkillCandidate, ToolCallRecord};
+use crate::skills::{
+    ExtractionAudit, ReviewDecision, SkillCandidate, SkillEvidence, ToolCallRecord, sha256_hex,
+};
 
 /// Errors from the skill extraction pipeline.
 #[derive(Debug, Snafu)]
@@ -98,6 +100,10 @@ impl ExtractedSkill {
             origin: "extracted".to_owned(),
             triggers: vec![],
             always: false,
+            pending_fact_id: None,
+            source_evidence: vec![],
+            extraction_audit: None,
+            review_decision: None,
         }
     }
 }
@@ -118,6 +124,9 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
     /// `tool_call_sequences` should contain the tool call sequences from each
     /// session where the pattern was observed (one vec per session).
     ///
+    /// Returns the parsed skill together with an [`ExtractionAudit`] record
+    /// containing deterministic hashes of the prompt and raw LLM response.
+    ///
     /// # Errors
     ///
     /// Returns an error if the LLM call fails or if the response cannot be parsed.
@@ -125,11 +134,19 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
         &self,
         candidate: &SkillCandidate,
         tool_call_sequences: &[Vec<ToolCallRecord>],
-    ) -> Result<ExtractedSkill, SkillExtractionError> {
+    ) -> Result<(ExtractedSkill, ExtractionAudit), SkillExtractionError> {
         let system = EXTRACTION_SYSTEM_PROMPT;
         let user_message = build_extraction_prompt(candidate, tool_call_sequences);
+        let prompt = format!("{system}\n\n{user_message}");
         let response = self.provider.complete(system, &user_message).await?;
-        parse_skill_response(&response)
+        let extracted = parse_skill_response(&response)?;
+        let audit = ExtractionAudit {
+            prompt_hash: sha256_hex(prompt.as_bytes()),
+            response_hash: Some(sha256_hex(response.as_bytes())),
+            model: None,
+            extracted_at: jiff::Timestamp::now(),
+        };
+        Ok((extracted, audit))
     }
 }
 
@@ -431,6 +448,15 @@ pub struct PendingSkill {
     pub status: String,
     /// When the skill was extracted.
     pub extracted_at: jiff::Timestamp,
+    /// Evidence from the sessions that produced the promoted pattern.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_evidence: Vec<SkillEvidence>,
+    /// Audit record for the LLM extraction pass.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extraction_audit: Option<ExtractionAudit>,
+    /// Review decision once approve/reject is recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_decision: Option<ReviewDecision>,
 }
 
 /// Raw deserialization type for [`PendingSkill`].
@@ -440,6 +466,12 @@ struct PendingSkillRaw {
     candidate_id: String,
     status: String,
     extracted_at: jiff::Timestamp,
+    #[serde(default)]
+    source_evidence: Vec<SkillEvidence>,
+    #[serde(default)]
+    extraction_audit: Option<ExtractionAudit>,
+    #[serde(default)]
+    review_decision: Option<ReviewDecision>,
 }
 
 impl From<PendingSkillRaw> for PendingSkill {
@@ -449,6 +481,9 @@ impl From<PendingSkillRaw> for PendingSkill {
             candidate_id: raw.candidate_id,
             status: raw.status,
             extracted_at: raw.extracted_at,
+            source_evidence: raw.source_evidence,
+            extraction_audit: raw.extraction_audit,
+            review_decision: raw.review_decision,
         }
     }
 }
@@ -462,6 +497,28 @@ impl PendingSkill {
             candidate_id: candidate_id.to_owned(),
             status: "pending_review".to_owned(),
             extracted_at: jiff::Timestamp::now(),
+            source_evidence: Vec::new(),
+            extraction_audit: None,
+            review_decision: None,
+        }
+    }
+
+    /// Create a pending skill with full provenance.
+    #[must_use]
+    pub fn with_provenance(
+        extracted: &ExtractedSkill,
+        candidate_id: &str,
+        source_evidence: Vec<SkillEvidence>,
+        extraction_audit: ExtractionAudit,
+    ) -> Self {
+        Self {
+            skill: extracted.to_skill_content(),
+            candidate_id: candidate_id.to_owned(),
+            status: "pending_review".to_owned(),
+            extracted_at: extraction_audit.extracted_at,
+            source_evidence,
+            extraction_audit: Some(extraction_audit),
+            review_decision: None,
         }
     }
 

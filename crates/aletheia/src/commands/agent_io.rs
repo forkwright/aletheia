@@ -228,6 +228,12 @@ pub(crate) struct ReviewSkillsArgs {
     /// Fact ID of the pending skill (required for approve/reject)
     #[arg(short, long)]
     pub fact_id: Option<String>,
+    /// Reviewer actor (defaults to $USER, or "operator" if unavailable)
+    #[arg(short, long)]
+    pub reviewer: Option<String>,
+    /// Optional reason for the approve/reject decision
+    #[arg(short, long)]
+    pub reason: Option<String>,
     /// Server URL for lock detection
     #[arg(long, default_value = "http://127.0.0.1:18789")]
     // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
@@ -1929,6 +1935,13 @@ pub(crate) async fn review_skills(
             })?;
 
         let nous_id = &args.nous_id;
+        let reviewer = args
+            .reviewer
+            .clone()
+            .or_else(|| std::env::var("USER").ok())
+            .unwrap_or_else(|| "operator".to_owned());
+        let reason = args.reason.as_deref();
+
         match args.action.as_str() {
             "list" => {
                 let pending = store
@@ -1959,6 +1972,39 @@ pub(crate) async fn review_skills(
                             println!("  Status: {}", ps.status);
                             println!("  Candidate: {}", ps.candidate_id);
                             println!("  Extracted: {}", ps.extracted_at);
+                            if !ps.source_evidence.is_empty() {
+                                println!("  Evidence:");
+                                for ev in &ps.source_evidence {
+                                    println!(
+                                        "    - session: {}{}",
+                                        ev.session_id,
+                                        ev.turn_sequence_hash
+                                            .as_ref()
+                                            .map(|h| format!(" (turn hash: {h})"))
+                                            .unwrap_or_default()
+                                    );
+                                    if !ev.tool_calls.is_empty() {
+                                        println!(
+                                            "      tools: {}",
+                                            ev.tool_calls
+                                                .iter()
+                                                .map(|tc| tc.tool_name.as_str())
+                                                .collect::<Vec<_>>()
+                                                .join(" → ")
+                                        );
+                                    }
+                                }
+                            }
+                            if let Some(ref audit) = ps.extraction_audit {
+                                println!("  Extraction audit:");
+                                println!("    prompt hash: {}", audit.prompt_hash);
+                                if let Some(ref h) = audit.response_hash {
+                                    println!("    response hash: {h}");
+                                }
+                                if let Some(ref m) = audit.model {
+                                    println!("    model: {m}");
+                                }
+                            }
                             println!();
                         }
                         Err(e) => {
@@ -1973,9 +2019,9 @@ pub(crate) async fn review_skills(
                 })?;
                 let fact_id = mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
                 let new_id = store
-                    .approve_pending_skill(&fact_id, nous_id)
+                    .approve_pending_skill(&fact_id, nous_id, &reviewer, reason)
                     .whatever_context("failed to approve skill")?;
-                println!("Approved: {fid} → new skill fact: {new_id}");
+                println!("Approved by {reviewer}: {fid} → new skill fact: {new_id}");
             }
             "reject" => {
                 let fid = args.fact_id.as_deref().ok_or_else(|| {
@@ -1983,9 +2029,9 @@ pub(crate) async fn review_skills(
                 })?;
                 let fact_id = mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
                 store
-                    .reject_pending_skill(&fact_id)
+                    .reject_pending_skill(&fact_id, &reviewer, reason)
                     .whatever_context("failed to reject skill")?;
-                println!("Rejected: {fid}");
+                println!("Rejected by {reviewer}: {fid}");
             }
             other => {
                 whatever!("unknown action '{other}'. Use: list, approve, reject");
