@@ -61,6 +61,60 @@ async fn list_nous_includes_private_agents_for_operators() {
 }
 
 #[tokio::test]
+async fn private_nous_status_and_tools_reject_readonly_unscoped_callers() {
+    let (state, _dir) = test_state_with_private_nous().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    for path in ["/api/v1/nous/hidden", "/api/v1/nous/hidden/tools"] {
+        let resp = router
+            .clone()
+            .oneshot(authed_get_as(path, Role::Readonly))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path}");
+        let body = body_json(resp).await;
+        assert_eq!(body["error"]["code"], "forbidden");
+    }
+}
+
+#[tokio::test]
+async fn private_nous_status_and_tools_reject_readonly_scoped_callers() {
+    let (state, _dir) = test_state_with_private_nous().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    for path in ["/api/v1/nous/hidden", "/api/v1/nous/hidden/tools"] {
+        let resp = router
+            .clone()
+            .oneshot(authed_get_scoped_as(path, Role::Readonly, "hidden"))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path}");
+        let body = body_json(resp).await;
+        assert_eq!(body["error"]["code"], "forbidden");
+    }
+}
+
+#[tokio::test]
+async fn private_nous_status_and_tools_reject_cross_scope_callers() {
+    let (state, _dir) = test_state_with_private_nous().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    for path in ["/api/v1/nous/hidden", "/api/v1/nous/hidden/tools"] {
+        let resp = router
+            .clone()
+            .oneshot(authed_get_scoped_as(path, Role::Operator, "syn"))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{path}");
+        let body = body_json(resp).await;
+        assert_eq!(body["error"]["code"], "forbidden");
+    }
+}
+
+#[tokio::test]
 async fn get_nous_status() {
     let (app, _dir) = app().await;
     let resp = app.oneshot(authed_get("/api/v1/nous/syn")).await.unwrap();

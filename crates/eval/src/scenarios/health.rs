@@ -11,8 +11,8 @@ use crate::scenario::{
 pub(crate) fn scenarios() -> Vec<Box<dyn Scenario>> {
     vec![
         Box::new(HealthReturnsOk),
-        Box::new(HealthContainsVersion),
-        Box::new(HealthReportsChecks),
+        Box::new(HealthOmitsVersion),
+        Box::new(HealthOmitsDiagnostics),
     ]
 }
 
@@ -52,12 +52,12 @@ impl Scenario for HealthReturnsOk {
     }
 }
 
-struct HealthContainsVersion;
-impl Scenario for HealthContainsVersion {
+struct HealthOmitsVersion;
+impl Scenario for HealthOmitsVersion {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
-            id: "health-contains-version",
-            description: "Health response includes non-empty version",
+            id: "health-omits-version",
+            description: "Public health response does not expose build metadata",
             category: "health",
             requires_auth: false,
             requires_nous: false,
@@ -72,25 +72,29 @@ impl Scenario for HealthContainsVersion {
             async move {
                 let result: crate::error::Result<()> = async {
                     let health = client.health().await?;
-                    assert_eval(!health.version.is_empty(), "version field is empty")
+                    assert_eval(
+                        health.version.is_none(),
+                        "public health response exposed version",
+                    )?;
+                    assert_eval(
+                        health.uptime_seconds.is_none(),
+                        "public health response exposed uptime",
+                    )
                 }
                 .await;
                 result.into()
             }
-            .instrument(tracing::info_span!(
-                "scenario",
-                id = "health-contains-version"
-            )),
+            .instrument(tracing::info_span!("scenario", id = "health-omits-version")),
         )
     }
 }
 
-struct HealthReportsChecks;
-impl Scenario for HealthReportsChecks {
+struct HealthOmitsDiagnostics;
+impl Scenario for HealthOmitsDiagnostics {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
-            id: "health-reports-checks",
-            description: "Health response includes at least one check",
+            id: "health-omits-diagnostics",
+            description: "Public health response does not expose diagnostics",
             category: "health",
             requires_auth: false,
             requires_nous: false,
@@ -105,14 +109,21 @@ impl Scenario for HealthReportsChecks {
             async move {
                 let result: crate::error::Result<()> = async {
                     let health = client.health().await?;
-                    assert_eval(!health.checks.is_empty(), "checks array is empty")
+                    assert_eval(
+                        health.checks.is_empty(),
+                        "public health response exposed diagnostic checks",
+                    )?;
+                    assert_eval(
+                        health.data_dir.is_none(),
+                        "public health response exposed data directory",
+                    )
                 }
                 .await;
                 result.into()
             }
             .instrument(tracing::info_span!(
                 "scenario",
-                id = "health-reports-checks"
+                id = "health-omits-diagnostics"
             )),
         )
     }

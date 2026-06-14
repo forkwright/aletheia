@@ -126,6 +126,24 @@ async fn workspace_write_round_trips_with_get_content() {
 }
 
 #[tokio::test]
+async fn workspace_write_rejects_non_operator_token() {
+    let (app, dir) = app().await;
+
+    let write = authed_request_as(
+        "PUT",
+        "/api/v1/workspace/files/content",
+        Some(serde_json::json!({ "path": "readonly-write.md", "content": "blocked\n" })),
+        symbolon::types::Role::Agent,
+    );
+    let resp = app.oneshot(write).await.expect("write response");
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert!(
+        !workspace_root(&dir).join("readonly-write.md").exists(),
+        "non-operator write must not create files"
+    );
+}
+
+#[tokio::test]
 async fn workspace_write_creates_new_file() {
     let (app, dir) = app().await;
 
@@ -279,6 +297,20 @@ async fn workspace_open_rejects_path_traversal() {
     );
     let resp = app.oneshot(open).await.expect("open response");
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn workspace_open_rejects_non_operator_token() {
+    let (app, _dir) = app().await;
+
+    let open = authed_request_as(
+        "POST",
+        "/api/v1/workspace/open",
+        Some(serde_json::json!({ "path": SEED_MARKDOWN })),
+        symbolon::types::Role::Readonly,
+    );
+    let resp = app.oneshot(open).await.expect("open response");
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

@@ -342,14 +342,14 @@ async fn real_tcp_server_answers_health_probe() {
     let (addr, shutdown) = spawn_server(Arc::clone(&env.state), permissive_security()).await;
 
     let response = raw_get(addr, API_HEALTH, None).await;
-    assert!(
-        response.status == 200 || response.status == 503,
-        "real-TCP health probe must return 200 or 503, got {}",
-        response.status
-    );
+    assert_eq!(response.status, 200);
     let body = response.body_json();
-    assert!(body["status"].is_string(), "health body lacks status");
-    assert!(body["version"].is_string(), "health body lacks version");
+    assert_eq!(body["status"], "healthy");
+    assert_eq!(
+        body.as_object().expect("health response object").len(),
+        1,
+        "public health must not expose diagnostic fields"
+    );
 
     shutdown.cancel();
 }

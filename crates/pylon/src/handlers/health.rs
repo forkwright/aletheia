@@ -7,12 +7,15 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use koina::system::{Environment, RealSystem};
+use symbolon::types::Role;
 
+use crate::error::ApiError;
+use crate::extract::{Claims, require_role};
 use crate::state::HealthState;
 
 #[path = "health_dto.rs"]
 mod health_dto;
-pub use health_dto::{HealthCheck, HealthResponse};
+pub use health_dto::{HealthCheck, HealthResponse, LivenessResponse};
 
 /// Per-check timeout: individual health checks that exceed this are reported as "timeout".
 const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -20,7 +23,7 @@ const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 /// Overall endpoint timeout: the health response is always returned within this bound.
 const OVERALL_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// GET /api/health: liveness + readiness check.
+/// GET /api/health: public liveness check.
 ///
 /// # Cancel safety
 ///
@@ -30,11 +33,40 @@ const OVERALL_TIMEOUT: Duration = Duration::from_secs(10);
     get,
     path = "/api/health",
     responses(
-        (status = 200, description = "Health status", body = HealthResponse),
-        (status = 503, description = "Service unavailable", body = HealthResponse),
+        (status = 200, description = "Public liveness status", body = LivenessResponse),
     ),
 )]
-pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
+pub async fn check() -> impl IntoResponse {
+    Json(LivenessResponse { status: "healthy" })
+}
+
+/// GET /api/v1/system/health: operator-only readiness and diagnostics.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/health",
+    responses(
+        (status = 200, description = "Detailed health status", body = HealthResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 503, description = "Service unavailable", body = HealthResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn detailed(
+    State(state): State<HealthState>,
+    claims: Claims,
+) -> Result<impl IntoResponse, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    let (http_status, response) = detailed_health(&state).await;
+    Ok((http_status, Json(response)))
+}
+
+async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
     let uptime = state.start_time.elapsed().as_secs();
 
     // WHY: Run all health checks concurrently with individual timeouts so a
@@ -49,24 +81,24 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
         let expiry_warning_threshold = api_limits.expiry_warning_threshold_secs;
 
         let (store_check, actor_check, config_check, storage_check) = tokio::join!(
-            timed_check("session_store", check_session_store(&state)),
-            timed_check("nous_actors", check_nous_actors(&state)),
-            timed_check("config_readable", check_config_readable(&state)),
-            timed_check("storage_writable", check_storage_writable(&state)),
+            timed_check("session_store", check_session_store(state)),
+            timed_check("nous_actors", check_nous_actors(state)),
+            timed_check("config_readable", check_config_readable(state)),
+            timed_check("storage_writable", check_storage_writable(state)),
         );
 
         // WHY: these checks are synchronous and cheap — no timeout needed.
-        let provider_check = check_provider_availability(&state);
+        let provider_check = check_provider_availability(state);
         let credential_check =
-            check_credential_validity(&state, clock_skew_leeway, expiry_warning_threshold);
-        let embedding_check = check_embedding_provider(&state);
-        let gateway_security_check = check_gateway_security(&state).await;
+            check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
+        let embedding_check = check_embedding_provider(state);
+        let gateway_security_check = check_gateway_security(state).await;
 
         vec![
             store_check,
             provider_check,
             actor_check,
-            check_provider_reachability(&state),
+            check_provider_reachability(state),
             config_check,
             gateway_security_check,
             credential_check,
@@ -104,14 +136,14 @@ pub async fn check(State(state): State<HealthState>) -> impl IntoResponse {
 
     (
         http_status,
-        Json(HealthResponse {
+        HealthResponse {
             status,
             version: env!("CARGO_PKG_VERSION"),
             git_sha: option_env!("GIT_SHA").unwrap_or("unknown"),
             uptime_seconds: uptime,
             checks,
             data_dir: state.oikos.data().to_string_lossy().into_owned(),
-        }),
+        },
     )
 }
 
@@ -155,12 +187,11 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
     get,
     path = "/health",
     responses(
-        (status = 200, description = "Health status", body = HealthResponse),
-        (status = 503, description = "Service unavailable", body = HealthResponse),
+        (status = 200, description = "Public liveness status", body = LivenessResponse),
     ),
 )]
-pub async fn deprecated_health_check(State(state): State<HealthState>) -> impl IntoResponse {
-    check(State(state)).await
+pub async fn deprecated_health_check() -> impl IntoResponse {
+    check().await
 }
 
 /// Run a health check with a per-check timeout. If the check exceeds
@@ -729,6 +760,15 @@ mod tests {
         assert_eq!(json["version"], "1.0.0");
         assert_eq!(json["uptime_seconds"], 300);
         assert!(json["checks"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn liveness_response_serializes_only_status() {
+        let resp = LivenessResponse { status: "healthy" };
+        let json = serde_json::to_value(&resp).unwrap();
+        let object = json.as_object().unwrap();
+        assert_eq!(object.len(), 1);
+        assert_eq!(json["status"], "healthy");
     }
 
     #[test]

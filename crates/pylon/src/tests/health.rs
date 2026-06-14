@@ -21,6 +21,11 @@ async fn health_no_auth_required() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     assert_eq!(body["status"], "healthy");
+    assert_eq!(
+        body.as_object().expect("health response object").len(),
+        1,
+        "public health must remain minimal liveness only"
+    );
 }
 
 #[tokio::test]
@@ -34,16 +39,38 @@ async fn health_returns_200() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     assert_eq!(body["status"], "healthy");
-    assert!(body["version"].is_string());
-    assert!(body["uptime_seconds"].is_number());
-    assert!(body["checks"].is_array());
+    assert!(body.get("version").is_none());
+    assert!(body.get("uptime_seconds").is_none());
+    assert!(body.get("checks").is_none());
+    assert!(body.get("data_dir").is_none());
 }
 
 #[tokio::test]
-async fn health_degraded_without_providers() {
-    let (app, _dir) = app_no_providers().await;
+async fn public_health_does_not_expose_diagnostics() {
+    let (app, _dir) = app().await;
     let resp = app
         .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(!body.contains("data_dir"), "public health leaked data_dir");
+    assert!(
+        !body.contains("credential"),
+        "public health leaked credential diagnostics"
+    );
+    assert!(
+        !body.contains("sk-ant"),
+        "public health leaked credential data"
+    );
+}
+
+#[tokio::test]
+async fn detailed_health_degraded_without_providers() {
+    let (app, _dir) = app_no_providers().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/health"))
         .await
         .unwrap();
 
@@ -52,10 +79,39 @@ async fn health_degraded_without_providers() {
 }
 
 #[tokio::test]
-async fn health_checks_have_expected_shape() {
+async fn detailed_health_requires_auth() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::get("/api/v1/system/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn detailed_health_requires_operator() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get_as(
+            "/api/v1/system/health",
+            symbolon::types::Role::Readonly,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn detailed_health_checks_have_expected_shape() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/health"))
         .await
         .unwrap();
 
@@ -76,6 +132,7 @@ async fn health_checks_have_expected_shape() {
         "missing session_store check"
     );
     assert!(names.contains(&"providers"), "missing providers check");
+    assert!(body["data_dir"].is_string(), "operator health has data_dir");
 }
 
 #[tokio::test]
@@ -210,6 +267,7 @@ async fn openapi_spec_has_all_paths() {
     let body = body_json(resp).await;
     let paths = body["paths"].as_object().unwrap();
     assert!(paths.contains_key("/api/health"));
+    assert!(paths.contains_key("/api/v1/system/health"));
     assert!(paths.contains_key("/api/v1/sessions"));
     assert!(paths.contains_key("/api/v1/sessions/{id}"));
     assert!(paths.contains_key("/api/v1/sessions/{id}/messages"));

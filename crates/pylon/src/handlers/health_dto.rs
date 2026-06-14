@@ -4,7 +4,15 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
-/// Top-level health response combining all subsystem checks.
+/// Public liveness response for unauthenticated health probes.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LivenessResponse {
+    /// Minimal process status. If this response is returned, pylon is alive.
+    #[schema(value_type = String)]
+    pub status: &'static str,
+}
+
+/// Operator-only health response combining all subsystem checks.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
     /// Aggregate status: `"healthy"`, `"degraded"`, or `"unhealthy"`.

@@ -159,6 +159,7 @@ pub fn build_router_with(
             "/system/credentials",
             get(credentials::list_credentials).post(credentials::add_credential),
         )
+        .route("/system/health", get(health::detailed))
         .route(
             "/system/credentials/rotate",
             post(credentials::rotate_credentials),

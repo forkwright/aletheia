@@ -1,15 +1,17 @@
 //! Workspace file-browser handlers.
 
+use std::path::{Component, Path, PathBuf};
+
 use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use mime_guess::MimeGuess;
-use std::path::{Component, Path, PathBuf};
+use symbolon::types::Role;
 use tokio::process::Command;
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NotFoundSnafu, UserFacingSnafu};
-use crate::extract::Claims;
+use crate::extract::{Claims, require_role};
 use crate::state::WorkspaceState;
 
 #[path = "workspace_dto.rs"]
@@ -266,9 +268,11 @@ pub async fn file_content(
 )]
 pub async fn write_file_content(
     State(state): State<WorkspaceState>,
-    _claims: Claims,
+    claims: Claims,
     Json(request): Json<WriteContentRequest>,
 ) -> Result<Json<WriteContentResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+
     if request.content.len() > WRITE_LIMIT_BYTES {
         return Err(UserFacingSnafu {
             status: StatusCode::PAYLOAD_TOO_LARGE,
@@ -359,9 +363,11 @@ pub async fn write_file_content(
 )]
 pub async fn open_file(
     State(state): State<WorkspaceState>,
-    _claims: Claims,
+    claims: Claims,
     Json(request): Json<OpenRequest>,
 ) -> Result<Json<OpenResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+
     let resolved = resolve_workspace_file(&state.workspace_root, &request.path)?;
     let metadata = std::fs::symlink_metadata(&resolved).map_err(|_err| {
         NotFoundSnafu {

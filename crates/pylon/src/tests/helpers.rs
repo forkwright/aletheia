@@ -316,7 +316,16 @@ pub(super) fn authed_request(
     uri: &str,
     body: Option<serde_json::Value>,
 ) -> Request<Body> {
-    let token = default_token();
+    authed_request_as(method, uri, body, symbolon::types::Role::Operator)
+}
+
+pub(super) fn authed_request_as(
+    method: &str,
+    uri: &str,
+    body: Option<serde_json::Value>,
+    role: symbolon::types::Role,
+) -> Request<Body> {
+    let token = token_for_role(role);
     let builder = Request::builder()
         .method(method)
         .uri(uri)
@@ -337,6 +346,18 @@ pub(super) fn authed_get(uri: &str) -> Request<Body> {
 
 pub(super) fn authed_get_as(uri: &str, role: symbolon::types::Role) -> Request<Body> {
     let token = token_for_role(role);
+    Request::get(uri)
+        .header("authorization", format!("{BEARER_PREFIX}{token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+pub(super) fn authed_get_scoped_as(
+    uri: &str,
+    role: symbolon::types::Role,
+    nous_id: &str,
+) -> Request<Body> {
+    let token = token_scoped_to(role, nous_id);
     Request::get(uri)
         .header("authorization", format!("{BEARER_PREFIX}{token}"))
         .body(Body::empty())

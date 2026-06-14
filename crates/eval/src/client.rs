@@ -315,9 +315,14 @@ pub enum MessageRole {
 #[derive(Debug, Clone, Deserialize)]
 pub struct HealthResponse {
     pub status: InstanceStatus,
-    pub version: String,
-    pub uptime_seconds: u64,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub uptime_seconds: Option<u64>,
+    #[serde(default)]
     pub checks: Vec<HealthCheck>,
+    #[serde(default)]
+    pub data_dir: Option<String>,
 }
 
 /// A single health check result within a health response.
