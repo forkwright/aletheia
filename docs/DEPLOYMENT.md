@@ -192,14 +192,9 @@ This displays the current token or a way to generate one. Tokens are managed by 
 
 ### POST/PUT/DELETE CSRF protection
 
-Enable CSRF protection by adding to `aletheia.toml`:
-
-```toml
-[gateway.csrf]
-enabled = true
-```
-
-When enabled, all state-changing requests (POST, PUT, DELETE, PATCH) to `/api/v1/` must include the header:
+CSRF protection is enabled by default. All state-changing requests (POST, PUT,
+DELETE, PATCH) to `/api/v1/` must include the configured header. The default
+bootstrap value is:
 
 ```
 X-Requested-With: aletheia
@@ -216,7 +211,18 @@ curl -X POST \
   http://127.0.0.1:18789/api/v1/sessions
 ```
 
-Missing the CSRF header returns `403 Forbidden` when CSRF is enabled. Enable CSRF on any instance exposed to a network.
+Missing the CSRF header returns `403 Forbidden`. If a deployment intentionally
+disables CSRF, the config must carry the acknowledgement flag:
+
+```toml
+[gateway.csrf]
+enabled = false
+disableAcknowledged = true
+```
+
+Operators who set a custom `headerValue` must provision the same value into
+their clients through local config or deployment secrets. The runtime config
+API redacts `gateway.csrf.headerValue`.
 
 ### No authentication mode
 

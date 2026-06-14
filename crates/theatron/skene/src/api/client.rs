@@ -18,7 +18,7 @@ use super::types::{
 ///
 /// Default headers set here apply to every request made with this client:
 /// - Authorization: Bearer <token> (if a token is configured)
-/// - x-requested-with: aletheia (CSRF mitigation: server rejects absent header)
+/// - x-requested-with: aletheia (documented default CSRF bootstrap header)
 /// - Content-Type: application/json
 /// - Accept: application/json (SSE callers override this per-request to text/event-stream)
 ///

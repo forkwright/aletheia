@@ -44,8 +44,9 @@ mode = "token"            # token | jwt | none
 
 [gateway.csrf]
 enabled = true            # Require X-Requested-With: aletheia on state-changing requests
-# header_name = "x-requested-with"
-# header_value = "aletheia"
+# disableAcknowledged = true  # Required only when enabled = false
+# headerName = "x-requested-with"
+# headerValue = "aletheia"
 
 # --- Agents ---
 [agents.defaults]
