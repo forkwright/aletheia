@@ -3,8 +3,32 @@
 use std::time::{Duration, Instant};
 
 use crate::schedule::{apply_jitter, backoff_delay};
+use crate::state::{TASK_STATE_SCHEMA_VERSION, TaskState};
 
-use super::TaskRunner;
+use super::{RegisteredTask, TaskRunner};
+
+/// Build a persisted [`TaskState`] snapshot from a registered task.
+///
+/// WHY(#5130): the persisted record captures enough state to faithfully
+/// restore scheduling decisions across restarts: enabled flag, backoff
+/// deadline, last error, and last outcome.
+fn snapshot_task_state(
+    task: &RegisteredTask,
+    backoff_until_ts: Option<String>,
+    last_outcome: &str,
+) -> TaskState {
+    TaskState {
+        task_id: task.def.id.clone(),
+        last_run_ts: task.last_run.map(|ts| ts.to_string()),
+        run_count: task.run_count,
+        consecutive_failures: task.consecutive_failures,
+        schema_version: TASK_STATE_SCHEMA_VERSION,
+        enabled: Some(task.def.enabled),
+        backoff_until_ts,
+        last_error: task.last_error.clone(),
+        last_outcome: Some(last_outcome.to_owned()),
+    }
+}
 
 impl TaskRunner {
     /// Record a successful task completion and UPDATE scheduling.
@@ -34,12 +58,38 @@ impl TaskRunner {
             "task completed"
         );
 
-        let state_to_save = crate::state::TaskState {
-            task_id: task.def.id.clone(),
-            last_run_ts: task.last_run.map(|ts| ts.to_string()),
-            run_count: task.run_count,
-            consecutive_failures: task.consecutive_failures,
+        let state_to_save = snapshot_task_state(task, None, "success");
+        self.persist_task_state(&state_to_save);
+    }
+
+    /// Record a soft-skip: the task could not run because a dependency was
+    /// not configured.
+    ///
+    /// WHY(#5129): a skip advances `last_run`/`run_count` for observability but
+    /// must NOT touch `consecutive_failures` or backoff, since a missing
+    /// dependency is a benign no-op rather than an execution failure.
+    pub(super) fn record_task_skip(&mut self, task_id: &str) {
+        let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
+            return;
         };
+
+        task.last_run = Some(jiff::Timestamp::now());
+        task.run_count += 1;
+
+        // WHY: re-arm the next scheduled run so a skip does not stall the task.
+        let base_next = task.def.schedule.next_run().unwrap_or(None);
+        task.next_run = apply_jitter(base_next, &task.def.id, task.def.jitter).or(base_next);
+
+        tracing::info!(
+            task_id = %task.def.id,
+            task_name = %task.def.name,
+            run_count = task.run_count,
+            result = "skipped",
+            "task skipped  -  dependency not configured"
+        );
+
+        let backoff_ts = task.backoff_until.map(|_| jiff::Timestamp::now().to_string());
+        let state_to_save = snapshot_task_state(task, backoff_ts, "skipped");
         self.persist_task_state(&state_to_save);
     }
 
@@ -53,6 +103,8 @@ impl TaskRunner {
         task.consecutive_failures += 1;
         task.last_run = Some(jiff::Timestamp::now());
         task.last_error = Some(reason.to_owned());
+
+        let mut backoff_until_ts: Option<String> = None;
 
         if task.consecutive_failures >= 3 {
             task.def.enabled = false;
@@ -74,6 +126,7 @@ impl TaskRunner {
                 ))
                 // kanon:ignore RUST/no-result-unwrap-or-default — timestamp overflow on backoff addition is unreachable for realistic delays; default falls back to epoch, always < scheduled_next
                 .unwrap_or_default();
+            backoff_until_ts = Some(backoff_ts.to_string());
 
             task.next_run = match scheduled_next {
                 Some(next) if next > backoff_ts => Some(next),
@@ -91,12 +144,7 @@ impl TaskRunner {
             );
         }
 
-        let state_to_save = crate::state::TaskState {
-            task_id: task.def.id.clone(),
-            last_run_ts: task.last_run.map(|ts| ts.to_string()),
-            run_count: task.run_count,
-            consecutive_failures: task.consecutive_failures,
-        };
+        let state_to_save = snapshot_task_state(task, backoff_until_ts, "failed");
         self.persist_task_state(&state_to_save);
     }
 }
