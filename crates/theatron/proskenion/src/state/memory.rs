@@ -1340,54 +1340,6 @@ pub(crate) enum FactListState {
     Error(FactListError),
 }
 
-/// Response envelope from `/api/v1/knowledge/facts`.
-#[derive(Debug, serde::Deserialize)]
-struct FactsResponse {
-    #[serde(default)]
-    facts: Vec<Fact>,
-    #[serde(default)]
-    total: usize,
-}
-
-/// Parse the facts endpoint response.
-///
-/// Tries the authoritative `{facts, total}` envelope first, then the legacy
-/// bare-array shape. A legacy-array success is still a success, but callers
-/// can flag it in the UI because it lacks server-reported totals.
-pub(crate) fn parse_facts_response(text: &str) -> Result<FactListData, FactListError> {
-    match serde_json::from_str::<FactsResponse>(text) {
-        Ok(resp) => {
-            let active_count = resp.facts.iter().filter(|f| !f.is_forgotten).count();
-            let total_count = if resp.total == 0 {
-                resp.facts.len()
-            } else {
-                resp.total
-            };
-            Ok(FactListData {
-                facts: resp.facts,
-                active_count,
-                total_count,
-                legacy_array: false,
-            })
-        }
-        Err(envelope_err) => match serde_json::from_str::<Vec<Fact>>(text) {
-            Ok(list) => {
-                let active_count = list.iter().filter(|f| !f.is_forgotten).count();
-                Ok(FactListData {
-                    facts: list,
-                    active_count,
-                    total_count: list.len(),
-                    legacy_array: true,
-                })
-            }
-            Err(array_err) => Err(FactListError {
-                kind: FactListErrorKind::Decode,
-                message: format!("envelope: {envelope_err}; legacy array: {array_err}"),
-            }),
-        },
-    }
-}
-
 /// Paginated fact list with sort and filter state (default memory surface).
 #[derive(Debug, Clone)]
 pub(crate) struct FactListStore {
@@ -1507,6 +1459,105 @@ impl FactListStore {
     }
 }
 
+// ── Conversions from Skene typed DTOs into local view models (#4870) ──
+
+use skene::api::types as skene_types;
+
+impl From<skene_types::Fact> for Fact {
+    fn from(dto: skene_types::Fact) -> Self {
+        Self {
+            id: dto.id,
+            nous_id: dto.nous_id,
+            content: dto.content,
+            fact_type: FactType::from_raw(&dto.fact_type),
+            tier: FactTier::from_raw(&dto.tier),
+            confidence: dto.confidence,
+            sensitivity: FactSensitivity::from_raw(&dto.sensitivity),
+            visibility: FactVisibility::from_raw(&dto.visibility),
+            recorded_at: dto.recorded_at,
+            access_count: dto.access_count,
+            is_forgotten: dto.is_forgotten,
+            source_session_id: dto.source_session_id,
+            valid_from: dto.valid_from,
+            valid_to: dto.valid_to,
+            stability_hours: dto.stability_hours,
+            superseded_by: dto.superseded_by,
+            forgotten_at: dto.forgotten_at,
+            forget_reason: dto.forget_reason.as_deref().map(ForgetReason::from_raw),
+            last_accessed_at: dto.last_accessed_at,
+            scope: dto.scope.as_deref().map(MemoryScope::from_raw),
+            project_id: dto.project_id,
+        }
+    }
+}
+
+impl From<skene_types::EntityListItem> for Entity {
+    fn from(dto: skene_types::EntityListItem) -> Self {
+        Self {
+            id: dto.id,
+            name: dto.name,
+            entity_type: EntityType::from_raw(dto.entity_type),
+            confidence: dto.confidence,
+            page_rank: dto.page_rank,
+            memory_count: dto.memory_count,
+            relationship_count: dto.relationship_count,
+            properties: Vec::new(),
+            updated_at: Some(dto.updated_at).filter(|s| !s.is_empty()),
+            created_by: None,
+            created_at: Some(dto.created_at).filter(|s| !s.is_empty()),
+            flagged: false,
+        }
+    }
+}
+
+impl From<skene_types::Entity> for Entity {
+    fn from(dto: skene_types::Entity) -> Self {
+        Self {
+            id: dto.id,
+            name: dto.name,
+            entity_type: EntityType::from_raw(dto.entity_type),
+            confidence: 0.0,
+            page_rank: 0.0,
+            memory_count: 0,
+            relationship_count: 0,
+            properties: Vec::new(),
+            updated_at: Some(dto.updated_at).filter(|s| !s.is_empty()),
+            created_by: None,
+            created_at: Some(dto.created_at).filter(|s| !s.is_empty()),
+            flagged: false,
+        }
+    }
+}
+
+impl From<skene_types::EntityRelationship> for Relationship {
+    fn from(dto: skene_types::EntityRelationship) -> Self {
+        Self {
+            id: dto.id,
+            entity_id: dto.entity_id,
+            entity_name: dto.entity_name,
+            relationship_type: dto.relationship_type,
+            direction: match dto.direction {
+                skene_types::RelationshipDirection::Outgoing => RelationshipDirection::Outgoing,
+                skene_types::RelationshipDirection::Incoming => RelationshipDirection::Incoming,
+            },
+            confidence: dto.confidence,
+        }
+    }
+}
+
+impl From<skene_types::EntityMemory> for EntityMemory {
+    fn from(dto: skene_types::EntityMemory) -> Self {
+        Self {
+            id: dto.id,
+            content: dto.content,
+            agent: dto.agent,
+            session: dto.session,
+            confidence: dto.confidence,
+            created_at: dto.created_at,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1526,6 +1577,115 @@ mod tests {
             created_at: Some("2025-06-01T00:00:00Z".to_string()),
             flagged: false,
         }
+    }
+
+    // ── Conversions from Skene typed DTOs (#4870) ──
+
+    #[test]
+    fn fact_from_skene_dto_preserves_lifecycle_fields() {
+        let dto: skene_types::Fact = serde_json::from_str(
+            r#"{
+                "id": "fact_01",
+                "nous_id": "agent-1",
+                "content": "Tabs > spaces",
+                "fact_type": "preference",
+                "tier": "verified",
+                "confidence": 0.92,
+                "sensitivity": "internal",
+                "visibility": "private",
+                "scope": "user",
+                "project_id": "acme.corp/website",
+                "valid_from": "2026-06-01T00:00:00Z",
+                "valid_to": "9999-01-01T00:00:00Z",
+                "recorded_at": "2026-06-01T12:00:00Z",
+                "source_session_id": "session-7",
+                "stability_hours": 8760.0,
+                "access_count": 4,
+                "last_accessed_at": "2026-06-10T08:00:00Z",
+                "is_forgotten": true,
+                "forgotten_at": "2026-06-11T00:00:00Z",
+                "forget_reason": "outdated",
+                "superseded_by": "fact_03"
+            }"#,
+        )
+        .expect("valid skene Fact json");
+        let fact = Fact::from(dto);
+        assert_eq!(fact.id, "fact_01");
+        assert_eq!(fact.fact_type, FactType::Preference);
+        assert_eq!(fact.tier, FactTier::Verified);
+        assert!((fact.confidence - 0.92).abs() < f64::EPSILON);
+        assert!(fact.is_forgotten);
+        assert_eq!(fact.forget_reason, Some(ForgetReason::Outdated));
+        assert_eq!(fact.superseded_by.as_deref(), Some("fact_03"));
+        assert_eq!(fact.scope, Some(MemoryScope::User));
+        assert_eq!(fact.project_id.as_deref(), Some("acme.corp/website"));
+    }
+
+    #[test]
+    fn entity_from_skene_list_item_preserves_pagination_fields() {
+        let dto: skene_types::EntityListItem = serde_json::from_str(
+            r#"{
+                "id": "e1",
+                "name": "Alpha",
+                "entity_type": "concept",
+                "aliases": ["a"],
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-02-01T00:00:00Z",
+                "confidence": 0.9,
+                "page_rank": 0.12,
+                "memory_count": 3,
+                "relationship_count": 2
+            }"#,
+        )
+        .expect("valid skene EntityListItem json");
+        let entity = Entity::from(dto);
+        assert_eq!(entity.id, "e1");
+        assert_eq!(entity.name, "Alpha");
+        assert_eq!(entity.entity_type, EntityType::Concept);
+        assert!((entity.page_rank - 0.12).abs() < f64::EPSILON);
+        assert_eq!(entity.memory_count, 3);
+        assert_eq!(entity.relationship_count, 2);
+    }
+
+    #[test]
+    fn relationship_from_skene_dto_preserves_direction() {
+        let dto: skene_types::EntityRelationship = serde_json::from_str(
+            r#"{
+                "id": "e1:e2:depends_on:ts",
+                "entity_id": "e2",
+                "entity_name": "Beta",
+                "relationship_type": "depends_on",
+                "direction": "Outgoing",
+                "confidence": 0.85
+            }"#,
+        )
+        .expect("valid skene EntityRelationship json");
+        let rel = Relationship::from(dto);
+        assert_eq!(rel.id, "e1:e2:depends_on:ts");
+        assert_eq!(rel.entity_id, "e2");
+        assert_eq!(rel.direction, RelationshipDirection::Outgoing);
+        assert!((rel.confidence - 0.85).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn entity_memory_from_skene_dto_preserves_optional_fields() {
+        let dto: skene_types::EntityMemory = serde_json::from_str(
+            r#"{
+                "id": "m1",
+                "content": "memory content",
+                "agent": "agent-1",
+                "session": "session-2",
+                "confidence": 0.77,
+                "created_at": "2026-01-01T00:00:00Z"
+            }"#,
+        )
+        .expect("valid skene EntityMemory json");
+        let mem = EntityMemory::from(dto);
+        assert_eq!(mem.id, "m1");
+        assert_eq!(mem.content, "memory content");
+        assert_eq!(mem.agent.as_deref(), Some("agent-1"));
+        assert_eq!(mem.session.as_deref(), Some("session-2"));
+        assert!((mem.confidence - 0.77).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -2006,49 +2166,6 @@ mod tests {
     }
 
     // ── Fact list fetch state + parsing ──
-
-    #[test]
-    fn parse_facts_response_successful_envelope() {
-        let json = r#"{
-            "facts": [
-                {"id":"f1","content":"first","fact_type":"observation","confidence":0.8},
-                {"id":"f2","content":"second","fact_type":"preference","confidence":0.9,"is_forgotten":true}
-            ],
-            "total": 10
-        }"#;
-        let data = parse_facts_response(json).expect("envelope parses");
-        assert_eq!(data.facts.len(), 2);
-        assert_eq!(data.active_count, 1);
-        assert_eq!(data.total_count, 10);
-        assert!(!data.legacy_array);
-    }
-
-    #[test]
-    fn parse_facts_response_empty_envelope_is_empty_state() {
-        let data = parse_facts_response(r#"{"facts":[],"total":0}"#).expect("empty envelope parses");
-        assert!(data.facts.is_empty());
-        assert_eq!(data.active_count, 0);
-        assert_eq!(data.total_count, 0);
-        assert!(!data.legacy_array);
-    }
-
-    #[test]
-    fn parse_facts_response_legacy_array_is_success_marked_legacy() {
-        let json = r#"[
-            {"id":"f1","content":"legacy","fact_type":"observation"}
-        ]"#;
-        let data = parse_facts_response(json).expect("legacy array parses");
-        assert_eq!(data.facts.len(), 1);
-        assert_eq!(data.total_count, 1);
-        assert!(data.legacy_array);
-    }
-
-    #[test]
-    fn parse_facts_response_broken_json_is_decode_error() {
-        let err = parse_facts_response("not json").expect_err("broken json fails");
-        assert_eq!(err.kind, FactListErrorKind::Decode);
-        assert!(!err.message.is_empty());
-    }
 
     #[test]
     fn fact_list_store_load_sets_loaded_state() {

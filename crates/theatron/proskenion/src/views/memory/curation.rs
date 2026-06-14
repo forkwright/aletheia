@@ -3,8 +3,8 @@
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
+use crate::views::memory::memory_client;
 use crate::state::memory::FactSensitivity;
 
 const OVERLAY_STYLE: &str = "\
@@ -163,27 +163,17 @@ pub(crate) fn ForgetFactDialog(
                                 let cfg = config.read().clone();
                                 let id = id.clone();
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let encoded: String =
-                                        form_urlencoded::byte_serialize(id.as_bytes()).collect();
-                                    let url = format!("{base}/api/v1/knowledge/facts/{encoded}/forget");
-                                    match client
-                                        .post(&url)
-                                        .json(&serde_json::json!({ "reason": "user_requested" }))
-                                        .send()
-                                        .await
-                                    {
-                                        Ok(resp) if resp.status().is_success() => {
+                                    let Some(client) = memory_client(&cfg) else {
+                                        is_submitting.set(false);
+                                        return;
+                                    };
+                                    match client.knowledge_forget(&id).await {
+                                        Ok(()) => {
                                             tracing::info!(fact_id = %id, "fact forgotten");
                                             on_done.call(());
                                         }
-                                        Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "forget failed");
-                                            is_submitting.set(false);
-                                        }
                                         Err(e) => {
-                                            tracing::warn!("forget error: {e}");
+                                            tracing::warn!(error = %e, "forget failed");
                                             is_submitting.set(false);
                                         }
                                     }
@@ -240,22 +230,17 @@ pub(crate) fn RestoreFactDialog(
                                 let cfg = config.read().clone();
                                 let id = id.clone();
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let encoded: String =
-                                        form_urlencoded::byte_serialize(id.as_bytes()).collect();
-                                    let url = format!("{base}/api/v1/knowledge/facts/{encoded}/restore");
-                                    match client.post(&url).send().await {
-                                        Ok(resp) if resp.status().is_success() => {
+                                    let Some(client) = memory_client(&cfg) else {
+                                        is_submitting.set(false);
+                                        return;
+                                    };
+                                    match client.knowledge_restore(&id).await {
+                                        Ok(()) => {
                                             tracing::info!(fact_id = %id, "fact restored");
                                             on_done.call(());
                                         }
-                                        Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "restore failed");
-                                            is_submitting.set(false);
-                                        }
                                         Err(e) => {
-                                            tracing::warn!("restore error: {e}");
+                                            tracing::warn!(error = %e, "restore failed");
                                             is_submitting.set(false);
                                         }
                                     }
@@ -339,27 +324,17 @@ pub(crate) fn AdjustConfidenceDialog(
                                 let id = id.clone();
                                 let conf = *value.read();
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let encoded: String =
-                                        form_urlencoded::byte_serialize(id.as_bytes()).collect();
-                                    let url = format!("{base}/api/v1/knowledge/facts/{encoded}/confidence");
-                                    match client
-                                        .put(&url)
-                                        .json(&serde_json::json!({ "confidence": conf }))
-                                        .send()
-                                        .await
-                                    {
-                                        Ok(resp) if resp.status().is_success() => {
+                                    let Some(client) = memory_client(&cfg) else {
+                                        is_submitting.set(false);
+                                        return;
+                                    };
+                                    match client.knowledge_update_confidence(&id, conf).await {
+                                        Ok(()) => {
                                             tracing::info!(fact_id = %id, confidence = conf, "confidence updated");
                                             on_done.call(());
                                         }
-                                        Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "confidence update failed");
-                                            is_submitting.set(false);
-                                        }
                                         Err(e) => {
-                                            tracing::warn!("confidence update error: {e}");
+                                            tracing::warn!(error = %e, "confidence update failed");
                                             is_submitting.set(false);
                                         }
                                     }
@@ -434,27 +409,17 @@ pub(crate) fn ChangeSensitivityDialog(
                                 let id = id.clone();
                                 let sens = *selected.read();
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let encoded: String =
-                                        form_urlencoded::byte_serialize(id.as_bytes()).collect();
-                                    let url = format!("{base}/api/v1/knowledge/facts/{encoded}/sensitivity");
-                                    match client
-                                        .put(&url)
-                                        .json(&serde_json::json!({ "sensitivity": sens.wire() }))
-                                        .send()
-                                        .await
-                                    {
-                                        Ok(resp) if resp.status().is_success() => {
+                                    let Some(client) = memory_client(&cfg) else {
+                                        is_submitting.set(false);
+                                        return;
+                                    };
+                                    match client.knowledge_update_sensitivity(&id, &sens.wire()).await {
+                                        Ok(()) => {
                                             tracing::info!(fact_id = %id, sensitivity = sens.wire(), "sensitivity updated");
                                             on_done.call(());
                                         }
-                                        Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "sensitivity update failed");
-                                            is_submitting.set(false);
-                                        }
                                         Err(e) => {
-                                            tracing::warn!("sensitivity update error: {e}");
+                                            tracing::warn!(error = %e, "sensitivity update failed");
                                             is_submitting.set(false);
                                         }
                                     }

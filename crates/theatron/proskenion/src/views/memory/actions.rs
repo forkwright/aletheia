@@ -2,9 +2,12 @@
 
 use dioxus::prelude::*;
 
+use skene::api::types as skene_types;
+
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::memory::{EntityListStore, FlagSeverity};
+use crate::views::memory::memory_client;
 
 const OVERLAY_STYLE: &str = "\
     position: fixed; \
@@ -271,26 +274,17 @@ pub(crate) fn MergeDialog(
                                 let primary = primary_id.clone();
 
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let url = format!("{base}/api/v1/knowledge/entities/merge");
-
-                                    let body = serde_json::json!({
-                                        "primary_id": primary,
-                                        "secondary_id": secondary_id,
-                                    });
-
-                                    match client.post(&url).json(&body).send().await {
-                                        Ok(resp) if resp.status().is_success() => {
+                                    let Some(client) = memory_client(&cfg) else {
+                                        is_submitting.set(false);
+                                        return;
+                                    };
+                                    match client.knowledge_merge_entities(&primary, &secondary_id).await {
+                                        Ok(()) => {
                                             tracing::info!("merged entities: {primary} <- {secondary_id}");
                                             on_merged.call(());
                                         }
-                                        Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "merge failed");
-                                            is_submitting.set(false);
-                                        }
                                         Err(e) => {
-                                            tracing::warn!("merge error: {e}");
+                                            tracing::warn!(error = %e, "merge failed");
                                             is_submitting.set(false);
                                         }
                                     }
@@ -394,28 +388,22 @@ pub(crate) fn FlagDialog(
                                 let id = eid.clone();
 
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
-                                    let base = cfg.server_url.trim_end_matches('/');
-                                    let encoded: String =
-                                        form_urlencoded::byte_serialize(id.as_bytes()).collect();
-                                    let url = format!("{base}/api/v1/knowledge/entities/{encoded}/flag");
-
-                                    let body = serde_json::json!({
-                                        "reason": reason_text,
-                                        "severity": sev.label().to_lowercase(),
-                                    });
-
-                                    match client.post(&url).json(&body).send().await {
-                                        Ok(resp) if resp.status().is_success() => {
+                                    let Some(client) = memory_client(&cfg) else {
+                                        is_submitting.set(false);
+                                        return;
+                                    };
+                                    let skene_sev = match sev {
+                                        FlagSeverity::Low => skene_types::FlagSeverity::Low,
+                                        FlagSeverity::Medium => skene_types::FlagSeverity::Medium,
+                                        FlagSeverity::High => skene_types::FlagSeverity::High,
+                                    };
+                                    match client.knowledge_flag_entity(&id, &reason_text, skene_sev).await {
+                                        Ok(()) => {
                                             tracing::info!("flagged entity {id}");
                                             on_flagged.call(());
                                         }
-                                        Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "flag failed");
-                                            is_submitting.set(false);
-                                        }
                                         Err(e) => {
-                                            tracing::warn!("flag error: {e}");
+                                            tracing::warn!(error = %e, "flag failed");
                                             is_submitting.set(false);
                                         }
                                     }

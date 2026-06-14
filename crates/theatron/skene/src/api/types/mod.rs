@@ -1,6 +1,15 @@
 //! Request and response types for the Aletheia REST API.
 
+pub mod memory;
 pub mod verification;
+
+pub use memory::{
+    EntitiesQuery, EntitiesResponse, Entity, EntityListItem, EntityMemory, EntityRelationship,
+    Fact, FactDetailResponse, FactsQuery, FactsResponse, FlagRequest, FlagSeverity, ForgetRequest,
+    GraphCheckReport, MergeRequest, Relationship, RelationshipDirection, RelationshipsResponse,
+    SimilarFact, TimelineEvent, TimelineQuery, TimelineResponse, UpdateConfidenceRequest,
+    UpdateSensitivityRequest,
+};
 pub use verification::{
     ProjectVerificationResult, RequirementPriority, RequirementVerification, VerificationEvidence,
     VerificationGap, VerificationStatus,

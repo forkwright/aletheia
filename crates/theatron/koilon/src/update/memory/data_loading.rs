@@ -2,11 +2,13 @@
 
 use std::collections::BTreeMap;
 
+use skene::api::types as skene_types;
+
 use crate::app::App;
 use crate::msg::ErrorToast;
 use crate::state::memory::{
     DriftTab, FactDetail, GraphNodeCard, MemoryEntity, MemoryFact, MemoryRelationship, MemoryTab,
-    NodeCardFact,
+    MemoryTimelineEvent, NodeCardFact,
 };
 
 use super::graph_analysis;
@@ -29,37 +31,41 @@ pub(crate) fn handle_action_result(app: &mut App, message: String) {
 
 pub(super) async fn load_facts(app: &mut App) {
     let client = app.client.clone();
-    let sort = app.layout.memory.fact_list.sort.as_str();
+    let sort = app.layout.memory.fact_list.sort.as_str().to_string();
     let order = if app.layout.memory.fact_list.sort_asc {
         "asc"
     } else {
         "desc"
+    }
+    .to_string();
+
+    let query = skene_types::FactsQuery {
+        sort,
+        order,
+        limit: 500,
+        ..Default::default()
     };
 
-    match client.knowledge_facts(sort, order, 500).await {
-        Ok(json) => {
-            if let Ok(resp) = serde_json::from_value::<FactsListResponse>(json) {
-                app.layout.memory.fact_list.facts = resp.facts;
-                app.layout.memory.fact_list.total_facts = resp.total;
-            }
-            app.layout.memory.loading = false;
+    match client.knowledge_facts(&query).await {
+        Ok(resp) => {
+            app.layout.memory.fact_list.facts =
+                resp.facts.into_iter().map(MemoryFact::from).collect();
+            app.layout.memory.fact_list.total_facts = resp.total;
         }
         Err(e) => {
             tracing::debug!("failed to load facts: {e}");
-            app.layout.memory.loading = false;
         }
     }
+    app.layout.memory.loading = false;
 }
 
 pub(super) async fn load_fact_detail(app: &mut App, fact_id: &str) {
     let client = app.client.clone();
 
     match client.knowledge_fact_detail(fact_id).await {
-        Ok(json) => {
-            if let Ok(detail) = serde_json::from_value::<FactDetail>(json) {
-                app.layout.memory.fact_list.detail = Some(detail);
-                return;
-            }
+        Ok(resp) => {
+            app.layout.memory.fact_list.detail = Some(FactDetail::from(resp));
+            return;
         }
         Err(e) => {
             tracing::debug!("failed to load fact detail: {e}");
@@ -116,61 +122,42 @@ pub(super) fn adjust_scroll(app: &mut App) {
     }
 }
 
-#[derive(serde::Deserialize)]
-struct FactsListResponse {
-    facts: Vec<MemoryFact>,
-    total: usize,
-}
-
-#[derive(serde::Deserialize)]
-struct EntitiesResponse {
-    #[serde(default)]
-    entities: Vec<MemoryEntity>,
-}
-
-#[derive(serde::Deserialize)]
-struct RelationshipsResponse {
-    #[serde(default)]
-    relationships: Vec<MemoryRelationship>,
-}
-
-#[derive(serde::Deserialize)]
-struct TimelineResponse {
-    #[serde(default)]
-    events: Vec<crate::state::memory::MemoryTimelineEvent>,
-}
-
 pub(super) async fn load_graph_data(app: &mut App) {
     let client = app.client.clone();
 
     let mut entities: Vec<MemoryEntity> = Vec::new();
     let mut relationships: Vec<MemoryRelationship> = Vec::new();
 
-    if let Ok(json) = client.knowledge_entities().await
-        && let Ok(resp) = serde_json::from_value::<EntitiesResponse>(json)
+    if let Ok(resp) = client
+        .knowledge_entities(&skene_types::EntitiesQuery::default())
+        .await
     {
-        entities = resp.entities;
+        entities = resp.entities.into_iter().map(MemoryEntity::from).collect();
     }
 
     // WHY: fetch all relationships by iterating entities; the API exposes per-entity endpoints
     let mut seen_rels = std::collections::HashSet::new();
     for entity in &entities {
-        if let Ok(json) = client.knowledge_entity_relationships(&entity.id).await
-            && let Ok(resp) = serde_json::from_value::<RelationshipsResponse>(json)
-        {
+        if let Ok(resp) = client.knowledge_entity_relationships(&entity.id).await {
             for rel in resp.relationships {
-                let key = format!("{}:{}:{}", rel.src, rel.relation, rel.dst);
+                let mem_rel = MemoryRelationship::from((rel, entity.id.clone()));
+                let key = format!("{}:{}:{}", mem_rel.src, mem_rel.relation, mem_rel.dst);
                 if seen_rels.insert(key) {
-                    relationships.push(rel);
+                    relationships.push(mem_rel);
                 }
             }
         }
     }
 
-    if let Ok(json) = client.knowledge_timeline().await
-        && let Ok(resp) = serde_json::from_value::<TimelineResponse>(json)
+    if let Ok(resp) = client
+        .knowledge_timeline(&skene_types::TimelineQuery::default())
+        .await
     {
-        app.layout.memory.graph.timeline_events = resp.events;
+        app.layout.memory.graph.timeline_events = resp
+            .events
+            .into_iter()
+            .map(MemoryTimelineEvent::from)
+            .collect();
     }
 
     app.layout.memory.graph.entities = entities.clone();

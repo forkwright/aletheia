@@ -12,14 +12,15 @@ pub(crate) mod search;
 
 use dioxus::prelude::*;
 
-use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::memory::{
     Entity, EntityDetailStore, EntityListStore, EntityMemory, EntityNavigationHistory, EntitySort,
     Fact, FactListData, FactListError, FactListErrorKind, FactListState, FactListStore, FactSort,
-    Relationship, parse_facts_response,
+    Relationship,
 };
+use skene::ApiClient;
+use skene::api::types as skene_types;
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::memory::detail::EntityDetail;
 use crate::views::memory::fact_filters::FactFilters;
@@ -177,6 +178,13 @@ const GRAPH_EMPTY_STYLE: &str = "\
     padding: var(--space-6);\
 ";
 
+/// Build an [`ApiClient`] from the desktop connection config.
+///
+/// WHY: centralises the narrow boundary where raw config becomes a typed
+/// first-party client; call sites handle the error uniformly.
+pub(crate) fn memory_client(cfg: &ConnectionConfig) -> Option<ApiClient> {
+    ApiClient::new(&cfg.server_url, cfg.auth_token.clone()).ok()
+}
 const DEFAULT_LIST_WIDTH: f64 = 480.0;
 const MIN_LIST_WIDTH: f64 = 280.0;
 const MAX_LIST_WIDTH: f64 = 800.0;
@@ -245,80 +253,64 @@ pub(crate) fn Memory() -> Element {
         spawn(async move {
             fact_store.write().set_loading();
 
-            let client = authenticated_client(&cfg);
-            let base = cfg.server_url.trim_end_matches('/');
+            let Some(client) = memory_client(&cfg) else {
+                fact_store.write().set_error(FactListError {
+                    kind: FactListErrorKind::Connection,
+                    message: "could not build API client".to_string(),
+                });
+                return;
+            };
 
             let store = fact_store.read();
             let include_forgotten = store.include_forgotten();
             drop(store);
 
-            let mut url = format!(
-                "{base}/api/v1/knowledge/facts?limit={}&sort={}&order=desc&include_forgotten={include_forgotten}",
-                FactListStore::FETCH_LIMIT,
-                sort.wire()
-            );
+            let query = skene_types::FactsQuery {
+                sort: sort.wire().to_string(),
+                order: "desc".to_string(),
+                limit: FactListStore::FETCH_LIMIT as u32,
+                filter: Some(search.clone()).filter(|s| !s.is_empty()),
+                fact_type: type_filter.first().map(|ft| ft.wire().to_string()),
+                tier: tier_filter.first().map(|t| t.wire().to_string()),
+                include_forgotten,
+                ..Default::default()
+            };
 
-            if !search.is_empty() {
-                let encoded: String = form_urlencoded::byte_serialize(search.as_bytes()).collect();
-                url.push_str(&format!("&filter={encoded}"));
-            }
-
-            // NOTE: the route accepts a single fact_type / tier; when the
-            // operator multi-selects, send the first as a server hint and the
-            // store still narrows the rest client-side via the visible() set.
-            if let Some(ft) = type_filter.first() {
-                let encoded: String =
-                    form_urlencoded::byte_serialize(ft.wire().as_bytes()).collect();
-                url.push_str(&format!("&fact_type={encoded}"));
-            }
-            if let Some(tier) = tier_filter.first() {
-                url.push_str(&format!("&tier={}", tier.wire()));
-            }
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    let status = resp.status();
-                    let text = match resp.text().await {
-                        Ok(t) => t,
-                        Err(e) => {
-                            tracing::warn!(status = %status, "failed to read facts response: {e}");
-                            fact_store.write().set_error(FactListError {
-                                kind: FactListErrorKind::Decode,
-                                message: format!("failed to read response body: {e}"),
-                            });
-                            return;
-                        }
-                    };
-                    match parse_facts_response(&text) {
-                        Ok(data) => {
-                            // WHY: apply any additional client-side type/tier narrowing
-                            // beyond the single server hint so multi-select reads true.
-                            let filtered: Vec<Fact> = data
-                                .facts
-                                .into_iter()
-                                .filter(|f| type_filter.is_empty() || type_filter.contains(&f.fact_type))
-                                .filter(|f| tier_filter.is_empty() || tier_filter.contains(&f.tier))
-                                .collect();
-                            let active_count = filtered.iter().filter(|f| !f.is_forgotten).count();
-                            fact_store.write().load(FactListData {
-                                facts: filtered,
-                                active_count,
-                                total_count: data.total_count,
-                                legacy_array: data.legacy_array,
-                            });
-                        }
-                        Err(err) => {
-                            tracing::warn!(error = %err.message, "failed to parse facts response");
-                            fact_store.write().set_error(err);
-                        }
-                    }
-                }
+            match client.knowledge_facts(&query).await {
                 Ok(resp) => {
-                    let status = resp.status();
+                    // WHY: apply any additional client-side type/tier narrowing
+                    // beyond the single server hint so multi-select reads true.
+                    let filtered: Vec<Fact> = resp
+                        .facts
+                        .into_iter()
+                        .map(Fact::from)
+                        .filter(|f| type_filter.is_empty() || type_filter.contains(&f.fact_type))
+                        .filter(|f| tier_filter.is_empty() || tier_filter.contains(&f.tier))
+                        .collect();
+                    let active_count = filtered.iter().filter(|f| !f.is_forgotten).count();
+                    let total_count = if resp.total == 0 {
+                        filtered.len()
+                    } else {
+                        resp.total
+                    };
+                    fact_store.write().load(FactListData {
+                        facts: filtered,
+                        active_count,
+                        total_count,
+                        legacy_array: false,
+                    });
+                }
+                Err(skene::api::ApiError::Auth { .. }) => {
+                    fact_store.write().set_error(FactListError {
+                        kind: FactListErrorKind::Non2xx(401),
+                        message: "authentication failed".to_string(),
+                    });
+                }
+                Err(skene::api::ApiError::Server { status, message, .. }) => {
                     tracing::warn!(status = %status, "facts request failed");
                     fact_store.write().set_error(FactListError {
-                        kind: FactListErrorKind::Non2xx(status.as_u16()),
-                        message: format!("server returned {status}"),
+                        kind: FactListErrorKind::Non2xx(status),
+                        message,
                     });
                 }
                 Err(e) => {
@@ -344,73 +336,34 @@ pub(crate) fn Memory() -> Element {
         drop(store);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
-            let base = cfg.server_url.trim_end_matches('/');
-
-            let mut url = format!(
-                "{base}/api/v1/knowledge/entities?limit={}",
-                EntityListStore::PAGE_SIZE
-            );
-
-            if page > 0 {
-                url.push_str(&format!("&offset={}", page * EntityListStore::PAGE_SIZE));
-            }
-
-            if !search.is_empty() {
-                let encoded: String = form_urlencoded::byte_serialize(search.as_bytes()).collect();
-                url.push_str(&format!("&q={encoded}"));
-            }
-
-            let sort_param = match sort {
-                EntitySort::PageRank => "page_rank",
-                EntitySort::Confidence => "confidence",
-                EntitySort::MemoryCount => "memory_count",
-                EntitySort::LastUpdated => "updated_at",
-                EntitySort::Alphabetical => "name",
+            let Some(client) = memory_client(&cfg) else {
+                tracing::warn!("entities fetch failed: could not build API client");
+                return;
             };
-            url.push_str(&format!("&sort={sort_param}&order=desc"));
 
-            if sort == EntitySort::Alphabetical {
-                url.truncate(url.len() - 4);
-                url.push_str("asc");
-            }
+            let (sort_param, order) = match sort {
+                EntitySort::PageRank => ("page_rank", "desc"),
+                EntitySort::Confidence => ("confidence", "desc"),
+                EntitySort::MemoryCount => ("memory_count", "desc"),
+                EntitySort::LastUpdated => ("updated_at", "desc"),
+                EntitySort::Alphabetical => ("name", "asc"),
+            };
 
-            for et in &type_filter {
-                let encoded: String =
-                    form_urlencoded::byte_serialize(et.label().as_bytes()).collect();
-                url.push_str(&format!("&entity_type={encoded}"));
-            }
+            let query = skene_types::EntitiesQuery {
+                limit: EntityListStore::PAGE_SIZE as u32,
+                offset: (page * EntityListStore::PAGE_SIZE) as u32,
+                q: Some(search.clone()).filter(|s| !s.is_empty()),
+                sort: sort_param.to_string(),
+                order: order.to_string(),
+                entity_type: type_filter.iter().map(|t| t.label().to_string()).collect(),
+                min_confidence: (min_confidence > 0.0).then_some(min_confidence),
+                agent: agent_filter.clone(),
+            };
 
-            if min_confidence > 0.0 {
-                url.push_str(&format!("&min_confidence={min_confidence}"));
-            }
-
-            for agent in &agent_filter {
-                let encoded: String = form_urlencoded::byte_serialize(agent.as_bytes()).collect();
-                url.push_str(&format!("&agent={encoded}"));
-            }
-
-            match client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    let text = match resp.text().await {
-                        Ok(t) => t,
-                        Err(e) => {
-                            tracing::warn!("failed to read entities response: {e}");
-                            return;
-                        }
-                    };
-
-                    let entities: Vec<Entity> = if let Ok(list) =
-                        serde_json::from_str::<Vec<Entity>>(&text)
-                    {
-                        list
-                    } else if let Ok(wrapper) = serde_json::from_str::<EntitiesResponse>(&text) {
-                        wrapper.entities
-                    } else {
-                        tracing::warn!("failed to parse entities response");
-                        return;
-                    };
-
+            match client.knowledge_entities(&query).await {
+                Ok(resp) => {
+                    let entities: Vec<Entity> =
+                        resp.entities.into_iter().map(Entity::from).collect();
                     let has_more = entities.len() >= EntityListStore::PAGE_SIZE;
 
                     let mut store = list_store.write();
@@ -421,11 +374,8 @@ pub(crate) fn Memory() -> Element {
                     }
                     store.sort_entities();
                 }
-                Ok(resp) => {
-                    tracing::warn!(status = %resp.status(), "entities request failed");
-                }
                 Err(e) => {
-                    tracing::warn!("entities connection error: {e}");
+                    tracing::warn!("entities request failed: {e}");
                 }
             }
         });
@@ -452,46 +402,28 @@ pub(crate) fn Memory() -> Element {
         detail_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
-            let base = cfg.server_url.trim_end_matches('/');
-            let encoded: String = form_urlencoded::byte_serialize(id.as_bytes()).collect();
+            let Some(client) = memory_client(&cfg) else {
+                detail_state.set(FetchState::Loaded(EntityDetailStore::default()));
+                return;
+            };
 
-            let entity_url = format!("{base}/api/v1/knowledge/entities/{encoded}");
-            let rels_url = format!("{base}/api/v1/knowledge/entities/{encoded}/relationships");
-            let mems_url = format!("{base}/api/v1/knowledge/entities/{encoded}/memories");
-
-            let entity_fut = client.get(&entity_url).send();
-            let rels_fut = client.get(&rels_url).send();
-            let mems_fut = client.get(&mems_url).send();
+            let entity_fut = client.knowledge_entity(&id);
+            let rels_fut = client.knowledge_entity_relationships(&id);
+            let mems_fut = client.knowledge_entity_memories(&id);
 
             let (entity_res, rels_res, mems_res) = tokio::join!(entity_fut, rels_fut, mems_fut);
 
-            let entity: Option<Entity> = match entity_res {
-                Ok(resp) if resp.status().is_success() => resp.json::<Entity>().await.ok(),
-                _ => None,
-            };
+            let entity: Option<Entity> = entity_res.ok().map(Entity::from);
 
-            let relationships: Vec<Relationship> = match rels_res {
-                Ok(resp) if resp.status().is_success() => match resp.text().await {
-                    Ok(text) => parse_relationships_response(&text),
-                    Err(e) => {
-                        tracing::warn!("failed to read relationships response: {e}");
-                        Vec::new()
-                    }
-                },
-                _ => Vec::new(),
-            };
+            let relationships: Vec<Relationship> = rels_res
+                .ok()
+                .map(|r| r.relationships.into_iter().map(Relationship::from).collect())
+                .unwrap_or_default();
 
-            let memories: Vec<EntityMemory> = match mems_res {
-                Ok(resp) if resp.status().is_success() => match resp.text().await {
-                    Ok(text) => parse_entity_memories_response(&text),
-                    Err(e) => {
-                        tracing::warn!("failed to read entity memories response: {e}");
-                        Vec::new()
-                    }
-                },
-                _ => Vec::new(),
-            };
+            let memories: Vec<EntityMemory> = mems_res
+                .ok()
+                .map(|m| m.into_iter().map(EntityMemory::from).collect())
+                .unwrap_or_default();
 
             let detail = EntityDetailStore {
                 entity,
@@ -753,61 +685,5 @@ pub(crate) fn Memory() -> Element {
                 }
             }
         }
-    }
-}
-
-/// Response wrapper for entity list endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct EntitiesResponse {
-    entities: Vec<Entity>,
-}
-
-/// Response wrapper for the entity relationships endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct RelationshipsResponse {
-    #[serde(default)]
-    relationships: Vec<Relationship>,
-}
-
-/// Response wrapper for the entity memories endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct EntityMemoriesResponse {
-    #[serde(default)]
-    memories: Vec<EntityMemory>,
-}
-
-/// Parse the `{relationships: [...]}` envelope, falling back to a bare array.
-fn parse_relationships_response(text: &str) -> Vec<Relationship> {
-    match serde_json::from_str::<RelationshipsResponse>(text) {
-        Ok(wrapper) => wrapper.relationships,
-        Err(wrapped_err) => match serde_json::from_str::<Vec<Relationship>>(text) {
-            Ok(list) => list,
-            Err(array_err) => {
-                tracing::warn!(
-                    wrapped_error = %wrapped_err,
-                    array_error = %array_err,
-                    "failed to parse relationships response"
-                );
-                Vec::new()
-            }
-        },
-    }
-}
-
-/// Parse the `{memories: [...]}` envelope, falling back to a bare array.
-fn parse_entity_memories_response(text: &str) -> Vec<EntityMemory> {
-    match serde_json::from_str::<EntityMemoriesResponse>(text) {
-        Ok(wrapper) => wrapper.memories,
-        Err(wrapped_err) => match serde_json::from_str::<Vec<EntityMemory>>(text) {
-            Ok(list) => list,
-            Err(array_err) => {
-                tracing::warn!(
-                    wrapped_error = %wrapped_err,
-                    array_error = %array_err,
-                    "failed to parse entity memories response"
-                );
-                Vec::new()
-            }
-        },
     }
 }

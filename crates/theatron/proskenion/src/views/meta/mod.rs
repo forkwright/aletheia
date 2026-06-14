@@ -12,6 +12,8 @@ mod reflection;
 use dioxus::prelude::*;
 use serde::de::DeserializeOwned;
 
+use skene::api::types as skene_types;
+
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
@@ -80,12 +82,6 @@ struct CostMetricsApiResponse {
 struct CostBucketEntry {
     #[serde(default)]
     cost_usd: f64,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct KnowledgeFactsResponse {
-    #[serde(default)]
-    facts: Vec<FactEntry>,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -179,21 +175,41 @@ struct SessionsApiResponse {
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
-struct KnowledgeEntitiesResponse {
-    #[serde(default)]
-    entities: Vec<EntityEntry>,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct TimelineEventsResponse {
-    #[serde(default)]
-    events: Vec<TimelineEventApiEntry>,
-}
-
-#[derive(Debug, Clone, Default, serde::Deserialize)]
 struct TimelineEventApiEntry {
     #[serde(default)]
     timestamp: String,
+}
+
+impl From<skene_types::Fact> for FactEntry {
+    fn from(dto: skene_types::Fact) -> Self {
+        Self {
+            confidence: dto.confidence,
+            recorded_at: dto.recorded_at,
+            is_forgotten: dto.is_forgotten,
+            last_accessed_at: dto.last_accessed_at.unwrap_or_default(),
+            stability_hours: dto.stability_hours,
+            valid_to: dto.valid_to,
+        }
+    }
+}
+
+impl From<skene_types::EntityListItem> for EntityEntry {
+    fn from(dto: skene_types::EntityListItem) -> Self {
+        Self {
+            name: dto.name,
+            entity_type: dto.entity_type,
+            relationship_count: dto.relationship_count,
+            updated_at: dto.updated_at,
+        }
+    }
+}
+
+impl From<skene_types::TimelineEvent> for TimelineEventApiEntry {
+    fn from(dto: skene_types::TimelineEvent) -> Self {
+        Self {
+            timestamp: dto.timestamp,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -568,6 +584,10 @@ fn AccordionSection(
 
 // ── Data fetch ──
 
+fn skene_client(cfg: &ConnectionConfig) -> Option<skene::ApiClient> {
+    skene::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()).ok()
+}
+
 async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let client = authenticated_client(cfg);
     let base = cfg.server_url.trim_end_matches('/');
@@ -577,23 +597,66 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     // JSON token/cost insights endpoints instead.
     let tokens_url = format!("{base}/api/v1/metrics/tokens");
     let costs_url = format!("{base}/api/v1/metrics/costs");
-    let facts_url = format!("{base}/api/v1/knowledge/facts?limit=1000&include_forgotten=true");
-    let entities_url = format!("{base}/api/v1/knowledge/entities");
-    let timeline_url = format!("{base}/api/v1/knowledge/timeline");
     let sessions_url = format!("{base}/api/v1/sessions");
     let agents_url = format!("{base}/api/v1/nous");
     let perf_url = format!("{base}/api/v1/metrics/agents");
     let quality_url = format!("{base}/api/v1/metrics/quality");
     let journal_url = format!("{base}/api/v1/journal");
 
+    // WHY: Use the typed first-party client for memory endpoints so the
+    // meta view does not reimplement raw JSON envelopes.
+    let skene = skene_client(cfg);
+    let facts_fut = async {
+        let Some(client) = skene.as_ref() else {
+            return Vec::new();
+        };
+        let query = skene_types::FactsQuery {
+            limit: 1000,
+            include_forgotten: true,
+            ..Default::default()
+        };
+        client
+            .knowledge_facts(&query)
+            .await
+            .ok()
+            .map(|resp| resp.facts.into_iter().map(FactEntry::from).collect())
+            .unwrap_or_default()
+    };
+    let entities_fut = async {
+        let Some(client) = skene.as_ref() else {
+            return Vec::new();
+        };
+        client
+            .knowledge_entities(&skene_types::EntitiesQuery::default())
+            .await
+            .ok()
+            .map(|resp| resp.entities.into_iter().map(EntityEntry::from).collect())
+            .unwrap_or_default()
+    };
+    let timeline_fut = async {
+        let Some(client) = skene.as_ref() else {
+            return Vec::new();
+        };
+        client
+            .knowledge_timeline(&skene_types::TimelineQuery::default())
+            .await
+            .ok()
+            .map(|resp| {
+                let events: Vec<TimelineEventApiEntry> =
+                    resp.events.into_iter().map(TimelineEventApiEntry::from).collect();
+                bucket_timeline_events(&events)
+            })
+            .unwrap_or_default()
+    };
+
     // WHY: Fetch all endpoints in parallel to minimize latency.
     let (
         health_res,
         tokens_res,
         costs_res,
-        facts_res,
-        entities_res,
-        timeline_res,
+        facts,
+        entities,
+        timeline,
         sessions_res,
         agents_res,
         perf_res,
@@ -603,9 +666,9 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         client.get(&health_url).send(),
         client.get(&tokens_url).send(),
         client.get(&costs_url).send(),
-        client.get(&facts_url).send(),
-        client.get(&entities_url).send(),
-        client.get(&timeline_url).send(),
+        facts_fut,
+        entities_fut,
+        timeline_fut,
         client.get(&sessions_url).send(),
         client.get(&agents_url).send(),
         client.get(&perf_url).send(),
@@ -631,33 +694,6 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let costs: CostMetricsApiResponse = match costs_res {
         Ok(resp) if resp.status().is_success() => optional_json(resp, "cost metrics").await,
         _ => CostMetricsApiResponse::default(),
-    };
-
-    let facts: Vec<FactEntry> = match facts_res {
-        Ok(resp) if resp.status().is_success() => {
-            // WHY: API may return bare array or wrapped in { facts: [...] }.
-            match optional_text(resp, "facts").await {
-                Some(text) => parse_facts_response(&text),
-                None => Vec::new(),
-            }
-        }
-        _ => Vec::new(),
-    };
-
-    let entities: Vec<EntityEntry> = match entities_res {
-        Ok(resp) if resp.status().is_success() => match optional_text(resp, "entities").await {
-            Some(text) => parse_entities_response(&text),
-            None => Vec::new(),
-        },
-        _ => Vec::new(),
-    };
-
-    let timeline: Vec<TimelineEntry> = match timeline_res {
-        Ok(resp) if resp.status().is_success() => match optional_text(resp, "timeline").await {
-            Some(text) => parse_timeline_response(&text),
-            None => Vec::new(),
-        },
-        _ => Vec::new(),
     };
 
     let sessions: Vec<SessionEntry> = match sessions_res {
@@ -717,60 +753,6 @@ async fn optional_text(resp: reqwest::Response, endpoint: &'static str) -> Optio
             tracing::warn!(endpoint, error = %err, "failed to read optional meta response");
             None
         }
-    }
-}
-
-fn parse_facts_response(text: &str) -> Vec<FactEntry> {
-    match serde_json::from_str::<Vec<FactEntry>>(text) {
-        Ok(facts) => facts,
-        Err(array_err) => match serde_json::from_str::<KnowledgeFactsResponse>(text) {
-            Ok(response) => response.facts,
-            Err(wrapped_err) => {
-                tracing::warn!(
-                    array_error = %array_err,
-                    wrapped_error = %wrapped_err,
-                    "failed to parse facts response"
-                );
-                Vec::new()
-            }
-        },
-    }
-}
-
-fn parse_entities_response(text: &str) -> Vec<EntityEntry> {
-    match serde_json::from_str::<Vec<EntityEntry>>(text) {
-        Ok(entities) => entities,
-        Err(array_err) => match serde_json::from_str::<KnowledgeEntitiesResponse>(text) {
-            Ok(response) => response.entities,
-            Err(wrapped_err) => {
-                tracing::warn!(
-                    array_error = %array_err,
-                    wrapped_error = %wrapped_err,
-                    "failed to parse entities response"
-                );
-                Vec::new()
-            }
-        },
-    }
-}
-
-fn parse_timeline_response(text: &str) -> Vec<TimelineEntry> {
-    // WHY: the endpoint returns per-fact events `{events: [...], total}`;
-    // bucket timestamps into per-date counts client-side. A bare
-    // `[{date, count}]` array is accepted as a pre-bucketed fallback.
-    match serde_json::from_str::<TimelineEventsResponse>(text) {
-        Ok(response) => bucket_timeline_events(&response.events),
-        Err(wrapped_err) => match serde_json::from_str::<Vec<TimelineEntry>>(text) {
-            Ok(timeline) => timeline,
-            Err(array_err) => {
-                tracing::warn!(
-                    wrapped_error = %wrapped_err,
-                    array_error = %array_err,
-                    "failed to parse timeline response"
-                );
-                Vec::new()
-            }
-        },
     }
 }
 

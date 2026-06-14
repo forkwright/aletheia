@@ -10,8 +10,12 @@ use super::error::{
     parse_retry_after_secs,
 };
 use super::types::{
-    Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, NousTool,
-    NousToolsResponse, Session, SessionsResponse,
+    Agent, AgentsResponse, AuthMode, DailyResponse, EntitiesQuery, EntitiesResponse, Entity,
+    EntityMemory, FactDetailResponse, FactsQuery, FactsResponse, FlagRequest, FlagSeverity,
+    ForgetRequest, GraphCheckReport, HealthResponse, HistoryMessage, HistoryResponse,
+    LoginResponse, MergeRequest, NousTool, NousToolsResponse, RelationshipsResponse, Session,
+    SessionsResponse, TimelineQuery, TimelineResponse, UpdateConfidenceRequest,
+    UpdateSensitivityRequest,
 };
 
 /// Build the shared reqwest client used by all API paths (REST, streaming, SSE).
@@ -499,29 +503,46 @@ impl ApiClient {
         })
     }
 
-    /// Fetch knowledge facts with sorting and pagination.
+    /// Fetch knowledge facts with sorting, filtering, and pagination.
     #[must_use]
     #[expect(
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_facts(
-        &self,
-        sort: &str,
-        order: &str,
-        limit: u32,
-    ) -> Result<serde_json::Value> {
+    pub async fn knowledge_facts(&self, query: &FactsQuery) -> Result<FactsResponse> {
+        let limit = query.limit.to_string();
+        let offset = query.offset.to_string();
+        let include_forgotten = query.include_forgotten.to_string();
+        let mut params: Vec<(&str, &str)> = vec![
+            ("sort", &query.sort),
+            ("order", &query.order),
+            ("limit", &limit),
+            ("offset", &offset),
+            ("include_forgotten", &include_forgotten),
+        ];
+        if let Some(ref nous_id) = query.nous_id {
+            params.push(("nous_id", nous_id));
+        }
+        if let Some(ref filter) = query.filter {
+            params.push(("filter", filter));
+        }
+        if let Some(ref fact_type) = query.fact_type {
+            params.push(("fact_type", fact_type));
+        }
+        if let Some(ref tier) = query.tier {
+            params.push(("tier", tier));
+        }
+
         let resp = self
-            .request(
-                reqwest::Method::GET,
-                &format!("/api/v1/knowledge/facts?sort={sort}&order={order}&limit={limit}"),
-            )
+            .request(reqwest::Method::GET, "/api/v1/knowledge/facts")
+            .query(&params)
             .send()
             .await
             .context(HttpSnafu {
                 operation: "load facts",
             })?;
+        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "facts request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "facts response",
@@ -535,7 +556,7 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_fact_detail(&self, fact_id: &str) -> Result<serde_json::Value> {
+    pub async fn knowledge_fact_detail(&self, fact_id: &str) -> Result<FactDetailResponse> {
         let encoded = keryx::url::encode_path_segment(fact_id);
         let resp = self
             .request(
@@ -547,6 +568,7 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "load fact detail",
             })?;
+        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "fact detail request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "fact detail response",
@@ -562,11 +584,15 @@ impl ApiClient {
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_forget(&self, fact_id: &str) -> Result<()> {
         let encoded = keryx::url::encode_path_segment(fact_id);
+        let body = ForgetRequest {
+            reason: "user_requested".to_string(),
+        };
         let resp = self
             .request(
                 reqwest::Method::POST,
                 &format!("/api/v1/knowledge/facts/{encoded}/forget"),
             )
+            .json(&body)
             .send()
             .await
             .context(HttpSnafu {
@@ -599,21 +625,71 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Fetch all knowledge entities.
+    /// Fetch a single knowledge entity by ID.
     #[must_use]
     #[expect(
         clippy::double_must_use,
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_entities(&self) -> Result<serde_json::Value> {
+    pub async fn knowledge_entity(&self, entity_id: &str) -> Result<Entity> {
+        let encoded = keryx::url::encode_path_segment(entity_id);
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/knowledge/entities/{encoded}"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load entity detail",
+            })?;
+        Self::check_auth(&resp)?;
+        let resp = Self::check_status(resp, "entity detail request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "entity detail response",
+        })
+    }
+
+    /// Fetch knowledge entities with sorting, filtering, and pagination.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_entities(&self, query: &EntitiesQuery) -> Result<EntitiesResponse> {
+        let limit = query.limit.to_string();
+        let offset = query.offset.to_string();
+        let mut params: Vec<(&str, &str)> = vec![
+            ("limit", &limit),
+            ("offset", &offset),
+            ("sort", &query.sort),
+            ("order", &query.order),
+        ];
+        if let Some(ref q) = query.q {
+            params.push(("q", q));
+        }
+        let min_confidence = query.min_confidence.map(|value| value.to_string());
+        if let Some(ref min_confidence) = min_confidence {
+            params.push(("min_confidence", min_confidence));
+        }
+        for ty in &query.entity_type {
+            params.push(("entity_type", ty));
+        }
+        for agent in &query.agent {
+            params.push(("agent", agent));
+        }
+
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/knowledge/entities")
+            .query(&params)
             .send()
             .await
             .context(HttpSnafu {
                 operation: "load entities",
             })?;
+        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "entities request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "entities response",
@@ -630,7 +706,7 @@ impl ApiClient {
     pub async fn knowledge_entity_relationships(
         &self,
         entity_id: &str,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<RelationshipsResponse> {
         let encoded = keryx::url::encode_path_segment(entity_id);
         let resp = self
             .request(
@@ -642,9 +718,36 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "load entity relationships",
             })?;
+        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "entity relationships request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "entity relationships response",
+        })
+    }
+
+    /// Fetch memories linked to a specific entity.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_entity_memories(&self, entity_id: &str) -> Result<Vec<EntityMemory>> {
+        let encoded = keryx::url::encode_path_segment(entity_id);
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/knowledge/entities/{encoded}/memories"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load entity memories",
+            })?;
+        Self::check_auth(&resp)?;
+        let resp = Self::check_status(resp, "entity memories request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "entity memories response",
         })
     }
 
@@ -655,17 +758,48 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_timeline(&self) -> Result<serde_json::Value> {
+    pub async fn knowledge_timeline(&self, query: &TimelineQuery) -> Result<TimelineResponse> {
+        let limit = query.limit.to_string();
+        let offset = query.offset.to_string();
+        let mut params: Vec<(&str, &str)> = vec![("limit", &limit), ("offset", &offset)];
+        if let Some(ref nous_id) = query.nous_id {
+            params.push(("nous_id", nous_id));
+        }
+
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/knowledge/timeline")
+            .query(&params)
             .send()
             .await
             .context(HttpSnafu {
                 operation: "load timeline",
             })?;
+        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "timeline request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "timeline response",
+        })
+    }
+
+    /// Run server-side knowledge graph consistency checks.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_graph_check(&self) -> Result<GraphCheckReport> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/knowledge/check")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "graph check",
+            })?;
+        Self::check_auth(&resp)?;
+        let resp = Self::check_status(resp, "graph check request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "graph check response",
         })
     }
 
@@ -678,18 +812,135 @@ impl ApiClient {
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_update_confidence(&self, fact_id: &str, confidence: f64) -> Result<()> {
         let encoded = keryx::url::encode_path_segment(fact_id);
+        let body = UpdateConfidenceRequest { confidence };
         let resp = self
             .request(
                 reqwest::Method::PUT,
                 &format!("/api/v1/knowledge/facts/{encoded}/confidence"),
             )
-            .json(&serde_json::json!({ "confidence": confidence }))
+            .json(&body)
             .send()
             .await
             .context(HttpSnafu {
                 operation: "update confidence",
             })?;
         Self::check_status(resp, "confidence request").await?;
+        Ok(())
+    }
+
+    /// Update the data-sovereignty sensitivity for a knowledge fact.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_update_sensitivity(
+        &self,
+        fact_id: &str,
+        sensitivity: &str,
+    ) -> Result<()> {
+        let encoded = keryx::url::encode_path_segment(fact_id);
+        let body = UpdateSensitivityRequest {
+            sensitivity: sensitivity.to_string(),
+        };
+        let resp = self
+            .request(
+                reqwest::Method::PUT,
+                &format!("/api/v1/knowledge/facts/{encoded}/sensitivity"),
+            )
+            .json(&body)
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "update sensitivity",
+            })?;
+        Self::check_status(resp, "sensitivity request").await?;
+        Ok(())
+    }
+
+    /// Flag an entity for operator review.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_flag_entity(
+        &self,
+        entity_id: &str,
+        reason: &str,
+        severity: FlagSeverity,
+    ) -> Result<()> {
+        let encoded = keryx::url::encode_path_segment(entity_id);
+        let body = FlagRequest {
+            reason: reason.to_string(),
+            severity,
+        };
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/knowledge/entities/{encoded}/flag"),
+            )
+            .json(&body)
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "flag entity",
+            })?;
+        Self::check_status(resp, "flag request").await?;
+        Ok(())
+    }
+
+    /// Merge two entities, keeping the canonical entity and removing the other.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_merge_entities(
+        &self,
+        canonical_id: &str,
+        merged_id: &str,
+    ) -> Result<()> {
+        let body = MergeRequest {
+            canonical_id: canonical_id.to_string(),
+            merged_id: merged_id.to_string(),
+        };
+        let resp = self
+            .request(reqwest::Method::POST, "/api/v1/knowledge/entities/merge")
+            .json(&body)
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "merge entities",
+            })?;
+        Self::check_status(resp, "merge request").await?;
+        Ok(())
+    }
+
+    /// Queue a message for asynchronous processing.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self, text))]
+    pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {
+        let encoded = keryx::url::encode_path_segment(session_id);
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/sessions/{encoded}/queue"),
+            )
+            .json(&serde_json::json!({ "text": text }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "queue message",
+            })?;
+        Self::check_status(resp, "queue request").await?;
         Ok(())
     }
 
