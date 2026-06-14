@@ -79,19 +79,6 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
             .instrument(span),
         );
     }
-    if let Some(Overlay::PlanApproval(ref plan)) = app.layout.overlay {
-        let plan_id = plan.plan_id.clone();
-        let client = app.client.clone();
-        let span = tracing::info_span!("cancel_plan", %plan_id);
-        app.background_tasks.spawn(
-            async move {
-                if let Err(e) = client.cancel_plan(&plan_id).await {
-                    tracing::error!("failed to cancel plan: {e}");
-                }
-            }
-            .instrument(span),
-        );
-    }
     // NOTE: DecisionCard close without submit = skip, no API call needed
     app.layout.overlay = None;
 }
@@ -238,18 +225,10 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             );
             app.layout.overlay = None;
         }
-        Some(Overlay::PlanApproval(plan)) => {
-            let plan_id = plan.plan_id.clone();
-            let client = app.client.clone();
-            let span = tracing::info_span!("approve_plan", %plan_id);
-            app.background_tasks.spawn(
-                async move {
-                    if let Err(e) = client.approve_plan(&plan_id).await {
-                        tracing::error!("failed to approve plan: {e}");
-                    }
-                }
-                .instrument(span),
-            );
+        Some(Overlay::PlanApproval(_plan)) => {
+            app.viewport.error_toast = Some(crate::msg::ErrorToast::new(
+                "Plan approval API not available - pending pylon support.".into(),
+            ));
             app.layout.overlay = None;
         }
         Some(Overlay::ContextActions(ctx)) => {
@@ -599,7 +578,6 @@ mod tests {
     fn overlay_up_plan_approval() {
         let mut app = test_app();
         app.layout.overlay = Some(Overlay::PlanApproval(crate::state::PlanApprovalOverlay {
-            plan_id: "p1".into(),
             steps: vec![
                 crate::state::PlanStepApproval {
                     id: 1,

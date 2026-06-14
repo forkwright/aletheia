@@ -6,6 +6,114 @@
 //! encode identifiers before passing them in; doing so would produce
 //! double-encoded paths (e.g. `%252F` for a literal `/`).
 
+/// A first-party client route expected to be registered by pylon.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClientRouteContract {
+    /// HTTP method used by the client.
+    pub method: &'static str,
+    /// Canonical server route template, without query parameters.
+    pub path_template: &'static str,
+}
+
+/// Routes exercised by the skene client surface.
+///
+/// The pylon route-contract test consumes this list and fails when a client
+/// route has no registered server handler.
+pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/health",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/nous",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/nous/{id}/tools",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/sessions",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/sessions",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/sessions/stream",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/sessions/{id}/history",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/sessions/{id}/archive",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/sessions/{id}/unarchive",
+    },
+    ClientRouteContract {
+        method: "PUT",
+        path_template: "/api/v1/sessions/{id}/name",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/turns/{turn_id}/tools/{tool_id}/approve",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/turns/{turn_id}/tools/{tool_id}/deny",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/events",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/config",
+    },
+    ClientRouteContract {
+        method: "PUT",
+        path_template: "/api/v1/config/{section}",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/facts",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/facts/{id}",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/knowledge/facts/{id}/forget",
+    },
+    ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/knowledge/facts/{id}/restore",
+    },
+    ClientRouteContract {
+        method: "PUT",
+        path_template: "/api/v1/knowledge/facts/{id}/confidence",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/entities",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/entities/{id}/relationships",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/knowledge/timeline",
+    },
+];
+
 /// Planning API routes.
 pub mod planning {
     /// Template for `GET` project verification.
@@ -67,7 +175,79 @@ pub mod planning {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::planning::*;
+    use super::{ClientRouteContract, SKENE_CLIENT_ROUTE_CONTRACTS};
+
+    fn quoted_strings(source: &str) -> Vec<String> {
+        let mut strings = Vec::new();
+        let mut chars = source.chars();
+        while let Some(ch) = chars.next() {
+            if ch != '"' {
+                continue;
+            }
+            let mut value = String::new();
+            let mut escaped = false;
+            for inner in chars.by_ref() {
+                if escaped {
+                    value.push(inner);
+                    escaped = false;
+                    continue;
+                }
+                match inner {
+                    '\\' => escaped = true,
+                    '"' => break,
+                    _ => value.push(inner),
+                }
+            }
+            strings.push(value);
+        }
+        strings
+    }
+
+    fn normalize_route(path: &str) -> String {
+        let path = path.split_once('?').map_or(path, |(path, _query)| path);
+        let mut normalized = String::with_capacity(path.len());
+        let mut chars = path.chars().peekable();
+        while let Some(ch) = chars.next() {
+            if ch != '{' {
+                normalized.push(ch);
+                continue;
+            }
+            normalized.push_str("{}");
+            for inner in chars.by_ref() {
+                if inner == '}' {
+                    break;
+                }
+            }
+        }
+        normalized
+    }
+
+    fn contract_paths(contracts: &[ClientRouteContract]) -> BTreeSet<String> {
+        contracts
+            .iter()
+            .map(|contract| normalize_route(contract.path_template))
+            .collect()
+    }
+
+    #[test]
+    fn api_client_route_literals_have_contracts() {
+        let contracts = contract_paths(SKENE_CLIENT_ROUTE_CONTRACTS);
+        let source = include_str!("client.rs");
+
+        for route in quoted_strings(source)
+            .into_iter()
+            .filter(|literal| literal.starts_with("/api/"))
+            .map(|literal| normalize_route(&literal))
+        {
+            assert!(
+                contracts.contains(&route),
+                "ApiClient route literal has no route contract: {route}"
+            );
+        }
+    }
 
     // ── normal IDs pass through unmodified ─────────────────────────────────
 

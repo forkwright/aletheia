@@ -1,4 +1,4 @@
-use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
+use crate::id::{NousId, SessionId, ToolId, TurnId};
 use crate::msg::MessageActionKind;
 
 use super::settings::SettingsOverlay;
@@ -104,7 +104,6 @@ pub struct ToolApprovalOverlay {
 
 #[derive(Debug)]
 pub struct PlanApprovalOverlay {
-    pub plan_id: PlanId,
     pub steps: Vec<PlanStepApproval>,
     pub total_cost_cents: u32,
     pub cursor: usize,
@@ -246,7 +245,6 @@ mod tests {
     #[test]
     fn plan_approval_overlay_fields() {
         let overlay = PlanApprovalOverlay {
-            plan_id: "p1".into(),
             steps: vec![PlanStepApproval {
                 id: 1,
                 label: "Step 1".to_string(),

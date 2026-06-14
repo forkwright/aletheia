@@ -209,7 +209,6 @@ pub(crate) fn handle_stream_plan_complete(app: &mut App, status: String) {
 // SAFETY: sanitized at ingestion: plan step labels and roles from stream API.
 pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
     app.layout.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
-        plan_id: plan.id,
         total_cost_cents: plan.total_estimated_cost_cents,
         cursor: 0,
         steps: plan
@@ -308,10 +307,6 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         let pct = u8::try_from(pct_u64).unwrap_or(100);
         app.dashboard.context_usage_pct = Some(pct);
     }
-    if let Ok(cents) = app.client.today_cost_cents().await {
-        app.dashboard.daily_cost_cents = cents;
-    }
-
     // WHY: Record token usage after every completed turn so the metrics dashboard
     // reflects cumulative spend without requiring a separate API poll.
     app.layout.metrics.record_turn(
@@ -382,20 +377,7 @@ pub(crate) async fn handle_cancel_turn(app: &mut App) {
         None => return,
     };
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
-
-    // WHY: Tracked in background_tasks so the abort request completes before
-    // shutdown instead of being silently dropped when the runtime exits.
-    let client = app.client.clone();
-    let id = turn_id.to_string();
-    let span = tracing::info_span!("abort_turn", turn_id = %id);
-    app.background_tasks.spawn(
-        async move {
-            if let Err(e) = client.abort_turn(&id).await {
-                tracing::warn!(error = %e, "abort_turn request failed");
-            }
-        }
-        .instrument(span),
-    );
+    tracing::info!(%turn_id, "local turn cancellation requested");
 
     app.connection.stream_phase = crate::state::StreamPhase::Idle;
     if !app.connection.streaming_line_buffer.is_empty() {

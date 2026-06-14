@@ -16,7 +16,7 @@ use persistence::{load_command_history, load_session_state};
 use crate::api::client::ApiClient;
 use crate::api::sse::SseConnection;
 use crate::config::Config;
-use crate::error::{GatewayUnreachableSnafu, Result, TokenRequiredSnafu};
+use crate::error::{GatewayUnreachableSnafu, Result};
 use crate::events::StreamEvent;
 use crate::hyperlink::OscLink;
 use crate::id::{NousId, SessionId, TurnId};
@@ -371,33 +371,6 @@ impl App {
             }
         }
 
-        match self.client.auth_mode().await {
-            Ok(mode) => match mode.mode.as_str() {
-                "none" => {
-                    tracing::info!("no auth required");
-                }
-                "token" => {
-                    if self.client.token().is_none() {
-                        return TokenRequiredSnafu {
-                            message: "gateway requires token auth. Pass --token or set ALETHEIA_TOKEN",
-                        }
-                        .fail();
-                    }
-                }
-                _ => {
-                    if self.client.token().is_none() {
-                        return TokenRequiredSnafu {
-                            message: "gateway requires authentication. Pass --token or set ALETHEIA_TOKEN",
-                        }
-                        .fail();
-                    }
-                }
-            },
-            Err(e) => {
-                tracing::warn!("could not detect auth mode: {e}, proceeding without auth");
-            }
-        }
-
         // SAFETY: sanitized at ingestion: all agent fields from API are sanitized here.
         // NOTE: Best-effort -- if the agent fetch fails, start with an empty list
         // and show an error toast.
@@ -474,10 +447,6 @@ impl App {
             let idx = self.layout.tab_bar.create_tab(agent_id, title);
             self.layout.tab_bar.active = idx;
             self.save_to_active_tab();
-        }
-
-        if let Ok(cents) = self.client.today_cost_cents().await {
-            self.dashboard.daily_cost_cents = cents;
         }
 
         self.connection.sse = Some(SseConnection::connect(

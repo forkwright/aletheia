@@ -10,8 +10,8 @@ use super::error::{
     parse_retry_after_secs,
 };
 use super::types::{
-    Agent, AgentsResponse, AuthMode, DailyResponse, HealthResponse, HistoryMessage,
-    HistoryResponse, LoginResponse, NousTool, NousToolsResponse, Session, SessionsResponse,
+    Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, NousTool,
+    NousToolsResponse, Session, SessionsResponse,
 };
 
 /// Build the shared reqwest client used by all API paths (REST, streaming, SSE).
@@ -175,52 +175,6 @@ impl ApiClient {
             Self::check_status(resp, "health details request").await?;
             unreachable!("check_status returns Ok only for success status codes")
         }
-    }
-
-    /// Query the server's authentication mode.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self))]
-    pub async fn auth_mode(&self) -> Result<AuthMode> {
-        let resp = self
-            .request(reqwest::Method::GET, "/api/auth/mode")
-            .send()
-            .await
-            .context(HttpSnafu {
-                operation: "auth mode check",
-            })?;
-        resp.json().await.context(HttpSnafu {
-            operation: "auth mode response",
-        })
-    }
-
-    /// Authenticate with username and password.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self, password))]
-    pub async fn login(&self, username: &str, password: &str) -> Result<LoginResponse> {
-        let resp = self
-            .client
-            .post(self.url("/api/auth/login"))
-            .json(&serde_json::json!({ "username": username, "password": password }))
-            .send()
-            .await
-            .context(HttpSnafu { operation: "login" })?;
-
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            return AuthSnafu.fail();
-        }
-
-        let resp = Self::check_status(resp, "login request").await?;
-        resp.json().await.context(HttpSnafu {
-            operation: "login response",
-        })
     }
 
     /// Fetch all registered agents.
@@ -408,29 +362,6 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Abort a running turn.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self))]
-    pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(turn_id);
-        let resp = self
-            .request(
-                reqwest::Method::POST,
-                &format!("/api/v1/turns/{encoded}/abort"),
-            )
-            .send()
-            .await
-            .context(HttpSnafu {
-                operation: "abort turn",
-            })?;
-        Self::check_status(resp, "abort request").await?;
-        Ok(())
-    }
-
     /// Approve a tool invocation awaiting user consent.
     #[must_use]
     #[expect(
@@ -479,107 +410,6 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Approve a proposed execution plan.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self))]
-    pub async fn approve_plan(&self, plan_id: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(plan_id);
-        let resp = self
-            .request(
-                reqwest::Method::POST,
-                &format!("/api/v1/plans/{encoded}/approve"),
-            )
-            .send()
-            .await
-            .context(HttpSnafu {
-                operation: "approve plan",
-            })?;
-        Self::check_status(resp, "plan approve request").await?;
-        Ok(())
-    }
-
-    /// Cancel a proposed execution plan.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self))]
-    pub async fn cancel_plan(&self, plan_id: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(plan_id);
-        let resp = self
-            .request(
-                reqwest::Method::POST,
-                &format!("/api/v1/plans/{encoded}/cancel"),
-            )
-            .send()
-            .await
-            .context(HttpSnafu {
-                operation: "cancel plan",
-            })?;
-        Self::check_status(resp, "plan cancel request").await?;
-        Ok(())
-    }
-
-    /// Fetch today's LLM cost in cents.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self))]
-    pub async fn today_cost_cents(&self) -> Result<u32> {
-        let resp = self
-            .request(reqwest::Method::GET, "/api/v1/costs/daily")
-            .send()
-            .await
-            .context(HttpSnafu {
-                operation: "load costs",
-            })?;
-        let resp = Self::check_status(resp, "costs request").await?;
-        let daily: DailyResponse = resp.json().await.context(HttpSnafu {
-            operation: "costs response",
-        })?;
-        let today_cost = daily.daily.last().map_or(0.0, |d| d.cost);
-        // WHY: clamp to [0, u32::MAX] before truncating; negative or NaN costs become 0.
-        let cents_f = (today_cost * 100.0).clamp(0.0, f64::from(u32::MAX));
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            clippy::as_conversions,
-            reason = "clamped to [0, u32::MAX] above; f64 → u32 is lossless within that range"
-        )]
-        let cents = cents_f as u32; // SAFETY: cents_f clamped to [0.0, u32::MAX as f64]; truncation exact
-        Ok(cents)
-    }
-
-    /// Trigger distillation (memory compaction) for a session.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self))]
-    pub async fn compact(&self, session_id: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(session_id);
-        let resp = self
-            .request(
-                reqwest::Method::POST,
-                &format!("/api/v1/sessions/{encoded}/distill"),
-            )
-            .send()
-            .await
-            .context(HttpSnafu {
-                operation: "trigger distillation",
-            })?;
-        Self::check_status(resp, "distillation request").await?;
-        Ok(())
-    }
-
     /// Fetch registered tools for an agent.
     ///
     /// # Errors
@@ -611,32 +441,6 @@ impl ApiClient {
             operation: "tools response",
         })?;
         Ok(wrapper.tools)
-    }
-
-    /// Search agent memory by query.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self))]
-    pub async fn recall(&self, nous_id: &str, query: &str) -> Result<String> {
-        let encoded = keryx::url::encode_path_segment(nous_id);
-        let resp = self
-            .request(
-                reqwest::Method::GET,
-                &format!("/api/v1/nous/{encoded}/recall"),
-            )
-            .query(&[("q", query)])
-            .send()
-            .await
-            .context(HttpSnafu {
-                operation: "recall memory",
-            })?;
-        let resp = Self::check_status(resp, "recall request").await?;
-        resp.text().await.context(HttpSnafu {
-            operation: "recall response",
-        })
     }
 
     /// Fetch the server configuration.
@@ -886,30 +690,6 @@ impl ApiClient {
                 operation: "update confidence",
             })?;
         Self::check_status(resp, "confidence request").await?;
-        Ok(())
-    }
-
-    /// Queue a message for asynchronous processing.
-    #[must_use]
-    #[expect(
-        clippy::double_must_use,
-        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-    )]
-    #[tracing::instrument(skip(self, text))]
-    pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(session_id);
-        let resp = self
-            .request(
-                reqwest::Method::POST,
-                &format!("/api/v1/sessions/{encoded}/queue"),
-            )
-            .json(&serde_json::json!({ "text": text }))
-            .send()
-            .await
-            .context(HttpSnafu {
-                operation: "queue message",
-            })?;
-        Self::check_status(resp, "queue request").await?;
         Ok(())
     }
 
