@@ -27,9 +27,10 @@ For first-time setup, see [QUICKSTART.md](QUICKSTART.md).
 
 ### Software
 
-- Links dynamically against glibc only (Linux). No other runtime dependencies.
+- Links dynamically against glibc only (Linux). No other runtime dependencies for core functionality.
 - **Build from source:** Rust 1.94+ (edition 2024), Cargo
 - **Optional:** signal-cli for Signal messaging channel
+- **Optional:** Pandoc >= 3.0 for document export formats (`docx`, `html`, `md`, `latex`, `epub`). Without Pandoc, only PDF (via in-process Typst) and XLSX export are available. Missing Pandoc produces an actionable error: `{format} output requires Pandoc; install pandoc >= 3.0`.
 
 ### Network
 

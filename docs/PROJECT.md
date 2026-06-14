@@ -6,7 +6,7 @@ Distributed cognition system. Multiple AI agents working in concert with a human
 
 Five design pressures shape every decision:
 
-1. **Single static binary.** `scp + systemctl`. No runtime dependencies beyond glibc.
+1. **Single static binary.** `scp + systemctl`. No runtime dependencies beyond glibc for core functionality. Pandoc (>= 3.0) is an optional runtime dependency for document export formats: `docx`, `html`, `md`, `latex`, `epub`. PDF export uses the in-process Typst fast-lane and does not require Pandoc.
 2. **Portable by default.** Runs on any Linux and macOS. No OS-specific dependencies in core.
 3. **True parallelism.** Multiple nous on Tokio threads, not interleaved on one event loop.
 4. **Every decision deliberate.** Nothing carried forward unexamined.
