@@ -14,7 +14,6 @@ pub use crate::resume::{ResumePolicy, ResumeStage};
 
 /// What to dispatch: a set of prompt numbers with optional DAG constraints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(from = "DispatchSpecRaw")]
 #[non_exhaustive]
 pub struct DispatchSpec {
     /// Prompt numbers to execute (may be a subset of the full DAG).
@@ -26,35 +25,11 @@ pub struct DispatchSpec {
     /// Maximum parallelism (simultaneous sessions). `None` means unlimited.
     pub max_parallel: Option<u32>,
     /// Maximum turns per initial session. `None` delegates to engine defaults.
+    #[serde(default)]
     pub max_turns: Option<u32>,
     /// Maximum total cost in USD for this dispatch. `None` uses orchestrator defaults.
+    #[serde(default)]
     pub budget_usd: Option<f64>,
-}
-
-/// Raw deserialization type for [`DispatchSpec`].
-#[derive(Debug, Clone, Deserialize)]
-struct DispatchSpecRaw {
-    prompt_numbers: Vec<u32>,
-    project: String,
-    dag_ref: Option<String>,
-    max_parallel: Option<u32>,
-    #[serde(default)]
-    max_turns: Option<u32>,
-    #[serde(default)]
-    budget_usd: Option<f64>,
-}
-
-impl From<DispatchSpecRaw> for DispatchSpec {
-    fn from(raw: DispatchSpecRaw) -> Self {
-        Self {
-            prompt_numbers: raw.prompt_numbers,
-            project: raw.project,
-            dag_ref: raw.dag_ref,
-            max_parallel: raw.max_parallel,
-            max_turns: raw.max_turns,
-            budget_usd: raw.budget_usd,
-        }
-    }
 }
 
 impl DispatchSpec {

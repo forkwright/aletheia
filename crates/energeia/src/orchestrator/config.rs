@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// Controls concurrency limits, budget defaults, and timeouts that apply to
 /// the entire dispatch run rather than individual sessions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, from = "OrchestratorConfigRaw")]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct OrchestratorConfig {
     /// Maximum number of sessions executing concurrently within a group.
@@ -38,57 +38,20 @@ pub struct OrchestratorConfig {
     /// Optional role definition text or path to a role file.
     /// When present, the preparation stage splits prompts into a static
     /// prefix (role + standards + validation gate) and dynamic suffix.
+    #[serde(default)]
     pub role: Option<String>,
     /// Optional directory containing standard `.md` files.
+    #[serde(default)]
     pub standards_dir: Option<PathBuf>,
     /// List of standard names to include in the static prefix.
+    #[serde(default)]
     pub standards: Vec<String>,
     /// Optional scope context appended to the dynamic suffix.
+    #[serde(default)]
     pub scope: Option<String>,
     /// Additional directories the agent sessions may access.
+    #[serde(default)]
     pub additional_dirs: Vec<PathBuf>,
-}
-
-/// Raw deserialization type for [`OrchestratorConfig`].
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OrchestratorConfigRaw {
-    max_concurrent: u32,
-    default_budget_usd: Option<f64>,
-    default_budget_turns: Option<u32>,
-    #[serde(with = "duration_ms_option")]
-    max_duration: Option<Duration>,
-    #[serde(with = "duration_ms_option")]
-    session_idle_timeout: Option<Duration>,
-    max_corrective_retries: u32,
-    #[serde(default)]
-    role: Option<String>,
-    #[serde(default)]
-    standards_dir: Option<PathBuf>,
-    #[serde(default)]
-    standards: Vec<String>,
-    #[serde(default)]
-    scope: Option<String>,
-    #[serde(default)]
-    additional_dirs: Vec<PathBuf>,
-}
-
-impl From<OrchestratorConfigRaw> for OrchestratorConfig {
-    fn from(raw: OrchestratorConfigRaw) -> Self {
-        Self {
-            max_concurrent: raw.max_concurrent,
-            default_budget_usd: raw.default_budget_usd,
-            default_budget_turns: raw.default_budget_turns,
-            max_duration: raw.max_duration,
-            session_idle_timeout: raw.session_idle_timeout,
-            max_corrective_retries: raw.max_corrective_retries,
-            role: raw.role,
-            standards_dir: raw.standards_dir,
-            standards: raw.standards,
-            scope: raw.scope,
-            additional_dirs: raw.additional_dirs,
-        }
-    }
 }
 
 impl Default for OrchestratorConfig {
