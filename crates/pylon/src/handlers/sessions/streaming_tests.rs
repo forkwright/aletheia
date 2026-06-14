@@ -510,17 +510,28 @@ fn idempotency_guard_releases_in_flight_on_drop() {
     let cache = Arc::new(crate::idempotency::IdempotencyCache::new());
     let principal = "alice".to_owned();
     let key = "drop-key".to_owned();
+    let session_id = "session-a".to_owned();
+    let body_fingerprint = send_message_body_fingerprint("Hello!");
 
     assert!(
-        matches!(cache.check_or_insert(&principal, &key), LookupResult::Miss),
+        matches!(
+            cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
+            LookupResult::Miss
+        ),
         "precondition: key must be inserted"
     );
 
     {
-        let guard = IdempotencyGuard::new(Arc::clone(&cache), principal.clone(), key.clone());
+        let guard = IdempotencyGuard::new(
+            Arc::clone(&cache),
+            principal.clone(),
+            key.clone(),
+            session_id.clone(),
+            body_fingerprint.clone(),
+        );
         assert!(
             matches!(
-                cache.check_or_insert(&principal, &key),
+                cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
                 LookupResult::Conflict
             ),
             "key must still be in flight while the guard lives"
@@ -529,7 +540,10 @@ fn idempotency_guard_releases_in_flight_on_drop() {
     }
 
     assert!(
-        matches!(cache.check_or_insert(&principal, &key), LookupResult::Miss),
+        matches!(
+            cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
+            LookupResult::Miss
+        ),
         "dropping the guard must release the in-flight key"
     );
 }
@@ -539,26 +553,36 @@ fn idempotency_guard_preserves_completed_entry() {
     let cache = Arc::new(crate::idempotency::IdempotencyCache::new());
     let principal = "alice".to_owned();
     let key = "complete-key".to_owned();
+    let session_id = "session-a".to_owned();
+    let body_fingerprint = send_message_body_fingerprint("Hello!");
 
     assert!(matches!(
-        cache.check_or_insert(&principal, &key),
+        cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
         LookupResult::Miss
     ));
     cache.complete(
         &principal,
         &key,
+        &session_id,
+        &body_fingerprint,
         axum::http::StatusCode::OK,
         r#"{"ok":true}"#.to_owned(),
     );
 
     {
-        let guard = IdempotencyGuard::new(Arc::clone(&cache), principal.clone(), key.clone());
+        let guard = IdempotencyGuard::new(
+            Arc::clone(&cache),
+            principal.clone(),
+            key.clone(),
+            session_id.clone(),
+            body_fingerprint.clone(),
+        );
         guard.mark_completed();
     }
 
     assert!(
         matches!(
-            cache.check_or_insert(&principal, &key),
+            cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
             LookupResult::Hit { .. }
         ),
         "mark_completed must prevent the guard from deleting a finished entry"
@@ -573,21 +597,28 @@ fn idempotency_guard_shared_completion_flag() {
     let cache = Arc::new(crate::idempotency::IdempotencyCache::new());
     let principal = "alice".to_owned();
     let key = "shared-key".to_owned();
+    let session_id = "session-a".to_owned();
+    let body_fingerprint = send_message_body_fingerprint("Hello!");
 
     assert!(matches!(
-        cache.check_or_insert(&principal, &key),
+        cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
         LookupResult::Miss
     ));
 
-    let (task_guard, stream_guard) =
-        IdempotencyGuard::new_pair(Arc::clone(&cache), principal.clone(), key.clone());
+    let (task_guard, stream_guard) = IdempotencyGuard::new_pair(
+        Arc::clone(&cache),
+        principal.clone(),
+        key.clone(),
+        session_id.clone(),
+        body_fingerprint.clone(),
+    );
 
     task_guard.mark_completed();
     drop(stream_guard);
 
     assert!(
         matches!(
-            cache.check_or_insert(&principal, &key),
+            cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
             LookupResult::Conflict
         ),
         "shared completion flag must keep the in-flight entry intact"

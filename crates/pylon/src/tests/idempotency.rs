@@ -270,7 +270,10 @@ async fn idempotency_key_not_stranded_after_disconnect() {
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let lookup = state.idempotency_cache.check_or_insert("test-user", key);
+    let lookup =
+        state
+            .idempotency_cache
+            .check_or_insert("test-user", key, id, &body_fingerprint("Hello!"));
     assert!(
         !matches!(lookup, crate::idempotency::LookupResult::Conflict),
         "in-flight idempotency key must not be stranded after disconnect"

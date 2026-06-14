@@ -75,6 +75,8 @@ struct IdempotencyGuard {
     cache: Arc<crate::idempotency::IdempotencyCache>,
     principal: String,
     key: String,
+    session_id: String,
+    body_fingerprint: String,
     completed: Arc<AtomicBool>,
 }
 
@@ -84,11 +86,15 @@ impl IdempotencyGuard {
         cache: Arc<crate::idempotency::IdempotencyCache>,
         principal: String,
         key: String,
+        session_id: String,
+        body_fingerprint: String,
     ) -> Self {
         Self {
             cache,
             principal,
             key,
+            session_id,
+            body_fingerprint,
             completed: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -101,18 +107,24 @@ impl IdempotencyGuard {
         cache: Arc<crate::idempotency::IdempotencyCache>,
         principal: String,
         key: String,
+        session_id: String,
+        body_fingerprint: String,
     ) -> (Self, Self) {
         let completed = Arc::new(AtomicBool::new(false));
         let task_guard = Self {
             cache: Arc::clone(&cache),
             principal: principal.clone(),
             key: key.clone(),
+            session_id: session_id.clone(),
+            body_fingerprint: body_fingerprint.clone(),
             completed: Arc::clone(&completed),
         };
         let stream_guard = Self {
             cache,
             principal,
             key,
+            session_id,
+            body_fingerprint,
             completed,
         };
         (task_guard, stream_guard)
@@ -126,7 +138,12 @@ impl IdempotencyGuard {
 impl Drop for IdempotencyGuard {
     fn drop(&mut self) {
         if !self.completed.load(Ordering::Acquire) {
-            self.cache.remove(&self.principal, &self.key);
+            self.cache.remove(
+                &self.principal,
+                &self.key,
+                &self.session_id,
+                &self.body_fingerprint,
+            );
         }
     }
 }
@@ -360,6 +377,8 @@ pub async fn send_message(
                 Arc::clone(&state.idempotency_cache),
                 claims.sub.clone(),
                 key.clone(),
+                session_id.clone(),
+                body_fingerprint.clone(),
             );
             (Some(task_guard), Some(stream_guard))
         }
