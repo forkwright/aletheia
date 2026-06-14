@@ -116,7 +116,7 @@ impl AgentSdkEngine {
 
         Ok(Self {
             config,
-            binary: "claude".to_owned(),
+            binary: crate::CLI_BINARY.to_owned(),
         })
     }
 

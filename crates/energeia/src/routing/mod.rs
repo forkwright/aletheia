@@ -40,6 +40,8 @@ pub(crate) mod affinity;
 
 pub(crate) use aletheia_routing::types::{ProviderId, TaskCategory};
 
+pub(crate) const DEFAULT_PROVIDER_ID: &str = "claude";
+
 /// Static provider router: always returns the configured default provider.
 ///
 /// Used as the fallback when the empirical router lacks sufficient data or is
@@ -106,7 +108,7 @@ impl Default for DispatchRoutingConfig {
             min_samples: 5,
             window_days: 7,
             confidence_threshold: 0.1,
-            default_provider: "claude".to_owned(),
+            default_provider: DEFAULT_PROVIDER_ID.to_owned(),
         }
     }
 }
@@ -175,9 +177,12 @@ mod tests {
 
     #[test]
     fn static_router_always_returns_default() {
-        let router = StaticRouter::new(ProviderId::new("claude"));
-        assert_eq!(&*router.pick(TaskCategory::Bug).0, "claude");
-        assert_eq!(&*router.pick(TaskCategory::Refactor).0, "claude");
+        let router = StaticRouter::new(ProviderId::new(DEFAULT_PROVIDER_ID));
+        assert_eq!(&*router.pick(TaskCategory::Bug).0, DEFAULT_PROVIDER_ID);
+        assert_eq!(
+            &*router.pick(TaskCategory::Refactor).0,
+            DEFAULT_PROVIDER_ID
+        );
     }
 
     #[test]
@@ -193,7 +198,7 @@ mod tests {
         assert_eq!(cfg.min_samples, 5);
         assert_eq!(cfg.window_days, 7);
         assert!((cfg.confidence_threshold - 0.1).abs() < f64::EPSILON);
-        assert_eq!(cfg.default_provider, "claude");
+        assert_eq!(cfg.default_provider, DEFAULT_PROVIDER_ID);
     }
 
     #[test]

@@ -21,6 +21,8 @@
 //! - [`types`] — dispatch specs, outcomes, QA results
 //! - [`error`] — snafu error types with location tracking
 
+pub(crate) const CLI_BINARY: &str = "claude";
+
 /// Agent SDK engine: OAuth-enabled, permission-aware dispatch backend.
 pub mod agent_sdk;
 /// High-level dispatch backend trait for control plane integration.
