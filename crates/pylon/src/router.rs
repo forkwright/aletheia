@@ -224,6 +224,7 @@ pub fn build_router_with(
     // Router<Arc<AppState>> to Router<()> so the extra Router<()> from
     // diaporeia can be merged. All subsequent middleware layers are
     // tower-level (not Axum state extractors), so they work on Router<()>.
+    let app_state_for_layers = Arc::clone(&state);
     let mut router = router.with_state(state);
 
     // WHY: Extra routes are merged BEFORE middleware layers so they benefit from
@@ -238,7 +239,8 @@ pub fn build_router_with(
         spawn_stale_cleanup(Arc::clone(&user_limiter), shutdown.clone());
         router = router
             .layer(axum::middleware::from_fn(per_user_rate_limit))
-            .layer(axum::Extension(user_limiter));
+            .layer(axum::Extension(user_limiter))
+            .layer(axum::Extension(app_state_for_layers));
     }
 
     if security.rate_limit.enabled {

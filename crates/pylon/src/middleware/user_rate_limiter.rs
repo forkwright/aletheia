@@ -10,9 +10,12 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tracing::{Instrument, debug};
 
+use koina::http::BEARER_PREFIX;
 use taxis::config::PerUserRateLimitConfig;
 
 use crate::error::{ErrorBody, ErrorResponse};
+use crate::extract::Claims;
+use crate::state::AppState;
 
 use super::rate_limiter::{RateLimiter, extract_client_key};
 
@@ -190,7 +193,7 @@ const IP_CEILING_BURST_MULTIPLIER: u32 = 5;
 /// is short and contains no `.await` points.
 pub struct UserRateLimiter {
     config: PerUserRateLimitConfig,
-    /// Per-user (token-keyed) rate limit state.
+    /// Per-user rate limit state keyed by verified subject.
     state: Mutex<HashMap<String, UserBuckets>>,
     /// Per-IP rate limit ceiling. Checked alongside the per-user bucket so
     /// that a single IP cannot exceed the configured limit regardless of how
@@ -350,35 +353,53 @@ impl UserRateLimiter {
 
 /// Extract the user identity for per-user rate limiting.
 ///
-/// Uses the client IP as the rate-limit key. Previous versions extracted
-/// the JWT `sub` claim from raw payload bytes without signature verification,
-/// which allowed attackers to forge any `sub` and poison another user's
-/// rate-limit bucket (#2223). The auth extractor runs inside route handlers,
-/// after rate-limit middleware, so verified claims are unavailable here.
-fn extract_user_key(request: &Request, trust_proxy: bool) -> String {
-    // WHY: Per-user rate limiting should key on the authenticated user, not
-    // just the IP. When a Bearer token is present, use a hash of the token
-    // as the key so different tokens get independent rate limit buckets.
-    // Falls back to IP for unauthenticated requests.
+/// Uses verified JWT claims when a bearer token is present. Falls back to the
+/// client IP only when no verified subject is available, such as public routes
+/// without authentication.
+fn extract_user_key(
+    request: &Request,
+    app_state: Option<&Arc<AppState>>,
+    trust_proxy: bool,
+) -> String {
+    if let Some(claims) = request.extensions().get::<Claims>() {
+        return subject_key(&claims.sub);
+    }
+
+    if let Some(state) = app_state {
+        if state.auth_mode == "none" {
+            return subject_key("anonymous");
+        }
+
+        if let Some(sub) = verified_bearer_subject(request, state) {
+            return subject_key(&sub);
+        }
+    }
+
+    extract_client_key(request, trust_proxy)
+}
+
+fn verified_bearer_subject(request: &Request, state: &AppState) -> Option<String> {
     if let Some(auth) = request.headers().get("authorization")
         && let Ok(val) = auth.to_str()
-        && let Some(token) = val.strip_prefix("Bearer ")
+        && let Some(token) = val.strip_prefix(BEARER_PREFIX)
+        && let Ok(claims) = state.auth_facade.validate_token(token)
     {
-        use std::hash::{DefaultHasher, Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        token.hash(&mut hasher);
-        return format!("token:{:x}", hasher.finish());
+        return Some(claims.sub);
     }
-    extract_client_key(request, trust_proxy)
+    None
+}
+
+fn subject_key(sub: &str) -> String {
+    format!("sub:{sub}")
 }
 
 /// Middleware that enforces per-user rate limiting with endpoint categories.
 ///
-/// Reads the `Arc<UserRateLimiter>` from request extensions. Keys on both
-/// bearer token hash (per-user) and client IP (per-IP ceiling). The per-IP
+/// Reads the `Arc<UserRateLimiter>` from request extensions. Keys on both the
+/// verified JWT subject (per-user) and client IP (per-IP ceiling). The per-IP
 /// check prevents a single IP from bypassing limits by creating multiple
-/// bearer tokens (#3228). Returns 429 with `Retry-After` header when the
-/// client has exceeded the configured limit for the endpoint category.
+/// identities (#3228). Returns 429 with `Retry-After` header when the client
+/// has exceeded the configured limit for the endpoint category.
 ///
 /// On successful responses, injects standard rate limit headers
 /// (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`) so
@@ -394,12 +415,13 @@ pub async fn per_user_rate_limit(request: Request, next: Next) -> Response {
         .extensions()
         .get::<Arc<RateLimiter>>()
         .is_some_and(|l| l.trust_proxy);
+    let app_state = request.extensions().get::<Arc<AppState>>().cloned();
 
     let Some(limiter) = limiter else {
         return next.run(request).await;
     };
 
-    let user = extract_user_key(&request, trust_proxy);
+    let user = extract_user_key(&request, app_state.as_ref(), trust_proxy);
     let ip = extract_client_key(&request, trust_proxy);
     let category = EndpointCategory::from_path(request.uri().path());
 

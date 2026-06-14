@@ -32,6 +32,7 @@ async fn app_with_per_user_limits(
     let security = SecurityConfig {
         csrf: crate::security::CsrfConfig {
             enabled: false,
+            disable_acknowledged: true,
             ..crate::security::CsrfConfig::default()
         },
         rate_limit: crate::security::RateLimitConfig {
@@ -222,6 +223,50 @@ async fn user_a_limit_does_not_affect_user_b() {
         resp.status(),
         StatusCode::OK,
         "bob must not be affected by alice's rate limit"
+    );
+}
+
+#[tokio::test]
+async fn distinct_tokens_for_same_subject_share_bucket() {
+    use symbolon::types::Role;
+
+    let (router, _dir) = app_with_per_user_limits(PerUserRateLimitConfig {
+        enabled: true,
+        default_rpm: 60,
+        default_burst: 1,
+        llm_rpm: 60,
+        llm_burst: 1,
+        tool_rpm: 60,
+        tool_burst: 1,
+        stale_after_secs: 600,
+    })
+    .await;
+
+    let jwt_manager = test_jwt_manager();
+    let token_a = jwt_manager
+        .issue_access("alice", Role::Operator, None)
+        .expect("first token for alice");
+    let token_b = jwt_manager
+        .issue_access("alice", Role::Operator, None)
+        .expect("second token for alice");
+    assert_ne!(token_a, token_b, "fixture must use distinct bearer tokens");
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get_with_token("/api/v1/nous", &token_a))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get_with_token("/api/v1/nous", &token_b))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::TOO_MANY_REQUESTS,
+        "multiple valid tokens for one subject must not multiply quota"
     );
 }
 
