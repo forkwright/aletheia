@@ -49,6 +49,18 @@ pub enum ConflictError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// The LLM classification call returned a response that was not parseable
+    /// as a known conflict class.
+    #[snafu(display(
+        "conflict classification response was unclassifiable (threshold {threshold}): {response_snippet}"
+    ))]
+    Unclassifiable {
+        response_snippet: String,
+        threshold: f64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// How a new fact relates to an existing one.
@@ -178,6 +190,16 @@ pub struct BatchConflictResult {
 /// Callers should prefer the value from `taxis::config::KnowledgeConfig::conflict_max_llm_calls_per_fact`.
 #[cfg(any(feature = "mneme-engine", test))]
 pub const DEFAULT_MAX_LLM_CALLS_PER_FACT: usize = 3;
+
+/// Maximum accepted unclassifiable classifier-response rate in a batch.
+///
+/// The fail-closed policy is zero-tolerance: the first unclassifiable response
+/// aborts classification instead of admitting the fact as unrelated.
+#[cfg(any(feature = "mneme-engine", test))]
+pub const DEFAULT_UNCLASSIFIABLE_RATE_THRESHOLD: f64 = 0.0;
+
+#[cfg(any(feature = "mneme-engine", test))]
+const UNCLASSIFIABLE_RATE_AFTER_FIRST_FAILURE: f64 = 1.0;
 
 /// Default cosine similarity threshold for intra-batch dedup.
 ///
@@ -442,17 +464,23 @@ pub(crate) fn classify_against_candidates(
                 return Ok(Some((classification, idx)));
             }
         } else {
-            // WHY: a systematically misbehaving LLM would silently cause all conflicts
-            // to be classified as Unrelated without this warning.
             // WHY: take first 200 chars (not bytes) so the snippet can never
             // slice a multi-byte UTF-8 sequence.
             let snippet: String = response.chars().take(200).collect();
-            tracing::warn!(
+            crate::metrics::record_conflict_unclassifiable();
+            tracing::error!(
                 response_snippet = %snippet,
                 existing_content = %candidate.existing_content,
                 new_content = %fact.content,
-                "conflict classification response did not match any known class, falling back to Unrelated"
+                unclassifiable_rate = UNCLASSIFIABLE_RATE_AFTER_FIRST_FAILURE,
+                threshold = DEFAULT_UNCLASSIFIABLE_RATE_THRESHOLD,
+                "conflict classification response did not match any known class, failing closed"
             );
+            return Err(UnclassifiableSnafu {
+                response_snippet: snippet,
+                threshold: DEFAULT_UNCLASSIFIABLE_RATE_THRESHOLD,
+            }
+            .build());
         }
     }
 
