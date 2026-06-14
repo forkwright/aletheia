@@ -57,7 +57,7 @@ impl ToolPolicyDenial {
                     "Tool '{tool_name}' is not available for this role. Available tools: {available}"
                 )
             }
-            Self::Group { message } => message.clone(),
+            Self::Group { message } | Self::ParseError { message } => message.clone(),
             Self::Inactive => {
                 format!(
                     "Tool '{tool_name}' is not active for this turn. Use enable_tool before calling it."
@@ -68,7 +68,6 @@ impl ToolPolicyDenial {
                     "unknown_tool: provider server tool '{tool_name}' cannot be called as a local tool"
                 )
             }
-            Self::ParseError { message } => message.clone(),
         }
     }
 
