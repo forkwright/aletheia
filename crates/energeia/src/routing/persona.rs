@@ -145,7 +145,6 @@ pub(crate) struct PersonaRouter {
 
 impl PersonaRouter {
     /// Create a new persona router wrapping the given empirical router.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn new(inner: EmpiricalRouter) -> Self {
         Self { inner }
     }

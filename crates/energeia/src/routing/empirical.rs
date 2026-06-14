@@ -54,7 +54,6 @@ impl EmpiricalRouter {
     /// * `min_samples` — minimum records before empirical choice is made (default 5)
     /// * `window` — rolling window for record weighting (default 7 days)
     /// * `confidence_threshold` — minimum gap (winner − static) to override (default 0.1)
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn new(
         store: Arc<AfterActionStore>,
         fallback: StaticRouter,
@@ -156,22 +155,6 @@ impl EmpiricalRouter {
             );
             static_choice.clone()
         }
-    }
-
-    /// Return the success rate for a specific (provider, category) pair.
-    ///
-    /// Returns `None` when the cache has no records for this pair.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) async fn success_rate(
-        &self,
-        provider: &ProviderId,
-        task_category: &TaskCategory,
-    ) -> Option<f64> {
-        let stats = self
-            .store
-            .rolling_stats(provider, task_category, self.window)
-            .await?;
-        stats.success_rate()
     }
 }
 
@@ -344,37 +327,6 @@ mod tests {
         ];
         let chosen = router.pick(&TaskCategory::Feature, &candidates).await;
         assert_eq!(&*chosen.0, "static-choice");
-    }
-
-    /// `success_rate` returns `None` when no data.
-    #[tokio::test]
-    async fn success_rate_returns_none_for_unknown_provider() {
-        let tmp = tempfile::tempdir().unwrap();
-        let router = make_router(tmp.path(), "default", 5, 0.1).await;
-        let rate = router
-            .success_rate(&ProviderId::new("nobody"), &TaskCategory::Feature)
-            .await;
-        assert!(rate.is_none());
-    }
-
-    /// `success_rate` returns correct value when data present.
-    #[tokio::test]
-    async fn success_rate_returns_correct_value() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut lines = vec![];
-        for _ in 0..8 {
-            lines.push(session_line("provider-x", "success", "bug"));
-        }
-        for _ in 0..2 {
-            lines.push(session_line("provider-x", "failed", "bug"));
-        }
-        write_jsonl(tmp.path(), "2026-04-17.jsonl", &lines);
-
-        let router = make_router(tmp.path(), "default", 5, 0.1).await;
-        let rate = router
-            .success_rate(&ProviderId::new("provider-x"), &TaskCategory::Bug)
-            .await;
-        assert!((rate.unwrap() - 0.8).abs() < 0.001);
     }
 
     /// Router trait impl: `route` returns the empirical winner with confidence.
