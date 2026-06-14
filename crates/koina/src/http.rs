@@ -117,7 +117,6 @@ pub fn is_private_ip(ip: &IpAddr) -> bool {
             v4.is_loopback()
                 || v4.is_private()
                 || v4.is_link_local()
-                || *v4 == Ipv4Addr::new(0, 0, 0, 0)
                 || v4.octets().first() == Some(&0)
                 || *v4 == Ipv4Addr::new(169, 254, 169, 254)
                 || *v4 == Ipv4Addr::new(169, 254, 169, 123)
@@ -319,5 +318,19 @@ mod tests {
             .await
             .expect_err("LOCALHOST must be blocked");
         assert!(err.contains("blocked hostname"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn validate_url_blocks_bare_zero_ipv4() {
+        let mut resolver = MockResolver::default();
+        resolver
+            .addrs_by_host
+            .insert("0.0.0.0".to_owned(), vec![SocketAddr::from(([0, 0, 0, 0], 443))]);
+
+        let err = validate_url_not_internal_with_resolver("https://0.0.0.0/", &resolver)
+            .await
+            .expect_err("bare 0.0.0.0 must be rejected");
+
+        assert!(err.contains("private/internal"), "unexpected error: {err}");
     }
 }
