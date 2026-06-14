@@ -1,8 +1,9 @@
-//! Embedding evaluation gate: Recall@K and MRR metrics.
+//! Embedding evaluation: Recall@K and MRR metrics.
 //!
 //! Runs a labelled query set through an [`EmbeddingProvider`] and checks
-//! retrieval quality against ground-truth result IDs. Designed to run
-//! before every model upgrade so regressions are caught automatically.
+//! retrieval quality against ground-truth result IDs. Baseline measurement and
+//! regression gating are separate modes so automation cannot confuse a
+//! baseline-only run with a passed model-upgrade gate.
 //!
 //! # Metrics
 //!
@@ -18,13 +19,13 @@
 //! // This example shows the API but cannot compile in doctest mode.
 //! use std::path::Path;
 //! use episteme::embedding::MockEmbeddingProvider;
-//! use episteme::embedding_eval::{EvalDataset, compare_models};
+//! use episteme::embedding_eval::{EvalDataset, measure_baseline};
 //!
 //! let dataset = EvalDataset::from_jsonl_file(Path::new("eval.jsonl"))
 //!     .expect("JSONL must parse for valid test data");
 //! let provider = MockEmbeddingProvider::new(384);
 //! let corpus: Vec<(String, String)> = vec![("a".into(), "foo bar".into())];
-//! let run = compare_models(&provider, None, &dataset, &corpus, 5).unwrap();
+//! let run = measure_baseline(&provider, &dataset, &corpus, 5).unwrap();
 //! println!("Recall@5: {}", run.baseline.recall_at_k);
 //! ```
 
@@ -186,6 +187,44 @@ pub struct QueryResult {
 
 // ── Aggregate result ──────────────────────────────────────────────────────────
 
+/// Minimum allowed candidate Recall@K delta relative to baseline.
+pub const DEFAULT_MIN_RECALL_AT_K_DELTA: f64 = 0.0;
+
+/// Operational mode for an embedding evaluation run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum EvalRunMode {
+    /// Baseline-only measurement. This records metrics but is not a gate.
+    Measurement,
+    /// Regression gate. Requires candidate metrics to pass.
+    Gate,
+}
+
+/// Thresholds applied by the embedding regression gate.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct EvalGateThresholds {
+    /// Required candidate Recall@K delta relative to baseline.
+    pub min_recall_at_k_delta: f64,
+}
+
+impl EvalGateThresholds {
+    /// Build gate thresholds from an explicit Recall@K delta.
+    #[must_use]
+    pub const fn new(min_recall_at_k_delta: f64) -> Self {
+        Self {
+            min_recall_at_k_delta,
+        }
+    }
+}
+
+impl Default for EvalGateThresholds {
+    fn default() -> Self {
+        Self::new(DEFAULT_MIN_RECALL_AT_K_DELTA)
+    }
+}
+
 /// Aggregate evaluation metrics for one model.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ModelMetrics {
@@ -209,12 +248,19 @@ pub struct ModelMetrics {
 /// evaluated side-by-side against a baseline.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EvalRunResult {
+    /// Whether this run measured a baseline or enforced a regression gate.
+    pub mode: EvalRunMode,
     /// Metrics for the baseline (current) model.
     pub baseline: ModelMetrics,
     /// Metrics for the candidate model, if one was evaluated.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub candidate: Option<ModelMetrics>,
-    /// `true` if the candidate is at least as good as baseline (or no candidate).
+    /// Thresholds used by the regression gate.
+    pub gate_thresholds: EvalGateThresholds,
+    /// Human-readable reason when a gate run does not pass.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    /// `true` if this run completed successfully for its mode.
     pub passed: bool,
 }
 
@@ -411,10 +457,37 @@ fn score_one_query(
     })
 }
 
-/// Evaluate baseline and optional candidate providers side-by-side.
+/// Evaluate a baseline provider without enforcing a regression gate.
 ///
-/// Returns [`EvalRunResult::passed = false`] when a candidate is present and
-/// its Recall@K is strictly lower than the baseline (tolerance = 0.0).
+/// Use this for explicit measurement runs only. Automation that needs a model
+/// upgrade gate should call [`compare_models`].
+///
+/// # Errors
+///
+/// Propagates errors from the crate-private `evaluate_model` helper.
+#[instrument(skip(baseline, dataset, corpus), fields(k = k))]
+pub fn measure_baseline(
+    baseline: &dyn EmbeddingProvider,
+    dataset: &EvalDataset,
+    corpus: &[(String, String)],
+    k: usize,
+) -> EvalResult<EvalRunResult> {
+    let baseline_metrics = evaluate_model(baseline, dataset, corpus, k)?;
+
+    Ok(EvalRunResult {
+        mode: EvalRunMode::Measurement,
+        baseline: baseline_metrics,
+        candidate: None,
+        gate_thresholds: EvalGateThresholds::default(),
+        failure_reason: None,
+        passed: true,
+    })
+}
+
+/// Evaluate baseline and candidate providers side-by-side as a regression gate.
+///
+/// Returns [`EvalRunResult::passed = false`] when candidate metrics are absent
+/// or candidate Recall@K is lower than the configured baseline threshold.
 ///
 /// # Errors
 ///
@@ -428,24 +501,57 @@ pub fn compare_models(
     k: usize,
 ) -> EvalResult<EvalRunResult> {
     let baseline_metrics = evaluate_model(baseline, dataset, corpus, k)?;
+    let gate_thresholds = EvalGateThresholds::default();
 
     let (candidate_metrics, passed) = if let Some(cand) = candidate {
         let cm = evaluate_model(cand, dataset, corpus, k)?;
-        // Candidate passes when it does not regress Recall@K.
-        let ok = cm.recall_at_k >= baseline_metrics.recall_at_k;
+        let required_recall = baseline_metrics.recall_at_k + gate_thresholds.min_recall_at_k_delta;
+        let ok = cm.recall_at_k >= required_recall;
         (Some(cm), ok)
     } else {
-        (None, true)
+        (None, false)
     };
+    let failure_reason = gate_failure_reason(
+        candidate_metrics.as_ref(),
+        &baseline_metrics,
+        gate_thresholds,
+        passed,
+    );
 
     Ok(EvalRunResult {
+        mode: EvalRunMode::Gate,
         baseline: baseline_metrics,
         candidate: candidate_metrics,
+        gate_thresholds,
+        failure_reason,
         passed,
     })
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn gate_failure_reason(
+    candidate: Option<&ModelMetrics>,
+    baseline: &ModelMetrics,
+    gate_thresholds: EvalGateThresholds,
+    passed: bool,
+) -> Option<String> {
+    if passed {
+        return None;
+    }
+
+    let Some(candidate) = candidate else {
+        return Some("candidate provider missing for embedding regression gate".to_owned());
+    };
+
+    let required_recall = baseline.recall_at_k + gate_thresholds.min_recall_at_k_delta;
+    Some(format!(
+        "candidate Recall@{} ({:.1}%) is below required baseline threshold ({:.1}%)",
+        candidate.k,
+        candidate.recall_at_k * 100.0,
+        required_recall * 100.0,
+    ))
+}
 
 /// Cosine similarity between two L2-normalized f32 vectors (dot product).
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
@@ -462,7 +568,11 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 )]
 mod tests {
     use super::*;
-    use crate::embedding::MockEmbeddingProvider;
+    use std::collections::HashMap;
+
+    use crate::embedding::{EmbeddingProvider, EmbeddingResult, MockEmbeddingProvider};
+
+    const STATIC_DIM: usize = 2;
 
     fn mock() -> MockEmbeddingProvider {
         MockEmbeddingProvider::new(64)
@@ -486,6 +596,57 @@ mod tests {
 "#,
         )
         .expect("simple dataset must parse")
+    }
+
+    #[derive(Debug)]
+    struct StaticEmbeddingProvider {
+        model_name: &'static str,
+        vectors: HashMap<&'static str, Vec<f32>>,
+        fallback: Vec<f32>,
+    }
+
+    impl StaticEmbeddingProvider {
+        fn new(model_name: &'static str, vectors: &[(&'static str, [f32; STATIC_DIM])]) -> Self {
+            let vectors = vectors
+                .iter()
+                .map(|(text, vector)| (*text, vector.to_vec()))
+                .collect();
+            Self {
+                model_name,
+                vectors,
+                fallback: vec![0.0, 1.0],
+            }
+        }
+    }
+
+    impl EmbeddingProvider for StaticEmbeddingProvider {
+        fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
+            Ok(self
+                .vectors
+                .get(text)
+                .cloned()
+                .unwrap_or_else(|| self.fallback.clone()))
+        }
+
+        fn dimension(&self) -> usize {
+            STATIC_DIM
+        }
+
+        fn model_name(&self) -> &str {
+            self.model_name
+        }
+    }
+
+    fn gate_corpus() -> Vec<(String, String)> {
+        vec![
+            ("id-good".into(), "good document".into()),
+            ("id-bad".into(), "bad document".into()),
+        ]
+    }
+
+    fn gate_dataset() -> EvalDataset {
+        EvalDataset::from_jsonl_str(r#"{"query":"target query","relevant_ids":["id-good"]}"#)
+            .expect("gate dataset must parse")
     }
 
     #[test]
@@ -589,14 +750,40 @@ mod tests {
     }
 
     #[test]
-    fn compare_no_candidate_passes() {
+    fn measure_baseline_records_metrics_without_gate() {
+        let provider = mock();
+        let corpus = simple_corpus();
+        let dataset = simple_dataset();
+        let run = measure_baseline(&provider, &dataset, &corpus, 3)
+            .expect("measure_baseline must succeed");
+        assert_eq!(
+            run.mode,
+            EvalRunMode::Measurement,
+            "baseline-only run must be measurement mode"
+        );
+        assert!(run.passed, "measurement mode should complete successfully");
+        assert!(run.candidate.is_none(), "measurement has no candidate");
+        assert!(
+            run.failure_reason.is_none(),
+            "measurement should not carry a gate failure"
+        );
+    }
+
+    #[test]
+    fn compare_no_candidate_fails_closed() {
         let provider = mock();
         let corpus = simple_corpus();
         let dataset = simple_dataset();
         let run = compare_models(&provider, None, &dataset, &corpus, 3)
-            .expect("compare_models with no candidate must succeed");
-        assert!(run.passed, "no candidate always passes");
+            .expect("compare_models with no candidate should return a failed gate result");
+        assert_eq!(run.mode, EvalRunMode::Gate, "compare_models is gate mode");
+        assert!(!run.passed, "gate without candidate must fail closed");
         assert!(run.candidate.is_none(), "no candidate means None in result");
+        assert_eq!(
+            run.failure_reason.as_deref(),
+            Some("candidate provider missing for embedding regression gate"),
+            "missing candidate should explain the fail-closed gate result"
+        );
     }
 
     #[test]
@@ -608,8 +795,67 @@ mod tests {
         let run = compare_models(&a, Some(&b), &dataset, &corpus, 3)
             .expect("compare_models same model must succeed");
         // Same model: candidate recall == baseline recall, so it passes.
+        assert_eq!(
+            run.mode,
+            EvalRunMode::Gate,
+            "candidate comparison is a gate"
+        );
         assert!(run.passed, "identical models must pass");
         assert!(run.candidate.is_some(), "candidate metrics must be present");
+        assert!(
+            run.failure_reason.is_none(),
+            "passing gate should not carry a failure reason"
+        );
+    }
+
+    #[test]
+    fn compare_regressing_candidate_fails() {
+        let baseline = StaticEmbeddingProvider::new(
+            "baseline-static",
+            &[
+                ("target query", [1.0, 0.0]),
+                ("good document", [1.0, 0.0]),
+                ("bad document", [0.0, 1.0]),
+            ],
+        );
+        let candidate = StaticEmbeddingProvider::new(
+            "candidate-static",
+            &[
+                ("target query", [0.0, 1.0]),
+                ("good document", [1.0, 0.0]),
+                ("bad document", [0.0, 1.0]),
+            ],
+        );
+        let corpus = gate_corpus();
+        let dataset = gate_dataset();
+        let run = compare_models(&baseline, Some(&candidate), &dataset, &corpus, 1)
+            .expect("compare_models should evaluate candidate regression");
+
+        assert_eq!(
+            run.mode,
+            EvalRunMode::Gate,
+            "candidate comparison is a gate"
+        );
+        assert!(!run.passed, "regressing candidate must fail");
+        assert!(
+            (run.baseline.recall_at_k - 1.0).abs() < f64::EPSILON,
+            "baseline should retrieve the relevant document"
+        );
+        assert!(
+            run.candidate
+                .as_ref()
+                .expect("candidate metrics must be present")
+                .recall_at_k
+                .abs()
+                < f64::EPSILON,
+            "candidate should miss the relevant document"
+        );
+        assert!(
+            run.failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("below required baseline threshold")),
+            "regression failure should explain the threshold miss"
+        );
     }
 
     #[test]

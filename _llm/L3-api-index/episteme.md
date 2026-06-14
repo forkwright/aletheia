@@ -1250,6 +1250,33 @@ pub struct QueryResult {
 }
 ```
 
+> Minimum allowed candidate Recall@K delta relative to baseline.
+```rust
+pub const DEFAULT_MIN_RECALL_AT_K_DELTA: f64 = 0.0;
+```
+
+```rust
+pub enum EvalRunMode {
+    /// Baseline-only measurement. This records metrics but is not a gate.
+    Measurement,
+    /// Regression gate. Requires candidate metrics to pass.
+    Gate,
+}
+```
+
+```rust
+pub struct EvalGateThresholds {
+    /// Required candidate Recall@K delta relative to baseline.
+    pub min_recall_at_k_delta: f64,
+}
+```
+
+```rust
+impl EvalGateThresholds {
+    pub const fn new (min_recall_at_k_delta: f64) -> Self;
+}
+```
+
 ```rust
 pub struct ModelMetrics {
     /// The embedding model name as reported by the provider.
@@ -1271,14 +1298,30 @@ pub struct ModelMetrics {
 
 ```rust
 pub struct EvalRunResult {
+    /// Whether this run measured a baseline or enforced a regression gate.
+    pub mode: EvalRunMode,
     /// Metrics for the baseline (current) model.
     pub baseline: ModelMetrics,
     /// Metrics for the candidate model, if one was evaluated.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub candidate: Option<ModelMetrics>,
-    /// `true` if the candidate is at least as good as baseline (or no candidate).
+    /// Thresholds used by the regression gate.
+    pub gate_thresholds: EvalGateThresholds,
+    /// Human-readable reason when a gate run does not pass.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    /// `true` if this run completed successfully for its mode.
     pub passed: bool,
 }
+```
+
+```rust
+pub fn measure_baseline (
+    baseline: &dyn EmbeddingProvider,
+    dataset: &EvalDataset,
+    corpus: &[(String, String)],
+    k: usize,
+) -> EvalResult<EvalRunResult>
 ```
 
 ```rust
