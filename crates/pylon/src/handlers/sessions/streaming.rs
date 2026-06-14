@@ -2,6 +2,7 @@
 
 use std::convert::Infallible;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use axum::Json;
@@ -35,14 +36,18 @@ use crate::turn_buffer::TurnBufferHandle;
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
 
-/// Guard that aborts a spawned task when dropped.
+/// Guard that aborts a spawned task and releases an in-flight idempotency key
+/// when the SSE stream is dropped.
 ///
 /// Stored alongside the SSE response stream so that when the client
 /// disconnects and Axum drops the response future, the in-flight LLM
-/// turn is cancelled rather than running to completion.
+/// turn is cancelled rather than running to completion. The optional
+/// idempotency guard is dropped after the task is aborted, cleaning up any
+/// `InFlight` entry that the turn did not explicitly mark completed (#5453).
 struct AbortOnDrop {
     task: tokio::task::JoinHandle<()>,
     turn_cancel: CancellationToken,
+    _idem_guard: Option<IdempotencyGuard>,
 }
 
 impl Drop for AbortOnDrop {
@@ -52,11 +57,81 @@ impl Drop for AbortOnDrop {
     }
 }
 
+/// RAII guard that removes an in-flight idempotency entry on drop unless the
+/// guarded turn has been explicitly marked completed.
+///
+/// WHY(#5453): A client disconnect aborts the SSE task; without this guard the
+/// idempotency key would stay `InFlight` until TTL. The `completed` flag is
+/// shared between the stream-side and task-side guards so a successfully
+/// finished turn is never erased by the disconnect path.
+struct IdempotencyGuard {
+    cache: Arc<crate::idempotency::IdempotencyCache>,
+    principal: String,
+    key: String,
+    completed: Arc<AtomicBool>,
+}
+
+impl IdempotencyGuard {
+    #[cfg(test)]
+    fn new(
+        cache: Arc<crate::idempotency::IdempotencyCache>,
+        principal: String,
+        key: String,
+    ) -> Self {
+        Self {
+            cache,
+            principal,
+            key,
+            completed: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Create two guards sharing the same completion flag.
+    ///
+    /// WHY: one guard lives in the spawned turn task and marks completion; the
+    /// other lives in `AbortOnDrop` and cleans up on disconnect.
+    fn new_pair(
+        cache: Arc<crate::idempotency::IdempotencyCache>,
+        principal: String,
+        key: String,
+    ) -> (Self, Self) {
+        let completed = Arc::new(AtomicBool::new(false));
+        let task_guard = Self {
+            cache: Arc::clone(&cache),
+            principal: principal.clone(),
+            key: key.clone(),
+            completed: Arc::clone(&completed),
+        };
+        let stream_guard = Self {
+            cache,
+            principal,
+            key,
+            completed,
+        };
+        (task_guard, stream_guard)
+    }
+
+    fn mark_completed(&self) {
+        self.completed.store(true, Ordering::Release);
+    }
+}
+
+impl Drop for IdempotencyGuard {
+    fn drop(&mut self) {
+        if !self.completed.load(Ordering::Acquire) {
+            self.cache.remove(&self.principal, &self.key);
+        }
+    }
+}
+
 /// Stream wrapper that holds an `AbortOnDrop` guard alongside the inner stream.
 ///
 /// When this stream is dropped (client disconnect), the guard aborts the
-/// associated spawned task. The `Stream` impl delegates entirely to the
-/// inner stream.
+/// associated spawned task and releases any in-flight idempotency key. The
+/// `Stream` impl delegates entirely to the inner stream.
+///
+/// WHY(#5165): Disconnect aborts the turn; reconnection replays buffered
+/// events but does not resume the aborted turn. The guard ensures cleanup.
 ///
 /// WHY: `Unpin` bound is sufficient because `ReceiverStream` and its
 /// `Map` combinator both implement `Unpin`.
@@ -105,8 +180,9 @@ impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> 
 /// # Cancel safety
 ///
 /// Cancel-safe. Axum handler; cancellation drops the future with no
-/// side effects beyond not returning a response. The spawned turn task
-/// continues running independently.
+/// side effects beyond not returning a response. Dropping the returned SSE
+/// stream aborts the spawned turn task and cleans up the idempotency guard
+/// (#5453).
 #[expect(
     clippy::too_many_lines,
     reason = "handler includes preflight checks, idempotency guard, and spawned turn task"
@@ -177,6 +253,7 @@ pub async fn send_message(
                             async {}.instrument(tracing::info_span!("idempotent_noop")),
                         ),
                         turn_cancel,
+                        _idem_guard: None,
                     },
                 };
                 return Ok(Sse::new(stream).keep_alive(
@@ -193,6 +270,21 @@ pub async fn send_message(
             }
         }
     }
+
+    // WHY(#5453): Create the shared idempotency guard immediately after
+    // inserting the `InFlight` entry so an early return (e.g. unknown session)
+    // or a client disconnect cannot strand the key until TTL.
+    let (idem_guard_task, idem_guard_stream) = match idempotency_key.as_ref() {
+        Some(key) => {
+            let (task_guard, stream_guard) = IdempotencyGuard::new_pair(
+                Arc::clone(&state.idempotency_cache),
+                claims.sub.clone(),
+                key.clone(),
+            );
+            (Some(task_guard), Some(stream_guard))
+        }
+        None => (None, None),
+    };
 
     let session = find_session(&state, &session_id).await?;
     require_nous_access(&claims, &session.nous_id)?;
@@ -264,7 +356,9 @@ pub async fn send_message(
     let idem_principal = claims.sub.clone();
     let idem_cache = Arc::clone(&state.idempotency_cache);
 
-    // WHY(#3276): Create a turn buffer for this turn so events survive disconnection.
+    // WHY(#3276): Create a turn buffer so events emitted before a disconnect
+    // survive and can be replayed on reconnect. The turn task is aborted on
+    // disconnect, so only already-buffered events are available for replay.
     let turn_id = koina::ulid::Ulid::new().to_string();
     let turn_buf = state
         .turn_buffer_registry
@@ -293,6 +387,9 @@ pub async fn send_message(
             // body, even if the turn fails before producing any content events.
             let event = SseEvent::MessageStart {
                 status: "accepted".to_owned(),
+                session_id: Some(sid.clone()),
+                nous_id: Some(session.nous_id.clone()),
+                turn_id: Some(turn_id.clone()),
                 request_id: Some(request_id_str.clone()),
             };
             let seq = record_sse_event(&buf_handle_task, &event).await;
@@ -348,6 +445,12 @@ pub async fn send_message(
                         .to_string();
                         idem_cache.complete(&idem_principal, key, axum::http::StatusCode::OK, body);
                     }
+                    // WHY(#5453): Mark the idempotency guard completed so the shared
+                    // stream-side guard does not delete the now-cached entry when the
+                    // response is eventually dropped.
+                    if let Some(ref guard) = idem_guard_task {
+                        guard.mark_completed();
+                    }
                 }
                 Err(err) => {
                     // WHY: Log full error internally; the active span carries request_id and
@@ -367,8 +470,9 @@ pub async fn send_message(
                     };
                     let seq = record_sse_event(&buf_handle_task, &event).await;
                     let _ = tx.send((seq, event)).await;
-                    // WHY: Always send a completion marker so the client knows the
-                    // stream is finished, even on error paths.
+                    // WHY(#5164): Even when an `error` event is emitted, the following
+                    // `message_complete` is the authoritative terminal marker. Clients must
+                    // use `message_complete` to detect the end of the stream.
                     let event = SseEvent::MessageComplete {
                         stop_reason: "error".to_owned(),
                         usage: UsageData {
@@ -387,12 +491,15 @@ pub async fn send_message(
     );
 
     // WHY: Wrap the stream so the turn task is aborted when the client disconnects.
-    // Without this, a disconnected client leaves the LLM inference running.
+    // Without this, a disconnected client leaves the LLM inference running. The
+    // idempotency guard is tied to the same lifetime so an in-flight key is not
+    // stranded (#5453).
     let stream = GuardedStream {
         inner: ReceiverStream::new(rx).map(sse_event_to_axum_with_id),
         _guard: AbortOnDrop {
             task: turn_handle,
             turn_cancel,
+            _idem_guard: idem_guard_stream,
         },
     };
 
@@ -431,8 +538,8 @@ pub async fn send_message(
 /// # Cancel safety
 ///
 /// Cancel-safe. Axum handler; cancellation drops the future with no
-/// side effects beyond not returning a response. The spawned turn task
-/// continues running independently.
+/// side effects beyond not returning a response. Dropping the returned SSE
+/// stream aborts the spawned streaming turn task (#5165).
 #[expect(
     clippy::too_many_lines,
     reason = "streaming bridge setup is inherently sequential"
@@ -713,8 +820,9 @@ pub async fn stream_turn(
                     };
                     let seq = record_turn_event(&buf_handle_task, &event).await;
                     let _ = turn_tx.send((seq, event)).await;
-                    // WHY: Always send a completion marker so the TUI knows the stream
-                    // is finished, even on error paths.
+                    // WHY(#5164): Even when an `error` event is emitted, the following
+                    // `message_complete` is the authoritative terminal marker. TUI clients
+                    // must use `message_complete` to detect the end of the stream.
                     let event = PylonTurnStreamEvent::MessageComplete {
                         outcome: TurnOutcome {
                             text: String::new(),
@@ -759,6 +867,7 @@ pub async fn stream_turn(
         _guard: AbortOnDrop {
             task: stream_turn_handle,
             turn_cancel,
+            _idem_guard: None,
         },
     };
 
@@ -1090,8 +1199,14 @@ async fn record_turn_event(buf: &TurnBufferHandle, event: &PylonTurnStreamEvent)
 /// Reconnect to a turn's SSE event stream.
 ///
 /// Supports `Last-Event-ID` header for resuming from the last received event.
-/// If the turn is still running, replays missed events then streams live events.
-/// If the turn completed or failed, replays all events after `Last-Event-ID`.
+/// Replays buffered events after `Last-Event-ID`. If the original request is
+/// still connected and the turn has not yet completed or failed, newly buffered
+/// events continue to stream until the turn finishes.
+///
+/// NOTE(#5165): Disconnecting the original `POST /sessions/{id}/messages`
+/// request aborts the turn task, so a reconnect only sees events that were
+/// already buffered before the abort; there is no live continuation of an
+/// aborted turn.
 ///
 /// Returns 404 if the turn buffer has expired or was never created.
 #[utoipa::path(
@@ -1165,7 +1280,9 @@ pub async fn reconnect_turn(
             }
         }
 
-        // Phase 2: If turn is still running, stream live events.
+        // Phase 2: If the turn has not finished, stream newly buffered events.
+        // WHY(#5165): A disconnected original request aborts the turn, so once
+        // the buffer reaches Completed/Failed only replay is available.
         if state == crate::turn_buffer::TurnState::Running {
             let notify = handle.notify_handle().await;
             let mut last_seq = last_event_id;

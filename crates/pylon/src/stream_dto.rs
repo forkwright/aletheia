@@ -1,4 +1,3 @@
-// WHY: wire DTO
 //! SSE event wire shapes.
 
 use serde::Serialize;
@@ -10,9 +9,22 @@ use utoipa::ToSchema;
 #[non_exhaustive]
 pub(crate) enum SseEvent {
     /// Acknowledgment that the message was accepted and a turn is starting.
+    ///
+    /// Includes `session_id`, `nous_id`, and `turn_id` so the client can
+    /// reconnect to the turn event stream using `GET /sessions/{session_id}/turns/{turn_id}/events`
+    /// with `Last-Event-ID` (#5163).
     #[serde(rename = "message_start")]
     MessageStart {
         status: String,
+        /// Session identifier, supplied so the client can reconnect to this turn.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+        /// Nous identifier for the agent handling this turn.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nous_id: Option<String>,
+        /// Turn identifier used for reconnection and idempotent replay.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        turn_id: Option<String>,
         /// Per-request correlation ID for distributed tracing across the pipeline.
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,

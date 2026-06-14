@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::body::Body;
 
 use axum::extract::{FromRequestParts, Request, State};
-use axum::http::{Method, StatusCode};
+use axum::http::{HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tracing::warn;
@@ -19,6 +19,11 @@ use crate::state::AppState;
 /// CSRF protection state stored as a router extension.
 #[derive(Debug, Clone)]
 pub struct CsrfState {
+    /// Whether the CSRF header check is active.
+    ///
+    /// When disabled, mutating requests still receive same-origin enforcement
+    /// so routes are not left fully unprotected in browser-facing deployments.
+    pub enabled: bool,
     /// HTTP header name to check (e.g. `"x-requested-with"`).
     pub header_name: String,
     /// Expected header value (e.g. `"aletheia"`).
@@ -40,28 +45,31 @@ pub async fn require_bearer_auth(
     Ok(next.run(Request::from_parts(parts, body)).await)
 }
 
-/// Middleware that requires a custom header on state-changing requests.
+/// Middleware that protects state-changing requests against CSRF and
+/// cross-origin drive-by attacks.
 ///
-/// GET, HEAD, and OPTIONS are exempt. POST, PUT, DELETE, and PATCH must
-/// include the configured header with the expected value.
+/// Safe methods (GET, HEAD, OPTIONS) always pass. When CSRF is enabled,
+/// mutating methods must carry the configured header and value. When CSRF is
+/// disabled, mutating methods are still rejected if the browser-sent
+/// `Origin` or `Referer` does not match the request host, while native or
+/// loopback clients that send no origin indicator continue to pass.
 ///
 /// # Cancel safety
 ///
 /// Cancel-safe. Axum middleware; cancellation drops the future with no
 /// side effects beyond not returning a response.
 pub async fn require_csrf_header(request: Request, next: Next) -> Response {
-    let is_safe = matches!(
-        *request.method(),
-        Method::GET | Method::HEAD | Method::OPTIONS
-    );
-
-    if is_safe {
+    if is_safe_method(request.method()) {
         return next.run(request).await;
     }
 
-    let csrf = request.extensions().get::<CsrfState>().cloned();
+    let Some(csrf) = request.extensions().get::<CsrfState>().cloned() else {
+        // WHY: No CSRF state means the layer was installed without the
+        // matching Extension; fail open defensively rather than break routing.
+        return next.run(request).await;
+    };
 
-    if let Some(csrf) = csrf {
+    if csrf.enabled {
         let header_value = request
             .headers()
             .get(&csrf.header_name)
@@ -69,22 +77,102 @@ pub async fn require_csrf_header(request: Request, next: Next) -> Response {
 
         match header_value {
             Some(v) if v == csrf.header_value => next.run(request).await,
-            _ => (
-                StatusCode::FORBIDDEN,
-                axum::Json(ErrorResponse {
-                    error: ErrorBody {
-                        code: "csrf_rejected".to_owned(),
-                        message: "missing or invalid CSRF header".to_owned(),
-                        request_id: None,
-                        details: None,
-                    },
-                }),
-            )
-                .into_response(),
+            _ => csrf_rejected_response(),
         }
     } else {
-        next.run(request).await
+        // WHY(#5558): With CSRF disabled, mutating routes must still reject
+        // browser-style cross-origin requests. Same-origin and non-browser
+        // clients (no Origin/Referer) continue to pass for operator/loopback use.
+        if is_same_origin(&request) {
+            next.run(request).await
+        } else {
+            cross_origin_rejected_response()
+        }
     }
+}
+
+/// Return whether the method is exempt from mutation guards.
+fn is_safe_method(method: &Method) -> bool {
+    matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
+}
+
+/// Build the standard 403 response for a failed CSRF header check.
+fn csrf_rejected_response() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        axum::Json(ErrorResponse {
+            error: ErrorBody {
+                code: "csrf_rejected".to_owned(),
+                message: "missing or invalid CSRF header".to_owned(),
+                request_id: None,
+                details: None,
+            },
+        }),
+    )
+        .into_response()
+}
+
+/// Build the standard 403 response for a cross-origin mutating request.
+fn cross_origin_rejected_response() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        axum::Json(ErrorResponse {
+            error: ErrorBody {
+                code: "cross_origin_rejected".to_owned(),
+                message: "cross-origin mutating request rejected".to_owned(),
+                request_id: None,
+                details: None,
+            },
+        }),
+    )
+        .into_response()
+}
+
+/// Extract the host the request was sent to, including any non-default port.
+///
+/// WHY: Browsers send the target host in the `Host` header. Fallback to the
+/// request URI authority supports direct tower tests that omit `Host`.
+fn request_host(req: &Request) -> Option<String> {
+    req.headers()
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_lowercase)
+        .or_else(|| req.uri().authority().map(|a| a.to_string().to_lowercase()))
+}
+
+/// Extract the authority (host[:port]) from an `Origin` or `Referer` header.
+///
+/// Returns `None` for opaque origins (`Origin: null`) or malformed values.
+fn header_host(value: &HeaderValue) -> Option<String> {
+    let s = value.to_str().ok()?;
+    if s.eq_ignore_ascii_case("null") {
+        return None;
+    }
+    let uri: axum::http::Uri = s.parse().ok()?;
+    uri.authority().map(|a| a.to_string().to_lowercase())
+}
+
+/// Determine whether a mutating request is same-origin or origin-less.
+///
+/// Requests without `Origin` or `Referer` are treated as native/non-browser
+/// and allowed. Otherwise the indicator must match the request host.
+fn is_same_origin(req: &Request) -> bool {
+    let indicator = req
+        .headers()
+        .get(axum::http::header::ORIGIN)
+        .or_else(|| req.headers().get(axum::http::header::REFERER));
+
+    let Some(indicator) = indicator else {
+        return true;
+    };
+
+    let Some(host) = request_host(req) else {
+        // WHY: A browser-style request with Origin/Referer but no discernible
+        // host cannot be verified; reject rather than risk a cross-origin bypass.
+        return false;
+    };
+
+    header_host(indicator).is_some_and(|h| h == host)
 }
 
 /// Request ID stored in request extensions for tracing and error responses.

@@ -24,10 +24,10 @@ const SEARCH_LIMIT_CAP: usize = 1000;
 
 /// Maximum byte length accepted by the workspace write endpoint.
 ///
-/// WHY: the write target is the operator's live ~9 GB restic-backed theke
-/// vault; a generous-but-bounded cap keeps a single note write from being a
-/// memory or disk abuse vector while comfortably exceeding any real markdown
-/// note.
+/// WHY: the workspace editor is designed for text notes and small structured
+/// files. A generous-but-bounded cap lets operators edit large notes without
+/// hitting the limit, while constraining a single request from becoming a
+/// memory, disk, or abuse vector through binary drops, scripts, or bulk data.
 const WRITE_LIMIT_BYTES: usize = 10 * 1024 * 1024;
 
 /// File extensions the workspace write endpoint is allowed to create or

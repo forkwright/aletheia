@@ -550,3 +550,33 @@ async fn stream_turn_oversized_session_key_returns_422() {
             .any(|e| e["field"] == "session_key" && e["code"] == "too_long")
     );
 }
+
+/// #5163: the `message_start` event for `POST /sessions/{id}/messages` must
+/// carry `session_id`, `nous_id`, and `turn_id` so clients can reconnect to
+/// the turn event stream.
+#[tokio::test]
+async fn send_message_start_event_includes_reconnect_ids() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "Reconnect ID test" })),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    let body = body_string(resp).await;
+    let events = collect_sse_data_events(&body);
+
+    let start =
+        find_sse_event(&events, "message_start").expect("stream must contain message_start");
+    assert_eq!(start["status"], "accepted");
+    assert_eq!(start["session_id"], id);
+    assert_eq!(start["nous_id"], "syn");
+    assert!(
+        start["turn_id"].as_str().is_some_and(|s| !s.is_empty()),
+        "turn_id must be a non-empty string"
+    );
+}

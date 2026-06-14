@@ -502,3 +502,94 @@ async fn reconnect_turn_rejects_cross_nous_scoped_caller() {
     .await;
     assert!(allowed.is_ok(), "operator reconnect should succeed");
 }
+
+// ── IdempotencyGuard ──
+
+#[test]
+fn idempotency_guard_releases_in_flight_on_drop() {
+    let cache = Arc::new(crate::idempotency::IdempotencyCache::new());
+    let principal = "alice".to_owned();
+    let key = "drop-key".to_owned();
+
+    assert!(
+        matches!(cache.check_or_insert(&principal, &key), LookupResult::Miss),
+        "precondition: key must be inserted"
+    );
+
+    {
+        let guard = IdempotencyGuard::new(Arc::clone(&cache), principal.clone(), key.clone());
+        assert!(
+            matches!(
+                cache.check_or_insert(&principal, &key),
+                LookupResult::Conflict
+            ),
+            "key must still be in flight while the guard lives"
+        );
+        drop(guard);
+    }
+
+    assert!(
+        matches!(cache.check_or_insert(&principal, &key), LookupResult::Miss),
+        "dropping the guard must release the in-flight key"
+    );
+}
+
+#[test]
+fn idempotency_guard_preserves_completed_entry() {
+    let cache = Arc::new(crate::idempotency::IdempotencyCache::new());
+    let principal = "alice".to_owned();
+    let key = "complete-key".to_owned();
+
+    assert!(matches!(
+        cache.check_or_insert(&principal, &key),
+        LookupResult::Miss
+    ));
+    cache.complete(
+        &principal,
+        &key,
+        axum::http::StatusCode::OK,
+        r#"{"ok":true}"#.to_owned(),
+    );
+
+    {
+        let guard = IdempotencyGuard::new(Arc::clone(&cache), principal.clone(), key.clone());
+        guard.mark_completed();
+    }
+
+    assert!(
+        matches!(
+            cache.check_or_insert(&principal, &key),
+            LookupResult::Hit { .. }
+        ),
+        "mark_completed must prevent the guard from deleting a finished entry"
+    );
+}
+
+#[test]
+fn idempotency_guard_shared_completion_flag() {
+    // WHY(#5453): The stream-side and task-side guards share one completion
+    // flag so marking the turn completed in the task prevents the stream-side
+    // guard from cleaning up after a normal response drop.
+    let cache = Arc::new(crate::idempotency::IdempotencyCache::new());
+    let principal = "alice".to_owned();
+    let key = "shared-key".to_owned();
+
+    assert!(matches!(
+        cache.check_or_insert(&principal, &key),
+        LookupResult::Miss
+    ));
+
+    let (task_guard, stream_guard) =
+        IdempotencyGuard::new_pair(Arc::clone(&cache), principal.clone(), key.clone());
+
+    task_guard.mark_completed();
+    drop(stream_guard);
+
+    assert!(
+        matches!(
+            cache.check_or_insert(&principal, &key),
+            LookupResult::Conflict
+        ),
+        "shared completion flag must keep the in-flight entry intact"
+    );
+}

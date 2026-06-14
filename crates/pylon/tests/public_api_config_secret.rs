@@ -78,3 +78,37 @@ async fn config_put_and_nous_toggle_preserve_signing_key_on_disk() {
         Some(signing_key)
     );
 }
+
+#[tokio::test]
+async fn config_get_allows_auth_mode_none_without_bearer() {
+    // WHY(#5158): auth_mode=none synthesizes admin claims, so config reads must
+    // continue to succeed without a bearer token while still enforcing the
+    // Operator boundary through the synthetic role.
+    let env = TestEnv::builder().auth_mode("none").build().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let full_response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("{API_V1}/config"))
+                .body(Body::empty())
+                .expect("build config GET request"),
+        )
+        .await
+        .expect("config GET response");
+    assert_eq!(full_response.status(), StatusCode::OK);
+
+    let section_response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("{API_V1}/config/gateway"))
+                .body(Body::empty())
+                .expect("build config section GET request"),
+        )
+        .await
+        .expect("config section GET response");
+    assert_eq!(section_response.status(), StatusCode::OK);
+}

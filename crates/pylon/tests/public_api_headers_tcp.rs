@@ -223,6 +223,48 @@ async fn raw_get(
     parse_http_response(&buf)
 }
 
+/// Minimal `HTTP/1.1` POST over a raw TCP stream.
+///
+/// WHY: Mirrors `raw_get` for state-changing requests so cross-origin and
+/// CSRF behavior can be exercised end-to-end over real HTTP framing.
+async fn raw_post(
+    addr: std::net::SocketAddr,
+    path: &str,
+    authorization: Option<&str>,
+    extra_headers: &[(&str, &str)],
+    body: &str,
+) -> RawResponse {
+    use std::fmt::Write as _;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut stream = tokio::net::TcpStream::connect(addr)
+        .await
+        .expect("connect tcp");
+    let mut request = format!("POST {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n");
+    for (name, value) in extra_headers {
+        write!(&mut request, "{name}: {value}\r\n").expect("write header");
+    }
+    if let Some(value) = authorization {
+        request.push_str("Authorization: ");
+        request.push_str(value);
+        request.push_str("\r\n");
+    }
+    request.push_str("Content-Length: ");
+    request.push_str(&body.len().to_string());
+    request.push_str("\r\n\r\n");
+    request.push_str(body);
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .expect("write request");
+
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).await.expect("read response");
+
+    parse_http_response(&buf)
+}
+
 struct RawResponse {
     status: u16,
     body: Vec<u8>,
@@ -374,6 +416,41 @@ async fn real_tcp_server_short_jwt_ttl_expires_in_flight() {
     assert_eq!(
         second.status, 401,
         "expired token must be rejected by the real HTTP server"
+    );
+
+    shutdown.cancel();
+}
+
+#[tokio::test]
+async fn real_tcp_server_rejects_cross_origin_post_when_csrf_disabled() {
+    // WHY(#5558): Even with CSRF disabled, browser-style mutating requests
+    // from a foreign origin must be rejected. Raw TCP lets us set Host and
+    // Origin exactly as a browser would.
+    let env = TestEnv::builder().with_actor(true).build().await;
+    let (addr, shutdown) = spawn_server(Arc::clone(&env.state), permissive_security()).await;
+
+    let token = issue_test_token(&env.state);
+    let body = serde_json::to_string(&serde_json::json!({
+        "nous_id": "syn",
+        "session_key": "cross-origin-tcp",
+    }))
+    .expect("serialize");
+
+    let response = raw_post(
+        addr,
+        &format!("{API_V1}/sessions"),
+        Some(&bearer(&token)),
+        &[
+            ("Origin", "http://evil.example.com"),
+            ("Content-Type", "application/json"),
+        ],
+        &body,
+    )
+    .await;
+
+    assert_eq!(
+        response.status, 403,
+        "cross-origin mutating request must be rejected when CSRF is disabled"
     );
 
     shutdown.cancel();

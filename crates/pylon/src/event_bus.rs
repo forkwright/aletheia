@@ -1,12 +1,13 @@
 //! Lightweight in-process broadcast channel for domain events.
 //!
 //! Cross-system consumers subscribe via [`EventBus::subscribe`] and receive
-//! [`DomainEvent`] values filtered by topic.  Lagged subscribers are dropped
-//! gracefully with a warning rather than panicking.
+//! [`DomainEvent`] values filtered by topic.  Slow subscribers are reported as
+//! `RecvError::Lagged`; the SSE handler in `crate::handlers::events` surfaces that
+//! loss to clients as a typed `stream_lagged` event so it is never silent.
 
 #[path = "event_bus_dto.rs"]
 mod event_bus_dto;
-pub use event_bus_dto::DomainEvent;
+pub use event_bus_dto::{DISCOVERABLE_TOPICS, DomainEvent};
 
 impl DomainEvent {
     /// Construct a new domain event with the current timestamp.

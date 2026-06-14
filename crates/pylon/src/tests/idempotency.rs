@@ -151,3 +151,31 @@ async fn idempotency_key_64_chars_accepted() {
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
+
+/// #5453: dropping the SSE response (client disconnect) must not leave the
+/// idempotency key in `InFlight` until TTL. The key may become `Completed` if
+/// the turn finished before the drop, but it must not remain `Conflict`.
+#[tokio::test]
+async fn idempotency_key_not_stranded_after_disconnect() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let key = "disconnect-key-001";
+    let req = send_message_req(id, Some(key));
+    let resp = router.clone().oneshot(req).await.unwrap();
+
+    // WHY: Simulate a client that receives the HTTP response headers and then
+    // disconnects without consuming the SSE body.
+    assert_eq!(resp.status(), StatusCode::OK);
+    drop(resp);
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let lookup = state.idempotency_cache.check_or_insert("test-user", key);
+    assert!(
+        !matches!(lookup, crate::idempotency::LookupResult::Conflict),
+        "in-flight idempotency key must not be stranded after disconnect"
+    );
+}
