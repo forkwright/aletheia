@@ -316,7 +316,16 @@ pub(super) fn authed_request(
     uri: &str,
     body: Option<serde_json::Value>,
 ) -> Request<Body> {
-    let token = default_token();
+    authed_request_as(method, uri, body, symbolon::types::Role::Operator)
+}
+
+pub(super) fn authed_request_as(
+    method: &str,
+    uri: &str,
+    body: Option<serde_json::Value>,
+    role: symbolon::types::Role,
+) -> Request<Body> {
+    let token = token_for_role(role);
     let builder = Request::builder()
         .method(method)
         .uri(uri)
