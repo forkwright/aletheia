@@ -156,6 +156,29 @@ pub struct DpoExtractor {
     pending: HashMap<String, PendingCorrection>,
 }
 
+/// Redact sensitive values from turn text before it is stored or emitted.
+///
+/// Always runs koina's lightweight secret redactor so raw API keys,
+/// OAuth/JWT-like tokens, and password-shaped assignments never reach
+/// the DPO JSONL. The operator-toggleable full nous training PII suite
+/// runs only when `pii_filter_enabled` is `true`.
+fn redact_turn_text(
+    user_message: &str,
+    assistant_response: &str,
+    pii_filter_enabled: bool,
+) -> (String, String) {
+    let user_message = koina::redact::redact_sensitive(user_message);
+    let assistant_response = koina::redact::redact_sensitive(assistant_response);
+
+    if pii_filter_enabled {
+        let (user_message, _) = crate::training::pii::redact(&user_message);
+        let (assistant_response, _) = crate::training::pii::redact(&assistant_response);
+        (user_message, assistant_response)
+    } else {
+        (user_message, assistant_response)
+    }
+}
+
 impl DpoExtractor {
     /// Create a new extractor with empty state.
     #[must_use]
@@ -183,6 +206,11 @@ impl DpoExtractor {
     ///
     /// Chained corrections (Turn N+2 also a correction) simply
     /// overwrite `pending` with the latest rejected turn.
+    ///
+    /// Sensitive values in `user_message` and `assistant_response` are
+    /// redacted before storage: `koina::redact::redact_sensitive` always
+    /// runs, and the full nous training PII suite runs only when
+    /// `pii_filter_enabled` is `true`.
     #[must_use]
     pub fn process_turn(
         &mut self,
@@ -191,7 +219,11 @@ impl DpoExtractor {
         user_message: &str,
         assistant_response: &str,
         is_correction: bool,
+        pii_filter_enabled: bool,
     ) -> Option<DpoPair> {
+        let (user_message, assistant_response) =
+            redact_turn_text(user_message, assistant_response, pii_filter_enabled);
+
         if is_correction {
             if let Some(last) = self.last_turn.remove(session_id) {
                 debug!(
@@ -219,7 +251,7 @@ impl DpoExtractor {
         }
 
         let pair = if let Some(pending) = self.pending.remove(session_id) {
-            if Self::validate_semantic_match(&pending.prompt, user_message) {
+            if Self::validate_semantic_match(&pending.prompt, &user_message) {
                 info!(
                     session_id,
                     rejected_turn = pending.rejected_turn,
@@ -228,7 +260,7 @@ impl DpoExtractor {
                 );
                 Some(DpoPair {
                     prompt: pending.prompt,
-                    chosen: assistant_response.to_owned(),
+                    chosen: assistant_response.clone(),
                     rejected: pending.rejected,
                     session_id: session_id.to_owned(),
                     rejected_turn: pending.rejected_turn,
@@ -240,7 +272,7 @@ impl DpoExtractor {
                     rejected_turn = pending.rejected_turn,
                     chosen_turn = turn_number,
                     prompt = pending.prompt.as_str(),
-                    chosen_prompt = user_message,
+                    chosen_prompt = user_message.as_str(),
                     "dpo.pair_rejected: semantic mismatch"
                 );
                 None
@@ -253,8 +285,8 @@ impl DpoExtractor {
             session_id.to_owned(),
             TurnSnapshot {
                 turn_number,
-                user_message: user_message.to_owned(),
-                assistant_response: assistant_response.to_owned(),
+                user_message,
+                assistant_response,
             },
         );
 
@@ -389,7 +421,8 @@ static EXTRACTOR: std::sync::LazyLock<Mutex<DpoExtractor>> =
 /// Process a completed turn through the global extractor and return
 /// a [`DpoPair`] if a correction sequence has finalized.
 ///
-/// See [`DpoExtractor::process_turn`] for sequence semantics.
+/// See [`DpoExtractor::process_turn`] for sequence semantics and
+/// redaction behavior; `pii_filter_enabled` is forwarded unchanged.
 #[must_use]
 pub fn process_turn_global(
     session_id: &str,
@@ -397,6 +430,7 @@ pub fn process_turn_global(
     user_message: &str,
     assistant_response: &str,
     is_correction: bool,
+    pii_filter_enabled: bool,
 ) -> Option<DpoPair> {
     let Ok(mut guard) = EXTRACTOR.lock() else {
         tracing::warn!("DPO extractor mutex poisoned; skipping pair extraction");
@@ -408,6 +442,7 @@ pub fn process_turn_global(
         user_message,
         assistant_response,
         is_correction,
+        pii_filter_enabled,
     )
 }
 
@@ -431,6 +466,7 @@ mod tests {
             "What is the capital of France?",
             "London",
             false,
+            false,
         );
         assert!(p1.is_none(), "single normal turn should not emit");
 
@@ -440,11 +476,18 @@ mod tests {
             "Actually, the capital of France is Paris.",
             "You are right.",
             true,
+            false,
         );
         assert!(p2.is_none(), "correction turn should not emit");
 
-        let p3 =
-            extractor.process_turn("ses-1", 3, "What is the capital of France?", "Paris", false);
+        let p3 = extractor.process_turn(
+            "ses-1",
+            3,
+            "What is the capital of France?",
+            "Paris",
+            false,
+            false,
+        );
         let pair = p3.expect("should emit pair after correction sequence");
         assert_eq!(pair.prompt, "What is the capital of France?");
         assert_eq!(pair.rejected, "London");
@@ -464,6 +507,7 @@ mod tests {
             "What is the capital of France?",
             "London",
             false,
+            false,
         );
         let _ = extractor.process_turn(
             "ses-1",
@@ -471,9 +515,17 @@ mod tests {
             "Actually, the capital of France is Paris.",
             "You are right.",
             true,
+            false,
         );
 
-        let p3 = extractor.process_turn("ses-1", 3, "What is the weather today?", "Sunny", false);
+        let p3 = extractor.process_turn(
+            "ses-1",
+            3,
+            "What is the weather today?",
+            "Sunny",
+            false,
+            false,
+        );
         assert!(p3.is_none(), "semantic mismatch should not emit pair");
     }
 
@@ -487,6 +539,7 @@ mod tests {
             "What is the capital of France?",
             "London",
             false,
+            false,
         );
         let _ = extractor.process_turn(
             "ses-1",
@@ -494,9 +547,10 @@ mod tests {
             "Actually, the capital of France is Paris.",
             "You are right.",
             true,
+            false,
         );
 
-        let p3 = extractor.process_turn("ses-1", 3, "ok", "Paris", false);
+        let p3 = extractor.process_turn("ses-1", 3, "ok", "Paris", false, false);
         let pair = p3.expect("short continuation should pass validation");
         assert_eq!(pair.chosen, "Paris");
     }
@@ -505,16 +559,16 @@ mod tests {
     fn extractor_handles_multiple_sessions() {
         let mut extractor = DpoExtractor::new();
 
-        let _ = extractor.process_turn("ses-a", 1, "Question A?", "Wrong A", false);
-        let _ = extractor.process_turn("ses-a", 2, "Actually...", "Sorry.", true);
+        let _ = extractor.process_turn("ses-a", 1, "Question A?", "Wrong A", false, false);
+        let _ = extractor.process_turn("ses-a", 2, "Actually...", "Sorry.", true, false);
 
-        let _ = extractor.process_turn("ses-b", 1, "Question B?", "Wrong B", false);
-        let _ = extractor.process_turn("ses-b", 2, "No, it's...", "My mistake.", true);
+        let _ = extractor.process_turn("ses-b", 1, "Question B?", "Wrong B", false, false);
+        let _ = extractor.process_turn("ses-b", 2, "No, it's...", "My mistake.", true, false);
 
-        let pa = extractor.process_turn("ses-a", 3, "Question A?", "Right A", false);
+        let pa = extractor.process_turn("ses-a", 3, "Question A?", "Right A", false, false);
         assert!(pa.is_some(), "session A should emit");
 
-        let pb = extractor.process_turn("ses-b", 3, "Question B?", "Right B", false);
+        let pb = extractor.process_turn("ses-b", 3, "Question B?", "Right B", false, false);
         assert!(pb.is_some(), "session B should emit");
     }
 
@@ -522,14 +576,14 @@ mod tests {
     fn extractor_overwrites_pending_on_chained_corrections() {
         let mut extractor = DpoExtractor::new();
 
-        let _ = extractor.process_turn("ses-1", 1, "Question?", "Wrong 1", false);
-        let _ = extractor.process_turn("ses-1", 2, "Actually...", "Sorry.", true);
-        let _ = extractor.process_turn("ses-1", 3, "No wait...", "I see.", true);
+        let _ = extractor.process_turn("ses-1", 1, "Question?", "Wrong 1", false, false);
+        let _ = extractor.process_turn("ses-1", 2, "Actually...", "Sorry.", true, false);
+        let _ = extractor.process_turn("ses-1", 3, "No wait...", "I see.", true, false);
 
         // WHY: turn 2 was itself a correction, so no last_turn was cached and
         // the chained correction at turn 3 clears pending — turn 4 finds no
         // pending and must emit nothing.
-        let p4 = extractor.process_turn("ses-1", 4, "Question?", "Right", false);
+        let p4 = extractor.process_turn("ses-1", 4, "Question?", "Right", false, false);
         assert!(
             p4.is_none(),
             "chained correction without intermediate answer should not emit"
@@ -612,5 +666,48 @@ mod tests {
         assert_eq!(parsed.prompt, "P");
         assert_eq!(parsed.chosen, "C");
         assert_eq!(parsed.rejected, "R");
+    }
+
+    #[test]
+    fn extractor_redacts_secret_when_full_pii_suite_disabled() {
+        let mut extractor = DpoExtractor::new();
+
+        // WHY: split/concat so the full synthetic key string never appears as a
+        // raw literal that credential scanners could flag.
+        let secret = concat!("sk-", "ant-", "api03-", "abc123def456");
+        let prompt = format!("Why does api_key={secret} fail?");
+        let rejected = format!("The key {secret} is invalid");
+        let correction = "Actually the key format is wrong".to_owned();
+        let chosen = format!("Use {secret} with the v3 header");
+
+        let p1 = extractor.process_turn("ses-1", 1, &prompt, &rejected, false, false);
+        assert!(p1.is_none(), "single normal turn should not emit");
+
+        let p2 = extractor.process_turn("ses-1", 2, &correction, "You are right.", true, false);
+        assert!(p2.is_none(), "correction turn should not emit");
+
+        let p3 = extractor.process_turn("ses-1", 3, &prompt, &chosen, false, false);
+        let pair = p3.expect("should emit pair after correction sequence");
+
+        assert!(
+            !pair.prompt.contains(secret),
+            "prompt must not contain raw secret: {}",
+            pair.prompt
+        );
+        assert!(
+            !pair.rejected.contains(secret),
+            "rejected must not contain raw secret: {}",
+            pair.rejected
+        );
+        assert!(
+            !pair.chosen.contains(secret),
+            "chosen must not contain raw secret: {}",
+            pair.chosen
+        );
+        assert!(
+            !pair.prompt.contains("[REDACTED:"),
+            "full PII suite must not run when disabled: {}",
+            pair.prompt
+        );
     }
 }
