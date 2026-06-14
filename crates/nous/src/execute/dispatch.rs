@@ -43,6 +43,7 @@ enum ToolPolicyDenial {
     Group { message: String },
     Inactive,
     ServerTool,
+    ParseError { message: String },
 }
 
 impl ToolPolicyDenial {
@@ -56,7 +57,7 @@ impl ToolPolicyDenial {
                     "Tool '{tool_name}' is not available for this role. Available tools: {available}"
                 )
             }
-            Self::Group { message } => message.clone(),
+            Self::Group { message } | Self::ParseError { message } => message.clone(),
             Self::Inactive => {
                 format!(
                     "Tool '{tool_name}' is not active for this turn. Use enable_tool before calling it."
@@ -77,8 +78,24 @@ impl ToolPolicyDenial {
             Self::Group { .. } => "group policy",
             Self::Inactive => "activation policy",
             Self::ServerTool => "server tool",
+            Self::ParseError { .. } => "parse error",
         }
     }
+}
+
+/// Detect a provider-normalized parse-error object produced when tool-call
+/// argument JSON cannot be parsed. Nous should not execute these as real calls.
+fn parse_error_denial(input: &serde_json::Value) -> Option<ToolPolicyDenial> {
+    let obj = input.as_object()?;
+    let message = obj
+        .get("_parse_error")
+        .and_then(|v| v.as_str())
+        .filter(|s| s.starts_with("malformed tool input:"))?
+        .to_owned();
+    if !obj.contains_key("_raw_input") {
+        return None;
+    }
+    Some(ToolPolicyDenial::ParseError { message })
 }
 
 impl ToolDispatchPolicy {
@@ -127,7 +144,10 @@ impl ToolDispatchPolicy {
     ) -> Vec<(String, String, serde_json::Value)> {
         let mut allowed = Vec::with_capacity(tool_uses.len());
         for (id, name, input) in tool_uses {
-            if let Some(denial) = self.denial_for(tools, &id, &name, &input) {
+            let denial = self
+                .denial_for(tools, &id, &name, &input)
+                .or_else(|| parse_error_denial(&input));
+            if let Some(denial) = denial {
                 warn!(
                     tool = %name,
                     tool_use_id = %id,

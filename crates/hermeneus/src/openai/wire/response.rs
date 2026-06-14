@@ -5,6 +5,7 @@
 //! OpenAI proper, llama.cpp, ollama, and vllm.
 
 use serde::Deserialize;
+use tracing::warn;
 
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
@@ -312,7 +313,20 @@ pub(crate) fn parse_arguments(arguments: &str) -> serde_json::Value {
     if arguments.is_empty() {
         serde_json::json!({})
     } else {
-        serde_json::from_str(arguments).unwrap_or(serde_json::Value::String(arguments.to_owned()))
+        match serde_json::from_str(arguments) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    raw_arguments = %arguments,
+                    "OpenAI tool arguments JSON parse failed; returning error object to agent"
+                );
+                serde_json::json!({
+                    "_parse_error": format!("malformed tool input: {e}"),
+                    "_raw_input": arguments,
+                })
+            }
+        }
     }
 }
 
@@ -511,6 +525,95 @@ mod tests {
         match &resp.content[0] {
             ContentBlock::ToolUse { input, .. } => {
                 assert!(input.as_object().is_some_and(serde_json::Map::is_empty));
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn malformed_arguments_becomes_parse_error_object() {
+        let body = r#"{
+            "id": "x",
+            "model": "m",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [{
+                        "id": "c",
+                        "type": "function",
+                        "function": { "name": "f", "arguments": "{not json" }
+                    }]
+                },
+                "finish_reason": "tool_calls",
+                "index": 0
+            }]
+        }"#;
+        let parsed: ChatCompletionResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        match &resp.content[0] {
+            ContentBlock::ToolUse { input, .. } => {
+                assert!(
+                    input.is_object(),
+                    "malformed arguments must be an object, not a string: {input:?}"
+                );
+                let Some(obj) = input.as_object() else {
+                    panic!("malformed arguments should produce an object: {input:?}");
+                };
+                assert!(
+                    obj.get("_parse_error")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|s| s.starts_with("malformed tool input:")),
+                    "expected _parse_error field: {input:?}"
+                );
+                assert!(
+                    obj.contains_key("_raw_input"),
+                    "expected _raw_input field: {input:?}"
+                );
+                assert!(
+                    obj.get("_raw_input")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|s| s == "{not json"),
+                    "_raw_input should preserve raw argument string: {input:?}"
+                );
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn responses_malformed_arguments_becomes_parse_error_object() {
+        let body = r#"{
+            "id": "resp-malformed",
+            "model": "m",
+            "status": "completed",
+            "output": [{
+                "type": "function_call",
+                "call_id": "c",
+                "name": "f",
+                "arguments": "{not json"
+            }]
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        match &resp.content[0] {
+            ContentBlock::ToolUse { input, .. } => {
+                assert!(
+                    input.is_object(),
+                    "malformed arguments must be an object, not a string: {input:?}"
+                );
+                let Some(obj) = input.as_object() else {
+                    panic!("malformed arguments should produce an object: {input:?}");
+                };
+                assert!(
+                    obj.get("_parse_error")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|s| s.starts_with("malformed tool input:")),
+                    "expected _parse_error field: {input:?}"
+                );
+                assert!(
+                    obj.contains_key("_raw_input"),
+                    "expected _raw_input field: {input:?}"
+                );
             }
             other => panic!("expected ToolUse, got {other:?}"),
         }

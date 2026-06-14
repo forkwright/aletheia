@@ -18,7 +18,7 @@ pub mod interp;
 /// Prometheus metrics for tool execution counts, latency, and error rates.
 pub mod metrics;
 /// RAII guard for subprocess lifecycle: kills and reaps on drop.
-pub mod process_guard;
+pub(crate) mod process_guard;
 /// HMAC-SHA256 tool-call receipts for hallucination-resistant attestation.
 pub mod receipts;
 /// Central tool registry for runtime discovery and dispatch.

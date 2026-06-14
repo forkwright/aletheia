@@ -129,9 +129,9 @@ fn tool_category_display() {
 #[test]
 fn tool_stats_record_accumulates() {
     let mut stats = ToolStats::default();
-    stats.record("read", 10, false);
-    stats.record("write", 20, false);
-    stats.record("read", 15, true);
+    stats.record_outcome("read", 10, &ToolOutcome::Success);
+    stats.record_outcome("write", 20, &ToolOutcome::Success);
+    stats.record_outcome("read", 15, &ToolOutcome::failure(String::new()));
     assert_eq!(
         stats.total_calls, 3,
         "expected stats.total_calls to equal 3"
@@ -157,12 +157,12 @@ fn tool_stats_record_accumulates() {
 #[test]
 fn tool_stats_top_tools() {
     let mut stats = ToolStats::default();
-    stats.record("a", 1, false);
-    stats.record("b", 1, false);
-    stats.record("b", 1, false);
-    stats.record("c", 1, false);
-    stats.record("c", 1, false);
-    stats.record("c", 1, false);
+    stats.record_outcome("a", 1, &ToolOutcome::Success);
+    stats.record_outcome("b", 1, &ToolOutcome::Success);
+    stats.record_outcome("b", 1, &ToolOutcome::Success);
+    stats.record_outcome("c", 1, &ToolOutcome::Success);
+    stats.record_outcome("c", 1, &ToolOutcome::Success);
+    stats.record_outcome("c", 1, &ToolOutcome::Success);
     let top = stats.top_tools(2);
     assert_eq!(top.len(), 2, "expected top.len() to equal 2");
     assert_eq!(top[0], ("c", 3), "expected top[0] to equal (\"c\", 3)");
@@ -342,8 +342,8 @@ fn test_tool_stats_initial_state_all_zeros() {
 #[test]
 fn test_tool_stats_zero_errors_when_all_calls_succeed() {
     let mut stats = ToolStats::default();
-    stats.record("read", 10, false);
-    stats.record("write", 20, false);
+    stats.record_outcome("read", 10, &ToolOutcome::Success);
+    stats.record_outcome("write", 20, &ToolOutcome::Success);
     assert_eq!(
         stats.error_count, 0,
         "expected stats.error_count to equal 0"
@@ -363,7 +363,7 @@ fn test_tool_stats_top_tools_returns_empty_when_no_calls() {
 fn test_tool_stats_top_tools_limited_to_n() {
     let mut stats = ToolStats::default();
     for name in ["a", "b", "c", "d", "e"] {
-        stats.record(name, 1, false);
+        stats.record_outcome(name, 1, &ToolOutcome::Success);
     }
     let top = stats.top_tools(3);
     assert_eq!(top.len(), 3, "expected top.len() to equal 3");

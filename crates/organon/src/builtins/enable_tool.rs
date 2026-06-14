@@ -9,7 +9,7 @@ use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
-use crate::surface::SurfaceLookup;
+use crate::surface::{ENABLE_TOOL, SurfaceLookup};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -172,7 +172,7 @@ fn enable_tool_def() -> ToolDef {
     // lazy tools and provider server tools are visible in later turns. It must
     // therefore require a non-read capability and be approval-worthy.
     ToolDef {
-        name: ToolName::from_static("enable_tool"), // kanon:ignore RUST/expect
+        name: ToolName::from_static(ENABLE_TOOL),
         description: "Activate a tool for this session. Some tools are not loaded by default \
                       and must be enabled first. Call with the tool name to activate it."
             .to_owned(),
@@ -250,7 +250,7 @@ mod tests {
 
     fn make_input(tool_name: &str) -> ToolInput {
         ToolInput {
-            name: ToolName::from_static("enable_tool"),
+            name: ToolName::from_static(ENABLE_TOOL),
             tool_use_id: "toolu_1".to_owned(),
             arguments: serde_json::json!({"name": tool_name}),
         }
@@ -510,7 +510,7 @@ mod tests {
 
         let defs = reg.definitions_for_groups(&[ToolGroupId::Read]);
         assert!(
-            defs.iter().all(|d| d.name.as_str() != "enable_tool"),
+            defs.iter().all(|d| d.name.as_str() != ENABLE_TOOL),
             "enable_tool should not appear under a read-only group policy"
         );
     }

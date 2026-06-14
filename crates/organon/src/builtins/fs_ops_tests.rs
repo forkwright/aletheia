@@ -182,6 +182,101 @@ async fn cp_directory_recursive_copies_contents() {
     assert_eq!(nested, "nested", "nested file should be copied");
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn cp_recursive_rejects_symlink() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    std::fs::create_dir(dir.path().join("src_dir")).expect("mkdir");
+    write_file(&dir.path().join("src_dir/ok.txt"), "ok");
+    std::os::unix::fs::symlink(
+        dir.path().join("src_dir/ok.txt"),
+        dir.path().join("src_dir/link.txt"),
+    )
+    .expect("symlink");
+
+    let ctx = test_ctx(dir.path());
+    let input = tool_input(
+        "cp",
+        serde_json::json!({ "from": "src_dir", "to": "dst_dir", "recursive": true }),
+    );
+    let result = CpExecutor.execute(&input, &ctx).await.expect("exec");
+    assert!(
+        result.is_error,
+        "recursive copy containing symlink must fail"
+    );
+    let msg = result.content.text_summary();
+    assert!(
+        msg.contains("symlink"),
+        "error should name symlink issue: {msg}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn revalidate_rejects_swapped_symlink_target() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let allowed = dir.path().join("allowed");
+    std::fs::create_dir(&allowed).expect("mkdir allowed");
+    let outside = dir.path().join("outside");
+    std::fs::create_dir(&outside).expect("mkdir outside");
+    write_file(&outside.join("secret.txt"), "secret");
+
+    let mut ctx = test_ctx(dir.path());
+    ctx.allowed_roots = vec![allowed.clone()];
+
+    let tool_name = ToolName::new("mv").expect("valid");
+    let validated = validate_path("allowed/target.txt", &ctx, &tool_name).expect("valid");
+    write_file(&validated, "inside");
+
+    std::fs::remove_file(&validated).expect("remove");
+    std::os::unix::fs::symlink(outside.join("secret.txt"), &validated).expect("symlink");
+
+    let err = revalidate_before_mutation(&validated, &ctx, &tool_name).expect_err("must fail");
+    assert!(
+        err.to_string().contains("outside allowed roots"),
+        "swapped symlink target must be rejected: {err}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn revalidate_rejects_swapped_destination_parent() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let allowed = dir.path().join("allowed");
+    std::fs::create_dir(&allowed).expect("mkdir allowed");
+    let outside = dir.path().join("outside");
+    std::fs::create_dir(&outside).expect("mkdir outside");
+    write_file(&outside.join("anchor.txt"), "anchor");
+
+    let mut ctx = test_ctx(dir.path());
+    ctx.allowed_roots = vec![allowed.clone()];
+
+    let tool_name = ToolName::new("cp").expect("valid");
+    let validated = validate_path("allowed/subdir/new.txt", &ctx, &tool_name).expect("valid");
+
+    std::fs::remove_dir_all(allowed.join("subdir")).ok();
+    std::os::unix::fs::symlink(&outside, allowed.join("subdir")).expect("symlink");
+
+    let err = revalidate_before_mutation(&validated, &ctx, &tool_name).expect_err("must fail");
+    assert!(
+        err.to_string().contains("outside allowed roots"),
+        "swapped destination parent must be rejected: {err}"
+    );
+}
+
+#[test]
+fn revalidate_accepts_unchanged_allowed_path() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    write_file(&dir.path().join("stable.txt"), "x");
+    let ctx = test_ctx(dir.path());
+    let tool_name = ToolName::new("mv").expect("valid");
+    let validated = validate_path("stable.txt", &ctx, &tool_name).expect("valid");
+    assert!(
+        revalidate_before_mutation(&validated, &ctx, &tool_name).is_ok(),
+        "unchanged allowed path should remain valid"
+    );
+}
+
 #[tokio::test]
 async fn rm_removes_file() {
     let dir = tempfile::tempdir().expect("tmpdir");
