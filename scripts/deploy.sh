@@ -247,65 +247,6 @@ do_rollback() {
     fi
 }
 
-# --- Refresh OAuth token ---
-
-refresh_token() {
-    # WARNING: credential source mismatch. This reads from Claude Code's
-    # credential store (~/.claude/.credentials.json) but writes to aletheia's
-    # env file. If Claude Code changes its credential format or path, this
-    # will silently stop refreshing. The canonical source for aletheia is
-    # INSTANCE_ROOT/config/env; Claude Code's file is a convenience bridge.
-    local cred_file="$HOME/.claude/.credentials.json"
-
-    # Expected: credential file does not exist - this is normal, skip refresh
-    if [[ ! -f "$cred_file" ]]; then
-        log "no credentials file, skipping token refresh"
-        return 0
-    fi
-
-    local token jq_err
-    if ! jq_err=$(jq -r '.claudeAiOauth.accessToken // empty' "$cred_file" 2>&1); then
-        log_warn "token refresh failed: jq error: ${jq_err}"
-        return 1
-    fi
-    token="$jq_err"
-
-    if [[ -z "$token" ]]; then
-        log_warn "token refresh failed: accessToken field is empty or missing"
-        return 1
-    fi
-
-    local env_file="${INSTANCE_ROOT}/config/env"
-    mkdir -p "${INSTANCE_ROOT}/config"
-
-    if [[ -f "$env_file" ]] && grep -q "^ANTHROPIC_AUTH_TOKEN=" "$env_file"; then
-        # Rewrite the full file to avoid delimiter collisions in sed.
-        # Tokens can contain arbitrary characters (base64, pipes, etc.).
-        local tmp_env
-        if ! tmp_env="$(mktemp)"; then
-            log_error "token refresh failed: cannot create temp file"
-            return 1
-        fi
-        while IFS= read -r line; do
-            if [[ "$line" == ANTHROPIC_AUTH_TOKEN=* ]]; then
-                printf '%s\n' "ANTHROPIC_AUTH_TOKEN=$token"
-            else
-                printf '%s\n' "$line"
-            fi
-        done < "$env_file" > "$tmp_env"
-        if ! mv -- "$tmp_env" "$env_file"; then
-            rm -f -- "$tmp_env"
-            log_error "token refresh failed: cannot write credentials"
-            return 1
-        fi
-    else
-        printf '%s\n' "ANTHROPIC_AUTH_TOKEN=$token" >> "$env_file"
-    fi
-    chmod 600 "$env_file"
-    log "Token written to ${env_file}"
-    return 0
-}
-
 # --- Download prebuilt binary ---
 
 download_binary() {
@@ -447,15 +388,6 @@ else
     # Atomic move to production location
     mv -- "$BINARY_TMP" "$BINARY_DST"
     log "Deployed: ${BINARY_DST}"
-fi
-
-# Refresh token
-if [[ "$DRY_RUN" == false ]]; then
-    if ! refresh_token; then
-        log_warn "token refresh failed (deploy continuing)"
-    fi
-else
-    log "[dry-run] Would refresh OAuth token"
 fi
 
 # Restart and health check

@@ -16,7 +16,7 @@ mkdir -p "$LOG_DIR"
 
 HEALTH_URL="${ALETHEIA_HEALTH_URL:-http://localhost:18789/api/health}"
 METRICS_URL="${ALETHEIA_METRICS_URL:-http://localhost:18789/metrics}"
-CRED_FILE="${HOME}/.claude/.credentials.json"
+ALETHEIA_CREDS="${ALETHEIA_CREDS:-${ALETHEIA_ROOT:-${HOME}/aletheia/instance}/config/credentials/anthropic.json}"
 NOTIFY=false
 SERVICE="aletheia.service"
 
@@ -69,9 +69,9 @@ fi
 
 log_ok "healthy v$version"
 
-# 3. Token expiry check
-if [[ -f "$CRED_FILE" ]]; then
-    if ! remaining=$(jq -r '(.claudeAiOauth.expiresAt // 0) / 1000 | (. - now) / 60 | floor' "$CRED_FILE" 2>&1); then
+# 3. Token expiry check (reads Aletheia's own credential file, not an external agent)
+if [[ -f "$ALETHEIA_CREDS" ]]; then
+    if ! remaining=$(jq -r '(.expiresAt // 0) / 1000 | (. - now) / 60 | floor' "$ALETHEIA_CREDS" 2>&1); then
         log_warn "jq failed parsing credential expiry: ${remaining}"
         remaining="unknown"
     elif [[ -z "$remaining" ]]; then
