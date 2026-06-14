@@ -31,6 +31,49 @@ test-full = "full test tier"
 tls = "TLS support via pylon"
 tui = "terminal UI via koilon"
 
+[crates.aletheia-classify]
+path = "crates/aletheia-classify"
+layer = "types"
+purpose = "Turn and content classification types for Aletheia sensitivity and routing decisions"
+depends_on = []
+used_by = ["nous"]
+features = {}
+
+[crates.aletheia-lexica]
+path = "crates/aletheia-lexica"
+layer = "types"
+purpose = "Static lexicon and data constants for Aletheia"
+depends_on = []
+used_by = []
+features = {}
+
+[crates.aletheia-memory-mcp]
+path = "crates/aletheia-memory-mcp"
+layer = "cli"
+purpose = "Standalone stdio MCP server exposing Aletheia's memory and token-gated write tools to external agents"
+depends_on = ["koina", "mneme", "taxis"]
+used_by = []
+features = {}
+
+[crates.aletheia-routing]
+path = "crates/aletheia-routing"
+layer = "types"
+purpose = "Shared routing trait and empirical success-rate storage for dispatch and interactive paths"
+depends_on = ["koina"]
+used_by = ["nous", "oikonomos"]
+
+[crates.aletheia-routing.features]
+test-core = "test tier fixtures"
+test-full = "full test tier fixtures"
+
+[crates.aletheia-sessions-migrate]
+path = "crates/aletheia-sessions-migrate"
+layer = "cli"
+purpose = "One-shot SQLite v32 → fjall sessions-store migrator for legacy aletheia 0.15.x instances"
+depends_on = ["eidos", "graphe"]
+used_by = []
+features = {}
+
 [crates.dianoia]
 path = "crates/dianoia"
 layer = "runtime"
@@ -119,6 +162,17 @@ default = "fjall backend (pure Rust, zero C dependency)"
 fjall = "fjall LSM-tree backend"
 mneme-engine = "gates error variants for tokio::task::JoinError"
 sqlite = "SQLite backend for migration parity"
+test-core = "test tier fixtures"
+test-full = "full test tier fixtures"
+
+[crates.gnosis]
+path = "crates/gnosis"
+layer = "tooling"
+purpose = "Machine-derived code-graph index for symbol-level cross-crate queries"
+depends_on = []
+used_by = []
+
+[crates.gnosis.features]
 test-core = "test tier fixtures"
 test-full = "full test tier fixtures"
 
@@ -279,6 +333,54 @@ depends_on = []
 used_by = ["organon", "poiesis-sheet", "poiesis-slides", "poiesis-text"]
 features = {}
 
+[crates.poiesis-diff]
+path = "crates/poiesis/diff"
+layer = "tool"
+purpose = "Cell-level diff for XLSX and PPTX documents"
+depends_on = ["poiesis-core"]
+used_by = ["organon"]
+features = {}
+
+[crates.poiesis-doc]
+path = "crates/poiesis/doc"
+layer = "tool"
+purpose = "DOCX write and inspect backend for poiesis"
+depends_on = ["poiesis-core"]
+used_by = ["organon"]
+features = {}
+
+[crates.poiesis-inspect]
+path = "crates/poiesis/inspect"
+layer = "tool"
+purpose = "Text extraction from PDF, XLSX, and PPTX documents"
+depends_on = ["poiesis-core"]
+used_by = ["organon"]
+features = {}
+
+[crates.poiesis-intake]
+path = "crates/poiesis/intake"
+layer = "tool"
+purpose = "Parse Slack-style request text into a structured report scaffold"
+depends_on = ["poiesis-core"]
+used_by = ["organon"]
+features = {}
+
+[crates.poiesis-lint]
+path = "crates/poiesis/lint"
+layer = "tool"
+purpose = "Report prose linting: banned words, citation checks, structure checks"
+depends_on = ["poiesis-core"]
+used_by = ["organon"]
+features = {}
+
+[crates.poiesis-scaffold]
+path = "crates/poiesis/scaffold"
+layer = "tool"
+purpose = "Project-template scaffolder for poiesis report projects"
+depends_on = ["poiesis-core"]
+used_by = ["organon"]
+features = {}
+
 [crates.poiesis-sheet]
 path = "crates/poiesis/sheet"
 layer = "tool"
@@ -350,10 +452,27 @@ depends_on = []
 used_by = []
 features = {}
 
+[crates.poiesis-typst]
+path = "crates/poiesis/typst"
+layer = "tool"
+purpose = "Typst-based PDF rendering backend for poiesis: embeddable compiler, JSON data injection, template assets"
+depends_on = ["poiesis-core"]
+used_by = ["organon", "dokimion"]
+features = {}
+
+[crates.poiesis-verify]
+path = "crates/poiesis/verify"
+layer = "tool"
+purpose = "Report claim verification: arithmetic evaluation and source resolution"
+depends_on = ["poiesis-core"]
+used_by = ["organon"]
+features = {}
+
 [crates.proskenion]
 path = "crates/theatron/proskenion"
 layer = "desktop"
 purpose = "Dioxus desktop UI for the Aletheia distributed cognition system"
+workspace_excluded = true
 depends_on = ["koina", "skene"]
 used_by = []
 features = {}

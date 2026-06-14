@@ -312,19 +312,33 @@ download_binary() {
     local version="$1"
     local repo="${GITHUB_REPO:-$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$||')}"
     repo="${repo:-forkwright/aletheia}"
+    # WHY: asset names match the release workflow matrix artifacts, not uname output.
+    # Linux: aletheia-linux-x86_64; macOS Apple Silicon: aletheia-macos-aarch64.
     local asset_name
-    asset_name="aletheia-$(uname -m)-unknown-linux-gnu"
+    case "$(uname -s)-$(uname -m)" in
+        Linux-x86_64)   asset_name="aletheia-linux-x86_64" ;;
+        Darwin-arm64)   asset_name="aletheia-macos-aarch64" ;;
+        *)
+            log "WARNING: no prebuilt binary for $(uname -s)-$(uname -m); falling back to local build"
+            return 1
+            ;;
+    esac
     local tmp_bin
     tmp_bin="$(mktemp)" || return 1
     trap 'rm -f -- "$tmp_bin"' RETURN
 
     log "Attempting to download ${version} from ${repo}..."
 
+    # WHY: release workflow uploads binary as ${artifact}-${version} (e.g. aletheia-linux-x86_64-0.31.1).
+    # Strip the leading 'v' from the version tag for the asset filename.
+    local ver_bare="${version#v}"
+    local versioned_asset="${asset_name}-${ver_bare}"
+
     # Try gh CLI first, fall back to curl
     if command -v gh &>/dev/null; then
         if timeout 120 gh release download "$version" \
             --repo "$repo" \
-            --pattern "$asset_name" \
+            --pattern "${asset_name}-*" \
             --output "$tmp_bin" \
             --clobber 2>/dev/null; then
             chmod +x -- "$tmp_bin"
@@ -340,7 +354,7 @@ download_binary() {
         log "WARNING: gh release download failed (timeout or error), trying curl..."
     fi
 
-    local url="https://github.com/${repo}/releases/download/${version}/${asset_name}"
+    local url="https://github.com/${repo}/releases/download/${version}/${versioned_asset}"
     if curl -fsSL --max-time 120 --output "$tmp_bin" -- "$url" 2>/dev/null; then
         chmod +x -- "$tmp_bin"
         # Atomic: write to temp on same filesystem, then rename

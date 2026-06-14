@@ -78,12 +78,10 @@ only the config scan and tautological-doc detectors are needed.
 
 ## Supported platforms
 
-| Target | Runner | Method |
-|--------|--------|--------|
-| `x86_64-unknown-linux-gnu` | `ubuntu-latest` | Native cargo build |
-| `aarch64-unknown-linux-gnu` | `ubuntu-latest` | `cross` (Docker) |
-| `x86_64-apple-darwin` | `macos-latest` | Native cross-compile |
-| `aarch64-apple-darwin` | `macos-latest` | Native cargo build |
+| Target | Artifact name | Runner | Method |
+|--------|---------------|--------|--------|
+| `x86_64-unknown-linux-musl` | `aletheia-linux-x86_64` | `ubuntu-latest` | `cross` (fully static musl binary) |
+| `aarch64-apple-darwin` | `aletheia-macos-aarch64` | `macos-14` | Native cargo build |
 
 ## Manual release
 
@@ -130,11 +128,11 @@ feature set, provenance/SBOM asset names, and SHA256, mode, and size for each
 packaged file except the manifest itself.
 
 ```bash
-# Download binary and checksum
-gh release download v0.10.0 -p 'aletheia-linux-amd64*'
+# Download binary and checksum (Linux x86_64)
+gh release download v0.10.0 -p 'aletheia-linux-x86_64*'
 
 # Verify
-sha256sum -c aletheia-linux-amd64.sha256
+sha256sum -c aletheia-linux-x86_64.sha256
 ```
 
 The SBOM (`aletheia-sbom.spdx.json`) is also attached to each release, listing all Cargo dependencies with versions.

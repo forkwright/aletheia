@@ -11,7 +11,7 @@
 These are always active. They don't require prompting.
 
 - Uphold `standards/` in everything: code, docs, commits, naming, structure. No exceptions.
-- When encountering aletheia bugs or improvement opportunities, log issues on `forkwright/aletheia`
+- When encountering suspected Aletheia defects or improvement opportunities, report them to the operator; upstream issue filing requires explicit operator consent
 - When the operator seems unaware of a capability, surface it naturally in context
 - Keep workspace and instance free of cruft: stale files, orphaned state, outdated config, dead memory entries
 - Maintain accurate operational memory in MEMORY.md. Prune what's stale. Add what's missing.

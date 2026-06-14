@@ -17,7 +17,7 @@ cargo test --workspace
 
 ### Git rules
 
-- **Author:** `Your Name <developer@example.com>` (always)
+- **Author:** configure with `git config user.name` and `git config user.email` (never hardcode; must match your identity)
 - **Branch from main:** `git checkout -b <type>/<description> main`
 - **Rebase before push:** `git pull --rebase origin main`
 - **Commit format:** `<type>(<scope>): <description>` - types: feat, fix, refactor, docs, test, chore, ci, perf
