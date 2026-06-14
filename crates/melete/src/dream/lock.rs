@@ -322,9 +322,7 @@ fn is_stale(mtime: Option<&std::time::SystemTime>, stale_threshold_secs: i64) ->
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
-
-    /// Default stale lock threshold for tests: 1 hour in seconds.
-    const DEFAULT_STALE_THRESHOLD_SECS: i64 = 3_600;
+    use crate::dream::DEFAULT_STALE_THRESHOLD_SECS;
 
     #[test]
     fn try_acquire_creates_lock_file_with_pid() {

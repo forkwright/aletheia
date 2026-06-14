@@ -209,7 +209,7 @@ pub struct DistillResult {
     pub messages_distilled: usize,
     /// Estimated tokens before distillation.
     pub tokens_before: u64,
-    /// Estimated tokens after distillation.
+    /// Actual output token count reported by the LLM provider.
     pub tokens_after: u64,
     /// Which distillation number this is for the session.
     pub distillation_number: u32,

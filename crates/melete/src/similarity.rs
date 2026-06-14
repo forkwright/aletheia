@@ -7,7 +7,7 @@ use hermeneus::types::{Content, ContentBlock, Message};
 /// Default minimum token length to include in similarity comparison.
 ///
 /// Callers should prefer the value from `taxis::config::AgentBehaviorDefaults::similarity_min_token_len`.
-pub const DEFAULT_MIN_TOKEN_LEN: usize = 3;
+pub(crate) const DEFAULT_MIN_TOKEN_LEN: usize = 3;
 
 /// Default Jaccard similarity threshold for near-duplicate detection.
 ///
