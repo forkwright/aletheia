@@ -242,16 +242,10 @@ impl OpenAiStreamAccumulator {
             });
         }
         for (_, tc) in tool_calls {
-            let input: serde_json::Value = if tc.arguments.is_empty() {
-                serde_json::json!({})
-            } else {
-                serde_json::from_str(&tc.arguments)
-                    .unwrap_or(serde_json::Value::String(tc.arguments.clone()))
-            };
             content.push(ContentBlock::ToolUse {
                 id: tc.id,
                 name: tc.name,
-                input,
+                input: parse_arguments(&tc.arguments),
             });
         }
 
@@ -724,6 +718,38 @@ mod tests {
                 assert_eq!(id, "c1");
                 assert_eq!(name, "f");
                 assert_eq!(input["a"], 1);
+            }
+            _ => panic!("expected ToolUse"),
+        }
+    }
+
+    #[test]
+    fn malformed_tool_call_deltas_become_parse_error_object() {
+        let (_, resp) = process_chunks(&[
+            r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f","arguments":"{not"}}]}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" json"}}]}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+        ]);
+        assert_eq!(resp.stop_reason, StopReason::ToolUse);
+        match &resp.content[0] {
+            ContentBlock::ToolUse { id, name, input } => {
+                assert_eq!(id, "c1");
+                assert_eq!(name, "f");
+                assert!(
+                    input.is_object(),
+                    "malformed streaming arguments must be an object, not a string: {input:?}"
+                );
+                let obj = input.as_object().expect("object");
+                assert!(
+                    obj.get("_parse_error")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|s| s.starts_with("malformed tool input:")),
+                    "expected _parse_error field: {input:?}"
+                );
+                assert!(
+                    obj.contains_key("_raw_input"),
+                    "expected _raw_input field: {input:?}"
+                );
             }
             _ => panic!("expected ToolUse"),
         }
