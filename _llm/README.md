@@ -21,17 +21,30 @@ L1 and L2 are maintained as generated reference material. L2 files stay tight by
 
 ## Loading recipes
 
-Task-specific resolution selection is defined in [`recipes.toml`](recipes.toml).
-The `nous` crate provides `RecipeRegistry` for parsing and selecting recipes at
-bootstrap time. See [`CLAUDE.md`](../CLAUDE.md) for the recipe-to-task mapping.
+The `nous` bootstrap assembler uses `_llm/recipes.toml` to select exact `_llm/`
+reference files. The `RecipeRegistry` parser is available for other tooling, but
+bootstrap resolves recipes by the names selected by [`LlmRecipe`](../crates/nous/src/bootstrap/mod.rs):
 
-| Task | What to load |
-|------|-------------|
-| Cold orientation | `_llm/L1-workspace.md` + `_llm/manifest.toml` |
-| Work on a known crate | L3 for that crate |
-| Cross-crate refactor | L3 for each touched crate |
-| Full workspace audit | All L3 files |
-| Implementation detail | L4 (source) for the specific file |
+| `LlmRecipe` | Recipe name | `_llm/` sections loaded by bootstrap |
+|-------------|-------------|--------------------------------------|
+| `ColdStart` | `cold_start` | `L1-workspace.md` + `L2-crate-summaries/*.md` |
+| `InSession` | `in_session` | `L1-workspace.md` + `current_state.toml` |
+| `Refactor` | `cross_crate_refactor` | `L1-workspace.md` + `L2-crate-summaries/*.md` + `L3-api-index/*.md` |
+| `None` | none | none |
+
+`_llm/manifest.toml` is **not** injected as a section; it supplies the L3 index
+path and per-crate source hashes for the staleness guard (#5404). `CLAUDE.md`
+is consumed by the agent client, not loaded by bootstrap. L4 source paths
+declared in recipes are read on demand by tooling, not packed into the system
+prompt.
+
+If `_llm/recipes.toml` is missing or does not define the selected recipe, the
+assembler falls back to sweeping `_llm/*.md|*.toml` at the root (excluding
+`manifest.toml` and `recipes.toml`) and the manifest-declared L3 directory.
+
+Other recipes such as `edit_crate`, `add_endpoint`, `add_tool`, and `fix_bug`
+are available for agent tooling but are not wired into automatic bootstrap
+selection because they require task-specific parameters (e.g. `{crate}`).
 
 ## Legacy reference files (pre-L1/L2)
 
@@ -79,5 +92,5 @@ Records generation metadata: schema version, timestamp, generator script, and pe
 
 ## Follow-up phases
 
-- **Phase 3**: Bootstrap assembler integration - task-hint-aware loading recipes wired into `nous` bootstrap
+- **Phase 3**: Bootstrap assembler integration complete - `cold_start`, `in_session`, and `cross_crate_refactor` recipes wired into `nous` bootstrap
 - **Phase 4**: CI hook - post-merge regeneration when source changes

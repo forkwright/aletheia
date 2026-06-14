@@ -40,6 +40,7 @@ use thesauros::manifest::Priority as PackPriority;
 
 use crate::budget::{CharEstimator, TokenBudget};
 use crate::error::{self, Result};
+use crate::recipes::{RecipeFile, RecipeRegistry};
 
 /// Default TTL for bootstrap file cache entries when no operator override is set.
 ///
@@ -293,6 +294,17 @@ impl LlmRecipe {
             TaskHint::Planning => Self::Refactor,
             TaskHint::Conversation => Self::None,
             _ => Self::InSession,
+        }
+    }
+
+    /// Recipe name in `_llm/recipes.toml` that implements this bootstrap mode.
+    #[must_use]
+    pub fn recipe_name(&self) -> Option<&'static str> {
+        match self {
+            Self::ColdStart => Some("cold_start"),
+            Self::InSession => Some("in_session"),
+            Self::Refactor => Some("cross_crate_refactor"),
+            Self::None => None,
         }
     }
 }
@@ -1188,28 +1200,20 @@ impl<'a> BootstrapAssembler<'a> {
 
     /// Resolve `_llm/` content into bootstrap sections based on the recipe.
     ///
-    /// Reads `_llm/manifest.toml` when present to discover available levels.
-    /// Loads L1 (workspace manifest files at `_llm/` root) and L3 (cross-crate
-    /// index from the path declared in the manifest). L2 is reserved for
-    /// per-crate summaries and skipped when absent.
+    /// When `_llm/recipes.toml` exists and declares a recipe matching the
+    /// selected [`LlmRecipe`], the assembler loads only the exact files listed
+    /// by that recipe, expanding directories to their immediate `.md`/`.toml`
+    /// children. Otherwise it falls back to the legacy root sweep used before
+    /// recipe wiring.
     ///
-    /// Each generated file is run through the same pre-injection scan as
-    /// workspace files. In strict mode, a scan failure is returned as
-    /// [`error::Error::ContextAssembly`]; in lenient mode the file is logged
-    /// and skipped.
+    /// `_llm/manifest.toml` is required in either mode: it declares the L3
+    /// index path and supplies per-crate source hashes for the #5404 staleness
+    /// guard. Each loaded file is run through the pre-injection scan (#5409).
     ///
     /// Returns an empty vec when:
     /// - the recipe is [`LlmRecipe::None`]
     /// - `_llm/manifest.toml` does not exist
     /// - any I/O or parse error occurs (logged, not propagated)
-    ///
-    /// # Cancel safety
-    ///
-    /// Not cancel-safe. Performs async file I/O.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "L1 + L3 loading in one method keeps the recipe→levels mapping colocated"
-    )]
     async fn resolve_llm_sections(&self, recipe: LlmRecipe) -> Result<Vec<BootstrapSection>> {
         if recipe == LlmRecipe::None {
             return Ok(Vec::new());
@@ -1247,26 +1251,244 @@ impl<'a> BootstrapAssembler<'a> {
             }
         };
 
-        // Build a map of crate name → expected source hash from the manifest.
-        // WHY: used during L3 injection to skip sections whose source has
-        // changed since the generated index was last written.
         let crate_hash_index: HashMap<String, (String, String)> = manifest
             .crates
             .iter()
             .map(|c| (c.name.clone(), (c.path.clone(), c.source_hash.clone())))
             .collect();
 
-        let mut sections = Vec::new();
-
-        // --- L1: workspace manifest files at _llm/ root ---
-        let (l1_priority, l1_truncatable) = match recipe {
-            LlmRecipe::ColdStart => (SectionPriority::Required, false),
-            LlmRecipe::InSession => (SectionPriority::Optional, true),
-            LlmRecipe::Refactor => (SectionPriority::Important, true),
-            LlmRecipe::None => return Ok(Vec::new()),
+        // NOTE: prefer exact recipe paths when the registry is available.
+        let recipe_files: Option<Vec<RecipeFile>> = if let Some(name) = recipe.recipe_name() {
+            let recipes_path = llm_root.join("recipes.toml");
+            if recipes_path.exists() {
+                match RecipeRegistry::load_from_file(&recipes_path) {
+                    Ok(registry) => match registry.resolve_files(name, &HashMap::new()) {
+                        Ok(files) => {
+                            debug!(
+                                recipe = name,
+                                file_count = files.len(),
+                                "loaded exact _llm recipe"
+                            );
+                            Some(files)
+                        }
+                        Err(e) => {
+                            warn!(
+                                recipe = name,
+                                error = %e,
+                                "failed to resolve recipe files, falling back to legacy sweep"
+                            );
+                            None
+                        }
+                    },
+                    Err(e) => {
+                        warn!(
+                            path = %recipes_path.display(),
+                            error = %e,
+                            "failed to load recipes registry, falling back to legacy sweep"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
         };
 
-        if let Ok(mut entries) = tokio::fs::read_dir(&llm_root).await {
+        if let Some(files) = recipe_files {
+            self.resolve_llm_recipe_files(recipe, &llm_root, &manifest, &crate_hash_index, files)
+                .await
+        } else {
+            self.resolve_llm_legacy_sweep(recipe, &llm_root, &manifest, &crate_hash_index)
+                .await
+        }
+    }
+
+    /// Load the exact file list produced by a recipe from `_llm/recipes.toml`.
+    async fn resolve_llm_recipe_files(
+        &self,
+        recipe: LlmRecipe,
+        llm_root: &Path,
+        manifest: &LlmManifest,
+        crate_hash_index: &HashMap<String, (String, String)>,
+        files: Vec<RecipeFile>,
+    ) -> Result<Vec<BootstrapSection>> {
+        let mut sections = Vec::new();
+        let l3_dir = manifest.levels.get("L3").map(|l| llm_root.join(&l.path));
+
+        for file in files {
+            // NOTE: instructions and L4 paths belong to the workspace cascade
+            // or on-demand tooling, not the bootstrap system prompt.
+            if !file.path.starts_with("_llm/") {
+                debug!(path = %file.path, "skipping non-_llm recipe path");
+                continue;
+            }
+            let basename = Path::new(&file.path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            if basename == "manifest.toml" || basename == "recipes.toml" {
+                continue;
+            }
+
+            let resolved_files = {
+                let full_path = self.oikos.root().join(&file.path);
+                if full_path.is_dir() {
+                    self.expand_recipe_directory(&file).await
+                } else {
+                    vec![file]
+                }
+            };
+
+            for rf in resolved_files {
+                let full_path = self.oikos.root().join(&rf.path);
+                let content = match tokio::fs::read_to_string(&full_path).await {
+                    Ok(raw) => {
+                        let content = raw.trim().to_owned();
+                        if content.is_empty() {
+                            continue;
+                        }
+                        content
+                    }
+                    Err(e) => {
+                        warn!(
+                            path = %full_path.display(),
+                            error = %e,
+                            "failed to read recipe _llm file, skipping"
+                        );
+                        continue;
+                    }
+                };
+
+                if let Err(e) = preinject_scan::scan_workspace_content(&content, &full_path) {
+                    if self.preinject_strict {
+                        return Err(error::ContextAssemblySnafu {
+                            message: format!(
+                                "pre-injection scan failed for {}: {e}",
+                                full_path.display()
+                            ),
+                        }
+                        .build());
+                    }
+                    warn!(
+                        path = %full_path.display(),
+                        error = %e,
+                        "pre-injection scan rejected recipe _llm file, skipping"
+                    );
+                    continue;
+                }
+
+                // WHY(#5404): stale L3 files must not enter the prompt.
+                if let Some(ref l3) = l3_dir
+                    && full_path.parent() == Some(l3.as_path())
+                {
+                    let filename = full_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    let crate_name = filename.trim_end_matches(".md");
+                    if let Some((crate_path, expected_hash)) = crate_hash_index.get(crate_name) {
+                        let crate_dir = self.oikos.root().join(crate_path);
+                        if let Some(actual_hash) = compute_crate_source_hash(&crate_dir).await
+                            && actual_hash != *expected_hash
+                        {
+                            warn!(
+                                section = %rf.path,
+                                crate_name,
+                                "stale L3 section skipped: source hash mismatch \
+                                 (regenerate: uv run scripts/llm-extract-l3.py)"
+                            );
+                            continue;
+                        }
+                    }
+                }
+
+                let (priority, truncatable) = Self::priority_for_recipe_level(recipe, &rf.level);
+                let tokens = self.estimator.estimate(&content);
+                sections.push(BootstrapSection {
+                    name: rf.path,
+                    priority,
+                    content,
+                    tokens,
+                    truncatable,
+                    slot: BootstrapSlot::Context,
+                });
+            }
+        }
+
+        Ok(sections)
+    }
+
+    /// Expand a recipe directory entry to its immediate children.
+    async fn expand_recipe_directory(&self, file: &RecipeFile) -> Vec<RecipeFile> {
+        let full_path = self.oikos.root().join(&file.path);
+        let mut out = Vec::new();
+        let Ok(mut entries) = tokio::fs::read_dir(&full_path).await else {
+            return out;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !matches!(ext, "md" | "toml") {
+                continue;
+            }
+            let rel = path.strip_prefix(self.oikos.root()).map_or_else(
+                |_| format!("{}/{name}", file.path),
+                |p| p.to_string_lossy().to_string(),
+            );
+            out.push(RecipeFile {
+                level: file.level.clone(),
+                path: rel,
+                note: file.note.clone(),
+            });
+        }
+        out.sort_by(|a, b| a.path.cmp(&b.path));
+        out
+    }
+
+    /// Map a recipe/level pair to bootstrap priority and truncation settings.
+    fn priority_for_recipe_level(recipe: LlmRecipe, level: &str) -> (SectionPriority, bool) {
+        let is_l1 = level.eq_ignore_ascii_case("L1");
+        let is_l3 = level.eq_ignore_ascii_case("L3");
+        match recipe {
+            LlmRecipe::ColdStart => {
+                if is_l1 {
+                    (SectionPriority::Required, false)
+                } else if is_l3 {
+                    (SectionPriority::Optional, true)
+                } else {
+                    (SectionPriority::Important, true)
+                }
+            }
+            LlmRecipe::InSession => (SectionPriority::Optional, true),
+            LlmRecipe::Refactor => (SectionPriority::Important, true),
+            LlmRecipe::None => unreachable!("None recipe is filtered before path resolution"),
+        }
+    }
+
+    /// Legacy root sweep used when `_llm/recipes.toml` is missing or does not
+    /// declare the selected recipe.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "preserves pre-#5406 sweep behavior as a fallback"
+    )]
+    async fn resolve_llm_legacy_sweep(
+        &self,
+        recipe: LlmRecipe,
+        llm_root: &Path,
+        manifest: &LlmManifest,
+        crate_hash_index: &HashMap<String, (String, String)>,
+    ) -> Result<Vec<BootstrapSection>> {
+        let mut sections = Vec::new();
+        let (l1_priority, l1_truncatable) = Self::priority_for_recipe_level(recipe, "L1");
+        let (l3_priority, l3_truncatable) = Self::priority_for_recipe_level(recipe, "L3");
+
+        // --- L1: workspace manifest files at _llm/ root ---
+        if let Ok(mut entries) = tokio::fs::read_dir(llm_root).await {
             while let Ok(Some(entry)) = entries.next_entry().await {
                 let path = entry.path();
                 let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
@@ -1329,12 +1551,6 @@ impl<'a> BootstrapAssembler<'a> {
         }
 
         // --- L3: cross-crate index ---
-        let (l3_priority, l3_truncatable) = match recipe {
-            LlmRecipe::ColdStart | LlmRecipe::InSession => (SectionPriority::Optional, true),
-            LlmRecipe::Refactor => (SectionPriority::Important, true),
-            LlmRecipe::None => return Ok(Vec::new()),
-        };
-
         if let Some(l3_level) = manifest.levels.get("L3") {
             let l3_dir = llm_root.join(&l3_level.path);
             if l3_dir.is_dir()
@@ -1355,13 +1571,8 @@ impl<'a> BootstrapAssembler<'a> {
                         continue;
                     }
 
-                    // Derive the crate name from the L3 filename (strip `.md`).
                     let crate_name = name.trim_end_matches(".md");
 
-                    // Validate source hash when the manifest carries an entry
-                    // for this crate. If the live hash differs from the recorded
-                    // hash, the generated L3 content is stale — skip it and
-                    // warn so operators know a regeneration is needed.
                     if let Some((crate_path, expected_hash)) = crate_hash_index.get(crate_name) {
                         let crate_dir = self.oikos.root().join(crate_path);
                         if let Some(actual_hash) = compute_crate_source_hash(&crate_dir).await
@@ -1370,8 +1581,8 @@ impl<'a> BootstrapAssembler<'a> {
                             warn!(
                                 section = format!("_llm/{}/{name}", l3_level.path),
                                 crate_name,
-                                "skipping stale L3 section: source hash mismatch \
-                                 (regenerate with: uv run scripts/llm-extract-l3.py)"
+                                "stale L3 section skipped: source hash mismatch \
+                                     (regenerate: uv run scripts/llm-extract-l3.py)"
                             );
                             continue;
                         }

@@ -743,3 +743,220 @@ async fn assemble_llm_l3_invisible_unicode_lenient_skips() {
         "clean SOUL.md should still be included"
     );
 }
+
+// NOTE(#5406, #5407): recipe-driven exact-path selection tests.
+
+const MINIMAL_MANIFEST: &str = "version = 1\n\n[levels.L3]\npath = \"L3-api-index\"\n";
+
+#[tokio::test]
+async fn assemble_llm_cold_start_recipe_loads_exact_sections() {
+    let recipes = r#"
+[meta]
+version = 1
+description = "test"
+generated_at = "2026-01-01T00:00:00Z"
+
+[[recipe]]
+name = "cold_start"
+description = "First interaction"
+use_case = "orientation"
+token_budget = 5000
+parameterized = false
+task_keywords = ["cold start"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/L1-workspace.md"
+
+[[recipe.file]]
+level = "L2"
+path = "_llm/L2-crate-summaries"
+"#;
+
+    let (_dir, oikos) = setup_oikos(
+        "test",
+        &[
+            ("SOUL.md", "identity"),
+            ("_llm:manifest.toml", MINIMAL_MANIFEST),
+            ("_llm:recipes.toml", recipes),
+            ("_llm:L1-workspace.md", "workspace overview"),
+            ("_llm:L2-crate-summaries/nous.md", "nous summary"),
+            ("_llm:L2-crate-summaries/pylon.md", "pylon summary"),
+            // NOTE: files outside the cold_start recipe must not load.
+            ("_llm:README.md", "readme"),
+            ("_llm:L3-api-index/nous.md", "nous api"),
+        ],
+    );
+
+    let assembler = BootstrapAssembler::new(&oikos).with_llm_recipe(LlmRecipe::ColdStart);
+    let mut budget = default_budget();
+    let result = assembler
+        .assemble_conditional_with_recipe(
+            "test",
+            &mut budget,
+            Vec::new(),
+            TaskHint::General,
+            LlmRecipe::ColdStart,
+        )
+        .await
+        .expect("assemble should succeed");
+
+    let mut included_llm: Vec<String> = result
+        .sections_included
+        .into_iter()
+        .filter(|s| s.starts_with("_llm/"))
+        .collect();
+    included_llm.sort();
+
+    assert_eq!(
+        included_llm,
+        vec![
+            "_llm/L1-workspace.md",
+            "_llm/L2-crate-summaries/nous.md",
+            "_llm/L2-crate-summaries/pylon.md",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn assemble_llm_in_session_recipe_loads_exact_sections() {
+    let recipes = r#"
+[meta]
+version = 1
+description = "test"
+generated_at = "2026-01-01T00:00:00Z"
+
+[[recipe]]
+name = "in_session"
+description = "General in-session turn"
+use_case = "light context"
+token_budget = 1500
+parameterized = false
+task_keywords = ["in session"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/L1-workspace.md"
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/current_state.toml"
+"#;
+
+    let (_dir, oikos) = setup_oikos(
+        "test",
+        &[
+            ("SOUL.md", "identity"),
+            ("_llm:manifest.toml", MINIMAL_MANIFEST),
+            ("_llm:recipes.toml", recipes),
+            ("_llm:L1-workspace.md", "workspace overview"),
+            ("_llm:current_state.toml", "version = 1"),
+            // NOTE: files outside the in_session recipe must not load.
+            ("_llm:architecture.toml", "architecture"),
+            ("_llm:L3-api-index/nous.md", "nous api"),
+        ],
+    );
+
+    let assembler = BootstrapAssembler::new(&oikos).with_llm_recipe(LlmRecipe::InSession);
+    let mut budget = default_budget();
+    let result = assembler
+        .assemble_conditional_with_recipe(
+            "test",
+            &mut budget,
+            Vec::new(),
+            TaskHint::General,
+            LlmRecipe::InSession,
+        )
+        .await
+        .expect("assemble should succeed");
+
+    let mut included_llm: Vec<String> = result
+        .sections_included
+        .into_iter()
+        .filter(|s| s.starts_with("_llm/"))
+        .collect();
+    included_llm.sort();
+
+    assert_eq!(
+        included_llm,
+        vec!["_llm/L1-workspace.md", "_llm/current_state.toml"]
+    );
+}
+
+#[tokio::test]
+async fn assemble_llm_refactor_recipe_loads_exact_sections() {
+    let recipes = r#"
+[meta]
+version = 1
+description = "test"
+generated_at = "2026-01-01T00:00:00Z"
+
+[[recipe]]
+name = "cross_crate_refactor"
+description = "Cross-crate refactor"
+use_case = "refactor"
+token_budget = 10000
+parameterized = false
+task_keywords = ["cross crate"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/L1-workspace.md"
+
+[[recipe.file]]
+level = "L2"
+path = "_llm/L2-crate-summaries"
+
+[[recipe.file]]
+level = "L3"
+path = "_llm/L3-api-index"
+"#;
+
+    let (_dir, oikos) = setup_oikos(
+        "test",
+        &[
+            ("SOUL.md", "identity"),
+            ("_llm:manifest.toml", MINIMAL_MANIFEST),
+            ("_llm:recipes.toml", recipes),
+            ("_llm:L1-workspace.md", "workspace overview"),
+            ("_llm:L2-crate-summaries/nous.md", "nous summary"),
+            ("_llm:L2-crate-summaries/pylon.md", "pylon summary"),
+            ("_llm:L3-api-index/nous.md", "nous api"),
+            ("_llm:L3-api-index/pylon.md", "pylon api"),
+            // NOTE: files outside the refactor recipe must not load.
+            ("_llm:README.md", "readme"),
+            ("_llm:api.toml", "api"),
+        ],
+    );
+
+    let assembler = BootstrapAssembler::new(&oikos).with_llm_recipe(LlmRecipe::Refactor);
+    let mut budget = default_budget();
+    let result = assembler
+        .assemble_conditional_with_recipe(
+            "test",
+            &mut budget,
+            Vec::new(),
+            TaskHint::Planning,
+            LlmRecipe::Refactor,
+        )
+        .await
+        .expect("assemble should succeed");
+
+    let mut included_llm: Vec<String> = result
+        .sections_included
+        .into_iter()
+        .filter(|s| s.starts_with("_llm/"))
+        .collect();
+    included_llm.sort();
+
+    assert_eq!(
+        included_llm,
+        vec![
+            "_llm/L1-workspace.md",
+            "_llm/L2-crate-summaries/nous.md",
+            "_llm/L2-crate-summaries/pylon.md",
+            "_llm/L3-api-index/nous.md",
+            "_llm/L3-api-index/pylon.md",
+        ]
+    );
+}
