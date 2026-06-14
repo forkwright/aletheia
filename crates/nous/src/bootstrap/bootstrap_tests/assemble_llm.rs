@@ -345,11 +345,19 @@ async fn assemble_llm_malformed_manifest_is_skipped() {
 
 // --- source-hash validation tests ---
 
-/// Helper: compute the SHA-256 hex of a single file's bytes, matching the
+/// Helper: compute the SHA-256 source hash for a fixture crate, matching the
 /// algorithm used by `scripts/llm-extract-l3.py` and
-/// `compute_crate_source_hash` (sorted `.rs` file paths, bytes concatenated).
-fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
+/// `compute_crate_source_hash`: sorted crate-relative POSIX paths, each path's
+/// UTF-8 bytes followed by the file bytes.
+fn fixture_crate_source_hash(files: &[(&str, &[u8])]) -> String {
+    let mut files: Vec<(&str, &[u8])> = files.to_vec();
+    files.sort_by(|a, b| a.0.cmp(b.0));
+    let mut hasher = Sha256::new();
+    for (path, bytes) in files {
+        hasher.update(path.as_bytes());
+        hasher.update(bytes);
+    }
+    let digest = hasher.finalize();
     digest
         .iter()
         .flat_map(|b| {
@@ -366,7 +374,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[tokio::test]
 async fn assemble_llm_stale_hash_skips_section() {
     let source_content = b"pub fn stale_api() {}";
-    let valid_hash = sha256_hex(source_content);
+    let valid_hash = fixture_crate_source_hash(&[("src/lib.rs", source_content)]);
 
     // Use a hash that does not match the actual source.
     let wrong_hash = "0".repeat(64);
@@ -431,7 +439,7 @@ async fn assemble_llm_stale_hash_skips_section() {
 #[tokio::test]
 async fn assemble_llm_valid_hash_injects_section() {
     let source_content = b"pub fn fresh_api() {}";
-    let valid_hash = sha256_hex(source_content);
+    let valid_hash = fixture_crate_source_hash(&[("src/lib.rs", source_content)]);
 
     let manifest = format!(
         "version = 1\n\n[levels.L3]\npath = \"L3-api-index\"\n\n\
@@ -480,6 +488,67 @@ async fn assemble_llm_valid_hash_injects_section() {
             .iter()
             .any(|s| s.contains("nous.md")),
         "L3 section should be injected when source hash matches manifest"
+    );
+}
+
+/// Multi-file crate source hash matches the path+bytes generator contract.
+#[tokio::test]
+async fn compute_crate_source_hash_matches_generator_contract() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let crate_dir = dir.path().join("fixture-crate");
+    let src_dir = crate_dir.join("src");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap test writes crate fixtures to a temp directory"
+    )]
+    fs::write(src_dir.join("lib.rs"), "pub fn a() {}\n").expect("write lib.rs");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap test writes crate fixtures to a temp directory"
+    )]
+    fs::write(src_dir.join("helper.rs"), "pub fn b() {}\n").expect("write helper.rs");
+
+    let expected = fixture_crate_source_hash(&[
+        ("src/helper.rs", b"pub fn b() {}\n"),
+        ("src/lib.rs", b"pub fn a() {}\n"),
+    ]);
+    let actual = compute_crate_source_hash(&crate_dir)
+        .await
+        .expect("compute crate source hash");
+    assert_eq!(
+        actual, expected,
+        "multi-file crate hash must match path+bytes generator contract"
+    );
+}
+
+/// Files under a `target/` directory do not contribute to the source hash.
+#[tokio::test]
+async fn compute_crate_source_hash_excludes_target_dir() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let crate_dir = dir.path().join("fixture-crate");
+    let src_dir = crate_dir.join("src");
+    let target_dir = crate_dir.join("target").join("debug");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&target_dir).expect("create target dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap test writes crate fixtures to a temp directory"
+    )]
+    fs::write(src_dir.join("lib.rs"), "pub fn a() {}\n").expect("write lib.rs");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap test writes crate fixtures to a temp directory"
+    )]
+    fs::write(target_dir.join("build.rs"), "pub fn ignored() {}\n").expect("write target file");
+
+    let expected = fixture_crate_source_hash(&[("src/lib.rs", b"pub fn a() {}\n")]);
+    let actual = compute_crate_source_hash(&crate_dir)
+        .await
+        .expect("compute crate source hash");
+    assert_eq!(
+        actual, expected,
+        "target/ files must be excluded from source hash"
     );
 }
 

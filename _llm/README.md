@@ -75,7 +75,7 @@ Scaffolds a synthetic fixture crate in a temp directory and asserts the extracto
 
 ## manifest.toml
 
-Records generation metadata: schema version, timestamp, generator script, and per-crate entries with source hash and token estimate. Source hash is SHA-256 of all `.rs` files in the crate concatenated in sorted path order - use it to detect staleness without re-parsing.
+Records generation metadata: schema version, timestamp, generator script, and per-crate entries with source hash and token estimate. Source hash is SHA-256 of all `.rs` files in the crate, sorted by crate-relative POSIX path, with each path's UTF-8 bytes prepended to its file bytes - use it to detect staleness without re-parsing.
 
 ## Follow-up phases
 

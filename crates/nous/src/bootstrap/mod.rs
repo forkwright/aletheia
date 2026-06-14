@@ -537,6 +537,18 @@ struct LlmLevel {
         reason = "deserialized for schema completeness; not yet consumed"
     )]
     generator: String,
+    #[serde(default)]
+    #[expect(
+        dead_code,
+        reason = "deserialized for schema completeness; not yet consumed"
+    )]
+    source_hash_algorithm: String,
+    #[serde(default)]
+    #[expect(
+        dead_code,
+        reason = "deserialized for schema completeness; not yet consumed"
+    )]
+    source_hash_version: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -544,7 +556,8 @@ struct LlmManifestCrate {
     name: String,
     /// Path to the crate source directory, relative to the workspace root (oikos root).
     path: String,
-    /// SHA-256 of all `.rs` source files in sorted order; used to detect stale generated context.
+    /// SHA-256 of all `.rs` source files in sorted crate-relative POSIX path order,
+    /// with each path prepended to its file bytes; used to detect stale generated context.
     source_hash: String,
     #[expect(
         dead_code,
@@ -555,10 +568,12 @@ struct LlmManifestCrate {
 
 /// Compute the SHA-256 source hash for a crate directory.
 ///
-/// Reads all `.rs` files under `crate_dir` in sorted path order and feeds their
-/// contents into a single SHA-256 digest, matching the algorithm used by
-/// `scripts/llm-extract-l3.py` when it writes `manifest.toml`. Returns the
-/// lowercase hex string, or `None` when the directory cannot be read.
+/// Walks all `.rs` files under `crate_dir`, excluding any `target/`
+/// directory, sorted by crate-relative POSIX path. For each file the hasher is
+/// updated with the UTF-8 bytes of the relative path followed by the raw file
+/// bytes, matching the algorithm used by `scripts/llm-extract-l3.py` when it
+/// writes `manifest.toml`. Returns the lowercase hex string, or `None` when the
+/// directory cannot be read or contains no `.rs` files.
 ///
 /// WHY: The manifest records this hash as a staleness guard. Comparing the
 /// live hash against the manifest entry lets the bootstrap assembler skip L3
@@ -569,11 +584,23 @@ async fn compute_crate_source_hash(crate_dir: &Path) -> Option<String> {
     if rs_paths.is_empty() {
         return None;
     }
-    rs_paths.sort();
+
+    let mut rs_files: Vec<(String, PathBuf)> = Vec::with_capacity(rs_paths.len());
+    for path in rs_paths {
+        let rel_path = path.strip_prefix(crate_dir).ok()?;
+        let rel_posix = rel_path
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        rs_files.push((rel_posix, path));
+    }
+    rs_files.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut hasher = Sha256::new();
-    for path in &rs_paths {
-        match tokio::fs::read(&path).await {
+    for (rel_posix, path) in &rs_files {
+        hasher.update(rel_posix.as_bytes());
+        match tokio::fs::read(path).await {
             Ok(bytes) => hasher.update(&bytes),
             Err(e) => {
                 warn!(path = %path.display(), error = %e, "failed to read source file for hash check");
@@ -598,6 +625,7 @@ async fn compute_crate_source_hash(crate_dir: &Path) -> Option<String> {
 ///
 /// Uses synchronous directory traversal; intended to be called once per
 /// validation check. Non-readable directories are silently skipped.
+/// `target/` directories are excluded to match `scripts/llm-extract-l3.py`.
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -605,6 +633,9 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
+            if path.file_name().and_then(|name| name.to_str()) == Some("target") {
+                continue;
+            }
             collect_rs_files(&path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
             out.push(path);
