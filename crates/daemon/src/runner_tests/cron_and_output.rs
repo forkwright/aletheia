@@ -120,7 +120,7 @@ async fn in_flight_reported_in_status() {
             // kanon:ignore TESTING/sleep-in-test reason = "simulates an in-flight task; handle is aborted before sleep elapses"
             tokio::time::sleep(Duration::from_mins(1)).await;
             Ok(ExecutionResult {
-                success: true,
+                outcome: TaskOutcome::Success,
                 output: None,
             })
         }

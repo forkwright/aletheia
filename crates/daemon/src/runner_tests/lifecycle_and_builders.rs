@@ -517,12 +517,12 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledgeExecutor 
 #[test]
 fn execution_result_serialization() {
     let result = ExecutionResult {
-        success: true,
+        outcome: TaskOutcome::Success,
         output: Some("hello".to_owned()),
     };
     let json = serde_json::to_string(&result).expect("serialize");
     let back: ExecutionResult = serde_json::from_str(&json).expect("deserialize");
-    assert!(back.success);
+    assert!(back.is_success());
     assert_eq!(back.output.as_deref(), Some("hello"));
 }
 
@@ -720,7 +720,7 @@ async fn hung_task_cancelled_after_2x_timeout() {
             // kanon:ignore TESTING/sleep-in-test reason = "simulates a hung task; the runner cancels the handle before the sleep elapses"
             tokio::time::sleep(Duration::from_mins(1)).await;
             Ok(ExecutionResult {
-                success: true,
+                outcome: TaskOutcome::Success,
                 output: None,
             })
         }
@@ -777,7 +777,7 @@ impl DaemonBridge for CancelCapturingBridge {
     ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
         Box::pin(async {
             Ok(ExecutionResult {
-                success: false,
+                outcome: TaskOutcome::Failed,
                 output: Some("send_prompt not expected".to_owned()),
             })
         })

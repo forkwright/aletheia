@@ -33,7 +33,7 @@ use oikonomos::probe::{
     Probe, ProbeAuditConfig, ProbeAuditSummary, ProbeCategory, ProbeResult, ProbeSet,
     build_probe_audit_prompt,
 };
-use oikonomos::runner::{DaemonOutputMode, ExecutionResult, TaskRunner};
+use oikonomos::runner::{DaemonOutputMode, ExecutionResult, TaskOutcome, TaskRunner};
 use oikonomos::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
 use oikonomos::self_prompt::{SELF_PROMPT_SESSION_KEY, SelfPromptConfig};
 use oikonomos::state::{AllowedTriggers, DaemonConfig, WorkspaceGuard};
@@ -50,7 +50,11 @@ async fn noop_bridge_returns_unsuccessful_with_diagnostic_message() {
         .await
         .expect("NoopBridge must not error");
 
-    assert!(!result.success, "NoopBridge must flag success=false");
+    assert_eq!(
+        result.outcome,
+        TaskOutcome::Skipped,
+        "NoopBridge must classify a missing bridge as a skip"
+    );
     let output = result
         .output
         .expect("NoopBridge must return diagnostic output");
@@ -70,7 +74,7 @@ async fn noop_bridge_is_object_safe_behind_arc_dyn() {
         .send_prompt("test-nous", "sess", "ping")
         .await
         .expect("arc-dyn dispatch succeeds");
-    assert!(!result.success);
+    assert_eq!(result.outcome, TaskOutcome::Skipped);
 }
 
 #[test]

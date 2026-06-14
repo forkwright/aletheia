@@ -31,7 +31,7 @@ impl TestBridge {
     fn ok(output: &str) -> Self {
         Self {
             result: Mutex::new(Ok(ExecutionResult {
-                success: true,
+                outcome: TaskOutcome::Success,
                 output: Some(output.to_owned()),
             })),
             calls: Mutex::new(Vec::new()),
@@ -224,7 +224,7 @@ fn current_facts(
 #[tokio::test]
 async fn execute_command_success_captures_stdout() {
     let result = execute_command("echo hello").await.expect("should succeed");
-    assert!(result.success);
+    assert!(result.is_success());
     let output = result.output.expect("should have output");
     assert!(
         output.contains("hello"),
@@ -274,7 +274,7 @@ async fn execute_action_dispatches_command_variant() {
     )
     .await
     .expect("should succeed");
-    assert!(result.success);
+    assert!(result.is_success());
     assert!(result.output.expect("output").contains("dispatched"));
 }
 
@@ -294,7 +294,7 @@ async fn execute_action_dispatches_builtin_variant() {
     )
     .await
     .expect("should not error");
-    assert!(!result.success);
+    assert!(!result.is_success());
     assert!(
         result
             .output
@@ -346,7 +346,7 @@ async fn routing_store_refresh_builtin_refreshes_attached_store() {
     .await
     .expect("routing refresh should succeed");
 
-    assert!(result.success);
+    assert!(result.is_success());
     let stats = store
         .rolling_stats(
             &aletheia_routing::types::ProviderId::new("provider-a"),
@@ -365,7 +365,7 @@ async fn prosoche_no_bridge_runs_local_check() {
     let result = execute_builtin(&BuiltinTask::Prosoche, "test-nous", None, None, None, None)
         .await
         .expect("should not error");
-    assert!(result.success);
+    assert!(result.is_success());
     assert!(
         result
             .output
@@ -435,7 +435,7 @@ async fn prosoche_no_bridge_uses_context_knowledge_store() {
     .await
     .expect("prosoche should run");
 
-    assert!(result.success);
+    assert!(result.is_success());
     let output = result.output.expect("prosoche output");
     let parsed: crate::prosoche::ProsocheResult =
         serde_json::from_str(&output).expect("prosoche JSON output");
@@ -467,7 +467,7 @@ async fn prosoche_with_bridge_dispatches() {
     // WHY: Prosoche always reports success=true after a successful
     // dispatch, regardless of the bridge's inner success flag, because
     // the dispatch itself is what's being tracked here.
-    assert!(result.success);
+    assert!(result.is_success());
     assert_eq!(result.output.as_deref(), Some("dispatched"));
     assert_eq!(bridge.call_count(), 1);
     let calls = bridge.calls.lock().expect("not poisoned");
@@ -488,7 +488,7 @@ async fn prosoche_bridge_error_returns_failure() {
     )
     .await
     .expect("inner error should be wrapped, not propagated");
-    assert!(!result.success);
+    assert!(!result.is_success());
     assert!(
         result
             .output
@@ -515,7 +515,7 @@ async fn self_audit_no_bridge_runs_prosoche_runner() {
     )
     .await
     .expect("should not error");
-    assert!(result.success);
+    assert!(result.is_success());
     assert!(
         result
             .output
@@ -550,7 +550,7 @@ async fn self_audit_with_bridge_runs_local_runner() {
     )
     .await
     .expect("should not error");
-    assert!(result.success);
+    assert!(result.is_success());
     assert!(
         result
             .output
@@ -574,7 +574,7 @@ async fn probe_audit_no_bridge_returns_unconfigured() {
     )
     .await
     .expect("should not error");
-    assert!(!result.success);
+    assert!(!result.is_success());
     assert!(
         result
             .output
@@ -599,7 +599,7 @@ async fn self_prompt_returns_runner_only_message() {
     )
     .await
     .expect("should not error");
-    assert!(!result.success);
+    assert!(!result.is_success());
     assert!(
         result
             .output
@@ -619,6 +619,7 @@ async fn retention_with_executor_returns_summary() {
             messages_cleaned: 12,
             blackboard_entries_cleaned: 2,
             bytes_freed: 4096,
+            cap_sessions_cleaned: 0,
         },
     });
     let result = execute_builtin(
@@ -631,7 +632,7 @@ async fn retention_with_executor_returns_summary() {
     )
     .await
     .expect("should succeed");
-    assert!(result.success);
+    assert!(result.is_success());
     let output = result.output.expect("output");
     assert!(output.contains("3 sessions"));
     assert!(output.contains("12 messages"));
@@ -651,7 +652,7 @@ async fn knowledge_task_no_executor_returns_not_implemented() {
     )
     .await
     .expect("should not error");
-    assert!(!result.success);
+    assert!(!result.is_success());
     assert!(
         result
             .output
@@ -675,7 +676,7 @@ async fn knowledge_task_with_executor_returns_report() {
     )
     .await
     .expect("should succeed");
-    assert!(result.success);
+    assert!(result.is_success());
     let output = result.output.expect("output");
     assert!(
         output.contains("7 processed"),
@@ -698,7 +699,7 @@ async fn serendipity_discovery_with_executor_returns_report() {
     )
     .await
     .expect("should succeed");
-    assert!(result.success);
+    assert!(result.is_success());
     let output = result.output.expect("output");
     assert!(
         output.contains("0 processed"),
@@ -745,7 +746,7 @@ async fn ops_fact_extraction_persists_all_extracted_facts_to_real_fjall() {
     .await
     .expect("ops fact extraction should persist");
 
-    assert!(result.success);
+    assert!(result.is_success());
     assert_eq!(
         result.output.as_deref(),
         Some("3 operational facts extracted, 3 inserted")
@@ -792,7 +793,7 @@ async fn lesson_extraction_persists_training_facts_to_real_fjall() {
     let result = execute_lesson_extraction_from_dir("alice", &training, executor.as_ref())
         .expect("lesson extraction should persist");
 
-    assert!(result.success);
+    assert!(result.is_success());
     assert!(
         result
             .output
@@ -859,7 +860,7 @@ async fn self_audit_default_instinct_check_is_not_stub() {
         confidence_claims: 0,
     });
 
-    let report = runner.run_audit(&state).await;
+    let (report, _persist) = runner.run_audit(&state).await;
 
     assert!(
         report

@@ -4,7 +4,7 @@ use tracing::Instrument;
 
 use crate::schedule::TaskStatus;
 
-use super::{DaemonOutputMode, ExecutionResult, TaskRunner, truncate_output};
+use super::{DaemonOutputMode, ExecutionResult, TaskOutcome, TaskRunner, truncate_output};
 
 impl TaskRunner {
     /// Get status of all registered tasks.
@@ -13,6 +13,14 @@ impl TaskRunner {
     ///
     /// O(t) where t is the number of registered tasks.
     pub fn status(&self) -> Vec<TaskStatus> {
+        // WHY(#5131): when a state store is attached the displayed numbers were
+        // restored from disk, so label them "persisted" to disambiguate from a
+        // fresh in-memory runner that has never executed a task.
+        let data_source = if self.state_store.is_some() {
+            "persisted"
+        } else {
+            "live"
+        };
         self.tasks
             .iter()
             .map(|t| TaskStatus {
@@ -25,6 +33,8 @@ impl TaskRunner {
                 consecutive_failures: t.consecutive_failures,
                 in_flight: self.in_flight.contains_key(&t.def.id),
                 last_error: t.last_error.clone(),
+                data_source: data_source.to_owned(),
+                as_of: t.last_run.map(|ts| ts.to_string()),
             })
             .collect()
     }
@@ -81,7 +91,21 @@ impl TaskRunner {
                     Ok(Ok(result)) => {
                         self.log_result(&task_id, &result);
                         self.maybe_queue_self_prompt(&task_id, &result);
-                        self.record_task_completion(&task_id, duration);
+                        match result.outcome {
+                            TaskOutcome::Success => {
+                                self.record_task_completion(&task_id, duration);
+                            }
+                            TaskOutcome::Failed => {
+                                let reason = result
+                                    .output
+                                    .as_deref()
+                                    .unwrap_or("task reported failure");
+                                self.record_task_failure(&task_id, reason);
+                            }
+                            TaskOutcome::Skipped => {
+                                self.record_task_skip(&task_id);
+                            }
+                        }
                     }
                     Ok(Err(e)) => {
                         tracing::warn!(
@@ -183,7 +207,7 @@ impl TaskRunner {
                 )
                 .await;
                 match result {
-                    Ok(r) if r.success => {
+                    Ok(r) if r.is_success() => {
                         tracing::info!(
                             nous_id = %nous_id,
                             source_task = %task_id_owned,

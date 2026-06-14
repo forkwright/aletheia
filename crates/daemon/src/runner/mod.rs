@@ -96,13 +96,65 @@ struct RegisteredTask {
     last_error: Option<String>,
 }
 
+/// Terminal outcome classification for a single task action.
+///
+/// WHY(#5129): a bare `success: bool` conflates "ran and succeeded" with
+/// "could not run because a dependency was not configured". A soft-skip must
+/// not be recorded as a success (it inflates run counts and masks
+/// misconfiguration) nor as a failure (it would trip the backoff/auto-disable
+/// machinery for a benign no-op).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TaskOutcome {
+    /// The task ran and completed without error.
+    Success,
+    /// The task ran and failed.
+    Failed,
+    /// The task did not run because a required dependency was absent.
+    Skipped,
+}
+
 /// Outcome of executing a single task action.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
-    /// Whether the task completed without error.
-    pub success: bool,
+    /// Terminal outcome classification for the task.
+    pub outcome: TaskOutcome,
     /// Task output or diagnostic message.
     pub output: Option<String>,
+}
+
+impl ExecutionResult {
+    /// Construct a successful result.
+    #[must_use]
+    pub fn success(output: Option<String>) -> Self {
+        Self {
+            outcome: TaskOutcome::Success,
+            output,
+        }
+    }
+
+    /// Construct a failed result.
+    #[must_use]
+    pub fn failed(output: Option<String>) -> Self {
+        Self {
+            outcome: TaskOutcome::Failed,
+            output,
+        }
+    }
+
+    /// Construct a soft-skip result (dependency not configured).
+    #[must_use]
+    pub fn skipped(output: Option<String>) -> Self {
+        Self {
+            outcome: TaskOutcome::Skipped,
+            output,
+        }
+    }
+
+    /// Whether the task ran and completed successfully.
+    #[must_use]
+    pub fn is_success(&self) -> bool {
+        self.outcome == TaskOutcome::Success
+    }
 }
 
 impl TaskRunner {
