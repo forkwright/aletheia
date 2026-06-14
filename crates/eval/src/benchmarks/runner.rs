@@ -28,8 +28,10 @@ use crate::error::Result;
 use crate::provenance::EvalProvenance;
 
 use super::{
-    BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, QuestionStatus,
-    RetrievalScoring, RetrievalScoringMode, RetrievedFact, judge, metrics, score_answer,
+    BenchmarkIngestionLog, BenchmarkIngestionMode, BenchmarkQuestion, BenchmarkReport,
+    BenchmarkTurn, MemoryBenchmark, QuestionResult, QuestionStatus, RetrievalScoring,
+    RetrievalScoringMode, RetrievedFact, TurnIngestionOutcome, TurnIngestionRecord, judge, metrics,
+    score_answer,
 };
 
 /// Configuration for a benchmark run.
@@ -83,12 +85,14 @@ impl Default for BenchmarkRunnerConfig {
 pub struct BenchmarkRunner {
     client: EvalClient,
     config: BenchmarkRunnerConfig,
+    ingestion_mode: BenchmarkIngestionMode,
 }
 
 struct QuestionExecution {
     answer: String,
     status: QuestionStatus,
     error_message: Option<String>,
+    ingestion_log: Option<BenchmarkIngestionLog>,
 }
 
 type RetrievalMetrics = (
@@ -124,7 +128,23 @@ impl BenchmarkRunner {
     /// Create a new runner with the given client and configuration.
     #[must_use]
     pub fn new(client: EvalClient, config: BenchmarkRunnerConfig) -> Self {
-        Self { client, config }
+        Self {
+            client,
+            config,
+            ingestion_mode: BenchmarkIngestionMode::UserOnly,
+        }
+    }
+
+    /// Set the ingestion mode for this runner.
+    ///
+    /// The default is [`BenchmarkIngestionMode::UserOnly`]. Use
+    /// [`BenchmarkIngestionMode::RolePreserving`] when the benchmark contains
+    /// assistant/system/tool evidence that must be recalled (e.g. LongMemEval
+    /// `single-session-assistant` questions).
+    #[must_use]
+    pub fn with_ingestion_mode(mut self, mode: BenchmarkIngestionMode) -> Self {
+        self.ingestion_mode = mode;
+        self
     }
 
     /// Run a benchmark and return the aggregate report.
@@ -221,6 +241,7 @@ impl BenchmarkRunner {
             retrieval_scoring,
             recall_at_k,
             ndcg_at_k,
+            ingestion_log: execution.ingestion_log,
         }
     }
 
@@ -235,15 +256,17 @@ impl BenchmarkRunner {
         )
         .await
         {
-            Ok(Ok(answer)) if answer.trim().is_empty() => QuestionExecution {
+            Ok(Ok((answer, log))) if answer.trim().is_empty() => QuestionExecution {
                 answer,
                 status: QuestionStatus::NoAnswer,
                 error_message: Some("empty answer".to_owned()),
+                ingestion_log: Some(log),
             },
-            Ok(Ok(answer)) => QuestionExecution {
+            Ok(Ok((answer, log))) => QuestionExecution {
                 answer,
                 status: QuestionStatus::Scored,
                 error_message: None,
+                ingestion_log: Some(log),
             },
             Ok(Err(e)) => {
                 warn!(
@@ -255,6 +278,7 @@ impl BenchmarkRunner {
                     answer: String::new(),
                     status: QuestionStatus::Error,
                     error_message: Some(e.to_string()),
+                    ingestion_log: None,
                 }
             }
             Err(_) => {
@@ -271,6 +295,7 @@ impl BenchmarkRunner {
                     answer: String::new(),
                     status: QuestionStatus::Timeout,
                     error_message: Some(e.to_string()),
+                    ingestion_log: None,
                 }
             }
         }
@@ -379,12 +404,13 @@ impl BenchmarkRunner {
         }
     }
 
-    /// Ingest haystack sessions, ask the question, return the assistant's answer.
+    /// Ingest haystack sessions, ask the question, return the assistant's answer
+    /// and a per-turn ingestion log.
     async fn ingest_and_ask(
         &self,
         question: &BenchmarkQuestion,
         namespace: &QuestionNamespace,
-    ) -> Result<String> {
+    ) -> Result<(String, BenchmarkIngestionLog)> {
         let session = self
             .client
             .create_session(&namespace.effective_nous_id, &namespace.session_key)
@@ -405,21 +431,72 @@ impl BenchmarkRunner {
             );
         }
 
-        // WHY: we only replay user turns — the assistant's historical responses
-        // would contaminate the answer signal. The memory pipeline sees the
-        // user facts and extracts them.
+        let mut log = BenchmarkIngestionLog {
+            mode: self.ingestion_mode,
+            ..BenchmarkIngestionLog::default()
+        };
+
+        // WHY: User-only mode replays user turns as plain user messages. In
+        // role-preserving mode every non-empty turn is sent as a user message
+        // with a structured provenance header so original transcript roles are
+        // preserved. Assistant/system/tool turns are tagged as transcript
+        // evidence and are not treated as fresh assistant answers.
         for haystack in &question.sessions {
-            for (role, content) in haystack {
-                if !role_is_user(role) {
+            for turn in haystack {
+                if turn.content.trim().is_empty() {
+                    log.turns.push(TurnIngestionRecord {
+                        role: turn.role.clone(),
+                        outcome: TurnIngestionOutcome::Excluded,
+                        error_message: Some("empty content".to_owned()),
+                        provenance: turn.provenance.clone(),
+                    });
+                    log.excluded_count += 1;
                     continue;
                 }
-                if content.trim().is_empty() {
+
+                let is_user = role_is_user(&turn.role);
+                if !is_user && self.ingestion_mode == BenchmarkIngestionMode::UserOnly {
+                    log.turns.push(TurnIngestionRecord {
+                        role: turn.role.clone(),
+                        outcome: TurnIngestionOutcome::Excluded,
+                        error_message: None,
+                        provenance: turn.provenance.clone(),
+                    });
+                    log.excluded_count += 1;
                     continue;
                 }
-                // WHY: Per-turn errors are best-effort ignored — the assistant may
-                // refuse or hit rate limits; the final question must still be asked.
-                // kanon:ignore RUST/no-silent-result-swallow — per-turn ingestion errors are intentionally best-effort
-                let _ = self.client.send_message(&session_id, content).await;
+
+                let message = match self.ingestion_mode {
+                    BenchmarkIngestionMode::UserOnly => turn.content.clone(),
+                    BenchmarkIngestionMode::RolePreserving => format_role_preserving_turn(turn),
+                };
+
+                match self.client.send_message(&session_id, &message).await {
+                    Ok(_) => {
+                        log.turns.push(TurnIngestionRecord {
+                            role: turn.role.clone(),
+                            outcome: TurnIngestionOutcome::Ingested,
+                            error_message: None,
+                            provenance: turn.provenance.clone(),
+                        });
+                        log.ingested_count += 1;
+                    }
+                    Err(e) => {
+                        warn!(
+                            id = %question.id,
+                            role = %turn.role,
+                            error = %e,
+                            "benchmark turn ingestion failed; continuing with remaining turns"
+                        );
+                        log.turns.push(TurnIngestionRecord {
+                            role: turn.role.clone(),
+                            outcome: TurnIngestionOutcome::Error,
+                            error_message: Some(e.to_string()),
+                            provenance: turn.provenance.clone(),
+                        });
+                        log.error_count += 1;
+                    }
+                }
             }
         }
 
@@ -441,15 +518,35 @@ impl BenchmarkRunner {
             );
         }
 
-        Ok(answer)
+        Ok((answer, log))
     }
+}
+
+/// Format a benchmark turn for role-preserving ingestion.
+///
+/// The content is wrapped in a structured provenance header so the original
+/// transcript role, speaker, turn id, timestamp, and dataset provenance are
+/// retained. The turn is sent as a user message, so historical
+/// assistant/system/tool content is not mistaken for a fresh assistant answer.
+fn format_role_preserving_turn(turn: &BenchmarkTurn) -> String {
+    let speaker = turn.speaker.as_deref().unwrap_or("");
+    let turn_id = turn.turn_id.as_deref().unwrap_or("");
+    let timestamp = turn.timestamp.as_deref().unwrap_or("");
+    let provenance = turn.provenance.as_deref().unwrap_or("");
+    format!(
+        "[transcript role={} speaker={} turn_id={} timestamp={} provenance={}]\n{}",
+        turn.role, speaker, turn_id, timestamp, provenance, turn.content
+    )
 }
 
 /// Return true if the role label corresponds to a user-authored turn.
 ///
 /// Supports both aletheia-native roles (`user`) and benchmark-native speaker
 /// labels (e.g. `Alice`, `Bob`). Assistant roles (`assistant`, `Assistant`,
-/// `system`) are treated as non-user.
+/// `system`, `tool`, `tool_result`) are treated as non-user.
+///
+/// Non-user turns are skipped in user-only ingestion mode and sent with a
+/// structured provenance header in role-preserving mode.
 fn role_is_user(role: &str) -> bool {
     let lower = role.to_lowercase();
     lower != "assistant" && lower != "system" && lower != "tool_result" && lower != "tool"
@@ -621,6 +718,45 @@ mod tests {
         assert!(role_is_user("Alice"));
         assert!(role_is_user("Bob"));
         assert!(role_is_user("Charlie"));
+    }
+
+    #[test]
+    fn role_preserving_turn_includes_provenance_header() {
+        let turn = BenchmarkTurn {
+            role: "assistant".to_owned(),
+            content: "Your favorite color is blue.".to_owned(),
+            speaker: None,
+            turn_id: Some("s0:t1".to_owned()),
+            timestamp: Some("2024-01-01T00:00:00Z".to_owned()),
+            provenance: Some("LongMemEval:q1:session_0:turn_1".to_owned()),
+        };
+
+        let formatted = format_role_preserving_turn(&turn);
+
+        assert!(formatted.starts_with("[transcript "));
+        assert!(formatted.contains("role=assistant"));
+        assert!(formatted.contains("turn_id=s0:t1"));
+        assert!(formatted.contains("provenance=LongMemEval:q1:session_0:turn_1"));
+        assert!(formatted.ends_with("Your favorite color is blue."));
+    }
+
+    #[test]
+    fn role_preserving_turn_omits_empty_optional_fields() {
+        let turn = BenchmarkTurn {
+            role: "user".to_owned(),
+            content: "Hello.".to_owned(),
+            speaker: None,
+            turn_id: None,
+            timestamp: None,
+            provenance: None,
+        };
+
+        let formatted = format_role_preserving_turn(&turn);
+
+        assert_eq!(
+            formatted,
+            "[transcript role=user speaker= turn_id= timestamp= provenance=]\nHello."
+        );
     }
 
     #[test]

@@ -36,7 +36,7 @@ use serde::Deserialize;
 use super::validation::{
     BenchmarkValidationOptions, BenchmarkValidationReport, clean_refs, deserialize_string_list,
 };
-use super::{BenchmarkQuestion, MemoryBenchmark};
+use super::{BenchmarkQuestion, BenchmarkTurn, MemoryBenchmark};
 
 const DATASET_NAME: &str = "LongMemEval";
 const VALID_CATEGORIES: &[&str] = &[
@@ -147,13 +147,29 @@ impl MemoryBenchmark for LongMemEvalDataset {
 
     fn questions(&self) -> Box<dyn Iterator<Item = BenchmarkQuestion> + '_> {
         Box::new(self.items.iter().map(|item| {
+            let question_id = item.question_id.clone();
             let sessions = item
                 .haystack_sessions
                 .iter()
-                .map(|session| {
+                .enumerate()
+                .map(|(session_index, session)| {
                     session
                         .iter()
-                        .map(|turn| (turn.role.clone(), turn.content.clone()))
+                        .enumerate()
+                        .map(|(turn_index, turn)| {
+                            let turn_id = format!("s{session_index}:t{turn_index}");
+                            let provenance = format!(
+                                "LongMemEval:{question_id}:session_{session_index}:turn_{turn_index}"
+                            );
+                            BenchmarkTurn {
+                                role: turn.role.clone(),
+                                content: turn.content.clone(),
+                                speaker: None,
+                                turn_id: Some(turn_id),
+                                timestamp: None,
+                                provenance: Some(provenance),
+                            }
+                        })
                         .collect()
                 })
                 .collect();
@@ -404,8 +420,13 @@ mod tests {
         assert_eq!(q1.expected_answers, vec!["blue"]);
         assert_eq!(q1.sessions.len(), 1);
         assert_eq!(q1.sessions[0].len(), 2);
-        assert_eq!(q1.sessions[0][0].0, "user");
-        assert_eq!(q1.sessions[0][0].1, "My favorite color is blue");
+        assert_eq!(q1.sessions[0][0].role, "user");
+        assert_eq!(q1.sessions[0][0].content, "My favorite color is blue");
+        assert_eq!(q1.sessions[0][0].speaker, None);
+        assert_eq!(
+            q1.sessions[0][0].provenance,
+            Some("LongMemEval:q1:session_0:turn_0".to_owned())
+        );
     }
 
     #[test]

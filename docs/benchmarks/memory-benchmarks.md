@@ -38,8 +38,15 @@ BenchmarkRunner (crates/eval/src/benchmarks/runner.rs)
    benchmark run id, and the question id.
 2. `POST /api/v1/sessions` - create a fresh session keyed to the question under
    that namespace.
-3. Replay every **user turn** from the haystack sessions as messages
-   (assistant turns are skipped to avoid contaminating the answer signal)
+3. Ingest the haystack sessions using the configured ingestion mode:
+   * **User-only mode** (default): replay every **user turn** as a plain user
+     message. Assistant/system/tool turns are skipped to avoid contaminating
+     the answer signal.
+   * **Role-preserving mode**: replay every non-empty turn as a user message
+     with a structured provenance header (`role`, `speaker`, `turn_id`,
+     `timestamp`, `provenance`). Historical assistant/system/tool content is
+     tagged as transcript evidence and is not treated as a fresh assistant
+     answer.
 4. `POST /api/v1/sessions/{id}/messages` - ask the benchmark question
 5. Collect the SSE stream; extract concatenated `text_delta` events
 6. Score the answer with `score_answer(actual, expected_answers)`
@@ -51,18 +58,20 @@ BenchmarkRunner (crates/eval/src/benchmarks/runner.rs)
 Per-question errors are logged and scored as zero - a network hiccup does
 not abort the entire run. The runner produces a `BenchmarkReport` with
 `exact_match_rate()`, `mean_f1()`, and a `per_category()` breakdown.
+Each `QuestionResult` includes an `ingestion_log` that records, per turn,
+whether it was ingested, excluded, or errored, plus aggregate counts.
 
 ### Test coverage (already passing)
 
-The runner has 188 passing tests (`cargo test -p dokimion`):
+The runner has 193 passing tests (`cargo test -p dokimion`):
 
 | Scope | Count | Notes |
 |---|---|---|
 | Dataset parsers (LongMemEval + LoCoMo) | 14 | JSON format, alternates, multi-session, error cases |
 | Scoring (EM, F1, contains) | 10 | exact, normalized, partial, substring, duplicates |
 | Report aggregation | 3 | empty, EM+F1 math, per-category grouping |
-| Runner unit tests | 7 | role filtering, config defaults, max_questions |
-| Runner integration tests (wiremock) | 6 | perfect answer, wrong answer, empty dataset, metadata, category, max_questions |
+| Runner unit tests | 9 | role filtering, config defaults, max_questions, role-preserving provenance header |
+| Runner integration tests (wiremock) | 9 | perfect answer, wrong answer, empty dataset, metadata, category, max_questions, role-preserving ingestion, user-only exclusion, empty-turn handling |
 
 ---
 
@@ -208,6 +217,26 @@ Configure `BenchmarkRunnerConfig` for production runs:
 | `close_between_questions` | false | **Continuous-memory mode.** Reuses the configured `nous_id` for every question. Label results as `continuous-memory` experiments, not official isolated scores. |
 | `judge` | `None` | Set to an `LlmJudgeConfig` for LLM-as-judge scoring |
 | `retrieval_k` | `None` | Set to `Some(k)` to compute Recall@k / NDCG@k from the knowledge store |
+
+### Ingestion modes and parity
+
+The runner supports two ingestion modes, selectable via
+`BenchmarkRunner::with_ingestion_mode`:
+
+| Mode | Behavior | Use when |
+|---|---|---|
+| `UserOnly` (default) | User turns are sent as plain user messages; assistant/system/tool turns are excluded. | Backward-compatible runs; datasets where all evidence is user-authored. |
+| `RolePreserving` | Every non-empty turn is sent as a user message with a provenance header preserving the original role, speaker, turn id, timestamp, and dataset provenance. | LongMemEval `single-session-assistant` or any dataset where assistant/system/tool turns contain required evidence. |
+
+The modes are reported separately: each `QuestionResult` carries an
+`ingestion_log` with the mode, per-turn outcome (`Ingested`/`Excluded`/`Error`),
+and aggregate counts. This lets downstream analysis compare parity between
+user-only and role-preserving runs without rerunning the dataset.
+
+Role-preserving mode does **not** ask the live model to regenerate historical
+assistant content. Assistant/system/tool turns are wrapped in a structured
+header so the memory pipeline can extract and recall them as transcript
+evidence, not as new assistant answers.
 
 ### Memory isolation and the EvalClient API gap
 

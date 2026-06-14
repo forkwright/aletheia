@@ -8,7 +8,8 @@
 
 use dokimion::benchmarks::longmemeval::LongMemEvalDataset;
 use dokimion::benchmarks::{
-    BenchmarkRunner, BenchmarkRunnerConfig, EvalClient, RetrievalScoringMode,
+    BenchmarkIngestionMode, BenchmarkRunner, BenchmarkRunnerConfig, EvalClient,
+    RetrievalScoringMode, TurnIngestionOutcome,
 };
 use wiremock::matchers::{method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -104,6 +105,50 @@ async fn setup_slow_mock_server(answer_text: &str, delay: std::time::Duration) -
                 .insert_header("content-type", "text/event-stream")
                 .set_body_string(sse_response(answer_text)),
         )
+        .mount(&server)
+        .await;
+
+    Mock::given(method("DELETE"))
+        .and(path_regex(r"^/api/v1/sessions/[^/]+$"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    server
+}
+
+/// Register mock endpoints and assert the messages endpoint receives exactly
+/// `expected_message_calls` requests.
+async fn setup_mock_server_with_expected_calls(
+    answer_text: &str,
+    expected_message_calls: u64,
+) -> MockServer {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/sessions"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "id": "sess_benchmark_expected",
+            "nous_id": "benchmark",
+            "session_key": "bench-key",
+            "status": "active",
+            "model": null,
+            "message_count": 0,
+            "token_count_estimate": 0,
+            "created_at": "2026-04-10T00:00:00Z",
+            "updated_at": "2026-04-10T00:00:00Z"
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/api/v1/sessions/[^/]+/messages$"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse_response(answer_text)),
+        )
+        .expect(expected_message_calls)
         .mount(&server)
         .await;
 
@@ -319,5 +364,118 @@ async fn runner_scores_retrieval_against_evidence_ids() -> TestResult {
     assert_eq!(retrieved.id.as_deref(), Some("fact-blue"));
     assert!((retrieved.score - 0.81).abs() < f64::EPSILON);
     assert!(!retrieved.content_sha256.is_empty());
+    Ok(())
+}
+
+const ASSISTANT_ONLY_DATASET: &str = r#"[
+    {
+        "question_id": "q1",
+        "question_type": "single-session-assistant",
+        "question": "What did the assistant say my favorite color was?",
+        "answer": "blue",
+        "haystack_sessions": [
+            [
+                {"role": "assistant", "content": "Your favorite color is blue"}
+            ]
+        ]
+    }
+]"#;
+
+#[tokio::test]
+async fn runner_role_preserving_ingests_assistant_turns() -> TestResult {
+    init_crypto();
+    // One haystack turn + one question = two messages.
+    let server = setup_mock_server_with_expected_calls("blue", 2).await;
+    let client = EvalClient::new(server.uri(), None);
+    let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default())
+        .with_ingestion_mode(BenchmarkIngestionMode::RolePreserving);
+
+    let dataset = LongMemEvalDataset::from_bytes(ASSISTANT_ONLY_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
+
+    let question = &report.questions[0];
+    let log = question
+        .ingestion_log
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("missing ingestion log"))?;
+    assert_eq!(log.mode, BenchmarkIngestionMode::RolePreserving);
+    assert_eq!(log.ingested_count, 1);
+    assert_eq!(log.excluded_count, 0);
+    assert_eq!(log.error_count, 0);
+    assert_eq!(log.turns.len(), 1);
+    assert_eq!(log.turns[0].role, "assistant");
+    assert_eq!(log.turns[0].outcome, TurnIngestionOutcome::Ingested);
+    assert!(
+        log.turns[0]
+            .provenance
+            .as_deref()
+            .is_some_and(|p| p.contains("LongMemEval:q1")),
+        "provenance should include dataset and question id"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn runner_user_only_excludes_assistant_turns() -> TestResult {
+    init_crypto();
+    // No haystack user turns; only the final question is sent.
+    let server = setup_mock_server_with_expected_calls("blue", 1).await;
+    let client = EvalClient::new(server.uri(), None);
+    let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default());
+
+    let dataset = LongMemEvalDataset::from_bytes(ASSISTANT_ONLY_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
+
+    let question = &report.questions[0];
+    let log = question
+        .ingestion_log
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("missing ingestion log"))?;
+    assert_eq!(log.mode, BenchmarkIngestionMode::UserOnly);
+    assert_eq!(log.ingested_count, 0);
+    assert_eq!(log.excluded_count, 1);
+    assert_eq!(log.error_count, 0);
+    assert_eq!(log.turns.len(), 1);
+    assert_eq!(log.turns[0].role, "assistant");
+    assert_eq!(log.turns[0].outcome, TurnIngestionOutcome::Excluded);
+    Ok(())
+}
+
+#[tokio::test]
+async fn runner_role_preserving_records_empty_turns_as_excluded() -> TestResult {
+    init_crypto();
+    let dataset_json = r#"[
+        {
+            "question_id": "q1",
+            "question_type": "single-session-user",
+            "question": "What color?",
+            "answer": "blue",
+            "haystack_sessions": [
+                [
+                    {"role": "user", "content": "My favorite color is blue"},
+                    {"role": "user", "content": "   "}
+                ]
+            ]
+        }
+    ]"#;
+    // One non-empty user turn + one question; empty turn is skipped.
+    let server = setup_mock_server_with_expected_calls("blue", 2).await;
+    let client = EvalClient::new(server.uri(), None);
+    let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default())
+        .with_ingestion_mode(BenchmarkIngestionMode::RolePreserving);
+
+    let dataset = LongMemEvalDataset::from_bytes(dataset_json.as_bytes())?;
+    let report = runner.run(&dataset).await?;
+
+    let log = report.questions[0]
+        .ingestion_log
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("missing ingestion log"))?;
+    assert_eq!(log.ingested_count, 1);
+    assert_eq!(log.excluded_count, 1);
+    assert_eq!(log.error_count, 0);
+    assert_eq!(log.turns.len(), 2);
+    assert_eq!(log.turns[1].outcome, TurnIngestionOutcome::Excluded);
+    assert_eq!(log.turns[1].error_message.as_deref(), Some("empty content"));
     Ok(())
 }

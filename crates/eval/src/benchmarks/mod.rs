@@ -65,6 +65,30 @@ pub use self::validation::{
     BenchmarkValidationIssue, BenchmarkValidationOptions, BenchmarkValidationReport,
 };
 
+/// A single turn in a benchmark session, preserving original transcript
+/// role/speaker provenance.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkTurn {
+    /// Original role label from the dataset (e.g. `user`, `assistant`,
+    /// `system`, or a LoCoMo speaker label).
+    pub role: String,
+    /// Turn content text.
+    pub content: String,
+    /// Original speaker label, when the dataset uses speaker names instead
+    /// of roles (e.g. LoCoMo `Alice`, `Bob`).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub speaker: Option<String>,
+    /// Dataset-provided turn identifier, if any.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub turn_id: Option<String>,
+    /// ISO-8601 timestamp from the dataset, if any.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub timestamp: Option<String>,
+    /// Dataset provenance tag (e.g. `LongMemEval:q1:session_0:turn_1`).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub provenance: Option<String>,
+}
+
 /// A single question/answer pair backed by prior conversation context.
 #[derive(Debug, Clone)]
 pub struct BenchmarkQuestion {
@@ -73,8 +97,9 @@ pub struct BenchmarkQuestion {
     pub id: String,
     /// The conversations (sessions) to ingest before asking this question.
     ///
-    /// Each session is a list of turns; each turn is (role, content).
-    pub sessions: Vec<Vec<(String, String)>>,
+    /// Each session is a list of turns; each turn preserves the original
+    /// role, content, speaker, and dataset provenance.
+    pub sessions: Vec<Vec<BenchmarkTurn>>,
     /// The question text to ask after ingestion.
     pub question: String,
     /// The ground-truth answer(s). Multiple acceptable answers may be listed.
@@ -179,6 +204,66 @@ impl QuestionStatus {
     }
 }
 
+/// Ingestion strategy for benchmark haystack sessions.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum BenchmarkIngestionMode {
+    /// Replay only user-authored turns as user messages. Assistant/system/tool
+    /// turns are excluded from ingestion.
+    #[default]
+    UserOnly,
+    /// Preserve original transcript roles: every non-empty turn is sent as a
+    /// user message with a structured provenance header. Historical
+    /// assistant/system/tool turns are tagged as transcript evidence so they
+    /// can be recalled without being treated as fresh assistant answers.
+    RolePreserving,
+}
+
+/// Outcome of ingesting a single benchmark turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum TurnIngestionOutcome {
+    /// The turn was successfully ingested.
+    Ingested,
+    /// The turn was intentionally excluded (e.g. empty content or non-user
+    /// turn in user-only mode).
+    Excluded,
+    /// The turn failed during ingestion.
+    Error,
+}
+
+/// Per-turn ingestion record captured in a benchmark result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TurnIngestionRecord {
+    /// Original role label for this turn.
+    pub role: String,
+    /// Whether the turn was ingested, excluded, or errored.
+    pub outcome: TurnIngestionOutcome,
+    /// Per-turn error message when outcome is `Error`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub error_message: Option<String>,
+    /// Dataset provenance tag for this turn.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub provenance: Option<String>,
+}
+
+/// Per-question ingestion log capturing how haystack turns were handled.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BenchmarkIngestionLog {
+    /// Ingestion mode used for this question.
+    pub mode: BenchmarkIngestionMode,
+    /// Per-turn ingestion records in haystack order.
+    pub turns: Vec<TurnIngestionRecord>,
+    /// Count of turns ingested successfully.
+    pub ingested_count: usize,
+    /// Count of turns excluded by role/content filters.
+    pub excluded_count: usize,
+    /// Count of turns that failed during ingestion.
+    pub error_count: usize,
+}
+
 /// Result of scoring a single benchmark question.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuestionResult {
@@ -217,6 +302,10 @@ pub struct QuestionResult {
     /// Optional retrieval metric: NDCG@k.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ndcg_at_k: Option<f64>,
+    /// Ingestion log for this question, recording which turns were ingested,
+    /// excluded, or errored and the mode that was used.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ingestion_log: Option<BenchmarkIngestionLog>,
 }
 
 /// One retrieved fact serialized with retrieval metric provenance.
@@ -707,6 +796,7 @@ mod tests {
             retrieval_scoring: None,
             recall_at_k: None,
             ndcg_at_k: None,
+            ingestion_log: None,
         }
     }
 

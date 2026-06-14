@@ -44,7 +44,7 @@ use serde::Deserialize;
 use super::validation::{
     BenchmarkValidationOptions, BenchmarkValidationReport, clean_refs, deserialize_string_list,
 };
-use super::{BenchmarkQuestion, MemoryBenchmark};
+use super::{BenchmarkQuestion, BenchmarkTurn, MemoryBenchmark};
 
 const DATASET_NAME: &str = "LoCoMo";
 const VALID_CATEGORIES: &[&str] = &[
@@ -159,15 +159,30 @@ impl MemoryBenchmark for LocomoDataset {
     fn questions(&self) -> Box<dyn Iterator<Item = BenchmarkQuestion> + '_> {
         Box::new(self.conversations.iter().flat_map(|conv| {
             // Build sessions from the BTreeMap (sorted by session key for
-            // deterministic ordering). Each session is a list of (speaker, text)
-            // turns mapped into (role, content) the harness expects.
-            let sessions: Vec<Vec<(String, String)>> = conv
+            // deterministic ordering). Each turn preserves the original speaker
+            // label as both role and speaker for downstream role filtering.
+            let sample_id = conv.sample_id.clone();
+            let sessions: Vec<Vec<BenchmarkTurn>> = conv
                 .conversation
-                .values()
-                .map(|turns| {
+                .iter()
+                .enumerate()
+                .map(|(session_index, (session_key, turns))| {
                     turns
                         .iter()
-                        .map(|t| (t.speaker.clone(), t.text.clone()))
+                        .enumerate()
+                        .map(|(turn_index, t)| {
+                            let turn_id = format!("s{session_index}:t{turn_index}");
+                            let provenance =
+                                format!("LoCoMo:{sample_id}:{session_key}:turn_{turn_index}");
+                            BenchmarkTurn {
+                                role: t.speaker.clone(),
+                                content: t.text.clone(),
+                                speaker: Some(t.speaker.clone()),
+                                turn_id: Some(turn_id),
+                                timestamp: None,
+                                provenance: Some(provenance),
+                            }
+                        })
                         .collect()
                 })
                 .collect();
@@ -495,7 +510,7 @@ mod tests {
         assert!(
             session_0
                 .iter()
-                .any(|(role, _)| role == "Alice" || role == "Bob"),
+                .any(|turn| turn.role == "Alice" || turn.role == "Bob"),
             "speakers should be preserved as roles"
         );
     }
