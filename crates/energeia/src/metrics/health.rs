@@ -22,7 +22,7 @@
 use std::collections::{HashMap, HashSet};
 
 #[cfg(feature = "storage-fjall")]
-use crate::error::Result;
+use crate::error::{Result, StoreSnafu};
 #[cfg(feature = "storage-fjall")]
 use crate::store::records::{
     CiValidationRecord, CiValidationStatus, DispatchRecord, DispatchStatus, SessionRecord,
@@ -138,19 +138,21 @@ impl HealthReport {
 ///
 /// # Errors
 ///
-/// Returns `Error::Store` if any underlying store read fails.
+/// Returns `Error::Store` if any underlying store read fails or if `window_days`
+/// exceeds the representable [`jiff::Timestamp`] range.
 pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<HealthReport> {
     let now = jiff::Timestamp::now();
 
     let cutoff_ms: Option<i64> = if window_days > 0 {
         let span = jiff::SignedDuration::from_hours(i64::from(window_days) * 24);
-        #[expect(
-            clippy::expect_used,
-            reason = "bounded subtraction from now is infallible for realistic day counts"
-        )]
-        let cutoff = now
-            .checked_sub(span)
-            .expect("timestamp subtraction within realistic day range"); // INVARIANT: span bounded to window_days*24h from current time
+        let cutoff = now.checked_sub(span).map_err(|e| {
+            StoreSnafu {
+                message: format!(
+                    "window_days {window_days} exceeds representable timestamp range: {e}"
+                ),
+            }
+            .build()
+        })?;
         Some(cutoff.as_millisecond())
     } else {
         None
@@ -311,7 +313,11 @@ fn corrective_rate(
     )]
     let rate = corrective_dispatch_ids.len() as f64 / total as f64; // SAFETY: counts bounded by SCAN_LIMIT_DISPATCHES (10_000)
 
-    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64: count bounded by SCAN_LIMIT_DISPATCHES"
+    )]
+    let sample_size = total as u64;
 
     HealthMetric {
         name: NAME,
@@ -354,7 +360,11 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
     )]
     let rate = stuck as f64 / total as f64; // SAFETY: counts bounded by SCAN_LIMIT_SESSIONS (100_000)
 
-    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64: count bounded by SCAN_LIMIT_SESSIONS"
+    )]
+    let sample_size = total as u64;
 
     HealthMetric {
         name: NAME,
@@ -413,7 +423,11 @@ fn qa_false_positive_rate(
     )]
     let rate = ci_fail_count as f64 / total as f64; // SAFETY: counts bounded by SCAN_LIMIT_SESSIONS (100_000)
 
-    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64: count bounded by SCAN_LIMIT_SESSIONS"
+    )]
+    let sample_size = total as u64;
 
     HealthMetric {
         name: NAME,
@@ -469,7 +483,11 @@ fn fix_agent_success_rate(
     )]
     let rate = successes as f64 / total as f64; // SAFETY: counts bounded by SCAN_LIMIT_SESSIONS (100_000)
 
-    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64: count bounded by SCAN_LIMIT_SESSIONS"
+    )]
+    let sample_size = total as u64;
 
     HealthMetric {
         name: NAME,
@@ -521,7 +539,11 @@ fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
     )]
     let avg_hours = (total_ms as f64 / total as f64) / 3_600_000.0; // SAFETY: total_ms bounded by SCAN_LIMIT_DISPATCHES deltas
 
-    let sample_size = u64::try_from(total).unwrap_or(u64::MAX);
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64: count bounded by SCAN_LIMIT_DISPATCHES"
+    )]
+    let sample_size = total as u64;
 
     HealthMetric {
         name: NAME,
@@ -598,7 +620,11 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
     )]
     let avg = total_sessions as f64 / n as f64; // SAFETY: totals bounded by SCAN_LIMIT_SESSIONS / SCAN_LIMIT_DISPATCHES
 
-    let sample_size = u64::try_from(n).unwrap_or(u64::MAX);
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64: count bounded by SCAN_LIMIT_DISPATCHES"
+    )]
+    let sample_size = n as u64;
 
     HealthMetric {
         name: NAME,
@@ -619,3 +645,29 @@ fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]
 #[cfg(test)]
 #[path = "health_tests.rs"]
 mod health_tests;
+
+#[cfg(test)]
+#[cfg(feature = "storage-fjall")]
+#[expect(clippy::expect_used, reason = "test setup")]
+mod window_tests {
+    use super::*;
+    use crate::store::EnergeiaStore;
+
+    fn setup() -> (tempfile::TempDir, EnergeiaStore) {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let db = fjall::Database::builder(dir.path())
+            .open()
+            .expect("fjall db");
+        (dir, EnergeiaStore::new(&db).expect("energeia store"))
+    }
+
+    #[test]
+    fn huge_window_days_returns_err_not_panic() {
+        let (_dir, store) = setup();
+        let result = compute_health_report(&store, u32::MAX);
+        assert!(
+            result.is_err(),
+            "u32::MAX window_days must return Err rather than panic"
+        );
+    }
+}

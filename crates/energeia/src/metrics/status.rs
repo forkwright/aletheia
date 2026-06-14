@@ -159,7 +159,11 @@ fn compute_status_dashboard_inner(
         .filter(|d| d.status == DispatchStatus::Running)
         .collect();
 
-    let active_dispatches = u64::try_from(active_dispatch_records.len()).unwrap_or(u64::MAX);
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64: active dispatch count bounded by SCAN_LIMIT_DISPATCHES"
+    )]
+    let active_dispatches = active_dispatch_records.len() as u64;
     let queue_depth = active_dispatches;
 
     // Dispatches from the scan come out oldest-first (ULID order). Reverse to
@@ -253,7 +257,13 @@ fn build_project_summaries(
 
         let session_count = sessions_by_dispatch.get(d.id.as_str()).map_or(0, Vec::len);
 
-        acc.sessions += u64::try_from(session_count).unwrap_or(u64::MAX);
+        #[expect(
+            clippy::as_conversions,
+            reason = "usize to u64: session count bounded by SCAN_LIMIT_SESSIONS"
+        )]
+        {
+            acc.sessions += session_count as u64;
+        }
     }
 
     let mut result: Vec<ProjectSummary> = by_project

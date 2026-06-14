@@ -264,9 +264,9 @@ impl Error {
     /// Whether this error represents a UNIQUE constraint violation
     /// (duplicate session key).
     ///
-    /// The fjall backend emits [`Error::Storage`] with a message prefix
-    /// `"UNIQUE constraint failed"` when the `(nous_id, session_key)`
-    /// index already contains an entry.
+    /// Graphe constructs [`Error::Storage`] with a message prefix
+    /// `"UNIQUE constraint failed"` in `fjall_store.rs` when a session
+    /// id or `(nous_id, session_key)` index already contains an entry.
     #[must_use]
     pub fn is_unique_constraint_violation(&self) -> bool {
         matches!(

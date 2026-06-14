@@ -14,7 +14,6 @@
 //! | `sessions`      | `idx:key:{nous_id}:{session_key}`                      | `{session_id}`           |
 //! | `messages`      | `{session_id}:{seq_padded_20}`                         | JSON `Message`           |
 //! | `messages`      | `next_seq:{session_id}`                                | big-endian `u64`         |
-//! | `messages`      | `distilled:{session_id}:{seq_padded_20}`               | `"1"` flag               |
 //! | `usage`         | `{session_id}:{turn_seq_padded_20}`                    | JSON `UsageRecord`       |
 //! | `distillations` | `{session_id}:{auto_id_padded_20}`                     | JSON distillation record |
 //! | `notes`         | `{session_id}:{auto_id_padded_20}`                     | JSON `AgentNote`         |
@@ -1619,9 +1618,9 @@ impl SessionStore {
 
     /// Remove message rows whose owning session record no longer exists.
     ///
-    /// Returns the number of primary message rows deleted. Companion
-    /// `distilled:*` and `next_seq:*` keys are also removed, but are not counted
-    /// as messages.
+    /// Returns the number of primary message rows deleted. The companion
+    /// `next_seq:{session_id}` key is also removed, but is not counted as a
+    /// message.
     ///
     /// # Errors
     /// Returns an error if the message/session scan, JSON decoding, delete
@@ -1650,7 +1649,7 @@ impl SessionStore {
                     "fjall cleanup_orphan_messages invalid message key: {e}"
                 ))
             })?;
-            if key_str.starts_with("next_seq:") || key_str.starts_with("distilled:") {
+            if key_str.starts_with("next_seq:") {
                 continue;
             }
             let Some((session_id, _seq)) = key_str.split_once(':') else {
@@ -1672,7 +1671,6 @@ impl SessionStore {
             }
 
             keys_to_delete.insert(key.to_vec());
-            keys_to_delete.insert(format!("distilled:{key_str}").into_bytes());
             keys_to_delete.insert(format!("next_seq:{session_id}").into_bytes());
             primary_message_count = primary_message_count.saturating_add(1);
         }

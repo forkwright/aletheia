@@ -3,7 +3,7 @@
     test,
     expect(
         clippy::indexing_slicing,
-        reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
+        reason = "tests index into serde_json::Value arrays of known length from the fixture"
     )
 )]
 
