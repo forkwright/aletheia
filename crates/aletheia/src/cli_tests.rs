@@ -179,7 +179,10 @@ fn export_subcommand_parses() {
             assert_eq!(args.nous_id, "syn", "nous_id should be set");
             assert!(args.archived, "archived flag should be set");
             assert!(args.compact, "compact flag should be set");
-            assert_eq!(args.max_messages, 500, "max_messages should default to 500");
+            assert_eq!(
+                args.max_messages, 0,
+                "max_messages should default to lossless (0)"
+            );
         }
         _ => panic!("expected Export command"),
     }
@@ -655,6 +658,10 @@ fn import_minimal_parses() {
             assert!(args.target_id.is_none(), "target_id should default to none");
             assert!(!args.skip_sessions, "skip_sessions should default to false");
             assert!(
+                !args.skip_knowledge,
+                "skip_knowledge should default to false"
+            );
+            assert!(
                 !args.skip_workspace,
                 "skip_workspace should default to false"
             );
@@ -674,6 +681,7 @@ fn import_with_all_flags_parses() {
         "--target-id",
         "new-agent",
         "--skip-sessions",
+        "--skip-knowledge",
         "--skip-workspace",
         "--force",
         "--dry-run",
@@ -686,6 +694,7 @@ fn import_with_all_flags_parses() {
                 "target_id should be set"
             );
             assert!(args.skip_sessions, "skip_sessions flag should be set");
+            assert!(args.skip_knowledge, "skip_knowledge flag should be set");
             assert!(args.skip_workspace, "skip_workspace flag should be set");
             assert!(args.force, "force flag should be set");
             assert!(args.dry_run, "dry_run flag should be set");

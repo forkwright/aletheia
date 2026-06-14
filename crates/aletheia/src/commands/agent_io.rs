@@ -6,6 +6,7 @@ use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
+use base64::Engine as _;
 use clap::Args;
 use mneme::types::validate_session_or_agent_id;
 use snafu::prelude::*;
@@ -81,6 +82,10 @@ fn validate_workspace_relative_path(path: &str) -> Result<()> {
     Ok(())
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "CLI flags — each bool is a distinct switch"
+)]
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ExportArgs {
     /// Agent (nous) ID to export
@@ -92,8 +97,8 @@ pub(crate) struct ExportArgs {
     /// Include archived/distilled sessions
     #[arg(long)]
     pub archived: bool,
-    /// Max messages per session (0 = all)
-    #[arg(long, default_value_t = 500)]
+    /// Max messages per session (0 = all; default is lossless)
+    #[arg(long, default_value_t = 0)]
     pub max_messages: usize,
     /// Compact JSON (no pretty printing)
     #[arg(long)]
@@ -105,6 +110,28 @@ pub(crate) struct ExportArgs {
     /// opened or enumerated. Omitted sections are recorded in the manifest.
     #[arg(long)]
     pub allow_partial: bool,
+    /// Skip exporting session history
+    #[arg(long)]
+    pub skip_sessions: bool,
+    /// Skip exporting typed knowledge
+    #[arg(long)]
+    pub skip_knowledge: bool,
+}
+
+impl Default for ExportArgs {
+    fn default() -> Self {
+        Self {
+            nous_id: String::new(),
+            output: None,
+            archived: false,
+            max_messages: 0,
+            compact: false,
+            force: false,
+            allow_partial: false,
+            skip_sessions: false,
+            skip_knowledge: false,
+        }
+    }
 }
 
 #[expect(
@@ -121,6 +148,9 @@ pub(crate) struct ImportArgs {
     /// Skip importing session history
     #[arg(long)]
     pub skip_sessions: bool,
+    /// Skip importing typed knowledge
+    #[arg(long)]
+    pub skip_knowledge: bool,
     /// Skip restoring workspace files
     #[arg(long)]
     pub skip_workspace: bool,
@@ -134,6 +164,21 @@ pub(crate) struct ImportArgs {
     /// to be silently defaulted instead of failing the import.
     #[arg(long)]
     pub allow_unknown_values: bool,
+}
+
+impl Default for ImportArgs {
+    fn default() -> Self {
+        Self {
+            file: PathBuf::new(),
+            target_id: None,
+            skip_sessions: false,
+            skip_knowledge: false,
+            skip_workspace: false,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Args)]
@@ -595,7 +640,8 @@ fn print_import_summary(nous_id: &str, source: &Path, summary: &ImportSummary) {
 )]
 pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
     use mneme::portability::{
-        AgentFile, ExportedMessage, ExportedNote, ExportedSession, ExportedUsageRecord, NousInfo,
+        AgentFile, BinaryFile, CoverageMetadata, ExportedMessage, ExportedNote, ExportedSession,
+        ExportedUsageRecord, NousInfo, SectionCoverage,
     };
 
     let oikos = super::resolve_oikos(instance_root)?;
@@ -631,108 +677,192 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     } else {
         Some(i64::try_from(args.max_messages).unwrap_or(i64::MAX))
     };
-    let mut sessions = Vec::new();
-    for session in store
-        .list_sessions(Some(&args.nous_id))
-        .whatever_context("failed to list sessions")?
-    {
-        if !args.archived && session.status != SessionStatus::Active {
-            continue;
+
+    let mut coverage_sections: Vec<SectionCoverage> = Vec::new();
+    let mut omissions: Vec<mneme::portability::Omission> = Vec::new();
+
+    // WHY(#5102): sessions and knowledge are independent sections; skipping one
+    // must not silently drop the other.
+    let sessions = if args.skip_sessions {
+        coverage_sections.push(SectionCoverage {
+            section: "sessions".to_owned(),
+            status: "omitted".to_owned(),
+            reason: Some("--skip-sessions".to_owned()),
+            count: Some(0),
+        });
+        Vec::new()
+    } else {
+        let mut sessions = Vec::new();
+        for session in store
+            .list_sessions(Some(&args.nous_id))
+            .whatever_context("failed to list sessions")?
+        {
+            if !args.archived && session.status != SessionStatus::Active {
+                continue;
+            }
+
+            // WHY(#4163): `get_history` filters `is_distilled == true`, dropping
+            // the distilled tail. The portability raw entry point returns every
+            // row in seq order so an export-then-import round-trip stays faithful.
+            let messages = store
+                .get_history_raw(&session.id, limit)
+                .with_whatever_context(|_| format!("failed to read history for {}", session.id))?
+                .into_iter()
+                .map(|msg| ExportedMessage {
+                    role: msg.role.to_string(),
+                    content: msg.content,
+                    seq: msg.seq,
+                    token_estimate: msg.token_estimate,
+                    is_distilled: msg.is_distilled,
+                    created_at: msg.created_at,
+                    tool_call_id: msg.tool_call_id,
+                    tool_name: msg.tool_name,
+                })
+                .collect();
+
+            let usage_records = store
+                .get_usage_for_session(&session.id)
+                .with_whatever_context(|_| format!("failed to read usage for {}", session.id))?
+                .into_iter()
+                .map(|record| ExportedUsageRecord {
+                    turn_seq: record.turn_seq,
+                    input_tokens: record.input_tokens,
+                    output_tokens: record.output_tokens,
+                    cache_read_tokens: record.cache_read_tokens,
+                    cache_write_tokens: record.cache_write_tokens,
+                    model: record.model,
+                })
+                .collect::<Vec<_>>();
+
+            let notes = store
+                .get_notes(&session.id)
+                .with_whatever_context(|_| format!("failed to read notes for {}", session.id))?
+                .into_iter()
+                .map(|note| ExportedNote {
+                    category: note.category,
+                    content: note.content,
+                    created_at: note.created_at,
+                })
+                .collect();
+
+            // WHY(#4163): working_state comes from the live blackboard. The key
+            // convention `ws:{nous_id}:{session_id}` mirrors
+            // `nous::working_state::WorkingState::persist_key`. `distillation_priming`
+            // has a schema slot for forward compatibility but no live producer
+            // today; left `None` until that store materialises.
+            let ws_key = format!("ws:{}:{}", args.nous_id, session.id);
+            let working_state =
+                match store.blackboard_read(&ws_key).with_whatever_context(|_| {
+                    format!("failed to read working_state for {}", session.id)
+                })? {
+                    Some(row) => serde_json::from_str::<serde_json::Value>(&row.value).ok(),
+                    None => None,
+                };
+
+            sessions.push(ExportedSession {
+                id: session.id,
+                session_key: session.session_key,
+                status: session.status.to_string(),
+                session_type: session.session_type.to_string(),
+                message_count: session.metrics.message_count,
+                token_count_estimate: session.metrics.token_count_estimate,
+                distillation_count: session.metrics.distillation_count,
+                created_at: session.created_at,
+                updated_at: session.updated_at,
+                working_state,
+                distillation_priming: None,
+                notes,
+                messages,
+                usage_records: Some(usage_records),
+            });
         }
 
-        // WHY(#4163): `get_history` filters `is_distilled == true`, dropping
-        // the distilled tail. The portability raw entry point returns every
-        // row in seq order so an export-then-import round-trip stays faithful.
-        let messages = store
-            .get_history_raw(&session.id, limit)
-            .with_whatever_context(|_| format!("failed to read history for {}", session.id))?
-            .into_iter()
-            .map(|msg| ExportedMessage {
-                role: msg.role.to_string(),
-                content: msg.content,
-                seq: msg.seq,
-                token_estimate: msg.token_estimate,
-                is_distilled: msg.is_distilled,
-                created_at: msg.created_at,
-                tool_call_id: msg.tool_call_id,
-                tool_name: msg.tool_name,
-            })
-            .collect();
-
-        let usage_records = store
-            .get_usage_for_session(&session.id)
-            .with_whatever_context(|_| format!("failed to read usage for {}", session.id))?
-            .into_iter()
-            .map(|record| ExportedUsageRecord {
-                turn_seq: record.turn_seq,
-                input_tokens: record.input_tokens,
-                output_tokens: record.output_tokens,
-                cache_read_tokens: record.cache_read_tokens,
-                cache_write_tokens: record.cache_write_tokens,
-                model: record.model,
-            })
-            .collect::<Vec<_>>();
-
-        let notes = store
-            .get_notes(&session.id)
-            .with_whatever_context(|_| format!("failed to read notes for {}", session.id))?
-            .into_iter()
-            .map(|note| ExportedNote {
-                category: note.category,
-                content: note.content,
-                created_at: note.created_at,
-            })
-            .collect();
-
-        // WHY(#4163): working_state comes from the live blackboard. The key
-        // convention `ws:{nous_id}:{session_id}` mirrors
-        // `nous::working_state::WorkingState::persist_key`. `distillation_priming`
-        // has a schema slot for forward compatibility but no live producer
-        // today; left `None` until that store materialises.
-        let ws_key = format!("ws:{}:{}", args.nous_id, session.id);
-        let working_state = match store
-            .blackboard_read(&ws_key)
-            .with_whatever_context(|_| format!("failed to read working_state for {}", session.id))?
-        {
-            Some(row) => serde_json::from_str::<serde_json::Value>(&row.value).ok(),
-            None => None,
+        let session_status = if args.max_messages == 0 || sessions.is_empty() {
+            "complete"
+        } else {
+            "partial"
         };
-
-        sessions.push(ExportedSession {
-            id: session.id,
-            session_key: session.session_key,
-            status: session.status.to_string(),
-            session_type: session.session_type.to_string(),
-            message_count: session.metrics.message_count,
-            token_count_estimate: session.metrics.token_count_estimate,
-            distillation_count: session.metrics.distillation_count,
-            created_at: session.created_at,
-            updated_at: session.updated_at,
-            working_state,
-            distillation_priming: None,
-            notes,
-            messages,
-            usage_records: Some(usage_records),
+        coverage_sections.push(SectionCoverage {
+            section: "sessions".to_owned(),
+            status: session_status.to_owned(),
+            reason: if session_status == "partial" {
+                Some(format!(
+                    "limited to {} messages per session; re-export with --max-messages 0 for a lossless archive",
+                    args.max_messages
+                ))
+            } else {
+                None
+            },
+            count: Some(sessions.len()),
         });
-    }
+        sessions
+    };
 
     // WHY(#4163): top-level knowledge comes from the live store (typed
     // Facts/Entities/Relationships). Vectors + opaque graph (`memory`) are a
     // known v2 gap; the schema slots let them be closed without another
     // version bump.
-    let knowledge_status = export_knowledge(&oikos, &args.nous_id, args.allow_partial)?;
-    let mut omissions: Vec<mneme::portability::Omission> = Vec::new();
-    let knowledge = match &knowledge_status {
-        KnowledgeExportStatus::Exported(export) => Some(export.clone()),
-        KnowledgeExportStatus::Missing => None,
-        KnowledgeExportStatus::Omitted { reason } => {
-            omissions.push(mneme::portability::Omission {
-                section: "knowledge".to_owned(),
-                reason: reason.clone(),
-            });
-            None
+    let knowledge = if args.skip_knowledge {
+        coverage_sections.push(SectionCoverage {
+            section: "knowledge".to_owned(),
+            status: "omitted".to_owned(),
+            reason: Some("--skip-knowledge".to_owned()),
+            count: Some(0),
+        });
+        None
+    } else {
+        match export_knowledge(&oikos, &args.nous_id, args.allow_partial)? {
+            KnowledgeExportStatus::Exported(export) => {
+                coverage_sections.push(SectionCoverage {
+                    section: "knowledge".to_owned(),
+                    status: "complete".to_owned(),
+                    reason: None,
+                    count: Some(export.facts.len()),
+                });
+                Some(export.clone())
+            }
+            KnowledgeExportStatus::Missing => {
+                coverage_sections.push(SectionCoverage {
+                    section: "knowledge".to_owned(),
+                    status: "omitted".to_owned(),
+                    reason: Some("no typed knowledge found".to_owned()),
+                    count: Some(0),
+                });
+                None
+            }
+            KnowledgeExportStatus::Omitted { reason } => {
+                omissions.push(mneme::portability::Omission {
+                    section: "knowledge".to_owned(),
+                    reason: reason.clone(),
+                });
+                coverage_sections.push(SectionCoverage {
+                    section: "knowledge".to_owned(),
+                    status: "omitted".to_owned(),
+                    reason: Some(reason),
+                    count: Some(0),
+                });
+                None
+            }
         }
     };
+
+    // WHY(#5102): memory (vectors + opaque graph) is a known portability gap.
+    // Declare it explicitly so consumers know the export is not silent about it.
+    coverage_sections.push(SectionCoverage {
+        section: "memory".to_owned(),
+        status: "omitted".to_owned(),
+        reason: Some(
+            "vector records and opaque graph state are a known v2 gap; not exported".to_owned(),
+        ),
+        count: None,
+    });
+
+    coverage_sections.push(SectionCoverage {
+        section: "workspace".to_owned(),
+        status: "complete".to_owned(),
+        reason: None,
+        count: Some(workspace.files.len() + workspace.binary_files.len()),
+    });
 
     let exported_at = jiff::Timestamp::now().to_string();
     let agent_file = AgentFile {
@@ -754,6 +884,9 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         sessions,
         memory: None,
         knowledge,
+        coverage: Some(CoverageMetadata {
+            sections: coverage_sections,
+        }),
         omissions: if omissions.is_empty() {
             None
         } else {
@@ -788,22 +921,24 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         .with_whatever_context(|_| format!("failed to write {}", output.display()))?;
 
     println!("Exported agent '{}' to {}", args.nous_id, output.display());
-    println!("  Workspace: {} files", agent_file.workspace.files.len());
+    println!(
+        "  Workspace: {} text files, {} binary files",
+        agent_file.workspace.files.len(),
+        agent_file.workspace.binary_files.len()
+    );
     println!("  Sessions: {}", agent_file.sessions.len());
-    match &knowledge_status {
-        KnowledgeExportStatus::Exported(export) => {
-            println!(
-                "  Knowledge: included ({} facts, {} entities, {} relationships)",
-                export.facts.len(),
-                export.entities.len(),
-                export.relationships.len()
-            );
-        }
-        KnowledgeExportStatus::Missing => {
-            println!("  Knowledge: not present (no typed knowledge found)");
-        }
-        KnowledgeExportStatus::Omitted { reason } => {
-            println!("  Knowledge: omitted — {reason}");
+    if let Some(ref coverage) = agent_file.coverage {
+        let incomplete: Vec<_> = coverage
+            .sections
+            .iter()
+            .filter(|s| s.status != "complete")
+            .collect();
+        if !incomplete.is_empty() {
+            eprintln!("  WARN: export is partial; omitted/limited sections:");
+            for section in incomplete {
+                let reason = section.reason.as_deref().unwrap_or("no reason given");
+                eprintln!("    - {} ({}): {}", section.section, section.status, reason);
+            }
         }
     }
 
@@ -844,7 +979,7 @@ fn collect_workspace_entries(
     root: &Path,
     dir: &Path,
     files: &mut HashMap<String, String>,
-    binary_files: &mut Vec<String>,
+    binary_files: &mut Vec<mneme::portability::BinaryFile>,
 ) -> Result<()> {
     for entry in std::fs::read_dir(dir)
         .with_whatever_context(|_| format!("failed to read {}", dir.display()))?
@@ -869,7 +1004,13 @@ fn collect_workspace_entries(
                 files.insert(relative, content);
             }
             Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
-                binary_files.push(relative);
+                let bytes = std::fs::read(&path).with_whatever_context(|_| {
+                    format!("failed to read binary workspace file {}", path.display())
+                })?;
+                binary_files.push(mneme::portability::BinaryFile {
+                    path: relative,
+                    content_base64: Some(base64::engine::general_purpose::STANDARD.encode(&bytes)),
+                });
             }
             Err(e) => {
                 return Err(crate::error::Error::msg(format!(
@@ -1009,6 +1150,48 @@ fn preflight_agent_file(file: &mneme::portability::AgentFile) -> Result<()> {
     Ok(())
 }
 
+/// Report sections that will not be restored before any filesystem or store
+/// mutation happens.
+fn report_import_partiality(file: &mneme::portability::AgentFile, args: &ImportArgs) {
+    if let Some(coverage) = &file.coverage {
+        for section in &coverage.sections {
+            if section.status != "complete" {
+                let reason = section.reason.as_deref().unwrap_or("no reason given");
+                eprintln!(
+                    "  WARN: import will not restore '{}' section fully ({}): {}",
+                    section.section, section.status, reason
+                );
+            }
+        }
+    }
+
+    let missing_binary_content: Vec<_> = file
+        .workspace
+        .binary_files
+        .iter()
+        .filter(|b| b.content_base64.is_none())
+        .collect();
+    if !missing_binary_content.is_empty() {
+        eprintln!(
+            "  WARN: {} binary workspace file(s) have no base64 payload and will be skipped",
+            missing_binary_content.len()
+        );
+        for binary in missing_binary_content {
+            eprintln!("    - {}", binary.path);
+        }
+    }
+
+    if args.skip_sessions && !file.sessions.is_empty() {
+        eprintln!(
+            "  WARN: --skip-sessions requested; {} session(s) will not be imported",
+            file.sessions.len()
+        );
+    }
+    if args.skip_knowledge && file.knowledge.is_some() {
+        eprintln!("  WARN: --skip-knowledge requested; knowledge graph will not be imported");
+    }
+}
+
 /// Name of the resume-marker file written inside the nous directory when a
 /// session import begins and removed when it completes successfully.
 ///
@@ -1044,13 +1227,17 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     for path in agent_file.workspace.files.keys() {
         validate_workspace_relative_path(path)?;
     }
-    for path in &agent_file.workspace.binary_files {
-        validate_workspace_relative_path(path)?;
+    for binary in &agent_file.workspace.binary_files {
+        validate_workspace_relative_path(&binary.path)?;
     }
     // WHY: preflight before any I/O so a corrupt export is rejected without
     // leaving partial state on disk (no workspace files partially written,
     // no config half-updated, no orphaned session records).
     preflight_agent_file(&agent_file)?;
+
+    // WHY(#5102): report partial/omitted sections before any state mutation so
+    // the operator sees what will not be restored.
+    report_import_partiality(&agent_file, args);
 
     let nous_id = args
         .target_id
@@ -1126,6 +1313,33 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
             koina::fs::write_restricted(&target, content.as_bytes())
                 .with_whatever_context(|_| format!("failed to write {}", target.display()))?;
             summary.workspace_files += 1;
+        }
+        for binary in &agent_file.workspace.binary_files {
+            let target = nous_dir.join(&binary.path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).with_whatever_context(|_| {
+                    format!("failed to create directory: {}", parent.display())
+                })?;
+            }
+            match &binary.content_base64 {
+                Some(payload) => {
+                    let decoded = base64::engine::general_purpose::STANDARD
+                        .decode(payload.as_bytes())
+                        .with_whatever_context(|_| {
+                            format!("failed to decode base64 for {}", binary.path)
+                        })?;
+                    koina::fs::write_restricted(&target, &decoded).with_whatever_context(|_| {
+                        format!("failed to write {}", target.display())
+                    })?;
+                    summary.workspace_files += 1;
+                }
+                None => {
+                    eprintln!(
+                        "  WARN: skipping binary workspace file '{}' (no base64 payload)",
+                        binary.path
+                    );
+                }
+            }
         }
     }
 
@@ -1403,7 +1617,9 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     // facts when the caller only wanted to skip session history. Knowledge
     // (facts, entities, relationships) is typed data that belongs to the agent
     // regardless of whether session history is restored.
-    if let Some(knowledge) = &agent_file.knowledge {
+    if args.skip_knowledge {
+        summary.skipped_categories.push("knowledge");
+    } else if let Some(knowledge) = &agent_file.knowledge {
         let counts = import_knowledge(&oikos, &nous_id, knowledge)?;
         summary.facts = counts.facts;
         summary.entities = counts.entities;
@@ -2163,6 +2379,7 @@ mod tests {
             }],
             memory: None,
             knowledge: None,
+            coverage: None,
             omissions: None,
         }
     }
@@ -2259,6 +2476,8 @@ workspace = "nous/{agent_id}"
             compact: false,
             force: false,
             allow_partial: false,
+            skip_sessions: false,
+            skip_knowledge: false,
         };
         export_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
 
@@ -2317,6 +2536,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -2331,6 +2552,7 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
+                skip_knowledge: false,
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
@@ -2369,6 +2591,7 @@ workspace = "nous/{agent_id}"
                 file: import_path,
                 target_id: None,
                 skip_sessions: false,
+                skip_knowledge: false,
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
@@ -2435,6 +2658,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -2449,6 +2674,7 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
+                skip_knowledge: false,
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
@@ -2554,6 +2780,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -2568,6 +2796,7 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
+                skip_knowledge: false,
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
@@ -2673,6 +2902,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -2740,6 +2971,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -2819,6 +3052,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
+            skip_knowledge: false,
             skip_workspace: false,
             force: false,
             dry_run: false,
@@ -2868,6 +3102,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: true,
+            skip_knowledge: false,
             skip_workspace: false,
             force: false,
             dry_run: false,
@@ -2918,6 +3153,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: Some("dest-nous".to_owned()),
             skip_sessions: true,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,
@@ -2953,6 +3189,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: true,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,
@@ -2988,6 +3225,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: true,
+            skip_knowledge: false,
             skip_workspace: false,
             force: false,
             dry_run: false,
@@ -3016,6 +3254,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: Some("../../../../tmp/escaped".to_owned()),
             skip_sessions: true,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,
@@ -3045,6 +3284,7 @@ workspace = "nous/{agent_id}"
             file: agent_path.clone(),
             target_id: None,
             skip_sessions: true,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,
@@ -3276,6 +3516,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -3290,6 +3532,7 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
+                skip_knowledge: false,
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
@@ -3420,6 +3663,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -3479,6 +3724,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -3496,6 +3743,7 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
+                skip_knowledge: false,
                 skip_workspace: false,
                 // WHY: write_agent_config above pre-creates the dest nous dir, so
                 // import must overwrite it; the [embedding] config still applies.
@@ -3620,6 +3868,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -3634,6 +3884,7 @@ workspace = "nous/{agent_id}"
                 file: export1.clone(),
                 target_id: None,
                 skip_sessions: false,
+                skip_knowledge: false,
                 skip_workspace: false,
                 force: false,
                 dry_run: false,
@@ -3653,6 +3904,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -3672,8 +3925,141 @@ workspace = "nous/{agent_id}"
         assert_eq!(v1, v2, "second export must be identical to first");
     }
 
-    /// WHY(#4965): when no knowledge store exists, the export should succeed
-    /// cleanly with no typed knowledge and no omissions recorded.
+    /// WHY(#5102): binary workspace files round-trip through base64 payloads.
+    #[test]
+    fn export_import_roundtrips_binary_workspace_file() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let binary_path = source_oikos.nous_dir("alice").join("data.bin");
+        let original_bytes: Vec<u8> = vec![0, 1, 2, 255, 128, 64];
+        std::fs::write(&binary_path, &original_bytes).unwrap();
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&export_path).unwrap()).unwrap();
+        assert_eq!(exported.workspace.binary_files.len(), 1);
+        assert_eq!(exported.workspace.binary_files[0].path, "data.bin");
+        assert!(exported.workspace.binary_files[0].content_base64.is_some());
+        assert!(
+            exported.workspace.files.contains_key("SOUL.md"),
+            "text workspace files are still captured"
+        );
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_knowledge: false,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+            },
+        )
+        .unwrap();
+
+        let restored_bytes = std::fs::read(dest_oikos.nous_dir("alice").join("data.bin")).unwrap();
+        assert_eq!(restored_bytes, original_bytes);
+    }
+
+    /// WHY(#5102): session skipping and knowledge skipping are independent.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn import_skips_knowledge_independently_of_sessions() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        seed_typed_knowledge(&source_oikos, "alice");
+
+        let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
+        let session = source_store
+            .create_session(
+                "ses-knowledge-skip",
+                "alice",
+                "main",
+                None,
+                Some("mock-model"),
+            )
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::User, "hello", None, None, 5)
+            .unwrap();
+        drop(source_store);
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
+            },
+        )
+        .unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_knowledge: true,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+            },
+        )
+        .unwrap();
+
+        let facts = imported_facts(&dest_oikos, "alice");
+        assert!(facts.is_empty(), "knowledge should be skipped");
+
+        let dest_store = mneme::store::SessionStore::open(&dest_oikos.sessions_db()).unwrap();
+        let sessions = dest_store.list_sessions(Some("alice")).unwrap();
+        assert_eq!(sessions.len(), 1, "sessions should still import");
+    }
+
+    /// WHY(#4965/#5102): when no knowledge store exists, the export succeeds
+    /// cleanly and records the knowledge section as omitted in the coverage
+    /// metadata so the partiality is explicit.
     #[test]
     fn export_agent_succeeds_without_knowledge_store() {
         let dir = tempfile::tempdir().unwrap();
@@ -3692,6 +4078,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -3700,6 +4088,15 @@ workspace = "nous/{agent_id}"
             serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
         assert!(exported.knowledge.is_none());
         assert!(exported.omissions.is_none());
+        let coverage = exported
+            .coverage
+            .expect("coverage metadata must be present");
+        let knowledge = coverage
+            .sections
+            .iter()
+            .find(|s| s.section == "knowledge")
+            .expect("knowledge coverage entry missing");
+        assert_eq!(knowledge.status, "omitted");
     }
 
     /// WHY(#4965): a store that exists but cannot be opened must fail the
@@ -3723,6 +4120,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         );
 
@@ -3762,6 +4161,8 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: true,
+                skip_sessions: false,
+                skip_knowledge: false,
             },
         )
         .unwrap();
@@ -3801,6 +4202,7 @@ workspace = "nous/{agent_id}"
             sessions: vec![],
             memory: None,
             knowledge: None,
+            coverage: None,
             omissions: None,
         }
     }
@@ -3852,6 +4254,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: true,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,
@@ -3880,6 +4283,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: true,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,
@@ -3907,6 +4311,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,
@@ -3933,6 +4338,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,
@@ -3959,6 +4365,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,
@@ -3985,6 +4392,7 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
+            skip_knowledge: false,
             skip_workspace: true,
             force: false,
             dry_run: false,

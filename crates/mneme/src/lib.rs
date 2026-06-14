@@ -104,9 +104,10 @@ pub mod error {
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 pub mod portability {
     pub use graphe::portability::{
-        AGENT_FILE_OMISSIONS_VERSION, AGENT_FILE_VERSION, AgentFile, ExportedMessage, ExportedNote,
-        ExportedSession, ExportedUsageRecord, ExportedVector, FactEntityEdge, GraphData,
-        KnowledgeExport, MemoryData, NousInfo, Omission, WorkspaceData,
+        AGENT_FILE_OMISSIONS_VERSION, AGENT_FILE_VERSION, AgentFile, BinaryFile, CoverageMetadata,
+        ExportedMessage, ExportedNote, ExportedSession, ExportedUsageRecord, ExportedVector,
+        FactEntityEdge, GraphData, KnowledgeExport, MemoryData, NousInfo, Omission,
+        SectionCoverage, WorkspaceData,
     };
 }
 

@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Agent file format version.
 ///
@@ -51,6 +51,10 @@ pub struct AgentFile {
     /// Knowledge graph export (facts, entities, relationships).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub knowledge: Option<KnowledgeExport>,
+    /// Machine-readable record of which sections are complete, partial, or
+    /// omitted from this export.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<CoverageMetadata>,
     /// Sections that were intentionally omitted from this export and why.
     ///
     /// Populated when `--allow-partial` is used and a section (for example
@@ -73,6 +77,34 @@ pub struct Omission {
     pub reason: String,
 }
 
+/// Machine-readable summary of which sections of the agent file are
+/// complete, partial, or omitted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
+pub struct CoverageMetadata {
+    pub sections: Vec<SectionCoverage>,
+}
+
+/// Coverage status for a single agent-file section.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
+pub struct SectionCoverage {
+    pub section: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<usize>,
+}
+
 /// Agent identity and configuration snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -87,7 +119,56 @@ pub struct NousInfo {
     pub config: serde_json::Value,
 }
 
-/// Workspace file snapshot: text content included, binary paths listed.
+/// Binary workspace file entry with optional base64 payload.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BinaryFile {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_base64: Option<String>,
+}
+
+impl BinaryFile {
+    /// Create a path-only entry for legacy/TS v1 compatibility.
+    pub fn path_only(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            content_base64: None,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BinaryFile {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(s) = value.as_str() {
+            return Ok(BinaryFile {
+                path: s.to_owned(),
+                content_base64: None,
+            });
+        }
+        let path = value
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| D::Error::custom("binary file entry must have a path"))?
+            .to_owned();
+        let content_base64 = value
+            .get("contentBase64")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from);
+        Ok(BinaryFile {
+            path,
+            content_base64,
+        })
+    }
+}
+
+/// Workspace file snapshot: text content included, binary files listed with
+/// base64 payloads when available.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[expect(
@@ -96,7 +177,8 @@ pub struct NousInfo {
 )]
 pub struct WorkspaceData {
     pub files: HashMap<String, String>,
-    pub binary_files: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binary_files: Vec<BinaryFile>,
 }
 
 /// Session snapshot with full message history and metadata.
@@ -263,7 +345,7 @@ mod tests {
                     ("memory/notes.md".to_owned(), "# Notes\n".to_owned()),
                     ("config.yaml".to_owned(), "key: value\n".to_owned()),
                 ]),
-                binary_files: vec!["avatar.png".to_owned()],
+                binary_files: vec![BinaryFile::path_only("avatar.png")],
             },
             sessions: vec![ExportedSession {
                 id: "ses-001".to_owned(),
@@ -315,6 +397,7 @@ mod tests {
             }],
             memory: None,
             knowledge: None,
+            coverage: None,
             omissions: None,
         }
     }
@@ -521,6 +604,29 @@ mod tests {
         let restored: Omission = serde_json::from_str(&json).expect("round-trip JSON is valid");
         assert_eq!(restored.section, original.section);
         assert_eq!(restored.reason, original.reason);
+    }
+
+    #[test]
+    fn binary_file_deserializes_legacy_string() {
+        let json = r#"["avatar.png"]"#;
+        let restored: Vec<BinaryFile> =
+            serde_json::from_str(json).expect("legacy binary file array parses");
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].path, "avatar.png");
+        assert!(restored[0].content_base64.is_none());
+    }
+
+    #[test]
+    fn binary_file_round_trips_with_base64_content() {
+        let original = vec![BinaryFile {
+            path: "data.bin".to_owned(),
+            content_base64: Some("SGVsbG8=".to_owned()),
+        }];
+        let json = serde_json::to_string(&original).expect("binary files serializable");
+        let restored: Vec<BinaryFile> =
+            serde_json::from_str(&json).expect("binary files deserializable");
+        assert_eq!(restored[0].path, "data.bin");
+        assert_eq!(restored[0].content_base64.as_deref(), Some("SGVsbG8="));
     }
 
     #[test]
