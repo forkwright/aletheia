@@ -174,7 +174,7 @@ impl InstanceBackup {
     /// - `stores/sessions.db/` (required).
     /// - `config/` copy of `instance/config/`.
     /// - `workspace/nous/`, `workspace/shared/`, `workspace/theke/` if present.
-    /// - `data/archive/`, `data/prosoche-audits/`, `data/prompt-audit/` if present.
+    /// - `data/archive/`, `data/prosoche-audits/`, `data/prompt-audit/`, `logs/prompt-audit/` if present.
     ///
     /// After creating the backup, old backups beyond `retention_count` are pruned.
     pub fn create_backup(&self) -> error::Result<InstanceBackupReport> {
