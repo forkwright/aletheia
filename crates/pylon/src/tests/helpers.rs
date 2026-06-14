@@ -30,6 +30,7 @@ pub(super) fn test_security_config() -> SecurityConfig {
     SecurityConfig {
         csrf: crate::security::CsrfConfig {
             enabled: false,
+            disable_acknowledged: true,
             ..crate::security::CsrfConfig::default()
         },
         ..SecurityConfig::default()

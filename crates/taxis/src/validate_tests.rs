@@ -91,6 +91,30 @@ fn accepts_valid_gateway() {
 }
 
 #[test]
+fn rejects_disabled_csrf_without_acknowledgement() {
+    let section = json!({ "csrf": { "enabled": false } });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "disabled csrf must require explicit acknowledgement"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("disableAcknowledged")),
+        "error should mention the acknowledgement field: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_disabled_csrf_with_acknowledgement() {
+    let section = json!({ "csrf": { "enabled": false, "disableAcknowledged": true } });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "disabled csrf should be accepted only with explicit acknowledgement"
+    );
+}
+
+#[test]
 fn unknown_section_errors() {
     let result = validate_section("nonexistent", &json!({}));
     assert!(result.is_err(), "unknown config section should be rejected");
