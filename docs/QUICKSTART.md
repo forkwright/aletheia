@@ -196,7 +196,7 @@ aletheia backup              # create a database backup
 aletheia --help              # full command reference
 ```
 
-Everything runs locally. The embedded knowledge engine and session store are inside the binary. No external databases, containers, or sidecars. The `candle` embedding provider downloads model files from Hugging Face Hub on first use and caches them locally; subsequent starts are fully offline. To skip the download, set `embedding.provider = "mock"` in your config or pre-cache the model at `$HF_HOME` before the first run (see `docs/NETWORK.md`).
+The embedded knowledge engine and session store are inside the binary — no external databases, containers, or sidecars. On first run, the `candle` embedding provider downloads model files from HuggingFace Hub (~100 MB) and caches them under `HF_HOME`; all subsequent runs are fully offline. For air-gapped installs, pre-seed `HF_HOME` with the model files before first run. See [NETWORK.md](NETWORK.md) for the complete outbound call inventory and air-gapped setup instructions.
 
 ---
 

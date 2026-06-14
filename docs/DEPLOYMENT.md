@@ -539,20 +539,41 @@ nous_id = "main"
 
 ---
 
-## Matrix (Phase 3 deployment profile)
+## Matrix
 
-Aletheia's public deployment profile preserves homeserver deployment prep for
-the Phase 3 Matrix channel implementation against a self-hosted
-[conduwuit](https://conduwuit.puppyirl.gay/) homeserver. Aletheia does not
-expose a Matrix provider, config surface, or Cargo feature.
+Aletheia ships a Matrix channel provider backed by the Matrix Client-Server API
+(`crates/agora/src/matrix`). The provider is registered and initialized at
+runtime from `[channels.matrix]` configuration.
 
-### Prerequisites
+### Aletheia Matrix configuration
+
+```toml
+[channels.matrix]
+enabled = true
+
+[channels.matrix.accounts.default]
+homeserver = "https://matrix.example.org"
+# Name of the environment variable that holds the Matrix access token.
+access_token_env = "ALETHEIA_MATRIX_TOKEN"
+user_id = "@aletheia:example.org"
+auto_start = true
+```
+
+See [CONFIGURATION.md](CONFIGURATION.md) for the full `[channels.matrix]` field reference.
+
+### Self-hosted homeserver (conduwuit)
+
+Aletheia's deployment tooling includes setup for a self-hosted
+[conduwuit](https://conduwuit.puppyirl.gay/) homeserver. This is optional — any
+Matrix homeserver that accepts the Client-Server API works.
+
+#### Prerequisites
 
 - A private overlay network or reverse proxy path for hosts that expose conduwuit beyond loopback.
 - `podman` 4.4+ with Quadlet generator (`/etc/containers/systemd/`).
 - `${CONDUWUIT_DATA_DIR}` writable (the script creates it under `sudo`).
 
-### Deploy the homeserver
+#### Deploy the homeserver
 
 ```bash
 scripts/deploy-conduwuit.sh --server-name matrix.example.com
@@ -568,15 +589,10 @@ The script:
 
 The service restarts on failure and runs with `NoNewPrivileges`, `ProtectSystem`, and loopback-only publish.
 
-### Register the first user
+#### Register the first user
 
 Use the registration token the script printed (also at `${SECRETS_DIR}/conduwuit-registration-token`). Follow conduwuit's current API docs for the exact endpoint - typically via `element` (web client) against `http://host.example.lan:6167`, selecting "Create account" and pasting the token when prompted.
 
-### Connect an Element client
+#### Connect an Element client
 
 Point Element (desktop or web) at `http://host.example.lan:6167`. Sign in as the user you registered. Over the private overlay network this URL resolves and authenticates end-to-end.
-
-### Aletheia provider status
-
-No `[channels.matrix]` config surface or `matrix` Cargo feature is exposed
-until Phase 3 has real send and receive behavior.

@@ -54,7 +54,7 @@ Cross-crate integration test suite exercising multi-crate pipelines end-to-end. 
 ## Recent substrate notes
 
 - Use the shared `TestHarness` for substrate canaries instead of hand-rolled setup.
-- The 15-scenario canary suite is the operator-independent verification surface for memory, tools, auth, gateway, and runtime wiring claims.
+- The 25-scenario canary suite is the operator-independent verification surface for memory, tools, auth, gateway, and runtime wiring claims.
 
 ## Common tasks
 

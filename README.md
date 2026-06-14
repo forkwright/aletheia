@@ -4,13 +4,13 @@ Self-hosted AI agents with persistent memory.
 
 Talk to an AI that remembers your previous conversations, learns your preferences, and builds a knowledge graph over time. Give it a name, a personality, and goals. Run it from a terminal dashboard, HTTP API, or Signal messenger.
 
-One binary. No containers. No external databases. Beyond your LLM provider, there are no cloud dependencies - except the first time the `candle` embedding provider initializes, which downloads model files from Hugging Face Hub and caches them locally. Subsequent starts and offline setups are fully local.
+One binary - no containers, no external databases, no sidecars. The only runtime cloud dependency is your LLM provider. On first run, the `candle` embedding provider downloads model files from HuggingFace Hub and caches them locally; subsequent runs are fully offline. See [NETWORK.md](docs/NETWORK.md) for every outbound call the binary makes.
 
 Current first run: start the server and use the TUI. The desktop app is the
 v1.0 target surface and can be installed as a preview from a source checkout,
 but it is not the default public onboarding path yet.
 
-[Golden Path](docs/GOLDEN-PATH.md) · [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md) · [Demo](demo/README.md)
+[Golden Path](docs/GOLDEN-PATH.md) · [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md) · [Demo](demo/README.md) · [Docs map](docs/DOCS-MAP.md)
 
 ---
 
@@ -37,7 +37,7 @@ The tarball contains `instance.example/` with the reference config layout. See [
 - **Persistent memory.** Conversations carry forward. The agent builds a knowledge graph of facts, entities, and relationships that persists across sessions and grows over time.
 - **Working-memory continuity.** Each turn can inject agent-curated `<key_info>` from the prior working checkpoint before recall and history are assembled.
 - **Multiple agents.** Each agent has its own character (SOUL.md), goals, memory, and workspace. They can coordinate, delegate, and specialize.
-- **Tools.** 67 built-in tools (default build): file I/O, shell execution, web search, memory search, planning, and agent coordination. External MCP bridge support is optional; build with `cargo build -p aletheia --features mcp` when you want runtime-discovered MCP tools in the Organon tool plane. Feature-gated additions bring the total to 76 with `aletheia/energeia`, or 80 with `cargo build -p aletheia --all-features` (`energeia` + `bookkeeper` + `computer-use` + `z3`).
+- **Tools.** Built-in tools cover file I/O, shell execution, web search, memory search, planning, and agent coordination. External MCP bridge support is optional; build with `cargo build -p aletheia --features mcp` when you want runtime-discovered MCP tools in the Organon tool plane. Feature-gated additions (`energeia`, `bookkeeper`, `computer-use`, `z3`) expand the tool set further. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current tool inventory and feature breakdown.
 - **Runtime guardrails.** Tool calls carry HMAC-SHA256 receipts, loop detection combines ping-pong, no-progress, and doom-loop signals, and per-stage timeouts bound long-running turns.
 - **Terminal dashboard.** Rich TUI with markdown rendering, session management, and real-time streaming.
 - **Desktop preview.** Dioxus desktop app for the v1.0 workflow target; see [DESKTOP.md](docs/DESKTOP.md).
@@ -48,7 +48,7 @@ The tarball contains `instance.example/` with the reference config layout. See [
 
 ## Architecture
 
-48 Rust workspace crates plus the excluded desktop shell. Single binary deployment. The substrate includes persistent sessions, Datalog-backed memory, working-memory injection, HTTP/SSE, optional runtime MCP bridging, Signal, dispatch, and a 25-scenario substrate canary suite. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
+Single binary deployment. The substrate includes persistent sessions, Datalog-backed memory, working-memory injection, HTTP/SSE, optional runtime MCP bridging, Signal, dispatch, and a substrate canary suite. For current workspace crate count, canary scenario count, and the full dependency graph, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
@@ -89,7 +89,7 @@ Send any of these from Signal to control the agent without starting a conversati
 | `!model` | Show the LLM model configured for this agent |
 | `!info [agent_id]` | Detail view for an agent (default: current) |
 
-Commands are intercepted before reaching the agent — they consume no LLM tokens. Unknown `!` commands return a helpful error listing the available set.
+Commands are intercepted before reaching the agent - they consume no LLM tokens. Unknown `!` commands return a helpful error listing the available set.
 
 ## Services
 
@@ -102,7 +102,7 @@ Commands are intercepted before reaching the agent — they consume no LLM token
 
 No telemetry, phone-home, analytics, crash reports, or beacon requests.
 
-The only outbound connections are to services you explicitly configure (LLM provider, Signal). Everything else stays on your machine. See [DATA.md](docs/DATA.md) for the data inventory, [NETWORK.md](docs/NETWORK.md) for every network call the binary makes.
+Outbound connections are limited to your explicitly configured services (LLM provider, Signal) and, on first run only, HuggingFace Hub for embedding model files. Everything else stays on your machine. See [DATA.md](docs/DATA.md) for the data inventory, [NETWORK.md](docs/NETWORK.md) for every network call the binary makes.
 
 ## License
 

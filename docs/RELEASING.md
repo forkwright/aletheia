@@ -30,7 +30,7 @@ scripts/check-cargo-publish-policy.py
    - Verifies proskenion's standalone theatron pins match the root workspace
    - Runs `cargo test --workspace --exclude proskenion` and optional
      feature-flag compile checks
-   - Builds release binaries for the supported targets (see table below)
+   - Builds release binaries for the supported targets (see [Supported platforms](#supported-platforms))
    - Packages the binary with public license, security, docs, examples, and
      manifest files
    - Inspects the tarball before upload so missing required contents fail the
@@ -79,10 +79,14 @@ only the config scan and tautological-doc detectors are needed.
 
 ## Supported platforms
 
-| Target | Artifact name | Runner | Method |
-|--------|---------------|--------|--------|
-| `x86_64-unknown-linux-musl` | `aletheia-linux-x86_64` | `ubuntu-latest` | `cross` (fully static, no glibc) |
-| `aarch64-apple-darwin` | `aletheia-macos-aarch64` | `macos-14` | Native cargo build (Apple Silicon) |
+The release matrix is authoritative in `.github/workflows/release.yml`. Current targets:
+
+| Target | Runner | Method | Artifact |
+|--------|--------|--------|----------|
+| `x86_64-unknown-linux-musl` | `ubuntu-latest` | `cross` (static musl) | `aletheia-linux-x86_64` |
+| `aarch64-apple-darwin` | `macos-14` | Native cargo build | `aletheia-macos-aarch64` |
+
+NOTE: musl produces a fully static binary with no glibc or runtime deps, suitable for any Linux 3.10+ regardless of distro.
 
 ## Manual release
 
