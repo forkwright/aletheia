@@ -215,11 +215,25 @@ def check_onboarding_contract() -> None:
     require_absent("docs/QUICKSTART.md", "### Current supported path: desktop", "current supported path flipped to desktop")
 
 
+def check_llms_references() -> None:
+    """Fail when llms.txt links to _llm files that do not exist on disk."""
+    llms = (ROOT / "llms.txt").read_text(encoding="utf-8")
+    # Match markdown links of the form [text](path) where path starts with _llm/
+    pattern = re.compile(r"\[([^\]]*)\]\((_llm/[^\)]+)\)")
+    for match in pattern.finditer(llms):
+        target = match.group(2)
+        if not (ROOT / target).exists():
+            FAILURES.append(
+                f"llms.txt: linked file does not exist: {target!r}"
+            )
+
+
 def main() -> int:
     check_public_snippets()
     check_env_contract()
     reconcile_env_vars()
     check_onboarding_contract()
+    check_llms_references()
     if FAILURES:
         for failure in FAILURES:
             print(f"public-doc-contracts: {failure}", file=sys.stderr)

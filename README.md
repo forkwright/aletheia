@@ -19,7 +19,7 @@ but it is not the default public onboarding path yet.
 Download the tarball from [releases](https://github.com/forkwright/aletheia/releases), extract, and run `init`:
 
 ```bash
-VERSION=v0.30.0
+VERSION=$(curl -s https://api.github.com/repos/forkwright/aletheia/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 tar xzf aletheia.tar.gz

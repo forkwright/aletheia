@@ -6,7 +6,7 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 
 | Category | Hot Fields | Cold Fields |
 |----------|-----------|-------------|
-| Gateway | 13 | 7 |
+| Gateway | 11 | 9 |
 | Agents | 28 | 0 |
 | Channels | 0 | 6 |
 | Bindings | 4 | 0 |
@@ -34,8 +34,8 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | `gateway.port` | **Cold** | TCP listener already bound; changing requires re-binding the socket |
 | `gateway.bind` | **Cold** | Interface binding decision made at startup; affects socket creation |
 | `gateway.auth.mode` | **Cold** | Authentication mode changes affect middleware stack initialization |
-| `gateway.auth.noneRole` | Hot | Role assignment for anonymous requests; read per-request |
-| `gateway.auth.signingKey` | Hot | JWT key rotation can happen at runtime |
+| `gateway.auth.noneRole` | **Cold** | Stored in `AppState.none_role` at startup; not refreshed on reload |
+| `gateway.auth.signingKey` | **Cold** | Used to build `JwtManager` at startup; key rotation requires restart |
 | `gateway.tls.enabled` | **Cold** | TLS termination settings require listener reconfiguration |
 | `gateway.tls.certPath` | **Cold** | Certificate paths loaded at startup for TLS context |
 | `gateway.tls.keyPath` | **Cold** | Private key paths loaded at startup for TLS context |
@@ -261,9 +261,14 @@ const RESTART_PREFIXES: &[&str] = &[
 ];
 ```
 
-### Match status: ✅ CONSISTENT (with note on `packs`)
+### Match status: ⚠️ PARTIAL GAP
 
-All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `reload.rs`, with one documented exception:
+`RESTART_PREFIXES` covers fields that trigger the "preserve cold values" path in `apply_reload`. Two additional fields are effectively cold but are not in `RESTART_PREFIXES`, meaning a SIGHUP will update the in-memory config value without applying the change to the live runtime state:
+
+- **`gateway.auth.noneRole`**: stored in `AppState.none_role` (set at startup in `server.rs`); `apply_reload` does not update `AppState` fields.
+- **`gateway.auth.signingKey`**: used to build `JwtManager` at startup; the manager is not rebuilt on reload.
+
+Both are classified Cold in this document. A code fix to add `gateway.auth.noneRole` and `gateway.auth.signingKey` to `RESTART_PREFIXES` (or to rebuild auth state on reload) is tracked separately.
 
 | Prefix in Code | Document Status | Notes |
 |----------------|-----------------|-------|
@@ -276,6 +281,8 @@ All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `
 | `channels` | Cold ✅ | Channel transport lifecycle |
 | `sandbox` | Cold ✅ | Tool registry captures sandbox config at startup |
 | `tools` | Cold ✅ | Tool registry captures external tool config at startup |
+| `gateway.auth.noneRole` | Cold ⚠️ | Not in `RESTART_PREFIXES`; `AppState.none_role` not refreshed on reload |
+| `gateway.auth.signingKey` | Cold ⚠️ | Not in `RESTART_PREFIXES`; `JwtManager` not rebuilt on reload |
 
 **`packs` is Cold but not in `RESTART_PREFIXES`:** The runtime does not force a restart when `packs` changes — SIGHUP will proceed and rebuild actor configs from the existing pack snapshot. Pack manifests, context files, and pack tools are not refreshed from disk. Operators must restart manually after adding, removing, or modifying packs. Adding `packs` to `RESTART_PREFIXES` would make the runtime enforce restart automatically.
 
@@ -310,6 +317,8 @@ All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `
 
 - **Network binding**: Port, bind address, TLS certificates
 - **Authentication mode**: Switching between token/none/JWT modes
+- **Anonymous role assignment** (`gateway.auth.noneRole`): stored in `AppState` at startup; change requires restart
+- **JWT signing key** (`gateway.auth.signingKey`): baked into `JwtManager` at startup; key rotation requires restart
 - **CSRF protection**: Enabling/disabling CSRF middleware
 - **Request limits**: Body size limits (Axum router configuration)
 - **Channel transports**: Signal messenger configuration and account settings

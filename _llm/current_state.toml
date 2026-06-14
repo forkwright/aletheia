@@ -1,0 +1,34 @@
+[meta]
+name = "aletheia"
+repo = "forkwright/aletheia"
+generated = false
+source_docs = [
+  "docs/PROJECT.md",
+  "CHANGELOG.md",
+  ".release-please-manifest.json",
+]
+
+[state]
+phase = "pre-1.0"
+version = "0.31.1"
+summary = """
+Aletheia is in active pre-1.0 development. The core agent runtime, memory
+pipeline, tool registry, HTTP/SSE gateway, Signal channel, and TUI are
+production-quality. The desktop app (proskenion) is a source-built preview and
+is not the default onboarding path. The v1.0 milestone targets the desktop app
+as the primary operator surface.
+"""
+
+[interfaces]
+tui = "active"
+signal = "active"
+http_api = "active"
+desktop_app = "preview"
+
+[active_threads]
+description = """
+- Feature-flag gating and dispatch orchestration (energeia)
+- Poiesis document-generation pipeline
+- Agent-first public surface validation and doc freshness
+- Pre-1.0 crate extraction (mneme and others to forkwright/<name> repos)
+"""
