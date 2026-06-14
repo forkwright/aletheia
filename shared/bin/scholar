@@ -78,7 +78,7 @@ def _http_get(url, headers=None, timeout=15):
 def _log_research(action, query_or_id, results_count=0, nous=None):
     """Auto-log every research action."""
     if not nous:
-        nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "syn"))
+        nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "pronoea"))
     log_dir = os.path.join(NOUS_DIR, nous, "memory")
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "research-log.md")
@@ -97,7 +97,7 @@ def _log_research(action, query_or_id, results_count=0, nous=None):
 
 def _reading_list_add(title, doi_or_id, year, venue, reason="found in search"):
     """Add to reading list."""
-    nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "syn"))
+    nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "pronoea"))
     rl_path = os.path.join(NOUS_DIR, nous, "memory", "reading-list.md")
     os.makedirs(os.path.dirname(rl_path), exist_ok=True)
 
@@ -409,7 +409,7 @@ def format_results(results, verbose=False):
 
 def show_reading_list():
     """Display the reading list."""
-    nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "syn"))
+    nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "pronoea"))
     rl_path = os.path.join(NOUS_DIR, nous, "memory", "reading-list.md")
     if os.path.exists(rl_path):
         with open(rl_path) as f:
@@ -420,7 +420,7 @@ def show_reading_list():
 
 def show_log():
     """Display the research log."""
-    nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "syn"))
+    nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "pronoea"))
     log_path = os.path.join(NOUS_DIR, nous, "memory", "research-log.md")
     if os.path.exists(log_path):
         with open(log_path) as f:

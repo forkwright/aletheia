@@ -11,9 +11,9 @@ For day-to-day operations, see [RUNBOOK.md](RUNBOOK.md). Deployment details are 
 | Target | Value | Basis |
 |--------|-------|-------|
 | **RTO** | 30–60 minutes | Local instance backup restore is copy-bound; reinstall + full NAS restore dominates the window |
-| **RPO** | 24 hours | Default whole-instance backup interval (`interval_hours = 24`, see `InstanceBackupConfig`) |
+| **RPO** | 24 hours | Default whole-instance backup interval (`backupIntervalHours = 24`, see `BackupSettings`) |
 
-> If you need tighter RPO, reduce `interval_hours` in config or run `aletheia backup` more frequently.
+> If you need tighter RPO, reduce `backupIntervalHours` in `[maintenance.backup]` or run `aletheia backup` more frequently.
 
 ---
 

@@ -8,7 +8,7 @@ set -euo pipefail
 export ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
 ALETHEIA_ENV_FILE="${ALETHEIA_ENV_FILE:-$ALETHEIA_ROOT/config/env}"
 ALETHEIA_BIN="${ALETHEIA_BIN:-aletheia}"
-CLAUDE_JSON="$HOME/.claude.json"
+CLAUDE_CREDENTIALS="$HOME/.claude/.credentials.json"
 
 if [[ -f "$ALETHEIA_ENV_FILE" ]]; then
   set -a
@@ -36,12 +36,15 @@ except Exception:
   fi
 fi
 
-# Fall back to API key sync from Claude Code config if no OAuth token present
-if [[ -f "$CLAUDE_JSON" ]]; then
+# Fall back to API key sync from Claude Code credentials if no OAuth token present.
+# WHY: ~/.claude/.credentials.json is the current CC credentials path; the legacy
+# ~/.claude.json with primaryApiKey is no longer used by CC.
+if [[ -f "$CLAUDE_CREDENTIALS" ]]; then
   api_key=$(python3 -c "
 import json, sys
-print(json.load(open(sys.argv[1])).get('primaryApiKey', ''))
-" "$CLAUDE_JSON" 2>/dev/null || true)  # NOTE: failure is non-fatal here
+d = json.load(open(sys.argv[1]))
+print(d.get('apiKey', d.get('primaryApiKey', '')))
+" "$CLAUDE_CREDENTIALS" 2>/dev/null || true)  # NOTE: failure is non-fatal here
   if [[ -n "$api_key" && "${api_key:0:11}" == "sk-ant-api0" ]]; then
     mkdir -p "$(dirname "$ALETHEIA_CREDS")"
     python3 -c "
@@ -58,7 +61,7 @@ if not existing.get('token','').startswith('sk-ant-oat'):
     json.dump(existing, open(path, 'w'), indent=2)
 " "$ALETHEIA_CREDS" "$api_key" 2>/dev/null
     chmod 600 "$ALETHEIA_CREDS"
-    echo "API key synced from Claude Code config"
+    echo "API key synced from Claude Code credentials"
   fi
 fi
 

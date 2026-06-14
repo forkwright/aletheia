@@ -146,8 +146,57 @@ jobs:
           FEATURE: ${{ matrix.feature }}
         run: cargo check -p "$CRATE" --features "$FEATURE"
 
+  no-default-recipes:
+    # WHY: verifies that documented no-default-features deployment recipes compile exactly
+    # as written in docs/FEATURE-FLAGS.md. With defaults enabled the check can mask missing
+    # dependencies in minimal builds.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Bare minimum: no TUI, no recall, no ML, no CC provider.
+          - features: ""
+          # Minimal headless: HTTP API + TLS, no recall wiring or ML stack.
+          - features: "tls"
+          # Headless + keyring auth, still no ML.
+          - features: "tls,keyring"
+          # Full headless: recall + ML + CC provider + TLS, no TUI.
+          - features: "recall,storage-fjall,embed-candle,cc-provider,tls"
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Configure git credentials for private fleet deps
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; cross-repo private deps will fail to fetch." >&2
+            exit 0
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: no-default-${{ matrix.features }}
+      - name: Check no-default-features recipe (${{ matrix.features || 'bare' }})
+        env:
+          FEATURES: ${{ matrix.features }}
+        run: |
+          if [[ -n "$FEATURES" ]]; then
+            cargo check -p aletheia --no-default-features --features "$FEATURES"
+          else
+            cargo check -p aletheia --no-default-features
+          fi
+
   build:
-    needs: [test, feature-check]
+    needs: [test, feature-check, no-default-recipes]
     permissions:
       contents: write
       attestations: write

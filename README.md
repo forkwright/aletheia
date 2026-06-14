@@ -4,7 +4,7 @@ Self-hosted AI agents with persistent memory.
 
 Talk to an AI that remembers your previous conversations, learns your preferences, and builds a knowledge graph over time. Give it a name, a personality, and goals. Run it from a terminal dashboard, HTTP API, or Signal messenger.
 
-One binary. No containers. No external databases. Beyond your LLM provider, there are no cloud dependencies.
+One binary. No containers. No external databases. Beyond your LLM provider, there are no cloud dependencies - except the first time the `candle` embedding provider initializes, which downloads model files from Hugging Face Hub and caches them locally. Subsequent starts and offline setups are fully local.
 
 Current first run: start the server and use the TUI. The desktop app is the
 v1.0 target surface and can be installed as a preview from a source checkout,

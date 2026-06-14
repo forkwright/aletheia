@@ -224,14 +224,16 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | `mcp.rateLimit.messageRequestsPerMinute` | Hot | Limit read per-MCP-request |
 | `mcp.rateLimit.readRequestsPerMinute` | Hot | Limit read per-MCP-request |
 
-### Local provider (`localProvider`)
+### Local provider (`localProvider`) — deprecated
+
+`localProvider` is a legacy pass-through section that predates the declarative `[[providers]]` model. It is accepted by the config loader but not validated. Use `[[providers]]` with `providerType = "openai-compatible"` for local inference instead (see `docs/AIR-GAPPED.md`). The `localProvider` section will be removed in a future release.
 
 | Config path | Hot/Cold | Reason |
 |-------------|----------|--------|
-| `localProvider.enabled` | Hot | Toggle read per-request |
-| `localProvider.baseUrl` | Hot | URL read per-request (connection pool may cache) |
-| `localProvider.model` | Hot | Model name read per-request |
-| `localProvider.timeoutSecs` | Hot | Timeout read per-request |
+| `localProvider.enabled` | Hot | Toggle read per-request (pass-through; unvalidated) |
+| `localProvider.baseUrl` | Hot | URL read per-request (pass-through; unvalidated) |
+| `localProvider.model` | Hot | Model name read per-request (pass-through; unvalidated) |
+| `localProvider.timeoutSecs` | Hot | Timeout read per-request (pass-through; unvalidated) |
 
 ### Packs (`packs`)
 
