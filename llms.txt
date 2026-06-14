@@ -21,6 +21,8 @@ Structured LLM corpus:
 
 - [README.md](README.md): product overview and install path
 - [CLAUDE.md](CLAUDE.md): repo conventions and working instructions
+- [AGENTS.md](AGENTS.md): where to add tools, endpoints, and capabilities (includes MCP plane decision)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): dependency graph and trait boundaries
 - [docs/TECHNOLOGY.md](docs/TECHNOLOGY.md): technology decision rationale
+- [docs/MCP-SERVERS.md](docs/MCP-SERVERS.md): tool plane taxonomy — choose Organon built-in, runtime-bridged MCP, DiaporeiaServer-exposed, or operator-local before adding a capability
 - [instance.example/nous/_template/](instance.example/nous/_template/): template agent workspace

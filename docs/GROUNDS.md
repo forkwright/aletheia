@@ -9,7 +9,7 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 | Abstraction | #Grounds | Grounds (verified) | Status |
 |-------------|----------|--------------------|--------|
-| Session     | 1        | Pylon HTTP API     | **Single-grounded** |
+| Session     | 2        | Pylon HTTP API, `aletheia session-create` CLI | Multi-grounded |
 | Plan        | 1        | Dianoia internal (`Plan::new`) | **Single-grounded** |
 | Tool        | 3        | Organon builtins, Thesauros packs, External tools config | Multi-grounded (diaporeia MCP is **not** equivalent) |
 | Agent       | 5        | Taxis config + `add-nous` CLI, agent file import, `NousManager::register_agent`, `POST /api/v1/nous` | Multi-grounded |
@@ -33,15 +33,12 @@ An abstraction with only one creation path is a mesh with a single root. If that
 4. **Diaporeia MCP `session_message` tool** - `crates/diaporeia/src/tools/mod.rs:154-169`
    The MCP server calls `find_or_create_session` as a side-effect of the `session_message` tool. This is API-adjacent (MCP transport instead of HTTP) but still request-driven, not programmatic or declarative.
 
+5. **`aletheia session-create <nous-id> [--key <session-key>]`** - `crates/aletheia/src/commands/session_create.rs:50`
+   The `session-create` CLI subcommand opens the local `graphe::SessionStore` directly, validates the agent exists in config, generates a UUID v4 `SessionId`, and calls `SessionStore::create_session`. This bypasses the HTTP layer entirely and is useful for scripting and headless integration-test setups. It produces behavior equivalent to the API path: same validation rules, same conflict semantics, and the same JSON-shaped output.
+
 ### Missing grounds
 
 - **Programmatic test fixtures** - integration tests reach directly into `graphe::SessionStore::create_session` (`crates/integration-tests/tests/mneme_session.rs:20`, `crates/graphe/tests/session_lifecycle.rs:45`) or use the HTTP client (`crates/eval/src/client.rs:81`). There is no shared `TestFixture::create_session()` helper that bypasses the network layer.
-- **CLI command** - `aletheia session-export` exists (`crates/aletheia/src/commands/session_export.rs:1`) but there is no `aletheia session-create`.
-
-### New grounds (post-#3601)
-
-5. **`aletheia session-create <nous-id> [--key <session-key>]`** - `crates/aletheia/src/commands/session_create.rs:50`
-   The `session-create` CLI subcommand opens the local `graphe::SessionStore` directly, validates the agent exists in config, generates a UUID v4 `SessionId`, and calls `SessionStore::create_session`. This bypasses the HTTP layer entirely and is useful for scripting and headless integration-test setups. It produces behavior equivalent to the API path: same validation rules, same conflict semantics, and the same JSON-shaped output.
 - **Domain pack initial state** - packs can declare tools and prompts, but there is no pack-level hook that pre-creates a session for an agent.
 
 ---
@@ -106,7 +103,7 @@ An abstraction with only one creation path is a mesh with a single root. If that
 ### Verified creation paths
 
 3. **Agent file import** - `crates/aletheia/src/commands/agent_io.rs:185-437`
-   `aletheia import-agent` writes the imported agent config into `config/aletheia.toml`, scaffolds the workspace from the agent file, and copies session history into `graphe` via `SessionStore::create_session` and `append_message`.
+   `aletheia import` writes the imported agent config into `config/aletheia.toml`, scaffolds the workspace from the agent file, and copies session history into `graphe` via `SessionStore::create_session` and `append_message`.
 
 4. **Programmatic creation** - `crates/nous/src/manager.rs:806-810`
    `NousManager::register_agent(def: NousConfig)` spawns a new agent actor with default `PipelineConfig`. Useful for integration tests that need agents without touching the filesystem or HTTP layer.
@@ -143,7 +140,7 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 The following abstractions are worth extending because they have exactly one *working* production ground:
 
-1. **Sessions** - add a programmatic creation helper for tests and a `aletheia session-create` CLI subcommand.
+1. **Sessions** - add a programmatic creation helper for tests (`TestFixture::create_session()`); the `aletheia session-create` CLI ground is now implemented.
 2. **Plans** - wire plan generation into the research output pipeline and add a `Plan::from_template` constructor for iterative planning.
 3. **Agents** - re-implement the fjall-backed agent import/export pipeline (#3446) and add a `POST /api/v1/nous` endpoint.
 4. **Tools (diaporeia)** - Diaporeia MCP tools are an intentionally separate tool plane. This preserves the psyche boundary: psyche content remains local-only and does not transit the MCP tool plane.

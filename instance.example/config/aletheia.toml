@@ -291,8 +291,10 @@ models = [
 # Required tools warn on startup if unavailable. Optional tools degrade silently.
 #
 # [tools.required]
-# file_ops = { type = "builtin" }
-# shell = { type = "builtin" }
+# read = { type = "builtin" }
+# write = { type = "builtin" }
+# edit = { type = "builtin" }
+# exec = { type = "builtin" }
 #
 # [tools.optional]
 # semantic_scholar = { type = "mcp", endpoint = "http://localhost:3100", description = "Search academic papers via Semantic Scholar" }

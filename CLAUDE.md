@@ -128,7 +128,16 @@ Per-crate details in each crate's `CLAUDE.md`.
 
 ## Adding tools
 
-Tools live in `crates/organon/`. Each tool implements the `ToolExecutor` trait:
+Choose the correct tool plane before writing code. See `docs/MCP-SERVERS.md` for the full plane taxonomy.
+
+| Plane | Choose when | Owner |
+|-------|-------------|-------|
+| Organon built-in | In-loop capability; no external process; required at every turn | `crates/organon/src/builtins/`; `register_all()` |
+| Runtime-bridged MCP | External MCP server; aletheia connects as a client | `crates/aletheia/src/external_tools.rs`; `[tools]` in `aletheia.toml` |
+| DiaporeiaServer-exposed | Aletheia hosts the tool for an external MCP client | `crates/diaporeia/` |
+| Operator-local MCP | Third-party server; no aletheia crate change needed | Operator registers in agent client config |
+
+**Organon built-ins** implement `ToolExecutor`:
 
 ```rust
 pub trait ToolExecutor: Send + Sync {

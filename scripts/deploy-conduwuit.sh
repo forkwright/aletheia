@@ -2,27 +2,32 @@
 set -euo pipefail
 # Deploy the conduwuit Matrix homeserver on this host.
 #
-# Usage: scripts/deploy-conduwuit.sh [--server-name NAME] [--dry-run]
+# Usage: scripts/deploy-conduwuit.sh [--server-name NAME] [--dry-run] [--print-token]
 #   --server-name NAME  Matrix server name (default: matrix.example.com)
-#   --dry-run           Print actions without executing
+#   --dry-run           Print actions without executing (secrets redacted)
+#   --print-token       Print registration token to stdout after deploy
 #
 # Effects:
-#   1. Pulls the pinned conduwuit container image.
-#   2. Generates a random registration token at ${SECRETS_DIR}/conduwuit-registration-token
+#   1. Validates --server-name against Matrix server-name rules.
+#   2. Pulls the pinned conduwuit container image.
+#   3. Generates a random registration token at ${SECRETS_DIR}/conduwuit-registration-token
 #      (mode 0600) and seeds it into ${CONDUWUIT_DATA_DIR}/registration_token.
-#   3. Creates the ${CONDUWUIT_DATA_DIR} data directory.
-#   4. Installs Quadlet unit /etc/containers/systemd/conduwuit.container with the
+#   4. Creates the ${CONDUWUIT_DATA_DIR} data directory.
+#   5. Installs Quadlet unit /etc/containers/systemd/conduwuit.container with the
 #      requested server name baked in.
-#   5. Reloads systemd, starts conduwuit.service, waits for /_matrix/client/versions
+#   6. Reloads systemd, starts conduwuit.service, waits for /_matrix/client/versions
 #      to return 200 on 127.0.0.1:6167.
-#   6. Prints the registration token and next-step instructions.
+#   7. Prints the token path; use --print-token to reveal the value.
 #
 # Requires: podman (>= 4.4 with Quadlet), systemctl, curl, openssl, sudo.
+# NOTE: This is optional Matrix support for operator communication; it is not
+#       a core Aletheia deployment dependency.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 SERVER_NAME="matrix.example.com"
 DRY_RUN=0
+PRINT_TOKEN=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -34,8 +39,12 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=1
             shift
             ;;
+        --print-token)
+            PRINT_TOKEN=1
+            shift
+            ;;
         -h|--help)
-            sed -n '3,25p' "$0"
+            sed -n '3,30p' "$0"
             exit 0
             ;;
         *)
@@ -44,6 +53,14 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Validate server name: hostname labels only (RFC 1123), optional :port suffix.
+# WHY: SERVER_NAME is substituted into a Quadlet unit file; hostile input could
+#      alter the unit syntax.
+if ! [[ "${SERVER_NAME}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?(:[0-9]{1,5})?$ ]]; then
+    echo "[deploy-conduwuit] ERROR: --server-name must be a valid hostname (got: ${SERVER_NAME})" >&2
+    exit 2
+fi
 
 TEMPLATE="${REPO_ROOT}/scripts/conduwuit.container.template"
 UNIT_DST="/etc/containers/systemd/conduwuit.container"
@@ -56,16 +73,6 @@ HEALTH_TIMEOUT=60
 
 log() {
     printf '[deploy-conduwuit] %s\n' "$*"
-}
-
-run() {
-    # WHY: takes a single string so we can log the rendered command, with `bash -c`
-    # as the evaluator (eval is SC2294-flagged and less predictable under set -e).
-    if [[ "${DRY_RUN}" -eq 1 ]]; then
-        log "DRY: $*"
-    else
-        bash -c "$*"
-    fi
 }
 
 require_cmd() {
@@ -100,13 +107,21 @@ log "unit dst: ${UNIT_DST}"
 
 # 1. Pull image.
 log "pulling container image"
-run "podman pull '${IMAGE}'"
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "DRY: podman pull <image>"
+else
+    podman pull "${IMAGE}"
+fi
 
 # 2. Generate registration token (32-byte base64url, stripped padding).
 if [[ ! -f "${TOKEN_PATH}" ]]; then
     log "generating registration token at ${TOKEN_PATH}"
-    run "mkdir -p '${SECRETS_DIR}' && chmod 0700 '${SECRETS_DIR}'"
-    if [[ "${DRY_RUN}" -eq 0 ]]; then
+    if [[ "${DRY_RUN}" -eq 1 ]]; then
+        log "DRY: mkdir -p <secrets-dir> && chmod 0700 <secrets-dir>"
+        log "DRY: openssl rand ... > <token-path> && chmod 0600 <token-path>"
+    else
+        mkdir -p "${SECRETS_DIR}"
+        chmod 0700 "${SECRETS_DIR}"
         openssl rand -base64 32 | tr -d '=+/' | cut -c1-32 >"${TOKEN_PATH}"
         chmod 0600 "${TOKEN_PATH}"
     fi
@@ -116,13 +131,13 @@ fi
 
 # 3. Create data dir and seed the token where conduwuit reads it.
 log "preparing data directory ${DATA_DIR}"
-run "sudo mkdir -p '${DATA_DIR}'"
-run "sudo chmod 0700 '${DATA_DIR}'"
-
-if [[ "${DRY_RUN}" -eq 0 ]]; then
-    sudo install -m 0600 "${TOKEN_PATH}" "${DATA_DIR}/registration_token"
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "DRY: sudo mkdir -p <data-dir> && sudo chmod 0700 <data-dir>"
+    log "DRY: sudo install -m 0600 <token-path> <data-dir>/registration_token"
 else
-    log "DRY: sudo install -m 0600 ${TOKEN_PATH} ${DATA_DIR}/registration_token"
+    sudo mkdir -p "${DATA_DIR}"
+    sudo chmod 0700 "${DATA_DIR}"
+    sudo install -m 0600 "${TOKEN_PATH}" "${DATA_DIR}/registration_token"
 fi
 
 # 4. Install Quadlet unit with the requested server name substituted.
@@ -133,14 +148,22 @@ RENDERED_CONTENT="$(<"${TEMPLATE}")"
 RENDERED_CONTENT="${RENDERED_CONTENT//__SERVER_NAME__/${SERVER_NAME}}"
 RENDERED_CONTENT="${RENDERED_CONTENT//__DATA_DIR__/${DATA_DIR}}"
 printf '%s\n' "${RENDERED_CONTENT}" >"${RENDERED}"
-run "sudo install -m 0644 '${RENDERED}' '${UNIT_DST}'"
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "DRY: sudo install -m 0644 <rendered-unit> ${UNIT_DST}"
+else
+    sudo install -m 0644 "${RENDERED}" "${UNIT_DST}"
+fi
 
 # 5. Reload systemd and start the service.
 log "reloading systemd"
-run "sudo systemctl daemon-reload"
-
-log "starting ${SERVICE}"
-run "sudo systemctl restart '${SERVICE}'"
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "DRY: sudo systemctl daemon-reload"
+    log "DRY: sudo systemctl restart ${SERVICE}"
+else
+    sudo systemctl daemon-reload
+    log "starting ${SERVICE}"
+    sudo systemctl restart "${SERVICE}"
+fi
 
 # 6. Health check.
 if [[ "${DRY_RUN}" -eq 0 ]]; then
@@ -166,24 +189,29 @@ cat <<EOF
 
 conduwuit is running on 127.0.0.1:6167 (server name: ${SERVER_NAME}).
 
-Registration token (also saved to ${TOKEN_PATH}):
+Registration token saved to: ${TOKEN_PATH}
 EOF
-if [[ "${DRY_RUN}" -eq 0 ]]; then
-    cat "${TOKEN_PATH}"
-    echo
+
+if [[ "${PRINT_TOKEN}" -eq 1 ]]; then
+    if [[ "${DRY_RUN}" -eq 0 ]]; then
+        printf 'Token: %s\n' "$(cat "${TOKEN_PATH}")"
+    fi
+else
+    printf 'Run with --print-token to reveal it, or: cat %s\n' "${TOKEN_PATH}"
 fi
 
-cat <<EOF
+cat <<'NEXTEOF'
 
 Next steps:
-  1. Register the first user (operator):
-       curl -X POST 'http://127.0.0.1:6167/_synapse/admin/v1/register' \\
-            -H 'Content-Type: application/json' \\
-            -d "{\\"username\\": \\"operator\\", \\"password\\": \\"CHANGE_ME\\", \\"registration_token\\": \\"\$(cat ${TOKEN_PATH})\\"}"
+  1. Register the first user (operator) — substitute token from the path above:
+       TOKEN=$(cat "${TOKEN_PATH}")
+       curl -X POST 'http://127.0.0.1:6167/_synapse/admin/v1/register' \
+            -H 'Content-Type: application/json' \
+            -d "{\"username\": \"operator\", \"password\": \"CHANGE_ME\", \"registration_token\": \"${TOKEN}\"}"
 
      Or via conduwuit's register endpoint (API paths depend on the version; see upstream docs).
 
   2. Point an Element client at http://matrix.example.com:6167.
 
   3. Follow up with Phase 3 (aletheia matrix init) to provision agent users.
-EOF
+NEXTEOF
