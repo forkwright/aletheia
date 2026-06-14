@@ -19,6 +19,7 @@ use tracing::{Instrument as _, instrument};
 
 use hermeneus::provider::LlmProvider;
 use hermeneus::types::Message;
+use koina::uuid::uuid_v4;
 
 use crate::contradiction::ContradictionLog;
 use crate::distill::{DistillConfig, DistillEngine};
@@ -104,6 +105,22 @@ pub struct MergeReport {
     pub facts_stale: usize,
 }
 
+/// Provenance for facts produced by auto-dream consolidation.
+///
+/// Preserves the source session lineage when transcripts are distilled
+/// individually, and carries a consolidation batch ID when the source only
+/// provides a batched view. Callers should prefer `source_session_id` when
+/// available and fall back to `batch_id` only when the original session is
+/// unavailable.
+#[derive(Debug, Clone, Default)]
+pub struct DreamProvenance {
+    /// Session that produced the transcript being consolidated.
+    pub source_session_id: Option<String>,
+    /// Identifier for this consolidation run when a per-session view is not
+    /// available.
+    pub batch_id: Option<String>,
+}
+
 /// Trait for counting and loading session transcripts.
 ///
 /// Implementors provide access to session storage (e.g. fjall via graphe).
@@ -137,6 +154,9 @@ pub trait ConsolidationTarget: Send + Sync {
     /// Merge extracted memory flush INTO the knowledge graph.
     ///
     /// Deduplicates against existing facts and returns a merge report.
+    /// `provenance` preserves the session or batch lineage that produced the
+    /// facts; implementations should store it instead of collapsing to a
+    /// generic source label such as `auto-dream`.
     ///
     /// # Errors
     ///
@@ -144,6 +164,7 @@ pub trait ConsolidationTarget: Send + Sync {
     fn merge_flush(
         &self,
         flush: &MemoryFlush,
+        provenance: &DreamProvenance,
         nous_id: &str,
     ) -> std::result::Result<MergeReport, std::io::Error>;
 
@@ -393,6 +414,10 @@ impl DreamEngine {
 
         let mut total_report = MergeReport::default();
         let mut distill_number: u32 = 0;
+        // WHY: one batch ID per consolidation run so that batched sources can
+        // still group facts by consolidation batch while per-transcript sources
+        // preserve individual session lineage.
+        let batch_id = uuid_v4();
 
         for transcript in &transcripts {
             if transcript.messages.is_empty() {
@@ -429,8 +454,12 @@ impl DreamEngine {
             }
 
             // NOTE: merge extracted facts INTO the knowledge graph.
+            let provenance = DreamProvenance {
+                source_session_id: Some(transcript.session_id.clone()),
+                batch_id: Some(batch_id.clone()),
+            };
             match target
-                .merge_flush(&result.memory_flush, &transcript.nous_id)
+                .merge_flush(&result.memory_flush, &provenance, &transcript.nous_id)
                 .context(DreamConsolidationTargetSnafu {
                     context: "merge flush INTO knowledge graph",
                 }) {

@@ -137,6 +137,13 @@ pub(crate) struct ActorRuntime {
     last_panic_at: Option<Instant>,
     /// Consecutive inbox recv timeouts without a successful message. (#2159)
     consecutive_timeouts: u32,
+    /// Auto-dream consolidation engine, lazily initialized once per actor.
+    ///
+    /// WHY: the engine owns scan throttle state. Creating a fresh engine on
+    /// every turn completion would reset the throttle and allow repeated
+    /// expensive session scans (#5401).
+    #[cfg(feature = "knowledge-store")]
+    dream_engine: std::sync::OnceLock<Arc<melete::dream::DreamEngine>>,
 }
 
 /// A single nous agent running as a Tokio actor.
@@ -266,6 +273,8 @@ impl NousActor {
                 started_at: Instant::now(),
                 last_panic_at: None,
                 consecutive_timeouts: 0,
+                #[cfg(feature = "knowledge-store")]
+                dream_engine: std::sync::OnceLock::new(),
             },
             drift_detectors: HashMap::new(),
             nous_behavior,

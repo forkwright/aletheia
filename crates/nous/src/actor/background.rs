@@ -387,23 +387,43 @@ impl NousActor {
             config.model.clone(),
         ));
 
-        let lock_dir = std::env::temp_dir().join("aletheia-auto-dream");
+        // WHY: scope the lock directory to the instance's session-store root so
+        // two instances with the same nous_id do not contend for a global temp
+        // lock (#5401). Use try_lock to avoid blocking the actor loop.
+        let store_path = {
+            let Ok(store) = session_store.try_lock() else {
+                warn!(nous_id = %self.id, "session store busy, skipping auto-dream");
+                return;
+            };
+            store.path().to_path_buf()
+        };
+        let lock_dir = store_path.join(".aletheia-auto-dream");
         if let Err(e) = std::fs::create_dir_all(&lock_dir) {
             warn!(nous_id = %self.id, error = %e, "auto-dream lock directory unavailable");
             return;
         }
 
-        let mut dream_config = melete::dream::DreamConfig::new(
-            lock_dir.join(format!("{}.lock", self.id.replace('/', "_"))),
-        );
-        dream_config.min_hours = self.config.behavior.dream_min_hours;
-        dream_config.min_sessions = self.config.behavior.dream_min_sessions;
-        dream_config.scan_interval_secs = self.config.behavior.dream_scan_throttle_secs;
-        dream_config.stale_threshold_secs = self.config.behavior.dream_stale_threshold_secs;
-        dream_config.distill_config.model = config.model;
-        dream_config.distill_config.verbatim_tail = config.verbatim_tail;
-
-        let engine = Arc::new(melete::dream::DreamEngine::new(dream_config));
+        // WHY: reuse the same DreamEngine for the actor's lifetime so scan
+        // throttle state persists across repeated turn completions (#5401).
+        let id = self.id.clone();
+        let min_hours = self.config.behavior.dream_min_hours;
+        let min_sessions = self.config.behavior.dream_min_sessions;
+        let scan_interval_secs = self.config.behavior.dream_scan_throttle_secs;
+        let stale_threshold_secs = self.config.behavior.dream_stale_threshold_secs;
+        let model = config.model.clone();
+        let verbatim_tail = config.verbatim_tail;
+        let engine = Arc::clone(self.runtime.dream_engine.get_or_init(move || {
+            let mut dream_config = melete::dream::DreamConfig::new(
+                lock_dir.join(format!("{}.lock", id.replace('/', "_"))),
+            );
+            dream_config.min_hours = min_hours;
+            dream_config.min_sessions = min_sessions;
+            dream_config.scan_interval_secs = scan_interval_secs;
+            dream_config.stale_threshold_secs = stale_threshold_secs;
+            dream_config.distill_config.model = model;
+            dream_config.distill_config.verbatim_tail = verbatim_tail;
+            Arc::new(melete::dream::DreamEngine::new(dream_config))
+        }));
         let source: Arc<dyn melete::dream::TranscriptSource> =
             Arc::new(SessionStoreTranscriptSource::new(Arc::clone(session_store)));
         let target: Arc<dyn melete::dream::ConsolidationTarget> = Arc::new(
@@ -504,12 +524,21 @@ impl melete::dream::ConsolidationTarget for KnowledgeStoreConsolidationTarget {
     fn merge_flush(
         &self,
         flush: &melete::flush::MemoryFlush,
+        provenance: &melete::dream::DreamProvenance,
         nous_id: &str,
     ) -> std::result::Result<melete::dream::MergeReport, std::io::Error> {
+        // WHY: preserve source-session lineage when available; fall back to the
+        // consolidation batch ID for batched sources. Avoid collapsing all
+        // auto-dream facts to a generic "auto-dream" label (#5401).
+        let source_session_id = provenance
+            .source_session_id
+            .as_deref()
+            .or(provenance.batch_id.as_deref())
+            .unwrap_or("auto-dream");
         let facts_added = crate::distillation::persist_memory_flush_items(
             &self.store,
             flush,
-            "auto-dream",
+            source_session_id,
             nous_id,
         )
         .map_err(|e| std::io::Error::other(e.to_string()))?;

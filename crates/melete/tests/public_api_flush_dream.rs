@@ -112,8 +112,8 @@ mod dream {
     use melete::contradiction::ContradictionLog;
     use melete::distill::DistillConfig;
     use melete::dream::{
-        ConsolidationTarget, DreamConfig, DreamEngine, MergeReport, SessionTranscript,
-        TranscriptSource,
+        ConsolidationTarget, DreamConfig, DreamEngine, DreamProvenance, MergeReport,
+        SessionTranscript, TranscriptSource,
     };
     use melete::flush::MemoryFlush;
 
@@ -181,6 +181,7 @@ mod dream {
         fn merge_flush(
             &self,
             _flush: &MemoryFlush,
+            _provenance: &DreamProvenance,
             _nous_id: &str,
         ) -> std::result::Result<MergeReport, std::io::Error> {
             self.merges.fetch_add(1, Ordering::Relaxed);

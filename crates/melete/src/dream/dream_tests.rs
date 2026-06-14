@@ -64,6 +64,7 @@ impl ConsolidationTarget for MockConsolidationTarget {
     fn merge_flush(
         &self,
         _flush: &MemoryFlush,
+        _provenance: &DreamProvenance,
         _nous_id: &str,
     ) -> std::result::Result<MergeReport, std::io::Error> {
         self.merge_count.fetch_add(1, Ordering::Relaxed);
@@ -419,6 +420,71 @@ fn dream_engine_is_send_sync() {
 }
 
 #[test]
+fn lock_paths_scoped_by_instance_root() {
+    // WHY: two instances with the same nous_id must not share a lock. Using a
+    // per-instance store root as the lock directory scopes the lock to each
+    // instance.
+    let instance_a = tempfile::tempdir().unwrap();
+    let instance_b = tempfile::tempdir().unwrap();
+    let nous_id = "same-nous";
+
+    let lock_a = instance_a
+        .path()
+        .join(".aletheia-auto-dream")
+        .join(format!("{nous_id}.lock"));
+    let lock_b = instance_b
+        .path()
+        .join(".aletheia-auto-dream")
+        .join(format!("{nous_id}.lock"));
+
+    let engine_a = DreamEngine::new(make_config(lock_a));
+    let engine_b = DreamEngine::new(make_config(lock_b));
+    let source = MockTranscriptSource::new(10);
+
+    let acquired_a = engine_a.check_gates(&source).unwrap_or_default();
+    assert!(acquired_a.is_some(), "instance A should acquire its lock");
+
+    let acquired_b = engine_b.check_gates(&source).unwrap_or_default();
+    assert!(
+        acquired_b.is_some(),
+        "instance B should acquire its own lock even with the same nous_id"
+    );
+
+    if let Some(lock) = acquired_a {
+        lock.mark_complete().unwrap_or_default();
+    }
+    if let Some(lock) = acquired_b {
+        lock.mark_complete().unwrap_or_default();
+    }
+}
+
+#[test]
+fn repeated_turn_completion_preserves_scan_throttle() {
+    // WHY: the scan throttle lives on the DreamEngine. Reusing the same engine
+    // across repeated turn completions must not reset the throttle.
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join(".consolidate-lock");
+
+    let mut config = make_config(lock_path);
+    config.scan_interval_secs = 600;
+
+    let engine = DreamEngine::new(config);
+    let source = MockTranscriptSource::new(10);
+
+    let first = engine.check_gates(&source).unwrap_or_default();
+    assert!(first.is_some(), "first turn should pass scan gate");
+    if let Some(lock) = first {
+        lock.mark_complete().unwrap_or_default();
+    }
+
+    let second = engine.check_gates(&source).unwrap_or_default();
+    assert!(
+        second.is_none(),
+        "second turn should be throttled because the engine state persists"
+    );
+}
+
+#[test]
 fn dream_config_defaults() {
     let config = DreamConfig::new(PathBuf::from("/tmp/test-lock"));
     assert_eq!(config.min_hours, DEFAULT_MIN_HOURS);
@@ -433,4 +499,91 @@ fn merge_report_default_is_zero() {
     assert_eq!(report.facts_added, 0);
     assert_eq!(report.facts_deduped, 0);
     assert_eq!(report.facts_stale, 0);
+}
+
+/// Target that records the provenance passed to each merge so lineage can be
+/// asserted without a real knowledge store.
+#[derive(Default)]
+struct LineageRecordingTarget {
+    provenances: std::sync::Mutex<Vec<DreamProvenance>>,
+}
+
+impl ConsolidationTarget for LineageRecordingTarget {
+    fn merge_flush(
+        &self,
+        _flush: &MemoryFlush,
+        provenance: &DreamProvenance,
+        _nous_id: &str,
+    ) -> std::result::Result<MergeReport, std::io::Error> {
+        self.provenances.lock().unwrap().push(provenance.clone());
+        Ok(MergeReport {
+            facts_added: 1,
+            facts_deduped: 0,
+            facts_stale: 0,
+        })
+    }
+
+    fn mark_contradictions_stale(
+        &self,
+        _log: &ContradictionLog,
+        _nous_id: &str,
+    ) -> std::result::Result<usize, std::io::Error> {
+        Ok(0)
+    }
+}
+
+#[tokio::test]
+async fn consolidation_preserves_source_session_lineage_and_batch() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join(".consolidate-lock");
+
+    let config = make_config(lock_path.clone());
+    let engine = Arc::new(DreamEngine::new(config));
+
+    let transcripts = vec![
+        sample_transcript("session-001", "alice"),
+        sample_transcript("session-002", "alice"),
+    ];
+    let source = MockTranscriptSource::with_transcripts(transcripts);
+    let target = Arc::new(LineageRecordingTarget::default());
+
+    let provider: Arc<dyn LlmProvider> = Arc::new(hermeneus::test_utils::MockProvider::new(
+        "## Summary\nS\n## Key Decisions\n- D",
+    ));
+
+    let acquired = lock::try_acquire(&lock_path, super::DEFAULT_STALE_THRESHOLD_SECS)
+        .unwrap()
+        .unwrap();
+    let _report = engine
+        .run_consolidation(acquired, &source, target.as_ref(), provider.as_ref())
+        .await
+        .unwrap_or_default();
+
+    let provenances = target.provenances.lock().unwrap().clone();
+
+    assert_eq!(
+        provenances.len(),
+        2,
+        "each transcript should produce a merge"
+    );
+    assert!(
+        provenances
+            .iter()
+            .any(|p| p.source_session_id.as_deref() == Some("session-001")),
+        "should preserve session-001 lineage"
+    );
+    assert!(
+        provenances
+            .iter()
+            .any(|p| p.source_session_id.as_deref() == Some("session-002")),
+        "should preserve session-002 lineage"
+    );
+    assert!(
+        provenances[0].batch_id.is_some(),
+        "each run should carry a consolidation batch ID"
+    );
+    assert_eq!(
+        provenances[0].batch_id, provenances[1].batch_id,
+        "all merges in one run should share the same batch ID"
+    );
 }
