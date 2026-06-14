@@ -34,7 +34,7 @@ use oikonomos::probe::{
     Probe, ProbeAuditConfig, ProbeAuditSummary, ProbeCategory, ProbeResult, ProbeSet,
     build_probe_audit_prompt,
 };
-use oikonomos::runner::{DaemonOutputMode, ExecutionResult, TaskRunner};
+use oikonomos::runner::{DaemonOutputMode, ExecutionResult, TaskOutcome, TaskRunner};
 use oikonomos::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
 use oikonomos::self_prompt::{SELF_PROMPT_SESSION_KEY, SelfPromptConfig};
 use oikonomos::state::{AllowedTriggers, DaemonConfig, WorkspaceGuard};
@@ -265,6 +265,7 @@ fn retention_summary_serde_roundtrips_through_json() {
         messages_cleaned: 345,
         blackboard_entries_cleaned: 6,
         bytes_freed: 67_890,
+        cap_sessions_cleaned: 0,
     };
     let json = serde_json::to_string(&original).expect("serialize");
     let back: RetentionSummary = serde_json::from_str(&json).expect("deserialize");
@@ -419,12 +420,12 @@ fn self_prompt_config_serde_roundtrips_and_supplies_defaults() {
 #[test]
 fn execution_result_serde_roundtrips_through_json() {
     let original = ExecutionResult {
-        success: true,
+        outcome: TaskOutcome::Success,
         output: Some("ok".to_owned()),
     };
     let json = serde_json::to_string(&original).expect("serialize ExecutionResult");
     let back: ExecutionResult = serde_json::from_str(&json).expect("deserialize ExecutionResult");
-    assert!(back.success);
+    assert!(back.is_success());
     assert_eq!(back.output.as_deref(), Some("ok"));
 }
 
@@ -440,6 +441,8 @@ fn task_status_serde_roundtrips_through_json() {
         consecutive_failures: 0,
         in_flight: false,
         last_error: None,
+        data_source: "live".to_owned(),
+        as_of: None,
     };
     let json = serde_json::to_string(&original).expect("serialize TaskStatus");
     let back: TaskStatus = serde_json::from_str(&json).expect("deserialize TaskStatus");

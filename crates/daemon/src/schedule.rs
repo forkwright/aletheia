@@ -323,6 +323,17 @@ pub struct TaskStatus {
     pub in_flight: bool,
     /// Most recent error message, if the last execution failed. (#2212)
     pub last_error: Option<String>,
+    /// Where this status was sourced from: `"live"` (in-memory runner) or
+    /// `"persisted"` (restored from the task-state store). (#5131)
+    #[serde(default = "default_data_source")]
+    pub data_source: String,
+    /// ISO 8601 timestamp of the underlying data (last run), if known. (#5131)
+    #[serde(default)]
+    pub as_of: Option<String>,
+}
+
+fn default_data_source() -> String {
+    "live".to_owned()
 }
 
 #[cfg(test)]
@@ -457,6 +468,8 @@ mod tests {
             consecutive_failures: 0,
             in_flight: false,
             last_error: None,
+            data_source: "live".to_owned(),
+            as_of: None,
         };
         assert_eq!(status.id, "test-id");
         assert_eq!(status.name, "Test Task");

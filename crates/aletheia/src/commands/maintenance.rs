@@ -39,6 +39,12 @@ pub(crate) enum Action {
         #[arg(long)]
         verbose: bool,
     },
+    /// Clear the persisted failure/backoff/disable state for a task so it
+    /// becomes eligible to run again. (#5130)
+    Reset {
+        /// Task ID whose persisted state should be reset.
+        task: String,
+    },
 }
 
 pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
@@ -54,6 +60,22 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
             let token = CancellationToken::new();
             let mut runner = TaskRunner::new("system", token).with_maintenance(maint);
             runner.register_maintenance_tasks();
+
+            // WHY(#5131): the daemon persists task state to disk. The CLI runs
+            // in a separate process with a fresh in-memory runner, so without
+            // restoring the persisted state, `status` always reported zero runs
+            // and never reflected backoff or auto-disable. Load it if present.
+            let state_root = oikos
+                .data()
+                .join("daemon-task-state")
+                .join("system");
+            if state_root.exists()
+                && let Ok(store) = oikonomos::state::TaskStateStore::open(&state_root)
+            {
+                runner = runner.with_state_store(store);
+                runner.restore_state();
+            }
+
             let statuses = runner.status();
             if json {
                 println!(
@@ -99,7 +121,46 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 run_task(definition, &maint, verbose).await?;
             }
         }
+        Action::Reset { task } => reset_task_state(&oikos, &task)?,
     }
+    Ok(())
+}
+
+/// Clear the persisted failure/backoff/disable state for a single task. (#5130)
+///
+/// Re-enables the task, zeroes the consecutive-failure counter, and clears the
+/// backoff deadline and last error so the daemon will schedule it again on its
+/// next start.
+fn reset_task_state(oikos: &Oikos, task_id: &str) -> Result<()> {
+    let state_root = oikos.data().join("daemon-task-state").join("system");
+    if !state_root.exists() {
+        whatever!(
+            "no persisted task state found at {}",
+            state_root.display()
+        );
+    }
+
+    let store = oikonomos::state::TaskStateStore::open(&state_root)
+        .whatever_context("failed to open task-state store")?;
+    let states = store
+        .load_all()
+        .whatever_context("failed to load task state")?;
+
+    let Some(mut state) = states.into_iter().find(|s| s.task_id == task_id) else {
+        whatever!("no persisted state for task '{task_id}'");
+    };
+
+    state.enabled = Some(true);
+    state.consecutive_failures = 0;
+    state.backoff_until_ts = None;
+    state.last_error = None;
+    state.schema_version = oikonomos::state::TASK_STATE_SCHEMA_VERSION;
+
+    store
+        .save(&state)
+        .whatever_context("failed to persist reset task state")?;
+
+    println!("Reset persisted state for task '{task_id}' (re-enabled, backoff cleared).");
     Ok(())
 }
 
@@ -238,12 +299,15 @@ async fn run_prosoche_self_audit(maint: &MaintenanceConfig) {
         checked_at: jiff::Timestamp::now().to_string(),
         ..ProsocheState::default()
     };
-    let report = runner.run_audit(&state).await;
+    let (report, persist_result) = runner.run_audit(&state).await;
     println!(
         "prosoche-self-audit: {} findings across {} checks",
         report.findings.len(),
         report.check_summary.len()
     );
+    if let Err(e) = persist_result {
+        eprintln!("prosoche-self-audit: warning: report persist failed: {e}");
+    }
 }
 
 /// Build a `MaintenanceConfig` from the oikos layout and config settings.
@@ -306,6 +370,7 @@ pub(crate) fn build_config(
             backup_dir: oikos.backups().join("instance"),
             interval_hours: settings.backup.backup_interval_hours,
             retention_count: settings.backup.backup_retention_count,
+            additional_workspaces: Vec::new(),
         },
         backup_metrics: None,
         prosoche_audit_dir: oikos.data().join("prosoche-audits"),
