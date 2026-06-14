@@ -34,12 +34,25 @@ Desktop crate (`proskenion`) excluded from workspace - build standalone:
 - **Commits:** `type(scope): description`. Scope = crate name.
 - **Test data:** Synthetic identities only (alice, bob, acme.corp).
 
+## Where to add a new tool or capability
+
+Aletheia has four distinct tool planes. Decide the correct plane before writing code or filing an issue.
+
+| Plane | When to choose it | Reference |
+|-------|------------------|-----------|
+| **Organon built-in** | Agent-loop capability needed at every turn; no external process; no operator config required. | `crates/organon/src/builtins/`; register in `register_all()`. |
+| **Runtime-bridged MCP** | Capability lives in an external MCP server; aletheia connects as a client at startup. Tools appear in `organon::ToolRegistry` after discovery. | `crates/aletheia/src/external_tools.rs`; declare under `[tools]` in `aletheia.toml`. |
+| **DiaporeiaServer-exposed MCP** | Aletheia *hosts* a capability for an external MCP client (e.g. Claude Code, Cursor) to consume. Intentionally separate from the nous-loop tool registry. | `crates/diaporeia/`; register via `rmcp::ToolRouter`. |
+| **Operator-local MCP server** | Third-party or custom MCP server the operator registers in their agent client config. No aletheia crate involvement. | See `docs/MCP-SERVERS.md`. |
+
+Every new tool/capability issue or PR must name: the owner plane, auth/RBAC model, visibility surface (agent-loop / Diaporeia / operator-local), and whether it appears in the generated `_llm` inventory.
+
 ## Where to add things
 
 | Task | Location | Registration |
 |------|----------|-------------|
 | HTTP endpoint | `crates/pylon/src/handlers/` | Route in `crates/pylon/src/router.rs` + OpenAPI spec |
-| Tool | `crates/organon/src/builtins/` | `register_all()` |
+| Tool (Organon built-in) | `crates/organon/src/builtins/` | `register_all()` |
 | Config field | `crates/taxis/src/config/behavior/{domain}.rs` | Field on `AletheiaConfig` |
 | Knowledge type | `crates/eidos/src/knowledge/` | Add to shared knowledge types |
 | Pipeline stage | `crates/nous/src/pipeline/` | Wire into turn pipeline |

@@ -2,13 +2,13 @@
 
 ## At a glance
 
-Report tooling family: format-agnostic document model plus rendering backends (Typst→PDF, ODT, XLSX, ODS, PPTX, DOCX, and Pandoc-backed DOCX/HTML/MD/LaTeX/EPUB) and report-quality checks (prose lint, numeric claim verify). Zero internal dependencies. Entry points: `core/src/lib.rs` (Document, Renderer) and `typst/src/lib.rs` (`render_typst`, `render_template`).
+Report tooling family: format-agnostic document model plus rendering backends (Typst→PDF, ODT, XLSX, ODS, PPTX, DOCX, and Pandoc-backed DOCX/HTML/MD/LaTeX/EPUB) and report-quality checks (prose lint, numeric claim verify). Sibling crates depend on each other (e.g. `poiesis-doc` depends on `poiesis-text`, `poiesis-typst`, `poiesis-core`, `poiesis-charts`). Entry points: `core/src/lib.rs` (Document, Renderer) and `typst/src/lib.rs` (`render_typst`, `render_template`).
 
 **Typst is the primary renderer.** Prefer `poiesis-typst` for prose-oriented PDF output - it supports templates, math, citations, breakable blocks, cross-references, and JSON data injection, with structured compile diagnostics carrying source locations. The `text/pdf` backend (via `krilla`) remains for the document-model path where no template system or data injection is needed.
 
 ## Depth
 
-Report tooling family: format-agnostic document model, Typst-based PDF primary renderer, format-specific backends (ODT/XLSX/ODS/PPTX/DOCX/Pandoc), and report-quality checks (lint + verify). ~2K lines.
+Report tooling family: format-agnostic document model, Typst-based PDF primary renderer, format-specific backends (ODT/XLSX/ODS/PPTX/DOCX/Pandoc), and report-quality checks (lint + verify). ~27K lines of Rust source across the crate family.
 
 ## Read first
 
@@ -55,7 +55,7 @@ at compile time. Slug → source mapping is registered in `typst/src/templates.r
 Templates load their data payload via `json("data.json")`, which
 `render_typst` synthesizes from the caller's JSON `Value`.
 
-Current slugs: `default`.
+Current slugs: `default`, `eval-report`, `graph-audit` (see `typst/src/templates.rs`).
 
 ## Feature flags
 
@@ -66,15 +66,14 @@ Current slugs: `default`.
 | `xlsx` | `poiesis-sheet` | yes | Excel output via `rust_xlsxwriter` |
 | `ods` | `poiesis-sheet` | yes | ODS output via `spreadsheet-ods` |
 | `pptx` | `poiesis-slides` | yes | PPTX output via hand-rolled ZIP/XML emitter |
-| `docx` | `poiesis-doc` | yes | DOCX output via `docx-rs` |
-| `pandoc` | `poiesis-doc` | yes | DOCX/HTML/MD/LaTeX/EPUB via Pandoc subprocess; PDF uses Typst unless LaTeX is required |
+| *(none)* | `poiesis-doc` | n/a | `poiesis-doc` has no `[features]` section. `docx-rs`, Pandoc probing, and all sibling poiesis deps are unconditional. |
 
 ## Patterns
 
 - **Typst-first**: when rendering a prose-oriented report to PDF, use `poiesis-typst`. Templates and math belong there.
 - **Format-agnostic core**: `Document`, `Block`, and `RichText` are plain data types with zero format-specific code (used by non-Typst backends).
 - **Trait-based backends**: Each non-Typst subcrate implements `Renderer`; callers pass the same `Document` to any backend.
-- **Feature-gated dependencies**: Every backend is behind a Cargo feature so consumers only compile what they need.
+- **Feature-gated dependencies**: Most backends are behind a Cargo feature so consumers only compile what they need. Exception: `poiesis-doc` has no feature gates — `docx-rs`, Pandoc discovery, and sibling poiesis crates are unconditional dependencies.
 - **Plain-text fallback**: Non-Typst backends that cannot natively express a feature (images in PDF/spreadsheets, rich text in XLSX) degrade to plain text or alt text instead of failing.
 - **Pandoc dispatch**: `poiesis-doc` owns the `render_*_from_doc` matrix. DOCX/HTML/MD/LaTeX/EPUB route through Pandoc; PDF stays on Typst unless math/raw-`LaTeX` content or an explicit engine override requires the Pandoc/LaTeX path.
 - **ZIP-based packaging**: ODT, XLSX, ODS, and PPTX are all ZIP archives; tests verify the `PK` magic bytes.

@@ -262,9 +262,10 @@ Published baselines:
 
 ### 4.3 Results
 
-Live benchmark runs are pending completion of the runner integration (issue #2854). The runner is implemented, tested, and ready. Results will be recorded in `docs/benchmarks/memory-benchmarks.md` and summarized here when available.
+> **Status: provisional — live runs not yet executed.**
+> The benchmark runner (`aletheia benchmark`) is implemented and tested. Live evaluations against LongMemEval and LoCoMo have not been run. Results will be recorded in `docs/benchmarks/memory-benchmarks.md` and this section updated when available. The analysis points below are expected targets, not measured values.
 
-Expected analysis points:
+Expected analysis points once live runs complete:
 
 - `single-session-user` and `single-session-assistant` EM above 70% would confirm basic factual recall
 - `temporal-reasoning` above 60% would validate the Bayesian surprise and staleness detectors
@@ -325,9 +326,9 @@ The trade-off is query syntax. Datalog is less familiar than Cypher or SQL. Alet
 
 OpenAI Codex [5] runs tools in a container with seccomp and namespace isolation. NVIDIA OpenShell [6] applies seccomp to shell commands. Both require container runtime infrastructure.
 
-Aletheia applies Landlock + seccomp + netns to every tool execution via `pre_exec` on a standard `std::process::Command`. No container runtime, no root, no Docker daemon. The sandbox adds ~5 ms to tool spawn time and zero overhead when tools are not running.
+Aletheia applies Landlock + seccomp + netns to external child-process tool executions via `pre_exec` on a standard `std::process::Command`. Built-in tools run in-process and do not spawn child processes, so the sandbox does not apply to them. The compiled default is permissive (log-only); operators opt into enforcing mode via config. No container runtime, no root, no Docker daemon. The sandbox adds ~5 ms to tool spawn time and zero overhead when tools are not running.
 
-This matters for persistent agents. A long-running agent server that executes hundreds of tools per hour needs sandboxing that is always on, lightweight, and transparent to the agent logic. Aletheia's sandbox meets this requirement.
+This matters for persistent agents. A long-running agent server that executes hundreds of external tools per hour needs subprocess sandboxing that is lightweight and transparent to the agent logic. Aletheia's sandbox meets this requirement when enforcement is enabled.
 
 ---
 
@@ -365,7 +366,7 @@ The agent-specific venues (AAMAS, agent workshops) are also suitable if the eval
 
 ## 8. Conclusion
 
-Aletheia demonstrates that three unconventional design choices - Datalog for knowledge representation, kernel-level sandboxing in the agent loop, and 11-factor recall scoring - combine into a deployable persistent agent runtime. The system runs as a single binary with no external services, making it suitable for sovereign deployments where data never leaves the operator's machine. The benchmark runner is ready; live evaluation will quantify the recall quality against published baselines. We invite the research community to inspect the open-source implementation and reproduce the results.
+Aletheia demonstrates that three unconventional design choices - Datalog for knowledge representation, kernel-level sandboxing in the agent loop, and 11-factor recall scoring - combine into a deployable persistent agent runtime. The system runs as a single binary with no external services, making it suitable for sovereign deployments where data never leaves the operator's machine. Quantitative benchmark results against published baselines are pending live evaluation runs (see Section 4.3). We invite the research community to inspect the open-source implementation and reproduce the results once evaluation data is published in `docs/benchmarks/memory-benchmarks.md`.
 
 ---
 

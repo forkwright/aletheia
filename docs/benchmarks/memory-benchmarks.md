@@ -1,5 +1,8 @@
 # Memory benchmark results: LongMemEval and LoCoMo
 
+> **Maturity: provisional — no live results yet.**
+> The benchmark runner is implemented and tested. Live evaluations against LongMemEval and LoCoMo have not been executed. All result tables below are empty placeholders. Do not cite this document as evidence of measured recall quality.
+
 **Status:** Runner implemented, awaiting live run. See [Prerequisites](#prerequisites) before executing.
 
 **Issue:** [#2854](https://github.com/forkwright/aletheia/issues/2854)
