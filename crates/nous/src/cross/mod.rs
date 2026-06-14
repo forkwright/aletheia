@@ -816,6 +816,58 @@ mod tests {
 
         assert_eq!(router.ask_graph.read().await.edge_count(), 0);
     }
+
+    #[tokio::test]
+    async fn ask_cleanup_guard_removes_state_when_cancelled_while_waiting_for_reply() {
+        let (router, mut rx) = setup_router().await;
+        let msg = CrossNousMessage::new("sender", "target", "question")
+            .with_reply(Duration::from_secs(60));
+
+        let ask_handle = tokio::spawn({
+            let r = router.clone();
+            async move { r.ask(msg).await }
+        });
+
+        // Wait until the ask has been delivered and is suspended waiting for a reply.
+        let envelope = rx.recv().await.unwrap();
+        assert_eq!(envelope.message.content, "question");
+
+        // Cancel the in-flight ask.
+        ask_handle.abort();
+        let result = ask_handle.await;
+        assert!(result.is_err(), "expected cancelled task, got: {result:?}");
+
+        // Yield so the guard's spawned cleanup task runs.
+        tokio::task::yield_now().await;
+
+        assert_eq!(router.ask_graph.read().await.edge_count(), 0);
+        assert_eq!(router.pending_reply_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn ask_cleanup_guard_removes_state_when_cancelled_before_delivery() {
+        let (router, mut rx) = setup_router().await;
+        let msg = CrossNousMessage::new("sender", "target", "question")
+            .with_reply(Duration::from_secs(60));
+
+        let ask_handle = tokio::spawn({
+            let r = router.clone();
+            async move { r.ask(msg).await }
+        });
+
+        // Cancel immediately, before the receiver has necessarily pulled the message.
+        ask_handle.abort();
+        let result = ask_handle.await;
+        assert!(result.is_err(), "expected cancelled task, got: {result:?}");
+
+        tokio::task::yield_now().await;
+
+        // Drain any message that made it into the inbox before cancellation.
+        while rx.try_recv().is_ok() {}
+
+        assert_eq!(router.ask_graph.read().await.edge_count(), 0);
+        assert_eq!(router.pending_reply_count().await, 0);
+    }
 }
 
 #[cfg(test)]

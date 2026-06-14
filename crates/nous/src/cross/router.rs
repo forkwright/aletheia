@@ -18,6 +18,59 @@ use super::{
     DEFAULT_MAX_LOG_ENTRIES, DEFAULT_REPLY_TIMEOUT, DeliveryEntry, DeliveryLog, DeliveryState,
 };
 
+/// RAII guard that removes the ask graph edge and pending reply entry when the
+/// ask future is dropped without completing normally (e.g. task abort or
+/// `select!` branch cancellation).
+///
+/// On normal completion the caller defuses the guard and performs synchronous
+/// cleanup; the guard only fires on cancellation paths.
+struct AskCleanupGuard {
+    ask_graph: Arc<RwLock<AskGraph>>,
+    pending_replies: Arc<RwLock<HashMap<Ulid, oneshot::Sender<CrossNousReply>>>>,
+    from: Option<String>,
+    to: Option<String>,
+    msg_id: Ulid,
+}
+
+impl AskCleanupGuard {
+    fn new(
+        ask_graph: Arc<RwLock<AskGraph>>,
+        pending_replies: Arc<RwLock<HashMap<Ulid, oneshot::Sender<CrossNousReply>>>>,
+        from: String,
+        to: String,
+        msg_id: Ulid,
+    ) -> Self {
+        Self {
+            ask_graph,
+            pending_replies,
+            from: Some(from),
+            to: Some(to),
+            msg_id,
+        }
+    }
+
+    /// Disable cleanup so the guard does nothing when dropped.
+    fn defuse(&mut self) {
+        self.from = None;
+        self.to = None;
+    }
+}
+
+impl Drop for AskCleanupGuard {
+    fn drop(&mut self) {
+        let (Some(from), Some(to)) = (self.from.take(), self.to.take()) else {
+            return;
+        };
+        let graph = Arc::clone(&self.ask_graph);
+        let pending = Arc::clone(&self.pending_replies);
+        let msg_id = self.msg_id;
+        tokio::spawn(async move {
+            graph.write().await.remove_edge(&from, &to);
+            pending.write().await.remove(&msg_id);
+        });
+    }
+}
+
 /// Routes messages between nous actors using their IDs as keys.
 pub struct CrossNousRouter {
     /// Maps nous id to its inbox sender. Invariant: every spawned actor has
@@ -166,8 +219,9 @@ impl CrossNousRouter {
     ///
     /// # Cancel safety
     ///
-    /// Not cancel-safe. If cancelled after sending the message, a pending reply
-    /// entry is leaked until timeout cleanup. Do not use in `select!` branches.
+    /// Cancellation of the ask future (e.g. task abort or `select!`) cleans up
+    /// the ask graph edge and pending reply entry. Note that the target may
+    /// still process the message after the asker stops waiting.
     ///
     /// # Errors
     ///
@@ -191,25 +245,43 @@ impl CrossNousRouter {
             }
         }
 
-        // INVARIANT: from this point, the edge is in the graph and must be
-        // removed on every exit path (success, failure, timeout).
-        let result = self.ask_inner(&mut message, &to, timeout_dur).await;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let msg_id = message.id;
+        self.pending_replies.write().await.insert(msg_id, reply_tx);
+
+        // INVARIANT: from this point, the edge and pending reply entry must be
+        // removed on every exit path. The guard handles cancellation; normal
+        // paths clean up explicitly before defusing the guard.
+        let mut guard = AskCleanupGuard::new(
+            Arc::clone(&self.ask_graph),
+            Arc::clone(&self.pending_replies),
+            from.clone(),
+            to.clone(),
+            msg_id,
+        );
+
+        let result = self.ask_inner(&message, &to, timeout_dur, reply_rx).await;
 
         self.ask_graph.write().await.remove_edge(&from, &to);
+        guard.defuse();
 
         result
     }
 
-    /// Inner ask logic, factored out so the caller can guarantee edge cleanup.
+    /// Inner ask logic. The caller owns edge and pending-reply cleanup on
+    /// normal completion; this function only removes the pending reply entry
+    /// on the error paths it returns directly.
     async fn ask_inner(
         &self,
-        message: &mut CrossNousMessage,
+        message: &CrossNousMessage,
         to: &str,
         timeout_dur: Duration,
+        reply_rx: oneshot::Receiver<CrossNousReply>,
     ) -> error::Result<CrossNousReply> {
         let routes = self.routes.read().await;
         let Some(sender) = routes.get(to).cloned() else {
             drop(routes);
+            self.pending_replies.write().await.remove(&message.id);
             self.log_delivery(
                 message,
                 &DeliveryState::Failed {
@@ -224,19 +296,17 @@ impl CrossNousRouter {
         };
         drop(routes);
 
-        self.enforce_address_mask(message).await?;
-
-        let (reply_tx, reply_rx) = oneshot::channel();
-        let msg_id = message.id;
-
-        self.pending_replies.write().await.insert(msg_id, reply_tx);
+        if let Err(e) = self.enforce_address_mask(message).await {
+            self.pending_replies.write().await.remove(&message.id);
+            return Err(e);
+        }
 
         let envelope = CrossNousEnvelope {
             message: message.clone(),
         };
 
         if sender.send(envelope).await.is_err() {
-            self.pending_replies.write().await.remove(&msg_id);
+            self.pending_replies.write().await.remove(&message.id);
             self.log_delivery(
                 message,
                 &DeliveryState::Failed {
@@ -258,6 +328,7 @@ impl CrossNousRouter {
                     self.log_delivery(message, &DeliveryState::Replied).await;
                     Ok(reply)
                 } else {
+                    self.pending_replies.write().await.remove(&message.id);
                     self.log_delivery(message, &DeliveryState::Failed {
                         reason: "reply channel dropped".to_owned(),
                     }).await;
@@ -265,7 +336,7 @@ impl CrossNousRouter {
                 }
             }
             () = tokio::time::sleep(timeout_dur) => {
-                self.pending_replies.write().await.remove(&msg_id);
+                self.pending_replies.write().await.remove(&message.id);
                 self.log_delivery(message, &DeliveryState::TimedOut).await;
                 AskTimeoutSnafu {
                     nous_id: to.to_owned(),
