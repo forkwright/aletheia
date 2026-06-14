@@ -135,9 +135,15 @@ pub(crate) enum TurnStreamEvent {
         duration_ms: u64,
     },
     /// Turn completed - mirrors `SseEvent::MessageComplete`.
+    ///
+    /// This is the only terminal error contract for turn streams: errors may
+    /// be announced earlier with `Error`, but the stream is not terminal until
+    /// `outcome.stop_reason == "error"` and `outcome.error` carries the
+    /// message on this completion event.
     #[serde(rename = "message_complete")]
     MessageComplete { outcome: TurnOutcome },
-    /// An error occurred during the turn.
+    /// Diagnostic error event. Clients must continue reading for the terminal
+    /// `MessageComplete` event.
     #[serde(rename = "error")]
     Error {
         message: String,
@@ -159,4 +165,7 @@ pub(crate) struct TurnOutcome {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
+    pub stop_reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }

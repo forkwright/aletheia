@@ -2,7 +2,9 @@
 //!
 //! Each call to [`stream_message`] starts a new HTTP SSE request and returns
 //! a receiver that yields [`StreamEvent`]s. The stream is self-terminating:
-//! it closes after `TurnComplete`, `TurnAbort`, or `Error`.
+//! it closes after `TurnComplete` or `TurnAbort`. A stream `error` event is a
+//! diagnostic; terminal error turns are represented by `TurnComplete` with
+//! `outcome.stop_reason == Some("error")` and `outcome.error.is_some()`.
 
 use futures_util::StreamExt;
 use reqwest::{Client, StatusCode};
@@ -131,9 +133,7 @@ pub fn stream_message(
             {
                 let is_terminal = matches!(
                     &envelope.payload,
-                    StreamEvent::TurnComplete { .. }
-                        | StreamEvent::TurnAbort { .. }
-                        | StreamEvent::Error(_)
+                    StreamEvent::TurnComplete { .. } | StreamEvent::TurnAbort { .. }
                 );
                 if tx.send(envelope.payload).await.is_err() {
                     break;
@@ -371,6 +371,12 @@ fn parse_stream_event_envelope(
 mod tests {
     #![expect(clippy::expect_used, reason = "test assertions")]
 
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::time::Duration;
+
+    use crate::api::client::build_http_client;
+
     use super::*;
 
     fn parse(event_type: &str, data: &str) -> Option<StreamEvent> {
@@ -383,6 +389,26 @@ mod tests {
         event_id: Option<String>,
     ) -> Option<StreamEnvelope> {
         parse_stream_event_envelope(event_type, data, event_id)
+    }
+
+    fn serve_sse_once(body: &'static str) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 2048];
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n{body}"
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write SSE test response");
+        });
+        (format!("http://{addr}"), handle)
     }
 
     #[test]
@@ -437,6 +463,47 @@ mod tests {
         } else {
             panic!("expected TurnComplete");
         }
+    }
+
+    #[tokio::test]
+    async fn stream_read_loop_delivers_completion_after_error_event() {
+        let body = concat!(
+            "event: message_start\n",
+            "data: {\"type\":\"message_start\",\"session_id\":\"s1\",\"nous_id\":\"syn\",\"turn_id\":\"t1\"}\n\n",
+            "event: error\n",
+            "data: {\"type\":\"error\",\"message\":\"provider unavailable\"}\n\n",
+            "event: message_complete\n",
+            "data: {\"type\":\"message_complete\",\"outcome\":{\"text\":\"\",\"nous_id\":\"syn\",\"session_id\":\"s1\",\"model\":\"mock\",\"tool_calls\":0,\"input_tokens\":7,\"output_tokens\":3,\"cache_read_tokens\":2,\"cache_write_tokens\":1,\"stop_reason\":\"error\",\"error\":\"provider unavailable\"}}\n\n",
+        );
+        let (base_url, server) = serve_sse_once(body);
+        let client = build_http_client(None).expect("build test client");
+        let mut rx = stream_message(client, &base_url, "syn", "main", "hello");
+        let mut events = Vec::new();
+
+        loop {
+            let next = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .expect("stream read loop should finish promptly");
+            let Some(event) = next else {
+                break;
+            };
+            events.push(event);
+        }
+        server.join().expect("test server thread should finish");
+
+        assert!(
+            matches!(events.get(1), Some(StreamEvent::Error(message)) if message == "provider unavailable"),
+            "stream must deliver the diagnostic error before completion: {events:?}"
+        );
+        let Some(StreamEvent::TurnComplete { outcome }) = events.get(2) else {
+            panic!("stream must continue through terminal message_complete: {events:?}");
+        };
+        assert_eq!(outcome.input_tokens, 7);
+        assert_eq!(outcome.output_tokens, 3);
+        assert_eq!(outcome.cache_read_tokens, 2);
+        assert_eq!(outcome.cache_write_tokens, 1);
+        assert_eq!(outcome.stop_reason.as_deref(), Some("error"));
+        assert_eq!(outcome.error.as_deref(), Some("provider unavailable"));
     }
 
     // WHY: message_complete is the turn terminator; an unparseable outcome

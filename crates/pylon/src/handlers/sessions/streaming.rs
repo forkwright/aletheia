@@ -792,6 +792,8 @@ pub async fn stream_turn(
                             output_tokens: result.usage.output_tokens,
                             cache_read_tokens: result.usage.cache_read_tokens,
                             cache_write_tokens: result.usage.cache_write_tokens,
+                            stop_reason: result.stop_reason.clone(),
+                            error: None,
                         },
                     };
                     let seq = record_turn_event(&buf_handle_task, &event).await;
@@ -815,7 +817,7 @@ pub async fn stream_turn(
                     let _ = bridge_handle.await;
                     let (_, err_message) = turn_error_info(&err);
                     let event = PylonTurnStreamEvent::Error {
-                        message: err_message,
+                        message: err_message.clone(),
                         request_id: Some(stream_request_id.clone()),
                     };
                     let seq = record_turn_event(&buf_handle_task, &event).await;
@@ -834,6 +836,8 @@ pub async fn stream_turn(
                             output_tokens: 0,
                             cache_read_tokens: 0,
                             cache_write_tokens: 0,
+                            stop_reason: "error".to_owned(),
+                            error: Some(err_message),
                         },
                     };
                     let seq = record_turn_event(&buf_handle_task, &event).await;

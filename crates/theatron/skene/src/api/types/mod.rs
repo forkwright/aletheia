@@ -150,6 +150,9 @@ pub struct TurnOutcome {
     /// Tokens written to cache.
     #[serde(rename = "cacheWriteTokens", alias = "cache_write_tokens", default)]
     pub cache_write_tokens: u32,
+    /// Provider stop reason reported by the terminal completion event.
+    #[serde(rename = "stopReason", alias = "stop_reason", default)]
+    pub stop_reason: Option<String>,
     /// Error message, if the turn errored.
     #[serde(default)]
     pub error: Option<String>,
