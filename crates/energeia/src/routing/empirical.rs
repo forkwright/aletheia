@@ -224,13 +224,12 @@ impl Router for EmpiricalRouter {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use std::io::Write as _;
-    use std::time::Duration;
+
+    use aletheia_routing::DEFAULT_ROUTING_WINDOW;
 
     use super::*;
     use crate::routing::store::AfterActionStore;
     use crate::routing::{ProviderId, StaticRouter, TaskCategory};
-
-    const WINDOW: Duration = Duration::from_hours(168);
 
     fn session_line(model: &str, status: &str, category: &str) -> serde_json::Value {
         serde_json::json!({
@@ -259,7 +258,7 @@ mod tests {
             store,
             StaticRouter::new(ProviderId::new(default)),
             min_samples,
-            WINDOW,
+            DEFAULT_ROUTING_WINDOW,
             threshold,
         )
     }

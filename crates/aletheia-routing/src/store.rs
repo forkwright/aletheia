@@ -29,7 +29,9 @@ use tokio::sync::RwLock;
 use crate::types::{ProviderId, TaskCategory, TurnOutcome};
 
 const SECS_PER_DAY: u64 = 24 * 60 * 60;
-const DEFAULT_REFRESH_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
+
+/// Default rolling window for routing success-rate statistics.
+pub const DEFAULT_ROUTING_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
 
 /// Errors produced by [`AfterActionStore`] operations.
 #[derive(Debug, Snafu)]
@@ -132,7 +134,7 @@ impl AfterActionStore {
     ///
     /// Call [`refresh`](Self::refresh) to populate the cache from disk.
     pub fn new(dir: PathBuf) -> Self {
-        Self::new_with_window(dir, DEFAULT_REFRESH_WINDOW)
+        Self::new_with_window(dir, DEFAULT_ROUTING_WINDOW)
     }
 
     /// Create a store backed by `dir` with a bounded refresh window.
@@ -155,7 +157,7 @@ impl AfterActionStore {
     pub fn in_memory() -> Self {
         Self {
             dir: None,
-            window: DEFAULT_REFRESH_WINDOW,
+            window: DEFAULT_ROUTING_WINDOW,
             cache: RwLock::new(HashMap::new()),
             interactive: RwLock::new(HashMap::new()),
         }

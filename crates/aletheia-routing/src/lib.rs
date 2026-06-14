@@ -25,7 +25,7 @@
 pub mod store;
 pub mod types;
 
-pub use store::AfterActionStore;
+pub use store::{AfterActionStore, DEFAULT_ROUTING_WINDOW};
 pub use types::{RequestFeatures, RouterError, RoutingBoundary, RoutingDecision, TurnOutcome};
 
 use std::sync::Arc;

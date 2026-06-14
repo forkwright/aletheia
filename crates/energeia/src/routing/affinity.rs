@@ -394,7 +394,8 @@ impl Router for AffinityRouter {
 mod tests {
     use std::io::Write as _;
     use std::sync::Arc;
-    use std::time::Duration;
+
+    use aletheia_routing::DEFAULT_ROUTING_WINDOW;
 
     use super::*;
     use crate::routing::empirical::EmpiricalRouter;
@@ -435,16 +436,11 @@ mod tests {
             Arc::clone(&store),
             StaticRouter::new(ProviderId::new(default)),
             5,
-            Duration::from_hours(168),
+            DEFAULT_ROUTING_WINDOW,
             0.1,
         );
         let persona = PersonaRouter::new(empirical);
-        AffinityRouter::new(
-            persona,
-            store,
-            Duration::from_hours(168),
-            affinity_threshold,
-        )
+        AffinityRouter::new(persona, store, DEFAULT_ROUTING_WINDOW, affinity_threshold)
     }
 
     /// `AffinityScore::weighted()` returns 0 when all dimensions are absent.
