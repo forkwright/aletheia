@@ -72,6 +72,11 @@ pub struct DriftReport {
     pub permission_issues: Vec<(PathBuf, String)>,
     /// When the check was performed.
     pub checked_at: Option<jiff::Timestamp>,
+    /// The template path the check compared against. (#5143)
+    pub template_path: Option<PathBuf>,
+    /// Whether the template directory was present. When `false`, drift could
+    /// not be assessed because there was nothing to compare against. (#5143)
+    pub template_available: bool,
 }
 
 /// Compares an instance directory against the example template.
@@ -87,16 +92,41 @@ impl DriftDetector {
     }
 
     /// Run drift detection. Returns a report of discrepancies.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MaintenanceInvariant`](error::Error::MaintenanceInvariant)
+    /// when drift detection is enabled but the template directory is absent:
+    /// an enabled check that cannot find its baseline is a misconfiguration the
+    /// operator must see, not a silent clean report. (#5143)
     pub fn check(&self) -> error::Result<DriftReport> {
         if !self.config.example_root.exists() {
+            // WHY(#5143): a missing template with drift *enabled* means the
+            // check cannot do its job — fail loudly instead of reporting a
+            // misleading "clean" result. When drift is disabled, return a clean
+            // report flagged as `template_available: false`.
+            if self.config.enabled {
+                return error::MaintenanceInvariantSnafu {
+                    context: format!(
+                        "drift detection enabled but template directory not found: {}",
+                        self.config.example_root.display()
+                    ),
+                }
+                .fail();
+            }
+
             return Ok(DriftReport {
                 checked_at: Some(jiff::Timestamp::now()),
+                template_path: Some(self.config.example_root.clone()),
+                template_available: false,
                 ..Default::default()
             });
         }
 
         let mut report = DriftReport {
             checked_at: Some(jiff::Timestamp::now()),
+            template_path: Some(self.config.example_root.clone()),
+            template_available: true,
             ..Default::default()
         };
 
@@ -312,17 +342,43 @@ mod tests {
     }
 
     #[test]
-    fn missing_example_dir_returns_empty() {
+    fn missing_example_dir_when_enabled_errors() {
+        // WHY(#5143): an enabled drift check with no template is a
+        // misconfiguration the operator must see, not a silent clean report.
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = DriftDetectionConfig {
+            enabled: true,
             example_root: tmp.path().join("nonexistent"),
             ..make_config(tmp.path())
         };
 
         let detector = DriftDetector::new(config);
-        let report = detector.check().expect("should not error");
+        let err = detector
+            .check()
+            .expect_err("enabled drift check with missing template must error");
+        assert!(
+            err.to_string().contains("template directory not found"),
+            "error should explain the missing template: {err}"
+        );
+    }
+
+    #[test]
+    fn missing_example_dir_when_disabled_returns_unavailable() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = DriftDetectionConfig {
+            enabled: false,
+            example_root: tmp.path().join("nonexistent"),
+            ..make_config(tmp.path())
+        };
+
+        let detector = DriftDetector::new(config);
+        let report = detector.check().expect("disabled check should not error");
         assert!(report.missing_files.is_empty());
         assert!(report.checked_at.is_some());
+        assert!(
+            !report.template_available,
+            "report must flag the template as unavailable"
+        );
     }
 
     #[test]
