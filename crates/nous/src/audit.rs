@@ -3,6 +3,11 @@
 //! Append-only JSONL log at `{instance}/logs/prompt-audit/YYYY-MM-DD.jsonl`.
 //! Rotated daily based on the UTC calendar date of the record timestamp.
 //!
+//! Compaction LLM calls use the same record schema with
+//! [`PromptAuditRecordKind::Compaction`] and write a separate compaction
+//! provenance record to `{instance}/logs/prompt-audit/compaction-YYYY-MM-DD.jsonl`
+//! so context mutations are durably auditable.
+//!
 //! # Sovereignty contract
 //!
 //! The operator owns this system and must be able to audit what it sends to
@@ -120,6 +125,18 @@ impl From<&taxis::config::PromptAuditSettings> for PromptAuditRecordOptions {
     }
 }
 
+/// Classification of a prompt-audit record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum PromptAuditRecordKind {
+    /// Normal turn outbound request.
+    #[default]
+    Turn,
+    /// Context compaction outbound request (full compaction summarization).
+    Compaction,
+}
+
 /// One append-only audit record per outbound `CompletionRequest`.
 ///
 /// See module docs for the sovereignty contract on what is and is not logged.
@@ -163,6 +180,112 @@ pub struct PromptAuditRecord {
     /// Request identifier propagated from pylon middleware (#3384).
     #[serde(default)]
     pub request_id: Option<String>,
+    /// Whether this record describes a normal turn or a compaction LLM call.
+    #[serde(default)]
+    pub kind: PromptAuditRecordKind,
+}
+
+/// Classification of a context-mutation pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CompactionKind {
+    /// Full compaction replaced history with a summary and preserved tail.
+    Full,
+    /// Microcompaction cleared expired tool results in-place.
+    Micro,
+    /// Session-level distillation cached a summary.
+    Distillation,
+    /// Reserved for future context-mutation mechanisms.
+    FutureContextMutation,
+}
+
+/// Half-open message range with a content hash.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageRange {
+    /// Start index (inclusive) in the original message list.
+    pub start: usize,
+    /// End index (exclusive) in the original message list.
+    pub end: usize,
+    /// SHA-256 hex digest of the concatenated content in this range.
+    pub content_hash: String,
+}
+
+/// A critical file restored during full compaction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RestoredFileProvenance {
+    /// File path.
+    pub path: String,
+    /// SHA-256 hex digest of the restored content.
+    pub content_hash: String,
+    /// Byte length of the restored content.
+    pub content_span: usize,
+    /// Token estimate for the restored content.
+    pub token_estimate: i64,
+}
+
+/// Receipt for a tool result cleared by microcompaction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClearedToolReceipt {
+    /// Index of the cleared message in the original message list.
+    pub message_index: usize,
+    /// Tool result type that was cleared.
+    pub tool_type: String,
+    /// Tool name extracted from the message metadata.
+    pub tool_name: String,
+    /// SHA-256 hex digest of the original content.
+    pub original_content_hash: String,
+    /// Token estimate of the original content.
+    pub original_token_estimate: i64,
+}
+
+/// Durable audit record describing a context-mutation pass.
+///
+/// Captures provenance for full compaction, microcompaction, distillation, and
+/// future context mutation events so operators can trace what was summarized,
+/// restored, or cleared without storing the full message content.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactionAuditRecord {
+    /// When the mutation was applied (UTC).
+    pub timestamp: Timestamp,
+    /// Mutation kind.
+    pub kind: CompactionKind,
+    /// Nous agent identifier.
+    pub nous_id: String,
+    /// Session identifier.
+    pub session_id: String,
+    /// Turn identifier.
+    pub turn_id: String,
+    /// Why the mutation ran.
+    pub trigger_reason: String,
+    /// Number of input messages before mutation.
+    pub input_message_count: usize,
+    /// SHA-256 hex digest of the concatenated input message contents.
+    pub input_content_hash: String,
+    /// Input message ranges and their content hashes.
+    pub input_message_ranges: Vec<MessageRange>,
+    /// SHA-256 hex digest of the compaction user prompt.
+    pub compaction_prompt_hash: String,
+    /// SHA-256 hex digest of the compaction system prompt.
+    pub compaction_system_prompt_hash: String,
+    /// Model used for the compaction LLM call (empty for microcompaction).
+    pub compaction_model: String,
+    /// Provider used for the compaction LLM call (empty for microcompaction).
+    pub compaction_provider: String,
+    /// SHA-256 hex digest of the effective compaction config.
+    pub compaction_config_hash: String,
+    /// SHA-256 hex digest of the generated summary (when applicable).
+    pub summary_hash: Option<String>,
+    /// Preserved message ranges and their content hashes.
+    pub preserved_ranges: Vec<MessageRange>,
+    /// Critical files restored after compaction.
+    pub restored_files: Vec<RestoredFileProvenance>,
+    /// Tool results cleared by microcompaction.
+    pub cleared_tool_receipts: Vec<ClearedToolReceipt>,
+    /// Tokens before mutation.
+    pub tokens_before: u64,
+    /// Tokens after mutation.
+    pub tokens_after: u64,
 }
 
 /// Compute the SHA-256 hex digest of a system prompt.
@@ -318,6 +441,46 @@ impl PromptAuditLog {
         }
         Ok(())
     }
+
+    /// Append a compaction provenance record to today's compaction audit JSONL file.
+    ///
+    /// Writes to `{log_dir}/compaction-YYYY-MM-DD.jsonl` so compaction provenance
+    /// is durably stored in the same audit directory as prompt records. The file
+    /// shares the retention policy via the daemon's mtime-based rotation fallback.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the directory cannot be created, the file cannot
+    /// be opened, or the serialized line cannot be written. Callers should log
+    /// the error and continue; audit failure must not block the turn.
+    pub fn log_compaction(&self, record: &CompactionAuditRecord) -> Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        let record_date = record.timestamp.to_zoned(jiff::tz::TimeZone::UTC).date();
+        let json = serde_json::to_string(record).context(SerializeSnafu)?;
+
+        let mut inner = self.inner.lock().unwrap_or_else(|poisoned| {
+            warn!("compaction audit mutex poisoned; recovering inner state");
+            poisoned.into_inner()
+        });
+
+        if !self.log_dir.exists() {
+            std::fs::create_dir_all(&self.log_dir).context(CreateDirSnafu {
+                path: self.log_dir.clone(),
+            })?;
+        }
+        let path = self.log_dir.join(format!("compaction-{record_date}.jsonl"));
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .context(OpenFileSnafu { path: path.clone() })?;
+        writeln!(file, "{json}").context(WriteRecordSnafu { path: path.clone() })?;
+        file.flush().context(WriteRecordSnafu { path })?;
+        Ok(())
+    }
 }
 
 /// Build a [`PromptAuditRecord`] from the assembled pipeline context.
@@ -431,6 +594,7 @@ pub(crate) fn build_audit_record(
         // TODO(#3384): thread request_id from pylon middleware
         // through PipelineInput once the extraction path reaches nous.
         request_id: None,
+        kind: PromptAuditRecordKind::Turn,
     }
 }
 

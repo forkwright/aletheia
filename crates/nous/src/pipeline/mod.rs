@@ -66,6 +66,8 @@ pub struct PipelineContext {
     pub working_state: Option<WorkingState>,
     /// Compaction metrics from the most recent compaction pass.
     pub compaction_metrics: Option<CompactionMetrics>,
+    /// Durable audit record from the most recent compaction pass.
+    pub compaction_audit_record: Option<crate::audit::CompactionAuditRecord>,
     /// Pre-LLM triage result (intent, sensitivity, tier), if triage was run.
     pub triage_result: Option<triage::TriageResult>,
     /// Reflection stage output, if reflection was run.
@@ -86,6 +88,7 @@ impl Default for PipelineContext {
             history_result: None,
             working_state: None,
             compaction_metrics: None,
+            compaction_audit_record: None,
             triage_result: None,
             reflection_result: None,
         }
@@ -1060,7 +1063,7 @@ pub(crate) async fn run_pipeline(
         }
 
         time_budget.begin_stage("microcompact");
-        run_microcompact_stage(config, &mut ctx, emitter);
+        run_microcompact_stage(config, &mut ctx, emitter, &input.session, audit_log);
         let micro_status = if time_budget.stage_exceeded("microcompact") {
             emitter.emit(&events::StageTimeout {
                 nous_id: config.id.to_string(),
@@ -1081,7 +1084,14 @@ pub(crate) async fn run_pipeline(
             "full_compact",
             &mut time_budget,
             emitter,
-            run_full_compact_stage(config, &mut ctx, providers, emitter),
+            run_full_compact_stage(
+                config,
+                &mut ctx,
+                providers,
+                emitter,
+                &input.session,
+                audit_log,
+            ),
         )
         .await?;
         stages_completed += 1;

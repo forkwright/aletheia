@@ -17,8 +17,11 @@ use organon::registry::ToolRegistry;
 use organon::types::ToolContext;
 use taxis::oikos::Oikos;
 
+use crate::audit::{PromptAuditRecord, PromptAuditRecordKind};
 use crate::bootstrap::{BootstrapFileCache, BootstrapSection, LlmRecipe, TaskHint};
-use crate::compact::{CompactConfig, CompactReason, map_strategy, select_prompt};
+use crate::compact::{
+    CompactConfig, CompactReason, CompactionAttribution, map_strategy, select_prompt,
+};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::{self, HistoryConfig};
@@ -26,7 +29,9 @@ use crate::hooks::registry::HookRegistry;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
-use super::events::{StageCompleted, StageError, StageSkipped, StageTimeout};
+use super::events::{
+    CompactionProvenanceRecorded, StageCompleted, StageError, StageSkipped, StageTimeout,
+};
 use super::{
     GuardResult, PipelineContext, PipelineInput, PipelineMessage, ReflectionResult,
     ReflectionStatus, TurnResult, assemble_context_conditional_with_cache, check_guard,
@@ -355,6 +360,8 @@ pub(super) fn run_microcompact_stage(
     config: &NousConfig,
     ctx: &mut PipelineContext,
     emitter: &EventEmitter,
+    session: &SessionState,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
 ) {
     let span = info_span!(
         "pipeline_stage",
@@ -368,8 +375,26 @@ pub(super) fn run_microcompact_stage(
 
     let compact_config = CompactConfig::default();
     let now = jiff::Timestamp::now();
-    let metrics =
-        crate::compact::micro::run_microcompaction(&mut ctx.messages, &compact_config, now);
+    let attribution = CompactionAttribution {
+        nous_id: config.id.to_string(),
+        session_id: session.id.clone(),
+        turn_id: session.turn_id.to_string(),
+        prompt_hash: String::new(),
+        system_prompt_hash: String::new(),
+        model: String::new(),
+        provider: String::new(),
+        config_hash: crate::compact::hash_micro_compaction_config(&compact_config),
+        trigger_reason: "TTL expired".to_owned(),
+    };
+    let crate::compact::micro::MicrocompactionResult {
+        metrics,
+        audit_record,
+    } = crate::compact::micro::run_microcompaction(
+        &mut ctx.messages,
+        &compact_config,
+        now,
+        attribution,
+    );
 
     span.record("results_cleared", metrics.results_cleared);
 
@@ -383,8 +408,22 @@ pub(super) fn run_microcompact_stage(
         {
             ctx.history_budget += metrics.tokens_reclaimed() as i64; // kanon:ignore RUST/as-cast
         }
-        ctx.compaction_metrics = Some(metrics);
+        ctx.compaction_metrics = Some(metrics.clone());
+        ctx.compaction_audit_record = Some(audit_record.clone());
         span.record("status", "ok");
+
+        if let Some(log) = audit_log {
+            if let Err(e) = log.log_compaction(&audit_record) {
+                tracing::warn!(error = %e, "compaction audit log write failed — continuing turn");
+            }
+        }
+
+        emitter.emit(&CompactionProvenanceRecorded {
+            nous_id: config.id.to_string(),
+            kind: "micro".to_owned(),
+            input_message_count: audit_record.input_message_count,
+            tokens_reclaimed: metrics.tokens_reclaimed(),
+        });
     } else {
         span.record("status", "noop");
     }
@@ -410,6 +449,8 @@ pub(super) async fn run_full_compact_stage(
     ctx: &mut PipelineContext,
     providers: &ProviderRegistry,
     emitter: &EventEmitter,
+    session: &SessionState,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<()> {
     let span = info_span!(
         "pipeline_stage",
@@ -458,8 +499,51 @@ pub(super) async fn run_full_compact_stage(
     let critical_files =
         crate::compact::full::identify_critical_files(&ctx.messages, &compact_config);
     let prompt = select_prompt(CompactReason::TokenBudget);
+    let prompt_hash = crate::compact::hash_text(prompt);
+    let system_prompt_hash =
+        crate::compact::hash_text(crate::compact::full::COMPACTION_SYSTEM_PROMPT);
     let (request, preserved) =
         crate::compact::full::build_summary_request(&ctx.messages, &compact_config, prompt);
+
+    // WHY: compaction LLM calls participate in the same prompt-audit policy as
+    // normal turns. The audit record captures model/provider/prompt attribution
+    // but not the message content (hashes only).
+    if let Some(log) = audit_log {
+        let provider = providers.find_provider(&config.generation.model);
+        let provider_name = provider.map_or_else(|| "unknown".to_owned(), |p| p.name().to_owned());
+        let deployment_target = provider
+            .map_or(hermeneus::provider::DeploymentTarget::Cloud, |p| {
+                p.deployment_target()
+            })
+            .as_str()
+            .to_owned();
+        let system_prompt = Some(crate::compact::full::COMPACTION_SYSTEM_PROMPT);
+        let system_prompt_bytes = system_prompt.map_or(0, str::len);
+        let token_count_estimate = u32::try_from(request.len() / 4).unwrap_or(u32::MAX);
+
+        let record = PromptAuditRecord {
+            timestamp: jiff::Timestamp::now(),
+            nous_id: session.nous_id.clone(),
+            session_id: session.id.clone(),
+            turn_id: session.turn_id.to_string(),
+            provider: provider_name,
+            deployment_target,
+            model: config.generation.model.clone(),
+            system_prompt_hash: crate::audit::hash_system_prompt(system_prompt),
+            system_prompt_bytes,
+            message_count: 1,
+            token_count_estimate,
+            fact_ids_included: Vec::new(),
+            fact_ids_filtered: Vec::new(),
+            tool_names: Vec::new(),
+            tool_surface_hash: String::new(),
+            request_id: None,
+            kind: PromptAuditRecordKind::Compaction,
+        };
+        if let Err(e) = log.log_request(&record) {
+            tracing::warn!(error = %e, "compaction prompt audit log write failed — continuing turn");
+        }
+    }
 
     let summary = match compact_with_llm(config, providers, request).await {
         Ok(summary) => summary,
@@ -473,17 +557,51 @@ pub(super) async fn run_full_compact_stage(
         }
     };
 
+    // WHY: capture the original message list before apply_compaction mutates
+    // ctx.messages so the audit record can record input hashes and ranges.
+    let original_messages = ctx.messages.clone();
+
+    let provider = providers.find_provider(&config.generation.model);
+    let provider_name = provider.map_or_else(|| "unknown".to_owned(), |p| p.name().to_owned());
+    let attribution = CompactionAttribution {
+        nous_id: session.nous_id.clone(),
+        session_id: session.id.clone(),
+        turn_id: session.turn_id.to_string(),
+        prompt_hash,
+        system_prompt_hash,
+        model: config.generation.model.clone(),
+        provider: provider_name,
+        config_hash: crate::compact::hash_full_compaction_config(&compact_config),
+        trigger_reason: format!("token usage {consumed}/{context_window} above threshold"),
+    };
+
     let result = crate::compact::full::apply_compaction(
         &summary,
         preserved,
         critical_files,
+        &original_messages,
         consumed,
         &compact_config,
+        attribution,
     );
 
     ctx.messages = result.messages;
-    ctx.compaction_metrics = Some(result.metrics);
+    ctx.compaction_metrics = Some(result.metrics.clone());
+    ctx.compaction_audit_record = Some(result.audit_record.clone());
     span.record("status", "ok");
+
+    if let Some(log) = audit_log {
+        if let Err(e) = log.log_compaction(&result.audit_record) {
+            tracing::warn!(error = %e, "compaction audit log write failed — continuing turn");
+        }
+    }
+
+    emitter.emit(&CompactionProvenanceRecorded {
+        nous_id: config.id.to_string(),
+        kind: "full".to_owned(),
+        input_message_count: result.audit_record.input_message_count,
+        tokens_reclaimed: result.metrics.tokens_reclaimed(),
+    });
 
     let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
@@ -511,7 +629,7 @@ async fn compact_with_llm(
 
     let request = CompletionRequest {
         model: model.clone(),
-        system: Some("Summarize this conversation for context compaction. Preserve decisions, open tasks, file paths, and unresolved risks.".to_owned()),
+        system: Some(crate::compact::full::COMPACTION_SYSTEM_PROMPT.to_owned()),
         messages: vec![Message {
             role: Role::User,
             content: Content::Text(request_text),

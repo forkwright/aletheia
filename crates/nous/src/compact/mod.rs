@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 use jiff::SignedDuration;
+use sha2::{Digest, Sha256};
 
 use hermeneus::types::ToolResultType;
 use taxis::config::CompactionStrategyKind;
@@ -68,6 +69,114 @@ impl Default for CompactConfig {
             critical_file_lookback: 3,
         }
     }
+}
+
+/// Attribution attached to a compaction audit record.
+#[derive(Debug, Clone)]
+pub(crate) struct CompactionAttribution {
+    /// Nous agent identifier.
+    pub(crate) nous_id: String,
+    /// Session identifier.
+    pub(crate) session_id: String,
+    /// Turn identifier.
+    pub(crate) turn_id: String,
+    /// SHA-256 hex digest of the compaction user prompt.
+    pub(crate) prompt_hash: String,
+    /// SHA-256 hex digest of the compaction system prompt.
+    pub(crate) system_prompt_hash: String,
+    /// Model used for the compaction LLM call.
+    pub(crate) model: String,
+    /// Provider used for the compaction LLM call.
+    pub(crate) provider: String,
+    /// SHA-256 hex digest of the effective compaction config.
+    pub(crate) config_hash: String,
+    /// Human-readable trigger reason.
+    pub(crate) trigger_reason: String,
+}
+
+/// Compute a SHA-256 hex digest of the given text.
+#[must_use]
+pub(crate) fn hash_text(text: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(text.as_bytes());
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in &digest {
+        use std::fmt::Write;
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// Hash the concatenated content of a message sequence.
+#[must_use]
+pub(crate) fn hash_messages(messages: &[crate::pipeline::PipelineMessage]) -> String {
+    let mut hasher = Sha256::new();
+    for msg in messages {
+        hasher.update(msg.content.as_bytes());
+        hasher.update(b"\n");
+    }
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in &digest {
+        use std::fmt::Write;
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// Hash the subset of `CompactConfig` that affects full compaction output.
+#[must_use]
+pub(crate) fn hash_full_compaction_config(config: &CompactConfig) -> String {
+    let mut repr = String::new();
+    use std::fmt::Write;
+    let _ = write!(repr, "strategy={:?}", config.strategy);
+    let _ = write!(repr, ";preserve_turns={}", config.preserve_turns);
+    let _ = write!(repr, ";max_critical_files={}", config.max_critical_files);
+    let _ = write!(
+        repr,
+        ";critical_file_lookback={}",
+        config.critical_file_lookback
+    );
+    let _ = write!(
+        repr,
+        ";full_compact_threshold={}",
+        config.full_compact_threshold
+    );
+    hash_text(&repr)
+}
+
+/// Hash the subset of `CompactConfig` that affects microcompaction output.
+#[must_use]
+pub(crate) fn hash_micro_compaction_config(config: &CompactConfig) -> String {
+    let mut repr = String::new();
+    use std::fmt::Write;
+    let _ = write!(repr, "keep_last_n={}", config.keep_last_n);
+    let mut types: Vec<_> = config.ttls.keys().collect();
+    types.sort_by_key(|t| format!("{t:?}"));
+    for tool_type in types {
+        let secs = config.ttls[tool_type].as_secs();
+        let _ = write!(repr, ";ttl[{:?}]={secs}", tool_type);
+    }
+    hash_text(&repr)
+}
+
+/// Hash the content of a single message range.
+#[must_use]
+pub(crate) fn hash_message_range(
+    messages: &[crate::pipeline::PipelineMessage],
+    start: usize,
+    end: usize,
+) -> String {
+    let clipped_start = start.min(messages.len());
+    let clipped_end = end.min(messages.len());
+    if clipped_start >= clipped_end {
+        return hash_text("");
+    }
+    let slice = messages.get(clipped_start..clipped_end).unwrap_or(&[]);
+    hash_messages(slice)
 }
 
 /// Identifies a critical file that should be re-injected after full compaction.

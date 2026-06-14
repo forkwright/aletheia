@@ -7,11 +7,18 @@
 
 use tracing::debug;
 
+/// System prompt used for full compaction summarization.
+pub(crate) const COMPACTION_SYSTEM_PROMPT: &str = concat!(
+    "Summarize this conversation for context compaction. ",
+    "Preserve decisions, open tasks, file paths, and unresolved risks."
+);
+
+use crate::audit::{CompactionAuditRecord, CompactionKind, MessageRange, RestoredFileProvenance};
 use crate::budget::CompactionMetrics;
 use crate::memory::step::Step;
 use crate::pipeline::PipelineMessage;
 
-use super::{CompactConfig, CompactionStrategy, CriticalFile};
+use super::{CompactConfig, CompactionAttribution, CompactionStrategy, CriticalFile};
 
 /// Result of a full compaction pass.
 #[derive(Debug, Clone)]
@@ -26,6 +33,8 @@ pub(crate) struct FullCompactionResult {
         expect(dead_code, reason = "read in tests and future pipeline telemetry")
     )]
     pub(crate) critical_files_restored: Vec<String>,
+    /// Durable audit record for this compaction pass.
+    pub(crate) audit_record: CompactionAuditRecord,
 }
 
 /// Check whether full compaction should trigger based on token usage.
@@ -122,9 +131,43 @@ pub(crate) fn apply_compaction(
     summary: &str,
     preserved_messages: Vec<PipelineMessage>,
     critical_files: Vec<CriticalFile>,
+    original_messages: &[PipelineMessage],
     original_token_count: u64,
     config: &CompactConfig,
+    attribution: CompactionAttribution,
 ) -> FullCompactionResult {
+    let input_message_count = original_messages.len();
+    let input_content_hash = super::hash_messages(original_messages);
+    let summary_hash = super::hash_text(summary);
+
+    let preserve_count = config.preserve_turns.min(input_message_count);
+    let split_point = input_message_count.saturating_sub(preserve_count);
+    let input_message_ranges = vec![
+        MessageRange {
+            start: 0,
+            end: split_point,
+            content_hash: super::hash_message_range(original_messages, 0, split_point),
+        },
+        MessageRange {
+            start: split_point,
+            end: input_message_count,
+            content_hash: super::hash_message_range(
+                original_messages,
+                split_point,
+                input_message_count,
+            ),
+        },
+    ];
+    let preserved_ranges = vec![MessageRange {
+        start: split_point,
+        end: input_message_count,
+        content_hash: super::hash_message_range(
+            original_messages,
+            split_point,
+            input_message_count,
+        ),
+    }];
+
     let mut messages = Vec::new();
 
     // NOTE: summary becomes a system-like context message
@@ -146,9 +189,12 @@ pub(crate) fn apply_compaction(
 
     // NOTE: re-inject critical files before preserved messages
     let mut restored_files = Vec::new();
+    let mut restored_file_records = Vec::new();
     let files_to_restore = critical_files.into_iter().take(config.max_critical_files);
 
     for file in files_to_restore {
+        let content_hash = super::hash_text(&file.content);
+        let content_span = file.content.len();
         messages.push(PipelineMessage {
             role: "user".to_owned(),
             content: format!(
@@ -158,7 +204,13 @@ pub(crate) fn apply_compaction(
             token_estimate: file.token_estimate,
             cache_breakpoint: false,
         });
-        restored_files.push(file.path);
+        restored_files.push(file.path.clone());
+        restored_file_records.push(RestoredFileProvenance {
+            path: file.path,
+            content_hash,
+            content_span,
+            token_estimate: file.token_estimate,
+        });
     }
 
     // NOTE: preserved tail messages (most recent turns)
@@ -182,6 +234,29 @@ pub(crate) fn apply_compaction(
         full_compaction_triggered: true,
     };
 
+    let audit_record = CompactionAuditRecord {
+        timestamp: jiff::Timestamp::now(),
+        kind: CompactionKind::Full,
+        nous_id: attribution.nous_id,
+        session_id: attribution.session_id,
+        turn_id: attribution.turn_id,
+        trigger_reason: attribution.trigger_reason,
+        input_message_count,
+        input_content_hash,
+        input_message_ranges,
+        compaction_prompt_hash: attribution.prompt_hash,
+        compaction_system_prompt_hash: attribution.system_prompt_hash,
+        compaction_model: attribution.model,
+        compaction_provider: attribution.provider,
+        compaction_config_hash: attribution.config_hash,
+        summary_hash: Some(summary_hash),
+        preserved_ranges,
+        restored_files: restored_file_records,
+        cleared_tool_receipts: Vec::new(),
+        tokens_before: original_token_count,
+        tokens_after: post_tokens,
+    };
+
     debug!(
         pre = original_token_count,
         post = post_tokens,
@@ -194,6 +269,7 @@ pub(crate) fn apply_compaction(
         messages,
         metrics,
         critical_files_restored: restored_files,
+        audit_record,
     }
 }
 
@@ -332,6 +408,20 @@ mod tests {
             content: format_tool_result(tool_name, ts, content),
             token_estimate: tokens,
             cache_breakpoint: false,
+        }
+    }
+
+    fn test_attribution() -> CompactionAttribution {
+        CompactionAttribution {
+            nous_id: "test-agent".to_owned(),
+            session_id: "ses-1".to_owned(),
+            turn_id: "turn-1".to_owned(),
+            prompt_hash: "prompt-hash".to_owned(),
+            system_prompt_hash: "sys-hash".to_owned(),
+            model: "test-model".to_owned(),
+            provider: "test-provider".to_owned(),
+            config_hash: "config-hash".to_owned(),
+            trigger_reason: "token budget".to_owned(),
         }
     }
 
@@ -536,12 +626,19 @@ mod tests {
             token_estimate: 10,
         }];
 
+        let original_messages = vec![
+            make_text_msg("user", "old message", 100),
+            make_text_msg("user", "current question", 50),
+            make_text_msg("assistant", "current answer", 50),
+        ];
         let result = apply_compaction(
             "Summary of previous conversation",
             preserved,
             critical_files,
+            &original_messages,
             10_000,
             &config,
+            test_attribution(),
         );
 
         assert!(
@@ -576,12 +673,18 @@ mod tests {
     #[test]
     fn apply_compaction_tracks_token_metrics() {
         let config = CompactConfig::default();
+        let original_messages = vec![
+            make_text_msg("user", "old", 100),
+            make_text_msg("user", "q", 10),
+        ];
         let result = apply_compaction(
             "short summary",
             vec![make_text_msg("user", "q", 10)],
             Vec::new(),
+            &original_messages,
             50_000,
             &config,
+            test_attribution(),
         );
 
         assert_eq!(
@@ -612,7 +715,16 @@ mod tests {
             })
             .collect();
 
-        let result = apply_compaction("summary", Vec::new(), files, 1000, &config);
+        let original_messages = vec![make_text_msg("user", "old", 100)];
+        let result = apply_compaction(
+            "summary",
+            Vec::new(),
+            files,
+            &original_messages,
+            1000,
+            &config,
+            test_attribution(),
+        );
         assert_eq!(
             result.critical_files_restored.len(),
             2,
@@ -702,12 +814,19 @@ mod tests {
         ];
         let critical_files = vec![];
 
+        let original_messages = vec![
+            make_text_msg("user", "old message", 100),
+            make_text_msg("user", "current question", 50),
+            make_text_msg("assistant", "current answer", 50),
+        ];
         let result = apply_compaction(
             "Summary of previous conversation",
             preserved,
             critical_files,
+            &original_messages,
             10_000,
             &config,
+            test_attribution(),
         );
 
         // The first message should be the summary
@@ -727,6 +846,67 @@ mod tests {
         assert!(
             summary_msg.cache_breakpoint,
             "distilled summary should have cache_breakpoint=true for cached-read pricing"
+        );
+    }
+
+    #[test]
+    fn apply_compaction_audit_record_records_summary_and_restored_files() {
+        let config = CompactConfig {
+            preserve_turns: 2,
+            ..CompactConfig::default()
+        };
+        let preserved = vec![
+            make_text_msg("user", "current question", 50),
+            make_text_msg("assistant", "current answer", 50),
+        ];
+        let critical_files = vec![CriticalFile {
+            path: "src/main.rs".to_owned(),
+            content: "fn main() {}".to_owned(),
+            token_estimate: 10,
+        }];
+        let original_messages = vec![
+            make_text_msg("user", "old message", 100),
+            make_text_msg("user", "current question", 50),
+            make_text_msg("assistant", "current answer", 50),
+        ];
+        let expected_input_hash = crate::compact::hash_messages(&original_messages);
+        let expected_summary_hash = crate::compact::hash_text("Compacted summary");
+        let expected_content_hash = crate::compact::hash_text("fn main() {}");
+
+        let result = apply_compaction(
+            "Compacted summary",
+            preserved,
+            critical_files,
+            &original_messages,
+            10_000,
+            &config,
+            test_attribution(),
+        );
+
+        assert_eq!(result.audit_record.kind, crate::audit::CompactionKind::Full);
+        assert_eq!(result.audit_record.input_message_count, 3);
+        assert_eq!(result.audit_record.input_content_hash, expected_input_hash);
+        assert_eq!(
+            result.audit_record.summary_hash,
+            Some(expected_summary_hash)
+        );
+        assert_eq!(result.audit_record.preserved_ranges.len(), 1);
+        assert_eq!(result.audit_record.preserved_ranges[0].start, 1);
+        assert_eq!(result.audit_record.preserved_ranges[0].end, 3);
+        assert_eq!(result.audit_record.restored_files.len(), 1);
+        assert_eq!(result.audit_record.restored_files[0].path, "src/main.rs");
+        assert_eq!(
+            result.audit_record.restored_files[0].content_hash,
+            expected_content_hash
+        );
+        assert_eq!(result.audit_record.tokens_before, 10_000);
+        assert!(
+            result.audit_record.tokens_after < result.audit_record.tokens_before,
+            "audit should record token reduction"
+        );
+        assert_eq!(
+            result.audit_record.compaction_provider, "test-provider",
+            "audit should record compaction provider"
         );
     }
 }

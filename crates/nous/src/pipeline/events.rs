@@ -5,6 +5,54 @@
 
 use koina::event::{InternalEvent, LogLevel};
 
+/// A compaction provenance record was durably persisted.
+///
+/// Emitted after full or micro compaction writes its audit record to the log.
+/// The metric value is the number of tokens reclaimed.
+pub(crate) struct CompactionProvenanceRecorded {
+    /// Agent identifier.
+    pub(crate) nous_id: String,
+    /// Compaction kind (full, micro, distillation, future_context_mutation).
+    pub(crate) kind: String,
+    /// Number of input messages affected.
+    pub(crate) input_message_count: usize,
+    /// Tokens reclaimed by the pass.
+    pub(crate) tokens_reclaimed: u64,
+}
+
+impl InternalEvent for CompactionProvenanceRecorded {
+    fn event_name(&self) -> &'static str {
+        "CompactionProvenanceRecorded"
+    }
+
+    fn log_level(&self) -> LogLevel {
+        LogLevel::Info
+    }
+
+    fn log_message(&self) -> String {
+        format!(
+            "compaction provenance recorded for {} (kind={}, messages={}, reclaimed={})",
+            self.nous_id, self.kind, self.input_message_count, self.tokens_reclaimed
+        )
+    }
+
+    fn metric_labels(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("nous_id", self.nous_id.clone()),
+            ("kind", self.kind.clone()),
+        ]
+    }
+
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::as_conversions,
+        reason = "u64→f64: token counts are bounded by model context limits (current max ~2M tokens), well below f64 mantissa 2^53"
+    )]
+    fn metric_value(&self) -> f64 {
+        self.tokens_reclaimed as f64 // kanon:ignore RUST/as-cast
+    }
+}
+
 /// A pipeline stage completed successfully.
 pub(crate) struct StageCompleted {
     /// Agent identifier.
@@ -263,6 +311,23 @@ impl InternalEvent for StageTimeout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compaction_provenance_recorded_event_fields() {
+        let event = CompactionProvenanceRecorded {
+            nous_id: "test-agent".to_owned(),
+            kind: "full".to_owned(),
+            input_message_count: 10,
+            tokens_reclaimed: 500,
+        };
+        assert_eq!(event.event_name(), "CompactionProvenanceRecorded");
+        assert_eq!(event.log_level(), LogLevel::Info);
+        let msg = event.log_message();
+        assert!(msg.contains("full"), "message should include kind");
+        assert!(msg.contains("10"), "message should include input count");
+        let labels = event.metric_labels();
+        assert!(labels.iter().any(|(k, v)| k == &"kind" && v == "full"));
+    }
 
     #[test]
     fn stage_completed_event_fields() {

@@ -11,13 +11,26 @@ use tracing::debug;
 
 use hermeneus::types::ToolResultType;
 
+use crate::audit::{ClearedToolReceipt, CompactionAuditRecord, CompactionKind};
 use crate::budget::CompactionMetrics;
 use crate::pipeline::PipelineMessage;
 
-use super::CompactConfig;
+use super::{CompactConfig, CompactionAttribution};
+
+/// Result of a microcompaction pass.
+#[derive(Debug, Clone)]
+pub(crate) struct MicrocompactionResult {
+    /// Compaction metrics.
+    pub(crate) metrics: CompactionMetrics,
+    /// Durable audit record for this pass.
+    pub(crate) audit_record: CompactionAuditRecord,
+}
 
 /// Marker prefix for cleared tool results.
 const CLEARED_MARKER_PREFIX: &str = "[Cleared: ";
+
+/// Entry for a tool result collected during microcompaction scanning.
+type ToolEntry = (usize, jiff::Timestamp, i64, String);
 
 /// Run microcompaction on pipeline messages, replacing expired tool results.
 ///
@@ -39,18 +52,23 @@ pub(crate) fn run_microcompaction(
     messages: &mut [PipelineMessage],
     config: &CompactConfig,
     now: jiff::Timestamp,
-) -> CompactionMetrics {
+    attribution: CompactionAttribution,
+) -> MicrocompactionResult {
     let mut metrics = CompactionMetrics::default();
+    let input_message_count = messages.len();
+    let input_content_hash = super::hash_messages(messages);
 
     // NOTE: collect all tool results with their indices, grouped by tool type
-    let mut by_type: HashMap<ToolResultType, Vec<(usize, jiff::Timestamp, i64)>> = HashMap::new();
+    let mut by_type: HashMap<ToolResultType, Vec<ToolEntry>> = HashMap::new();
 
     for (idx, msg) in messages.iter().enumerate() {
-        if let Some((tool_type, created_at)) = parse_tool_result_metadata(msg) {
-            by_type
-                .entry(tool_type)
-                .or_default()
-                .push((idx, created_at, msg.token_estimate));
+        if let Some((tool_type, tool_name, created_at)) = parse_tool_result_metadata(msg) {
+            by_type.entry(tool_type).or_default().push((
+                idx,
+                created_at,
+                msg.token_estimate,
+                tool_name,
+            ));
         }
     }
 
@@ -80,9 +98,9 @@ pub(crate) fn run_microcompaction(
         let preserve_count = config.keep_last_n.min(entries.len());
         let clearable_end = entries.len().saturating_sub(preserve_count);
         // WHY: sort by index to ensure the last N entries by position are preserved
-        entries.sort_by_key(|(idx, _, _)| *idx);
+        entries.sort_by_key(|(idx, _, _, _)| *idx);
 
-        for &(idx, created_at, _) in entries.get(..clearable_end).unwrap_or(&[]) {
+        for &(idx, created_at, _, _) in entries.get(..clearable_end).unwrap_or(&[]) {
             let age = now.duration_since(created_at);
             // WHY: SignedDuration comparison  -  if age exceeds TTL, the result is stale
             if age >= ttl {
@@ -95,11 +113,23 @@ pub(crate) fn run_microcompaction(
     indices_to_clear.sort_unstable();
     indices_to_clear.dedup();
 
+    let mut cleared_receipts: Vec<ClearedToolReceipt> = Vec::new();
+
     for &idx in indices_to_clear.iter().rev() {
         if let Some(msg) = messages.get_mut(idx) {
-            let Some((tool_type, created_at)) = parse_tool_result_metadata(msg) else {
+            let Some((tool_type, tool_name, created_at)) = parse_tool_result_metadata(msg) else {
                 continue;
             };
+            let original_content_hash = super::hash_text(&msg.content);
+            let original_token_estimate = msg.token_estimate;
+            cleared_receipts.push(ClearedToolReceipt {
+                message_index: idx,
+                tool_type: format!("{tool_type:?}"),
+                tool_name,
+                original_content_hash,
+                original_token_estimate,
+            });
+
             let age = now.duration_since(created_at);
             let age_display = format!("{}s", age.as_secs());
             let marker = format!("{CLEARED_MARKER_PREFIX}{tool_type:?}, age {age_display}]");
@@ -152,7 +182,33 @@ pub(crate) fn run_microcompaction(
         );
     }
 
-    metrics
+    let audit_record = CompactionAuditRecord {
+        timestamp: jiff::Timestamp::now(),
+        kind: CompactionKind::Micro,
+        nous_id: attribution.nous_id,
+        session_id: attribution.session_id,
+        turn_id: attribution.turn_id,
+        trigger_reason: attribution.trigger_reason,
+        input_message_count,
+        input_content_hash,
+        input_message_ranges: Vec::new(),
+        compaction_prompt_hash: attribution.prompt_hash,
+        compaction_system_prompt_hash: attribution.system_prompt_hash,
+        compaction_model: attribution.model,
+        compaction_provider: attribution.provider,
+        compaction_config_hash: attribution.config_hash,
+        summary_hash: None,
+        preserved_ranges: Vec::new(),
+        restored_files: Vec::new(),
+        cleared_tool_receipts: cleared_receipts,
+        tokens_before: metrics.pre_compact_tokens,
+        tokens_after: metrics.post_compact_tokens,
+    };
+
+    MicrocompactionResult {
+        metrics,
+        audit_record,
+    }
 }
 
 /// Extract tool result metadata FROM a pipeline message.
@@ -163,7 +219,9 @@ pub(crate) fn run_microcompaction(
 /// we look for patterns indicating tool output.
 ///
 /// Returns `(tool_type, created_at)` if the message looks like a tool result.
-fn parse_tool_result_metadata(msg: &PipelineMessage) -> Option<(ToolResultType, jiff::Timestamp)> {
+fn parse_tool_result_metadata(
+    msg: &PipelineMessage,
+) -> Option<(ToolResultType, String, jiff::Timestamp)> {
     // WHY: tool result messages carry metadata in a structured prefix
     // Format: "[tool:<name>@<timestamp>] <content>"
     if msg.role != "user" {
@@ -180,7 +238,7 @@ fn parse_tool_result_metadata(msg: &PipelineMessage) -> Option<(ToolResultType, 
     let timestamp_str = metadata.get(at_pos + 1..)?;
     let created_at: jiff::Timestamp = timestamp_str.parse().ok()?;
     let tool_type = ToolResultType::classify(tool_name);
-    Some((tool_type, created_at))
+    Some((tool_type, tool_name.to_owned(), created_at))
 }
 
 /// Format a tool result with compaction metadata prefix.
@@ -238,6 +296,20 @@ mod tests {
         }
     }
 
+    fn test_attribution() -> CompactionAttribution {
+        CompactionAttribution {
+            nous_id: "test-agent".to_owned(),
+            session_id: "ses-1".to_owned(),
+            turn_id: "turn-1".to_owned(),
+            prompt_hash: String::new(),
+            system_prompt_hash: String::new(),
+            model: String::new(),
+            provider: String::new(),
+            config_hash: "config-hash".to_owned(),
+            trigger_reason: "TTL expired".to_owned(),
+        }
+    }
+
     #[test]
     fn microcompaction_clears_expired_file_result() {
         // WHY: keep_last_n=0 so a single expired result gets cleared
@@ -256,7 +328,7 @@ mod tests {
             make_text_msg("user", "next question", 20),
         ];
 
-        let metrics = run_microcompaction(&mut messages, &config, now);
+        let metrics = run_microcompaction(&mut messages, &config, now, test_attribution()).metrics;
         assert_eq!(
             metrics.results_cleared, 1,
             "one expired result should be cleared"
@@ -284,7 +356,7 @@ mod tests {
             make_text_msg("assistant", "here is the result", 50),
         ];
 
-        let metrics = run_microcompaction(&mut messages, &config, now);
+        let metrics = run_microcompaction(&mut messages, &config, now, test_attribution()).metrics;
         assert_eq!(
             metrics.results_cleared, 0,
             "fresh results should not be cleared"
@@ -313,7 +385,7 @@ mod tests {
             make_tool_msg("file_read", old, "old file 4", 100),
         ];
 
-        let metrics = run_microcompaction(&mut messages, &config, now);
+        let metrics = run_microcompaction(&mut messages, &config, now, test_attribution()).metrics;
         // WHY: 4 file_read results, keep_last_n=2, so 2 should be cleared
         assert_eq!(
             metrics.results_cleared, 2,
@@ -358,7 +430,7 @@ mod tests {
             make_tool_msg("bash", four_min_ago, "shell output 4", 200),
         ];
 
-        let metrics = run_microcompaction(&mut messages, &config, now);
+        let metrics = run_microcompaction(&mut messages, &config, now, test_attribution()).metrics;
         // file_read: 4 min old < 5 min TTL -> preserved
         assert!(
             messages[0].content.contains("file content"),
@@ -391,7 +463,7 @@ mod tests {
             make_text_msg("user", "question", 15),
         ];
 
-        let metrics = run_microcompaction(&mut messages, &config, now);
+        let metrics = run_microcompaction(&mut messages, &config, now, test_attribution()).metrics;
         assert_eq!(
             metrics.results_cleared, 0,
             "non-tool messages should not be cleared"
@@ -412,7 +484,7 @@ mod tests {
 
         let mut messages = vec![make_tool_msg("calculator", old, "result: 42", 50)];
 
-        let metrics = run_microcompaction(&mut messages, &config, now);
+        let metrics = run_microcompaction(&mut messages, &config, now, test_attribution()).metrics;
         assert_eq!(
             metrics.results_cleared, 0,
             "Other-type tool results should never be auto-cleared"
@@ -435,7 +507,7 @@ mod tests {
             make_text_msg("assistant", "noted", 10),
         ];
 
-        let metrics = run_microcompaction(&mut messages, &config, now);
+        let metrics = run_microcompaction(&mut messages, &config, now, test_attribution()).metrics;
         assert_eq!(
             metrics.pre_compact_tokens, 510,
             "pre-compact tokens should be sum of all message tokens"
@@ -484,12 +556,84 @@ mod tests {
             parsed.is_some(),
             "formatted tool result should be parseable"
         );
-        let (tool_type, created_at) = parsed.unwrap();
+        let (tool_type, tool_name, created_at) = parsed.unwrap();
         assert_eq!(
             tool_type,
             ToolResultType::FileOperation,
             "parsed tool type should match"
         );
+        assert_eq!(tool_name, "file_read", "parsed tool name should match");
         assert_eq!(created_at, ts, "parsed timestamp should match");
+    }
+
+    #[test]
+    fn microcompaction_audit_record_records_cleared_tool_receipts() {
+        let config = CompactConfig {
+            keep_last_n: 0,
+            ..CompactConfig::default()
+        };
+        let old = jiff::Timestamp::UNIX_EPOCH;
+        let now = old
+            .checked_add(jiff::SignedDuration::from_mins(10))
+            .unwrap();
+
+        let original_content = "contents of main.rs";
+        let mut messages = vec![
+            make_tool_msg("file_read", old, original_content, 500),
+            make_text_msg("assistant", "I see the file", 50),
+            make_text_msg("user", "next question", 20),
+        ];
+        let expected_input_hash = crate::compact::hash_messages(&messages);
+        let expected_content_hash =
+            crate::compact::hash_text(&format_tool_result("file_read", old, original_content));
+
+        let result = run_microcompaction(&mut messages, &config, now, test_attribution());
+
+        assert_eq!(
+            result.audit_record.kind,
+            crate::audit::CompactionKind::Micro
+        );
+        assert_eq!(
+            result.audit_record.input_message_count, 3,
+            "audit should record input count"
+        );
+        assert_eq!(
+            result.audit_record.input_content_hash, expected_input_hash,
+            "audit should record input content hash"
+        );
+        assert_eq!(
+            result.audit_record.cleared_tool_receipts.len(),
+            1,
+            "audit should record one cleared receipt"
+        );
+        assert_eq!(
+            result.audit_record.cleared_tool_receipts[0].tool_type, "FileOperation",
+            "receipt should record tool type"
+        );
+        assert_eq!(
+            result.audit_record.cleared_tool_receipts[0].tool_name, "file_read",
+            "receipt should record tool name"
+        );
+        assert_eq!(
+            result.audit_record.cleared_tool_receipts[0].message_index, 0,
+            "receipt should record original message index"
+        );
+        assert_eq!(
+            result.audit_record.cleared_tool_receipts[0].original_content_hash,
+            expected_content_hash,
+            "receipt should record original content hash"
+        );
+        assert_eq!(
+            result.audit_record.cleared_tool_receipts[0].original_token_estimate, 500,
+            "receipt should record original token estimate"
+        );
+        assert_eq!(
+            result.audit_record.tokens_before, 570,
+            "audit should record pre-compact tokens"
+        );
+        assert!(
+            result.audit_record.tokens_after < result.audit_record.tokens_before,
+            "audit should record token reduction"
+        );
     }
 }

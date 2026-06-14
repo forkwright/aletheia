@@ -294,23 +294,19 @@ impl NousActor {
         let session_id = session_state.id.clone();
 
         // WHY: trigger check under lock, guard dropped before spawn to avoid holding lock across .await
-        let should_distill = {
+        let context_window = u64::from(self.config.generation.context_window);
+        let trigger_reason = {
             let store = store_arc.lock().await;
             let Ok(Some(session)) = store.find_session_by_id(&session_id) else {
                 return false;
             };
             let config = crate::distillation::DistillTriggerConfig::default();
-            crate::distillation::should_trigger_distillation(
-                &session,
-                u64::from(self.config.generation.context_window),
-                &config,
-            )
-            .is_some()
+            crate::distillation::should_trigger_distillation(&session, context_window, &config)
         };
 
-        if !should_distill {
+        let Some(trigger_reason) = trigger_reason else {
             return false;
-        }
+        };
 
         let config = crate::distillation::DistillTriggerConfig::default();
         if self
@@ -327,6 +323,7 @@ impl NousActor {
         let providers = Arc::clone(&self.services.providers);
         #[cfg(feature = "knowledge-store")]
         let knowledge_store = self.stores.knowledge_store.as_ref().map(Arc::clone);
+        let audit_log = self.services.audit_log.clone();
         let nous_id = self.id.clone();
         let span =
             tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
@@ -355,6 +352,8 @@ impl NousActor {
                         session_id,
                         nous_id.clone(),
                         config,
+                        audit_log,
+                        trigger_reason,
                     ) => {}
                 }
                 // NOTE: guard Drop handles flag.store(false) for both normal and panic paths
@@ -903,6 +902,10 @@ async fn run_skill_extraction(
 }
 
 /// Run distillation as a background task. Loads history, calls LLM, applies results.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "background distillation threading requires all dependencies until config struct refactor"
+)]
 async fn run_background_distillation(
     store: Arc<Mutex<SessionStore>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern
     providers: Arc<ProviderRegistry>,
@@ -910,6 +913,8 @@ async fn run_background_distillation(
     session_id: String,
     nous_id: String,
     config: crate::distillation::DistillTriggerConfig,
+    audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    trigger_reason: String,
 ) {
     let Some(provider) = providers.find_provider(&config.model) else {
         warn!(
@@ -991,6 +996,26 @@ async fn run_background_distillation(
         warn!(nous_id = %nous_id, session_id = %session_id, error = %e, "failed to apply distillation");
         crate::metrics::record_background_failure(&nous_id, "distillation");
         return;
+    }
+
+    if let Some(log) = audit_log {
+        let record = crate::distillation::build_distillation_audit_record(
+            &nous_id,
+            &session_id,
+            &history,
+            &result,
+            provider.name(),
+            &config,
+            &trigger_reason,
+        );
+        if let Err(e) = log.log_compaction(&record) {
+            warn!(
+                nous_id = %nous_id,
+                session_id = %session_id,
+                error = %e,
+                "distillation audit log write failed — continuing"
+            );
+        }
     }
 
     info!(

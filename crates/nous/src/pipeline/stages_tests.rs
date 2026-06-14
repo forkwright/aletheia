@@ -23,8 +23,10 @@ use organon::types::ToolContext;
 use tokio::sync::{Mutex as TokioMutex, mpsc};
 
 use super::*;
+use crate::audit::{CompactionKind, PromptAuditLog};
 use crate::budget::{StageTimingStatus, TimeBudget};
 use crate::compact::CompactConfig;
+use crate::compact::micro::format_tool_result;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
 use crate::error;
 use crate::pipeline::{PipelineContext, PipelineInput, ReflectionStatus};
@@ -185,8 +187,9 @@ async fn full_compaction_uses_llm_summary() {
         ..PipelineContext::default()
     };
     let emitter = EventEmitter::new();
+    let session = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
 
-    run_full_compact_stage(&config, &mut ctx, &providers, &emitter)
+    run_full_compact_stage(&config, &mut ctx, &providers, &emitter, &session, None)
         .await
         .expect("full compaction should complete");
 
@@ -216,8 +219,9 @@ async fn full_compaction_falls_back_when_llm_unavailable() {
         ..PipelineContext::default()
     };
     let emitter = EventEmitter::new();
+    let session = SessionState::new("ses-2".to_owned(), "main".to_owned(), &config);
 
-    run_full_compact_stage(&config, &mut ctx, &providers, &emitter)
+    run_full_compact_stage(&config, &mut ctx, &providers, &emitter, &session, None)
         .await
         .expect("structural fallback should keep compaction non-fatal");
 
@@ -228,6 +232,195 @@ async fn full_compaction_falls_back_when_llm_unavailable() {
             .content
             .contains("Previous conversation context:"),
         "fallback should use structural summary"
+    );
+}
+
+#[tokio::test]
+async fn full_compaction_stage_persists_audit_record() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let audit_log = PromptAuditLog::new(dir.path().to_path_buf(), true);
+    let mut config = NousConfig::default();
+    config.generation.model = "test-model".to_owned();
+    config.generation.context_window = 100;
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("llm compacted summary").models(&["test-model"]),
+    ));
+    let mut ctx = PipelineContext {
+        messages: vec![
+            PipelineMessage {
+                role: "user".to_owned(),
+                content: "old context".to_owned(),
+                token_estimate: 90,
+                cache_breakpoint: false,
+            },
+            PipelineMessage {
+                role: "assistant".to_owned(),
+                content: "recent".to_owned(),
+                token_estimate: 1,
+                cache_breakpoint: false,
+            },
+        ],
+        ..PipelineContext::default()
+    };
+    let emitter = EventEmitter::new();
+    let session = SessionState::new("ses-3".to_owned(), "main".to_owned(), &config);
+
+    run_full_compact_stage(
+        &config,
+        &mut ctx,
+        &providers,
+        &emitter,
+        &session,
+        Some(&audit_log),
+    )
+    .await
+    .expect("full compaction should complete");
+
+    let audit_record = ctx
+        .compaction_audit_record
+        .expect("full compaction should record an audit record");
+    assert_eq!(audit_record.kind, CompactionKind::Full);
+    assert_eq!(audit_record.input_message_count, 2);
+    assert!(!audit_record.compaction_model.is_empty());
+    assert!(!audit_record.compaction_provider.is_empty());
+    assert!(audit_record.summary_hash.is_some());
+
+    let compaction_path = dir.path().join(format!(
+        "compaction-{}.jsonl",
+        jiff::Timestamp::now()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .date()
+    ));
+    let prompt_path = dir.path().join(format!(
+        "{}.jsonl",
+        jiff::Timestamp::now()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .date()
+    ));
+    assert!(
+        compaction_path.exists(),
+        "compaction provenance should be written to disk"
+    );
+    assert!(
+        prompt_path.exists(),
+        "compaction prompt audit record should be written to disk"
+    );
+}
+
+#[test]
+fn microcompact_stage_persists_audit_record_for_cleared_results() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let audit_log = PromptAuditLog::new(dir.path().to_path_buf(), true);
+    let config = NousConfig::default();
+    let old = jiff::Timestamp::UNIX_EPOCH;
+    let now = old
+        .checked_add(jiff::SignedDuration::from_mins(60))
+        .expect("valid timestamp");
+    let mut ctx = PipelineContext {
+        messages: vec![
+            PipelineMessage {
+                role: "user".to_owned(),
+                content: format_tool_result("file_read", old, "old file content"),
+                token_estimate: 500,
+                cache_breakpoint: false,
+            },
+            PipelineMessage {
+                role: "assistant".to_owned(),
+                content: "noted".to_owned(),
+                token_estimate: 10,
+                cache_breakpoint: false,
+            },
+        ],
+        ..PipelineContext::default()
+    };
+    let emitter = EventEmitter::new();
+    let session = SessionState::new("ses-4".to_owned(), "main".to_owned(), &config);
+
+    run_microcompact_stage(&config, &mut ctx, &emitter, &session, Some(&audit_log));
+
+    let audit_record = ctx
+        .compaction_audit_record
+        .expect("microcompaction should record an audit record when results are cleared");
+    assert_eq!(audit_record.kind, CompactionKind::Micro);
+    assert_eq!(audit_record.cleared_tool_receipts.len(), 1);
+    assert_eq!(audit_record.cleared_tool_receipts[0].tool_name, "file_read");
+
+    let compaction_path = dir.path().join(format!(
+        "compaction-{}.jsonl",
+        jiff::Timestamp::now()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .date()
+    ));
+    assert!(
+        compaction_path.exists(),
+        "microcompaction provenance should be written to disk"
+    );
+}
+
+#[tokio::test]
+async fn compacted_run_can_explain_what_changed_and_why() {
+    let mut config = NousConfig::default();
+    config.generation.model = "test-model".to_owned();
+    config.generation.context_window = 100;
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("summary of old context").models(&["test-model"]),
+    ));
+    let mut ctx = PipelineContext {
+        messages: vec![
+            PipelineMessage {
+                role: "user".to_owned(),
+                content: "old context to summarize".to_owned(),
+                token_estimate: 90,
+                cache_breakpoint: false,
+            },
+            PipelineMessage {
+                role: "assistant".to_owned(),
+                content: "recent answer".to_owned(),
+                token_estimate: 1,
+                cache_breakpoint: false,
+            },
+        ],
+        ..PipelineContext::default()
+    };
+    let emitter = EventEmitter::new();
+    let session = SessionState::new("ses-5".to_owned(), "main".to_owned(), &config);
+
+    run_full_compact_stage(&config, &mut ctx, &providers, &emitter, &session, None)
+        .await
+        .expect("full compaction should complete");
+
+    let audit_record = ctx
+        .compaction_audit_record
+        .expect("audit record should exist");
+    assert_eq!(audit_record.kind, CompactionKind::Full);
+    assert!(
+        audit_record.trigger_reason.contains("above threshold"),
+        "audit should explain why compaction ran: {}",
+        audit_record.trigger_reason
+    );
+    assert!(
+        audit_record
+            .input_message_ranges
+            .iter()
+            .any(|r| r.start == 0 && r.end == 1),
+        "audit should identify summarized range"
+    );
+    assert!(
+        audit_record
+            .preserved_ranges
+            .iter()
+            .any(|r| r.start == 1 && r.end == 2),
+        "audit should identify preserved range"
+    );
+    assert!(
+        audit_record.summary_hash.is_some(),
+        "audit should record summary hash"
+    );
+    assert!(
+        audit_record.tokens_after < audit_record.tokens_before,
+        "audit should record token reduction"
     );
 }
 

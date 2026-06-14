@@ -1,6 +1,7 @@
 // kanon:ignore RUST/file-too-long — distillation orchestration; extraction refactor planned in #3751
 //! Distillation wiring: trigger logic and orchestration.
 
+use sha2::{Digest, Sha256};
 use snafu::ResultExt;
 use tracing::{info, instrument};
 
@@ -340,6 +341,106 @@ pub fn apply_distillation(
         .context(error::StoreSnafu)?;
 
     Ok(())
+}
+
+/// Build a durable audit record describing a session distillation pass.
+///
+/// Captures the same provenance signals as full/micro compaction: input hashes,
+/// summarized/preserved ranges, summary hash, and LLM attribution. The distilled
+/// message content itself is never stored — only hashes and ranges.
+pub(crate) fn build_distillation_audit_record(
+    nous_id: &str,
+    session_id: &str,
+    history: &[mneme::types::Message],
+    result: &melete::distill::DistillResult,
+    provider: &str,
+    config: &DistillTriggerConfig,
+    trigger_reason: &str,
+) -> crate::audit::CompactionAuditRecord {
+    use crate::audit::{CompactionAuditRecord, CompactionKind, MessageRange};
+
+    let input_message_count = history.len();
+    let split_point = result.messages_distilled.min(input_message_count);
+    let input_message_ranges = vec![
+        MessageRange {
+            start: 0,
+            end: split_point,
+            content_hash: hash_history_range(history, 0, split_point),
+        },
+        MessageRange {
+            start: split_point,
+            end: input_message_count,
+            content_hash: hash_history_range(history, split_point, input_message_count),
+        },
+    ];
+    let preserved_ranges = vec![MessageRange {
+        start: split_point,
+        end: input_message_count,
+        content_hash: hash_history_range(history, split_point, input_message_count),
+    }];
+
+    CompactionAuditRecord {
+        timestamp: jiff::Timestamp::now(),
+        kind: CompactionKind::Distillation,
+        nous_id: nous_id.to_owned(),
+        session_id: session_id.to_owned(),
+        turn_id: String::new(),
+        trigger_reason: trigger_reason.to_owned(),
+        input_message_count,
+        input_content_hash: hash_history(history),
+        input_message_ranges,
+        compaction_prompt_hash: String::new(),
+        compaction_system_prompt_hash: String::new(),
+        compaction_model: config.model.clone(),
+        compaction_provider: provider.to_owned(),
+        compaction_config_hash: hash_distill_config(config),
+        summary_hash: Some(crate::compact::hash_text(&result.summary)),
+        preserved_ranges,
+        restored_files: Vec::new(),
+        cleared_tool_receipts: Vec::new(),
+        tokens_before: result.tokens_before,
+        tokens_after: result.tokens_after,
+    }
+}
+
+/// Hash the concatenated content of a mneme message sequence.
+#[must_use]
+fn hash_history(messages: &[mneme::types::Message]) -> String {
+    hash_history_range(messages, 0, messages.len())
+}
+
+/// Hash a subset of mneme messages.
+#[must_use]
+fn hash_history_range(messages: &[mneme::types::Message], start: usize, end: usize) -> String {
+    let clipped_start = start.min(messages.len());
+    let clipped_end = end.min(messages.len());
+    if clipped_start >= clipped_end {
+        return crate::compact::hash_text("");
+    }
+    let slice = messages.get(clipped_start..clipped_end).unwrap_or(&[]);
+    let mut hasher = Sha256::new();
+    for msg in slice {
+        hasher.update(msg.content.as_bytes());
+        hasher.update(b"\n");
+    }
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in &digest {
+        use std::fmt::Write;
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// Hash the distillation configuration parameters that affect output.
+#[must_use]
+fn hash_distill_config(config: &DistillTriggerConfig) -> String {
+    let mut repr = String::new();
+    use std::fmt::Write;
+    let _ = write!(repr, "model={}", config.model);
+    let _ = write!(repr, ";verbatim_tail={}", config.verbatim_tail);
+    crate::compact::hash_text(&repr)
 }
 
 /// Verify and persist a structured memory flush to the knowledge store.
@@ -730,6 +831,68 @@ mod tests {
             session.metrics.distillation_count, 1,
             "distillation_count should be incremented"
         );
+    }
+
+    #[test]
+    fn distillation_audit_record_includes_summary_and_preserved_ranges() {
+        use melete::distill::DistillResult;
+        use mneme::types::Role as MnemeRole;
+
+        let history: Vec<mneme::types::Message> = (0..5)
+            .map(|i| mneme::types::Message {
+                id: i as i64,
+                session_id: "ses-1".to_owned(),
+                seq: i as i64,
+                role: MnemeRole::User,
+                content: format!("turn {i}"),
+                tool_call_id: None,
+                tool_name: None,
+                token_estimate: 100,
+                is_distilled: false,
+                created_at: String::new(),
+            })
+            .collect();
+
+        let result = DistillResult {
+            summary: "Summary of previous turns.".to_owned(),
+            messages_distilled: 3,
+            tokens_before: 500,
+            tokens_after: 120,
+            distillation_number: 1,
+            timestamp: jiff::Timestamp::now().to_string(),
+            verbatim_messages: vec![],
+            memory_flush: melete::flush::MemoryFlush {
+                decisions: vec![],
+                corrections: vec![],
+                facts: vec![],
+                task_state: None,
+            },
+            pruning_stats: None,
+            contradiction_log: melete::contradiction::ContradictionLog::empty(),
+        };
+
+        let config = DistillTriggerConfig::default();
+        let record = build_distillation_audit_record(
+            "nous-1",
+            "ses-1",
+            &history,
+            &result,
+            "anthropic",
+            &config,
+            "message_count >= threshold",
+        );
+
+        assert_eq!(record.kind, crate::audit::CompactionKind::Distillation);
+        assert_eq!(record.input_message_count, 5);
+        assert_eq!(record.preserved_ranges.len(), 1);
+        assert_eq!(record.preserved_ranges[0].start, 3);
+        assert_eq!(record.preserved_ranges[0].end, 5);
+        assert_eq!(
+            record.summary_hash,
+            Some(crate::compact::hash_text("Summary of previous turns."))
+        );
+        assert_eq!(record.tokens_before, 500);
+        assert_eq!(record.tokens_after, 120);
     }
 
     #[cfg(feature = "knowledge-store")]

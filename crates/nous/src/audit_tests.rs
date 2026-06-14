@@ -28,6 +28,7 @@ fn make_record(ts: Timestamp, id: &str) -> PromptAuditRecord {
         tool_names: vec!["read".to_owned(), "write".to_owned()],
         tool_surface_hash: "ts1:test".to_owned(),
         request_id: Some("req-abc".to_owned()),
+        kind: PromptAuditRecordKind::Turn,
     }
 }
 
@@ -268,4 +269,193 @@ fn rotation_after_seven_days() {
         })
         .collect();
     assert_eq!(files.len(), 7, "one file per day");
+}
+
+#[test]
+fn compaction_audit_record_serializes_with_kind_and_ranges() {
+    let ts = "2026-04-16T12:00:00Z".parse::<Timestamp>().unwrap();
+    let record = CompactionAuditRecord {
+        timestamp: ts,
+        kind: CompactionKind::Full,
+        nous_id: "syn".to_owned(),
+        session_id: "ses-1".to_owned(),
+        turn_id: "turn-1".to_owned(),
+        trigger_reason: "token budget".to_owned(),
+        input_message_count: 4,
+        input_content_hash: "abcd".to_owned(),
+        input_message_ranges: vec![
+            MessageRange {
+                start: 0,
+                end: 2,
+                content_hash: "h-summarized".to_owned(),
+            },
+            MessageRange {
+                start: 2,
+                end: 4,
+                content_hash: "h-preserved".to_owned(),
+            },
+        ],
+        compaction_prompt_hash: "prompt-hash".to_owned(),
+        compaction_system_prompt_hash: "sys-hash".to_owned(),
+        compaction_model: "claude-opus-4-20250514".to_owned(),
+        compaction_provider: "anthropic".to_owned(),
+        compaction_config_hash: "config-hash".to_owned(),
+        summary_hash: Some("summary-hash".to_owned()),
+        preserved_ranges: vec![MessageRange {
+            start: 2,
+            end: 4,
+            content_hash: "h-preserved".to_owned(),
+        }],
+        restored_files: vec![RestoredFileProvenance {
+            path: "src/main.rs".to_owned(),
+            content_hash: "file-hash".to_owned(),
+            content_span: 12,
+            token_estimate: 3,
+        }],
+        cleared_tool_receipts: vec![ClearedToolReceipt {
+            message_index: 0,
+            tool_type: "file_operation".to_owned(),
+            tool_name: "file_read".to_owned(),
+            original_content_hash: "cleared-hash".to_owned(),
+            original_token_estimate: 100,
+        }],
+        tokens_before: 1000,
+        tokens_after: 200,
+    };
+
+    let json = serde_json::to_string(&record).expect("serialize");
+    let decoded: CompactionAuditRecord = serde_json::from_str(&json).expect("decode");
+    assert_eq!(decoded.kind, CompactionKind::Full);
+    assert_eq!(decoded.input_message_count, 4);
+    assert_eq!(decoded.input_message_ranges.len(), 2);
+    assert_eq!(decoded.preserved_ranges[0].start, 2);
+    assert_eq!(decoded.restored_files[0].path, "src/main.rs");
+    assert_eq!(decoded.cleared_tool_receipts[0].tool_name, "file_read");
+    assert_eq!(decoded.tokens_before, 1000);
+    assert_eq!(decoded.tokens_after, 200);
+}
+
+#[test]
+fn compaction_audit_record_does_not_contain_message_content() {
+    let ts = "2026-04-16T12:00:00Z".parse::<Timestamp>().unwrap();
+    let sentinel = "SECRET_USER_MESSAGE_DO_NOT_LEAK";
+    let record = CompactionAuditRecord {
+        timestamp: ts,
+        kind: CompactionKind::Full,
+        nous_id: "syn".to_owned(),
+        session_id: "ses-1".to_owned(),
+        turn_id: "turn-1".to_owned(),
+        trigger_reason: "token budget".to_owned(),
+        input_message_count: 1,
+        input_content_hash: hash_system_prompt(Some(sentinel)),
+        input_message_ranges: Vec::new(),
+        compaction_prompt_hash: "prompt-hash".to_owned(),
+        compaction_system_prompt_hash: "sys-hash".to_owned(),
+        compaction_model: "claude".to_owned(),
+        compaction_provider: "anthropic".to_owned(),
+        compaction_config_hash: "config-hash".to_owned(),
+        summary_hash: Some(hash_system_prompt(Some("summary"))),
+        preserved_ranges: Vec::new(),
+        restored_files: Vec::new(),
+        cleared_tool_receipts: Vec::new(),
+        tokens_before: 100,
+        tokens_after: 10,
+    };
+
+    let json = serde_json::to_string(&record).expect("serialize");
+    assert!(
+        !json.contains(sentinel),
+        "compaction audit record must not contain message content"
+    );
+    assert!(json.contains(&hash_system_prompt(Some(sentinel))));
+}
+
+#[test]
+fn log_compaction_appends_record() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let log = PromptAuditLog::new(dir.path().to_path_buf(), true);
+    let ts = "2026-04-16T12:00:00Z".parse::<Timestamp>().unwrap();
+
+    let record = CompactionAuditRecord {
+        timestamp: ts,
+        kind: CompactionKind::Micro,
+        nous_id: "syn".to_owned(),
+        session_id: "ses-1".to_owned(),
+        turn_id: "turn-1".to_owned(),
+        trigger_reason: "TTL expired".to_owned(),
+        input_message_count: 2,
+        input_content_hash: "abcd".to_owned(),
+        input_message_ranges: Vec::new(),
+        compaction_prompt_hash: String::new(),
+        compaction_system_prompt_hash: String::new(),
+        compaction_model: String::new(),
+        compaction_provider: String::new(),
+        compaction_config_hash: "config-hash".to_owned(),
+        summary_hash: None,
+        preserved_ranges: Vec::new(),
+        restored_files: Vec::new(),
+        cleared_tool_receipts: vec![ClearedToolReceipt {
+            message_index: 0,
+            tool_type: "file_operation".to_owned(),
+            tool_name: "file_read".to_owned(),
+            original_content_hash: "h".to_owned(),
+            original_token_estimate: 50,
+        }],
+        tokens_before: 100,
+        tokens_after: 20,
+    };
+
+    log.log_compaction(&record).expect("write");
+
+    let path = dir.path().join("compaction-2026-04-16.jsonl");
+    let content = fs::read_to_string(&path).expect("read");
+    let lines: Vec<_> = content.lines().collect();
+    assert_eq!(lines.len(), 1, "one compaction record written as JSONL");
+    let decoded: CompactionAuditRecord = serde_json::from_str(lines[0]).expect("valid JSONL");
+    assert_eq!(decoded.kind, CompactionKind::Micro);
+    assert_eq!(decoded.cleared_tool_receipts.len(), 1);
+}
+
+#[test]
+fn disabled_log_compaction_is_noop() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let log = PromptAuditLog::new(dir.path().to_path_buf(), false);
+    let ts = "2026-04-16T12:00:00Z".parse::<Timestamp>().unwrap();
+
+    let record = CompactionAuditRecord {
+        timestamp: ts,
+        kind: CompactionKind::Full,
+        nous_id: "syn".to_owned(),
+        session_id: "ses-1".to_owned(),
+        turn_id: "turn-1".to_owned(),
+        trigger_reason: "token budget".to_owned(),
+        input_message_count: 0,
+        input_content_hash: String::new(),
+        input_message_ranges: Vec::new(),
+        compaction_prompt_hash: String::new(),
+        compaction_system_prompt_hash: String::new(),
+        compaction_model: String::new(),
+        compaction_provider: String::new(),
+        compaction_config_hash: String::new(),
+        summary_hash: None,
+        preserved_ranges: Vec::new(),
+        restored_files: Vec::new(),
+        cleared_tool_receipts: Vec::new(),
+        tokens_before: 0,
+        tokens_after: 0,
+    };
+
+    log.log_compaction(&record).expect("noop ok");
+    let entries = fs::read_dir(dir.path()).unwrap().count();
+    assert_eq!(
+        entries, 0,
+        "disabled compaction log should not create files"
+    );
+}
+
+#[test]
+fn prompt_audit_record_kind_defaults_to_turn_for_backward_compat() {
+    let json = r#"{"timestamp":"2026-04-16T12:00:00Z","nous_id":"syn","session_id":"ses-1","turn_id":"turn-1","provider":"anthropic","deployment_target":"cloud","model":"claude","system_prompt_hash":"","system_prompt_bytes":0,"message_count":1,"token_count_estimate":10,"fact_ids_included":[],"fact_ids_filtered":[],"tool_names":[],"tool_surface_hash":""}"#;
+    let record: PromptAuditRecord = serde_json::from_str(json).expect("decode legacy record");
+    assert_eq!(record.kind, PromptAuditRecordKind::Turn);
 }
