@@ -197,18 +197,25 @@ impl AffinityRouter {
         let persona_decision = self.inner.route_with_persona(features, persona_hint).await;
         let empirical_winner = ProviderId::new(persona_decision.base.provider.clone());
         let category = features.effective_category();
+        let candidates = features
+            .candidates
+            .iter()
+            .filter(|provider| features.candidate_allowed_by_boundary(provider))
+            .cloned()
+            .collect::<Vec<_>>();
 
-        if features.candidates.is_empty() {
+        if candidates.is_empty() {
             return persona_decision;
         }
 
+        let empirical_winner_allowed = features.candidate_allowed_by_boundary(&empirical_winner);
         let mut best_affinity_provider: Option<&ProviderId> = None;
         let mut best_affinity_score: f64 = -1.0;
         let mut empirical_winner_affinity: f64 = 0.0;
 
-        for candidate in &features.candidates {
+        for candidate in &candidates {
             let affinity = self
-                .compute_affinity(candidate, &category, &features.candidates)
+                .compute_affinity(candidate, &category, &candidates)
                 .await;
             let score = affinity.weighted();
 
@@ -238,7 +245,9 @@ impl AffinityRouter {
         )]
         let gap = best_affinity_score - empirical_winner_affinity;
 
-        if *affinity_winner != empirical_winner && gap >= self.affinity_threshold {
+        if *affinity_winner != empirical_winner
+            && (!empirical_winner_allowed || gap >= self.affinity_threshold)
+        {
             tracing::info!(
                 affinity_winner = %affinity_winner,
                 empirical_winner = %empirical_winner,
@@ -395,7 +404,7 @@ mod tests {
     use std::io::Write as _;
     use std::sync::Arc;
 
-    use aletheia_routing::DEFAULT_ROUTING_WINDOW;
+    use aletheia_routing::{DEFAULT_ROUTING_WINDOW, RoutingBoundary};
 
     use super::*;
     use crate::routing::empirical::EmpiricalRouter;
@@ -592,5 +601,29 @@ mod tests {
             .compute_breadth(&ProviderId::new("unknown"), &[])
             .await;
         assert!(breadth.is_none());
+    }
+
+    #[tokio::test]
+    async fn affinity_route_excludes_cloud_candidate_for_local_hosted_boundary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lines = vec![];
+        for _ in 0..10 {
+            lines.push(session_line("cloud-only", "success", "refactor"));
+        }
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &lines);
+
+        let router = make_affinity_router(tmp.path(), "local", 0.15).await;
+        let features = aletheia_routing::types::RequestFeatures::new(
+            vec![ProviderId::new("cloud-only"), ProviderId::new("local")],
+            Some(TaskCategory::Refactor),
+            None,
+        )
+        .with_deployment_target(RoutingBoundary::LocalHosted)
+        .with_candidate_deployment_target("cloud-only", RoutingBoundary::Cloud)
+        .with_candidate_deployment_target("local", RoutingBoundary::LocalHosted);
+
+        let decision = router.route_with_affinity(&features, None).await;
+
+        assert_eq!(&*decision.base.provider, "local");
     }
 }
