@@ -93,12 +93,12 @@ for the release-time substance-audit gate that calls this tool via
 
 ## Before submitting
 
-Install the in-tree hooks once per clone: `scripts/install-hooks.sh` (auto-run by `.envrc`/direnv). The `pre-push` hook runs CI-exact fmt + `_llm` freshness + clippy so they never first-fail in CI; deliberate bypass is `git push --no-verify`.
+Install the in-tree hooks once per clone: `scripts/install-hooks.sh` (auto-run by `.envrc`/direnv). The `pre-push` hook runs CI-exact fmt + `_llm` regen (generated, not committed) + clippy so they never first-fail in CI; deliberate bypass is `git push --no-verify`.
 
 1. `cargo +1.94.0 fmt --all -- --check` clean — **fmt is a required CI check** and runs *first* in gate-attestation, so a fmt-only miss aborts the whole gate
 2. `cargo test -p <affected-crate>` passes
 3. `cargo clippy --workspace`: zero warnings (CI-exact: `--all-targets -- -D warnings`)
-4. `_llm` index fresh on crate changes: `uv run scripts/llm-extract-l3.py && git add _llm/`
+4. `_llm` L3 index + manifest are **generated, not committed** (gitignored); materialize locally with `uv run scripts/llm-extract-l3.py` — do not `git add` them
 5. No `unwrap()` in library code
 6. New errors use snafu with context
 7. All lint suppressions use `#[expect]` with reason, not `#[allow]`

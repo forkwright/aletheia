@@ -23,14 +23,12 @@ range="origin/main...HEAD"
 git rev-parse --verify --quiet "@{push}" >/dev/null 2>&1 && range="@{push}..HEAD"
 changed="$(git diff --name-only "$range" 2>/dev/null || true)"
 
-# _llm L3 index freshness — paths-gated to what the CI workflow watches.
+# _llm L3 index — generated (gitignored), not committed. Regenerate locally so
+# the dev's own _llm/ stays fresh for browsing; the extractor running cleanly is
+# the only gate (a broken extractor fails the push), there is no committed diff.
 if printf '%s\n' "$changed" | grep -qE '^crates/.*\.rs$|(^|/)Cargo\.toml$|^scripts/llm-extract-l3\.py$'; then
-  echo "pre-push: regenerating _llm L3 index ..."
+  echo "pre-push: regenerating _llm L3 index (generated, not committed) ..."
   uv run scripts/llm-extract-l3.py >/dev/null 2>&1 || fail "_llm extractor failed to run"
-  if ! git diff --quiet _llm/; then
-    git diff --stat _llm/ >&2
-    fail "_llm index stale — run 'uv run scripts/llm-extract-l3.py && git add _llm/' and commit"
-  fi
 fi
 
 if [ "${PREPUSH_NO_CLIPPY:-0}" = "1" ]; then

@@ -148,3 +148,10 @@ target-local/
 .kimi.log
 .codex.log
 .claude.log
+
+# Generated _llm tiers — L3 API index + manifest regenerate per source change
+# (manifest.toml was a rebase-conflict magnet). Materialize with:
+#   uv run scripts/llm-extract-l3.py
+# Hand-authored L1/L2/legacy tiers stay committed.
+_llm/L3-api-index/
+_llm/manifest.toml
