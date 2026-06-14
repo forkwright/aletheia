@@ -67,6 +67,25 @@ fn is_protected(path: &Path) -> Option<&'static str> {
         .find(|&name| filename == name)
 }
 
+/// Re-canonicalize a path immediately before a filesystem mutation and re-check
+/// it against the same `allowed_roots` invariant used by `validate_path`.
+///
+/// WHY: Closes the TOCTOU window between the initial `validate_path` call and
+/// the actual mutation. If an attacker swaps a symlink or directory between
+/// those two moments, the resolved path may now point outside allowed roots and
+/// must be rejected.
+fn revalidate_before_mutation(
+    validated_path: &Path,
+    ctx: &ToolContext,
+    tool_name: &ToolName,
+) -> crate::error::Result<()> {
+    // Re-run the same canonicalization and root check used at validation time.
+    // For existing paths this detects a symlink swapped onto the resolved
+    // target; for non-existing paths it re-checks the deepest existing ancestor.
+    let _ = validate_path(&validated_path.to_string_lossy(), ctx, tool_name)?;
+    Ok(())
+}
+
 pub(crate) struct MkdirExecutor;
 
 impl ToolExecutor for MkdirExecutor {
@@ -139,6 +158,12 @@ impl ToolExecutor for MvExecutor {
                 )));
             }
 
+            // WHY: Close the TOCTOU window before the actual mutation. A
+            // validated path could have its canonical target swapped (e.g. via
+            // a symlink race) after the initial `validate_path` call.
+            revalidate_before_mutation(&from, ctx, &input.name)?;
+            revalidate_before_mutation(&to, ctx, &input.name)?;
+
             // WHY: std::fs::rename across mount points returns EXDEV. Fall
             // back to copy+remove so agents can move files between, for
             // example, tmpfs and the real workspace without surprises.
@@ -150,22 +175,27 @@ impl ToolExecutor for MvExecutor {
                 ))),
                 Err(e) if e.raw_os_error() == Some(18) => {
                     // EXDEV: cross-device link
+                    revalidate_before_mutation(&from, ctx, &input.name)?;
+                    revalidate_before_mutation(&to, ctx, &input.name)?;
                     let copy_result = if from.is_dir() {
                         copy_dir_recursive(&from, &to)
                     } else {
                         std::fs::copy(&from, &to).map(|_| ())
                     };
                     match copy_result {
-                        Ok(()) => match remove_path(&from) {
-                            Ok(()) => Ok(ToolResult::text(format!(
-                                "moved (cross-device) {} -> {}",
-                                sanitize(&from),
-                                sanitize(&to)
-                            ))),
-                            Err(e2) => Ok(ToolResult::error(format!(
-                                "cross-device move copied but failed to remove source: {e2}"
-                            ))),
-                        },
+                        Ok(()) => {
+                            revalidate_before_mutation(&from, ctx, &input.name)?;
+                            match remove_path(&from) {
+                                Ok(()) => Ok(ToolResult::text(format!(
+                                    "moved (cross-device) {} -> {}",
+                                    sanitize(&from),
+                                    sanitize(&to)
+                                ))),
+                                Err(e2) => Ok(ToolResult::error(format!(
+                                    "cross-device move copied but failed to remove source: {e2}"
+                                ))),
+                            }
+                        }
                         Err(e2) => Ok(ToolResult::error(format!(
                             "cross-device move failed during copy: {e2}"
                         ))),
@@ -213,6 +243,11 @@ impl ToolExecutor for CpExecutor {
                 )));
             }
 
+            // WHY: Close the TOCTOU window before the actual copy. The source
+            // or destination could be swapped after the initial validation.
+            revalidate_before_mutation(&from, ctx, &input.name)?;
+            revalidate_before_mutation(&to, ctx, &input.name)?;
+
             if from.is_dir() {
                 if !recursive {
                     return Ok(ToolResult::error(
@@ -251,18 +286,13 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
         if file_type.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
         } else if file_type.is_symlink() {
-            // WHY: Preserve symlinks rather than dereferencing to avoid
-            // silently following a link into a location that validate_path
-            // never saw. The destination link is created verbatim.
-            #[cfg(unix)]
-            {
-                let target = std::fs::read_link(&src_path)?;
-                std::os::unix::fs::symlink(target, &dst_path)?;
-            }
-            #[cfg(not(unix))]
-            {
-                std::fs::copy(&src_path, &dst_path)?;
-            }
+            // WHY: Reproducing symlinks verbatim would create a destination
+            // link whose target may not satisfy `allowed_roots`. Fail closed
+            // rather than copying an unvalidated pointer.
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("cannot copy symlink: {}", sanitize(&src_path)),
+            ));
         } else {
             std::fs::copy(&src_path, &dst_path)?;
         }
