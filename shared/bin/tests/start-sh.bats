@@ -50,3 +50,23 @@ EOF
     [[ "$output" == *"key=sk-ant-api03-fake"* ]]
     [[ "$output" == *"args=serve"* ]]
 }
+
+@test "defaults ALETHEIA_ROOT to ~/aletheia/instance when unset" {
+    # WHY: verify the canonical default path; drift to ~/.aletheia or other paths must fail this test.
+    local default_instance="$TEST_HOME/aletheia/instance"
+    mkdir -p "$default_instance/config"
+    cat > "$default_instance/config/env" <<'EOF'
+ANTHROPIC_API_KEY=sk-ant-api03-fake
+EOF
+    cat > "$TEST_HOME/aletheia-bin" <<'EOF'
+#!/usr/bin/env bash
+printf 'root=%s\n' "$ALETHEIA_ROOT"
+EOF
+    chmod +x "$TEST_HOME/aletheia-bin"
+
+    # Run without ALETHEIA_ROOT set; HOME is overridden to TEST_HOME so the
+    # default ~/aletheia/instance resolves to $TEST_HOME/aletheia/instance.
+    run env HOME="$TEST_HOME" ALETHEIA_BIN="$TEST_HOME/aletheia-bin" bash "$SCRIPT" serve
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"root=$default_instance"* ]]
+}

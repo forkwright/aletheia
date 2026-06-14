@@ -1,0 +1,43 @@
+# Demo instance configuration
+# Uses a local OpenAI-compatible LLM server (Ollama recommended) and mock embedding.
+# No cloud account required. See demo/README.md for setup instructions.
+
+[gateway]
+port = 18799
+bind = "localhost"
+
+[gateway.auth]
+# WHY: demo uses no authentication so it works without key setup.
+# Never use mode = "none" with bind = "lan" or in production.
+mode = "none"
+noneRole = "admin"
+
+[gateway.csrf]
+enabled = false
+
+[agents.defaults]
+[agents.defaults.model]
+# Points to the local provider below. Replace "demo-model" with whatever
+# model name your local LLM server exposes (e.g., "llama3.2", "mistral").
+primary = "demo-model"
+toolGroups = ["read", "plan", "verify"]
+contextTokens = 8192
+
+[[agents.list]]
+id = "demo"
+default = true
+workspace = "nous/demo"
+
+[embedding]
+# WHY: mock provider avoids downloading a model file for the demo.
+# Switch to "candle" for semantic recall after the initial walkthrough.
+provider = "mock"
+
+[[providers]]
+name = "local-demo"
+providerType = "openai-compatible"
+baseUrl = "http://127.0.0.1:11434/v1"
+deploymentTarget = "localhosted"
+# Replace "demo-model" with the model you have pulled in Ollama (or equivalent).
+# Examples: "llama3.2", "mistral", "qwen2.5", "phi3"
+models = ["demo-model"]

@@ -34,3 +34,9 @@ teardown() {
     [ "$status" -ne 0 ]
     [[ "$output" == *"File not found"* ]]
 }
+
+@test "ALETHEIA_ROOT default is ~/aletheia/instance not ~/.aletheia" {
+    # WHY: guard the canonical default path; drift to ~/.aletheia must fail this test.
+    grep -q 'ALETHEIA_ROOT:-.*HOME.*/aletheia/instance' "$SCRIPT"
+    ! grep -q 'ALETHEIA_ROOT:-.*HOME.*/.aletheia' "$SCRIPT"
+}
