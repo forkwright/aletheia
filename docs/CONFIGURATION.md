@@ -747,11 +747,11 @@ file, and `instance.example/services/aletheia.service` loads it from
 
 | Variable | Owner | Meaning |
 |----------|-------|---------|
-| `ALETHEIA_ROOT` | `taxis::Oikos` instance discovery | Instance root only. Equivalent to `--instance-root` when the CLI flag is absent; never a source tree or install prefix. |
+| `ALETHEIA_ROOT` | `taxis::Oikos` instance discovery | Instance root only. Resolution precedence: `-r`/`--instance-root` CLI flag > `ALETHEIA_ROOT` env var > `~/aletheia/instance` default. Never a source tree or install prefix. Helper scripts follow the same precedence. |
 | `ALETHEIA_BIN` | shared and deploy helper scripts | Executable path for helpers such as `shared/bin/start.sh`, `scripts/aletheia-heartbeat.sh`, deploy, rollback, and smoke scripts. Older scripts still accept `ALETHEIA_BINARY` as a compatibility fallback. |
 | `ALETHEIA_ENV_FILE` | `shared/bin/start.sh` | Env file sourced at startup. Defaults to `$ALETHEIA_ROOT/config/env`, the canonical env-file owner. |
 | `ALETHEIA_NOUS` | shared tools (`shared/bin/scholar`) | Nous workspace directory. Defaults to `$ALETHEIA_ROOT/nous`. |
-| `ALETHEIA_CREDS` | `shared/bin/start.sh`, `credential-refresh` | Anthropic credential JSON path. Defaults to `$ALETHEIA_ROOT/config/credentials/anthropic.json`. |
+| `ALETHEIA_CREDS` | `shared/bin/start.sh`, `credential-refresh`, `scripts/health-monitor.sh` | Anthropic credential JSON path. Defaults to `$ALETHEIA_ROOT/config/credentials/anthropic.json`. |
 | `ALETHEIA_MEMORY_USER` | `shared/bin/start.sh` | Identity attributed to stored memory. Defaults to the current `whoami`. |
 | `ALETHEIA_SHARED` | instance nous templates | Shared-resources root referenced by agent templates (`$ALETHEIA_SHARED/config/...`). |
 | `ALETHEIA_THEKE` | instance nous templates | Vault (theke) root referenced by agent templates (`$ALETHEIA_THEKE/<domain>`). |
@@ -769,7 +769,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `ANTHROPIC_API_KEY` | credential provider chain | Anthropic API key. May live in `config/env` or the process environment. |
 | `ANTHROPIC_AUTH_TOKEN` | credential provider chain | Anthropic OAuth token, usually maintained by credential tooling. |
 | `VOYAGE_API_KEY` | embedding provider | Optional remote embedding provider credential. Local candle embeddings do not need it. |
-| `BRAVE_API_KEY` | shared research tools | Optional Brave Search credential for operator-installed tools. |
+| `BRAVE_SEARCH_API_KEY` | shared research tools | Optional Brave Search credential for `web_search` and operator-installed tools. |
 | `PERPLEXITY_API_KEY` | shared research tools | Optional Perplexity credential for `shared/bin/pplx`. |
 | `RESEARCH_EMAIL` | shared research tools | Contact email used in scholarly API user agents. |
 | `PROSOCHE_GATEWAY_TOKEN` | prosoche integration | Optional token for prosoche gateway calls. |
