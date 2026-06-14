@@ -9,7 +9,7 @@ use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
-use crate::surface::{SurfaceLookup, ENABLE_TOOL};
+use crate::surface::{ENABLE_TOOL, SurfaceLookup};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,

@@ -205,7 +205,10 @@ async fn cp_recursive_rejects_symlink() {
         "recursive copy containing symlink must fail"
     );
     let msg = result.content.text_summary();
-    assert!(msg.contains("symlink"), "error should name symlink issue: {msg}");
+    assert!(
+        msg.contains("symlink"),
+        "error should name symlink issue: {msg}"
+    );
 }
 
 #[cfg(unix)]

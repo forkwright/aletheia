@@ -14,8 +14,8 @@ use koina::id::ToolName;
 
 use crate::error::{self, Result};
 use crate::surface::{
-    EffectiveToolSurface, RegistrySurfaceTool, SurfaceInputs, deferred_schema_placeholder,
-    ENABLE_TOOL,
+    ENABLE_TOOL, EffectiveToolSurface, RegistrySurfaceTool, SurfaceInputs,
+    deferred_schema_placeholder,
 };
 use crate::types::{
     ApprovalRequirement, Reversibility, ToolCallCapability, ToolCallCapabilityRule,

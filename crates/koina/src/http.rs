@@ -293,21 +293,20 @@ mod tests {
     #[tokio::test]
     async fn validate_url_blocks_localhost_localdomain() {
         let resolver = MockResolver::default();
-        let err = validate_url_not_internal_with_resolver(
-            "https://localhost.localdomain/",
-            &resolver,
-        )
-        .await
-        .expect_err("localhost.localdomain must be blocked");
+        let err =
+            validate_url_not_internal_with_resolver("https://localhost.localdomain/", &resolver)
+                .await
+                .expect_err("localhost.localdomain must be blocked");
         assert!(err.contains("blocked hostname"), "unexpected error: {err}");
     }
 
     #[tokio::test]
     async fn validate_url_blocks_subdomain_localhost() {
         let resolver = MockResolver::default();
-        let err = validate_url_not_internal_with_resolver("https://subdomain.localhost/", &resolver)
-            .await
-            .expect_err("*.localhost must be blocked");
+        let err =
+            validate_url_not_internal_with_resolver("https://subdomain.localhost/", &resolver)
+                .await
+                .expect_err("*.localhost must be blocked");
         assert!(err.contains("blocked hostname"), "unexpected error: {err}");
     }
 
@@ -323,9 +322,10 @@ mod tests {
     #[tokio::test]
     async fn validate_url_blocks_bare_zero_ipv4() {
         let mut resolver = MockResolver::default();
-        resolver
-            .addrs_by_host
-            .insert("0.0.0.0".to_owned(), vec![SocketAddr::from(([0, 0, 0, 0], 443))]);
+        resolver.addrs_by_host.insert(
+            "0.0.0.0".to_owned(),
+            vec![SocketAddr::from(([0, 0, 0, 0], 443))],
+        );
 
         let err = validate_url_not_internal_with_resolver("https://0.0.0.0/", &resolver)
             .await
