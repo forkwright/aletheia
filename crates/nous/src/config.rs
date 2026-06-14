@@ -357,10 +357,7 @@ fn default_session_token_cap() -> u64 {
 }
 
 fn default_chars_per_token() -> u32 {
-    // WHY: must match AgentDefaults::chars_per_token default in taxis so that
-    //      the serde default (used when deserialising NousConfig directly)
-    //      is identical to the value wired at startup via ResolvedNousConfig.
-    4
+    koina::defaults::CHARS_PER_TOKEN
 }
 
 /// Default prosoche model: Haiku-tier for cheap heartbeat checks.

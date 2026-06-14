@@ -10,8 +10,8 @@ use tracing::{Instrument, info, warn};
 
 use hermeneus::provider::ProviderRegistry;
 use koina::defaults::{
-    BOOTSTRAP_MAX_TOKENS, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS, MAX_TOOL_ITERATIONS,
-    MAX_TOOL_RESULT_BYTES,
+    BOOTSTRAP_MAX_TOKENS, CHARS_PER_TOKEN, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS,
+    MAX_TOOL_ITERATIONS, MAX_TOOL_RESULT_BYTES,
 };
 use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
@@ -197,7 +197,7 @@ impl SpawnServiceImpl {
                 bootstrap_max_tokens: BOOTSTRAP_MAX_TOKENS,
                 thinking_enabled: false,
                 thinking_budget: 0,
-                chars_per_token: 4,
+                chars_per_token: CHARS_PER_TOKEN,
                 prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
                     .to_owned(),
                 complexity: hermeneus::complexity::ComplexityConfig::default(),
