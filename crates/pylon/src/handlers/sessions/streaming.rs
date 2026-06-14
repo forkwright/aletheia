@@ -8,6 +8,7 @@ use std::time::Duration;
 use axum::Json;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
+use sha2::{Digest as _, Sha256};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
@@ -35,6 +36,12 @@ use crate::turn_buffer::TurnBufferHandle;
 
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
+
+const HEX_HIGH_NIBBLE_SHIFT: u8 = 4;
+const HEX_LOW_NIBBLE_MASK: u8 = 0x0f;
+const HEX_DECIMAL_DIGITS: u8 = 10;
+const ASCII_DIGIT_ZERO: u8 = b'0';
+const ASCII_LOWER_A: u8 = b'a';
 
 /// Guard that aborts a spawned task and releases an in-flight idempotency key
 /// when the SSE stream is dropped.
@@ -161,7 +168,7 @@ impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> 
     path = "/api/v1/sessions/{id}/messages",
     params(
         ("id" = String, Path, description = "Session ID"),
-        ("Idempotency-Key" = Option<String>, Header, description = "Optional idempotency key (max 64 chars). Duplicate keys with a completed request return the cached response; duplicate keys with an in-flight request return 409 Conflict."),
+        ("Idempotency-Key" = Option<String>, Header, description = "Optional idempotency key (max 64 chars). Duplicate keys with the same resolved session and request body return the cached response; duplicate keys with an in-flight request, a different session, or a different request body return 409 Conflict."),
     ),
     request_body = SendMessageRequest,
     responses(
@@ -200,8 +207,75 @@ pub async fn send_message(
     let idempotency_key =
         extract_idempotency_key(&headers, state.idempotency_cache.max_key_length)?;
 
+    let session = find_session(&state, &session_id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
+
+    // WHY: archived sessions must not accept new messages (#1250).
+    if session.status != SessionStatus::Active {
+        return Err(ConflictSnafu {
+            message: "cannot send message to a session that is not active",
+        }
+        .build());
+    }
+
+    let content = body.content;
+
+    // WHY(#3275): field-level validation for send_message content.
+    let max_msg_bytes = state.config.read().await.api_limits.max_message_bytes;
+    if content.is_empty() {
+        return Err(ValidationFailedSnafu {
+            errors: vec![FieldError {
+                field: "content".to_owned(),
+                code: "required".to_owned(),
+                message: "must not be empty".to_owned(),
+            }],
+        }
+        .build());
+    }
+    if content.len() > max_msg_bytes {
+        return Err(ValidationFailedSnafu {
+            errors: vec![FieldError {
+                field: "content".to_owned(),
+                code: "too_long".to_owned(),
+                message: format!("exceeds maximum size of {max_msg_bytes} bytes"),
+            }],
+        }
+        .build());
+    }
+
+    let nous_id = &session.nous_id;
+    let handle = state
+        .nous_manager
+        .get(nous_id)
+        .ok_or_else(|| {
+            InternalSnafu {
+                message: format!("no actor for nous {nous_id}"),
+            }
+            .build()
+        })?
+        .clone();
+
+    if let Some(config) = state.nous_manager.get_config(nous_id)
+        && state
+            .provider_registry
+            .find_provider(&config.generation.model)
+            .is_none()
+    {
+        return Err(InternalSnafu {
+            message: format!("no provider for model {}", config.generation.model),
+        }
+        .build());
+    }
+
+    let body_fingerprint = send_message_body_fingerprint(&content);
+
     if let Some(ref key) = idempotency_key {
-        match state.idempotency_cache.check_or_insert(&claims.sub, key) {
+        match state.idempotency_cache.check_or_insert(
+            &claims.sub,
+            key,
+            &session_id,
+            &body_fingerprint,
+        ) {
             LookupResult::Miss => {}
             LookupResult::Hit { body, .. } => {
                 tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
@@ -268,6 +342,12 @@ pub async fn send_message(
                 }
                 .build());
             }
+            LookupResult::Rejected { reason } => {
+                return Err(ConflictSnafu {
+                    message: reason.message(),
+                }
+                .build());
+            }
         }
     }
 
@@ -286,66 +366,6 @@ pub async fn send_message(
         None => (None, None),
     };
 
-    let session = find_session(&state, &session_id).await?;
-    require_nous_access(&claims, &session.nous_id)?;
-
-    // WHY: archived sessions must not accept new messages (#1250).
-    if session.status != SessionStatus::Active {
-        return Err(ConflictSnafu {
-            message: "cannot send message to a session that is not active",
-        }
-        .build());
-    }
-
-    let content = body.content;
-
-    // WHY(#3275): field-level validation for send_message content.
-    let max_msg_bytes = state.config.read().await.api_limits.max_message_bytes;
-    if content.is_empty() {
-        return Err(ValidationFailedSnafu {
-            errors: vec![FieldError {
-                field: "content".to_owned(),
-                code: "required".to_owned(),
-                message: "must not be empty".to_owned(),
-            }],
-        }
-        .build());
-    }
-    if content.len() > max_msg_bytes {
-        return Err(ValidationFailedSnafu {
-            errors: vec![FieldError {
-                field: "content".to_owned(),
-                code: "too_long".to_owned(),
-                message: format!("exceeds maximum size of {max_msg_bytes} bytes"),
-            }],
-        }
-        .build());
-    }
-
-    let nous_id = &session.nous_id;
-    let handle = state
-        .nous_manager
-        .get(nous_id)
-        .ok_or_else(|| {
-            InternalSnafu {
-                message: format!("no actor for nous {nous_id}"),
-            }
-            .build()
-        })?
-        .clone();
-
-    if let Some(config) = state.nous_manager.get_config(nous_id)
-        && state
-            .provider_registry
-            .find_provider(&config.generation.model)
-            .is_none()
-    {
-        return Err(InternalSnafu {
-            message: format!("no provider for model {}", config.generation.model),
-        }
-        .build());
-    }
-
     let session_key = session.session_key.clone();
     // WHY(#3276): channel carries (seq, event) pairs so the stream mapper can
     // set the SSE `id:` field for Last-Event-ID client recovery.
@@ -354,6 +374,8 @@ pub async fn send_message(
 
     let idem_key = idempotency_key.clone();
     let idem_principal = claims.sub.clone();
+    let idem_session_id = session_id.clone();
+    let idem_body_fingerprint = body_fingerprint.clone();
     let idem_cache = Arc::clone(&state.idempotency_cache);
 
     // WHY(#3276): Create a turn buffer so events emitted before a disconnect
@@ -443,7 +465,14 @@ pub async fn send_message(
                             "output_tokens": result.usage.output_tokens,
                         })
                         .to_string();
-                        idem_cache.complete(&idem_principal, key, axum::http::StatusCode::OK, body);
+                        idem_cache.complete(
+                            &idem_principal,
+                            key,
+                            &idem_session_id,
+                            &idem_body_fingerprint,
+                            axum::http::StatusCode::OK,
+                            body,
+                        );
                     }
                     // WHY(#5453): Mark the idempotency guard completed so the shared
                     // stream-side guard does not delete the now-cached entry when the
@@ -459,7 +488,12 @@ pub async fn send_message(
 
                     // WHY: Remove idempotency entry on error so the client can retry.
                     if let Some(ref key) = idem_key {
-                        idem_cache.remove(&idem_principal, key);
+                        idem_cache.remove(
+                            &idem_principal,
+                            key,
+                            &idem_session_id,
+                            &idem_body_fingerprint,
+                        );
                     }
 
                     let (err_code, err_message) = turn_error_info(&err);
@@ -941,6 +975,30 @@ fn sse_event_to_axum_with_id((seq, event): (u64, SseEvent)) -> Result<Event, Inf
                 )
                 .id(seq.to_string()))
         }
+    }
+}
+
+fn send_message_body_fingerprint(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"send_message\0content\0");
+    hasher.update(content.len().to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(content.as_bytes());
+
+    let digest = hasher.finalize();
+    let mut hex = String::from("sha256:");
+    for byte in digest {
+        hex.push(lower_hex_char(byte >> HEX_HIGH_NIBBLE_SHIFT));
+        hex.push(lower_hex_char(byte & HEX_LOW_NIBBLE_MASK));
+    }
+    hex
+}
+
+fn lower_hex_char(nibble: u8) -> char {
+    if nibble < HEX_DECIMAL_DIGITS {
+        char::from(ASCII_DIGIT_ZERO + nibble)
+    } else {
+        char::from(ASCII_LOWER_A + (nibble - HEX_DECIMAL_DIGITS))
     }
 }
 
