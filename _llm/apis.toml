@@ -8,6 +8,9 @@ source_docs = [
 ]
 
 [apis]
+# NOTE: _llm/apis.toml is the canonical structured surface referenced from llms.txt.
+# _llm/api.toml is detailed reference data consumed by this file. Use apis.toml
+# as the agent entry point; consult api.toml for per-command/route detail.
 summary = "Aletheia exposes a CLI, HTTP/SSE API, Signal command surface, TUI, and MCP integration."
 
 [[cli_commands]]

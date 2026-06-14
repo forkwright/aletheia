@@ -1,5 +1,5 @@
-# CLI and API reference — moved from CLAUDE.md
-# Canonical sources: `aletheia --help`, `GET /api/docs/openapi.json`
+# Detailed CLI and route reference data. Canonical surface for agents: _llm/apis.toml.
+# Authoritative runtime sources: `aletheia --help`, `GET /api/docs/openapi.json`
 
 [cli]
 note = "Run `aletheia --help` for current flags. Run `aletheia <subcommand> --help` for details."

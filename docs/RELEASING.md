@@ -28,8 +28,9 @@ scripts/check-cargo-publish-policy.py
 4. release-please creates a git tag (`vX.Y.Z`) and GitHub Release
 5. The tag triggers `.github/workflows/release.yml`:
    - Verifies proskenion's standalone theatron pins match the root workspace
-   - Runs the full test suite
-   - Builds cross-platform binaries (4 targets)
+   - Runs `cargo test --workspace --exclude proskenion` and optional
+     feature-flag compile checks
+   - Builds release binaries for the supported targets (see table below)
    - Packages the binary with public license, security, docs, examples, and
      manifest files
    - Inspects the tarball before upload so missing required contents fail the
@@ -80,8 +81,8 @@ only the config scan and tautological-doc detectors are needed.
 
 | Target | Artifact name | Runner | Method |
 |--------|---------------|--------|--------|
-| `x86_64-unknown-linux-musl` | `aletheia-linux-x86_64` | `ubuntu-latest` | `cross` (fully static musl binary) |
-| `aarch64-apple-darwin` | `aletheia-macos-aarch64` | `macos-14` | Native cargo build |
+| `x86_64-unknown-linux-musl` | `aletheia-linux-x86_64` | `ubuntu-latest` | `cross` (fully static, no glibc) |
+| `aarch64-apple-darwin` | `aletheia-macos-aarch64` | `macos-14` | Native cargo build (Apple Silicon) |
 
 ## Manual release
 

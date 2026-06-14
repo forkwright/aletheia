@@ -52,7 +52,7 @@ aletheia --version
 Download the tarball from the [releases page](https://github.com/forkwright/aletheia/releases) instead of building from source:
 
 ```bash
-VERSION=v0.30.0
+VERSION=$(curl -s https://api.github.com/repos/forkwright/aletheia/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
 curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 tar xzf aletheia.tar.gz
@@ -60,13 +60,7 @@ cd "aletheia-${VERSION}"
 sudo cp aletheia /usr/local/bin/
 ```
 
-To use the latest release without hard-coding the version:
-
-```bash
-VERSION=$(curl -s https://api.github.com/repos/forkwright/aletheia/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
-curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
-  -o aletheia.tar.gz
-```
+To pin a specific release, replace the `VERSION=$(curl ...)` line with `VERSION=vX.Y.Z` where `X.Y.Z` matches the desired [release tag](https://github.com/forkwright/aletheia/releases).
 
 ---
 
