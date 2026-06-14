@@ -12,7 +12,66 @@ use super::super::*;
 use super::make_echo_task;
 use crate::bridge::DaemonBridge;
 use crate::execution::execute_builtin;
+use crate::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceReport};
 use crate::runner::ExecutionResult;
+
+/// Knowledge executor that reports non-fatal errors for decay refresh.
+struct DecayErrorKnowledge;
+
+impl KnowledgeMaintenanceExecutor for DecayErrorKnowledge {
+    fn insert_fact(&self, _fact: &episteme::knowledge::Fact) -> crate::error::Result<()> {
+        Ok(())
+    }
+
+    fn refresh_decay_scores(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport {
+            items_processed: 5,
+            items_modified: 1,
+            errors: 2,
+            duration_ms: 42,
+            detail: Some("decay refresh: 2 partial failures".to_owned()),
+        })
+    }
+
+    fn deduplicate_entities(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn recompute_graph_scores(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn refresh_embeddings(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn garbage_collect(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn maintain_indexes(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn health_check(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn run_skill_decay(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn materialize_derived_facts(&self) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn discover_serendipitous_facts(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+}
 
 #[test]
 fn register_shows_in_status() {
@@ -934,5 +993,56 @@ async fn watchdog_enabled_restarts_hung_inflight_task() {
     assert!(
         next_run <= jiff::Timestamp::now(),
         "watchdog restart should be due immediately"
+    );
+}
+
+/// Regression (#5132): a knowledge maintenance report with errors > 0 must be
+/// routed through the runner's failure path so status/metrics see a non-success.
+#[tokio::test]
+async fn knowledge_partial_error_records_task_failure() {
+    let token = CancellationToken::new();
+    let mut runner = TaskRunner::new("test-nous", token)
+        .with_knowledge_maintenance(Arc::new(DecayErrorKnowledge));
+
+    let task = TaskDef {
+        id: "decay-refresh".to_owned(),
+        name: "Decay refresh".to_owned(),
+        nous_id: "test-nous".to_owned(),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
+        action: TaskAction::Builtin(BuiltinTask::DecayRefresh),
+        enabled: true,
+        ..TaskDef::default()
+    };
+    runner.register(task);
+    runner.tasks[0].next_run = Some(
+        jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_secs(10))
+            .expect("past timestamp arithmetic should succeed"),
+    );
+
+    runner.tick();
+    assert!(
+        runner.in_flight.contains_key("decay-refresh"),
+        "task should be spawned"
+    );
+
+    while runner.in_flight.contains_key("decay-refresh") {
+        runner.check_in_flight().await;
+        tokio::task::yield_now().await;
+    }
+
+    let statuses = runner.status();
+    assert_eq!(
+        statuses[0].consecutive_failures, 1,
+        "partial-error maintenance must increment consecutive failures"
+    );
+    assert!(
+        statuses[0]
+            .last_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("2 errors"),
+        "last_error should surface the error count: {:?}",
+        statuses[0].last_error
     );
 }

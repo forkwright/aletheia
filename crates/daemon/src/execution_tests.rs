@@ -134,6 +134,59 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledge {
     }
 }
 
+/// Mock knowledge executor that returns partial-error reports for specific
+/// operations, so we can regression-test error propagation.
+struct PartialErrorKnowledge {
+    decay_report: MaintenanceReport,
+    graph_report: MaintenanceReport,
+}
+
+impl crate::maintenance::KnowledgeMaintenanceExecutor for PartialErrorKnowledge {
+    fn insert_fact(&self, _fact: &episteme::knowledge::Fact) -> Result<()> {
+        Ok(())
+    }
+
+    fn refresh_decay_scores(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(self.decay_report.clone())
+    }
+
+    fn deduplicate_entities(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn recompute_graph_scores(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(self.graph_report.clone())
+    }
+
+    fn refresh_embeddings(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn garbage_collect(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn maintain_indexes(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn health_check(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn run_skill_decay(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn materialize_derived_facts(&self) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn discover_serendipitous_facts(&self, _nous_id: &str) -> Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+}
+
 struct RealKnowledge {
     store: std::sync::Arc<episteme::knowledge_store::KnowledgeStore>,
 }
@@ -703,6 +756,102 @@ async fn serendipity_discovery_with_executor_returns_report() {
     assert!(
         output.contains("0 processed"),
         "expected zero-count report for mock executor, got: {output}"
+    );
+}
+
+#[tokio::test]
+async fn decay_refresh_partial_errors_return_failure_with_counts_and_detail() {
+    let executor: Arc<dyn crate::maintenance::KnowledgeMaintenanceExecutor> =
+        Arc::new(PartialErrorKnowledge {
+            decay_report: MaintenanceReport {
+                items_processed: 5,
+                items_modified: 1,
+                errors: 2,
+                duration_ms: 42,
+                detail: Some("decay refresh: 2 partial failures".to_owned()),
+            },
+            graph_report: MaintenanceReport::default(),
+        });
+
+    let result = execute_builtin(
+        &BuiltinTask::DecayRefresh,
+        "test-nous",
+        None,
+        None,
+        None,
+        Some(executor),
+    )
+    .await
+    .expect("should return a result");
+
+    assert!(
+        !result.success,
+        "errors > 0 must be reported as task failure"
+    );
+    let output = result.output.expect("output should be present");
+    assert!(
+        output.contains("5 processed"),
+        "output should include processed count: {output}"
+    );
+    assert!(
+        output.contains("1 modified"),
+        "output should include modified count: {output}"
+    );
+    assert!(
+        output.contains("2 errors"),
+        "output should include error count: {output}"
+    );
+    assert!(
+        output.contains("decay refresh: 2 partial failures"),
+        "output should preserve detail: {output}"
+    );
+}
+
+#[tokio::test]
+async fn graph_recompute_partial_errors_return_failure_with_counts_and_detail() {
+    let executor: Arc<dyn crate::maintenance::KnowledgeMaintenanceExecutor> =
+        Arc::new(PartialErrorKnowledge {
+            decay_report: MaintenanceReport::default(),
+            graph_report: MaintenanceReport {
+                items_processed: 12,
+                items_modified: 4,
+                errors: 3,
+                duration_ms: 100,
+                detail: Some("graph recompute: centrality pass degraded".to_owned()),
+            },
+        });
+
+    let result = execute_builtin(
+        &BuiltinTask::GraphRecompute,
+        "test-nous",
+        None,
+        None,
+        None,
+        Some(executor),
+    )
+    .await
+    .expect("should return a result");
+
+    assert!(
+        !result.success,
+        "errors > 0 must be reported as task failure"
+    );
+    let output = result.output.expect("output should be present");
+    assert!(
+        output.contains("12 processed"),
+        "output should include processed count: {output}"
+    );
+    assert!(
+        output.contains("4 modified"),
+        "output should include modified count: {output}"
+    );
+    assert!(
+        output.contains("3 errors"),
+        "output should include error count: {output}"
+    );
+    assert!(
+        output.contains("graph recompute: centrality pass degraded"),
+        "output should preserve detail: {output}"
     );
 }
 

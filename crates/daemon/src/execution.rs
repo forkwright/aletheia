@@ -805,12 +805,28 @@ async fn execute_knowledge_task(
         context: format!("knowledge maintenance: {builtin:?}"),
     })??;
 
+    let success = report.is_success();
+    let mut output = format!(
+        "{} processed, {} modified, {} errors in {}ms",
+        report.items_processed, report.items_modified, report.errors, report.duration_ms
+    );
+    if let Some(detail) = &report.detail {
+        output.push_str(&format!(": {detail}"));
+    }
+
+    if !success {
+        tracing::warn!(
+            task = ?builtin,
+            items_processed = report.items_processed,
+            items_modified = report.items_modified,
+            errors = report.errors,
+            "knowledge maintenance completed with errors"
+        );
+    }
+
     Ok(ExecutionResult {
-        success: true,
-        output: Some(format!(
-            "{} processed, {} modified in {}ms",
-            report.items_processed, report.items_modified, report.duration_ms
-        )),
+        success,
+        output: Some(output),
     })
 }
 

@@ -22,6 +22,14 @@ pub struct MaintenanceReport {
     pub detail: Option<String>,
 }
 
+impl MaintenanceReport {
+    /// Returns `true` when the report carries no non-fatal errors.
+    #[must_use]
+    pub fn is_success(&self) -> bool {
+        self.errors == 0
+    }
+}
+
 /// Bridge trait for knowledge graph maintenance operations.
 ///
 /// Daemon crate defines it, binary crate implements it where `KnowledgeStore`
