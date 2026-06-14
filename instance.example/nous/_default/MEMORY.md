@@ -6,9 +6,8 @@ Keep this file lean. Delete entries that are no longer relevant. Move entries th
 
 ## System
 
-- Runtime: Aletheia v0.29.0+ (self-hosted, single binary, Rust)
+- Runtime: Aletheia (self-hosted, single binary, Rust)
 - Source: https://github.com/forkwright/aletheia
-- Standing order: log bugs and improvements as issues on the repo
 - Config: instance/config/aletheia.toml (TOML cascade: defaults → file → env)
 - CLI: `aletheia --help` for full reference
 

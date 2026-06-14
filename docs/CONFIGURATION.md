@@ -8,7 +8,7 @@ Loaded by the `taxis` crate using an owned TOML loader with a three-layer cascad
 2. TOML file (if present)
 3. Environment variables, prefix `ALETHEIA_` (double `_` for nesting: `ALETHEIA_GATEWAY__PORT=9000`)
 
-Later layers override earlier ones. All field names use `snake_case` in TOML; `camelCase` also works via serde compat.
+Later layers override earlier ones. All config keys use `camelCase` in TOML — taxis structs are annotated `#[serde(rename_all = "camelCase")]` throughout. A small set of legacy keys also accepts `snake_case` aliases, but `camelCase` is canonical and required for new keys.
 
 ---
 

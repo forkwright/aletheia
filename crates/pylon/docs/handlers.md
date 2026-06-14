@@ -426,6 +426,47 @@ for the authenticated user. No request body.
 
 ---
 
+### `GET /api/v1/events/subscribe`
+
+Persistent SSE subscription endpoint for reconnect-capable clients. Accepts an optional
+`last_event_id` query parameter for replay. Requires JWT auth.
+
+**Response `200 OK`** - `text/event-stream`
+
+---
+
+### `GET /api/v1/events/discovery`
+
+Returns a JSON manifest of available event types, their schemas, and current subscription state.
+Used by clients to enumerate supported SSE event kinds before subscribing.
+
+**Response `200 OK`** - JSON event-type manifest.
+
+---
+
+### `POST /api/v1/sessions/{id}/approvals`
+
+Resolve a pending tool-approval request for an active session. Used by desktop and TUI clients
+to grant or deny a queued tool call.
+
+**Request body** - `ApprovalResolution`:
+```json
+{ "approval_id": "01JXKQ2T...", "decision": "approve" }
+```
+
+**Response `200 OK`** - Acknowledgement with updated approval state.
+
+---
+
+### `GET /api/v1/ops/tools`
+
+List all registered tool adapters and their current enabled/disabled state. Intended for
+operator inspection and debugging.
+
+**Response `200 OK`** - JSON array of tool descriptors.
+
+---
+
 ## Nous (agents)
 
 ### `GET /api/v1/nous`
@@ -492,6 +533,17 @@ List tools available to a nous agent.
 
 ---
 
+### `POST /api/v1/nous/{id}/recover`
+
+Trigger manual recovery for a nous agent that has entered an error or stuck state. Resets
+internal FSM and clears any pending turn buffer.
+
+**Response `200 OK`** - Acknowledgement.
+
+**Response `404 Not Found`** - nous not found.
+
+---
+
 ## Configuration
 
 Config endpoints require an `Operator` or `Admin` role.
@@ -549,18 +601,27 @@ validates the result, writes to disk, and broadcasts via the config watch channe
 ## Knowledge
 
 Knowledge endpoints are feature-gated on the `knowledge` feature and require a valid Bearer
-token. Write operations (forget, restore, confidence update) require CSRF header when enabled.
+token. Write operations (forget, restore, confidence update, import, ingest) require CSRF
+header when enabled.
 
 ```
 GET  /api/v1/knowledge/facts
+POST /api/v1/knowledge/facts/import
 GET  /api/v1/knowledge/facts/{id}
 POST /api/v1/knowledge/facts/{id}/forget
 POST /api/v1/knowledge/facts/{id}/restore
 PUT  /api/v1/knowledge/facts/{id}/confidence
+POST /api/v1/knowledge/ingest
+POST /api/v1/knowledge/ingest/webhook
 GET  /api/v1/knowledge/entities
+POST /api/v1/knowledge/entities/merge
 GET  /api/v1/knowledge/entities/{id}/relationships
+GET  /api/v1/knowledge/entities/{id}/memories
+POST /api/v1/knowledge/entities/{id}/flag
 GET  /api/v1/knowledge/search
+GET  /api/v1/knowledge/search/explain
 GET  /api/v1/knowledge/timeline
+GET  /api/v1/knowledge/check
 ```
 
 ### `GET /api/v1/knowledge/facts`
@@ -624,6 +685,33 @@ Update confidence score for a fact.
 
 ---
 
+### `POST /api/v1/knowledge/facts/import`
+
+Bulk-import facts from a JSON array. Each item must satisfy the `FactImport` schema.
+Idempotent by fact ID.
+
+**Response `200 OK`** - Import summary with counts of created, skipped, and failed records.
+
+---
+
+### `POST /api/v1/knowledge/ingest`
+
+Ingest unstructured text or a document blob. Extraction and entity-linking run asynchronously;
+the response returns an ingest job ID for polling.
+
+**Response `202 Accepted`** - `{ "job_id": "01JXL..." }`
+
+---
+
+### `POST /api/v1/knowledge/ingest/webhook`
+
+Ingest endpoint for external webhook sources (e.g. n8n, Zapier). Validates an HMAC signature
+from the `X-Aletheia-Webhook-Signature` header before accepting.
+
+**Response `202 Accepted`** - `{ "job_id": "01JXL..." }`
+
+---
+
 ### `GET /api/v1/knowledge/entities`
 
 List entities in the knowledge graph.
@@ -632,11 +720,40 @@ List entities in the knowledge graph.
 
 ---
 
+### `POST /api/v1/knowledge/entities/merge`
+
+Merge two or more entities by canonical ID. The surviving entity inherits all relationships
+and facts of the merged entities.
+
+**Request body** - `EntityMergeRequest`: `{ "source_ids": ["id-a", "id-b"], "target_id": "id-a" }`
+
+**Response `200 OK`** - Merged entity record.
+
+---
+
 ### `GET /api/v1/knowledge/entities/{id}/relationships`
 
 Relationships for a single entity.
 
 **Response `200 OK`** - JSON array of relationships with `relation`, `target_id`, `target_label`.
+
+---
+
+### `GET /api/v1/knowledge/entities/{id}/memories`
+
+Memory records associated with a specific entity, scoped to active nous agents.
+
+**Response `200 OK`** - JSON array of memory records.
+
+---
+
+### `POST /api/v1/knowledge/entities/{id}/flag`
+
+Flag an entity for review (e.g. suspected merge error, stale data, offensive label).
+
+**Request body** - `{ "reason": "stale" }`
+
+**Response `200 OK`** - Updated entity with `flagged: true`.
 
 ---
 
@@ -656,11 +773,201 @@ Full-text search over the knowledge graph.
 
 ---
 
+### `GET /api/v1/knowledge/search/explain`
+
+Returns the ranked scoring breakdown for the most recent search query in the session. Used for
+debugging recall ranking and tuning confidence weights.
+
+**Response `200 OK`** - JSON scoring breakdown per result.
+
+---
+
 ### `GET /api/v1/knowledge/timeline`
 
 Fact activity timeline ordered by recency.
 
 **Response `200 OK`** - JSON array of timeline entries.
+
+---
+
+### `GET /api/v1/knowledge/check`
+
+Shallow health check for the knowledge graph store (connectivity, index integrity). Returns
+a machine-readable status object rather than a plain `200`.
+
+**Response `200 OK`** - `{ "status": "ok", "fact_count": 142, "entity_count": 37 }`
+
+---
+
+## Workspace
+
+Workspace routes are feature-gated on operator role and scoped to the instance workspace
+directory. They surface file, diff, and search operations for agent tooling.
+
+### `GET /api/v1/workspace/files`
+
+List files in the instance workspace directory.
+
+**Response `200 OK`** - JSON array of file entries with `path`, `size`, `modified`.
+
+---
+
+### `GET /api/v1/workspace/git-status`
+
+Current `git status` of the workspace repository. Returns a structured diff summary.
+
+**Response `200 OK`** - JSON with `staged`, `unstaged`, `untracked` arrays.
+
+---
+
+### `GET /api/v1/workspace/diff`
+
+File-level unified diff for the workspace. Scoped by optional `path` query parameter.
+
+**Response `200 OK`** - JSON with per-file unified diff strings.
+
+---
+
+### `POST /api/v1/workspace/open`
+
+Open a file in the workspace by path. Returns its contents and detected language.
+
+**Request body** - `{ "path": "src/main.rs" }`
+
+**Response `200 OK`** - `{ "path": "...", "content": "...", "language": "rust" }`
+
+---
+
+### `GET /api/v1/workspace/search`
+
+Full-text search over workspace files.
+
+**Query parameters:** `q` (required), `limit` (optional, default 20).
+
+**Response `200 OK`** - JSON array of matches with `path`, `line`, `snippet`.
+
+---
+
+## System credentials
+
+Credential endpoints require Admin role and CSRF protection.
+
+### `GET /api/v1/system/credentials`
+
+List all registered credentials (names and types only; secrets are never returned).
+
+**Response `200 OK`** - JSON array of credential descriptors.
+
+---
+
+### `POST /api/v1/system/credentials`
+
+Add a new credential entry.
+
+**Request body** - `CredentialAdd`: `{ "name": "anthropic-prod", "kind": "api-key", "value": "sk-..." }`
+
+**Response `201 Created`** - Created credential descriptor.
+
+---
+
+### `POST /api/v1/system/credentials/rotate`
+
+Rotate all credentials that support automatic rotation. Returns a per-credential rotation result.
+
+**Response `200 OK`** - JSON array of rotation results.
+
+---
+
+### `DELETE /api/v1/system/credentials/{id}`
+
+Remove a credential by ID.
+
+**Response `204 No Content`**
+
+---
+
+### `POST /api/v1/system/credentials/{id}/validate`
+
+Validate a stored credential by making a lightweight probe to the target service.
+
+**Response `200 OK`** - `{ "valid": true }` or `{ "valid": false, "error": "..." }`
+
+---
+
+## Metrics
+
+Metrics endpoints expose aggregated behavioral and cost analytics. Require Operator role.
+
+### `GET /api/v1/metrics/agents`
+
+Aggregate performance metrics across all nous agents.
+
+**Response `200 OK`** - JSON with token usage, latency percentiles, error rates per agent.
+
+---
+
+### `GET /api/v1/metrics/agents/{id}`
+
+Per-agent performance detail.
+
+**Response `200 OK`** - Same schema as `/metrics/agents` scoped to one agent.
+
+---
+
+### `GET /api/v1/metrics/quality`
+
+Quality signal aggregates: recall score distribution, confidence trends, fact churn.
+
+**Response `200 OK`** - JSON quality metrics object.
+
+---
+
+### `GET /api/v1/metrics/tokens`
+
+Token usage summary by agent, session, and model over a configurable time window.
+
+**Response `200 OK`** - JSON with per-dimension token counts.
+
+---
+
+### `GET /api/v1/metrics/costs`
+
+Estimated cost breakdown by provider and model derived from token usage and configured pricing.
+
+**Response `200 OK`** - JSON with cost totals and per-model breakdowns.
+
+---
+
+## Journal
+
+### `GET /api/v1/journal`
+
+Structured audit log of operator actions, config changes, credential rotations, and
+significant agent events. Ordered by recency.
+
+**Query parameters:** `limit` (default 100), `since` (ISO-8601 timestamp), `kind` (event type filter).
+
+**Response `200 OK`** - JSON array of journal entries.
+
+---
+
+## Planning
+
+### `GET /api/v1/planning/projects/{project_id}/verification`
+
+Current verification state for a planning project: last run timestamp, passing/failing
+checks, and blocking issues.
+
+**Response `200 OK`** - JSON verification state object.
+
+---
+
+### `POST /api/v1/planning/projects/{project_id}/verification/refresh`
+
+Trigger a fresh verification run for the project. Runs synchronously; returns the updated
+verification state on completion.
+
+**Response `200 OK`** - Updated verification state.
 
 ---
 

@@ -33,7 +33,7 @@ or an install prefix. Helper scripts that need an executable path use
 ```text
 instance/
 ├── config/                     # Deployment configuration
-│   ├── aletheia.toml           # Main config (from aletheia.toml.example)
+│   ├── aletheia.toml           # Main config (copy from instance.example/config/aletheia.toml)
 │   └── credentials/            # API keys, OAuth tokens, Signal creds
 │
 ├── data/                       # Runtime data stores
