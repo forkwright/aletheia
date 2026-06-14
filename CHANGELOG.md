@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.31.1](https://github.com/forkwright/aletheia/compare/v0.31.0...v0.31.1) (2026-06-14)
+
+
+### Bug Fixes
+
+* **config:** snapshot derivation + signal config truth ([#5073](https://github.com/forkwright/aletheia/issues/5073)) ([c9f42a5](https://github.com/forkwright/aletheia/commit/c9f42a550610e746283facd4f563a8141f5e6681)), closes [#4976](https://github.com/forkwright/aletheia/issues/4976) [#4978](https://github.com/forkwright/aletheia/issues/4978)
+* **daemon:** supervision wiring + maintenance task registry ([#5093](https://github.com/forkwright/aletheia/issues/5093)) ([adb5799](https://github.com/forkwright/aletheia/commit/adb57998f16df874cf2553accf814a5f2c3ab8bb)), closes [#4979](https://github.com/forkwright/aletheia/issues/4979) [#4980](https://github.com/forkwright/aletheia/issues/4980) [#4981](https://github.com/forkwright/aletheia/issues/4981)
+* **docs,ci:** portable env contract + aligned onboarding + public-doc lint ([#5420](https://github.com/forkwright/aletheia/issues/5420)) ([584d220](https://github.com/forkwright/aletheia/commit/584d22081cc33c57126c172bba5750b5c32a296a)), closes [#5111](https://github.com/forkwright/aletheia/issues/5111) [#5114](https://github.com/forkwright/aletheia/issues/5114) [#5099](https://github.com/forkwright/aletheia/issues/5099)
+* **durability,export:** session/export durability spine — recovery, portability, retention ([#5003](https://github.com/forkwright/aletheia/issues/5003)) ([ec161d8](https://github.com/forkwright/aletheia/commit/ec161d8544d7cd34bb9c1db23420d80ae678a58c)), closes [#4589](https://github.com/forkwright/aletheia/issues/4589) [#4615](https://github.com/forkwright/aletheia/issues/4615) [#4616](https://github.com/forkwright/aletheia/issues/4616) [#4637](https://github.com/forkwright/aletheia/issues/4637) [#4646](https://github.com/forkwright/aletheia/issues/4646) [#4659](https://github.com/forkwright/aletheia/issues/4659) [#4680](https://github.com/forkwright/aletheia/issues/4680) [#4744](https://github.com/forkwright/aletheia/issues/4744)
+* **nous,daemon:** prompt-audit includeFilteredIds + training screened-clean provenance + audit pruning ([#5304](https://github.com/forkwright/aletheia/issues/5304)) ([7c65f10](https://github.com/forkwright/aletheia/commit/7c65f10dee302bb0ea0336e8272e63e85af13d9f)), closes [#5115](https://github.com/forkwright/aletheia/issues/5115) [#5116](https://github.com/forkwright/aletheia/issues/5116) [#5117](https://github.com/forkwright/aletheia/issues/5117)
+
 ## [0.31.0](https://github.com/forkwright/aletheia/compare/v0.30.0...v0.31.0) (2026-06-13)
 
 
