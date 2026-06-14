@@ -20,8 +20,8 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | Logging | 5 | 0 |
 | MCP | 3 | 0 |
 | Local Provider | 4 | 0 |
-| Packs | 1 | 0 |
-| **Total** | **94** | **23** |
+| Packs | 0 | 1 |
+| **Total** | **93** | **24** |
 
 ---
 
@@ -237,7 +237,7 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 
 | Config path | Hot/Cold | Reason |
 |-------------|----------|--------|
-| `packs` | Hot | Pack paths read when loading domain packs |
+| `packs` | **Cold** | Packs are loaded once at startup into an `Arc<Vec<LoadedPack>>` snapshot. SIGHUP rebuilds agent configs from the existing snapshot; it does not reload manifests, context files, or pack tools from disk. A restart is required to pick up added, removed, or changed packs. |
 
 ---
 
@@ -259,9 +259,9 @@ const RESTART_PREFIXES: &[&str] = &[
 ];
 ```
 
-### Match status: ✅ CONSISTENT
+### Match status: ✅ CONSISTENT (with note on `packs`)
 
-All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `reload.rs`:
+All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `reload.rs`, with one documented exception:
 
 | Prefix in Code | Document Status | Notes |
 |----------------|-----------------|-------|
@@ -274,6 +274,8 @@ All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `
 | `channels` | Cold ✅ | Channel transport lifecycle |
 | `sandbox` | Cold ✅ | Tool registry captures sandbox config at startup |
 | `tools` | Cold ✅ | Tool registry captures external tool config at startup |
+
+**`packs` is Cold but not in `RESTART_PREFIXES`:** The runtime does not force a restart when `packs` changes — SIGHUP will proceed and rebuild actor configs from the existing pack snapshot. Pack manifests, context files, and pack tools are not refreshed from disk. Operators must restart manually after adding, removing, or modifying packs. Adding `packs` to `RESTART_PREFIXES` would make the runtime enforce restart automatically.
 
 ### Cold field detail: `gateway.csrf`
 
@@ -311,6 +313,7 @@ All fields marked as **Cold** in HOT-RELOAD.md match the `RESTART_PREFIXES` in `
 - **Channel transports**: Signal messenger configuration and account settings
 - **Sandbox policies**: Enforcement mode, egress rules, path allowances
 - **External tool registrations**: `[tools.required]` and `[tools.optional]` entries
+- **Domain packs**: Adding, removing, or changing pack paths or pack contents requires a restart to reload manifests, context files, and pack tools from disk. SIGHUP rebuilds actor configs from the startup snapshot only.
 
 ---
 
