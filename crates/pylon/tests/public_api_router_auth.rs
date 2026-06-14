@@ -432,20 +432,20 @@ async fn knowledge_write_routes_reject_valid_bearer_with_readonly_role() {
 /// reject a token whose `nous_id` scope does not match the requested agent.
 fn nous_per_agent_routes() -> [(Method, &'static str); 3] {
     [
-        (Method::GET, "/api/v1/nous/other-agent"),
-        (Method::GET, "/api/v1/nous/other-agent/tools"),
-        (Method::POST, "/api/v1/nous/other-agent/recover"),
+        (Method::GET, "/api/v1/nous/syn"),
+        (Method::GET, "/api/v1/nous/syn/tools"),
+        (Method::POST, "/api/v1/nous/syn/recover"),
     ]
 }
 
 #[tokio::test]
 async fn nous_routes_reject_token_scoped_to_a_different_agent() {
-    // WHY: a JWT scoped to nous_id=syn must not be able to read status,
-    // enumerate tools, or trigger recovery on `other-agent`. Without
+    // WHY: a JWT scoped to another nous must not be able to read status,
+    // enumerate tools, or trigger recovery on `syn`. Without
     // `require_nous_access` on these handlers, an Operator token scoped to
     // one agent could affect every other agent in the system.
-    let env = TestEnv::new().await;
-    let token = issue_test_token_scoped(&env.state, Role::Operator, "syn");
+    let env = TestEnv::builder().with_actor(true).build().await;
+    let token = issue_test_token_scoped(&env.state, Role::Operator, "other-agent");
     let router = build_router(Arc::clone(&env.state), &permissive_security());
 
     for (method, path) in nous_per_agent_routes() {

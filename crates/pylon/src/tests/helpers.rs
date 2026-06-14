@@ -343,6 +343,18 @@ pub(super) fn authed_get_as(uri: &str, role: symbolon::types::Role) -> Request<B
         .unwrap()
 }
 
+pub(super) fn authed_get_scoped_as(
+    uri: &str,
+    role: symbolon::types::Role,
+    nous_id: &str,
+) -> Request<Body> {
+    let token = token_scoped_to(role, nous_id);
+    Request::get(uri)
+        .header("authorization", format!("{BEARER_PREFIX}{token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
 pub(super) fn authed_delete(uri: &str) -> Request<Body> {
     let token = default_token();
     Request::delete(uri)

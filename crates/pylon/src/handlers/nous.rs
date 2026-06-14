@@ -89,6 +89,23 @@ fn tool_summaries_for_agent(state: &NousState, allowlist: Option<&[String]>) -> 
         .collect()
 }
 
+fn nous_visible_to_claims(claims: &Claims, config: &NousConfig) -> bool {
+    let in_scope = claims
+        .nous_id
+        .as_deref()
+        .is_none_or(|scoped| scoped == config.id.as_ref());
+    let private_visible = !config.private || claims.role >= Role::Operator;
+    in_scope && private_visible
+}
+
+fn require_visible_nous(claims: &Claims, config: &NousConfig) -> Result<(), ApiError> {
+    if nous_visible_to_claims(claims, config) {
+        Ok(())
+    } else {
+        Err(ApiError::forbidden("access denied for this agent"))
+    }
+}
+
 /// GET /api/v1/nous: list registered nous agents.
 #[utoipa::path(
     get,
@@ -100,20 +117,12 @@ fn tool_summaries_for_agent(state: &NousState, allowlist: Option<&[String]>) -> 
     security(("bearer_auth" = []))
 )]
 pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousListResponse> {
-    let include_private = claims.role >= Role::Operator;
-    let scoped = claims.nous_id.as_deref();
     let config = state.config.read().await;
     let nous: Vec<NousSummary> = state
         .nous_manager
         .configs()
         .into_iter()
-        .filter(|c| include_private || !c.private)
-        // WHY: a token scoped to a single agent must not see other agents in
-        // the discovery list. Without this filter, a scoped Operator could
-        // enumerate every agent's id, model, and name even though the per-
-        // handler `require_nous_access` blocks them from acting on those
-        // agents.
-        .filter(|c| scoped.is_none_or(|s| s == c.id.as_ref()))
+        .filter(|c| nous_visible_to_claims(&claims, c))
         .map(|c| {
             let agent_id = c.id.as_ref();
             let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
@@ -153,11 +162,11 @@ pub async fn get_status(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<NousStatus>, ApiError> {
-    require_nous_access(&claims, &id)?;
     let config = state
         .nous_manager
         .get_config(&id)
         .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?;
+    require_visible_nous(&claims, config)?;
 
     let status = match state.nous_manager.get(&id) {
         Some(handle) => handle
@@ -206,10 +215,11 @@ pub async fn tools(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
-    require_nous_access(&claims, &id)?;
-    if state.nous_manager.get_config(&id).is_none() {
-        return Err(NousNotFoundSnafu { id }.build());
-    }
+    let runtime = state
+        .nous_manager
+        .get_config(&id)
+        .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?;
+    require_visible_nous(&claims, runtime)?;
 
     let config = state.config.read().await;
     let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
