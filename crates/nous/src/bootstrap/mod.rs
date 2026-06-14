@@ -843,7 +843,7 @@ impl<'a> BootstrapAssembler<'a> {
         let (mut sections, filtered_names) = self.resolve_workspace_files(nous_id, hint).await?;
         sections.extend(extra_sections);
 
-        let llm_sections = self.resolve_llm_sections(recipe).await;
+        let llm_sections = self.resolve_llm_sections(recipe).await?;
         sections.extend(llm_sections);
 
         // NOTE: stable sort preserves declaration order within same (slot, priority)
@@ -1162,6 +1162,11 @@ impl<'a> BootstrapAssembler<'a> {
     /// index from the path declared in the manifest). L2 is reserved for
     /// per-crate summaries and skipped when absent.
     ///
+    /// Each generated file is run through the same pre-injection scan as
+    /// workspace files. In strict mode, a scan failure is returned as
+    /// [`error::Error::ContextAssembly`]; in lenient mode the file is logged
+    /// and skipped.
+    ///
     /// Returns an empty vec when:
     /// - the recipe is [`LlmRecipe::None`]
     /// - `_llm/manifest.toml` does not exist
@@ -1174,9 +1179,9 @@ impl<'a> BootstrapAssembler<'a> {
         clippy::too_many_lines,
         reason = "L1 + L3 loading in one method keeps the recipe→levels mapping colocated"
     )]
-    async fn resolve_llm_sections(&self, recipe: LlmRecipe) -> Vec<BootstrapSection> {
+    async fn resolve_llm_sections(&self, recipe: LlmRecipe) -> Result<Vec<BootstrapSection>> {
         if recipe == LlmRecipe::None {
-            return Vec::new();
+            return Ok(Vec::new());
         }
 
         let llm_root = self.oikos.root().join("_llm");
@@ -1184,7 +1189,7 @@ impl<'a> BootstrapAssembler<'a> {
 
         if !manifest_path.exists() {
             debug!(path = %manifest_path.display(), "_llm/manifest.toml not found, skipping");
-            return Vec::new();
+            return Ok(Vec::new());
         }
 
         let manifest_raw = match tokio::fs::read_to_string(&manifest_path).await {
@@ -1195,7 +1200,7 @@ impl<'a> BootstrapAssembler<'a> {
                     error = %e,
                     "failed to read _llm/manifest.toml, skipping"
                 );
-                return Vec::new();
+                return Ok(Vec::new());
             }
         };
 
@@ -1207,7 +1212,7 @@ impl<'a> BootstrapAssembler<'a> {
                     error = %e,
                     "failed to parse _llm/manifest.toml, skipping"
                 );
-                return Vec::new();
+                return Ok(Vec::new());
             }
         };
 
@@ -1227,7 +1232,7 @@ impl<'a> BootstrapAssembler<'a> {
             LlmRecipe::ColdStart => (SectionPriority::Required, false),
             LlmRecipe::InSession => (SectionPriority::Optional, true),
             LlmRecipe::Refactor => (SectionPriority::Important, true),
-            LlmRecipe::None => return Vec::new(),
+            LlmRecipe::None => return Ok(Vec::new()),
         };
 
         if let Ok(mut entries) = tokio::fs::read_dir(&llm_root).await {
@@ -1252,6 +1257,23 @@ impl<'a> BootstrapAssembler<'a> {
                     Ok(raw) => {
                         let content = raw.trim().to_owned();
                         if content.is_empty() {
+                            continue;
+                        }
+                        if let Err(e) = preinject_scan::scan_workspace_content(&content, &path) {
+                            if self.preinject_strict {
+                                return Err(error::ContextAssemblySnafu {
+                                    message: format!(
+                                        "pre-injection scan failed for {}: {e}",
+                                        path.display()
+                                    ),
+                                }
+                                .build());
+                            }
+                            warn!(
+                                path = %path.display(),
+                                error = %e,
+                                "pre-injection scan rejected _llm file, skipping"
+                            );
                             continue;
                         }
                         let tokens = self.estimator.estimate(&content);
@@ -1279,7 +1301,7 @@ impl<'a> BootstrapAssembler<'a> {
         let (l3_priority, l3_truncatable) = match recipe {
             LlmRecipe::ColdStart | LlmRecipe::InSession => (SectionPriority::Optional, true),
             LlmRecipe::Refactor => (SectionPriority::Important, true),
-            LlmRecipe::None => return Vec::new(),
+            LlmRecipe::None => return Ok(Vec::new()),
         };
 
         if let Some(l3_level) = manifest.levels.get("L3") {
@@ -1330,6 +1352,24 @@ impl<'a> BootstrapAssembler<'a> {
                             if content.is_empty() {
                                 continue;
                             }
+                            if let Err(e) = preinject_scan::scan_workspace_content(&content, &path)
+                            {
+                                if self.preinject_strict {
+                                    return Err(error::ContextAssemblySnafu {
+                                        message: format!(
+                                            "pre-injection scan failed for {}: {e}",
+                                            path.display()
+                                        ),
+                                    }
+                                    .build());
+                                }
+                                warn!(
+                                    path = %path.display(),
+                                    error = %e,
+                                    "pre-injection scan rejected L3 index file, skipping"
+                                );
+                                continue;
+                            }
                             let tokens = self.estimator.estimate(&content);
                             sections.push(BootstrapSection {
                                 name: format!("_llm/{}/{name}", l3_level.path),
@@ -1352,7 +1392,7 @@ impl<'a> BootstrapAssembler<'a> {
             }
         }
 
-        sections
+        Ok(sections)
     }
 
     /// Truncate a section to fit within the given token limit.
