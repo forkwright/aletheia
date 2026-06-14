@@ -30,13 +30,13 @@
 /// [`Child`][std::process::Child].  Both calls ignore errors: `kill()` fails
 /// if the process has already exited (safe), and `wait()` fails if the OS
 /// has already reaped the zombie (safe).
-pub struct ProcessGuard {
+pub(crate) struct ProcessGuard {
     child: Option<std::process::Child>,
 }
 
 impl ProcessGuard {
     /// Wrap a spawned child process in a kill-on-drop guard.
-    pub fn new(child: std::process::Child) -> Self {
+    pub(crate) fn new(child: std::process::Child) -> Self {
         Self { child: Some(child) }
     }
 
@@ -50,7 +50,7 @@ impl ProcessGuard {
         clippy::expect_used,
         reason = "panics intentionally when called after detach() — documented invariant"
     )]
-    pub fn get_mut(&mut self) -> &mut std::process::Child {
+    pub(crate) fn get_mut(&mut self) -> &mut std::process::Child {
         self.child
             .as_mut()
             .expect("ProcessGuard::get_mut called after detach") // kanon:ignore RUST/expect
