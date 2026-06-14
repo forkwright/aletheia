@@ -338,7 +338,10 @@ async fn collect_metadata(
     let version = client
         .health()
         .await
-        .map_or_else(|_| "unknown".to_owned(), |h| h.version);
+        .ok()
+        .and_then(|h| h.version)
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| "unknown".to_owned());
 
     let model = client
         .get_nous(&args.nous_id)

@@ -29,6 +29,7 @@ use crate::state::AppState;
     ),
     paths(
         crate::handlers::health::check,
+        crate::handlers::health::detailed,
         crate::handlers::health::deprecated_health_check,
         crate::handlers::metrics::expose,
         crate::handlers::sessions::list_sessions,
@@ -105,6 +106,7 @@ use crate::state::AppState;
     components(schemas(
         crate::handlers::health::HealthResponse,
         crate::handlers::health::HealthCheck,
+        crate::handlers::health::LivenessResponse,
         crate::handlers::sessions::types::CreateSessionRequest,
         crate::handlers::sessions::types::RenameSessionRequest,
         crate::handlers::sessions::types::SendMessageRequest,

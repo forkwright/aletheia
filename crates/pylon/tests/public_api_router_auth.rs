@@ -36,28 +36,14 @@ async fn build_router_produces_router_with_health_endpoint() {
         .await
         .expect("router response");
 
-    // WHY: health may legitimately report "unhealthy" (503) when
-    // no providers are registered, so both 200 and 503 are contractually
-    // valid. What matters is that the endpoint returns a response at all
-    // and that the body parses as the documented HealthResponse shape.
-    let status = response.status();
-    assert!(
-        status == StatusCode::OK || status == StatusCode::SERVICE_UNAVAILABLE,
-        "health must return 200 or 503, got {status}",
-    );
+    assert_eq!(response.status(), StatusCode::OK);
 
     let body = read_body_json(response).await;
-    assert!(body["status"].is_string(), "health body lacks status");
-    assert!(body["version"].is_string(), "health body lacks version");
     assert!(
-        body["uptime_seconds"].is_u64(),
-        "uptime_seconds must be u64"
+        body.as_object().expect("health response object").len() == 1,
+        "public health must not expose diagnostic fields"
     );
-    assert!(body["checks"].is_array(), "checks must be an array");
-    assert!(
-        !body["checks"].as_array().expect("checks array").is_empty(),
-        "health must report at least one check"
-    );
+    assert_eq!(body["status"], "healthy");
 }
 
 #[tokio::test]
@@ -77,11 +63,7 @@ async fn build_router_health_also_served_at_slash_health() {
         .await
         .expect("router response");
 
-    let status = response.status();
-    assert!(
-        status == StatusCode::OK || status == StatusCode::SERVICE_UNAVAILABLE,
-        "/health must return 200 or 503, got {status}",
-    );
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -103,10 +85,7 @@ async fn build_router_is_idempotent_for_shared_state() {
             )
             .await
             .expect("router response");
-        assert!(matches!(
-            response.status(),
-            StatusCode::OK | StatusCode::SERVICE_UNAVAILABLE
-        ));
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }
 
@@ -199,6 +178,70 @@ async fn protected_endpoint_accepts_valid_bearer() {
         .expect("router response");
 
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn detailed_health_rejects_missing_bearer() {
+    let env = TestEnv::new().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let response = router
+        .oneshot(
+            Request::get(format!("{API_V1}/system/health"))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn detailed_health_rejects_readonly_bearer() {
+    let env = TestEnv::new().await;
+    let token = issue_test_token_as(&env.state, Role::Readonly);
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let response = router
+        .oneshot(
+            Request::get(format!("{API_V1}/system/health"))
+                .header("authorization", bearer(&token))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn detailed_health_accepts_operator_bearer() {
+    let env = TestEnv::new().await;
+    let token = issue_test_token(&env.state);
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let response = router
+        .oneshot(
+            Request::get(format!("{API_V1}/system/health"))
+                .header("authorization", bearer(&token))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert!(matches!(
+        response.status(),
+        StatusCode::OK | StatusCode::SERVICE_UNAVAILABLE
+    ));
+    let body = read_body_json(response).await;
+    assert!(body["checks"].is_array(), "operator health exposes checks");
+    assert!(
+        body["data_dir"].is_string(),
+        "operator health exposes data_dir"
+    );
 }
 
 #[tokio::test]
