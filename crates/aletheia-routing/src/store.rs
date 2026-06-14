@@ -397,7 +397,7 @@ fn merge_stats(target: &mut RollingStats, source: &RollingStats) {
 ///
 /// Returns [`TaskCategory::Feature`] for unrecognised strings so that new
 /// categories added in future PRs degrade gracefully on old store data.
-pub(crate) fn parse_category(s: &str) -> TaskCategory {
+fn parse_category(s: &str) -> TaskCategory {
     match s.parse::<TaskCategory>() {
         Ok(category) => category,
         Err(_) => TaskCategory::Feature,
