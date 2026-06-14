@@ -1,11 +1,15 @@
+# UNSUPPORTED BEFORE v1.0
+# This file is an example of a planned declarative shell hook.
+# The current Aletheia runtime uses in-process turn hooks (crates/nous/src/hooks)
+# and does NOT load or execute YAML/shell hook files.
+#
 # Example: Send a notification when Aletheia boots
-# Copy to shared/hooks/ to activate
 
 name: notify-boot
 event: boot:ready
 description: Log boot completion with tool and plugin counts
 
-handler: ~
+handler:
   type: shell
   command: /bin/sh
   args: ["-c", "echo \"Aletheia ready on port {{port}} with {{tools}} tools and {{plugins}} plugins\" | logger -t aletheia"]

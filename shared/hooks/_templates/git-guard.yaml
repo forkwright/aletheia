@@ -1,9 +1,14 @@
+# UNSUPPORTED BEFORE v1.0
+# This file is a design template for a planned declarative shell hook.
+# The current Aletheia runtime uses in-process turn hooks (crates/nous/src/hooks)
+# and does NOT load or execute YAML/shell hook files.
+#
 # Git guard — block destructive git operations without explicit operator approval.
 #
-# Fires on tool:called for any tool that executes a shell command. Inspects the
-# command for git operations that cannot be undone and either warns or blocks.
+# Would fire on tool:called for any tool that executes a shell command. Would
+# inspect the command for git operations that cannot be undone and either warn
+# or block.
 #
-# Copy to shared/hooks/ and set enabled: true to activate.
 # Set ALETHEIA_GIT_GUARD_BLOCK=1 to switch from warn to block mode.
 #
 # Permanently blocked (no override): force push, --delete on remote refs, --mirror.
