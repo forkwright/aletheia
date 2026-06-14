@@ -101,6 +101,10 @@ pub(crate) struct ExportArgs {
     /// Overwrite existing output file without prompting
     #[arg(long)]
     pub force: bool,
+    /// Allow exports to continue when typed knowledge exists but cannot be
+    /// opened or enumerated. Omitted sections are recorded in the manifest.
+    #[arg(long)]
+    pub allow_partial: bool,
 }
 
 #[expect(
@@ -297,72 +301,122 @@ struct KnowledgeImportCounts {
     relationships: usize,
 }
 
+/// Outcome of attempting to export an agent's typed knowledge.
+#[derive(Debug)]
+enum KnowledgeExportStatus {
+    /// Knowledge was successfully enumerated and should be included.
+    Exported(mneme::portability::KnowledgeExport),
+    /// No knowledge store exists or it contains no data for this agent.
+    Missing,
+    /// A store exists but could not be opened or enumerated.
+    Omitted { reason: String },
+}
+
 /// Enumerate the agent's typed knowledge from the live store.
 ///
-/// Returns `None` when the `recall` feature is disabled or when the
-/// knowledge store on disk is empty/unavailable — the export still succeeds
-/// without typed knowledge, the slot just stays unset.
+/// Returns [`KnowledgeExportStatus::Missing`] when the `recall` feature is
+/// disabled, when the knowledge store path does not exist, or when the store
+/// contains no data for this agent. In those cases the export proceeds without
+/// typed knowledge and no omission is recorded.
+///
+/// Returns [`KnowledgeExportStatus::Omitted`] when a store exists on disk but
+/// cannot be opened or enumerated. The caller decides whether to fail or
+/// continue in partial mode.
 #[cfg(feature = "recall")]
 fn export_knowledge(
     oikos: &Oikos,
     nous_id: &str,
-) -> Result<Option<mneme::portability::KnowledgeExport>> {
+    allow_partial: bool,
+) -> Result<KnowledgeExportStatus> {
     use mneme::knowledge_store::KnowledgeStore;
     use mneme::portability::{FactEntityEdge, KnowledgeExport};
 
     let knowledge_path = knowledge_path_for_nous(oikos, nous_id);
     if !knowledge_path.exists() {
-        return Ok(None);
+        return Ok(KnowledgeExportStatus::Missing);
     }
 
     let config = knowledge_config_for_oikos(oikos);
-    let Ok(store) = KnowledgeStore::open_fjall(&knowledge_path, config) else {
-        return Ok(None);
+    let store = match KnowledgeStore::open_fjall(&knowledge_path, config) {
+        Ok(store) => store,
+        Err(err) => {
+            let reason = format!(
+                "failed to open knowledge store at {}: {err}",
+                knowledge_path.display()
+            );
+            if allow_partial {
+                return Ok(KnowledgeExportStatus::Omitted { reason });
+            }
+            whatever!("{reason}");
+        }
     };
 
-    let facts: Vec<mneme::knowledge::Fact> = store
-        .list_all_facts(i64::MAX)
-        .with_whatever_context(|_| format!("failed to list facts for '{nous_id}'"))?
-        .into_iter()
-        .filter(|f| f.nous_id == nous_id)
-        .collect();
+    fn try_enumerate(
+        store: &mneme::knowledge_store::KnowledgeStore,
+        nous_id: &str,
+    ) -> Result<KnowledgeExport> {
+        let facts: Vec<mneme::knowledge::Fact> = store
+            .list_all_facts(i64::MAX)
+            .with_whatever_context(|_| format!("failed to list facts for '{nous_id}'"))?
+            .into_iter()
+            .filter(|f| f.nous_id == nous_id)
+            .collect();
 
-    let fact_ids: Vec<mneme::id::FactId> = facts.iter().map(|fact| fact.id.clone()).collect();
-    let entities = store
-        .list_entities_for_facts(&fact_ids)
-        .with_whatever_context(|_| format!("failed to list entities for '{nous_id}'"))?;
-    let fact_entity_edges = store
-        .list_fact_entity_edges_for_facts(&fact_ids)
-        .with_whatever_context(|_| format!("failed to list fact/entity links for '{nous_id}'"))?
-        .into_iter()
-        .map(|(fact_id, entity_id)| FactEntityEdge { fact_id, entity_id })
-        .collect();
-    let entity_ids: std::collections::HashSet<String> = entities
-        .iter()
-        .map(|entity| entity.id.as_str().to_owned())
-        .collect();
-    let relationships = store
-        .list_relationships_between_entities(&entity_ids)
-        .with_whatever_context(|_| format!("failed to list relationships for '{nous_id}'"))?;
+        let fact_ids: Vec<mneme::id::FactId> = facts.iter().map(|fact| fact.id.clone()).collect();
+        let entities = store
+            .list_entities_for_facts(&fact_ids)
+            .with_whatever_context(|_| format!("failed to list entities for '{nous_id}'"))?;
+        let fact_entity_edges = store
+            .list_fact_entity_edges_for_facts(&fact_ids)
+            .with_whatever_context(|_| format!("failed to list fact/entity links for '{nous_id}'"))?
+            .into_iter()
+            .map(|(fact_id, entity_id)| FactEntityEdge { fact_id, entity_id })
+            .collect();
+        let entity_ids: std::collections::HashSet<String> = entities
+            .iter()
+            .map(|entity| entity.id.as_str().to_owned())
+            .collect();
+        let relationships = store
+            .list_relationships_between_entities(&entity_ids)
+            .with_whatever_context(|_| format!("failed to list relationships for '{nous_id}'"))?;
 
-    if facts.is_empty() && entities.is_empty() && relationships.is_empty() {
-        return Ok(None);
+        Ok(KnowledgeExport {
+            facts,
+            entities,
+            relationships,
+            fact_entity_edges,
+        })
     }
 
-    Ok(Some(KnowledgeExport {
-        facts,
-        entities,
-        relationships,
-        fact_entity_edges,
-    }))
+    match try_enumerate(&store, nous_id) {
+        Ok(export) => {
+            if export.facts.is_empty()
+                && export.entities.is_empty()
+                && export.relationships.is_empty()
+            {
+                Ok(KnowledgeExportStatus::Missing)
+            } else {
+                Ok(KnowledgeExportStatus::Exported(export))
+            }
+        }
+        Err(err) => {
+            let reason = format!("failed to enumerate typed knowledge for '{nous_id}': {err}");
+            if allow_partial {
+                Ok(KnowledgeExportStatus::Omitted { reason })
+            } else {
+                Err(err)
+            }
+        }
+    }
 }
 
 #[cfg(not(feature = "recall"))]
 fn export_knowledge(
     _oikos: &Oikos,
     _nous_id: &str,
-) -> Result<Option<mneme::portability::KnowledgeExport>> {
-    Ok(None)
+    _allow_partial: bool,
+) -> Result<KnowledgeExportStatus> {
+    Ok(KnowledgeExportStatus::Missing)
 }
 
 /// Hydrate typed knowledge into the live store.
@@ -666,7 +720,19 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     // Facts/Entities/Relationships). Vectors + opaque graph (`memory`) are a
     // known v2 gap; the schema slots let them be closed without another
     // version bump.
-    let knowledge = export_knowledge(&oikos, &args.nous_id)?;
+    let knowledge_status = export_knowledge(&oikos, &args.nous_id, args.allow_partial)?;
+    let mut omissions: Vec<mneme::portability::Omission> = Vec::new();
+    let knowledge = match &knowledge_status {
+        KnowledgeExportStatus::Exported(export) => Some(export.clone()),
+        KnowledgeExportStatus::Missing => None,
+        KnowledgeExportStatus::Omitted { reason } => {
+            omissions.push(mneme::portability::Omission {
+                section: "knowledge".to_owned(),
+                reason: reason.clone(),
+            });
+            None
+        }
+    };
 
     let exported_at = jiff::Timestamp::now().to_string();
     let agent_file = AgentFile {
@@ -688,6 +754,11 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         sessions,
         memory: None,
         knowledge,
+        omissions: if omissions.is_empty() {
+            None
+        } else {
+            Some(omissions)
+        },
     };
 
     let output = args
@@ -719,6 +790,22 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     println!("Exported agent '{}' to {}", args.nous_id, output.display());
     println!("  Workspace: {} files", agent_file.workspace.files.len());
     println!("  Sessions: {}", agent_file.sessions.len());
+    match &knowledge_status {
+        KnowledgeExportStatus::Exported(export) => {
+            println!(
+                "  Knowledge: included ({} facts, {} entities, {} relationships)",
+                export.facts.len(),
+                export.entities.len(),
+                export.relationships.len()
+            );
+        }
+        KnowledgeExportStatus::Missing => {
+            println!("  Knowledge: not present (no typed knowledge found)");
+        }
+        KnowledgeExportStatus::Omitted { reason } => {
+            println!("  Knowledge: omitted — {reason}");
+        }
+    }
 
     Ok(())
 }
@@ -2076,6 +2163,7 @@ mod tests {
             }],
             memory: None,
             knowledge: None,
+            omissions: None,
         }
     }
 
@@ -2111,6 +2199,15 @@ workspace = "nous/{agent_id}"
         )
         .unwrap();
         std::fs::write(config_path, config).unwrap();
+    }
+
+    /// Place a file where the default cohort's fjall knowledge store is
+    /// expected, simulating a store that exists but cannot be opened.
+    fn make_knowledge_store_unopenable(root: &Path) {
+        let oikos = Oikos::from_root(root);
+        let knowledge_db = oikos.knowledge_db();
+        std::fs::create_dir_all(&knowledge_db).unwrap();
+        std::fs::write(knowledge_db.join("shared"), "not a valid fjall store").unwrap();
     }
 
     #[test]
@@ -2161,6 +2258,7 @@ workspace = "nous/{agent_id}"
             max_messages: 0,
             compact: false,
             force: false,
+            allow_partial: false,
         };
         export_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
 
@@ -2218,6 +2316,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -2335,6 +2434,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -2453,6 +2553,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -2571,6 +2672,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -2637,6 +2739,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3172,6 +3275,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3315,6 +3419,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3373,6 +3478,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3513,6 +3619,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3545,6 +3652,7 @@ workspace = "nous/{agent_id}"
                 max_messages: 0,
                 compact: true,
                 force: false,
+                allow_partial: false,
             },
         )
         .unwrap();
@@ -3562,6 +3670,117 @@ workspace = "nous/{agent_id}"
         obj2.remove("generator");
 
         assert_eq!(v1, v2, "second export must be identical to first");
+    }
+
+    /// WHY(#4965): when no knowledge store exists, the export should succeed
+    /// cleanly with no typed knowledge and no omissions recorded.
+    #[test]
+    fn export_agent_succeeds_without_knowledge_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let output = dir.path().join("alice.agent.json");
+        export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
+        assert!(exported.knowledge.is_none());
+        assert!(exported.omissions.is_none());
+    }
+
+    /// WHY(#4965): a store that exists but cannot be opened must fail the
+    /// export unless the operator explicitly opts into partial mode.
+    #[test]
+    fn export_agent_fails_on_unopenable_knowledge_store_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+        make_knowledge_store_unopenable(dir.path());
+
+        let output = dir.path().join("alice.agent.json");
+        let result = export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+            },
+        );
+
+        assert!(
+            result.is_err(),
+            "expected export to fail without --allow-partial"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("failed to open knowledge store"),
+            "expected open error, got: {msg}"
+        );
+        assert!(
+            !output.exists(),
+            "output file must not be written when export fails"
+        );
+    }
+
+    /// WHY(#4965): in partial mode an unopenable store is recorded as an
+    /// omission so the export remains machine-readable.
+    #[test]
+    fn export_agent_records_omission_with_allow_partial() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+        make_knowledge_store_unopenable(dir.path());
+
+        let output = dir.path().join("alice.agent.json");
+        export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: true,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
+        assert!(exported.knowledge.is_none());
+        let omissions = exported
+            .omissions
+            .expect("omissions must be present in partial mode");
+        assert_eq!(omissions.len(), 1);
+        assert_eq!(omissions[0].section, "knowledge");
+        assert!(
+            omissions[0]
+                .reason
+                .contains("failed to open knowledge store"),
+            "got: {}",
+            omissions[0].reason
+        );
     }
 
     fn minimal_agent_file() -> AgentFile {
@@ -3582,6 +3801,7 @@ workspace = "nous/{agent_id}"
             sessions: vec![],
             memory: None,
             knowledge: None,
+            omissions: None,
         }
     }
 

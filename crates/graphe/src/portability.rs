@@ -25,6 +25,13 @@ use serde::{Deserialize, Serialize};
 /// drop fields that v2 expects to round-trip.
 pub const AGENT_FILE_VERSION: u32 = 2;
 
+/// Minimum version that understands the `omissions` partial-export metadata.
+///
+/// v2 producers that do not populate `omissions` are still valid; the field is
+/// optional and omitted when empty. Consumers that do not recognize it can
+/// safely ignore it.
+pub const AGENT_FILE_OMISSIONS_VERSION: u32 = 2;
+
 /// Portable agent file: wire-compatible with the TypeScript `AgentFile` format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,6 +51,26 @@ pub struct AgentFile {
     /// Knowledge graph export (facts, entities, relationships).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub knowledge: Option<KnowledgeExport>,
+    /// Sections that were intentionally omitted from this export and why.
+    ///
+    /// Populated when `--allow-partial` is used and a section (for example
+    /// typed knowledge) exists on disk but cannot be opened or enumerated.
+    /// Absent when the export is complete or when missing sections simply had
+    /// no data.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub omissions: Option<Vec<Omission>>,
+}
+
+/// Record of a section omitted from an export and the reason it was skipped.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
+pub struct Omission {
+    pub section: String,
+    pub reason: String,
 }
 
 /// Agent identity and configuration snapshot.
@@ -288,6 +315,7 @@ mod tests {
             }],
             memory: None,
             knowledge: None,
+            omissions: None,
         }
     }
 
@@ -481,5 +509,43 @@ mod tests {
         let json = r#"{"facts":[],"entities":[],"relationships":[]}"#;
         let restored: KnowledgeExport = serde_json::from_str(json).expect("legacy JSON is valid");
         assert!(restored.fact_entity_edges.is_empty());
+    }
+
+    #[test]
+    fn omission_round_trips() {
+        let original = Omission {
+            section: "knowledge".to_owned(),
+            reason: "store exists but could not be opened".to_owned(),
+        };
+        let json = serde_json::to_string(&original).expect("Omission is serializable");
+        let restored: Omission = serde_json::from_str(&json).expect("round-trip JSON is valid");
+        assert_eq!(restored.section, original.section);
+        assert_eq!(restored.reason, original.reason);
+    }
+
+    #[test]
+    fn omissions_use_camel_case_keys() {
+        let agent = AgentFile {
+            omissions: Some(vec![Omission {
+                section: "knowledge".to_owned(),
+                reason: "corrupt store".to_owned(),
+            }]),
+            ..sample_agent_file()
+        };
+        let value: serde_json::Value = serde_json::to_value(&agent).expect("serializable");
+        let omissions = value.get("omissions").expect("omissions key must exist");
+        let first = &omissions.as_array().expect("array")[0];
+        assert!(first.get("section").is_some(), "missing section");
+        assert!(first.get("reason").is_some(), "missing reason");
+    }
+
+    #[test]
+    fn omissions_omitted_when_none() {
+        let agent = sample_agent_file();
+        let json = serde_json::to_string(&agent).expect("AgentFile is serializable");
+        assert!(
+            !json.contains("\"omissions\""),
+            "omissions=None should be omitted"
+        );
     }
 }
