@@ -39,8 +39,9 @@ pub use prompt_audit_rotation::{
     PromptAuditRetentionConfig, PromptAuditRetentionReport, PromptAuditRotator,
 };
 pub use registry::{
-    MaintenanceConfigSection, MaintenanceTaskDefinition, MaintenanceTaskImplementationStatus,
-    MaintenanceTaskOwner, ManualMaintenanceTask, maintenance_task_by_id, maintenance_task_registry,
+    MaintenanceConfigSection, MaintenanceRuntimeCapabilities, MaintenanceTaskAvailability,
+    MaintenanceTaskDefinition, MaintenanceTaskImplementationStatus, MaintenanceTaskOwner,
+    ManualMaintenanceTask, maintenance_task_by_id, maintenance_task_registry,
     manual_maintenance_task_ids, manual_maintenance_tasks,
 };
 pub use retention::{RetentionConfig, RetentionExecutor, RetentionSummary};

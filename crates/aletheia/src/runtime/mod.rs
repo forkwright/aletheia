@@ -69,6 +69,30 @@ pub(crate) struct Runtime {
     pub shutdown_token: CancellationToken,
 }
 
+/// Open the shared (`"shared"` cohort) knowledge store used by both the daemon
+/// and the manual maintenance CLI.
+///
+/// Kept as a narrow, single-cohort helper so the CLI can construct a
+/// `KnowledgeMaintenanceExecutor` without duplicating the runtime's store
+/// opening logic.
+#[cfg(feature = "recall")]
+pub(crate) fn open_shared_knowledge_store(
+    oikos: &Oikos,
+    embedding: &taxis::config::EmbeddingSettings,
+    knowledge: &taxis::config::KnowledgeConfig,
+) -> Result<Arc<mneme::knowledge_store::KnowledgeStore>> {
+    use std::collections::BTreeSet;
+    let mut stores = setup::open_knowledge_stores(
+        oikos,
+        BTreeSet::from(["shared".to_owned()]),
+        embedding,
+        knowledge,
+    )?;
+    stores
+        .remove("shared")
+        .whatever_context("shared knowledge store missing")
+}
+
 fn resolve_pack_path(oikos: &Oikos, configured: &Path) -> PathBuf {
     if configured.is_absolute() {
         configured.to_path_buf()

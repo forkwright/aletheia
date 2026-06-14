@@ -588,14 +588,25 @@ registers the following implemented tasks (`crates/daemon/src/runner/registratio
 | `skill-decay` | daily at 06:00 | Retire stale skills |
 | `derived-facts-materialize` | every 6 hours | Materialize derived Datalog rules |
 
+The same task IDs are recognized by `aletheia maintenance run <task>`. When a
+knowledge executor is available (for example, when the `recall` feature is
+enabled and the shared knowledge store can be opened), the CLI runs the task
+through the same executor used by the daemon. Without a knowledge executor, the
+CLI returns a structured reason such as `no knowledge maintenance executor
+configured` instead of an `unknown task` error.
+
 The following tasks are **not implemented or scheduled** today; calling them
-via `aletheia maintenance run` returns an explicit "not scheduled" error
-(`crates/aletheia/src/knowledge_maintenance.rs`):
+via `aletheia maintenance run` returns a structured "task is planned but not yet
+implemented" result (`crates/daemon/src/maintenance/registry.rs`):
 
 - `embedding-refresh` — requires an `EmbeddingProvider` bridge.
 - `knowledge-gc` / edge pruning — no concrete store contract.
 - `index-maintenance` — no concrete store contract.
 - `graph-health-check` — no concrete diagnostic contract.
+
+`aletheia maintenance status` lists every task in the daemon registry. Tasks
+that are not scheduled show a reason (for example, `knowledge maintenance is
+disabled` or `manual only`) rather than being omitted.
 
 ### maintenance.knowledge_maintenance_serendipity
 
