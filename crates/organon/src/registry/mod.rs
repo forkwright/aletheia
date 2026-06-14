@@ -13,7 +13,10 @@ use tracing::{Instrument, info_span};
 use koina::id::ToolName;
 
 use crate::error::{self, Result};
-use crate::surface::{EffectiveToolSurface, RegistrySurfaceTool, SurfaceInputs};
+use crate::surface::{
+    EffectiveToolSurface, RegistrySurfaceTool, SurfaceInputs, deferred_schema_placeholder,
+    ENABLE_TOOL,
+};
 use crate::types::{
     ApprovalRequirement, Reversibility, ToolCallCapability, ToolCallCapabilityRule,
     ToolCallMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolGroupPolicy, ToolInput,
@@ -184,7 +187,7 @@ impl ToolRegistry {
         self.tools_for_policy(policy).filter(move |tool| {
             tool.def.auto_activate
                 || active.contains(&tool.def.name)
-                || tool.def.name.as_str() == "enable_tool"
+                || tool.def.name.as_str() == ENABLE_TOOL
         })
     }
 
@@ -482,7 +485,7 @@ impl ToolRegistry {
                 description: t.def.description.clone(),
                 // WHY: deferred-schemas mode — omit full input_schema; agents call
                 // `tool_schema` to retrieve the schema before invoking a tool.
-                input_schema: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+                input_schema: deferred_schema_placeholder(),
                 disable_passthrough: None,
             })
             .collect()
@@ -517,7 +520,7 @@ impl ToolRegistry {
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
-                input_schema: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+                input_schema: deferred_schema_placeholder(),
                 disable_passthrough: None,
             })
             .collect()
@@ -544,12 +547,12 @@ impl ToolRegistry {
             .filter(|t| {
                 t.def.auto_activate
                     || active.contains(&t.def.name)
-                    || t.def.name.as_str() == "enable_tool"
+                    || t.def.name.as_str() == ENABLE_TOOL
             })
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
-                input_schema: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+                input_schema: deferred_schema_placeholder(),
                 disable_passthrough: None,
             })
             .collect()
@@ -587,7 +590,7 @@ impl ToolRegistry {
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
-                input_schema: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+                input_schema: deferred_schema_placeholder(),
                 disable_passthrough: None,
             })
             .collect()
@@ -619,7 +622,7 @@ impl ToolRegistry {
                 serde_json::json!({
                     "name": t.def.name.as_str(),
                     "description": t.def.description,
-                    "input_schema": {"type": "object", "properties": {}, "required": []}
+                    "input_schema": deferred_schema_placeholder()
                 })
             })
             .collect();
@@ -669,7 +672,7 @@ impl ToolRegistry {
             .filter(|t| {
                 t.def.auto_activate
                     || active.contains(&t.def.name)
-                    || t.def.name.as_str() == "enable_tool"
+                    || t.def.name.as_str() == ENABLE_TOOL
             })
             .map(|t| hermeneus::types::ToolDefinition {
                 name: t.def.name.as_str().to_owned(),
@@ -804,7 +807,7 @@ impl ToolRegistry {
         // kanon:ignore RUST/pub-visibility
         self.tools
             .values()
-            .filter(|t| !t.def.auto_activate && t.def.name.as_str() != "enable_tool")
+            .filter(|t| !t.def.auto_activate && t.def.name.as_str() != ENABLE_TOOL)
             .map(|t| (t.def.name.clone(), t.def.description.clone()))
             .collect()
     }
@@ -865,46 +868,6 @@ impl ToolRegistry {
             "tool_schema: finalized snapshot with {schema_count} schemas"
         );
         Ok(())
-    }
-
-    /// Check whether a tool is allowed under the daemon's trust boundaries.
-    ///
-    /// WHY: daemon-mode tool execution must respect the same permission model
-    /// as interactive mode. Tools requiring explicit approval (`Irreversible`,
-    /// `RequiresApproval`) are blocked in daemon mode unless the caller has
-    /// pre-approved them.
-    ///
-    /// Returns `true` if the tool exists and its reversibility level permits
-    /// autonomous execution (i.e., `Reversible` or `FullyReversible`).
-    #[must_use]
-    pub fn is_daemon_safe(&self, name: &ToolName) -> bool {
-        // kanon:ignore RUST/pub-visibility
-        self.tools.get(name).is_some_and(|t| {
-            matches!(
-                t.def.reversibility,
-                Reversibility::Reversible | Reversibility::FullyReversible
-            )
-        })
-    }
-
-    /// List all tools that are safe for autonomous daemon execution.
-    ///
-    /// # Complexity
-    ///
-    /// O(n) where n is the number of registered tools.
-    #[must_use]
-    pub fn daemon_safe_tools(&self) -> Vec<&ToolDef> {
-        // kanon:ignore RUST/pub-visibility
-        self.tools
-            .values()
-            .filter(|t| {
-                matches!(
-                    t.def.reversibility,
-                    Reversibility::Reversible | Reversibility::FullyReversible
-                )
-            })
-            .map(|t| &t.def)
-            .collect()
     }
 }
 

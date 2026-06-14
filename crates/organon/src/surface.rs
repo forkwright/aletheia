@@ -14,7 +14,17 @@ use crate::types::{
 
 const SURFACE_HASH_PREFIX: &str = "ts1:";
 const SURFACE_VERSION: u8 = 1;
-const ENABLE_TOOL: &str = "enable_tool";
+pub(crate) const ENABLE_TOOL: &str = "enable_tool";
+
+/// Canonical empty JSON schema used for deferred-schema tool summaries.
+///
+/// WHY: Deferred-schemas mode omits full input_schema from provider requests;
+/// agents must call `tool_schema` to retrieve the schema before invoking a tool.
+/// Centralizing the literal avoids drift between registry summaries, byte-size
+/// estimates, and surface provider summaries.
+pub(crate) fn deferred_schema_placeholder() -> serde_json::Value {
+    serde_json::json!({"type": "object", "properties": {}, "required": []})
+}
 
 /// Inputs that determine the effective tool surface for one LLM iteration.
 #[derive(Clone, Copy)]
@@ -202,7 +212,7 @@ impl SurfaceEntry {
         Some(ToolDefinition {
             name: self.name.as_str().to_owned(),
             description: self.description.clone(),
-            input_schema: serde_json::json!({"type": "object", "properties": {}, "required": []}),
+            input_schema: deferred_schema_placeholder(),
             disable_passthrough: None,
         })
     }
