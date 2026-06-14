@@ -18,7 +18,7 @@ pub(crate) const ENABLE_TOOL: &str = "enable_tool";
 
 /// Canonical empty JSON schema used for deferred-schema tool summaries.
 ///
-/// WHY: Deferred-schemas mode omits full input_schema from provider requests;
+/// WHY: Deferred-schemas mode omits full `input_schema` from provider requests;
 /// agents must call `tool_schema` to retrieve the schema before invoking a tool.
 /// Centralizing the literal avoids drift between registry summaries, byte-size
 /// estimates, and surface provider summaries.

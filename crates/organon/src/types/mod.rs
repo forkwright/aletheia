@@ -556,6 +556,7 @@ impl std::fmt::Display for Reversibility {
     }
 }
 
+#[cfg(test)]
 impl Reversibility {
     /// Whether this tool's effects can be simulated in a dry run.
     #[must_use]
@@ -1004,11 +1005,8 @@ pub struct ToolInput {
 }
 
 /// Cumulative tool execution statistics for a pipeline turn.
+#[cfg(test)]
 #[derive(Debug, Clone, Default, Serialize)]
-#[expect(
-    missing_docs,
-    reason = "stats struct fields are self-documenting by name"
-)]
 pub(crate) struct ToolStats {
     pub total_calls: u32,
     pub total_duration_ms: u64,
@@ -1021,6 +1019,7 @@ pub(crate) struct ToolStats {
     pub calls_by_tool: IndexMap<String, u32>,
 }
 
+#[cfg(test)]
 impl ToolStats {
     /// Record a tool execution with full outcome detail.
     pub(crate) fn record_outcome(&mut self, name: &str, duration_ms: u64, outcome: &ToolOutcome) {
