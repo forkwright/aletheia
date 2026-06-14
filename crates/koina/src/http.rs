@@ -20,7 +20,15 @@ pub const API_V1: &str = "/api/v1";
 pub const API_HEALTH: &str = "/api/health";
 
 /// Cloud-metadata and loopback hostnames rejected outright.
-pub const BLOCKED_HOSTNAMES: &[&str] = &["localhost", "metadata.google.internal"];
+pub const BLOCKED_HOSTNAMES: &[&str] = &[
+    "localhost",
+    "localhost6",
+    "localhost.localdomain",
+    "ip6-localhost",
+    "ip6-loopback",
+    "broadcasthost",
+    "metadata.google.internal",
+];
 
 /// TLS-protected URL scheme, including the `://` separator.
 pub const HTTPS_SCHEME_PREFIX: &str = "https://";
@@ -109,6 +117,7 @@ pub fn is_private_ip(ip: &IpAddr) -> bool {
             v4.is_loopback()
                 || v4.is_private()
                 || v4.is_link_local()
+                || *v4 == Ipv4Addr::new(0, 0, 0, 0)
                 || v4.octets().first() == Some(&0)
                 || *v4 == Ipv4Addr::new(169, 254, 169, 254)
                 || *v4 == Ipv4Addr::new(169, 254, 169, 123)
@@ -125,6 +134,14 @@ pub fn is_private_ip(ip: &IpAddr) -> bool {
                 })
         }
     }
+}
+
+fn is_blocked_hostname(host: &str) -> bool {
+    let host_lower = host.to_lowercase();
+    BLOCKED_HOSTNAMES
+        .iter()
+        .any(|blocked| host_lower == *blocked)
+        || host_lower.ends_with(".localhost")
 }
 
 /// Resolve a URL host and verify none of its addresses are private/internal.
@@ -155,11 +172,8 @@ where
     let parsed: reqwest::Url = url_str.parse().map_err(|e| format!("invalid URL: {e}"))?;
     let host = parsed.host_str().ok_or("URL has no host")?;
 
-    let host_lower = host.to_lowercase();
-    for blocked in BLOCKED_HOSTNAMES {
-        if host_lower == *blocked {
-            return Err(format!("blocked hostname: {host}"));
-        }
+    if is_blocked_hostname(host) {
+        return Err(format!("blocked hostname: {host}"));
     }
 
     let port = parsed.port_or_known_default().unwrap_or(80);
@@ -232,6 +246,11 @@ mod tests {
         assert!(!is_private_ip(&IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))));
     }
 
+    #[test]
+    fn is_private_ip_flags_bare_zero_v4() {
+        assert!(is_private_ip(&IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))));
+    }
+
     #[derive(Default)]
     struct MockResolver {
         addrs_by_host: HashMap<String, Vec<SocketAddr>>,
@@ -261,5 +280,44 @@ mod tests {
             .expect_err("private DNS target must be rejected");
 
         assert!(err.contains("private/internal"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn validate_url_blocks_localhost6() {
+        let resolver = MockResolver::default();
+        let err = validate_url_not_internal_with_resolver("https://localhost6/", &resolver)
+            .await
+            .expect_err("localhost6 must be blocked");
+        assert!(err.contains("blocked hostname"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn validate_url_blocks_localhost_localdomain() {
+        let resolver = MockResolver::default();
+        let err = validate_url_not_internal_with_resolver(
+            "https://localhost.localdomain/",
+            &resolver,
+        )
+        .await
+        .expect_err("localhost.localdomain must be blocked");
+        assert!(err.contains("blocked hostname"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn validate_url_blocks_subdomain_localhost() {
+        let resolver = MockResolver::default();
+        let err = validate_url_not_internal_with_resolver("https://subdomain.localhost/", &resolver)
+            .await
+            .expect_err("*.localhost must be blocked");
+        assert!(err.contains("blocked hostname"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn validate_url_blocks_localhost_case_insensitive() {
+        let resolver = MockResolver::default();
+        let err = validate_url_not_internal_with_resolver("https://LOCALHOST/", &resolver)
+            .await
+            .expect_err("LOCALHOST must be blocked");
+        assert!(err.contains("blocked hostname"), "unexpected error: {err}");
     }
 }
