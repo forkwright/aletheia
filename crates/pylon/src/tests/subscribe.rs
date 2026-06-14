@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use tokio_stream::StreamExt;
 use tower::ServiceExt;
 
-use crate::event_bus::DomainEvent;
+use crate::event_bus::{DISCOVERABLE_TOPICS, DomainEvent};
 
 use super::helpers::*;
 
@@ -104,4 +104,69 @@ async fn subscribe_auth_required() {
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn discovery_returns_current_pylon_topics() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get("/api/v1/events/discovery");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_json(resp).await;
+    let topics = body
+        .as_array()
+        .expect("discovery should return a JSON array");
+    let returned: std::collections::HashSet<_> = topics
+        .iter()
+        .map(|v| v.as_str().expect("topic should be a string"))
+        .collect();
+    let expected: std::collections::HashSet<_> = DISCOVERABLE_TOPICS.iter().copied().collect();
+
+    assert_eq!(returned, expected);
+
+    // WHY: These topics were previously advertised but have no current pylon
+    // publisher, so they must not appear in discovery.
+    assert!(
+        !returned.contains("session.started"),
+        "session.started has no current pylon publisher"
+    );
+    assert!(
+        !returned.contains("session.ended"),
+        "session.ended has no current pylon publisher"
+    );
+}
+
+#[tokio::test]
+async fn subscribe_surfaces_lag_as_sse_control_event() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get("/api/v1/events/subscribe?topics=fact.created");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    // WHY: A subscriber that does not poll while the broadcast ring overflows
+    // must be informed that messages were dropped, rather than silently
+    // skipping them.
+    for i in 0..257 {
+        state.event_bus.publish(DomainEvent::new(
+            "fact.created",
+            serde_json::json!({"fact_id": format!("f-{i}")}),
+        ));
+    }
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: stream_lagged"),
+        "expected stream_lagged control event, got: {text}"
+    );
+    assert!(
+        text.contains("dropped"),
+        "expected dropped count in lag payload, got: {text}"
+    );
 }

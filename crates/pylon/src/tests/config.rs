@@ -1,5 +1,7 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use koina::http::BEARER_PREFIX;
+use symbolon::types::Role;
 use tower::ServiceExt;
 
 use super::helpers::*;
@@ -185,4 +187,68 @@ async fn openapi_spec_contains_config_section_schemas() {
         schemas.contains_key("FeatureFlagConfig"),
         "OpenAPI spec must include FeatureFlagConfig schema"
     );
+}
+
+#[tokio::test]
+async fn get_config_rejects_readonly() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get_as("/api/v1/config", Role::Readonly))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn get_config_rejects_agent_scope() {
+    let (app, _dir) = app().await;
+    let token = token_scoped_to(Role::Agent, "syn");
+    let req = Request::get("/api/v1/config")
+        .header("authorization", format!("{BEARER_PREFIX}{token}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn get_section_rejects_readonly() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get_as("/api/v1/config/gateway", Role::Readonly))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn get_section_rejects_agent_scope() {
+    let (app, _dir) = app().await;
+    let token = token_scoped_to(Role::Agent, "syn");
+    let req = Request::get("/api/v1/config/gateway")
+        .header("authorization", format!("{BEARER_PREFIX}{token}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn get_section_allows_operator_and_returns_redacted_data() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/config/gateway"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body.is_object());
+    // WHY: gateway.port is a known non-secret value in the default test config;
+    // presence proves the section was returned, while secrets remain redacted.
+    assert!(body.get("port").is_some());
 }

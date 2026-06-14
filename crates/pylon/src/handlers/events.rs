@@ -14,7 +14,7 @@ use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::{instrument, warn};
 
 use crate::error::ApiError;
-use crate::event_bus::DomainEvent;
+use crate::event_bus::{DISCOVERABLE_TOPICS, DomainEvent};
 use crate::extract::Claims;
 use crate::state::EventBusState;
 
@@ -89,8 +89,18 @@ pub async fn subscribe(
         }
         Ok(_) => None,
         Err(BroadcastStreamRecvError::Lagged(n)) => {
-            warn!(subscriber_id = %subscriber_id, lagged_by = n, "event subscriber lagged");
-            None
+            // WHY: Silently swallowing lag would let clients believe they saw
+            // every event. Emit a typed control event carrying the dropped
+            // count so the loss is observable and recoverable upstream.
+            warn!(
+                subscriber_id = %subscriber_id,
+                dropped = n,
+                "event subscriber lagged; surfacing loss to client"
+            );
+            let data = serde_json::json!({"dropped": n});
+            let data =
+                serde_json::to_string(&data).unwrap_or_else(|_| "{\"dropped\":0}".to_owned());
+            Some(Ok(Event::default().event("stream_lagged").data(data)))
         }
     });
 
@@ -116,11 +126,8 @@ pub async fn subscribe(
 )]
 #[instrument(skip(_claims))]
 pub async fn discovery(_claims: Claims) -> impl IntoResponse {
-    let topics = vec![
-        "fact.created",
-        "turn.complete",
-        "session.started",
-        "session.ended",
-    ];
-    Json(topics)
+    // WHY: Discovery must only advertise topics that have a current pylon
+    // publisher; the canonical list lives in `event_bus_dto` so it is shared
+    // with tests and cannot drift from the handlers that emit events.
+    Json(DISCOVERABLE_TOPICS)
 }

@@ -226,3 +226,70 @@ fn tui_event_message_complete_serialization() {
     assert_eq!(outcome["cache_read_tokens"], 10);
     assert_eq!(outcome["cache_write_tokens"], 20);
 }
+
+#[test]
+fn sse_event_message_start_serialization() {
+    let event = crate::stream::SseEvent::MessageStart {
+        status: "accepted".to_owned(),
+        session_id: Some("s1".to_owned()),
+        nous_id: Some("syn".to_owned()),
+        turn_id: Some("t1".to_owned()),
+        request_id: Some("req-abc".to_owned()),
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "message_start");
+    assert_eq!(json["status"], "accepted");
+    assert_eq!(json["session_id"], "s1");
+    assert_eq!(json["nous_id"], "syn");
+    assert_eq!(json["turn_id"], "t1");
+    assert_eq!(json["request_id"], "req-abc");
+}
+
+#[test]
+fn sse_event_message_start_omits_optional_ids_when_none() {
+    // WHY(#5163): The new identifiers are additive; existing consumers that do
+    // not emit them must not produce empty/null fields.
+    let event = crate::stream::SseEvent::MessageStart {
+        status: "accepted".to_owned(),
+        session_id: None,
+        nous_id: None,
+        turn_id: None,
+        request_id: None,
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "message_start");
+    assert_eq!(json["status"], "accepted");
+    assert!(json.get("session_id").is_none());
+    assert!(json.get("nous_id").is_none());
+    assert!(json.get("turn_id").is_none());
+    assert!(json.get("request_id").is_none());
+}
+
+#[test]
+fn message_complete_is_terminal_after_error_event() {
+    // WHY(#5164): Pylon may emit an `error` event before `message_complete`.
+    // The `error` event is informational; `message_complete` remains the
+    // authoritative terminal marker of the stream.
+    let error = crate::stream::SseEvent::Error {
+        code: "turn_failed".to_owned(),
+        message: "provider error".to_owned(),
+        request_id: Some("req-123".to_owned()),
+    };
+    let complete = crate::stream::SseEvent::MessageComplete {
+        stop_reason: "error".to_owned(),
+        usage: crate::stream::UsageData {
+            input_tokens: 0,
+            output_tokens: 0,
+        },
+        request_id: Some("req-123".to_owned()),
+    };
+
+    assert_eq!(error.event_type(), "error");
+    assert_eq!(complete.event_type(), "message_complete");
+
+    let error_json = serde_json::to_value(&error).unwrap();
+    let complete_json = serde_json::to_value(&complete).unwrap();
+    assert_eq!(error_json["type"], "error");
+    assert_eq!(complete_json["type"], "message_complete");
+    assert_eq!(complete_json["stop_reason"], "error");
+}

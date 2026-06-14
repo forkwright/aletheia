@@ -223,14 +223,18 @@ mod section_schemas {
     responses(
         (status = 200, description = "Redacted runtime config"),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn get_config(
     State(state): State<ConfigState>,
-    _claims: Claims,
+    claims: Claims,
 ) -> Result<Json<Value>, ApiError> {
+    // WHY(#5158): full config reads expose the same sensitive surface as
+    // config mutations and reload; gate them at the Operator boundary.
+    require_role(&claims, Role::Operator)?;
     let config = state.config.read().await;
     let redacted = taxis::redact::redact(&config);
     Ok(Json(redacted))
@@ -248,16 +252,21 @@ pub async fn get_config(
     params(("section" = String, Path, description = "Config section name")),
     responses(
         (status = 200, description = "Redacted config section"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
         (status = 404, description = "Unknown section"),
     ),
     security(("bearer_auth" = []))
 )]
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn get_section(
     State(state): State<ConfigState>,
-    _claims: Claims,
+    claims: Claims,
     Path(section): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
+    // WHY(#5158): section reads are a subset of full config reads and must
+    // share the Operator boundary so secret-containing sections cannot leak.
+    require_role(&claims, Role::Operator)?;
     if !VALID_SECTIONS.contains(&section.as_str()) {
         return Err(ApiError::NotFound {
             path: format!("/api/v1/config/{section}"),

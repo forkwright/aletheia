@@ -287,6 +287,86 @@ async fn cors_rejects_unlisted_origin() {
     assert!(allow_origin.is_none() || allow_origin.unwrap() != "http://evil.example.com");
 }
 
+#[tokio::test]
+async fn cors_permissive_allows_browser_api_headers() {
+    let (state, _dir) = test_state().await;
+    let security = test_security_config();
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/health")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "POST")
+        .header(
+            "access-control-request-headers",
+            "idempotency-key, last-event-id",
+        )
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("idempotency-key"),
+        "idempotency-key must be allowed"
+    );
+    assert!(
+        allowed.contains("last-event-id"),
+        "last-event-id must be allowed"
+    );
+}
+
+#[tokio::test]
+async fn cors_explicit_origin_allows_browser_api_headers() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig {
+        cors: crate::security::CorsConfig {
+            allowed_origins: vec!["http://localhost:3000".to_owned()],
+            ..crate::security::CorsConfig::default()
+        },
+        csrf: crate::security::CsrfConfig {
+            enabled: false,
+            ..crate::security::CsrfConfig::default()
+        },
+        ..SecurityConfig::default()
+    };
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/health")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "POST")
+        .header(
+            "access-control-request-headers",
+            "idempotency-key, last-event-id",
+        )
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("idempotency-key"),
+        "idempotency-key must be allowed"
+    );
+    assert!(
+        allowed.contains("last-event-id"),
+        "last-event-id must be allowed"
+    );
+}
+
 #[test]
 fn security_config_default_values() {
     let config = SecurityConfig::default();

@@ -250,15 +250,17 @@ pub fn build_router_with(
             .layer(axum::Extension(limiter));
     }
 
-    if security.csrf.enabled {
-        let csrf_state = CsrfState {
-            header_name: security.csrf.header_name.clone(),
-            header_value: security.csrf.header_value.clone(),
-        };
-        router = router
-            .layer(axum::middleware::from_fn(require_csrf_header))
-            .layer(axum::Extension(csrf_state));
-    }
+    // WHY(#5558): Always install the CSRF layer. When enabled it enforces the
+    // custom header; when disabled it falls back to same-origin validation so
+    // mutating routes are never left completely unprotected.
+    let csrf_state = CsrfState {
+        enabled: security.csrf.enabled,
+        header_name: security.csrf.header_name.clone(),
+        header_value: security.csrf.header_value.clone(),
+    };
+    router = router
+        .layer(axum::middleware::from_fn(require_csrf_header))
+        .layer(axum::Extension(csrf_state));
 
     router = router.layer(DefaultBodyLimit::max(security.body_limit_bytes));
 
@@ -373,6 +375,10 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
                 HeaderName::from_static("content-type"),
                 HeaderName::from_static("authorization"),
                 HeaderName::from_static("x-requested-with"),
+                // WHY(#5166): Browser API clients send these headers on mutations
+                // and SSE reconnects; include them in preflight responses.
+                HeaderName::from_static("idempotency-key"),
+                HeaderName::from_static("last-event-id"),
             ]);
     }
 
@@ -396,6 +402,10 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
             HeaderName::from_static("content-type"),
             HeaderName::from_static("authorization"),
             HeaderName::from_static("x-requested-with"),
+            // WHY(#5166): Browser API clients send these headers on mutations
+            // and SSE reconnects; include them in preflight responses.
+            HeaderName::from_static("idempotency-key"),
+            HeaderName::from_static("last-event-id"),
         ])
         .max_age(Duration::from_secs(security.cors.max_age_secs))
 }

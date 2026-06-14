@@ -266,3 +266,93 @@ async fn csrf_disabled_allows_post_without_header() {
 
     assert_eq!(response.status(), StatusCode::CREATED);
 }
+
+#[tokio::test]
+async fn csrf_disabled_rejects_cross_origin_post_with_origin_header() {
+    let env = TestEnv::builder().with_actor(true).build().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let token = issue_test_token(&env.state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("{API_V1}/sessions"))
+                .header("host", "localhost:18789")
+                .header("origin", "http://evil.example.com")
+                .header("content-type", "application/json")
+                .header("authorization", bearer(&token))
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "nous_id": "syn",
+                        "session_key": "csrf-disabled-cross-origin",
+                    }))
+                    .expect("serialize"),
+                ))
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn csrf_disabled_rejects_cross_origin_post_with_referer_header() {
+    let env = TestEnv::builder().with_actor(true).build().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let token = issue_test_token(&env.state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("{API_V1}/sessions"))
+                .header("host", "localhost:18789")
+                .header("referer", "http://evil.example.com/")
+                .header("content-type", "application/json")
+                .header("authorization", bearer(&token))
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "nous_id": "syn",
+                        "session_key": "csrf-disabled-referer-cross-origin",
+                    }))
+                    .expect("serialize"),
+                ))
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn csrf_disabled_allows_same_origin_post() {
+    let env = TestEnv::builder().with_actor(true).build().await;
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let token = issue_test_token(&env.state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("{API_V1}/sessions"))
+                .header("host", "localhost:18789")
+                .header("origin", "http://localhost:18789")
+                .header("content-type", "application/json")
+                .header("authorization", bearer(&token))
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "nous_id": "syn",
+                        "session_key": "csrf-disabled-same-origin",
+                    }))
+                    .expect("serialize"),
+                ))
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
