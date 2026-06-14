@@ -51,11 +51,15 @@ TOML for structured data (token-efficient, machine-parseable). Markdown for L3 (
 
 ## Regenerating L3
 
+`_llm/L3-api-index/` and `_llm/manifest.toml` are **generated, not committed** (gitignored) — they regenerate on every source change, which made `manifest.toml` a rebase-conflict magnet. Materialize them on demand with:
+
 ```bash
 uv run scripts/llm-extract-l3.py
 ```
 
 The script reads `Cargo.toml` workspace members, parses each `.rs` file with tree-sitter-rust, and writes one markdown file per crate to `_llm/L3-api-index/`. It also writes `_llm/manifest.toml` with per-crate source hashes and token estimates. Hand-authored `[levels.L1]`, `[levels.L2]`, `[l1]`, and `[[l2]]` manifest blocks are preserved verbatim across regeneration.
+
+The hand-authored tiers (`L1-workspace.md`, `L2-crate-summaries/`, the legacy `*.toml`, this README) **remain committed** — they have no generator. If you ever need hand-authored `[levels.L1]`/`[levels.L2]` manifest blocks, keep them in a committed sidecar, not the generated `manifest.toml`.
 
 The extractor runs offline: tree-sitter and tree-sitter-rust are the only runtime deps and both are pure Python wheels. No network access is required.
 

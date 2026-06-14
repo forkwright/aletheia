@@ -1,13 +1,12 @@
-# WHY: Enforce that _llm/ L3 API index is committed alongside any Rust
-# source change that affects the public API surface. A stale _llm/ is
-# worse than no _llm/ — agents trust the cached API surface, but the code
-# has moved on. This replaces the post-merge llm-regen.yml workflow that
-# created structurally unmergeable auto-PRs (GITHUB_TOKEN suppresses the
-# required status checks that gate auto-merge). See #4143.
+# WHY: the _llm/ L3 API index and manifest.toml are GENERATED, not committed
+# (gitignored) — committing the per-PR regeneration made manifest.toml a rebase
+# conflict magnet. This job verifies the extractor still runs cleanly against the
+# live workspace so a broken extractor (which would silently drop pub items) is
+# caught; it no longer gates on a committed-vs-regenerated diff. The hand-authored
+# tiers (L1/L2/legacy TOML) remain committed. See #4143.
 #
-# Agent/contributor flow: if this check fails, run
-#   uv run scripts/llm-extract-l3.py
-# and commit the result before pushing.
+# Agent/contributor flow: run `uv run scripts/llm-extract-l3.py` to materialize
+# the L3 index + manifest locally; they are generated on demand, not committed.
 name: _llm Freshness
 
 on:
@@ -46,13 +45,14 @@ jobs:
       - name: Test L3 extractor
         run: uv run scripts/test_llm_extract_l3.py
 
-      - name: Check _llm/ is up to date
+      # WHY: the L3 index + manifest are gitignored (generated on demand), so
+      # there is no committed copy to diff against. Run the extractor against the
+      # live workspace and assert it generates the per-crate index successfully —
+      # this catches a broken extractor without re-introducing committed output.
+      - name: Generate _llm L3 index (verify extractor runs)
         run: |
           set -euo pipefail
           uv run scripts/llm-extract-l3.py
-          if [ -n "$(git status --porcelain _llm/)" ]; then
-            echo "::error::_llm/ is stale — run 'uv run scripts/llm-extract-l3.py' and commit the result."
-            git diff _llm/
-            exit 1
-          fi
-          echo "_llm/ is up to date."
+          test -f _llm/manifest.toml || { echo "::error::extractor did not produce _llm/manifest.toml"; exit 1; }
+          test -d _llm/L3-api-index || { echo "::error::extractor did not produce _llm/L3-api-index/"; exit 1; }
+          echo "_llm L3 index generated successfully."
