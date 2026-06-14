@@ -9,6 +9,12 @@
 //! 4. Collect the assistant's SSE response
 //! 5. Score the response against the expected answers
 //!
+//! In isolated mode (`close_between_questions == true`) each question runs
+//! under a disposable memory namespace derived from the configured `nous_id`,
+//! the benchmark run id, and the question id. This prevents typed memory,
+//! vector, and fact side effects from leaking across questions. In continuous
+//! mode the configured `nous_id` is reused to simulate a long-lived memory.
+//!
 //! The runner is network-bound and can take hours against a real benchmark
 //! dataset. See [`BenchmarkRunnerConfig`] for per-question timeouts and
 //! concurrency controls.
@@ -41,8 +47,12 @@ pub struct BenchmarkRunnerConfig {
     /// Maximum questions to evaluate. `None` means all questions.
     /// Useful for smoke tests (`max_questions = Some(5)`).
     pub max_questions: Option<usize>,
-    /// When true, close sessions after each question to reset memory state.
-    /// When false, all questions share one session (simulates continuous memory).
+    /// When true, run each question under a disposable per-question memory
+    /// namespace derived from `nous_id`, the run id, and the question id.
+    /// Session keys and provenance are tagged with `isolated` and the question
+    /// id so reports can distinguish official isolated metrics.
+    /// When false, all questions reuse the configured `nous_id` (simulates
+    /// continuous memory) and session keys are tagged with `continuous`.
     pub close_between_questions: bool,
     /// Optional LLM-as-judge configuration. When set, each answer is also
     /// evaluated by an external LLM for binary correctness.
@@ -88,6 +98,28 @@ type RetrievalMetrics = (
     Option<f64>,
 );
 
+/// Memory isolation mode for a single benchmark question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemoryIsolationMode {
+    /// Disposable per-question namespace: no memory is shared with other
+    /// questions.
+    Isolated,
+    /// Continuous memory: the configured `nous_id` is reused.
+    Continuous,
+}
+
+/// Per-question identity used to isolate (or intentionally share) memory.
+struct QuestionNamespace {
+    /// Effective `nous_id` used for session creation and knowledge search.
+    effective_nous_id: String,
+    /// Unique session key for this question.
+    session_key: String,
+    /// Isolation mode for this question.
+    mode: MemoryIsolationMode,
+    /// Human-readable provenance/log tag, e.g. `benchmark/isolated/er-1/q1`.
+    tag: String,
+}
+
 impl BenchmarkRunner {
     /// Create a new runner with the given client and configuration.
     #[must_use]
@@ -124,8 +156,27 @@ impl BenchmarkRunner {
             results.push(result);
         }
 
-        let report = BenchmarkReport::new(benchmark.name(), results)
-            .with_provenance(self.config.provenance.clone().finished());
+        let memory_mode = if self.config.close_between_questions {
+            "isolated"
+        } else {
+            "continuous"
+        };
+        let provenance = self
+            .config
+            .provenance
+            .clone()
+            .with_audit_refs(
+                None,
+                None,
+                None,
+                None,
+                Some(format!(
+                    "memory-benchmark-{}-nous-{}",
+                    memory_mode, self.config.nous_id
+                )),
+            )
+            .finished();
+        let report = BenchmarkReport::new(benchmark.name(), results).with_provenance(provenance);
         info!(
             total = report.total,
             em_rate = report.exact_match_rate(),
@@ -137,16 +188,24 @@ impl BenchmarkRunner {
 
     /// Execute a single question end-to-end: ingest sessions, ask question, score.
     async fn run_question(&self, index: usize, question: BenchmarkQuestion) -> QuestionResult {
-        let session_key = format!("{}-{}-{index}", self.config.session_key_prefix, question.id);
+        let namespace = question_namespace(&self.config, index, &question.id);
+        info!(
+            index = index + 1,
+            id = %question.id,
+            category = %question.category,
+            memory_mode = ?namespace.mode,
+            namespace = %namespace.tag,
+            "processing benchmark question"
+        );
 
-        let execution = self.execute_question(&question, &session_key).await;
+        let execution = self.execute_question(&question, &namespace).await;
         let status = execution.status;
         let score = score_for_status(status, &execution.answer, &question.expected_answers);
         let judge_score = self
             .evaluate_judge(&question, &execution.answer, status)
             .await;
         let (retrieved_facts, retrieval_scoring, recall_at_k, ndcg_at_k) =
-            self.evaluate_retrieval(&question, status).await;
+            self.evaluate_retrieval(&question, &namespace, status).await;
 
         QuestionResult {
             id: question.id,
@@ -168,11 +227,11 @@ impl BenchmarkRunner {
     async fn execute_question(
         &self,
         question: &BenchmarkQuestion,
-        session_key: &str,
+        namespace: &QuestionNamespace,
     ) -> QuestionExecution {
         match tokio::time::timeout(
             self.config.question_timeout,
-            self.ingest_and_ask(question, session_key),
+            self.ingest_and_ask(question, namespace),
         )
         .await
         {
@@ -259,6 +318,7 @@ impl BenchmarkRunner {
     async fn evaluate_retrieval(
         &self,
         question: &BenchmarkQuestion,
+        namespace: &QuestionNamespace,
         status: QuestionStatus,
     ) -> RetrievalMetrics {
         if status.is_scored()
@@ -268,7 +328,7 @@ impl BenchmarkRunner {
                 .client
                 .search_knowledge(
                     &question.question,
-                    &self.config.nous_id,
+                    &namespace.effective_nous_id,
                     u32::try_from(k).unwrap_or(u32::MAX),
                 )
                 .await
@@ -323,13 +383,27 @@ impl BenchmarkRunner {
     async fn ingest_and_ask(
         &self,
         question: &BenchmarkQuestion,
-        session_key: &str,
+        namespace: &QuestionNamespace,
     ) -> Result<String> {
         let session = self
             .client
-            .create_session(&self.config.nous_id, session_key)
+            .create_session(&namespace.effective_nous_id, &namespace.session_key)
             .await?;
         let session_id = session.id;
+
+        // WHY: Best-effort verification that the backend bound the session to
+        // the expected namespace. A mismatch means the isolation contract is
+        // broken (e.g., the backend rejected the derived `nous_id` and fell
+        // back to the configured one). This is a warning, not a hard failure,
+        // because some backends may not support disposable per-question agents.
+        if session.nous_id != namespace.effective_nous_id {
+            warn!(
+                id = %question.id,
+                expected_nous_id = %namespace.effective_nous_id,
+                actual_nous_id = %session.nous_id,
+                "session created under unexpected nous_id; memory isolation may be compromised"
+            );
+        }
 
         // WHY: we only replay user turns — the assistant's historical responses
         // would contaminate the answer signal. The memory pipeline sees the
@@ -359,6 +433,12 @@ impl BenchmarkRunner {
         if self.config.close_between_questions {
             // kanon:ignore RUST/no-silent-result-swallow — session close is best-effort cleanup between benchmark questions
             let _ = self.client.close_session(&session_id).await;
+            info!(
+                id = %question.id,
+                session_id = %session_id,
+                namespace = %namespace.tag,
+                "closed isolated benchmark session"
+            );
         }
 
         Ok(answer)
@@ -435,6 +515,84 @@ fn normalize_evidence_ref(reference: &str) -> String {
         .unwrap_or(trimmed)
         .trim()
         .to_owned()
+}
+
+/// Build the per-question identity used for session creation and knowledge
+/// search.
+///
+/// In isolated mode the effective `nous_id` is derived from the configured
+/// `nous_id`, the benchmark run id, and the question id so that typed memory,
+/// vector, and fact side effects cannot leak across questions. The session key
+/// and namespace tag include the run id, question id, and mode so that reports
+/// and logs can distinguish official isolated runs from continuous-memory
+/// experiments.
+///
+/// In continuous mode the configured `nous_id` is preserved and the session key
+/// is tagged with `continuous`.
+fn question_namespace(
+    config: &BenchmarkRunnerConfig,
+    index: usize,
+    question_id: &str,
+) -> QuestionNamespace {
+    let run_id = sanitize_id_part(&config.provenance.eval_run_id);
+    let sanitized_question_id = sanitize_id_part(question_id);
+
+    if config.close_between_questions {
+        let effective_nous_id = format!("{}-{}-{}", config.nous_id, run_id, sanitized_question_id);
+        let session_key = format!(
+            "{}-{}-{}-{}-isolated",
+            config.session_key_prefix, run_id, sanitized_question_id, index
+        );
+        let tag = format!(
+            "{}/isolated/{}/{}",
+            config.nous_id, run_id, sanitized_question_id
+        );
+        QuestionNamespace {
+            effective_nous_id,
+            session_key,
+            mode: MemoryIsolationMode::Isolated,
+            tag,
+        }
+    } else {
+        let session_key = format!(
+            "{}-{}-{}-{}-continuous",
+            config.session_key_prefix, run_id, sanitized_question_id, index
+        );
+        let tag = format!("{}/continuous", config.nous_id);
+        QuestionNamespace {
+            effective_nous_id: config.nous_id.clone(),
+            session_key,
+            mode: MemoryIsolationMode::Continuous,
+            tag,
+        }
+    }
+}
+
+/// Sanitize an arbitrary string so it can be embedded in a `nous_id`-compatible
+/// identifier.
+///
+/// The backend `AgentDefinition` only accepts ASCII alphanumeric characters and
+/// hyphens, with no leading or trailing hyphen. This helper collapses any other
+/// characters into single hyphens and lowercases the result.
+fn sanitize_id_part(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_hyphen = true; // treat start as hyphen to avoid a leading hyphen
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+            prev_hyphen = false;
+        } else if !prev_hyphen {
+            out.push('-');
+            prev_hyphen = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    if out.is_empty() {
+        out.push('x');
+    }
+    out
 }
 
 #[cfg(test)]
@@ -534,5 +692,81 @@ mod tests {
         assert!(scoring.fallback_used);
         assert_eq!(scoring.relevant_refs, vec![content_ref.clone()]);
         assert_eq!(refs, vec![content_ref]);
+    }
+
+    #[test]
+    fn isolated_namespace_derives_from_config_run_and_question() {
+        let config = BenchmarkRunnerConfig {
+            nous_id: "benchmark".to_owned(),
+            session_key_prefix: "bench".to_owned(),
+            provenance: EvalProvenance::new("er-test-123", "http://localhost"),
+            ..Default::default()
+        };
+
+        let ns = question_namespace(&config, 7, "sample_42.q");
+
+        assert_eq!(ns.mode, MemoryIsolationMode::Isolated);
+        assert_eq!(ns.effective_nous_id, "benchmark-er-test-123-sample-42-q");
+        assert!(
+            ns.session_key
+                .starts_with("bench-er-test-123-sample-42-q-7-isolated"),
+            "session_key should be tagged with run id, question id, index, and mode: {}",
+            ns.session_key
+        );
+        assert_eq!(ns.tag, "benchmark/isolated/er-test-123/sample-42-q");
+    }
+
+    #[test]
+    fn continuous_namespace_preserves_configured_nous_id() {
+        let config = BenchmarkRunnerConfig {
+            nous_id: "benchmark".to_owned(),
+            session_key_prefix: "bench".to_owned(),
+            close_between_questions: false,
+            provenance: EvalProvenance::new("er-test-456", "http://localhost"),
+            ..Default::default()
+        };
+
+        let ns = question_namespace(&config, 3, "q1");
+
+        assert_eq!(ns.mode, MemoryIsolationMode::Continuous);
+        assert_eq!(ns.effective_nous_id, "benchmark");
+        assert!(
+            ns.session_key.ends_with("-continuous"),
+            "session_key should be tagged continuous: {}",
+            ns.session_key
+        );
+        assert_eq!(ns.tag, "benchmark/continuous");
+    }
+
+    #[test]
+    fn isolated_namespaces_are_unique_per_question() {
+        let config = BenchmarkRunnerConfig {
+            provenance: EvalProvenance::new("er-run-abc", "http://localhost"),
+            ..Default::default()
+        };
+
+        let ns1 = question_namespace(&config, 0, "q1");
+        let ns2 = question_namespace(&config, 1, "q2");
+
+        assert_ne!(ns1.effective_nous_id, ns2.effective_nous_id);
+        assert_ne!(ns1.session_key, ns2.session_key);
+    }
+
+    #[test]
+    fn sanitize_id_part_produces_nous_compatible_identifiers() {
+        assert_eq!(sanitize_id_part("q1"), "q1");
+        assert_eq!(sanitize_id_part("sample_42.q"), "sample-42-q");
+        assert_eq!(sanitize_id_part("--weird--"), "weird");
+        assert_eq!(sanitize_id_part(""), "x");
+        assert_eq!(sanitize_id_part("ALL_CAPS"), "all-caps");
+        // Only ASCII alphanumeric and hyphen characters are present.
+        let sanitized = sanitize_id_part("a.b_c-d/e");
+        assert!(
+            sanitized
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        );
+        assert!(!sanitized.starts_with('-'));
+        assert!(!sanitized.ends_with('-'));
     }
 }

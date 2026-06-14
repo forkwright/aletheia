@@ -34,13 +34,19 @@ BenchmarkRunner (crates/eval/src/benchmarks/runner.rs)
 
 ### Per-question flow (live runner)
 
-1. `POST /api/v1/sessions` - create a fresh session keyed to the question
-2. Replay every **user turn** from the haystack sessions as messages
+1. Derive a per-question memory namespace from the configured `nous_id`, the
+   benchmark run id, and the question id.
+2. `POST /api/v1/sessions` - create a fresh session keyed to the question under
+   that namespace.
+3. Replay every **user turn** from the haystack sessions as messages
    (assistant turns are skipped to avoid contaminating the answer signal)
-3. `POST /api/v1/sessions/{id}/messages` - ask the benchmark question
-4. Collect the SSE stream; extract concatenated `text_delta` events
-5. Score the answer with `score_answer(actual, expected_answers)`
-6. Optionally `DELETE /api/v1/sessions/{id}` to reset memory between questions
+4. `POST /api/v1/sessions/{id}/messages` - ask the benchmark question
+5. Collect the SSE stream; extract concatenated `text_delta` events
+6. Score the answer with `score_answer(actual, expected_answers)`
+7. In isolated mode, `DELETE /api/v1/sessions/{id}` archives the session. The
+   namespace itself is disposable: each question uses a distinct derived
+   `nous_id`, so typed memory/vector/fact side effects cannot leak across
+   questions even if the underlying store is not scrubbed.
 
 Per-question errors are logged and scored as zero - a network hiccup does
 not abort the entire run. The runner produces a `BenchmarkReport` with
@@ -198,9 +204,49 @@ Configure `BenchmarkRunnerConfig` for production runs:
 | `session_key_prefix` | `"bench"` | Include date: `"bench-20260412"` |
 | `question_timeout` | 120s | Increase to 300s for long haystack ingestion |
 | `max_questions` | all | Use `Some(50)` for a fast representive sample |
-| `close_between_questions` | true | Keep true - resets memory between questions for clean isolation |
+| `close_between_questions` | true | **Isolated mode.** Each question runs under a disposable `nous_id` namespace derived from `nous_id`, run id, and question id. Use this for official benchmark metrics. |
+| `close_between_questions` | false | **Continuous-memory mode.** Reuses the configured `nous_id` for every question. Label results as `continuous-memory` experiments, not official isolated scores. |
 | `judge` | `None` | Set to an `LlmJudgeConfig` for LLM-as-judge scoring |
 | `retrieval_k` | `None` | Set to `Some(k)` to compute Recall@k / NDCG@k from the knowledge store |
+
+### Memory isolation and the EvalClient API gap
+
+In isolated mode the runner enforces memory isolation by deriving a unique
+`nous_id` for every question:
+
+```text
+{nous_id}-{sanitized_run_id}-{sanitized_question_id}
+```
+
+Session keys are tagged with the run id, question id, index, and the word
+`isolated`; reports set `provenance.memory_ref` to
+`memory-benchmark-isolated-nous-{nous_id}`. In continuous mode the configured
+`nous_id` is preserved and session keys are tagged with `continuous`;
+`provenance.memory_ref` is set to
+`memory-benchmark-continuous-nous-{nous_id}`.
+
+The runner can only verify isolation to the extent that `EvalClient` exposes
+relevant APIs:
+
+- `create_session` and `search_knowledge` accept a `nous_id`, so the runner can
+  route each question to its derived namespace.
+- `close_session` archives the HTTP session (best-effort cleanup).
+- `create_session` returns the bound `nous_id`, so the runner can warn when a
+  session was created under an unexpected namespace.
+
+What `EvalClient` does **not** expose today:
+
+- A first-class memory namespace parameter independent of `nous_id`.
+- A way to create a disposable agent that is active immediately (the existing
+  `POST /api/v1/nous` endpoint writes config and requires a server restart).
+- A way to delete a `nous_id` or bulk-delete its associated facts, vectors, and
+  embeddings after a question.
+
+Because each question uses a distinct derived `nous_id`, cross-question leakage
+is prevented at the identity level: later questions never read or write under a
+previous question's namespace. Leftover per-namespace data in the backing store
+does not affect parity, but operators may still want to prune abandoned
+benchmark agents periodically.
 
 ### Capturing results
 
