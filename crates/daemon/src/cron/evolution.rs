@@ -37,6 +37,7 @@ pub(crate) async fn execute_evolution(
     let Some(bridge) = bridge else {
         return Ok(crate::runner::ExecutionResult {
             success: false,
+            errors: 0,
             output: Some("no bridge configured".to_owned()),
         });
     };
@@ -60,6 +61,7 @@ pub(crate) async fn execute_evolution(
             );
             Ok(crate::runner::ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some("evolution cycle dispatched".to_owned()),
             })
         }
@@ -71,6 +73,7 @@ pub(crate) async fn execute_evolution(
             );
             Ok(crate::runner::ExecutionResult {
                 success: false,
+                errors: 0,
                 output: Some(format!("evolution dispatch failed: {e}")),
             })
         }

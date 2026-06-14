@@ -137,6 +137,24 @@ impl EvalClient {
         self.expect_ok(&url, resp).await
     }
 
+    /// Ingest a transcript or document into the knowledge store for the given
+    /// nous agent.
+    #[instrument(skip(self, content))]
+    pub async fn ingest_transcript(&self, nous_id: &str, content: &str) -> Result<IngestResponse> {
+        let url = format!("{}/api/v1/knowledge/ingest", self.base_url);
+        let body = serde_json::json!({
+            "nous_id": nous_id,
+            "content": content,
+            "format": "markdown",
+        });
+        let resp = self.authed_post(&url, &body).await?;
+        let status = resp.status().as_u16();
+        if status != 200 {
+            return self.status_error(url, status, resp).await;
+        }
+        resp.json().await.context(error::HttpSnafu)
+    }
+
     /// Search the knowledge store for facts matching a query.
     #[instrument(skip(self))]
     pub async fn search_knowledge(
@@ -399,6 +417,28 @@ pub struct HistoryMessage {
     pub tool_call_id: Option<String>,
     pub tool_name: Option<String>,
     pub created_at: String,
+}
+
+/// Response from the knowledge ingestion endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct IngestResponse {
+    /// Number of facts successfully inserted.
+    pub inserted: usize,
+    /// Number of facts skipped due to errors.
+    pub skipped: usize,
+    /// Per-fact error details.
+    pub errors: Vec<IngestFactError>,
+}
+
+/// A single ingestion failure returned by the knowledge ingestion endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct IngestFactError {
+    /// Index of the fact in the batch.
+    pub index: usize,
+    /// Fact ID if available.
+    pub id: Option<String>,
+    /// Error message.
+    pub message: String,
 }
 
 /// Response from the knowledge search endpoint.

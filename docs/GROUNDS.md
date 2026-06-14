@@ -102,8 +102,8 @@ An abstraction with only one creation path is a mesh with a single root. If that
 
 ### Verified creation paths
 
-3. **Agent file import** - `crates/aletheia/src/commands/agent_io.rs:185-437`
-   `aletheia import` writes the imported agent config into `config/aletheia.toml`, scaffolds the workspace from the agent file, and copies session history into `graphe` via `SessionStore::create_session` and `append_message`.
+3. **Agent file import** - `crates/aletheia/src/commands/agent_io.rs`
+   `aletheia import-agent` writes the imported agent config into `config/aletheia.toml`, scaffolds the workspace from the agent file, restores sessions via `SessionStore::import_session` and `insert_message_raw`, and hydrates typed knowledge when present. It validates and reports any `exportMetadata` partial-section warnings before mutating the destination instance.
 
 4. **Programmatic creation** - `crates/nous/src/manager.rs:806-810`
    `NousManager::register_agent(def: NousConfig)` spawns a new agent actor with default `PipelineConfig`. Useful for integration tests that need agents without touching the filesystem or HTTP layer.

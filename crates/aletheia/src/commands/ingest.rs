@@ -1,6 +1,5 @@
 //! `aletheia ingest`: file-based knowledge ingestion.
 
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
@@ -27,6 +26,9 @@ pub(crate) struct IngestArgs {
     #[arg(long, default_value = "http://127.0.0.1:18789")]
     // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
     pub url: String,
+    /// Bearer token for API routes that require authentication.
+    #[arg(long, env = "ALETHEIA_API_TOKEN")]
+    pub token: Option<String>,
 }
 
 pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> Result<()> {
@@ -126,71 +128,183 @@ async fn is_server_running(url: &str) -> Result<bool> {
     }
 }
 
+/// Per-fact error returned by the ingest API.
+#[derive(Debug, serde::Deserialize)]
+struct IngestApiFactError {
+    index: usize,
+    #[serde(default)]
+    id: Option<String>,
+    message: String,
+}
+
+/// Response body returned by the ingest API.
+#[derive(Debug, serde::Deserialize)]
+struct IngestApiResponse {
+    inserted: usize,
+    skipped: usize,
+    #[serde(default)]
+    errors: Vec<IngestApiFactError>,
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "API ingest preserves direct-mode per-file reporting in one command flow"
+)]
 async fn run_via_api(args: &IngestArgs) -> Result<()> {
-    let content = read_path(&args.path).await?;
-    let format = if args.format == "auto" {
-        detect_format(&args.path).unwrap_or("text")
-    } else {
-        &args.format
-    };
-
-    let endpoint = format!("{}/api/v1/knowledge/ingest", args.url);
-    let client = reqwest::Client::new();
-    let body = serde_json::json!({
-        "content": content,
-        "format": format,
-        "nous_id": args.nous_id,
-    });
-
-    if args.dry_run {
-        println!("[dry-run] would POST to {endpoint}");
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&body)
-                .whatever_context("failed to serialize dry-run request")?
-        );
+    let files = files_to_ingest(&args.path)?;
+    if files.is_empty() {
+        println!("No supported files found in {}", args.path.display());
         return Ok(());
     }
 
-    let resp = client
-        .post(&endpoint)
-        .json(&body)
-        .send()
-        .await
-        .whatever_context("failed to send ingest request")?;
+    let endpoint = format!("{}/api/v1/knowledge/ingest", args.url);
+    let client = reqwest::Client::new();
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp
-            .text()
+    let mut total_inserted = 0usize;
+    let mut total_skipped = 0usize;
+    let mut errored: Vec<(PathBuf, String)> = Vec::new();
+
+    for file in &files {
+        let content = match tokio::fs::read_to_string(file).await {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = format!("failed to read {}: {e}", file.display());
+                tracing::warn!(file = %file.display(), error = %msg, "ingest skipping file");
+                eprintln!("[warn] {}: {msg}", file.display());
+                errored.push((file.clone(), msg));
+                continue;
+            }
+        };
+
+        let format_str = if args.format == "auto" {
+            detect_format(file).unwrap_or("text")
+        } else {
+            &args.format
+        };
+
+        if args.dry_run {
+            #[cfg(feature = "recall")]
+            {
+                match count_facts(&content, format_str, &args.nous_id) {
+                    Ok(n) => {
+                        println!("[dry-run] {}: would insert {} facts", file.display(), n);
+                    }
+                    Err(e) => {
+                        let msg = format!("failed to parse {}: {e}", file.display());
+                        tracing::warn!(file = %file.display(), error = %msg, "ingest skipping file");
+                        eprintln!("[warn] {}: {msg}", file.display());
+                        errored.push((file.clone(), msg));
+                    }
+                }
+            }
+            #[cfg(not(feature = "recall"))]
+            {
+                println!(
+                    "[dry-run] {}: would POST {} bytes as {}",
+                    file.display(),
+                    content.len(),
+                    format_str
+                );
+            }
+            continue;
+        }
+
+        if content.trim().is_empty() {
+            println!("{}: inserted 0, skipped 0", file.display());
+            continue;
+        }
+
+        let body = serde_json::json!({
+            "content": content,
+            "format": format_str,
+            "nous_id": args.nous_id,
+        });
+
+        let mut request = client.post(&endpoint).json(&body);
+        if let Some(t) = &args.token {
+            request = request.header("Authorization", format!("Bearer {t}"));
+        }
+
+        let resp = request
+            .send()
             .await
-            .unwrap_or_else(|_| "<unable to read response>".to_owned());
-        whatever!("ingest API returned {status}: {text}");
+            .whatever_context("failed to send ingest request")?;
+
+        if resp.status() == reqwest::StatusCode::BAD_REQUEST
+            || resp.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY
+        {
+            let status = resp.status();
+            let text = resp
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unable to read response>".to_owned());
+            let msg = format!("{status}: {text}");
+            tracing::warn!(file = %file.display(), error = %msg, "ingest skipping file");
+            eprintln!("[warn] {}: {msg}", file.display());
+            errored.push((file.clone(), msg));
+            continue;
+        }
+
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            whatever!("authentication failed: API token required or invalid");
+        }
+        if resp.status() == reqwest::StatusCode::FORBIDDEN {
+            whatever!("authorization failed: token lacks required permissions");
+        }
+        if resp.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+            whatever!("knowledge store is not enabled on the running server");
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unable to read response>".to_owned());
+            whatever!("ingest API returned {status}: {text}");
+        }
+
+        let result: IngestApiResponse = resp
+            .json()
+            .await
+            .whatever_context("failed to parse ingest response")?;
+
+        println!(
+            "{}: inserted {}, skipped {}",
+            file.display(),
+            result.inserted,
+            result.skipped
+        );
+
+        for err in &result.errors {
+            tracing::warn!(
+                file = %file.display(),
+                index = err.index,
+                fact_id = ?err.id,
+                error = %err.message,
+                "fact insert failed"
+            );
+            eprintln!(
+                "  [warn] fact {} ({}): {}",
+                err.index,
+                err.id.as_deref().unwrap_or("?"),
+                err.message
+            );
+        }
+
+        total_inserted += result.inserted;
+        total_skipped += result.skipped;
     }
 
-    let result: serde_json::Value = resp
-        .json()
-        .await
-        .whatever_context("failed to parse ingest response")?;
-
-    let inserted = result
-        .get("inserted")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-    let skipped = result
-        .get("skipped")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-    println!("Ingested: {inserted} facts, skipped: {skipped}");
-
-    if let Some(errors) = result.get("errors").and_then(|v| v.as_array())
-        && !errors.is_empty()
-    {
-        println!("\nErrors:");
-        for err in errors {
-            if let Some(msg) = err.get("message").and_then(|v| v.as_str()) {
-                println!("  - {msg}");
-            }
+    println!(
+        "\nTotal: inserted {total_inserted}, skipped {total_skipped}, errored {} (of {} files)",
+        errored.len(),
+        files.len()
+    );
+    if !errored.is_empty() {
+        println!("\nFiles with errors:");
+        for (path, err) in &errored {
+            println!("  - {}: {err}", path.display());
         }
     }
 
@@ -207,12 +321,7 @@ fn run_direct(
         whatever!("path does not exist: {}", path.display());
     }
 
-    let mut files: Vec<PathBuf> = Vec::new();
-    if path.is_dir() {
-        collect_files(path, &mut files)?;
-    } else {
-        files.push(path.clone());
-    }
+    let files = files_to_ingest(path)?;
 
     let mut total_inserted = 0usize;
     let mut total_skipped = 0usize;
@@ -297,50 +406,51 @@ fn process_file(
     Ok((inserted, skipped))
 }
 
-async fn read_path(path: &Path) -> Result<String> {
-    use tokio::io::AsyncReadExt;
-
-    if !path.exists() {
-        whatever!("path does not exist: {}", path.display());
-    }
-
+/// Build the list of files to ingest from the supplied path.
+///
+/// A single file is returned as-is. A directory is walked recursively and only
+/// files with supported extensions are included, matching the direct-path
+/// behavior.
+fn files_to_ingest(path: &Path) -> Result<Vec<PathBuf>> {
     if path.is_file() {
-        let mut content = String::new();
-        tokio::fs::File::open(path)
-            .await
-            .with_whatever_context(|_| format!("failed to open {}", path.display()))?
-            .read_to_string(&mut content)
-            .await
-            .with_whatever_context(|_| format!("failed to read {}", path.display()))?;
-        return Ok(content);
+        Ok(vec![path.to_path_buf()])
+    } else if path.is_dir() {
+        let mut files = Vec::new();
+        collect_dir_files(path, &mut files)?;
+        Ok(files)
+    } else {
+        whatever!("unsupported path type: {}", path.display());
     }
+}
 
-    if path.is_dir() {
-        let mut entries = tokio::fs::read_dir(path)
-            .await
-            .whatever_context("failed to read directory")?;
-        let mut combined = String::new();
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .whatever_context("failed to read directory entry")?
-        {
-            let path = entry.path();
-            if path.is_file() && is_supported_extension(&path) {
-                let mut content = String::new();
-                if let Ok(mut file) = tokio::fs::File::open(&path).await
-                    && file.read_to_string(&mut content).await.is_ok()
-                {
-                    // kanon:ignore RUST/no-silent-result-swallow — writing to a String never fails; std::fmt::Write returns Result for trait uniformity
-                    let _ = writeln!(combined, "\n\n--- {} ---", path.display());
-                    combined.push_str(&content);
-                }
-            }
+/// Recursively collect supported files from a directory.
+fn collect_dir_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in std::fs::read_dir(dir)
+        .with_whatever_context(|_| format!("failed to read directory {}", dir.display()))?
+    {
+        let entry = entry.whatever_context("failed to read directory entry")?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dir_files(&path, files)?;
+        } else if path.is_file() && is_supported_extension(&path) {
+            files.push(path);
         }
-        return Ok(combined);
     }
+    Ok(())
+}
 
-    whatever!("unsupported path type: {}", path.display());
+#[cfg(feature = "recall")]
+fn count_facts(content: &str, format_str: &str, nous_id: &str) -> Result<usize> {
+    let format = mneme::ingest::parse_format(format_str)
+        .ok_or_else(|| crate::error::Error::msg(format!("unsupported format: {format_str}")))?;
+    let facts = mneme::ingest::ingest_content(
+        content,
+        format,
+        &mneme::ingest::IngestConfig::default(),
+        nous_id,
+    )
+    .with_whatever_context(|_| format!("failed to parse content as {format_str}"))?;
+    Ok(facts.len())
 }
 
 fn detect_format(path: &Path) -> Option<&'static str> {
@@ -357,20 +467,6 @@ fn is_supported_extension(path: &Path) -> bool {
         path.extension().and_then(|e| e.to_str()),
         Some("md" | "markdown" | "txt" | "text" | "json" | "jsonl")
     )
-}
-
-#[cfg(feature = "recall")]
-fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
-    for entry in std::fs::read_dir(dir).whatever_context("failed to read directory")? {
-        let entry = entry.whatever_context("failed to read directory entry")?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_files(&path, files)?;
-        } else if path.is_file() && is_supported_extension(&path) {
-            files.push(path);
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -422,6 +518,7 @@ mod tests {
             nous_id: "alice".to_owned(),
             dry_run: true,
             url: format!("http://{addr}"),
+            token: None,
         };
 
         run_via_api(&args).await.unwrap();
@@ -440,6 +537,7 @@ mod tests {
             nous_id: nous_id.to_owned(),
             dry_run: true,
             url: "http://127.0.0.1:1".to_owned(),
+            token: None,
         }
     }
 
@@ -566,6 +664,7 @@ mod tests {
                 nous_id: "alice".to_owned(),
                 dry_run: true,
                 url: "http://127.0.0.1:1".to_owned(),
+                token: None,
             };
 
             let result = run_direct(&args, &store);
@@ -603,6 +702,7 @@ mod tests {
                 nous_id: "alice".to_owned(),
                 dry_run: false,
                 url: "http://127.0.0.1:1".to_owned(),
+                token: None,
             };
 
             let result = run_direct(&args, &store);

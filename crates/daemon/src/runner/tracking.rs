@@ -8,7 +8,12 @@ use super::TaskRunner;
 
 impl TaskRunner {
     /// Record a successful task completion and UPDATE scheduling.
-    pub(super) fn record_task_completion(&mut self, task_id: &str, duration: Duration) {
+    pub(super) fn record_task_completion(
+        &mut self,
+        task_id: &str,
+        duration: Duration,
+        errors: u32,
+    ) {
         let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
             return;
         };
@@ -18,19 +23,23 @@ impl TaskRunner {
         task.consecutive_failures = 0;
         task.backoff_until = None;
         task.last_error = None;
+        task.last_errors = errors;
 
         // WHY: apply jitter to the next scheduled run to maintain spread.
         let base_next = task.def.schedule.next_run().unwrap_or(None);
         task.next_run = apply_jitter(base_next, &task.def.id, task.def.jitter).or(base_next);
 
         crate::metrics::record_cron_execution(&task.def.name, duration.as_secs_f64(), true);
+        crate::metrics::record_cron_errors(&task.def.name, errors);
 
+        let result = if errors == 0 { "success" } else { "degraded" };
         tracing::info!(
             task_id = %task.def.id,
             task_name = %task.def.name,
             run_count = task.run_count,
             duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
-            result = "success",
+            errors,
+            result,
             "task completed"
         );
 
@@ -53,6 +62,7 @@ impl TaskRunner {
         task.consecutive_failures += 1;
         task.last_run = Some(jiff::Timestamp::now());
         task.last_error = Some(reason.to_owned());
+        task.last_errors = 0;
 
         if task.consecutive_failures >= 3 {
             task.def.enabled = false;

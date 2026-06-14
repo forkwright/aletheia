@@ -84,6 +84,18 @@ pub enum ManualMaintenanceTask {
     NousSelfAudit,
     /// Run prosoche self-audit checks.
     ProsocheSelfAudit,
+    /// Refresh temporal decay scores for the knowledge graph.
+    DecayRefresh,
+    /// Deduplicate entities in the knowledge graph.
+    EntityDedup,
+    /// Recompute graph-wide scores in the knowledge graph.
+    GraphRecompute,
+    /// Compute skill decay and retire stale skills.
+    SkillDecay,
+    /// Materialize derived Datalog facts.
+    DerivedFactsMaterialize,
+    /// Run serendipity discovery over recent knowledge graph entities.
+    SerendipityDiscovery,
 }
 
 /// Canonical metadata for one maintenance task.
@@ -189,7 +201,8 @@ impl MaintenanceTaskDefinition {
         })
     }
 
-    pub(crate) fn skipped_warning(
+    /// Return the structured reason this task is unavailable for the current runtime.
+    pub fn skipped_warning(
         &self,
         config: &super::MaintenanceConfig,
         capabilities: MaintenanceRuntimeCapabilities,
@@ -203,10 +216,13 @@ impl MaintenanceTaskDefinition {
 
 /// Runtime capabilities that affect scheduled task registration.
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct MaintenanceRuntimeCapabilities {
-    pub(crate) has_retention_executor: bool,
-    pub(crate) has_knowledge_executor: bool,
-    pub(crate) has_bridge: bool,
+pub struct MaintenanceRuntimeCapabilities {
+    /// A retention executor is available.
+    pub has_retention_executor: bool,
+    /// A knowledge maintenance executor is available.
+    pub has_knowledge_executor: bool,
+    /// A daemon bridge is available.
+    pub has_bridge: bool,
 }
 
 /// Fully resolved scheduled maintenance task.
@@ -221,9 +237,11 @@ pub(crate) struct ScheduledMaintenanceTask {
 
 /// Warning emitted when an enabled task cannot be registered.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SkippedMaintenanceWarning {
-    pub(crate) task_id: &'static str,
-    pub(crate) reason: &'static str,
+pub struct SkippedMaintenanceWarning {
+    /// Stable task identifier.
+    pub task_id: &'static str,
+    /// Human-readable reason the task could not be registered.
+    pub reason: &'static str,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -545,7 +563,7 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         "Decay score refresh",
         MaintenanceTaskImplementationStatus::Implemented,
         CRON_METRICS,
-        None,
+        Some(ManualMaintenanceTask::DecayRefresh),
         scheduled(
             BuiltinTask::DecayRefresh,
             ScheduleSource::FixedIntervalSecs(4 * 60 * 60),
@@ -561,7 +579,7 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         "Entity deduplication",
         MaintenanceTaskImplementationStatus::Implemented,
         CRON_METRICS,
-        None,
+        Some(ManualMaintenanceTask::EntityDedup),
         scheduled(
             BuiltinTask::EntityDedup,
             ScheduleSource::FixedIntervalSecs(6 * 60 * 60),
@@ -577,7 +595,7 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         "Graph score recomputation",
         MaintenanceTaskImplementationStatus::Implemented,
         CRON_METRICS,
-        None,
+        Some(ManualMaintenanceTask::GraphRecompute),
         scheduled(
             BuiltinTask::GraphRecompute,
             ScheduleSource::FixedIntervalSecs(8 * 60 * 60),
@@ -593,7 +611,7 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         "Skill decay and retirement",
         MaintenanceTaskImplementationStatus::Implemented,
         CRON_METRICS,
-        None,
+        Some(ManualMaintenanceTask::SkillDecay),
         scheduled(
             BuiltinTask::SkillDecay,
             ScheduleSource::Cron("0 0 6 * * *"),
@@ -609,7 +627,7 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         "Derived Datalog rule materialization",
         MaintenanceTaskImplementationStatus::Implemented,
         CRON_METRICS,
-        None,
+        Some(ManualMaintenanceTask::DerivedFactsMaterialize),
         scheduled(
             BuiltinTask::DerivedFactsMaterialize,
             ScheduleSource::DerivedRulesMaterializationInterval,
@@ -625,7 +643,7 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         "Serendipity discovery",
         MaintenanceTaskImplementationStatus::Implemented,
         CRON_METRICS,
-        None,
+        Some(ManualMaintenanceTask::SerendipityDiscovery),
         scheduled(
             BuiltinTask::SerendipityDiscovery,
             ScheduleSource::SerendipityCadence,

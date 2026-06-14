@@ -33,6 +33,11 @@ struct CronTaskLabels {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct CronErrorLabels {
+    task_name: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct BackgroundFailureLabels {
     nous_id: String,
     task_type: String,
@@ -56,6 +61,9 @@ type CronTaskHistogramFamily = Family<CronTaskLabels, Histogram, fn() -> Histogr
 
 static CRON_DURATION_SECONDS: LazyLock<CronTaskHistogramFamily> =
     LazyLock::new(|| Family::new_with_constructor(cron_duration_histogram));
+
+static CRON_ERRORS_TOTAL: LazyLock<Family<CronErrorLabels, Counter>> =
+    LazyLock::new(Family::default);
 
 static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<Family<BackgroundFailureLabels, Counter>> =
     LazyLock::new(Family::default);
@@ -88,6 +96,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_cron_duration_seconds",
         "Cron task execution duration in seconds",
         CRON_DURATION_SECONDS.clone(),
+    );
+    registry.register(
+        "aletheia_cron_errors_total",
+        "Non-fatal errors reported by cron task executions",
+        CRON_ERRORS_TOTAL.clone(),
     );
     registry.register(
         "aletheia_background_task_failures",
@@ -131,6 +144,22 @@ pub(crate) fn record_cron_execution(task_name: &str, duration_secs: f64, success
     } else {
         CRON_EXECUTIONS_ERROR.fetch_add(1, Ordering::Relaxed);
     }
+}
+
+/// Record non-fatal errors reported by a cron task execution.
+///
+/// WHY: maintenance tasks such as knowledge graph decay refresh may complete
+/// with per-item persistence failures. Counting these separately from hard
+/// failures lets operators alert on partial degradation.
+pub(crate) fn record_cron_errors(task_name: &str, errors: u32) {
+    if errors == 0 {
+        return;
+    }
+    CRON_ERRORS_TOTAL
+        .get_or_create(&CronErrorLabels {
+            task_name: task_name.to_owned(),
+        })
+        .inc_by(u64::from(errors));
 }
 
 /// Record a background task failure.

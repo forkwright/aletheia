@@ -32,6 +32,7 @@ impl TestBridge {
         Self {
             result: Mutex::new(Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some(output.to_owned()),
             })),
             calls: Mutex::new(Vec::new()),

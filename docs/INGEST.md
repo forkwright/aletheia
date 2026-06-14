@@ -9,7 +9,7 @@ command accepts.
 ## Synopsis
 
 ```
-aletheia ingest <PATH> [--format <FORMAT>] [--nous-id <ID>] [--dry-run] [--url <URL>]
+aletheia ingest <PATH> [--format <FORMAT>] [--nous-id <ID>] [--dry-run] [--url <URL>] [--token <TOKEN>]
 ```
 
 | Flag        | Default                       | Meaning                                                    |
@@ -18,10 +18,12 @@ aletheia ingest <PATH> [--format <FORMAT>] [--nous-id <ID>] [--dry-run] [--url <
 | `--nous-id` | `pronoea`                     | Owning nous (agent) for ingested facts; matches the agent `init -y` scaffolds. Override with `--nous-id <ID>` to target a different nous. |
 | `--dry-run` | off                           | Parse + report but do not write to the store               |
 | `--url`     | `http://127.0.0.1:18789`      | Forward to a running server instead of writing directly    |
+| `--token`   | `ALETHEIA_API_TOKEN` env var  | Bearer token for authenticated API routes                  |
 
 If a server is reachable at `--url`, ingest forwards through the API.
 Otherwise it writes directly to the local knowledge store under the
-current instance root.
+current instance root. Both paths use the same per-file format detection,
+per-file error handling, and final summary.
 
 ## Formats
 
@@ -128,9 +130,6 @@ Format is detected from the file extension:
 | `.jsonl`                    | jsonl     |
 | anything else (incl. `.txt`)| text      |
 
-A directory has no extension and is treated as `text` when the API
-path is taken (see *Directory ingest* below).
-
 ## Directory ingest
 
 Pointing `ingest` at a directory walks it recursively and ingests every
@@ -158,11 +157,7 @@ non-deterministic partial state.
 Per-fact insert failures (e.g., a fact that fails admission control)
 are tolerated the same way and counted in `skipped`.
 
-### Note on the API path
-
-When a server is running at `--url`, `ingest <dir>` forwards the
-directory as a single concatenated payload and the server ingests it
-as `text`. Recursion and per-file format detection only happen on the
-direct (no-server) path. If you need the recursive, per-file behavior
-documented above, stop the server before ingesting or ingest one file
-at a time. (#4164/A tracks unifying the two paths.)
+When a server is running at `--url`, the same directory walk and
+per-file processing are performed on the client; each file is sent to
+the ingest API individually so that per-file format detection and
+per-file error reporting are preserved.

@@ -323,6 +323,24 @@ pub struct TaskStatus {
     pub in_flight: bool,
     /// Most recent error message, if the last execution failed. (#2212)
     pub last_error: Option<String>,
+    /// Number of non-fatal errors reported by the last execution.
+    /// Maintenance tasks may complete with partial errors (e.g. knowledge
+    /// graph updates that fail per-item but do not abort the whole task).
+    #[serde(default)]
+    pub last_errors: u32,
+    /// Whether the task is available in the current runtime configuration.
+    /// Tasks that require optional executors (e.g. knowledge graph) are
+    /// unavailable when the executor is not configured.
+    #[serde(default = "default_true")]
+    pub available: bool,
+    /// Human-readable reason when the task is unavailable or not scheduled.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[inline]
+const fn default_true() -> bool {
+    true
 }
 
 #[cfg(test)]
@@ -457,6 +475,9 @@ mod tests {
             consecutive_failures: 0,
             in_flight: false,
             last_error: None,
+            last_errors: 3,
+            available: true,
+            reason: Some("test reason".to_owned()),
         };
         assert_eq!(status.id, "test-id");
         assert_eq!(status.name, "Test Task");
@@ -465,6 +486,9 @@ mod tests {
         assert!(status.last_run.is_none());
         assert_eq!(status.run_count, 42);
         assert_eq!(status.consecutive_failures, 0);
+        assert_eq!(status.last_errors, 3);
+        assert!(status.available);
+        assert_eq!(status.reason.as_deref(), Some("test reason"));
     }
 
     #[test]

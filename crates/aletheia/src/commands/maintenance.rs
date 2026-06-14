@@ -8,13 +8,16 @@ use snafu::prelude::*;
 
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DerivedRulesConfig, DriftDetectionConfig,
-    DriftDetector, FjallBackupConfig, InstanceBackupConfig, MaintenanceConfig,
-    MaintenanceTaskDefinition, ManualMaintenanceTask, PromptAuditRetentionConfig,
-    PromptAuditRotator, ProposeRulesConfig, TraceRotationConfig, TraceRotator,
-    maintenance_task_by_id, manual_maintenance_task_ids, manual_maintenance_tasks,
+    DriftDetector, FjallBackupConfig, InstanceBackupConfig, KnowledgeMaintenanceConfig,
+    KnowledgeMaintenanceExecutor, MaintenanceConfig, MaintenanceConfigSection,
+    MaintenanceRuntimeCapabilities, MaintenanceTaskDefinition, MaintenanceTaskImplementationStatus,
+    MaintenanceTaskOwner, ManualMaintenanceTask, PromptAuditRetentionConfig, PromptAuditRotator,
+    ProposeRulesConfig, TraceRotationConfig, TraceRotator, maintenance_task_by_id,
+    maintenance_task_registry, manual_maintenance_task_ids, manual_maintenance_tasks,
 };
 use oikonomos::prosoche_audit::{ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
+use oikonomos::schedule::TaskStatus;
 use taxis::loader::load_config;
 use taxis::oikos::Oikos;
 use tokio_util::sync::CancellationToken;
@@ -48,13 +51,16 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
     };
     let config = load_config(&oikos).whatever_context("failed to load config")?;
     let maint = build_config(&oikos, &config.maintenance, &config.prompt_audit);
+    let knowledge_executor = build_knowledge_executor(&oikos);
 
     match action {
         Action::Status { json } => {
             let token = CancellationToken::new();
-            let mut runner = TaskRunner::new("system", token).with_maintenance(maint);
+            let mut runner = TaskRunner::new("system", token)
+                .with_maintenance(maint.clone())
+                .with_knowledge_maintenance_opt(knowledge_executor.clone());
             runner.register_maintenance_tasks();
-            let statuses = runner.status();
+            let statuses = merge_unavailable_tasks(runner.status(), &maint, &runner);
             if json {
                 println!(
                     "{}",
@@ -75,17 +81,26 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                     .unwrap_or(1)
                     .max("Runs".len());
                 println!(
-                    "{:<name_w$} {:<8} {:<runs_w$} Last Run",
-                    "Task", "Enabled", "Runs"
+                    "{:<name_w$} {:<12} {:<runs_w$} Last Run",
+                    "Task", "Status", "Runs"
                 );
-                println!("{}", "-".repeat(name_w + 1 + 8 + 1 + runs_w + 1 + 8));
+                println!("{}", "-".repeat(name_w + 1 + 12 + 1 + runs_w + 1 + 8));
                 for s in &statuses {
                     let last = s.last_run.as_deref().unwrap_or("never");
-                    let enabled = if s.enabled { "yes" } else { "no" };
+                    let status = if !s.available {
+                        "unavailable"
+                    } else if s.enabled {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    };
                     println!(
-                        "{:<name_w$} {:<8} {:<runs_w$} {}",
-                        s.name, enabled, s.run_count, last
+                        "{:<name_w$} {:<12} {:<runs_w$} {}",
+                        s.name, status, s.run_count, last
                     );
+                    if let Some(reason) = &s.reason {
+                        println!("  ({reason})");
+                    }
                 }
             }
         }
@@ -93,21 +108,54 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
             let tasks: Vec<&'static MaintenanceTaskDefinition> = if task == "all" {
                 manual_maintenance_tasks().collect()
             } else {
-                vec![manual_task_definition(&task)?]
+                vec![manual_task_definition(&task, knowledge_executor.is_some())?]
             };
             for definition in tasks {
-                run_task(definition, &maint, verbose).await?;
+                if task == "all"
+                    && definition.owner() == MaintenanceTaskOwner::KnowledgeGraph
+                    && knowledge_executor.is_none()
+                {
+                    println!(
+                        "{}: skipped (no knowledge executor configured)",
+                        definition.id()
+                    );
+                    continue;
+                }
+                run_task(definition, &maint, knowledge_executor.as_ref(), verbose).await?;
             }
         }
     }
     Ok(())
 }
 
-fn manual_task_definition(name: &str) -> Result<&'static MaintenanceTaskDefinition> {
-    if let Some(definition) = maintenance_task_by_id(name)
-        && definition.manual_run().is_some()
-    {
+fn manual_task_definition(
+    name: &str,
+    has_knowledge_executor: bool,
+) -> Result<&'static MaintenanceTaskDefinition> {
+    let Some(definition) = maintenance_task_by_id(name) else {
+        let valid = manual_maintenance_task_ids().join(", ");
+        whatever!("unknown task: {name}. Valid: {valid}, all")
+    };
+
+    if definition.manual_run().is_some() {
         return Ok(definition);
+    }
+
+    // Documented knowledge tasks should return a structured reason instead of
+    // the generic "unknown task" error.
+    if definition.owner() == MaintenanceTaskOwner::KnowledgeGraph {
+        match definition.implementation_status() {
+            MaintenanceTaskImplementationStatus::Planned => {
+                whatever!("{name}: not scheduled (task is planned but not implemented)")
+            }
+            MaintenanceTaskImplementationStatus::Implemented if !has_knowledge_executor => {
+                whatever!("{name}: unavailable (no knowledge executor configured)")
+            }
+            MaintenanceTaskImplementationStatus::Implemented => {
+                whatever!("{name}: not scheduled for manual run")
+            }
+            _ => whatever!("{name}: unavailable (unknown implementation status)"),
+        }
     }
 
     let valid = manual_maintenance_task_ids().join(", ");
@@ -118,6 +166,7 @@ fn manual_task_definition(name: &str) -> Result<&'static MaintenanceTaskDefiniti
 async fn run_task(
     definition: &MaintenanceTaskDefinition,
     maint: &MaintenanceConfig,
+    knowledge_executor: Option<&Arc<dyn KnowledgeMaintenanceExecutor>>,
     verbose: bool,
 ) -> Result<()> {
     let Some(manual_task) = definition.manual_run() else {
@@ -203,10 +252,96 @@ async fn run_task(
         }
         ManualMaintenanceTask::NousSelfAudit => run_self_audit(),
         ManualMaintenanceTask::ProsocheSelfAudit => run_prosoche_self_audit(maint).await,
-        _ => whatever!(
-            "manual task {} is not supported by this CLI",
-            definition.id()
-        ),
+        ManualMaintenanceTask::DecayRefresh
+        | ManualMaintenanceTask::EntityDedup
+        | ManualMaintenanceTask::GraphRecompute
+        | ManualMaintenanceTask::SkillDecay
+        | ManualMaintenanceTask::DerivedFactsMaterialize
+        | ManualMaintenanceTask::SerendipityDiscovery => {
+            run_knowledge_task(definition, knowledge_executor).await?;
+        }
+        _ => whatever!("{}: not scheduled for manual run", definition.id()),
+    }
+    Ok(())
+}
+
+async fn run_knowledge_task(
+    definition: &MaintenanceTaskDefinition,
+    knowledge_executor: Option<&Arc<dyn KnowledgeMaintenanceExecutor>>,
+) -> Result<()> {
+    let task_id = definition.id().to_owned();
+    let Some(executor) = knowledge_executor else {
+        whatever!("{task_id}: unavailable (no knowledge executor configured)")
+    };
+
+    let builtin = definition
+        .builtin()
+        .whatever_context("knowledge task has no builtin binding")?;
+    let report = tokio::task::spawn_blocking({
+        let executor = Arc::clone(executor);
+        let task_id = task_id.clone();
+        let nous_id = "system".to_owned();
+        move || match builtin {
+            oikonomos::schedule::BuiltinTask::DecayRefresh => {
+                executor.refresh_decay_scores(&nous_id)
+            }
+            oikonomos::schedule::BuiltinTask::EntityDedup => {
+                executor.deduplicate_entities(&nous_id)
+            }
+            oikonomos::schedule::BuiltinTask::GraphRecompute => {
+                executor.recompute_graph_scores(&nous_id)
+            }
+            oikonomos::schedule::BuiltinTask::SkillDecay => executor.run_skill_decay(&nous_id),
+            oikonomos::schedule::BuiltinTask::DerivedFactsMaterialize => {
+                executor.materialize_derived_facts()
+            }
+            oikonomos::schedule::BuiltinTask::SerendipityDiscovery => {
+                executor.discover_serendipitous_facts(&nous_id)
+            }
+            _ => Err(oikonomos::error::TaskFailedSnafu {
+                task_id,
+                reason: format!("{builtin:?} is not a manual knowledge maintenance task"),
+            }
+            .build()),
+        }
+    })
+    .await
+    .whatever_context("knowledge task panicked")?;
+
+    let report = report.whatever_context("knowledge task failed")?;
+    let outcome = report.outcome();
+    match outcome {
+        oikonomos::maintenance::MaintenanceOutcome::Success => {
+            println!(
+                "{}: {} processed, {} modified in {}ms",
+                definition.id(),
+                report.items_processed,
+                report.items_modified,
+                report.duration_ms
+            );
+        }
+        oikonomos::maintenance::MaintenanceOutcome::Degraded => {
+            println!(
+                "{}: degraded — {} processed, {} modified, {} non-fatal errors in {}ms",
+                definition.id(),
+                report.items_processed,
+                report.items_modified,
+                report.errors,
+                report.duration_ms
+            );
+        }
+        oikonomos::maintenance::MaintenanceOutcome::Failure => {
+            whatever!(
+                "{}: failed — {} processed, {} modified in {}ms",
+                definition.id(),
+                report.items_processed,
+                report.items_modified,
+                report.duration_ms
+            )
+        }
+    }
+    if let Some(detail) = &report.detail {
+        println!("  {detail}");
     }
     Ok(())
 }
@@ -244,6 +379,98 @@ async fn run_prosoche_self_audit(maint: &MaintenanceConfig) {
         report.findings.len(),
         report.check_summary.len()
     );
+}
+
+#[cfg(feature = "recall")]
+fn build_knowledge_executor(oikos: &Oikos) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
+    use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+
+    let kb_path = oikos.knowledge_db();
+    if !kb_path.exists() {
+        return None;
+    }
+    let store = KnowledgeStore::open_fjall(&kb_path, KnowledgeConfig::default()).ok()?;
+    Some(Arc::new(
+        crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(store),
+    ))
+}
+
+#[cfg(not(feature = "recall"))]
+fn build_knowledge_executor(_oikos: &Oikos) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
+    None
+}
+
+/// Merge registered task statuses with registry entries that could not be
+/// scheduled because a required executor is unavailable.
+fn merge_unavailable_tasks(
+    mut statuses: Vec<TaskStatus>,
+    maint: &MaintenanceConfig,
+    runner: &TaskRunner,
+) -> Vec<TaskStatus> {
+    use oikonomos::maintenance::SkippedMaintenanceWarning;
+
+    let capabilities = MaintenanceRuntimeCapabilities {
+        has_retention_executor: runner.has_retention_executor(),
+        has_knowledge_executor: runner.has_knowledge_executor(),
+        has_bridge: runner.has_bridge(),
+    };
+
+    let mut unavailable: Vec<TaskStatus> = Vec::new();
+    for definition in maintenance_task_registry() {
+        if definition.manual_run().is_none() {
+            continue;
+        }
+        if statuses.iter().any(|s| s.id == definition.id()) {
+            continue;
+        }
+
+        let reason = definition
+            .skipped_warning(maint, capabilities)
+            .map(|SkippedMaintenanceWarning { reason, .. }| reason.to_owned())
+            .or_else(|| match definition.implementation_status() {
+                MaintenanceTaskImplementationStatus::Planned => {
+                    Some("task is planned but not implemented".to_owned())
+                }
+                _ => None,
+            })
+            .or_else(|| {
+                if definition.owner() == MaintenanceTaskOwner::KnowledgeGraph
+                    && !capabilities.has_knowledge_executor
+                {
+                    Some("no knowledge executor configured".to_owned())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                if definition.config_section()
+                    == Some(MaintenanceConfigSection::KnowledgeMaintenance)
+                    && !maint.knowledge_maintenance.enabled
+                {
+                    Some("knowledge maintenance is disabled".to_owned())
+                } else {
+                    None
+                }
+            });
+
+        unavailable.push(TaskStatus {
+            id: definition.id().to_owned(),
+            name: definition.name().to_owned(),
+            enabled: false,
+            next_run: None,
+            last_run: None,
+            run_count: 0,
+            consecutive_failures: 0,
+            in_flight: false,
+            last_error: None,
+            last_errors: 0,
+            available: reason.is_none(),
+            reason,
+        });
+    }
+
+    statuses.append(&mut unavailable);
+    statuses
 }
 
 /// Build a `MaintenanceConfig` from the oikos layout and config settings.
@@ -284,7 +511,7 @@ pub(crate) fn build_config(
         retention: oikonomos::maintenance::RetentionConfig {
             enabled: settings.retention.enabled,
         },
-        knowledge_maintenance: oikonomos::maintenance::KnowledgeMaintenanceConfig {
+        knowledge_maintenance: KnowledgeMaintenanceConfig {
             enabled: settings.knowledge_maintenance_enabled,
             auto_dream: AutoDreamConfig::default(),
             derived_rules: DerivedRulesConfig::default(),
