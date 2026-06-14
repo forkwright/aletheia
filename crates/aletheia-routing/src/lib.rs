@@ -18,7 +18,7 @@
 //!    [`AfterActionStore`] so future dispatch-side routing benefits from
 //!    interactive-path data (and vice versa). The empirical layer does *not*
 //!    replace the complexity router; it feeds the dispatch path's
-//!    [`energeia::routing::EmpiricalRouter`] with a richer signal set.
+//!    `energeia` empirical router with a richer signal set.
 
 #![deny(missing_docs)]
 
