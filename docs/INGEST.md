@@ -9,7 +9,7 @@ command accepts.
 ## Synopsis
 
 ```
-aletheia ingest <PATH> [--format <FORMAT>] [--nous-id <ID>] [--dry-run] [--url <URL>]
+aletheia ingest <PATH> [--format <FORMAT>] [--nous-id <ID>] [--dry-run] [--url <URL>] [--token <TOKEN>]
 ```
 
 | Flag        | Default                       | Meaning                                                    |
@@ -18,6 +18,7 @@ aletheia ingest <PATH> [--format <FORMAT>] [--nous-id <ID>] [--dry-run] [--url <
 | `--nous-id` | `pronoea`                     | Owning nous (agent) for ingested facts; matches the agent `init -y` scaffolds. Override with `--nous-id <ID>` to target a different nous. |
 | `--dry-run` | off                           | Parse + report but do not write to the store               |
 | `--url`     | `http://127.0.0.1:18789`      | Forward to a running server instead of writing directly    |
+| `--token`   | `ALETHEIA_TOKEN` env var      | Bearer token for authenticated gateways                    |
 
 If a server is reachable at `--url`, ingest forwards through the API.
 Otherwise it writes directly to the local knowledge store under the
@@ -128,8 +129,9 @@ Format is detected from the file extension:
 | `.jsonl`                    | jsonl     |
 | anything else (incl. `.txt`)| text      |
 
-A directory has no extension and is treated as `text` when the API
-path is taken (see *Directory ingest* below).
+When `--format auto` is used, the format is detected independently for
+each file in a directory, both for direct storage access and when
+forwarding through the API.
 
 ## Directory ingest
 
@@ -158,11 +160,17 @@ non-deterministic partial state.
 Per-fact insert failures (e.g., a fact that fails admission control)
 are tolerated the same way and counted in `skipped`.
 
-### Note on the API path
+### API path
 
-When a server is running at `--url`, `ingest <dir>` forwards the
-directory as a single concatenated payload and the server ingests it
-as `text`. Recursion and per-file format detection only happen on the
-direct (no-server) path. If you need the recursive, per-file behavior
-documented above, stop the server before ingesting or ingest one file
-at a time. (#4164/A tracks unifying the two paths.)
+If a server is reachable at `--url`, `ingest` forwards each supported
+file as a separate `POST /api/v1/knowledge/ingest` request. This means
+both the direct path and the API path traverse directories recursively,
+detect the format per file when `--format auto` is used, report
+per-file insert/skip counts, and continue past individual file errors.
+
+`--dry-run` shows the per-file JSON request bodies that would be sent
+without contacting the server.
+
+When the gateway is configured to require authentication (`token` or
+`jwt` mode), pass a bearer token with `--token <TOKEN>` or by setting
+the `ALETHEIA_TOKEN` environment variable.

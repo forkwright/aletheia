@@ -1,10 +1,12 @@
 //! `aletheia ingest`: file-based knowledge ingestion.
 
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use clap::Parser;
 use snafu::prelude::*;
+
+use koina::http::BEARER_PREFIX;
 
 use crate::error::Result;
 
@@ -27,6 +29,9 @@ pub(crate) struct IngestArgs {
     #[arg(long, default_value = "http://127.0.0.1:18789")]
     // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
     pub url: String,
+    /// Bearer token for authenticated endpoints.
+    #[arg(long, env = "ALETHEIA_TOKEN")]
+    pub token: Option<String>,
 }
 
 pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> Result<()> {
@@ -127,33 +132,86 @@ async fn is_server_running(url: &str) -> Result<bool> {
 }
 
 async fn run_via_api(args: &IngestArgs) -> Result<()> {
-    let content = read_path(&args.path).await?;
-    let format = if args.format == "auto" {
-        detect_format(&args.path).unwrap_or("text")
+    let client = build_client(args.token.as_deref())?;
+    let endpoint = format!("{}/api/v1/knowledge/ingest", args.url);
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    if args.path.is_dir() {
+        collect_files(&args.path, &mut files)?;
+    } else {
+        files.push(args.path.clone());
+    }
+
+    let mut total_inserted = 0usize;
+    let mut total_skipped = 0usize;
+    let mut errored: Vec<(PathBuf, String)> = Vec::new();
+
+    for file in &files {
+        match ingest_file_via_api(file, args, &client, &endpoint).await {
+            Ok((inserted, skipped)) => {
+                total_inserted += inserted;
+                total_skipped += skipped;
+            }
+            Err(e) => {
+                // INVARIANT: per-file error is non-fatal — log + count + continue, matching direct
+                // mode behavior (#4164/B).
+                let msg = e.to_string();
+                tracing::warn!(file = %file.display(), error = %msg, "API ingest skipping file");
+                eprintln!("[warn] {}: {msg}", file.display());
+                errored.push((file.clone(), msg));
+            }
+        }
+    }
+
+    println!(
+        "\nTotal: inserted {total_inserted}, skipped {total_skipped}, errored {} (of {} files)",
+        errored.len(),
+        files.len()
+    );
+    if !errored.is_empty() {
+        println!("\nFiles with errors:");
+        for (path, err) in &errored {
+            println!("  - {}: {err}", path.display());
+        }
+    }
+
+    Ok(())
+}
+
+async fn ingest_file_via_api(
+    file: &Path,
+    args: &IngestArgs,
+    client: &reqwest::Client,
+    endpoint: &str,
+) -> Result<(usize, usize)> {
+    let content = tokio::fs::read_to_string(file)
+        .await
+        .with_whatever_context(|_| format!("failed to read {}", file.display()))?;
+
+    let format_str = if args.format == "auto" {
+        detect_format(file).unwrap_or("text")
     } else {
         &args.format
     };
 
-    let endpoint = format!("{}/api/v1/knowledge/ingest", args.url);
-    let client = reqwest::Client::new();
     let body = serde_json::json!({
         "content": content,
-        "format": format,
+        "format": format_str,
         "nous_id": args.nous_id,
     });
 
     if args.dry_run {
-        println!("[dry-run] would POST to {endpoint}");
+        println!("[dry-run] {}: would POST to {endpoint}", file.display());
         println!(
             "{}",
             serde_json::to_string_pretty(&body)
                 .whatever_context("failed to serialize dry-run request")?
         );
-        return Ok(());
+        return Ok((0, 0));
     }
 
     let resp = client
-        .post(&endpoint)
+        .post(endpoint)
         .json(&body)
         .send()
         .await
@@ -176,31 +234,48 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
     let inserted = result
         .get("inserted")
         .and_then(serde_json::Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
         .unwrap_or(0);
     let skipped = result
         .get("skipped")
         .and_then(serde_json::Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
         .unwrap_or(0);
-    println!("Ingested: {inserted} facts, skipped: {skipped}");
+
+    println!("{}: inserted {inserted}, skipped {skipped}", file.display());
 
     if let Some(errors) = result.get("errors").and_then(|v| v.as_array())
         && !errors.is_empty()
     {
-        println!("\nErrors:");
+        println!("  per-fact errors:");
         for err in errors {
             if let Some(msg) = err.get("message").and_then(|v| v.as_str()) {
-                println!("  - {msg}");
+                println!("    - {msg}");
             }
         }
     }
 
-    Ok(())
+    Ok((inserted, skipped))
+}
+
+fn build_client(token: Option<&str>) -> Result<reqwest::Client> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(tok) = token {
+        let value = reqwest::header::HeaderValue::from_str(&format!("{BEARER_PREFIX}{tok}"))
+            .whatever_context("invalid token value")?;
+        headers.insert(reqwest::header::AUTHORIZATION, value);
+    }
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .whatever_context("failed to build HTTP client")
 }
 
 #[cfg(feature = "recall")]
 fn run_direct(
     args: &IngestArgs,
-    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    store: &Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<()> {
     let path = &args.path;
     if !path.exists() {
@@ -254,7 +329,7 @@ fn run_direct(
 fn process_file(
     file: &Path,
     args: &IngestArgs,
-    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    store: &Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<(usize, usize)> {
     let content = std::fs::read_to_string(file)
         .with_whatever_context(|_| format!("failed to read {}", file.display()))?;
@@ -297,52 +372,6 @@ fn process_file(
     Ok((inserted, skipped))
 }
 
-async fn read_path(path: &Path) -> Result<String> {
-    use tokio::io::AsyncReadExt;
-
-    if !path.exists() {
-        whatever!("path does not exist: {}", path.display());
-    }
-
-    if path.is_file() {
-        let mut content = String::new();
-        tokio::fs::File::open(path)
-            .await
-            .with_whatever_context(|_| format!("failed to open {}", path.display()))?
-            .read_to_string(&mut content)
-            .await
-            .with_whatever_context(|_| format!("failed to read {}", path.display()))?;
-        return Ok(content);
-    }
-
-    if path.is_dir() {
-        let mut entries = tokio::fs::read_dir(path)
-            .await
-            .whatever_context("failed to read directory")?;
-        let mut combined = String::new();
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .whatever_context("failed to read directory entry")?
-        {
-            let path = entry.path();
-            if path.is_file() && is_supported_extension(&path) {
-                let mut content = String::new();
-                if let Ok(mut file) = tokio::fs::File::open(&path).await
-                    && file.read_to_string(&mut content).await.is_ok()
-                {
-                    // kanon:ignore RUST/no-silent-result-swallow — writing to a String never fails; std::fmt::Write returns Result for trait uniformity
-                    let _ = writeln!(combined, "\n\n--- {} ---", path.display());
-                    combined.push_str(&content);
-                }
-            }
-        }
-        return Ok(combined);
-    }
-
-    whatever!("unsupported path type: {}", path.display());
-}
-
 fn detect_format(path: &Path) -> Option<&'static str> {
     path.extension().and_then(|ext| match ext.to_str()? {
         "md" | "markdown" => Some("markdown"),
@@ -359,7 +388,6 @@ fn is_supported_extension(path: &Path) -> bool {
     )
 }
 
-#[cfg(feature = "recall")]
 fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     for entry in std::fs::read_dir(dir).whatever_context("failed to read directory")? {
         let entry = entry.whatever_context("failed to read directory entry")?;
@@ -422,6 +450,7 @@ mod tests {
             nous_id: "alice".to_owned(),
             dry_run: true,
             url: format!("http://{addr}"),
+            token: None,
         };
 
         run_via_api(&args).await.unwrap();
@@ -440,6 +469,7 @@ mod tests {
             nous_id: nous_id.to_owned(),
             dry_run: true,
             url: "http://127.0.0.1:1".to_owned(),
+            token: None,
         }
     }
 
@@ -454,6 +484,14 @@ mod tests {
 
         let args = IngestArgs::try_parse_from(["ingest", "/tmp/x"]).unwrap();
         assert_eq!(args.nous_id, koina::defaults::DEFAULT_AGENT_ID);
+    }
+
+    #[test]
+    fn ingest_token_option_parses() {
+        use clap::Parser as _;
+
+        let args = IngestArgs::try_parse_from(["ingest", "/tmp/x", "--token", "my-token"]).unwrap();
+        assert_eq!(args.token.as_deref(), Some("my-token"));
     }
 
     #[test]
@@ -566,6 +604,7 @@ mod tests {
                 nous_id: "alice".to_owned(),
                 dry_run: true,
                 url: "http://127.0.0.1:1".to_owned(),
+                token: None,
             };
 
             let result = run_direct(&args, &store);
@@ -603,6 +642,7 @@ mod tests {
                 nous_id: "alice".to_owned(),
                 dry_run: false,
                 url: "http://127.0.0.1:1".to_owned(),
+                token: None,
             };
 
             let result = run_direct(&args, &store);
@@ -611,5 +651,109 @@ mod tests {
                 "run_direct should return Ok despite the bad file: {result:?}"
             );
         }
+    }
+
+    /// API mode must POST once per supported file in a directory, not
+    /// concatenate the directory into a single payload.
+    #[tokio::test]
+    async fn api_mode_posts_per_file_for_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let docs = dir.path().join("docs");
+        std::fs::create_dir(&docs).unwrap();
+        std::fs::write(docs.join("a.md"), "# A\nfirst.\n").unwrap();
+        std::fs::write(docs.join("b.txt"), "second.\n").unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&requests);
+
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                match tokio::time::timeout(std::time::Duration::from_secs(2), listener.accept())
+                    .await
+                {
+                    Ok(Ok((mut socket, _))) => {
+                        seen.fetch_add(1, Ordering::SeqCst);
+                        let mut buf = [0_u8; 2048];
+                        let _ = socket.read(&mut buf).await;
+                        let body = r#"{"inserted":1,"skipped":0,"errors":[]}"#;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        let _ = socket.write_all(response.as_bytes()).await;
+                    }
+                    _ => break,
+                }
+            }
+        });
+
+        let args = IngestArgs {
+            path: docs,
+            format: "auto".to_owned(),
+            nous_id: "alice".to_owned(),
+            dry_run: false,
+            url: format!("http://{addr}"),
+            token: None,
+        };
+
+        run_via_api(&args).await.unwrap();
+        server.await.unwrap();
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            2,
+            "directory ingest must POST once per supported file"
+        );
+    }
+
+    /// API mode must forward a bearer token when --token is supplied.
+    #[tokio::test]
+    async fn api_mode_sends_bearer_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input.txt");
+        std::fs::write(&input, "one fact").unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let saw_auth = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let seen = Arc::clone(&saw_auth);
+
+        let server = tokio::spawn(async move {
+            if let Ok(Ok((mut socket, _))) =
+                tokio::time::timeout(std::time::Duration::from_secs(2), listener.accept()).await
+            {
+                let mut buf = [0_u8; 2048];
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                if req.contains("Authorization: Bearer my-test-token") {
+                    seen.store(true, Ordering::SeqCst);
+                }
+                let body = r#"{"inserted":1,"skipped":0,"errors":[]}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        let args = IngestArgs {
+            path: input,
+            format: "auto".to_owned(),
+            nous_id: "alice".to_owned(),
+            dry_run: false,
+            url: format!("http://{addr}"),
+            token: Some("my-test-token".to_owned()),
+        };
+
+        run_via_api(&args).await.unwrap();
+        server.await.unwrap();
+        assert!(
+            saw_auth.load(Ordering::SeqCst),
+            "request must include bearer token"
+        );
     }
 }
