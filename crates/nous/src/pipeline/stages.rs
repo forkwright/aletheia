@@ -1,6 +1,7 @@
 // kanon:ignore RUST/file-too-long — pipeline stage implementations; per-stage module extraction planned
 //! Pipeline stage implementations.
 
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use snafu::{IntoError, ResultExt};
@@ -107,7 +108,20 @@ impl mneme::side_query::SideQueryRanker for ProviderRecallBridge<'_> {
             }
             .build()
         })?;
-        Ok(ids.into_iter().take(max_results).collect())
+
+        // WHY(#5560): side-query output is a hint, not an authority. Bound it
+        // to the manifest before applying `max_results`.
+        let valid_ids: HashSet<String> = manifest_text
+            .lines()
+            .filter_map(|line| line.strip_prefix("- "))
+            .filter_map(|rest| rest.split_whitespace().next())
+            .map(String::from)
+            .collect();
+        Ok(ids
+            .into_iter()
+            .filter(|id| valid_ids.contains(id))
+            .take(max_results)
+            .collect())
     }
 }
 
