@@ -56,7 +56,7 @@ impl ReceiptSigner {
     /// Verify receipt against a tuple. Returns Ok if HMAC matches.
     ///
     /// # Errors
-    /// Returns [`VerifyError::Malformed`] if the receipt is not valid base64url,
+    /// Returns [`VerifyError::Decode`] if the receipt is not valid base64url,
     /// or [`VerifyError::HmacMismatch`] if the HMAC does not match.
     pub fn verify(
         &self,
@@ -205,13 +205,10 @@ pub fn scan_and_verify(
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub enum VerifyError {
-    /// Receipt missing or malformed (not valid base64url).
-    #[snafu(display("receipt missing or malformed"))]
-    Malformed,
     /// HMAC mismatch — receipt does not authenticate this tuple.
     #[snafu(display("HMAC mismatch — receipt does not authenticate this tuple"))]
     HmacMismatch,
-    /// Base64 decode error.
+    /// Base64 decode error (receipt was not valid base64url).
     #[snafu(display("decode error: {source}"))]
     Decode {
         /// Underlying base64 error.
