@@ -141,11 +141,13 @@ fn long_message_truncated() {
 
 #[test]
 fn formats_single_correction() {
-    let corrections = vec![Correction {
-        text: "Always use snafu".to_owned(),
-        created_at: "2026-04-06T00:00:00Z".to_owned(),
-        source_message: "Always use snafu".to_owned(),
-    }];
+    let corrections = vec![CorrectionRecord::new(
+        "test-agent",
+        "ses-test",
+        1,
+        "Always use snafu",
+        "Always use snafu",
+    )];
     let section = format_corrections_section(&corrections);
     assert!(section.contains("Operator Corrections"));
     assert!(section.contains("1. Always use snafu"));
@@ -154,16 +156,20 @@ fn formats_single_correction() {
 #[test]
 fn formats_multiple_corrections() {
     let corrections = vec![
-        Correction {
-            text: "Never use unwrap".to_owned(),
-            created_at: "2026-04-06T00:00:00Z".to_owned(),
-            source_message: "source".to_owned(),
-        },
-        Correction {
-            text: "Always run tests".to_owned(),
-            created_at: "2026-04-06T00:01:00Z".to_owned(),
-            source_message: "source".to_owned(),
-        },
+        CorrectionRecord::new(
+            "test-agent",
+            "ses-test",
+            1,
+            "Never use unwrap",
+            "source one",
+        ),
+        CorrectionRecord::new(
+            "test-agent",
+            "ses-test",
+            1,
+            "Always run tests",
+            "source two",
+        ),
     ];
     let section = format_corrections_section(&corrections);
     assert!(section.contains("1. Never use unwrap"));
@@ -175,7 +181,9 @@ fn formats_multiple_corrections() {
 #[tokio::test]
 async fn load_returns_empty_when_no_file() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let corrections = load_corrections(dir.path()).await.expect("load");
+    let corrections = load_corrections(dir.path(), "test-agent", "ses-test")
+        .await
+        .expect("load");
     assert!(
         corrections.is_empty(),
         "should return empty vec for missing file"
@@ -185,37 +193,48 @@ async fn load_returns_empty_when_no_file() {
 #[tokio::test]
 async fn append_and_load_roundtrip() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let correction = Correction {
-        text: "Always use snafu".to_owned(),
-        created_at: "2026-04-06T00:00:00Z".to_owned(),
-        source_message: "Always use snafu for errors".to_owned(),
-    };
+    let correction = CorrectionRecord::new(
+        "test-agent",
+        "ses-test",
+        1,
+        "Always use snafu",
+        "Always use snafu for errors",
+    );
 
-    append_correction(dir.path(), correction)
+    persist_correction(dir.path(), correction)
         .await
-        .expect("append");
+        .expect("persist");
 
-    let loaded = load_corrections(dir.path()).await.expect("load");
+    let loaded = load_corrections(dir.path(), "test-agent", "ses-test")
+        .await
+        .expect("load");
     assert_eq!(loaded.len(), 1);
     assert_eq!(loaded[0].text, "Always use snafu");
+    assert_eq!(loaded[0].nous_id, "test-agent");
+    assert_eq!(loaded[0].session_id, "ses-test");
+    assert!(!loaded[0].source_hash.is_empty());
 }
 
 #[tokio::test]
 async fn append_multiple_corrections() {
     let dir = tempfile::tempdir().expect("create temp dir");
 
-    for i in 0..3 {
-        let correction = Correction {
-            text: format!("Correction {i}"),
-            created_at: format!("2026-04-06T00:0{i}:00Z"),
-            source_message: format!("source {i}"),
-        };
-        append_correction(dir.path(), correction)
+    for i in 0_u64..3 {
+        let correction = CorrectionRecord::new(
+            "test-agent",
+            "ses-test",
+            i,
+            format!("Correction {i}"),
+            format!("source {i}"),
+        );
+        persist_correction(dir.path(), correction)
             .await
-            .expect("append");
+            .expect("persist");
     }
 
-    let loaded = load_corrections(dir.path()).await.expect("load");
+    let loaded = load_corrections(dir.path(), "test-agent", "ses-test")
+        .await
+        .expect("load");
     assert_eq!(loaded.len(), 3);
 }
 
@@ -226,17 +245,21 @@ async fn evicts_oldest_when_over_cap() {
 
     // Write max_corrections + 5 corrections.
     for i in 0..max_corrections + 5 {
-        let correction = Correction {
-            text: format!("Correction {i}"),
-            created_at: format!("2026-04-06T00:00:{i:02}Z"),
-            source_message: format!("source {i}"),
-        };
-        append_correction(dir.path(), correction)
+        let correction = CorrectionRecord::new(
+            "test-agent",
+            "ses-test",
+            1,
+            format!("Correction {i}"),
+            format!("source {i}"),
+        );
+        persist_correction(dir.path(), correction)
             .await
-            .expect("append");
+            .expect("persist");
     }
 
-    let loaded = load_corrections(dir.path()).await.expect("load");
+    let loaded = load_corrections(dir.path(), "test-agent", "ses-test")
+        .await
+        .expect("load");
     assert_eq!(
         loaded.len(),
         max_corrections,
@@ -250,6 +273,102 @@ async fn evicts_oldest_when_over_cap() {
     );
 }
 
+#[tokio::test]
+async fn replay_dedupe_by_source_hash_and_scope() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let source = "Always use jiff for time";
+
+    let first = CorrectionRecord::new("nous-a", "ses-1", 1, "Use jiff", source);
+    let replay_same_scope = CorrectionRecord::new("nous-a", "ses-1", 2, "Use jiff", source);
+    let other_scope = CorrectionRecord::new("nous-b", "ses-1", 1, "Use jiff", source);
+
+    persist_correction(dir.path(), first)
+        .await
+        .expect("persist first");
+    persist_correction(dir.path(), replay_same_scope)
+        .await
+        .expect("persist replay");
+    persist_correction(dir.path(), other_scope)
+        .await
+        .expect("persist other scope");
+
+    let all = load_all_records(dir.path()).await.expect("load all");
+    assert_eq!(all.len(), 2, "duplicate source hash/scope is skipped");
+
+    let scoped = load_corrections(dir.path(), "nous-a", "ses-1")
+        .await
+        .expect("load scoped");
+    assert_eq!(scoped.len(), 1);
+}
+
+#[tokio::test]
+async fn scope_filtering_loads_only_matching_records() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+
+    let a = CorrectionRecord::new("nous-a", "ses-1", 1, "Text A", "source A");
+    let b = CorrectionRecord::new("nous-a", "ses-2", 1, "Text B", "source B");
+    let c = CorrectionRecord::new("nous-b", "ses-1", 1, "Text C", "source C");
+
+    persist_correction(dir.path(), a).await.expect("persist a");
+    persist_correction(dir.path(), b).await.expect("persist b");
+    persist_correction(dir.path(), c).await.expect("persist c");
+
+    let loaded = load_corrections(dir.path(), "nous-a", "ses-1")
+        .await
+        .expect("load");
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].text, "Text A");
+    assert_eq!(loaded[0].nous_id, "nous-a");
+    assert_eq!(loaded[0].session_id, "ses-1");
+}
+
+#[tokio::test]
+async fn atomic_write_uses_temp_and_rename() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let records = vec![CorrectionRecord::new("nous", "ses", 1, "Text", "source")];
+    let path = corrections_path(dir.path());
+
+    write_corrections_atomic(&path, &records)
+        .await
+        .expect("atomic write");
+
+    let content = tokio::fs::read_to_string(&path).await.expect("read");
+    let parsed: Vec<CorrectionRecord> = serde_json::from_str(&content).expect("parse");
+    assert_eq!(parsed.len(), 1);
+
+    // NOTE: atomic writes should leave only the final corrections file behind.
+    let tmp_files: Vec<_> = std::fs::read_dir(dir.path())
+        .expect("read dir")
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(&format!("{CORRECTIONS_FILENAME}.tmp"))
+        })
+        .collect();
+    assert!(tmp_files.is_empty(), "temp files must be cleaned up");
+}
+
+#[test]
+fn status_transition_bumps_revision() {
+    let mut record = CorrectionRecord::new("nous", "ses", 1, "Text", "source");
+    assert_eq!(record.status, CorrectionStatus::Active);
+    assert_eq!(record.revision, 0);
+
+    record.transition_to(CorrectionStatus::Dismissed);
+    assert_eq!(record.status, CorrectionStatus::Dismissed);
+    assert_eq!(record.revision, 1);
+
+    record.transition_to(CorrectionStatus::Active);
+    assert_eq!(record.status, CorrectionStatus::Active);
+    assert_eq!(record.revision, 2);
+
+    // NOTE: transition_to is idempotent for the current status.
+    record.transition_to(CorrectionStatus::Active);
+    assert_eq!(record.revision, 2);
+}
+
 // -- Hook integration tests --
 
 #[tokio::test]
@@ -257,14 +376,11 @@ async fn injector_appends_to_system_prompt() {
     let dir = tempfile::tempdir().expect("create temp dir");
 
     // Pre-populate corrections file.
-    let correction = Correction {
-        text: "Always use snafu".to_owned(),
-        created_at: "2026-04-06T00:00:00Z".to_owned(),
-        source_message: "source".to_owned(),
-    };
-    append_correction(dir.path(), correction)
+    let correction =
+        CorrectionRecord::new("test-agent", "ses-test", 1, "Always use snafu", "source");
+    persist_correction(dir.path(), correction)
         .await
-        .expect("append");
+        .expect("persist");
 
     let hook = CorrectionInjector::new(dir.path().to_path_buf());
 
@@ -317,7 +433,9 @@ async fn injector_detects_and_persists_new_correction() {
     assert_eq!(result, HookResult::Continue);
 
     // Verify the correction was persisted.
-    let loaded = load_corrections(dir.path()).await.expect("load");
+    let loaded = load_corrections(dir.path(), "test-agent", "ses-test")
+        .await
+        .expect("load");
     assert_eq!(loaded.len(), 1);
     assert_eq!(loaded[0].text, "Never use unwrap in production code");
 
@@ -359,14 +477,11 @@ async fn injector_skips_when_insufficient_budget() {
     let dir = tempfile::tempdir().expect("create temp dir");
 
     // Pre-populate with a correction.
-    let correction = Correction {
-        text: "Always use snafu".to_owned(),
-        created_at: "2026-04-06T00:00:00Z".to_owned(),
-        source_message: "source".to_owned(),
-    };
-    append_correction(dir.path(), correction)
+    let correction =
+        CorrectionRecord::new("test-agent", "ses-test", 1, "Always use snafu", "source");
+    persist_correction(dir.path(), correction)
         .await
-        .expect("append");
+        .expect("persist");
 
     let hook = CorrectionInjector::new(dir.path().to_path_buf());
 
@@ -390,6 +505,48 @@ async fn injector_skips_when_insufficient_budget() {
     assert_eq!(
         ctx.pipeline.system_prompt.as_ref().expect("prompt"),
         "Base prompt."
+    );
+}
+
+#[tokio::test]
+async fn injection_skips_dismissed_records() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+
+    let active = CorrectionRecord::new("nous-a", "ses-1", 1, "Active rule", "source active");
+    let mut dismissed =
+        CorrectionRecord::new("nous-a", "ses-1", 1, "Dismissed rule", "source dismissed");
+    dismissed.transition_to(CorrectionStatus::Dismissed);
+
+    persist_correction(dir.path(), active)
+        .await
+        .expect("persist active");
+    persist_correction(dir.path(), dismissed)
+        .await
+        .expect("persist dismissed");
+
+    let hook = CorrectionInjector::new(dir.path().to_path_buf());
+
+    let mut pipeline = crate::pipeline::PipelineContext {
+        system_prompt: Some("Base prompt.".to_owned()),
+        remaining_tokens: 100_000,
+        ..crate::pipeline::PipelineContext::default()
+    };
+    let mut ctx = crate::hooks::QueryContext {
+        pipeline: &mut pipeline,
+        nous_id: "nous-a",
+        session_id: "ses-1",
+        turn_number: 2,
+        user_message: "hello",
+    };
+
+    let result = hook.before_query(&mut ctx).await;
+    assert_eq!(result, HookResult::Continue);
+
+    let prompt = ctx.pipeline.system_prompt.as_ref().expect("prompt");
+    assert!(prompt.contains("Active rule"));
+    assert!(
+        !prompt.contains("Dismissed rule"),
+        "dismissed corrections must not be injected"
     );
 }
 
