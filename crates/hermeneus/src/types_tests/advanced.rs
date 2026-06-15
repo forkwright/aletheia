@@ -104,34 +104,6 @@ fn cache_control_type_serde() {
 }
 
 #[test]
-fn caching_config_defaults() {
-    let config = CachingConfig::default();
-    assert!(
-        config.enabled,
-        "default CachingConfig should have enabled=true"
-    );
-    assert_eq!(
-        config.strategy,
-        CachingStrategy::Auto,
-        "default CachingConfig strategy should be Auto"
-    );
-}
-
-#[test]
-fn caching_strategy_serde_roundtrip() {
-    for strategy in [CachingStrategy::Auto, CachingStrategy::Disabled] {
-        let json =
-            serde_json::to_string(&strategy).expect("CachingStrategy should serialize to JSON");
-        let back: CachingStrategy =
-            serde_json::from_str(&json).expect("CachingStrategy should deserialize from JSON");
-        assert_eq!(
-            strategy, back,
-            "CachingStrategy should round-trip through JSON unchanged"
-        );
-    }
-}
-
-#[test]
 fn completion_request_cache_defaults() {
     let req = CompletionRequest::default();
     assert!(
