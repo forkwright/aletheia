@@ -370,9 +370,14 @@ Status values: `healthy` (all pass), `degraded` (warnings, e.g. no LLM provider)
 
 ## Prosoche heartbeat timer
 
-The optional user timer checks the running server and then executes the local
-prosoche self-audit task. The timer starts one minute after activation and runs
-every five minutes.
+The optional user timer is the **external** prosoche heartbeat path. It checks
+the running server and then executes the local prosoche self-audit task. The
+timer starts one minute after activation and runs every five minutes.
+
+Use this timer when `[maintenance.prosoche].mode` is set to `"external"` or
+`"both"`. With the default `mode = "daemon"`, the daemon's in-process scheduler
+handles prosoche internally and the timer is unnecessary; running both without
+`mode = "both"` can execute the self-audit twice.
 
 ```bash
 install -m 0755 scripts/aletheia-heartbeat.sh ~/.local/bin/aletheia-heartbeat
