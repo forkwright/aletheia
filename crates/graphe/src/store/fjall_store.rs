@@ -183,7 +183,12 @@ impl SessionStore {
     /// Call this after every `tx.commit()` on the critical write path.
     /// Blackboard writes intentionally skip this — they are an ephemeral cache
     /// tier and are acceptable to lose on an unclean shutdown.
-    fn ensure_durable(&self) -> Result<()> {
+    ///
+    /// This is also the public durability barrier for batch import callers:
+    /// after a sequence of raw [`Self::insert_message_raw`] calls, call
+    /// `ensure_durable()` once to guarantee the imported messages survive an
+    /// unclean shutdown.
+    pub fn ensure_durable(&self) -> Result<()> {
         self.db.persist(PersistMode::SyncAll).map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall persist: {e}"),
