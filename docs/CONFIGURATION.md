@@ -579,6 +579,10 @@ Background maintenance tasks. Some run automatically when the server is running;
 
 ### maintenance.drift_detection
 
+Drift detection compares the live instance root against the sibling
+`instance.example` template. If the template directory is unavailable, the task
+reports degraded/failed rather than clean.
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether drift detection runs |

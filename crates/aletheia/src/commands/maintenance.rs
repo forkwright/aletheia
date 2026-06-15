@@ -1,6 +1,6 @@
 //! `aletheia maintenance`: instance maintenance task management.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use clap::Subcommand;
@@ -9,12 +9,12 @@ use snafu::prelude::*;
 
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DerivedRulesConfig, DriftDetectionConfig,
-DriftDetector, FjallBackupConfig, InstanceBackupConfig, KnowledgeMaintenanceConfig,
-    KnowledgeMaintenanceExecutor, MaintenanceConfig, MaintenanceConfigSection,
-    MaintenanceRuntimeCapabilities, MaintenanceTaskDefinition, MaintenanceTaskImplementationStatus,
-    MaintenanceTaskOwner, ManualMaintenanceTask, PromptAuditRetentionConfig, PromptAuditRotator,
-    ProposeRulesConfig, TraceRotationConfig, TraceRotator, maintenance_task_by_id,
-    maintenance_task_registry, manual_maintenance_task_ids, manual_maintenance_tasks,
+    DriftDetector, InstanceBackupConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor,
+    MaintenanceConfig, MaintenanceConfigSection, MaintenanceRuntimeCapabilities,
+    MaintenanceTaskDefinition, MaintenanceTaskImplementationStatus, MaintenanceTaskOwner,
+    ManualMaintenanceTask, PromptAuditRetentionConfig, PromptAuditRotator, ProposeRulesConfig,
+    TraceRotationConfig, TraceRotator, maintenance_task_by_id, maintenance_task_registry,
+    manual_maintenance_task_ids, manual_maintenance_tasks,
 };
 use oikonomos::prosoche_audit::{ProsocheAuditOutcome, ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
@@ -61,7 +61,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 .with_maintenance(maint.clone())
                 .with_knowledge_maintenance_opt(knowledge_executor.clone());
             runner.register_maintenance_tasks();
-let statuses = merge_unavailable_tasks(runner.status(), &maint, &runner);
+            let statuses = merge_unavailable_tasks(runner.status(), &maint, &runner);
             let prosoche_summary = prosoche_path_summary(&config.maintenance.prosoche);
             if json {
                 let output = MaintenanceStatusOutput {
@@ -196,23 +196,31 @@ async fn run_task(
             let report = DriftDetector::new(maint.drift_detection.clone())
                 .check()
                 .whatever_context("drift detection failed")?;
-            let missing = report.missing_files.len();
-            let extra = report.extra_files.len();
-            if missing == 0 && extra == 0 {
-                println!("drift-detection: clean");
-            } else if verbose {
-                println!("drift-detection: {missing} missing, {extra} extra");
-                for path in &report.missing_files {
-                    println!("  missing: {}", path.display());
-                }
-                for path in &report.extra_files {
-                    println!("  extra:   {}", path.display());
+            let template_display = report.template_root.display();
+            if report.template_available {
+                let missing = report.missing_files.len();
+                let extra = report.extra_files.len();
+                if missing == 0 && extra == 0 {
+                    println!("drift-detection: clean (template: {template_display})");
+                } else if verbose {
+                    println!(
+                        "drift-detection: {missing} missing, {extra} extra \
+                         (template: {template_display})"
+                    );
+                    for path in &report.missing_files {
+                        println!("  missing: {}", path.display());
+                    }
+                    for path in &report.extra_files {
+                        println!("  extra:   {}", path.display());
+                    }
+                } else {
+                    println!(
+                        "drift-detection: {missing} missing, {extra} extra  \
+                         (use --verbose to list files; template: {template_display})"
+                    );
                 }
             } else {
-                println!(
-                    "drift-detection: {missing} missing, {extra} extra  \
-                     (use --verbose to list files)"
-                );
+                println!("drift-detection: template unavailable (template: {template_display})");
             }
         }
         ManualMaintenanceTask::DbMonitor => {
@@ -502,6 +510,29 @@ fn merge_unavailable_tasks(
     statuses
 }
 
+fn resolve_example_root(instance_root: &Path) -> PathBuf {
+    let sibling = instance_root
+        .parent()
+        .map(|parent| parent.join("instance.example"))
+        .filter(|path| path.exists());
+    if let Some(sibling) = sibling {
+        return sibling;
+    }
+
+    let checkout_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("instance.example");
+    if checkout_candidate.exists() {
+        return checkout_candidate;
+    }
+
+    instance_root.parent().map_or_else(
+        || PathBuf::from("instance.example"),
+        |parent| parent.join("instance.example"),
+    )
+}
+
 /// Build a `MaintenanceConfig` from the oikos layout and config settings.
 ///
 /// Called from both the maintenance subcommand and the server startup path.
@@ -526,7 +557,7 @@ pub(crate) fn build_config(
         drift_detection: DriftDetectionConfig {
             enabled: settings.drift_detection.enabled,
             instance_root: oikos.root().to_path_buf(),
-            example_root: std::path::PathBuf::from("instance.example"),
+            example_root: resolve_example_root(oikos.root()),
             alert_on_missing: settings.drift_detection.alert_on_missing,
             ignore_patterns: settings.drift_detection.ignore_patterns.clone(),
             optional_patterns: settings.drift_detection.optional_patterns.clone(),
@@ -693,12 +724,33 @@ struct MaintenanceStatusOutput {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::BTreeSet;
+    use std::sync::{LazyLock, Mutex};
 
     use oikonomos::maintenance::{maintenance_task_by_id, manual_maintenance_task_ids};
+    use taxis::config::AletheiaConfig;
 
     use super::*;
+
+    static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    // WHY: the cwd-resolution test changes process cwd; restore it on drop so
+    // that change cannot leak into later tests.
+    struct CwdGuard(PathBuf);
+
+    impl CwdGuard {
+        fn save() -> Self {
+            Self(std::env::current_dir().expect("current dir"))
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.0).expect("restore cwd");
+        }
+    }
 
     #[test]
     fn all_expansion_comes_from_registry_manual_tasks() {
@@ -833,6 +885,30 @@ mod tests {
             legacy.id(),
             "instance-backup",
             "legacy alias must point to instance-backup"
+        );
+    }
+
+    #[test]
+    fn build_config_resolves_example_root_sibling_even_from_unrelated_cwd() {
+        let _cwd_lock = CWD_LOCK.lock().expect("lock cwd mutation");
+        let _guard = CwdGuard::save();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        let sibling_example = tmp.path().join("instance.example");
+        std::fs::create_dir_all(&instance_root).expect("mkdir instance");
+        std::fs::create_dir_all(&sibling_example).expect("mkdir sibling example");
+
+        let unrelated = tmp.path().join("unrelated");
+        std::fs::create_dir_all(&unrelated).expect("mkdir unrelated");
+        std::env::set_current_dir(&unrelated).expect("set cwd");
+
+        let oikos = Oikos::from_root(&instance_root);
+        let config = AletheiaConfig::default();
+        let maint = build_config(&oikos, &config.maintenance, &config.prompt_audit);
+
+        assert_eq!(
+            maint.drift_detection.example_root, sibling_example,
+            "drift template should resolve to sibling instance.example, not cwd"
         );
     }
 }

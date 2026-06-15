@@ -219,7 +219,12 @@ customize:
 EnvironmentFile=-%h/aletheia/instance/config/env
 ExecStart=/usr/bin/env %h/.local/bin/aletheia -r %h/aletheia/instance
 ReadWritePaths=%h/aletheia/instance
+WorkingDirectory=%h/aletheia
 ```
+
+Drift detection resolves the sibling `instance.example` template from the
+configured instance root. If the template is unavailable, the drift-detection
+task reports degraded/failed rather than clean.
 
 The environment file is owned by the instance. Start from the checked-in
 template when you need process-manager environment variables:

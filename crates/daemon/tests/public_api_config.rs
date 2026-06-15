@@ -301,6 +301,26 @@ fn maintenance_report_serde_roundtrips_through_json() {
     assert_eq!(back.detail, original.detail);
 }
 
+#[test]
+fn drift_report_exposes_template_root_and_availability() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let example_root = tmp.path().join("missing-template");
+    let config = DriftDetectionConfig {
+        enabled: true,
+        instance_root: tmp.path().join("instance"),
+        example_root: example_root.clone(),
+        alert_on_missing: true,
+        ignore_patterns: Vec::new(),
+        optional_patterns: Vec::new(),
+    };
+
+    let report = DriftDetector::new(config).check().expect("check succeeds");
+
+    assert!(!report.template_available);
+    assert_eq!(report.template_root, example_root);
+    assert!(report.checked_at.is_some());
+}
+
 // ── DaemonConfig TOML round-trip, SelfPromptConfig JSON round-trip ──
 
 #[test]

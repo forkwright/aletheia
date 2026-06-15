@@ -335,11 +335,28 @@ pub(crate) async fn execute_builtin_with_behavior(
                 context: "drift detection",
             })??;
 
+            let template_display = report.template_root.display();
+
+            if !report.template_available {
+                tracing::warn!(
+                    template_path = %template_display,
+                    "maintenance: drift detection template unavailable"
+                );
+                return Ok(ExecutionResult {
+                    success: false,
+                    errors: 0,
+                    output: Some(format!(
+                        "drift detection template unavailable: {template_display}"
+                    )),
+                });
+            }
+
             tracing::info!(
                 missing = report.missing_files.len(),
                 optional_missing = report.optional_missing_files.len(),
                 extra = report.extra_files.len(),
                 permission_issues = report.permission_issues.len(),
+                template_path = %template_display,
                 "maintenance: drift detection complete"
             );
 
@@ -377,10 +394,11 @@ pub(crate) async fn execute_builtin_with_behavior(
                 success: true,
                 errors: 0,
                 output: Some(format!(
-                    "{} missing, {} optional missing, {} extra",
+                    "{} missing, {} optional missing, {} extra (template: {})",
                     report.missing_files.len(),
                     report.optional_missing_files.len(),
-                    report.extra_files.len()
+                    report.extra_files.len(),
+                    template_display,
                 )),
             })
         }
@@ -469,7 +487,7 @@ pub(crate) async fn execute_builtin_with_behavior(
                 )
             };
             Ok(ExecutionResult {
-success: outcome.last_persist_error.is_none(),
+                success: outcome.last_persist_error.is_none(),
                 errors: 0,
                 output: Some(output),
             })

@@ -119,7 +119,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
             credential_check,
             storage_check,
             embedding_check,
-nous_poller_check,
+            nous_poller_check,
             prosoche_check,
         ]
     })
@@ -934,7 +934,7 @@ mod tests {
     }
 
     #[test]
-fn nous_health_poller_passes_when_running_and_no_error() {
+    fn nous_health_poller_passes_when_running_and_no_error() {
         let check = check_nous_health_poller(true, 0, None);
         assert_eq!(check.name, "nous_health_poller");
         assert_eq!(check.status, "pass");

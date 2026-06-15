@@ -466,6 +466,9 @@ The template sets
 `EnvironmentFile` from `%h/aletheia/instance/config/env` (silently ignored if absent).
 `ReadWritePaths=%h/aletheia/instance` grants write access to the instance under
 `ProtectSystem=strict`; update it when you change the instance root.
+Drift detection resolves the sibling `instance.example` template from the
+configured instance root; if the template is unavailable, the task reports
+degraded/failed rather than clean.
 If your API key is stored in `instance/config/credentials/anthropic.json` (written by
 `aletheia init`), no extra environment setup is needed.
 
@@ -512,6 +515,10 @@ aletheia maintenance run drift-detection        # check instance structure
 aletheia maintenance run db-monitor             # check database sizes
 aletheia maintenance run all                    # run everything
 ```
+
+Drift detection compares the live instance root against the sibling
+`instance.example` template. If the template directory is unavailable, the task
+reports degraded/failed rather than clean.
 
 ---
 
