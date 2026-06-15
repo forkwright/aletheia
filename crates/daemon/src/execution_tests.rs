@@ -535,6 +535,30 @@ async fn self_audit_no_bridge_runs_prosoche_runner() {
 }
 
 #[tokio::test]
+async fn self_audit_persist_failure_returns_unsuccessful_result() {
+    let file = tempfile::NamedTempFile::new().expect("tempfile");
+    let maintenance = crate::maintenance::MaintenanceConfig {
+        prosoche_audit_dir: file.path().to_path_buf(),
+        ..crate::maintenance::MaintenanceConfig::default()
+    };
+    let result = execute_builtin(
+        &BuiltinTask::SelfAudit,
+        "test-nous",
+        None,
+        Some(&maintenance),
+        None,
+        None,
+    )
+    .await
+    .expect("should compute report even when persistence fails");
+
+    assert!(!result.success);
+    let output = result.output.as_deref().unwrap_or_default();
+    assert!(output.contains("report computed but not persisted"));
+    assert!(output.contains("persist error"));
+}
+
+#[tokio::test]
 async fn self_audit_with_bridge_runs_local_runner() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let maintenance = crate::maintenance::MaintenanceConfig {

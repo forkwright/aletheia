@@ -81,10 +81,19 @@ impl TaskRunner {
                 let duration = in_flight.started_at.elapsed();
 
                 match in_flight.handle.await {
-                    Ok(Ok(result)) => {
+                    Ok(Ok(result)) if result.success => {
                         self.log_result(&task_id, &result);
                         self.maybe_queue_self_prompt(&task_id, &result);
                         self.record_task_completion(&task_id, duration, result.errors);
+                    }
+                    Ok(Ok(result)) => {
+                        self.log_result(&task_id, &result);
+                        let reason = result
+                            .output
+                            .as_deref()
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or("task returned success=false");
+                        self.record_task_failure(&task_id, reason);
                     }
                     Ok(Err(e)) => {
                         tracing::warn!(

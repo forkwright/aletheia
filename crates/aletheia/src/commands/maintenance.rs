@@ -16,7 +16,7 @@ use oikonomos::maintenance::{
     ProposeRulesConfig, TraceRotationConfig, TraceRotator, maintenance_task_by_id,
     maintenance_task_registry, manual_maintenance_task_ids, manual_maintenance_tasks,
 };
-use oikonomos::prosoche_audit::{ProsocheAuditRunner, ProsocheState};
+use oikonomos::prosoche_audit::{ProsocheAuditOutcome, ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
 use oikonomos::schedule::TaskStatus;
 use taxis::loader::load_config;
@@ -381,12 +381,33 @@ async fn run_prosoche_self_audit(maint: &MaintenanceConfig) {
         checked_at: jiff::Timestamp::now().to_string(),
         ..ProsocheState::default()
     };
-    let report = runner.run_audit(&state).await;
+    let outcome = runner.run_audit(&state).await;
+    let ProsocheAuditOutcome {
+        report,
+        persisted_path,
+        last_persist_error,
+    } = outcome;
     println!(
         "prosoche-self-audit: {} findings across {} checks",
         report.findings.len(),
         report.check_summary.len()
     );
+    match (persisted_path, last_persist_error) {
+        (Some(path), _) => {
+            println!(
+                "prosoche-self-audit: report persisted to {}",
+                path.display()
+            );
+        }
+        (None, Some(err)) => {
+            println!("prosoche-self-audit: warning - report computed but not persisted: {err}");
+        }
+        (None, None) => {
+            println!(
+                "prosoche-self-audit: warning - report computed but persistence status is unknown"
+            );
+        }
+    }
 }
 
 #[cfg(feature = "recall")]

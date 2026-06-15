@@ -462,6 +462,14 @@ async fn audit_runner_persists_report_to_disk() {
     let back: AuditReport = serde_json::from_str(&content).expect("deserialise report");
     assert_eq!(back.nous_id, report.nous_id);
     assert_eq!(back.audited_at, report.audited_at);
+    assert!(
+        report.persisted_path.is_some(),
+        "persisted_path should be set on success"
+    );
+    assert!(
+        report.last_persist_error.is_none(),
+        "last_persist_error should be None on success"
+    );
 }
 
 #[tokio::test]
@@ -471,7 +479,7 @@ async fn audit_report_serde_round_trip() {
     let state = make_state("serde-test-nous");
     let report = runner.run_audit(&state).await;
 
-    let json = serde_json::to_string_pretty(&report).expect("serialize");
+    let json = serde_json::to_string_pretty(&report.report).expect("serialize");
     let back: AuditReport = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back.nous_id, report.nous_id);
     assert_eq!(back.findings.len(), report.findings.len());
@@ -485,7 +493,7 @@ async fn report_provenance_records_check_versions_and_hashes() {
     let state = make_state("provenance-nous");
     let report = runner.run_audit(&state).await;
 
-    let provenance = report.provenance.expect("provenance envelope");
+    let provenance = report.provenance.as_ref().expect("provenance envelope");
     assert_eq!(provenance.report_version, "1.1.0");
     assert_eq!(provenance.checks.len(), 5);
     assert!(provenance.source_query_hash.starts_with("sha256:"));
@@ -537,7 +545,7 @@ async fn persisted_report_does_not_copy_fact_or_session_content() {
     }];
 
     let report = runner.run_audit(&state).await;
-    let json = serde_json::to_string_pretty(&report).expect("serialize report");
+    let json = serde_json::to_string_pretty(&report.report).expect("serialize report");
 
     assert!(!json.contains("SECRET-PSYCHE-CONTENT"));
     assert!(!json.contains("VERY-SENSITIVE-SESSION-TURN"));
@@ -572,7 +580,7 @@ async fn check_failures_are_recorded_in_provenance() {
     let state = make_state("failure-nous");
 
     let report = runner.run_audit(&state).await;
-    let provenance = report.provenance.expect("provenance envelope");
+    let provenance = report.provenance.as_ref().expect("provenance envelope");
     assert_eq!(provenance.check_failures.len(), 1);
     let failure = provenance
         .check_failures
@@ -582,4 +590,27 @@ async fn check_failures_are_recorded_in_provenance() {
     assert_eq!(failure.kind, ProsocheCheckKind::Consistency);
     assert!(failure.reason.contains("panic"));
     assert_eq!(summary.findings_count, 0);
+}
+
+#[tokio::test]
+async fn audit_runner_reports_persist_error_for_unwritable_storage() {
+    let file = tempfile::NamedTempFile::new().expect("create tempfile");
+    let runner = ProsocheAuditRunner::default_checks(file.path());
+
+    let mut state = make_state("persist-error-nous");
+    state.sessions = vec![session("s-001", 6, 4, true)];
+
+    let outcome = runner.run_audit(&state).await;
+
+    assert_eq!(outcome.report.nous_id, "persist-error-nous");
+    assert_eq!(outcome.report.check_summary.len(), 5);
+
+    assert!(
+        outcome.persisted_path.is_none(),
+        "no path should be reported when persistence fails"
+    );
+    let err = outcome
+        .last_persist_error
+        .expect("last_persist_error should be set");
+    assert!(!err.is_empty(), "error message should not be empty");
 }

@@ -449,15 +449,29 @@ pub(crate) async fn execute_builtin_with_behavior(
                 .map_or_else(default_prosoche_audit_dir, |m| m.prosoche_audit_dir.clone());
             let runner = ProsocheAuditRunner::default_checks(&audit_dir);
             let state = build_prosoche_audit_state(nous_id);
-            let report = runner.run_audit(&state).await;
+            let outcome = runner.run_audit(&state).await;
+            let output = if let Some(err) = outcome.last_persist_error.as_deref() {
+                format!(
+                    "prosoche self-audit report computed but not persisted: {} findings across {} checks; persist error: {err}",
+                    outcome.findings.len(),
+                    outcome.check_summary.len()
+                )
+            } else {
+                let persisted = outcome
+                    .persisted_path
+                    .as_ref()
+                    .map(|path| format!("; report persisted to {}", path.display()))
+                    .unwrap_or_default();
+                format!(
+                    "prosoche self-audit complete: {} findings across {} checks{persisted}",
+                    outcome.findings.len(),
+                    outcome.check_summary.len()
+                )
+            };
             Ok(ExecutionResult {
-                success: true,
+success: outcome.last_persist_error.is_none(),
                 errors: 0,
-                output: Some(format!(
-                    "prosoche self-audit complete: {} findings across {} checks",
-                    report.findings.len(),
-                    report.check_summary.len()
-                )),
+                output: Some(output),
             })
         }
         BuiltinTask::ProbeAudit => execute_probe_audit(nous_id, bridge, cancel.clone()).await,
