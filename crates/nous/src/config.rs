@@ -400,11 +400,7 @@ fn resolve_consecutive_mistake_limit(raw: Option<&str>) -> u32 {
 }
 
 fn default_consecutive_mistake_limit() -> u32 {
-    resolve_consecutive_mistake_limit(
-        std::env::var(CONSECUTIVE_MISTAKE_LIMIT_ENV)
-            .ok()
-            .as_deref(),
-    )
+    resolve_consecutive_mistake_limit(std::env::var(CONSECUTIVE_MISTAKE_LIMIT_ENV).ok().as_deref())
 }
 
 impl Default for NousConfig {
