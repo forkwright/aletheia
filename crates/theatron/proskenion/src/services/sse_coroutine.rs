@@ -42,9 +42,7 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
     let base_url = config.server_url.trim_end_matches('/').to_string();
     let cancel = CancellationToken::new();
 
-    // WHY: Build the HTTP client from the shared authenticated client helper
-    // so auth headers are included in the SSE request.
-    let client = crate::api::client::authenticated_client(config);
+    let client = crate::api::client::authenticated_streaming_client(config);
 
     spawn(async move {
         let mut sse = SseConnection::connect(client, &base_url, cancel);

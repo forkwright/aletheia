@@ -98,7 +98,7 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
     );
 
     app.restore_sse(Some(crate::api::sse::SseConnection::connect(
-        app.client.raw_client().clone(),
+        app.client.streaming_client().clone(),
         &app.config.url,
     )));
 

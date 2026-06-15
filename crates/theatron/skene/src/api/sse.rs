@@ -33,7 +33,7 @@ pub struct SseConnection {
 }
 
 impl SseConnection {
-    /// Connect using the shared HTTP client from `ApiClient::raw_client()`.
+    /// Connect using the streaming HTTP client from `ApiClient::streaming_client()`.
     /// Auth headers are already embedded in the client. `Accept: text/event-stream`
     /// is set per-request to override the client-level `Accept: application/json` default.
     #[tracing::instrument(skip_all)]

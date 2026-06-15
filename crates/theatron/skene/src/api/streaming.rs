@@ -27,7 +27,7 @@ const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 /// Streams a turn response from POST /api/v1/sessions/stream.
 /// Returns a channel that yields parsed `StreamEvent`s.
 ///
-/// `client` must be the shared instance from `ApiClient::raw_client()`: auth headers
+/// `client` must be the streaming instance from `ApiClient::streaming_client()`: auth headers
 /// are already embedded. `Accept: text/event-stream` is set per-request to override
 /// the client-level `Accept: application/json` default.
 #[tracing::instrument(skip_all)]
@@ -375,7 +375,7 @@ mod tests {
     use std::net::TcpListener;
     use std::time::Duration;
 
-    use crate::api::client::build_http_client;
+    use crate::api::client::build_streaming_client;
 
     use super::*;
 
@@ -476,7 +476,7 @@ mod tests {
             "data: {\"type\":\"message_complete\",\"outcome\":{\"text\":\"\",\"nous_id\":\"syn\",\"session_id\":\"s1\",\"model\":\"mock\",\"tool_calls\":0,\"input_tokens\":7,\"output_tokens\":3,\"cache_read_tokens\":2,\"cache_write_tokens\":1,\"stop_reason\":\"error\",\"error\":\"provider unavailable\"}}\n\n",
         );
         let (base_url, server) = serve_sse_once(body);
-        let client = build_http_client(None).expect("build test client");
+        let client = build_streaming_client(None).expect("build streaming test client");
         let mut rx = stream_message(client, &base_url, "syn", "main", "hello");
         let mut events = Vec::new();
 
