@@ -7114,7 +7114,6 @@ name = "poiesis-intake"
 version = "0.31.1"
 dependencies = [
  "aletheia-lexica",
- "poiesis-scaffold",
  "serde",
  "serde_json",
  "snafu",
