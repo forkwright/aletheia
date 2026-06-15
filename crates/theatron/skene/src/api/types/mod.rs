@@ -298,6 +298,11 @@ pub enum SseEvent {
     },
     /// Server heartbeat.
     Ping,
+    /// Server reports the client fell behind and events were dropped.
+    StreamLagged {
+        /// Number of events dropped by the server due to client lag.
+        dropped: u64,
+    },
     /// Error event from the server.
     Error {
         /// Error message.

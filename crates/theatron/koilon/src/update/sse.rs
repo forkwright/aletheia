@@ -221,6 +221,19 @@ pub(crate) fn handle_sse_distill_stage(app: &mut App, nous_id: NousId, stage: St
     }
 }
 
+#[tracing::instrument(skip_all, fields(dropped))]
+pub(crate) async fn handle_sse_stream_lagged(app: &mut App, dropped: u64) {
+    app.connection.sse_last_event_at = Some(std::time::Instant::now());
+    app.viewport.error_toast = Some(ErrorToast::new(format!(
+        "Stream lagged; {dropped} events dropped - resyncing..."
+    )));
+    // WHY: the server explicitly told us we missed events; refresh the focused
+    // session so the UI does not stay stale relative to the recovered stream.
+    if !app.connection.is_stream_busy() {
+        app.load_focused_session().await;
+    }
+}
+
 #[tracing::instrument(skip_all, fields(%nous_id))]
 pub(crate) async fn handle_sse_distill_after(app: &mut App, nous_id: NousId) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {

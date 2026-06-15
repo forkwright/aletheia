@@ -163,6 +163,9 @@ pub enum Msg {
     SseDistillAfter {
         nous_id: NousId,
     },
+    SseStreamLagged {
+        dropped: u64,
+    },
 
     StreamTurnStart {
         #[expect(dead_code, reason = "planned TUI feature")]

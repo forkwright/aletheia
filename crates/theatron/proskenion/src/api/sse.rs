@@ -351,11 +351,23 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
         }),
         "ping" => Some(SseEvent::Ping),
+        "stream_lagged" => stream_lagged_event(&json),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
             None
         }
     }
+}
+
+fn stream_lagged_event(json: &serde_json::Value) -> Option<SseEvent> {
+    let dropped = json
+        .get("dropped")
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| {
+            tracing::warn!("SSE stream_lagged: missing or invalid dropped");
+            None
+        })?;
+    Some(SseEvent::StreamLagged { dropped })
 }
 
 #[cfg(test)]
@@ -416,9 +428,31 @@ mod tests {
 
     #[test]
     fn parse_ping() {
-        let data = r#"{}"#;
+        let data = "{}";
         let result = parse_sse_event("ping", data);
         assert!(matches!(result, Some(SseEvent::Ping)));
+    }
+
+    #[test]
+    fn parse_stream_lagged_valid() {
+        let data = r#"{"dropped":42}"#;
+        let result = parse_sse_event("stream_lagged", data);
+        assert!(matches!(
+            result,
+            Some(SseEvent::StreamLagged { dropped: 42 })
+        ));
+    }
+
+    #[test]
+    fn parse_stream_lagged_missing_dropped_returns_none() {
+        let result = parse_sse_event("stream_lagged", "{}");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_stream_lagged_invalid_dropped_returns_none() {
+        let result = parse_sse_event("stream_lagged", r#"{"dropped":"many"}"#);
+        assert!(result.is_none());
     }
 
     #[test]
