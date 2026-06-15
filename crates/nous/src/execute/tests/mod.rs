@@ -6,6 +6,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
+use hermeneus::health::{HealthConfig, ProviderHealth};
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};

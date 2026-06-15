@@ -136,6 +136,8 @@ impl Error {
                     || msg.contains("broken pipe")
                     || msg.contains("cc process exited")
                     || msg.contains("cc subprocess")
+                    || msg.contains("is currently unavailable")
+                    || msg.contains("circuit-breaker open")
             }
             _ => false,
         }
@@ -165,6 +167,8 @@ impl koina::error_class::Classifiable for Error {
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
+                    || msg.contains("is currently unavailable")
+                    || msg.contains("circuit-breaker open")
                 {
                     ErrorClass::Transient
                 } else {
@@ -205,6 +209,8 @@ impl koina::error_class::Classifiable for Error {
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
+                    || msg.contains("is currently unavailable")
+                    || msg.contains("circuit-breaker open")
                 {
                     ErrorAction::Retry {
                         max_attempts: 3,
@@ -237,6 +243,7 @@ impl koina::error_class::Classifiable for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use koina::error_class::Classifiable;
 
     #[test]
     fn api_error_context_empty_has_empty_fields() {
@@ -350,6 +357,52 @@ mod tests {
         assert!(
             err.is_retryable(),
             "CC subprocess timeout should be retryable"
+        );
+    }
+
+    #[test]
+    fn api_request_provider_unavailable_is_transient_retry() {
+        // WHY(#5260): provider registry marks a provider Down before the turn;
+        // the resulting ApiRequest must be retryable so fallback activates.
+        let err = ApiRequestSnafu {
+            message: "provider 'primary' is currently unavailable".to_owned(),
+        }
+        .build();
+        assert!(
+            err.is_retryable(),
+            "provider unavailable should be retryable"
+        );
+        assert_eq!(
+            err.class(),
+            koina::error_class::ErrorClass::Transient,
+            "provider unavailable should classify as transient"
+        );
+        assert!(
+            matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
+            "provider unavailable should action as retry"
+        );
+    }
+
+    #[test]
+    fn api_request_circuit_breaker_open_is_transient_retry() {
+        // WHY(#5260): Anthropic/OpenAI clients emit circuit-breaker messages
+        // as generic ApiRequest errors; they must be fallback-eligible.
+        let err = ApiRequestSnafu {
+            message: "provider circuit-breaker open: too many failures".to_owned(),
+        }
+        .build();
+        assert!(
+            err.is_retryable(),
+            "circuit-breaker open should be retryable"
+        );
+        assert_eq!(
+            err.class(),
+            koina::error_class::ErrorClass::Transient,
+            "circuit-breaker open should classify as transient"
+        );
+        assert!(
+            matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
+            "circuit-breaker open should action as retry"
         );
     }
 }
