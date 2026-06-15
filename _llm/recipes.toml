@@ -55,6 +55,27 @@ success = true
 note = "Agent needed full crate list and layer map to produce flowchart."
 
 # -----------------------------------------------------------------------------
+# Recipe: in_session
+# -----------------------------------------------------------------------------
+[[recipe]]
+name = "in_session"
+description = "General in-session turn"
+use_case = "Light context for follow-up turns"
+token_budget = 1500
+parameterized = false
+task_keywords = ["in session", "follow up", "continue"]
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/L1-workspace.md"
+note = "Workspace topology reminder"
+
+[[recipe.file]]
+level = "L1"
+path = "_llm/current_state.toml"
+note = "Active threads and version state"
+
+# -----------------------------------------------------------------------------
 # Recipe: edit_crate
 # -----------------------------------------------------------------------------
 [[recipe]]

@@ -5,7 +5,8 @@
 /// Conservative estimate suitable for budget planning. Actual token counts
 /// from the Anthropic API will be lower, giving natural headroom.
 /// `chars_per_token` is configurable via `agents.defaults.chars_per_token`
-/// in `aletheia.toml`; the default of 4 preserves prior behaviour.
+/// in `aletheia.toml`; the default from `koina::defaults::CHARS_PER_TOKEN`
+/// preserves prior behaviour.
 pub struct CharEstimator {
     pub(crate) chars_per_token: u64,
 }
@@ -41,8 +42,9 @@ impl CharEstimator {
 
 impl Default for CharEstimator {
     fn default() -> Self {
-        // WHY: 4 chars per token is the classic heuristic for English text.
-        Self { chars_per_token: 4 }
+        Self {
+            chars_per_token: u64::from(koina::defaults::CHARS_PER_TOKEN),
+        }
     }
 }
 

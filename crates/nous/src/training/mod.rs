@@ -665,26 +665,37 @@ impl TrainingCapture {
     }
 
     fn screen_pii(&self, input: &CaptureInput<'_>) -> PiiScreeningResult {
+        // WHY: always run koina's lightweight secret redactor so that raw
+        // API keys, OAuth/JWT-like tokens, and password-shaped assignments
+        // never reach the training JSONL, even when the operator-toggleable
+        // full PII suite is disabled.
+        let user_message = koina::redact::redact_sensitive(input.user_message);
+        let assistant_response = koina::redact::redact_sensitive(input.assistant_response);
+        let koina_redacted_user = user_message != input.user_message;
+        let koina_redacted_assistant = assistant_response != input.assistant_response;
+
         if self.pii_filter_enabled {
-            let (user_message, user_report) = pii::redact_with_report(input.user_message);
+            let (user_message, user_report) = pii::redact_with_report(&user_message);
             let (assistant_response, assistant_report) =
-                pii::redact_with_report(input.assistant_response);
+                pii::redact_with_report(&assistant_response);
             let pii_redaction_count = user_report
                 .redaction_count
                 .saturating_add(assistant_report.redaction_count);
             PiiScreeningResult {
                 user_message,
                 assistant_response,
-                pii_redacted: pii_redaction_count > 0,
+                pii_redacted: pii_redaction_count > 0
+                    || koina_redacted_user
+                    || koina_redacted_assistant,
                 pii_filter_applied: true,
                 pii_redaction_count,
                 pii_policy_ref: Some(pii::POLICY_REF.to_owned()),
             }
         } else {
             PiiScreeningResult {
-                user_message: input.user_message.to_owned(),
-                assistant_response: input.assistant_response.to_owned(),
-                pii_redacted: false,
+                user_message,
+                assistant_response,
+                pii_redacted: koina_redacted_user || koina_redacted_assistant,
                 pii_filter_applied: false,
                 pii_redaction_count: 0,
                 pii_policy_ref: None,
@@ -861,3 +872,66 @@ pub use pii::redact as redact_pii;
 #[cfg(test)]
 #[path = "../training_tests.rs"]
 mod training_tests;
+
+#[cfg(test)]
+mod pii_filter_disabled_regression {
+    use super::*;
+
+    #[test]
+    fn raw_secret_redacted_when_full_pii_suite_disabled() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("failed to create tempdir: {e}"));
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
+            pii_filter_enabled: false,
+            author_classifier_enabled: false,
+            author_classifier_threshold: 0.85,
+        };
+        let capture = TrainingCapture::new(dir.path(), &config)
+            .unwrap_or_else(|e| panic!("TrainingCapture::new failed: {e}"));
+
+        let secret = concat!("sk-", "ant-", "api03-", "abc123def456");
+        let user_message = format!("alice at acme.corp pasted api_key={secret}");
+        let input = CaptureInput {
+            session_id: "ses-alice",
+            nous_id: "nous-test",
+            user_message: user_message.as_str(),
+            assistant_response: "bob confirmed the key was received",
+            model: "test-model",
+            tokens: 50,
+            stop_reason: CaptureStopReason::EndTurn,
+            has_tool_calls: false,
+            turn_type: None,
+            is_correction: None,
+            fact_types: None,
+            tool_outcomes: None,
+            recall_signals: None,
+            tool_surface_hashes: &[],
+        };
+
+        let screened = capture.screen_pii(&input);
+
+        assert!(
+            !screened.user_message.contains(secret),
+            "koina must redact the synthetic secret even when the full PII suite is disabled; got: {}",
+            screened.user_message
+        );
+        assert!(
+            !screened.pii_filter_applied,
+            "full PII suite must not be flagged as applied when disabled"
+        );
+        assert!(
+            screened.pii_redacted,
+            "screening must record that redaction occurred"
+        );
+        assert_eq!(
+            screened.pii_redaction_count, 0,
+            "full PII suite redaction count must remain zero when disabled"
+        );
+        assert!(
+            screened.pii_policy_ref.is_none(),
+            "full PII suite policy ref must remain unset when disabled"
+        );
+    }
+}

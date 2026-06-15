@@ -30,6 +30,7 @@ Exits 0 on success, 1 on first failure. Designed to be invoked by CI.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 import tempfile
@@ -284,6 +285,43 @@ def test_source_hash_changes_with_content(tmp: Path) -> None:
     expect(h1 != h2, "source hash did not change when content changed")
 
 
+def test_source_hash_multi_file_matches_contract(tmp: Path) -> None:
+    """Multi-file crate hash matches the path+bytes contract exactly."""
+    crate_dir = tmp / "hash-multi" / "fixture-crate"
+    (crate_dir / "src").mkdir(parents=True)
+    (crate_dir / "Cargo.toml").write_text(FIXTURE_CARGO_TOML)
+    (crate_dir / "src" / "lib.rs").write_text("pub fn a() {}\n")
+    (crate_dir / "src" / "helper.rs").write_text("pub fn b() {}\n")
+
+    actual = EXTRACTOR.hash_crate_sources(crate_dir)  # type: ignore[attr-defined]
+
+    expected = hashlib.sha256(
+        b"src/helper.rs" + b"pub fn b() {}\n" +
+        b"src/lib.rs" + b"pub fn a() {}\n"
+    ).hexdigest()
+    expect(
+        actual == expected,
+        f"multi-file source hash mismatch: {actual} vs {expected}",
+    )
+
+
+def test_source_hash_excludes_target_dir(tmp: Path) -> None:
+    """Files under a target/ directory do not contribute to the source hash."""
+    crate_dir = tmp / "hash-target" / "fixture-crate"
+    (crate_dir / "src").mkdir(parents=True)
+    (crate_dir / "target" / "debug").mkdir(parents=True)
+    (crate_dir / "Cargo.toml").write_text(FIXTURE_CARGO_TOML)
+    (crate_dir / "src" / "lib.rs").write_text("pub fn a() {}\n")
+    (crate_dir / "target" / "debug" / "build.rs").write_text("pub fn ignored() {}\n")
+
+    actual = EXTRACTOR.hash_crate_sources(crate_dir)  # type: ignore[attr-defined]
+    expected = hashlib.sha256(b"src/lib.rs" + b"pub fn a() {}\n").hexdigest()
+    expect(
+        actual == expected,
+        f"source hash should ignore target/ files: {actual} vs {expected}",
+    )
+
+
 def test_empty_crate_produces_no_modules(tmp: Path) -> None:
     """A crate with no pub items produces no module sections."""
     crate_root = tmp / "empty"
@@ -323,6 +361,8 @@ def main() -> int:
         test_deterministic(tmp / "det")
         test_source_hash_stable(tmp)
         test_source_hash_changes_with_content(tmp)
+        test_source_hash_multi_file_matches_contract(tmp)
+        test_source_hash_excludes_target_dir(tmp)
         test_empty_crate_produces_no_modules(tmp)
 
     if _FAILURES:

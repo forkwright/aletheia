@@ -1,12 +1,16 @@
+# UNSUPPORTED BEFORE v1.0
+# This file is an example of a planned declarative shell hook.
+# The current Aletheia runtime uses in-process turn hooks (crates/nous/src/hooks)
+# and does NOT load or execute YAML/shell hook files.
+#
 # Example: Per-agent hook - only fires for a specific agent
-# Copy to shared/hooks/ or nous/<agent-id>/hooks/ to activate
 
 name: craft-journal
 event: turn:after
 description: Append craft session notes for a specific agent's domain
 nousFilter: [my-agent]
 
-handler: ~
+handler:
   type: shell
   command: /bin/sh
   args: ["-c", "echo \"$(date -Iseconds) session={{sessionId}} tools={{toolCalls}}\" >> <nous-dir>/<agent-id>/craft-journal.log"]

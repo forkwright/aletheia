@@ -10,8 +10,8 @@ use tracing::{Instrument, info, warn};
 
 use hermeneus::provider::ProviderRegistry;
 use koina::defaults::{
-    BOOTSTRAP_MAX_TOKENS, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS, MAX_TOOL_ITERATIONS,
-    MAX_TOOL_RESULT_BYTES,
+    BOOTSTRAP_MAX_TOKENS, CHARS_PER_TOKEN, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS,
+    MAX_TOOL_ITERATIONS, MAX_TOOL_RESULT_BYTES,
 };
 use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
@@ -131,17 +131,17 @@ impl SpawnServiceImpl {
         // kanon:ignore RUST/no-silent-result-swallow — set once during initialization; duplicate calls are programmer error
         let _ = self.tool_services.set(services);
     }
-}
 
-impl SpawnService for SpawnServiceImpl {
-    // NOTE: sequential ephemeral-actor lifecycle: build config, spawn actor, run single turn,
-    // teardown. Splitting would fragment a cohesive lifecycle.
-    #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
-    fn spawn_and_run(
+    /// Build a [`NousConfig`] for an ephemeral sub-agent.
+    ///
+    /// WHY(#5555): keep config construction deterministic and testable so the
+    /// spawned `allowed_roots` can be asserted independently of the actor
+    /// lifecycle.
+    fn build_spawn_config(
         &self,
-        request: SpawnRequest,
+        request: &SpawnRequest,
         parent_nous_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
+    ) -> (String, NousConfig, String) {
         let spawn_id = format!(
             "spawn-{}-{}",
             parent_nous_id,
@@ -175,14 +175,15 @@ impl SpawnService for SpawnServiceImpl {
                 t.tool_groups.clone()
             });
 
-        let timeout = Duration::from_secs(request.timeout_secs);
-        let task = request.task.clone();
         let session_key = format!(
             "spawn:{}",
             koina::ulid::Ulid::new().to_string().to_lowercase()
         );
         let workspace = self.oikos.nous_dir(&spawn_id);
-        let allowed_roots = vec![self.oikos.root().to_path_buf()];
+        // WHY(#5555): spawned sub-agents must only access their own workspace,
+        // not the entire oikos root. `workspace` is already under the oikos root
+        // and is created before the actor starts.
+        let allowed_roots = vec![workspace.clone()];
 
         let config = NousConfig {
             id: Arc::from(spawn_id.as_str()),
@@ -196,7 +197,7 @@ impl SpawnService for SpawnServiceImpl {
                 bootstrap_max_tokens: BOOTSTRAP_MAX_TOKENS,
                 thinking_enabled: false,
                 thinking_budget: 0,
-                chars_per_token: 4,
+                chars_per_token: CHARS_PER_TOKEN,
                 prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
                     .to_owned(),
                 complexity: hermeneus::complexity::ComplexityConfig::default(),
@@ -227,6 +228,26 @@ impl SpawnService for SpawnServiceImpl {
             hooks: crate::config::HookConfig::default(),
             behavior: taxis::config::AgentBehaviorDefaults::default(),
         };
+
+        (spawn_id, config, session_key)
+    }
+}
+
+impl SpawnService for SpawnServiceImpl {
+    // NOTE: sequential ephemeral-actor lifecycle: build config, spawn actor, run single turn,
+    // teardown. Splitting would fragment a cohesive lifecycle.
+    #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
+    fn spawn_and_run(
+        &self,
+        request: SpawnRequest,
+        parent_nous_id: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
+        let (spawn_id, config, session_key) = self.build_spawn_config(&request, parent_nous_id);
+        let timeout = Duration::from_secs(request.timeout_secs);
+        let task = request.task.clone();
+        let workspace = config.workspace.clone();
+        let role = resolve_role(&request.role);
+        let template = role.map(Role::template);
 
         // WHY: ephemeral sub-agents do not capture training data — their turns
         // are internal delegation, not user-facing conversation.
@@ -269,7 +290,7 @@ impl SpawnService for SpawnServiceImpl {
 
         Box::pin(
             async move {
-                let nous_dir = oikos.nous_dir(&spawn_id);
+                let nous_dir = workspace.clone();
                 if let Err(e) = tokio::fs::create_dir_all(&nous_dir).await {
                     return Err(format!("failed to create spawn workspace: {e}"));
                 }
@@ -462,6 +483,37 @@ mod tests {
         assert_eq!(result.content, "Sub-agent result");
         assert_eq!(result.input_tokens, 200);
         assert_eq!(result.output_tokens, 80);
+    }
+
+    #[test]
+    fn spawn_allowed_roots_restricted_to_workspace() {
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+        );
+
+        assert!(
+            config.workspace.starts_with(oikos.root()),
+            "spawn workspace should be under the oikos root"
+        );
+        assert_eq!(
+            config.allowed_roots,
+            vec![config.workspace.clone()],
+            "spawned agent should only be granted its own workspace root"
+        );
+        assert!(
+            !config.allowed_roots.contains(&oikos.root().to_path_buf()),
+            "spawned agent must not inherit the entire oikos root"
+        );
     }
 
     #[tokio::test]

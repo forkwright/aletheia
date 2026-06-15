@@ -17,6 +17,7 @@ use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 use koina::event::EventEmitter;
 use koina::id::{NousId, SessionId};
+use mneme::side_query::SideQueryRanker;
 use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
 use organon::types::ToolContext;
@@ -608,6 +609,32 @@ async fn execute_timeout_without_distillation_returns_hard_timeout() {
         execute_record.status,
         StageTimingStatus::TimedOut,
         "time budget should record the execute stage as timed out"
+    );
+}
+
+// --- ProviderRecallBridge side-query ranking tests (#5560) ---
+
+#[tokio::test(flavor = "multi_thread")]
+async fn provider_recall_bridge_bounds_rankings_to_manifest_ids() {
+    // WHY(#5560): fabricated IDs must be dropped before they can bias recall.
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new(r#"["fabricated-id", "real-id"]"#).models(&["test-model"]),
+    ));
+    let bridge = ProviderRecallBridge {
+        providers: &providers,
+        model: "test-model",
+    };
+
+    let manifest_text = "- real-id Project conventions\n- other-id Another entry\n";
+    let result = bridge
+        .rank_memories("query", manifest_text, 5)
+        .expect("rank_memories should succeed");
+
+    assert_eq!(
+        result,
+        vec!["real-id"],
+        "rank_memories should only return IDs present in the manifest"
     );
 }
 

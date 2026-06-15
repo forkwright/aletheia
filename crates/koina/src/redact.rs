@@ -25,7 +25,7 @@ static_regex!(
 
 /// Redact sensitive values (API keys, JWTs, bearer tokens, passwords) from a string.
 #[must_use]
-pub(crate) fn redact_sensitive(value: &str) -> String {
+pub fn redact_sensitive(value: &str) -> String {
     let mut result = replace_sensitive(&RE_ANTHROPIC_KEY, value, "sk-ant-***");
     result = replace_sensitive(&RE_SK_KEY, &result, "sk-***");
     result = replace_sensitive(&RE_BEARER, &result, "Bearer ***");
