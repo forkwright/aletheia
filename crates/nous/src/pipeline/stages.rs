@@ -475,9 +475,11 @@ pub(super) async fn run_full_compact_stage(
     let (request, preserved) =
         crate::compact::full::build_summary_request(&ctx.messages, &compact_config, prompt);
 
+    let mut fallback_used = false;
     let summary = match compact_with_llm(config, providers, request).await {
         Ok(summary) => summary,
         Err(error) => {
+            fallback_used = true;
             warn!(
                 error = %error,
                 nous_id = %config.id,
@@ -497,7 +499,17 @@ pub(super) async fn run_full_compact_stage(
 
     ctx.messages = result.messages;
     ctx.compaction_metrics = Some(result.metrics);
-    span.record("status", "ok");
+
+    if fallback_used {
+        span.record("status", "degraded");
+        emitter.emit(&StageError {
+            nous_id: config.id.to_string(),
+            stage: "full_compact",
+            error_type: "llm_fallback".to_owned(),
+        });
+    } else {
+        span.record("status", "ok");
+    }
 
     let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);

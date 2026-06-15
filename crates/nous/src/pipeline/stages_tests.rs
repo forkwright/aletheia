@@ -185,7 +185,7 @@ async fn full_compaction_uses_llm_summary() {
         ],
         ..PipelineContext::default()
     };
-    let emitter = EventEmitter::new();
+    let (emitter, captured) = capturing_emitter();
 
     run_full_compact_stage(&config, &mut ctx, &providers, &emitter)
         .await
@@ -198,6 +198,26 @@ async fn full_compaction_uses_llm_summary() {
             .content
             .contains("llm compacted summary"),
         "full compaction should use provider summary"
+    );
+
+    let events = captured.lock().expect("metric lock");
+    assert!(
+        events.iter().any(|(name, labels)| {
+            name == "StageCompleted"
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "stage" && v == "full_compact")
+        }),
+        "happy path should emit StageCompleted for full_compact"
+    );
+    assert!(
+        !events.iter().any(|(name, labels)| {
+            name == "StageError"
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "stage" && v == "full_compact")
+        }),
+        "happy path should not emit StageError for full_compact"
     );
 }
 
@@ -216,7 +236,7 @@ async fn full_compaction_falls_back_when_llm_unavailable() {
         }],
         ..PipelineContext::default()
     };
-    let emitter = EventEmitter::new();
+    let (emitter, captured) = capturing_emitter();
 
     run_full_compact_stage(&config, &mut ctx, &providers, &emitter)
         .await
@@ -229,6 +249,29 @@ async fn full_compaction_falls_back_when_llm_unavailable() {
             .content
             .contains("Previous conversation context:"),
         "fallback should use structural summary"
+    );
+
+    let events = captured.lock().expect("metric lock");
+    assert!(
+        events.iter().any(|(name, labels)| {
+            name == "StageError"
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "stage" && v == "full_compact")
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "error_type" && v == "llm_fallback")
+        }),
+        "fallback should emit StageError {{ stage: full_compact, error_type: llm_fallback }}"
+    );
+    assert!(
+        events.iter().any(|(name, labels)| {
+            name == "StageCompleted"
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "stage" && v == "full_compact")
+        }),
+        "fallback should still emit StageCompleted for full_compact"
     );
 }
 
