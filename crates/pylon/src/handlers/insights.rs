@@ -160,15 +160,16 @@ pub async fn get_agent_perf_one(
     responses(
         (status = 200, description = "Quality metrics", body = QualityMetricsResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 500, description = "Storage or task failure", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn get_quality_metrics(
     State(state): State<InsightsState>,
     _claims: Claims,
-) -> Json<QualityMetricsResponse> {
+) -> Result<Json<QualityMetricsResponse>, ApiError> {
     let state_clone = state.clone();
-    let (sessions, messages) = tokio::task::spawn_blocking(move || {
+    let inner = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
         let sessions = store.list_sessions(None).map_err(ApiError::from)?;
 
@@ -183,17 +184,12 @@ pub async fn get_quality_metrics(
         }
         Ok::<_, ApiError>((sessions, messages))
     })
-    .await
-    .unwrap_or_else(|e| {
-        Err(InternalSnafu {
-            message: format!("task join failed: {e}"),
-        }
-        .build())
-    })
-    .unwrap_or_else(|_| (Vec::new(), Vec::new()));
+    .await;
+
+    let (sessions, messages) = inner??;
 
     let series = compute_quality_series(&sessions, &messages);
-    Json(QualityMetricsResponse { series })
+    Ok(Json(QualityMetricsResponse { series }))
 }
 
 /// Granularity values accepted by the metrics endpoints.

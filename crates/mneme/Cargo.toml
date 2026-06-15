@@ -26,7 +26,7 @@ gliner = ["episteme/gliner"]
 # Optional NuExtract bookkeeping provider support from episteme.
 nuextract = ["episteme/nuextract"]
 # Gates MockEmbeddingProvider and other test helpers. No test code in release binaries.
-test-support = ["episteme/test-support"]
+test-support = ["episteme/test-support", "graphe/test-support"]
 embed-candle = ["episteme/embed-candle"]
 # Passthrough for the network-dependent candle tests (see episteme #3683).
 online-tests = ["episteme/online-tests"]

@@ -600,6 +600,28 @@ impl SessionStore {
         Ok(sessions)
     }
 
+    /// Test-only helper to inject malformed bytes under a non-index session key.
+    ///
+    /// Writing raw bytes that are not valid JSON for a session record causes
+    /// [`SessionStore::list_sessions`] to surface a
+    /// [`StoredJson`](crate::error::Error::StoredJson) error, which lets callers
+    /// exercise failure paths without relying on a genuine storage fault.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn inject_test_session_bytes(&self, id: &str, bytes: &[u8]) -> Result<()> {
+        let sessions = self.partition("sessions")?;
+        let mut tx = self.db.write_tx();
+        tx.insert(&sessions, id, bytes);
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall inject_test_session_bytes commit: {e}"),
+            }
+            .build()
+        })?;
+        self.ensure_durable()?;
+        Ok(())
+    }
+
     /// Update session status.
     #[instrument(skip(self))]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {

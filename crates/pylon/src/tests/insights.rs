@@ -58,6 +58,26 @@ async fn get_quality_metrics_returns_ok() {
 }
 
 #[tokio::test]
+async fn get_quality_metrics_returns_500_when_list_sessions_fails() {
+    let (state, _dir) = test_state().await;
+    {
+        let store = state.session_store.lock().await;
+        store
+            .inject_test_session_bytes("corrupt:test-session", b"not valid json")
+            .expect("inject malformed session bytes");
+    }
+
+    let app = build_router(state, &test_security_config());
+    let resp = app
+        .oneshot(authed_get("/api/v1/metrics/quality"))
+        .await
+        .unwrap();
+
+    assert!(!resp.status().is_success());
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
 async fn get_journal_returns_empty_when_no_store() {
     let (app, _dir) = app().await;
     let resp = app.oneshot(authed_get("/api/v1/journal")).await.unwrap();
