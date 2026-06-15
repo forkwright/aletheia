@@ -1,79 +1,10 @@
 //! Tests for `DistillEngine` prompt building and section headings.
 //! Tests for `DistillEngine` behavior.
 #![expect(clippy::expect_used, clippy::unwrap_used, reason = "test assertions")]
-#[cfg(test)]
-use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{Content, ContentBlock, Message, Role, ToolResultContent};
 
+use super::{FULL_SUMMARY, default_engine, n_messages, summary_provider, text_msg};
 use crate::distill::{DistillConfig, DistillEngine, DistillSection};
-use crate::flush::{FlushItem, FlushSource};
-
-fn summary_provider(text: &str) -> MockProvider {
-    MockProvider::new(text)
-        .models(&["claude-sonnet-4-20250514"])
-        .named("mock-roundtrip")
-}
-
-fn text_msg(role: Role, text: &str) -> Message {
-    Message {
-        role,
-        content: Content::Text(text.to_owned()),
-        cache_breakpoint: false,
-    }
-}
-
-fn default_engine() -> DistillEngine {
-    DistillEngine::new(DistillConfig::default())
-}
-
-fn n_messages(n: usize) -> Vec<Message> {
-    (0..n)
-        .map(|i| {
-            text_msg(
-                if i % 2 == 0 {
-                    Role::User
-                } else {
-                    Role::Assistant
-                },
-                &format!("Message {i} with content for token estimation."),
-            )
-        })
-        .collect()
-}
-
-#[expect(dead_code, reason = "test helper available for future roundtrip tests")]
-fn sample_flush_item(content: &str, source: FlushSource) -> FlushItem {
-    FlushItem {
-        content: content.to_owned(),
-        timestamp: "2026-03-09T12:00:00Z".to_owned(),
-        source,
-    }
-}
-
-const FULL_SUMMARY: &str = "\
-## Summary
-Fixed login bug and added tool-based database schema update.
-
-## Task Context
-Working on auth module bug fix for nous agent \"syn\".
-
-## Completed Work
-- Fixed null check on line 42 of src/auth/login.rs
-- Ran database schema update tool: migrate_db({\"version\": \"v2\"})
-- Added regression test for login flow
-
-## Key Decisions
-- Decision: Add null check rather than restructure auth flow. Reason: Minimal invasive fix.
-- Decision: Use v2 schema for schema update. Reason: Backwards compatible.
-
-## Current State
-Bug is fixed, schema applied, all tests passing.
-
-## Open Threads
-- Performance audit of login endpoint deferred to next sprint
-
-## Corrections
-- CORRECTION: Initially looked at wrong file (session.rs), actually the bug was in login.rs";
 
 #[test]
 fn build_prompt_when_distillation_model_set_uses_it() {
