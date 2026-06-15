@@ -6,6 +6,12 @@
 // Types shared with the interactive path (nous) live in the `aletheia-routing`
 // crate; this module re-exports them under the original paths.
 
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+
+use aletheia_routing::types::RequestFeatures;
+
 /// After-action record read-side aggregation and rolling statistics.
 ///
 /// Thin wrapper — the implementation lives in `aletheia-routing::store` so it
@@ -40,6 +46,9 @@ pub(crate) mod affinity;
 
 pub(crate) use aletheia_routing::types::{ProviderId, TaskCategory};
 
+pub(crate) const DEFAULT_PROVIDER_ID: &str = "claude";
+const SECS_PER_DAY: u64 = 24 * 60 * 60;
+
 /// Static provider router: always returns the configured default provider.
 ///
 /// Used as the fallback when the empirical router lacks sufficient data or is
@@ -52,7 +61,6 @@ pub(crate) struct StaticRouter {
 
 impl StaticRouter {
     /// Create a static router with the given default provider.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn new(default_provider: ProviderId) -> Self {
         Self { default_provider }
     }
@@ -80,7 +88,6 @@ pub(crate) enum RoutingMode {
 /// Operator-facing routing configuration for the dispatch engine.
 ///
 /// Placed under `[dispatch.routing]` in the instance `taxis` config.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
@@ -95,8 +102,13 @@ pub(crate) struct DispatchRoutingConfig {
     /// Minimum confidence gap (`winner_rate` - `loser_rate`) required before
     /// switching away from the static provider. Defaults to 0.1 (10 pp).
     pub(crate) confidence_threshold: f64,
+    /// Minimum affinity-score gap required before overriding the empirical
+    /// selection. Defaults to 0.15.
+    pub(crate) affinity_threshold: f64,
     /// Default provider ID returned by the static fallback.
     pub(crate) default_provider: String,
+    /// Candidate provider/model IDs eligible for empirical routing.
+    pub(crate) candidate_providers: Vec<String>,
 }
 
 impl Default for DispatchRoutingConfig {
@@ -106,8 +118,92 @@ impl Default for DispatchRoutingConfig {
             min_samples: 5,
             window_days: 7,
             confidence_threshold: 0.1,
-            default_provider: "claude".to_owned(),
+            affinity_threshold: 0.15,
+            default_provider: DEFAULT_PROVIDER_ID.to_owned(),
+            candidate_providers: Vec::new(),
         }
+    }
+}
+
+impl DispatchRoutingConfig {
+    pub(crate) async fn model_for_prompt(
+        &self,
+        prompt_text: &str,
+        after_action_log_dir: Option<&Path>,
+    ) -> Option<String> {
+        let category = TaskCategory::from_prompt(prompt_text);
+        let provider = match self.mode {
+            RoutingMode::Static => {
+                let router = StaticRouter::new(ProviderId::new(self.default_provider.as_str()));
+                router.pick(category).clone()
+            }
+            RoutingMode::Empirical => {
+                self.empirical_model_for_prompt(prompt_text, category, after_action_log_dir)
+                    .await
+            }
+        };
+
+        if provider.0.as_ref() == DEFAULT_PROVIDER_ID {
+            None
+        } else {
+            Some(provider.to_string())
+        }
+    }
+
+    async fn empirical_model_for_prompt(
+        &self,
+        prompt_text: &str,
+        category: TaskCategory,
+        after_action_log_dir: Option<&Path>,
+    ) -> ProviderId {
+        let window = self.window();
+        let store = Arc::new(match after_action_log_dir {
+            Some(dir) => {
+                let store = store::AfterActionStore::new_with_window(dir.to_owned(), window);
+                if let Err(error) = store.refresh_window(window).await {
+                    tracing::warn!(
+                        error = %error,
+                        "failed to refresh after-action store for dispatch routing"
+                    );
+                }
+                store
+            }
+            None => store::AfterActionStore::in_memory(),
+        });
+
+        let fallback = StaticRouter::new(ProviderId::new(self.default_provider.as_str()));
+        let empirical = empirical::EmpiricalRouter::new(
+            Arc::clone(&store),
+            fallback,
+            u64::try_from(self.min_samples).unwrap_or(u64::MAX),
+            window,
+            self.confidence_threshold,
+        );
+        let persona = persona::PersonaRouter::new(empirical);
+        let affinity =
+            affinity::AffinityRouter::new(persona, store, window, self.affinity_threshold);
+        let features = RequestFeatures::new(
+            self.candidates(),
+            Some(category),
+            Some(Arc::<str>::from(prompt_text)),
+        );
+
+        let decision = affinity.route_with_affinity(&features, None).await;
+        ProviderId::new(decision.base.provider)
+    }
+
+    fn candidates(&self) -> Vec<ProviderId> {
+        let mut providers = vec![ProviderId::new(self.default_provider.as_str())];
+        for provider in &self.candidate_providers {
+            if provider != &self.default_provider {
+                providers.push(ProviderId::new(provider.as_str()));
+            }
+        }
+        providers
+    }
+
+    fn window(&self) -> Duration {
+        Duration::from_secs(self.window_days.saturating_mul(SECS_PER_DAY))
     }
 }
 
@@ -175,9 +271,9 @@ mod tests {
 
     #[test]
     fn static_router_always_returns_default() {
-        let router = StaticRouter::new(ProviderId::new("claude"));
-        assert_eq!(&*router.pick(TaskCategory::Bug).0, "claude");
-        assert_eq!(&*router.pick(TaskCategory::Refactor).0, "claude");
+        let router = StaticRouter::new(ProviderId::new(DEFAULT_PROVIDER_ID));
+        assert_eq!(&*router.pick(TaskCategory::Bug).0, DEFAULT_PROVIDER_ID);
+        assert_eq!(&*router.pick(TaskCategory::Refactor).0, DEFAULT_PROVIDER_ID);
     }
 
     #[test]
@@ -193,7 +289,9 @@ mod tests {
         assert_eq!(cfg.min_samples, 5);
         assert_eq!(cfg.window_days, 7);
         assert!((cfg.confidence_threshold - 0.1).abs() < f64::EPSILON);
-        assert_eq!(cfg.default_provider, "claude");
+        assert!((cfg.affinity_threshold - 0.15).abs() < f64::EPSILON);
+        assert_eq!(cfg.default_provider, DEFAULT_PROVIDER_ID);
+        assert!(cfg.candidate_providers.is_empty());
     }
 
     #[test]

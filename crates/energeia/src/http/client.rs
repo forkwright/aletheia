@@ -36,7 +36,7 @@ impl HttpEngine {
     pub fn new(default_model: impl Into<String>) -> Self {
         Self {
             default_model: default_model.into(),
-            binary: "claude".to_owned(),
+            binary: crate::CLI_BINARY.to_owned(),
         }
     }
 
