@@ -21,6 +21,7 @@ impl DaemonBridge for NoopBridge {
             tracing::warn!("no daemon bridge configured — prompt not sent");
             Ok(ExecutionResult {
                 success: false,
+                errors: 0,
                 output: Some("no bridge configured".to_owned()),
             })
         })

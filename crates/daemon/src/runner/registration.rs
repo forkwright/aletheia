@@ -89,6 +89,7 @@ impl TaskRunner {
             consecutive_failures: 0,
             backoff_until: None,
             last_error: None,
+            last_errors: 0,
         });
     }
 }

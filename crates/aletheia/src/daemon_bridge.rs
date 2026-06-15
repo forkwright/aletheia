@@ -47,6 +47,7 @@ impl DaemonBridge for NousDaemonBridge {
                 tracing::warn!(nous_id = %nous_id, "daemon bridge: nous actor not found");
                 return Ok(ExecutionResult {
                     success: false,
+                    errors: 0,
                     output: Some(format!("nous actor {nous_id} not found")),
                 });
             };
@@ -68,6 +69,7 @@ impl DaemonBridge for NousDaemonBridge {
                     );
                     Ok(ExecutionResult {
                         success: true,
+                        errors: 0,
                         output: Some(result.content),
                     })
                 }
@@ -79,6 +81,7 @@ impl DaemonBridge for NousDaemonBridge {
                     );
                     Ok(ExecutionResult {
                         success: false,
+                        errors: 0,
                         output: Some(format!("turn failed: {e}")),
                     })
                 }

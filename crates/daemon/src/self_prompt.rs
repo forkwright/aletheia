@@ -257,6 +257,7 @@ pub(crate) async fn execute_self_prompt_with_cancel(
     let Some(bridge) = bridge else {
         return Ok(crate::runner::ExecutionResult {
             success: false,
+            errors: 0,
             output: Some("no bridge configured".to_owned()),
         });
     };
@@ -279,6 +280,7 @@ pub(crate) async fn execute_self_prompt_with_cancel(
             );
             Ok(crate::runner::ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some("self-prompt dispatched".to_owned()),
             })
         }
@@ -290,6 +292,7 @@ pub(crate) async fn execute_self_prompt_with_cancel(
             );
             Ok(crate::runner::ExecutionResult {
                 success: false,
+                errors: 0,
                 output: Some(format!("self-prompt dispatch failed: {e}")),
             })
         }

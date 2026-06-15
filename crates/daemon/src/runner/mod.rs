@@ -94,15 +94,41 @@ struct RegisteredTask {
     backoff_until: Option<Instant>,
     /// Most recent error message, if the last execution failed. (#2212)
     last_error: Option<String>,
+    /// Number of non-fatal errors reported by the last execution.
+    last_errors: u32,
 }
 
 /// Outcome of executing a single task action.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ExecutionResult {
     /// Whether the task completed without error.
     pub success: bool,
     /// Task output or diagnostic message.
     pub output: Option<String>,
+    /// Number of non-fatal errors encountered by the task implementation.
+    /// Used by maintenance tasks that report partial success (e.g. knowledge
+    /// graph decay refresh with per-fact persistence failures).
+    #[serde(default)]
+    pub errors: u32,
+}
+
+impl ExecutionResult {
+    /// Build an execution result from a knowledge-maintenance report.
+    ///
+    /// Maps [`MaintenanceOutcome::Success`] to `success: true`; degraded and
+    /// failure outcomes become `success: false` per existing task policy, while
+    /// the non-fatal error count is preserved for status and metrics.
+    pub fn from_maintenance_report(
+        report: &crate::maintenance::MaintenanceReport,
+        output: String,
+    ) -> Self {
+        use crate::maintenance::MaintenanceOutcome;
+        Self {
+            success: report.outcome() == MaintenanceOutcome::Success,
+            output: Some(output),
+            errors: report.errors,
+        }
+    }
 }
 
 impl TaskRunner {
@@ -189,6 +215,19 @@ impl TaskRunner {
         self
     }
 
+    /// Attach an optional knowledge maintenance executor for graph operations.
+    ///
+    /// Convenience helper for callers (e.g. the CLI) that may or may not have
+    /// a knowledge store available.
+    #[must_use]
+    pub fn with_knowledge_maintenance_opt(
+        mut self,
+        executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    ) -> Self {
+        self.knowledge_executor = executor;
+        self
+    }
+
     /// Attach a knowledge store for Prosoche memory consistency checks.
     #[cfg(feature = "knowledge-store")]
     #[must_use]
@@ -263,6 +302,24 @@ impl TaskRunner {
             .as_ref()
             .map(|watchdog| watchdog.restart_log().len())
             .unwrap_or_default()
+    }
+
+    /// Whether a daemon bridge is attached.
+    #[must_use]
+    pub fn has_bridge(&self) -> bool {
+        self.bridge.is_some()
+    }
+
+    /// Whether a retention executor is attached.
+    #[must_use]
+    pub fn has_retention_executor(&self) -> bool {
+        self.retention_executor.is_some()
+    }
+
+    /// Whether a knowledge maintenance executor is attached.
+    #[must_use]
+    pub fn has_knowledge_executor(&self) -> bool {
+        self.knowledge_executor.is_some()
     }
 
     /// Configure self-prompting behavior (rate-limited daemon-initiated follow-ups).

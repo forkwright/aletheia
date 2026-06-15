@@ -587,22 +587,33 @@ gates all scheduled knowledge-maintenance tasks. It defaults to `false`.
 When set to `true` **and** a knowledge executor is available, the daemon
 registers the following implemented tasks (`crates/daemon/src/runner/registration.rs`):
 
-| Task ID | Cadence | Purpose |
-|---------|---------|---------|
-| `decay-refresh` | every 4 hours | Refresh temporal decay scores |
-| `entity-dedup` | every 6 hours | Merge duplicate knowledge graph entities |
-| `graph-recompute` | every 8 hours | Recompute PageRank / centrality scores |
-| `skill-decay` | daily at 06:00 | Retire stale skills |
-| `derived-facts-materialize` | every 6 hours | Materialize derived Datalog rules |
+| Task ID | Cadence | Purpose | Manual run |
+|---------|---------|---------|------------|
+| `decay-refresh` | every 4 hours | Refresh temporal decay scores | yes |
+| `entity-dedup` | every 6 hours | Merge duplicate knowledge graph entities | yes |
+| `graph-recompute` | every 8 hours | Recompute PageRank / centrality scores | yes |
+| `skill-decay` | daily at 06:00 | Retire stale skills | yes |
+| `derived-facts-materialize` | every 6 hours | Materialize derived Datalog rules | yes |
 
-The following tasks are **not implemented or scheduled** today; calling them
-via `aletheia maintenance run` returns an explicit "not scheduled" error
-(`crates/aletheia/src/knowledge_maintenance.rs`):
+If a task completes with non-fatal errors (for example, a per-fact persistence
+failure during decay refresh), the runner records the task as **degraded**,
+preserves the non-fatal error count in task status/metrics, and does not treat
+it as a hard failure. The outcome is surfaced as `success = false` with an
+explanatory message per the existing binary task-outcome policy.
+
+The following tasks are **not implemented or scheduled** today; `aletheia maintenance run <id>`
+returns a structured "not scheduled" result and `aletheia maintenance status`
+shows them as `planned`/`unavailable` (`crates/aletheia/src/commands/maintenance.rs`):
 
 - `embedding-refresh` — requires an `EmbeddingProvider` bridge.
 - `knowledge-gc` / edge pruning — no concrete store contract.
 - `index-maintenance` — no concrete store contract.
 - `graph-health-check` — no concrete diagnostic contract.
+
+Implemented knowledge-maintenance tasks also return `unavailable` when the
+knowledge store cannot be opened (for example, when the `recall` feature is
+disabled or the knowledge database directory does not exist). `aletheia maintenance run all`
+skips unavailable knowledge tasks rather than aborting the whole batch.
 
 ### maintenance.knowledge_maintenance_serendipity
 
