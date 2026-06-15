@@ -85,6 +85,7 @@ rand = { workspace = true }
 sha2 = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 tracing = { workspace = true }
 zip = { version = "=8.5.1", default-features = false, features = ["deflate"] }
 z3 = { version = "0.20", optional = true, features = ["bundled"] }

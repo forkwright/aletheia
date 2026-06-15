@@ -79,7 +79,7 @@ pub struct CrossNousRouter {
     pub(super) routes: Arc<RwLock<HashMap<String, mpsc::Sender<CrossNousEnvelope>>>>,
     /// Maps correlation id to the one-shot reply channel for an in-flight ask.
     /// Invariant: each ask inserts one entry; consumed exactly once on reply
-    /// or removed on timeout.
+    /// or removed on timeout, delivery failure, or cancellation.
     pending_replies: Arc<RwLock<HashMap<Ulid, oneshot::Sender<CrossNousReply>>>>,
     /// Append-only audit log of delivered messages. Invariant: entries are
     /// never modified after insertion; the log is read for diagnostics only.

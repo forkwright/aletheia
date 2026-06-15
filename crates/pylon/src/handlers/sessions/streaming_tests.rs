@@ -25,11 +25,7 @@ fn reconnect_path() -> axum::extract::Path<(String, String)> {
     axum::extract::Path(("ses-a".to_owned(), "turn-a".to_owned()))
 }
 
-fn reconnect_path_for(turn_id: &str) -> axum::extract::Path<(String, String)> {
-    axum::extract::Path(("ses-a".to_owned(), turn_id.to_owned()))
-}
-
-async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
+async fn reconnect_running_test_state() -> (SessionsState, tempfile::TempDir, TurnBufferHandle) {
     let tmp = tempfile::TempDir::new().expect("tmpdir");
     let session_store = Arc::new(Mutex::new(
         mneme::store::SessionStore::open_in_memory().expect("in-memory store"),
@@ -80,12 +76,32 @@ async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
     handle
         .record("text_delta", r#"{"type":"text_delta","text":"secret"}"#)
         .await;
-    handle.mark_completed().await;
 
+    (state, tmp, handle)
+}
+
+async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
+    let (state, tmp, handle) = reconnect_running_test_state().await;
+    handle.mark_completed().await;
     (state, tmp)
 }
 
-async fn reconnect_running_test_state(
+async fn collect_sse_response(response: axum::response::Response) -> String {
+    let bytes = tokio::time::timeout(
+        Duration::from_secs(1),
+        axum::body::to_bytes(response.into_body(), usize::MAX),
+    )
+    .await
+    .expect("SSE body timed out")
+    .expect("SSE body");
+    String::from_utf8(bytes.to_vec()).expect("SSE body utf8")
+}
+
+fn reconnect_path_for(turn_id: &str) -> axum::extract::Path<(String, String)> {
+    axum::extract::Path(("ses-a".to_owned(), turn_id.to_owned()))
+}
+
+async fn reconnect_running_test_state_for(
     turn_id: &str,
 ) -> (SessionsState, TurnBufferHandle, tempfile::TempDir) {
     let (state, tmp) = reconnect_test_state().await;
@@ -500,6 +516,60 @@ fn sse_event_message_complete_serializes_correctly() {
     drop(result);
 }
 
+#[test]
+fn turn_complete_event_payload_includes_partial_stop_reason() {
+    let result = nous::pipeline::TurnResult {
+        content: "partial response".to_owned(),
+        tool_calls: Vec::new(),
+        usage: nous::pipeline::TurnUsage {
+            input_tokens: 10,
+            output_tokens: 20,
+            ..nous::pipeline::TurnUsage::default()
+        },
+        signals: Vec::new(),
+        stop_reason: "max_tool_iterations".to_owned(),
+        degraded: None,
+        reasoning: String::new(),
+        model_used: "test-model".to_owned(),
+        tool_surface_hashes: Vec::new(),
+    };
+
+    let payload = turn_complete_event_payload("ses-1", "nous-1", "turn-1", &result);
+
+    assert_eq!(
+        payload
+            .get("session_id")
+            .and_then(serde_json::Value::as_str),
+        Some("ses-1")
+    );
+    assert_eq!(
+        payload.get("nous_id").and_then(serde_json::Value::as_str),
+        Some("nous-1")
+    );
+    assert_eq!(
+        payload.get("turn_id").and_then(serde_json::Value::as_str),
+        Some("turn-1")
+    );
+    assert_eq!(
+        payload
+            .get("input_tokens")
+            .and_then(serde_json::Value::as_u64),
+        Some(10)
+    );
+    assert_eq!(
+        payload
+            .get("output_tokens")
+            .and_then(serde_json::Value::as_u64),
+        Some(20)
+    );
+    assert_eq!(
+        payload
+            .get("stop_reason")
+            .and_then(serde_json::Value::as_str),
+        Some("max_tool_iterations")
+    );
+}
+
 #[tokio::test]
 async fn reconnect_turn_rejects_cross_nous_scoped_caller() {
     let (state, _tmp) = reconnect_test_state().await;
@@ -536,6 +606,64 @@ async fn reconnect_turn_rejects_cross_nous_scoped_caller() {
     )
     .await;
     assert!(allowed.is_ok(), "operator reconnect should succeed");
+}
+
+#[tokio::test]
+async fn reconnect_turn_receives_message_complete_after_live_wait() {
+    let (state, _tmp, handle) = reconnect_running_test_state().await;
+
+    let reconnect = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path(),
+    )
+    .await
+    .expect("reconnect");
+    let body_task = tokio::spawn(collect_sse_response(reconnect.into_response()));
+
+    tokio::time::sleep(Duration::from_millis(25)).await;
+    handle
+        .record(
+            "message_complete",
+            r#"{"type":"message_complete","stop_reason":"end_turn"}"#,
+        )
+        .await;
+    handle.mark_completed().await;
+
+    let body = body_task.await.expect("body task");
+    assert!(body.contains("event: text_delta"), "body: {body}");
+    assert!(body.contains("event: message_complete"), "body: {body}");
+    assert!(body.contains("end_turn"), "body: {body}");
+}
+
+#[tokio::test]
+async fn reconnect_turn_receives_error_after_live_wait() {
+    let (state, _tmp, handle) = reconnect_running_test_state().await;
+
+    let reconnect = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path(),
+    )
+    .await
+    .expect("reconnect");
+    let body_task = tokio::spawn(collect_sse_response(reconnect.into_response()));
+
+    tokio::time::sleep(Duration::from_millis(25)).await;
+    handle
+        .record(
+            "error",
+            r#"{"type":"error","code":"turn_failed","message":"failed"}"#,
+        )
+        .await;
+    handle.mark_failed().await;
+
+    let body = body_task.await.expect("body task");
+    assert!(body.contains("event: text_delta"), "body: {body}");
+    assert!(body.contains("event: error"), "body: {body}");
+    assert!(body.contains("turn_failed"), "body: {body}");
 }
 
 // ── reconnect lifecycle event ──
@@ -631,7 +759,7 @@ async fn reconnect_failed_buffer_reports_failed_replay_only() {
 
 #[tokio::test]
 async fn reconnect_running_buffer_reports_running_live_and_streams_later_event() {
-    let (state, handle, _tmp) = reconnect_running_test_state("turn-running").await;
+    let (state, handle, _tmp) = reconnect_running_test_state_for("turn-running").await;
     let state_for_reconnect = state;
     let handle_for_producer = handle.clone();
 

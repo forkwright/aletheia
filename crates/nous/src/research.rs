@@ -10,7 +10,7 @@ use dianoia::research::{
     FindingStatus, ResearchConfig, ResearchDomain, ResearchFinding, ResearchOutput, domain_prompt,
     merge_research,
 };
-use organon::types::SpawnService;
+use organon::types::{SpawnContext, SpawnService};
 
 fn domain_sort_key(domain: ResearchDomain) -> u8 {
     match domain {
@@ -80,7 +80,9 @@ pub async fn run_research(
                     timeout_secs: timeout.as_secs(),
                 };
 
-                let result = svc.spawn_and_run(request, &parent_id).await;
+                let result = svc
+                    .spawn_and_run(request, SpawnContext::detached(parent_id.clone()))
+                    .await;
 
                 match result {
                     Ok(spawn_result) if !spawn_result.is_error => {
@@ -159,7 +161,7 @@ mod tests {
     use std::pin::Pin;
 
     use dianoia::research::ResearchLevel;
-    use organon::types::{SpawnRequest, SpawnResult};
+    use organon::types::{SpawnContext, SpawnRequest, SpawnResult};
 
     use super::*;
 
@@ -188,7 +190,7 @@ mod tests {
         fn spawn_and_run(
             &self,
             _request: SpawnRequest,
-            _parent_nous_id: &str,
+            _context: SpawnContext,
         ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
             let result = SpawnResult {
                 content: self.response.clone(),
@@ -206,7 +208,7 @@ mod tests {
         fn spawn_and_run(
             &self,
             _request: SpawnRequest,
-            _parent_nous_id: &str,
+            _context: SpawnContext,
         ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
             Box::pin(async {
                 Ok(SpawnResult {
@@ -225,7 +227,7 @@ mod tests {
         fn spawn_and_run(
             &self,
             _request: SpawnRequest,
-            _parent_nous_id: &str,
+            _context: SpawnContext,
         ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
             Box::pin(async { Err("spawn service unavailable".to_owned()) })
         }
@@ -378,7 +380,7 @@ mod tests {
             fn spawn_and_run(
                 &self,
                 request: SpawnRequest,
-                _parent_nous_id: &str,
+                _context: SpawnContext,
             ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>>
             {
                 self.captured_timeout
