@@ -43,6 +43,22 @@ const HEX_DECIMAL_DIGITS: u8 = 10;
 const ASCII_DIGIT_ZERO: u8 = b'0';
 const ASCII_LOWER_A: u8 = b'a';
 
+fn turn_complete_event_payload(
+    session_id: &str,
+    nous_id: &str,
+    turn_id: &str,
+    result: &TurnResult,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session_id,
+        "nous_id": nous_id,
+        "turn_id": turn_id,
+        "input_tokens": result.usage.input_tokens,
+        "output_tokens": result.usage.output_tokens,
+        "stop_reason": result.stop_reason.as_str(),
+    })
+}
+
 /// Guard that aborts a spawned task and releases an in-flight idempotency key
 /// when the SSE stream is dropped.
 ///
@@ -467,13 +483,7 @@ pub async fn send_message(
 
                     event_bus.publish(crate::event_bus::DomainEvent::new(
                         "turn.complete",
-                        serde_json::json!({
-                            "session_id": sid,
-                            "nous_id": session.nous_id,
-                            "turn_id": turn_id,
-                            "input_tokens": result.usage.input_tokens,
-                            "output_tokens": result.usage.output_tokens,
-                        }),
+                        turn_complete_event_payload(&sid, &session.nous_id, &turn_id, &result),
                     ));
 
                     // NOTE: Store the turn summary so cache-hit replays return real data.
@@ -855,13 +865,7 @@ pub async fn stream_turn(
 
                     event_bus.publish(crate::event_bus::DomainEvent::new(
                         "turn.complete",
-                        serde_json::json!({
-                            "session_id": sid,
-                            "nous_id": aid,
-                            "turn_id": turn_id,
-                            "input_tokens": result.usage.input_tokens,
-                            "output_tokens": result.usage.output_tokens,
-                        }),
+                        turn_complete_event_payload(&sid, &aid, &turn_id, &result),
                     ));
                 }
                 Err(err) => {

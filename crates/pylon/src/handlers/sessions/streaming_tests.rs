@@ -500,6 +500,60 @@ fn sse_event_message_complete_serializes_correctly() {
     drop(result);
 }
 
+#[test]
+fn turn_complete_event_payload_includes_partial_stop_reason() {
+    let result = nous::pipeline::TurnResult {
+        content: "partial response".to_owned(),
+        tool_calls: Vec::new(),
+        usage: nous::pipeline::TurnUsage {
+            input_tokens: 10,
+            output_tokens: 20,
+            ..nous::pipeline::TurnUsage::default()
+        },
+        signals: Vec::new(),
+        stop_reason: "max_tool_iterations".to_owned(),
+        degraded: None,
+        reasoning: String::new(),
+        model_used: "test-model".to_owned(),
+        tool_surface_hashes: Vec::new(),
+    };
+
+    let payload = turn_complete_event_payload("ses-1", "nous-1", "turn-1", &result);
+
+    assert_eq!(
+        payload
+            .get("session_id")
+            .and_then(serde_json::Value::as_str),
+        Some("ses-1")
+    );
+    assert_eq!(
+        payload.get("nous_id").and_then(serde_json::Value::as_str),
+        Some("nous-1")
+    );
+    assert_eq!(
+        payload.get("turn_id").and_then(serde_json::Value::as_str),
+        Some("turn-1")
+    );
+    assert_eq!(
+        payload
+            .get("input_tokens")
+            .and_then(serde_json::Value::as_u64),
+        Some(10)
+    );
+    assert_eq!(
+        payload
+            .get("output_tokens")
+            .and_then(serde_json::Value::as_u64),
+        Some(20)
+    );
+    assert_eq!(
+        payload
+            .get("stop_reason")
+            .and_then(serde_json::Value::as_str),
+        Some("max_tool_iterations")
+    );
+}
+
 #[tokio::test]
 async fn reconnect_turn_rejects_cross_nous_scoped_caller() {
     let (state, _tmp) = reconnect_test_state().await;

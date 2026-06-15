@@ -667,6 +667,43 @@ async fn max_iterations_respected() {
 }
 
 #[tokio::test]
+async fn max_iterations_reports_stop_reason() {
+    let mut providers = ProviderRegistry::new();
+    let responses: Vec<CompletionResponse> = (0..10)
+        .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
+        .collect();
+    providers.register(Box::new(
+        MockProvider::with_responses(responses).models(&["test-model"]),
+    ));
+
+    let tools = make_registry_with("exec", Box::new(EchoExecutor));
+    let mut config = test_config();
+    config.limits.max_tool_iterations = 3;
+    config.limits.loop_detection_threshold = 100;
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("should not error");
+
+    assert_eq!(
+        result.stop_reason, "max_tool_iterations",
+        "stop reason should report max tool iterations cutoff"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 3,
+        "should stop after max_tool_iterations=3 LLM calls"
+    );
+}
+
+#[tokio::test]
 async fn tool_error_captured() {
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(

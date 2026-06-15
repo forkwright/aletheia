@@ -41,6 +41,9 @@ use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnU
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
+const STOP_REASON_MAX_TOOL_ITERATIONS: &str = "max_tool_iterations";
+const STOP_REASON_CLIENT_DISCONNECT: &str = "client_disconnect";
+
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
 /// This is the core agent loop. It:
@@ -113,7 +116,7 @@ async fn execute_with_dispatch(
     let mut iterations: u32 = 0;
     let mut consecutive_tool_only: u32 = 0;
     let mut final_content = String::new();
-    let mut final_stop_reason = String::new();
+    let mut final_stop_reason = STOP_REASON_MAX_TOOL_ITERATIONS.to_owned();
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();
@@ -266,6 +269,11 @@ async fn execute_with_dispatch(
 
         // WHY: only break on no local tool uses: server tool results don't require client tool_result
         if extracted.tool_uses.is_empty() || stop_reason != StopReason::ToolUse {
+            break;
+        }
+        if iterations >= config.limits.max_tool_iterations {
+            warn!(iterations, "max tool iterations reached");
+            STOP_REASON_MAX_TOOL_ITERATIONS.clone_into(&mut final_stop_reason);
             break;
         }
 
@@ -495,7 +503,7 @@ pub async fn execute_streaming(
     let mut iterations: u32 = 0;
     let mut consecutive_tool_only: u32 = 0;
     let mut final_content = String::new();
-    let mut final_stop_reason = String::new();
+    let mut final_stop_reason = STOP_REASON_CLIENT_DISCONNECT.to_owned();
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();
@@ -517,6 +525,7 @@ pub async fn execute_streaming(
 
         if iterations > config.limits.max_tool_iterations {
             warn!(iterations, "max tool iterations reached");
+            STOP_REASON_MAX_TOOL_ITERATIONS.clone_into(&mut final_stop_reason);
             break;
         }
 
@@ -621,6 +630,11 @@ pub async fn execute_streaming(
         spawn_guard::enforce_spawn_isolation(&mut extracted.tool_uses, &mut denied_blocks, tools);
 
         if extracted.tool_uses.is_empty() || stop_reason != StopReason::ToolUse {
+            break;
+        }
+        if iterations >= config.limits.max_tool_iterations {
+            warn!(iterations, "max tool iterations reached");
+            STOP_REASON_MAX_TOOL_ITERATIONS.clone_into(&mut final_stop_reason);
             break;
         }
 
