@@ -197,7 +197,7 @@ pub struct Plan {
     pub status: String,
 }
 
-/// Application-level SSE events from `GET /api/v1/events`.
+/// Application-level SSE events from `GET /api/v1/events/subscribe`.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum SseEvent {
@@ -225,6 +225,40 @@ pub enum SseEvent {
         nous_id: NousId,
         /// Session the turn belongs to.
         session_id: SessionId,
+    },
+    /// A domain event reporting that a turn completed, emitted on the
+    /// `EventBus` topic `turn.complete`.
+    TurnComplete {
+        /// Session the turn belongs to.
+        session_id: SessionId,
+        /// Agent that processed the turn.
+        nous_id: NousId,
+        /// Turn identifier.
+        turn_id: TurnId,
+        /// Input tokens consumed.
+        input_tokens: u32,
+        /// Output tokens generated.
+        output_tokens: u32,
+    },
+    /// A domain event reporting that a knowledge fact was created, emitted on
+    /// the `EventBus` topic `fact.created`.
+    FactCreated {
+        /// Fact identifier.
+        fact_id: String,
+        /// Agent that owns the fact.
+        nous_id: NousId,
+        /// Short preview of the fact content.
+        content_preview: String,
+    },
+    /// A domain event reporting a `nous` lifecycle change, emitted on the
+    /// `EventBus` topic `nous.lifecycle`.
+    NousLifecycle {
+        /// Agent whose lifecycle changed.
+        nous_id: NousId,
+        /// Lifecycle event name (e.g. "created").
+        event: String,
+        /// Whether the server requires a restart to activate the change.
+        restart_required: bool,
     },
     /// A tool was invoked during a turn.
     ToolCalled {

@@ -1,11 +1,12 @@
-//! Global SSE connection to `GET /api/v1/events`.
+//! Global SSE connection to `GET /api/v1/events/subscribe`.
 //!
-//! Provides cross-session awareness: agent status changes, session lifecycle,
-//! and memory distillation progress. The connection auto-reconnects with
-//! exponential backoff (1s to 30s) and treats 45s of *byte-level* silence as
-//! a stale connection (server keepalives are SSE comments the parser never
-//! surfaces as events). Losses are reported to the UI only once confirmed;
-//! clean reconnects are silent.
+//! Subscribes to the domain event stream for `fact.created`, `turn.complete`,
+//! and `nous.lifecycle`, providing cross-session awareness for newly created
+//! facts, completed turns, and agent lifecycle changes. The connection
+//! auto-reconnects with exponential backoff (1s to 30s) and treats 45s of
+//! *byte-level* silence as a stale connection (server keepalives are SSE comments
+//! the parser never surfaces as events). Losses are reported to the UI only once
+//! confirmed; clean reconnects are silent.
 //!
 //! # Dioxus integration
 //!
@@ -40,9 +41,10 @@ use skene::api::types::SseEvent;
 use skene::id::{NousId, SessionId, TurnId};
 
 /// If no bytes arrive on the wire within this window, the connection is
-/// treated as stale. The server keepalive is an SSE *comment* line every
-/// 15s, which the parser swallows by design — liveness must therefore be
-/// judged at the byte level, never by parsed-event arrival.
+/// treated as stale. The subscription stream emits domain events when they
+/// occur and an SSE *comment* keepalive every 15s in between; the parser
+/// swallows comment lines by design — liveness must therefore be judged at
+/// the byte level, never by parsed-event arrival.
 const HEARTBEAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// Initial backoff delay after a connection failure.
@@ -57,10 +59,10 @@ const LOSS_CONFIRM_ATTEMPTS: u32 = 2;
 /// Minimum elapsed time since the stream dropped before the loss is reported.
 const LOSS_CONFIRM_WINDOW: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// Manages the global SSE connection to `/api/v1/events`.
+/// Manages the global SSE connection to `/api/v1/events/subscribe`.
 ///
-/// Runs in a background tokio task. Parsed events flow through an mpsc
-/// channel. The connection automatically reconnects with exponential
+/// Runs in a background tokio task. Parsed domain events flow through an
+/// mpsc channel. The connection automatically reconnects with exponential
 /// backoff on failure and treats prolonged silence as disconnect.
 ///
 /// Supports graceful shutdown via `CancellationToken`. When the token
@@ -75,12 +77,17 @@ impl SseConnection {
     /// embedded in the client. `Accept: text/event-stream` is set
     /// per-request to override any client-level JSON default.
     ///
-    /// The returned `SseConnection` emits `Connected`/`Disconnected`
-    /// lifecycle events in addition to parsed server events.
+    /// Connects to `/api/v1/events/subscribe` and filters for the domain
+    /// topics `fact.created`, `turn.complete`, and `nous.lifecycle`. The
+    /// returned `SseConnection` emits `Connected`/`Disconnected` lifecycle
+    /// events in addition to parsed server events.
     #[tracing::instrument(skip_all)]
     pub(crate) fn connect(client: Client, base_url: &str, cancel: CancellationToken) -> Self {
         let (tx, rx) = mpsc::channel(256);
-        let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/api/v1/events/subscribe?topics=fact.created,turn.complete,nous.lifecycle",
+            base_url.trim_end_matches('/')
+        );
         let child = cancel.child_token();
 
         let span = tracing::info_span!("sse_connection");
@@ -181,11 +188,12 @@ async fn run_sse_connection(
         backoff = INITIAL_BACKOFF;
         failed_attempts = 0;
 
-        // WHY: the server keepalive (`: keepalive` comment every 15s) is
+        // WHY: the subscription stream sends domain events as they occur and
+        // a `: heartbeat` comment every 15s when idle. Heartbeat comments are
         // swallowed by the SSE parser per spec, so `es.next()` can stay
-        // pending indefinitely on a perfectly healthy connection. Record raw
-        // byte arrival; only byte-level silence past HEARTBEAT_TIMEOUT is a
-        // dead link.
+        // pending indefinitely on a perfectly healthy idle connection. Record
+        // raw byte arrival; only byte-level silence past HEARTBEAT_TIMEOUT is
+        // a dead link.
         let connected_at = Instant::now();
         let last_activity_ms = Arc::new(AtomicU64::new(0));
         let activity = Arc::clone(&last_activity_ms);
@@ -212,7 +220,7 @@ async fn run_sse_connection(
                         u64::try_from(connected_at.elapsed().as_millis()).unwrap_or(u64::MAX);
                     let idle_ms = now_ms.saturating_sub(last_activity_ms.load(Ordering::Relaxed));
                     if idle_ms < u64::try_from(HEARTBEAT_TIMEOUT.as_millis()).unwrap_or(u64::MAX) {
-                        // NOTE: keepalive comments are byte activity without
+                        // NOTE: heartbeat comments are byte activity without
                         // parsed events; the link is alive — keep waiting.
                         continue;
                     }
@@ -286,6 +294,33 @@ fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> 
     })
 }
 
+fn u32_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<u32> {
+    json.get(field)
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+        .or_else(|| {
+            tracing::warn!(
+                event_type,
+                field,
+                "missing or invalid u32 field in SSE event"
+            );
+            None
+        })
+}
+
+fn bool_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<bool> {
+    json.get(field)
+        .and_then(serde_json::Value::as_bool)
+        .or_else(|| {
+            tracing::warn!(
+                event_type,
+                field,
+                "missing or invalid bool field in SSE event"
+            );
+            None
+        })
+}
+
 fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
     let json: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
@@ -350,6 +385,9 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
         "distill:after" => Some(SseEvent::DistillAfter {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
         }),
+        "turn.complete" => turn_complete_event(&json, event_type),
+        "fact.created" => fact_created_event(&json, event_type),
+        "nous.lifecycle" => nous_lifecycle_event(&json, event_type),
         "ping" => Some(SseEvent::Ping),
         "stream_lagged" => stream_lagged_event(&json),
         other => {
@@ -368,6 +406,32 @@ fn stream_lagged_event(json: &serde_json::Value) -> Option<SseEvent> {
             None
         })?;
     Some(SseEvent::StreamLagged { dropped })
+}
+
+fn turn_complete_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::TurnComplete {
+        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        session_id: SessionId::from(str_field(json, "session_id", event_type)?.to_string()),
+        turn_id: TurnId::from(str_field(json, "turn_id", event_type)?.to_string()),
+        input_tokens: u32_field(json, "input_tokens", event_type)?,
+        output_tokens: u32_field(json, "output_tokens", event_type)?,
+    })
+}
+
+fn fact_created_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::FactCreated {
+        fact_id: str_field(json, "fact_id", event_type)?.to_string(),
+        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        content_preview: str_field(json, "content_preview", event_type)?.to_string(),
+    })
+}
+
+fn nous_lifecycle_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::NousLifecycle {
+        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        event: str_field(json, "event", event_type)?.to_string(),
+        restart_required: bool_field(json, "restart_required", event_type)?,
+    })
 }
 
 #[cfg(test)]
@@ -508,6 +572,82 @@ mod tests {
         } else {
             panic!("expected SessionCreated");
         }
+    }
+
+    #[test]
+    fn parse_turn_complete_valid() {
+        let data = r#"{"nous_id":"syn","session_id":"sess-1","turn_id":"turn-1","input_tokens":100,"output_tokens":50}"#;
+        let result = parse_sse_event("turn.complete", data);
+        if let Some(SseEvent::TurnComplete {
+            nous_id,
+            session_id,
+            turn_id,
+            input_tokens,
+            output_tokens,
+        }) = result
+        {
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*session_id, "sess-1");
+            assert_eq!(&*turn_id, "turn-1");
+            assert_eq!(input_tokens, 100);
+            assert_eq!(output_tokens, 50);
+        } else {
+            panic!("expected TurnComplete");
+        }
+    }
+
+    #[test]
+    fn parse_turn_complete_missing_tokens_returns_none() {
+        let data = r#"{"nous_id":"syn","session_id":"sess-1","turn_id":"turn-1"}"#;
+        assert!(parse_sse_event("turn.complete", data).is_none());
+    }
+
+    #[test]
+    fn parse_fact_created_valid() {
+        let data = r#"{"fact_id":"fact-1","nous_id":"syn","content_preview":"hello world"}"#;
+        let result = parse_sse_event("fact.created", data);
+        if let Some(SseEvent::FactCreated {
+            fact_id,
+            nous_id,
+            content_preview,
+        }) = result
+        {
+            assert_eq!(fact_id, "fact-1");
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(content_preview, "hello world");
+        } else {
+            panic!("expected FactCreated");
+        }
+    }
+
+    #[test]
+    fn parse_fact_created_missing_field_returns_none() {
+        let data = r#"{"fact_id":"fact-1","nous_id":"syn"}"#;
+        assert!(parse_sse_event("fact.created", data).is_none());
+    }
+
+    #[test]
+    fn parse_nous_lifecycle_valid() {
+        let data = r#"{"nous_id":"syn","event":"created","restart_required":true}"#;
+        let result = parse_sse_event("nous.lifecycle", data);
+        if let Some(SseEvent::NousLifecycle {
+            nous_id,
+            event,
+            restart_required,
+        }) = result
+        {
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(event, "created");
+            assert!(restart_required);
+        } else {
+            panic!("expected NousLifecycle");
+        }
+    }
+
+    #[test]
+    fn parse_nous_lifecycle_missing_event_returns_none() {
+        let data = r#"{"nous_id":"syn","restart_required":false}"#;
+        assert!(parse_sse_event("nous.lifecycle", data).is_none());
     }
 
     #[test]

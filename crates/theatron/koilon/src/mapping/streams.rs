@@ -74,6 +74,11 @@ impl App {
             SseEvent::TurnAfter {
                 nous_id,
                 session_id,
+            }
+            | SseEvent::TurnComplete {
+                nous_id,
+                session_id,
+                ..
             } => Msg::SseTurnAfter {
                 nous_id,
                 session_id,

@@ -68,6 +68,11 @@ impl SseEventRouter {
             SseEvent::TurnAfter {
                 nous_id,
                 session_id,
+            }
+            | SseEvent::TurnComplete {
+                nous_id,
+                session_id,
+                ..
             } => self.on_turn_after(nous_id, session_id),
             SseEvent::ToolCalled { nous_id, tool_name } => self.on_tool_called(nous_id, tool_name),
             SseEvent::ToolFailed {
@@ -376,6 +381,29 @@ mod tests {
         let changed = router.apply(&SseEvent::TurnAfter {
             nous_id: nous("syn"),
             session_id: session("s1"),
+        });
+
+        assert!(changed);
+        assert!(router.state().active_turns.is_empty());
+    }
+
+    #[test]
+    fn turn_complete_removes_active_turn() {
+        let mut router = SseEventRouter::new();
+
+        router.apply(&SseEvent::TurnBefore {
+            nous_id: nous("syn"),
+            session_id: session("s1"),
+            turn_id: turn("t1"),
+        });
+        assert_eq!(router.state().active_turns.len(), 1);
+
+        let changed = router.apply(&SseEvent::TurnComplete {
+            nous_id: nous("syn"),
+            session_id: session("s1"),
+            turn_id: turn("t1"),
+            input_tokens: 3,
+            output_tokens: 5,
         });
 
         assert!(changed);
