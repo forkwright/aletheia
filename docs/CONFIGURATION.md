@@ -461,7 +461,7 @@ The `aletheia add-nous` scaffolding command currently validates only `anthropic`
 |-------|------|---------|-------------|
 | `session_max_age_days` | u32 | `90` | Max age for closed sessions |
 | `orphan_message_max_age_days` | u32 | `30` | Max age for orphaned messages |
-| `max_sessions_per_nous` | u32 | `0` | Max sessions per agent (0 = unlimited) |
+| `max_sessions_per_nous` | u32 | `0` | Max sessions per agent (0 = unlimited). A nonzero value is enforced per `nous_id` when retention is enabled. |
 | `archive_before_delete` | bool | `true` | Export sessions to JSON before deletion |
 
 ```toml
@@ -469,6 +469,26 @@ The `aletheia add-nous` scaffolding command currently validates only `anthropic`
 session_max_age_days = 90
 archive_before_delete = true
 ```
+
+### Session cap semantics
+
+The TOML key is `maxSessionsPerNous`; `max_sessions_per_nous` is also accepted as
+an alias. When `maintenance.retention.enabled` is `true` and
+`maxSessionsPerNous` is greater than `0`, the retention task enforces a per-agent
+(`nous_id`) cap:
+
+- `0` means unlimited; no cap-based deletions occur.
+- A nonzero cap is enforced per `nous_id`. Sessions are ordered newest first by
+  `updated_at`, then by `id` ascending for ties. The newest `maxSessionsPerNous`
+  records are retained.
+- Active sessions are protected and are never deleted by the cap.
+- Archived and distilled sessions that fall outside the retained slots are
+  eligible for deletion.
+- If `archiveBeforeDelete` is `true`, cap deletions are exported to
+  `instance/data/archive/sessions/{session_id}.json` before removal, using the
+  same archive path as TTL cleanup.
+- The retention summary reports the count of cap-based session deletions
+  separately from TTL/orphan cleanup.
 
 ---
 
