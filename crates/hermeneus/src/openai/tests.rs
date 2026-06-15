@@ -12,6 +12,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use crate::error::Error;
 use crate::openai::{OpenAiApiFamily, OpenAiProvider, OpenAiProviderConfig};
 use crate::provider::{LlmProvider, ProviderRegistry};
 use crate::types::{
@@ -334,6 +335,35 @@ async fn responses_error_envelope_maps_to_provider_error() {
         err.to_string()
             .contains("model does not support requested tool")
     );
+}
+
+#[tokio::test]
+async fn invalid_api_key_error_code_maps_to_auth_failed() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+            "error": {
+                "message": "Incorrect API key provided",
+                "type": "invalid_request_error",
+                "code": "invalid_api_key"
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = mock_provider(&server, vec!["qwen".to_owned()]);
+    let err = provider
+        .complete(&basic_request("qwen"))
+        .await
+        .expect_err("request should fail");
+
+    assert!(
+        matches!(err, Error::AuthFailed { .. }),
+        "expected AuthFailed, got {err:?}"
+    );
+    assert!(err.to_string().contains("Incorrect API key provided"));
 }
 
 #[tokio::test]
