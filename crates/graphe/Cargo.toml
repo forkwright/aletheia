@@ -37,7 +37,6 @@ tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-oikonomos = { path = "../daemon" }
 proptest = { workspace = true }
 tempfile = { workspace = true }
 criterion = { workspace = true }

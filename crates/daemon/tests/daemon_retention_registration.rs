@@ -1,4 +1,4 @@
-//! Integration test for the graphe retention path exposed through oikonomos.
+//! Integration test for daemon retention task registration.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
