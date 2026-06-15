@@ -34,6 +34,13 @@ fn make_providers() -> Arc<ProviderRegistry> {
 }
 
 fn make_manager(oikos: Arc<Oikos>) -> NousManager {
+    make_manager_with_behavior(oikos, taxis::config::NousBehaviorConfig::default())
+}
+
+fn make_manager_with_behavior(
+    oikos: Arc<Oikos>,
+    behavior: taxis::config::NousBehaviorConfig,
+) -> NousManager {
     NousManager::new(
         make_providers(),
         Arc::new(ToolRegistry::new()),
@@ -46,7 +53,7 @@ fn make_manager(oikos: Arc<Oikos>) -> NousManager {
         Arc::new(Vec::new()),
         None,
         None,
-        taxis::config::NousBehaviorConfig::default(),
+        behavior,
         taxis::config::ToolLimitsConfig::default(),
     )
 }
@@ -479,22 +486,34 @@ async fn check_health_busy_actor_reports_alive() {
         .expect("spawn");
 
     // NOTE: Simulate: actor is mid-turn (flag set) but its inbox is closed (ping fails).
-    let entry = mgr.actors.get("syn").expect("actor registered");
-    entry
-        .active_turn
-        .store(true, std::sync::atomic::Ordering::Release);
-    // WHY: set a recent turn_started_at_ms so stuck-turn detection doesn't trigger
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::as_conversions,
-        reason = "u128→u64: test uptime in ms won't exceed u64::MAX"
-    )]
-    let now_ms = entry.last_start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
-    entry
-        .turn_started_at_ms
-        .store(now_ms, std::sync::atomic::Ordering::Release);
+    {
+        let actors = &mgr.actors;
+        let entry = actors.get("syn").expect("actor registered");
+        entry
+            .active_turn
+            .read()
+            .expect("active_turn lock")
+            .store(true, std::sync::atomic::Ordering::Release);
+        // WHY: set a recent turn_started_at_ms so stuck-turn detection doesn't trigger
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::as_conversions,
+            reason = "u128→u64: test uptime in ms won't exceed u64::MAX"
+        )]
+        let now_ms = entry
+            .last_start
+            .lock()
+            .expect("last_start lock")
+            .elapsed()
+            .as_millis() as u64; // kanon:ignore RUST/as-cast
+        entry
+            .turn_started_at_ms
+            .read()
+            .expect("turn_started_at_ms lock")
+            .store(now_ms, std::sync::atomic::Ordering::Release);
+    }
 
-    let handle = mgr.actors.get("syn").expect("entry").handle.clone();
+    let handle = mgr.get("syn").expect("entry");
     handle.shutdown().await.expect("shutdown sent");
     // kanon:ignore TESTING/sleep-in-test reason = "waiting for actor task to stop before checking busy state; real async shutdown cannot use pause+advance"
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -505,11 +524,15 @@ async fn check_health_busy_actor_reports_alive() {
         "busy actor (active_turn=true) must report alive even when ping fails"
     );
 
-    mgr.actors
-        .get("syn")
-        .expect("actor registered")
-        .active_turn
-        .store(false, std::sync::atomic::Ordering::Release);
+    {
+        let actors = &mgr.actors;
+        let entry = actors.get("syn").expect("actor registered");
+        entry
+            .active_turn
+            .read()
+            .expect("active_turn lock")
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
 
     let health = mgr.check_health().await;
     assert!(
@@ -542,7 +565,8 @@ async fn shutdown_all_timeout_aborts_stuck_actor() {
     });
     let blocking_abort = blocking_join.abort_handle();
     {
-        let entry = mgr.actors.get("syn").expect("actor registered");
+        let actors = &mgr.actors;
+        let entry = actors.get("syn").expect("actor registered");
         let mut guard = entry
             .join
             .lock()
@@ -658,6 +682,7 @@ async fn health_poller_supervisor_runs_until_cancelled() {
             },
             cancel_for_supervisor.child_token(),
             Duration::from_millis(50),
+            None,
         )
         .await;
     });
@@ -702,6 +727,7 @@ async fn health_poller_supervisor_restarts_on_panic() {
             },
             cancel_for_supervisor.child_token(),
             Duration::from_millis(50),
+            None,
         )
         .await;
     });
@@ -715,4 +741,67 @@ async fn health_poller_supervisor_restarts_on_panic() {
 
     cancel.cancel();
     let _ = tokio::time::timeout(Duration::from_secs(5), supervisor).await;
+}
+
+/// `start_health_poller` on an `Arc<NousManager>` detects and restarts a dead
+/// actor without the caller invoking `check_health` or `health_cycle` directly.
+#[tokio::test]
+async fn health_poller_restarts_dead_actor() {
+    let behavior = taxis::config::NousBehaviorConfig {
+        manager_ping_timeout_secs: 0,
+        manager_dead_threshold: 1,
+        manager_max_restart_backoff_secs: 0,
+        manager_restart_drain_timeout_secs: 0,
+        ..taxis::config::NousBehaviorConfig::default()
+    };
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager_with_behavior(oikos, behavior);
+
+    let handle = mgr
+        .spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
+
+    let mgr = Arc::new(mgr);
+    let cancel = CancellationToken::new();
+    let _poller = NousManager::start_health_poller(
+        Arc::clone(&mgr),
+        Duration::from_millis(20),
+        cancel.child_token(),
+    );
+
+    // Wait for the actor to be ready before killing it.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if handle.status().await.is_ok() {
+                break;
+            }
+            // kanon:ignore TESTING/sleep-in-test reason = "polling loop waiting for actor startup; real async spawn cannot use pause+advance"
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("actor should become ready");
+
+    // Kill the actor. The poller should notice and restart it.
+    handle.shutdown().await.expect("shutdown");
+
+    let restarted = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(handle) = mgr.get("syn")
+                && handle.status().await.is_ok()
+            {
+                break;
+            }
+            // kanon:ignore TESTING/sleep-in-test reason = "polling loop waiting for poller to restart dead actor; real async health cycle cannot use pause+advance"
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    assert!(restarted.is_ok(), "poller should have restarted dead actor");
+
+    let snapshot = mgr.poller_snapshot();
+    assert!(snapshot.running, "poller supervisor should be running");
+
+    cancel.cancel();
 }

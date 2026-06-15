@@ -121,6 +121,17 @@ pub struct NousStatus {
     pub background_health_degraded: bool,
 }
 
+/// Snapshot of the manager's health-poller supervisor state.
+#[derive(Debug, Clone)]
+pub struct ManagerPollerSnapshot {
+    /// Whether the supervisor task is currently running.
+    pub running: bool,
+    /// Number of times the supervisor has had to respawn the inner poller.
+    pub restart_count: u64,
+    /// Message from the most recent inner-poller panic, if any.
+    pub last_error: Option<String>,
+}
+
 /// Health snapshot returned by the manager's periodic health check.
 #[derive(Debug, Clone)]
 pub struct ActorHealth {
