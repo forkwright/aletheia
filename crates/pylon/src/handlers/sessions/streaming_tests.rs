@@ -4,6 +4,7 @@ use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -22,6 +23,10 @@ fn claims(role: Role, nous_id: Option<&str>) -> Claims {
 
 fn reconnect_path() -> axum::extract::Path<(String, String)> {
     axum::extract::Path(("ses-a".to_owned(), "turn-a".to_owned()))
+}
+
+fn reconnect_path_for(turn_id: &str) -> axum::extract::Path<(String, String)> {
+    axum::extract::Path(("ses-a".to_owned(), turn_id.to_owned()))
 }
 
 async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
@@ -78,6 +83,36 @@ async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
     handle.mark_completed().await;
 
     (state, tmp)
+}
+
+async fn reconnect_running_test_state(
+    turn_id: &str,
+) -> (SessionsState, TurnBufferHandle, tempfile::TempDir) {
+    let (state, tmp) = reconnect_test_state().await;
+    let buffer = state
+        .turn_buffer_registry
+        .get_or_create("ses-a", turn_id)
+        .await;
+    let handle = TurnBufferHandle::new(buffer);
+    handle
+        .record("text_delta", r#"{"type":"text_delta","text":"first"}"#)
+        .await;
+    (state, handle, tmp)
+}
+
+async fn response_body(response: impl IntoResponse) -> String {
+    let response = response.into_response();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read body");
+    String::from_utf8(bytes.to_vec()).expect("utf8 body")
+}
+
+fn parse_sse_data_events(body: &str) -> Vec<serde_json::Value> {
+    body.lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .filter_map(|data| serde_json::from_str(data.trim()).ok())
+        .collect()
 }
 
 // ── extract_idempotency_key ──
@@ -501,6 +536,167 @@ async fn reconnect_turn_rejects_cross_nous_scoped_caller() {
     )
     .await;
     assert!(allowed.is_ok(), "operator reconnect should succeed");
+}
+
+// ── reconnect lifecycle event ──
+
+#[tokio::test]
+async fn reconnect_completed_buffer_reports_completed_replay_only() {
+    let (state, _tmp) = reconnect_test_state().await;
+    let sse = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path(),
+    )
+    .await
+    .expect("reconnect should succeed");
+    let body = response_body(sse).await;
+    let events = parse_sse_data_events(&body);
+    assert!(
+        !events.is_empty(),
+        "reconnect must emit at least the lifecycle event"
+    );
+    let lifecycle = events.first().expect("lifecycle event");
+    assert_eq!(
+        lifecycle.get("type").and_then(serde_json::Value::as_str),
+        Some("turn_reconnect_state")
+    );
+    assert_eq!(
+        lifecycle.get("state").and_then(serde_json::Value::as_str),
+        Some("completed")
+    );
+    assert_eq!(
+        lifecycle.get("live").and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| { e.get("type").and_then(serde_json::Value::as_str) == Some("text_delta") }),
+        "completed reconnect must still replay buffered events"
+    );
+}
+
+#[tokio::test]
+async fn reconnect_failed_buffer_reports_failed_replay_only() {
+    let (state, _tmp) = reconnect_test_state().await;
+    let buffer = state
+        .turn_buffer_registry
+        .get_or_create("ses-a", "turn-failed")
+        .await;
+    let handle = TurnBufferHandle::new(buffer);
+    handle
+        .record(
+            "error",
+            r#"{"type":"error","code":"turn_failed","message":"synthetic failure"}"#,
+        )
+        .await;
+    handle.mark_failed().await;
+
+    let sse = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path_for("turn-failed"),
+    )
+    .await
+    .expect("reconnect should succeed");
+    let body = response_body(sse).await;
+    let events = parse_sse_data_events(&body);
+    assert!(
+        !events.is_empty(),
+        "reconnect must emit at least the lifecycle event"
+    );
+    let lifecycle = events.first().expect("lifecycle event");
+    assert_eq!(
+        lifecycle.get("type").and_then(serde_json::Value::as_str),
+        Some("turn_reconnect_state")
+    );
+    assert_eq!(
+        lifecycle.get("state").and_then(serde_json::Value::as_str),
+        Some("failed")
+    );
+    assert_eq!(
+        lifecycle.get("live").and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e.get("type").and_then(serde_json::Value::as_str) == Some("error")),
+        "failed reconnect must replay buffered error events"
+    );
+}
+
+#[tokio::test]
+async fn reconnect_running_buffer_reports_running_live_and_streams_later_event() {
+    let (state, handle, _tmp) = reconnect_running_test_state("turn-running").await;
+    let state_for_reconnect = state;
+    let handle_for_producer = handle.clone();
+
+    let reconnect = tokio::spawn(async move {
+        let sse = reconnect_turn(
+            axum::extract::State(state_for_reconnect),
+            claims(Role::Operator, None),
+            HeaderMap::new(),
+            reconnect_path_for("turn-running"),
+        )
+        .await
+        .expect("reconnect should succeed");
+        response_body(sse).await
+    });
+
+    // WHY(#5165): let the reconnect stream enter the live-wait loop before
+    // publishing the next synthetic event.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    handle_for_producer
+        .record("text_delta", r#"{"type":"text_delta","text":"second"}"#)
+        .await;
+    handle_for_producer.mark_completed().await;
+
+    let body = tokio::time::timeout(Duration::from_secs(2), reconnect)
+        .await
+        .expect("reconnect should finish before timeout")
+        .expect("reconnect task should not panic");
+    let events = parse_sse_data_events(&body);
+    assert!(
+        !events.is_empty(),
+        "reconnect must emit at least the lifecycle event"
+    );
+    let lifecycle = events.first().expect("lifecycle event");
+    assert_eq!(
+        lifecycle.get("type").and_then(serde_json::Value::as_str),
+        Some("turn_reconnect_state")
+    );
+    assert_eq!(
+        lifecycle.get("state").and_then(serde_json::Value::as_str),
+        Some("running")
+    );
+    assert_eq!(
+        lifecycle.get("live").and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+
+    let deltas: Vec<_> = events
+        .iter()
+        .filter(|e| e.get("type").and_then(serde_json::Value::as_str) == Some("text_delta"))
+        .collect();
+    assert_eq!(
+        deltas.len(),
+        2,
+        "running reconnect must replay the buffered delta and then stream the later delta"
+    );
+    let first = deltas.first().expect("first text delta");
+    let second = deltas.get(1).expect("second text delta");
+    assert_eq!(
+        first.get("text").and_then(serde_json::Value::as_str),
+        Some("first")
+    );
+    assert_eq!(
+        second.get("text").and_then(serde_json::Value::as_str),
+        Some("second")
+    );
 }
 
 // ── IdempotencyGuard ──

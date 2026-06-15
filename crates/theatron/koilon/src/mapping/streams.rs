@@ -74,6 +74,11 @@ impl App {
             SseEvent::TurnAfter {
                 nous_id,
                 session_id,
+            }
+            | SseEvent::TurnComplete {
+                nous_id,
+                session_id,
+                ..
             } => Msg::SseTurnAfter {
                 nous_id,
                 session_id,
@@ -108,6 +113,7 @@ impl App {
             SseEvent::DistillBefore { nous_id } => Msg::SseDistillBefore { nous_id },
             SseEvent::DistillStage { nous_id, stage } => Msg::SseDistillStage { nous_id, stage },
             SseEvent::DistillAfter { nous_id } => Msg::SseDistillAfter { nous_id },
+            SseEvent::StreamLagged { dropped } => Msg::SseStreamLagged { dropped },
             SseEvent::Ping => Msg::Tick,
             SseEvent::Error { message } => Msg::ShowError(message),
             _ => Msg::Tick,

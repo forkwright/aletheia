@@ -1349,8 +1349,27 @@ pub async fn reconnect_turn(
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(32);
 
     tokio::spawn(async move {
-        // Phase 1: Replay buffered events after last_event_id.
         let (events, state) = handle.events_after(last_event_id).await;
+        let live = state == crate::turn_buffer::TurnState::Running;
+        let state_name = match state {
+            crate::turn_buffer::TurnState::Running => "running",
+            crate::turn_buffer::TurnState::Completed => "completed",
+            crate::turn_buffer::TurnState::Failed => "failed",
+        };
+        let control_data = serde_json::json!({
+            "type": "turn_reconnect_state",
+            "state": state_name,
+            "live": live,
+        })
+        .to_string();
+        let control_event = Event::default()
+            .event("turn_reconnect_state")
+            .data(control_data);
+        if tx.send(Ok(control_event)).await.is_err() {
+            return;
+        }
+
+        // Phase 1: Replay buffered events after last_event_id.
         for event in events {
             let sse_event = Event::default()
                 .event(event.event_type)
