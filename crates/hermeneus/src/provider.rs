@@ -132,11 +132,13 @@ pub struct ModelPricing {
 /// Controls whether Anthropic prompt-cache markers (`cache_control`) are
 /// emitted on outgoing requests.
 ///
-/// Anthropic's prompt cache stores marked content on their servers for up
-/// to 5 minutes (`Ephemeral`) or 1 hour (`Extended`) so that repeated
-/// requests can reuse it. Disabling the cache keeps the operator system
-/// prompt, tool definitions, and conversation history off Anthropic's
-/// caching infrastructure at the cost of higher per-turn input token spend.
+/// Anthropic's prompt cache stores marked content for up to 5 minutes.
+/// The `Extended` variant is reserved for a future longer-TTL cache type
+/// not yet supported by the Anthropic API and currently behaves like
+/// [`Ephemeral`](Self::Ephemeral). Disabling the cache keeps the operator
+/// system prompt, tool definitions, and conversation history off
+/// Anthropic's caching infrastructure at the cost of higher per-turn input
+/// token spend.
 ///
 /// Sovereignty default: [`PromptCacheMode::Disabled`]. Operators who
 /// accept the tradeoff may opt in via `aletheia.toml`.
