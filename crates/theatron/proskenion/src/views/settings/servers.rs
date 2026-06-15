@@ -35,7 +35,11 @@ async fn probe_health(url: &str, token: Option<&str>) -> ServerHealth {
     };
     match PylonClient::new(&config) {
         Ok(client) => match client.health().await {
-            Ok(()) => ServerHealth::Healthy,
+            // NOTE: Any successful health response means the server is reachable.
+            // A degraded/unhealthy readiness payload still indicates the server
+            // can be contacted; only transport/auth/malformed errors count as
+            // unreachable from the settings probe's point of view.
+            Ok(_) => ServerHealth::Healthy,
             Err(_) => ServerHealth::Unreachable,
         },
         Err(_) => ServerHealth::Unreachable,
@@ -77,8 +81,10 @@ pub(crate) fn ServersPanel() -> Element {
 
     // Live connection URL, present only while actually connected. Drives the
     // "Update to current" offer when the active entry's saved URL has drifted.
-    let connected_url: Option<String> = if matches!(connection_state(), ConnectionState::Connected)
-    {
+    let connected_url: Option<String> = if matches!(
+        connection_state(),
+        ConnectionState::Connected | ConnectionState::ConnectedDegraded { .. }
+    ) {
         Some(connection_config.read().server_url.clone())
     } else {
         None

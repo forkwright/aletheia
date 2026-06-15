@@ -27,8 +27,15 @@ pub enum ConnectionState {
     Disconnected,
     /// Initial connection in progress (first attempt).
     Connecting,
-    /// Connected and healthy: health checks passing.
+    /// Connected: the channel is up. The connection may be healthy or
+    /// degraded/unhealthy; use [`Self::is_connected`] to treat both as up.
     Connected,
+    /// Connected but degraded: the channel is up yet a health or capability
+    /// check reports an unhealthy status (e.g. high latency, partial outage).
+    ConnectedDegraded {
+        /// Human-readable degraded status description.
+        status: String,
+    },
     /// Lost connection, attempting to restore. `attempt` counts consecutive
     /// failures (1-indexed).
     Reconnecting {
@@ -46,11 +53,11 @@ pub enum ConnectionState {
 }
 
 impl ConnectionState {
-    /// Whether the connection is in the [`Connected`](Self::Connected) state.
+    /// Whether the connection is up (either healthy or degraded).
     #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
     #[must_use]
     pub(crate) fn is_connected(&self) -> bool {
-        matches!(self, Self::Connected)
+        matches!(self, Self::Connected | Self::ConnectedDegraded { .. })
     }
 
     /// Whether the connection is in the [`Disconnected`](Self::Disconnected) state.
@@ -68,6 +75,7 @@ impl ConnectionState {
             Self::Disconnected => "disconnected",
             Self::Connecting => "connecting",
             Self::Connected => "connected",
+            Self::ConnectedDegraded { .. } => "connected degraded",
             Self::Reconnecting { .. } => "reconnecting",
             Self::TimedOut => "timed out",
             Self::Failed { .. } => "failed",
@@ -75,10 +83,11 @@ impl ConnectionState {
     }
 
     /// Whether the UI should show the connect form (not connected or actively
-    /// trying to connect).
+    /// trying to connect). Both healthy and degraded connected states hide the
+    /// form.
     #[must_use]
     pub(crate) fn needs_connect_view(&self) -> bool {
-        !matches!(self, Self::Connected)
+        !matches!(self, Self::Connected | Self::ConnectedDegraded { .. })
     }
 }
 
@@ -186,6 +195,12 @@ mod tests {
     #[test]
     fn connection_state_is_connected() {
         assert!(ConnectionState::Connected.is_connected());
+        assert!(
+            ConnectionState::ConnectedDegraded {
+                status: "high latency".into()
+            }
+            .is_connected()
+        );
         assert!(!ConnectionState::Disconnected.is_connected());
         assert!(!ConnectionState::Connecting.is_connected());
         assert!(!ConnectionState::Reconnecting { attempt: 1 }.is_connected());
@@ -203,6 +218,12 @@ mod tests {
         assert!(ConnectionState::Disconnected.needs_connect_view());
         assert!(ConnectionState::Connecting.needs_connect_view());
         assert!(!ConnectionState::Connected.needs_connect_view());
+        assert!(
+            !ConnectionState::ConnectedDegraded {
+                status: "partial outage".into()
+            }
+            .needs_connect_view()
+        );
         assert!(ConnectionState::Reconnecting { attempt: 1 }.needs_connect_view());
         assert!(ConnectionState::TimedOut.needs_connect_view());
         assert!(
@@ -218,6 +239,13 @@ mod tests {
         assert_eq!(ConnectionState::Disconnected.label(), "disconnected");
         assert_eq!(ConnectionState::Connecting.label(), "connecting");
         assert_eq!(ConnectionState::Connected.label(), "connected");
+        assert_eq!(
+            ConnectionState::ConnectedDegraded {
+                status: "slow".into()
+            }
+            .label(),
+            "connected degraded"
+        );
         assert_eq!(
             ConnectionState::Reconnecting { attempt: 3 }.label(),
             "reconnecting"
