@@ -9,7 +9,7 @@ use snafu::prelude::*;
 
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DerivedRulesConfig, DriftDetectionConfig,
-    DriftDetector, FjallBackupConfig, InstanceBackupConfig, KnowledgeMaintenanceConfig,
+DriftDetector, FjallBackupConfig, InstanceBackupConfig, KnowledgeMaintenanceConfig,
     KnowledgeMaintenanceExecutor, MaintenanceConfig, MaintenanceConfigSection,
     MaintenanceRuntimeCapabilities, MaintenanceTaskDefinition, MaintenanceTaskImplementationStatus,
     MaintenanceTaskOwner, ManualMaintenanceTask, PromptAuditRetentionConfig, PromptAuditRotator,
@@ -228,7 +228,7 @@ async fn run_task(
                 );
             }
         }
-        ManualMaintenanceTask::FjallBackup => {
+        ManualMaintenanceTask::InstanceBackup => {
             let manager =
                 oikonomos::maintenance::InstanceBackup::new(maint.instance_backup.clone());
             let report = manager
@@ -236,13 +236,13 @@ async fn run_task(
                 .whatever_context("whole-instance backup failed")?;
             match report.backup_path {
                 Some(path) => println!(
-                    "fjall-backup: {} files copied ({} bytes) to {}, {} old backups pruned",
+                    "instance-backup: {} files copied ({} bytes) to {}, {} old backups pruned",
                     report.files_copied,
                     report.bytes_copied,
                     path.display(),
                     report.backups_pruned,
                 ),
-                None => println!("fjall-backup: skipped (source directory not found)"),
+                None => println!("instance-backup: skipped (source directory not found)"),
             }
         }
         ManualMaintenanceTask::PromptAuditRotation => {
@@ -549,13 +549,6 @@ pub(crate) fn build_config(
                 cadence: settings.knowledge_maintenance_serendipity.cadence.clone(),
             },
         },
-        fjall_backup: FjallBackupConfig {
-            enabled: settings.backup.enabled,
-            source_dir: oikos.knowledge_db(),
-            backup_dir: oikos.backups().join("fjall"),
-            interval_hours: settings.backup.backup_interval_hours,
-            retention_count: settings.backup.backup_retention_count,
-        },
         instance_backup: InstanceBackupConfig {
             enabled: settings.backup.enabled,
             instance_root: oikos.root().to_path_buf(),
@@ -810,6 +803,36 @@ mod tests {
         assert_eq!(
             format_prosoche_path(&disabled),
             "Prosoche heartbeat: disabled"
+        );
+    }
+
+    #[test]
+    fn manual_registry_exposes_instance_backup_not_fjall_backup() {
+        let ids = manual_maintenance_task_ids();
+        assert!(
+            ids.contains(&"instance-backup"),
+            "manual registry must expose instance-backup"
+        );
+        assert!(
+            !ids.contains(&"fjall-backup"),
+            "manual registry must not expose fjall-backup"
+        );
+
+        let Some(definition) = maintenance_task_by_id("instance-backup") else {
+            panic!("instance-backup must resolve");
+        };
+        assert!(
+            definition.manual_run().is_some(),
+            "instance-backup must be runnable manually"
+        );
+
+        let Some(legacy) = maintenance_task_by_id("fjall-backup") else {
+            panic!("fjall-backup legacy alias must still resolve");
+        };
+        assert_eq!(
+            legacy.id(),
+            "instance-backup",
+            "legacy alias must point to instance-backup"
         );
     }
 }

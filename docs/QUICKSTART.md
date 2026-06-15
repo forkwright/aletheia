@@ -192,7 +192,7 @@ The messages endpoint streams the response as Server-Sent Events (SSE).
 ```bash
 aletheia -r ./instance      # start the server
 aletheia tui                 # talk to your agent (in another terminal)
-aletheia backup              # create a database backup
+aletheia backup              # create a whole-instance backup set
 aletheia --help              # full command reference
 ```
 

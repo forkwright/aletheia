@@ -31,7 +31,7 @@ pub struct MaintenanceSettings {
     pub watchdog: WatchdogSettings,
     /// Periodic cron task settings (evolution, reflection, graph cleanup).
     pub cron_tasks: CronTaskSettings,
-    /// Fjall knowledge store backup settings.
+    /// Whole-instance backup set settings.
     pub backup: BackupSettings,
     /// Prosoche attention and self-audit scheduling settings.
     pub prosoche: ProsocheMaintenanceSettings,
@@ -694,13 +694,13 @@ impl Default for WatchdogSettings {
     }
 }
 
-/// Fjall knowledge store periodic backup settings.
+/// Whole-instance backup set periodic backup settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct BackupSettings {
-    /// Whether automatic fjall backups are enabled.
+    /// Whether automatic whole-instance backup sets are enabled.
     pub enabled: bool,
     /// Hours between automatic backups.
     pub backup_interval_hours: u64,

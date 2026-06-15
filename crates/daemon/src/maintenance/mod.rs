@@ -90,8 +90,6 @@ pub struct MaintenanceConfig {
     pub retention: RetentionConfig,
     /// Knowledge graph maintenance settings.
     pub knowledge_maintenance: KnowledgeMaintenanceConfig,
-    /// Fjall knowledge store backup settings.
-    pub fjall_backup: FjallBackupConfig,
     /// Whole-instance backup settings.
     pub instance_backup: InstanceBackupConfig,
     /// Runtime metrics hook for backup freshness alerting.
@@ -120,7 +118,6 @@ impl Default for MaintenanceConfig {
             db_monitoring: DbMonitoringConfig::default(),
             retention: RetentionConfig::default(),
             knowledge_maintenance: KnowledgeMaintenanceConfig::default(),
-            fjall_backup: FjallBackupConfig::default(),
             instance_backup: InstanceBackupConfig::default(),
             backup_metrics: None,
             prosoche_audit_dir: root.join("data").join("prosoche-audits"),

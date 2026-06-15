@@ -77,7 +77,7 @@ pub enum ManualMaintenanceTask {
     /// Run database size monitoring.
     DbMonitor,
     /// Run whole-instance backup.
-    FjallBackup,
+    InstanceBackup,
     /// Run prompt audit log retention.
     PromptAuditRotation,
     /// Run nous self-audit checks.
@@ -508,16 +508,16 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         ),
     ),
     task(
-        "fjall-backup",
+        "instance-backup",
         "Whole-instance backup",
         MaintenanceTaskOwner::Daemon,
         Some(MaintenanceConfigSection::InstanceBackup),
         "Whole-instance backup",
         MaintenanceTaskImplementationStatus::Implemented,
         CRON_METRICS,
-        Some(ManualMaintenanceTask::FjallBackup),
+        Some(ManualMaintenanceTask::InstanceBackup),
         scheduled(
-            BuiltinTask::FjallBackup,
+            BuiltinTask::InstanceBackup,
             ScheduleSource::InstanceBackupIntervalHours,
             true,
             RegistrationCondition::ConfigEnabled(MaintenanceConfigSection::InstanceBackup),
@@ -840,7 +840,13 @@ pub fn manual_maintenance_task_ids() -> Vec<&'static str> {
 /// Look up a maintenance task by id.
 #[must_use]
 pub fn maintenance_task_by_id(id: &str) -> Option<&'static MaintenanceTaskDefinition> {
-    TASKS.iter().find(|task| task.id == id)
+    TASKS
+        .iter()
+        .find(|task| task.id == id)
+        .or_else(|| match id {
+            "fjall-backup" => TASKS.iter().find(|task| task.id == "instance-backup"),
+            _ => None,
+        })
 }
 
 #[cfg(test)]
@@ -888,5 +894,47 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn canonical_backup_task_id_is_instance_backup() {
+        let Some(definition) = maintenance_task_by_id("instance-backup") else {
+            panic!("instance-backup should be present in registry");
+        };
+        assert_eq!(definition.id(), "instance-backup");
+        assert_eq!(definition.name(), "Whole-instance backup");
+        assert_eq!(
+            definition.manual_run(),
+            Some(ManualMaintenanceTask::InstanceBackup)
+        );
+        assert_eq!(definition.builtin(), Some(BuiltinTask::InstanceBackup));
+    }
+
+    #[test]
+    fn legacy_fjall_backup_lookup_resolves_to_canonical_definition() {
+        let Some(canonical) = maintenance_task_by_id("instance-backup") else {
+            panic!("canonical instance-backup should exist");
+        };
+        let Some(legacy) = maintenance_task_by_id("fjall-backup") else {
+            panic!("legacy fjall-backup alias should resolve");
+        };
+        assert_eq!(
+            legacy.id(),
+            canonical.id(),
+            "fjall-backup alias must return the canonical instance-backup definition"
+        );
+    }
+
+    #[test]
+    fn manual_maintenance_task_ids_include_only_canonical_backup() {
+        let ids = manual_maintenance_task_ids();
+        assert!(
+            ids.contains(&"instance-backup"),
+            "manual ids should include canonical instance-backup"
+        );
+        assert!(
+            !ids.contains(&"fjall-backup"),
+            "manual ids should not include legacy fjall-backup"
+        );
     }
 }

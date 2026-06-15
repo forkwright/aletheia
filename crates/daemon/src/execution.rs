@@ -546,7 +546,7 @@ success: outcome.last_persist_error.is_none(),
                 ),
             })
         }
-        BuiltinTask::FjallBackup => {
+        BuiltinTask::InstanceBackup => {
             let config = maintenance
                 .map_or_else(InstanceBackupConfig::default, |m| m.instance_backup.clone());
             let backup_metrics = maintenance.and_then(|m| m.backup_metrics.clone());
@@ -817,7 +817,7 @@ async fn execute_knowledge_task(
             | BuiltinTask::LessonExtraction
             | BuiltinTask::SelfPrompt
             | BuiltinTask::ProposeRules
-            | BuiltinTask::FjallBackup
+            | BuiltinTask::InstanceBackup
             | BuiltinTask::PromptAuditRotation
             | BuiltinTask::RoutingStoreRefresh => error::TaskFailedSnafu {
                 task_id: format!("{builtin_clone:?}"),
