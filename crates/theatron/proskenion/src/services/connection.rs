@@ -102,7 +102,7 @@ impl PylonClient {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
-        // CSRF mitigation: pylon rejects requests without this header.
+        // CSRF mitigation: documented default bootstrap header for pylon.
         headers.insert("x-requested-with", HeaderValue::from_static("aletheia"));
 
         if let Some(ref token) = config.auth_token {

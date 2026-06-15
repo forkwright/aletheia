@@ -12,10 +12,12 @@ const REDACTED: &str = "***";
 const SECRET_REDACTED: &str = "[REDACTED]";
 
 type SecretAccessor = for<'a> fn(&'a AletheiaConfig) -> Option<&'a SecretString>;
+type RequiredSecretAccessor = for<'a> fn(&'a AletheiaConfig) -> &'a SecretString;
 
 #[derive(Clone, Copy)]
 enum SensitiveLeafValue {
     Secret(SecretAccessor),
+    RequiredSecret(RequiredSecretAccessor),
     RedactOnly,
 }
 
@@ -30,6 +32,10 @@ const SENSITIVE_LEAVES: &[SensitiveLeaf] = &[
     SensitiveLeaf {
         path: &["gateway", "auth", "signingKey"],
         value: SensitiveLeafValue::Secret(gateway_auth_signing_key),
+    },
+    SensitiveLeaf {
+        path: &["gateway", "csrf", "headerValue"],
+        value: SensitiveLeafValue::RequiredSecret(gateway_csrf_header_value),
     },
     SensitiveLeaf {
         path: &["gateway", "tls", "keyPath"],
@@ -70,10 +76,12 @@ fn redact_sensitive_leaves(root: &mut Value) {
 /// before deserializing the value back into typed config.
 pub fn preserve_secret_leaves(root: &mut Value, current: &AletheiaConfig) {
     for leaf in SENSITIVE_LEAVES {
-        let SensitiveLeafValue::Secret(accessor) = leaf.value else {
-            continue;
+        let secret = match leaf.value {
+            SensitiveLeafValue::Secret(accessor) => accessor(current),
+            SensitiveLeafValue::RequiredSecret(accessor) => Some(accessor(current)),
+            SensitiveLeafValue::RedactOnly => continue,
         };
-        let Some(secret) = accessor(current) else {
+        let Some(secret) = secret else {
             continue;
         };
         let Some(slot) = json_path_mut(root, leaf.path) else {
@@ -104,10 +112,12 @@ pub fn preserve_config_secret_leaves(
 
 pub(crate) fn expose_secret_leaves_for_toml(root: &mut toml::Value, current: &AletheiaConfig) {
     for leaf in SENSITIVE_LEAVES {
-        let SensitiveLeafValue::Secret(accessor) = leaf.value else {
-            continue;
+        let secret = match leaf.value {
+            SensitiveLeafValue::Secret(accessor) => accessor(current),
+            SensitiveLeafValue::RequiredSecret(accessor) => Some(accessor(current)),
+            SensitiveLeafValue::RedactOnly => continue,
         };
-        let Some(secret) = accessor(current) else {
+        let Some(secret) = secret else {
             continue;
         };
         let Some(slot) = toml_path_mut(root, leaf.path) else {
@@ -121,6 +131,10 @@ pub(crate) fn expose_secret_leaves_for_toml(root: &mut toml::Value, current: &Al
 
 fn gateway_auth_signing_key(config: &AletheiaConfig) -> Option<&SecretString> {
     config.gateway.auth.signing_key.as_ref()
+}
+
+fn gateway_csrf_header_value(config: &AletheiaConfig) -> &SecretString {
+    &config.gateway.csrf.header_value
 }
 
 fn is_redaction_marker(value: &Value) -> bool {
@@ -205,6 +219,25 @@ mod tests {
                 .to_string()
                 .contains("super-secret-jwt-signing-key"),
             "raw secret must not appear in redacted output"
+        );
+    }
+
+    #[test]
+    fn redacts_gateway_csrf_header_value() {
+        let mut config = AletheiaConfig::default();
+        config.gateway.csrf.header_value =
+            koina::secret::SecretString::from("synthetic-csrf-header-secret");
+
+        let redacted = redact(&config);
+        assert_eq!(
+            redacted["gateway"]["csrf"]["headerValue"], REDACTED,
+            "csrf header value should be redacted"
+        );
+        assert!(
+            !redacted
+                .to_string()
+                .contains("synthetic-csrf-header-secret"),
+            "raw csrf header value must not appear in redacted output"
         );
     }
 

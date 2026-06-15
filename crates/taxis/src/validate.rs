@@ -319,6 +319,32 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     if let Some(body_limit) = value.get("bodyLimit") {
         check_positive_u64(body_limit, "maxBytes", errors);
     }
+
+    if let Some(csrf) = value.get("csrf") {
+        let enabled = csrf.get("enabled").and_then(Value::as_bool);
+        let disable_acknowledged = csrf
+            .get("disableAcknowledged")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if enabled == Some(false) && !disable_acknowledged {
+            errors.push(
+                "gateway.csrf.enabled = false requires gateway.csrf.disableAcknowledged = true"
+                    .to_owned(),
+            );
+        }
+
+        if let Some(header_name) = csrf.get("headerName").and_then(Value::as_str)
+            && header_name.trim().is_empty()
+        {
+            errors.push("gateway.csrf.headerName must not be empty".to_owned());
+        }
+
+        if let Some(header_value) = csrf.get("headerValue").and_then(Value::as_str)
+            && header_value.is_empty()
+        {
+            errors.push("gateway.csrf.headerValue must not be empty".to_owned());
+        }
+    }
 }
 
 /// Reject `gateway.auth.mode = "none"` unless the operator has set

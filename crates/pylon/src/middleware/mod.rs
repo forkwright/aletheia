@@ -11,6 +11,7 @@ use axum::response::{IntoResponse, Response};
 use tracing::warn;
 
 use koina::http::CONTENT_TYPE_JSON;
+use koina::secret::SecretString;
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::extract::Claims;
@@ -27,7 +28,7 @@ pub struct CsrfState {
     /// HTTP header name to check (e.g. `"x-requested-with"`).
     pub header_name: String,
     /// Expected header value (e.g. `"aletheia"`).
-    pub header_value: String,
+    pub header_value: SecretString,
 }
 
 /// Middleware that validates bearer auth for an entire router subtree.
@@ -64,9 +65,7 @@ pub async fn require_csrf_header(request: Request, next: Next) -> Response {
     }
 
     let Some(csrf) = request.extensions().get::<CsrfState>().cloned() else {
-        // WHY: No CSRF state means the layer was installed without the
-        // matching Extension; fail open defensively rather than break routing.
-        return next.run(request).await;
+        return csrf_rejected_response();
     };
 
     if csrf.enabled {
@@ -76,7 +75,7 @@ pub async fn require_csrf_header(request: Request, next: Next) -> Response {
             .and_then(|v| v.to_str().ok());
 
         match header_value {
-            Some(v) if v == csrf.header_value => next.run(request).await,
+            Some(v) if v == csrf.header_value.expose_secret() => next.run(request).await,
             _ => csrf_rejected_response(),
         }
     } else {

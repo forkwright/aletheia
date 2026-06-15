@@ -25,3 +25,4 @@ allowedOrigins = ["https://aletheia.tailnet.example"]
 
 [gateway.csrf]
 enabled = true
+headerValue = "aletheia"

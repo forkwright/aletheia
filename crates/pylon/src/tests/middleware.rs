@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use axum::routing::post;
 use tower::ServiceExt;
 
 use super::helpers::*;
@@ -66,6 +67,7 @@ async fn oversized_body_returns_413() {
         body_limit_bytes: 100,
         csrf: crate::security::CsrfConfig {
             enabled: false,
+            disable_acknowledged: true,
             ..crate::security::CsrfConfig::default()
         },
         ..SecurityConfig::default()
@@ -121,9 +123,7 @@ async fn csrf_allows_post_with_correct_header() {
         },
         ..SecurityConfig::default()
     };
-    // WHY: The CSRF token is now a per-instance CSPRNG value. Read it from
-    // the SecurityConfig so the test sends the correct token, not "aletheia".
-    let csrf_token = security.csrf.header_value.clone();
+    let csrf_token = security.csrf.header_value.expose_secret().to_owned();
     let router = build_router(state, &security);
 
     let token = default_token();
@@ -205,9 +205,7 @@ async fn csrf_allows_delete_with_correct_header() {
         },
         ..SecurityConfig::default()
     };
-    // WHY: The CSRF token is now a per-instance CSPRNG value. Read it from
-    // the SecurityConfig so the test sends the correct token, not "aletheia".
-    let csrf_token = security.csrf.header_value.clone();
+    let csrf_token = security.csrf.header_value.expose_secret().to_owned();
     let router = build_router(Arc::clone(&state), &security);
 
     let token = default_token();
@@ -260,6 +258,26 @@ async fn cors_permissive_when_no_origins_configured() {
 
     let resp = router.oneshot(req).await.unwrap();
     assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn csrf_middleware_without_state_rejects_post() {
+    let router = axum::Router::new()
+        .route("/write", post(|| async { StatusCode::OK }))
+        .layer(axum::middleware::from_fn(
+            crate::middleware::require_csrf_header,
+        ));
+
+    let resp = router
+        .oneshot(Request::post("/write").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "missing CsrfState must not bypass CSRF protection"
+    );
 }
 
 #[tokio::test]
@@ -374,18 +392,13 @@ fn security_config_default_values() {
     assert_eq!(config.cors.max_age_secs, 3600);
     assert_eq!(config.body_limit_bytes, 1_048_576);
     assert!(config.csrf.enabled);
+    assert!(!config.csrf.disable_acknowledged);
     assert_eq!(config.csrf.header_name, "x-requested-with");
-    // WHY: The default CSRF token is now a CSPRNG-generated 32-char hex string
-    // rather than the static "aletheia" value, which was guessable.
-    assert_eq!(config.csrf.header_value.len(), 32);
-    assert!(
-        config
-            .csrf
-            .header_value
-            .chars()
-            .all(|c| c.is_ascii_hexdigit())
+    assert_eq!(
+        config.csrf.header_value.expose_secret(),
+        "aletheia",
+        "default CSRF header value must match the documented bootstrap header"
     );
-    assert_ne!(config.csrf.header_value, "aletheia");
     assert!(!config.tls.enabled);
     assert!(config.tls.cert_path.is_none());
     assert!(config.tls.key_path.is_none());
@@ -398,9 +411,9 @@ fn security_config_from_gateway() {
     let gw = GatewayConfig::default();
     let config = SecurityConfig::from_gateway(&gw);
     assert!(!config.tls.enabled);
-    // WHY: CSRF defaults to disabled so the API works out-of-the-box;
-    // operators enable it explicitly when exposing to browsers (#1690).
-    assert!(!config.csrf.enabled);
+    assert!(config.csrf.enabled);
+    assert!(!config.csrf.disable_acknowledged);
+    assert_eq!(config.csrf.header_value.expose_secret(), "aletheia");
     assert_eq!(config.cors.max_age_secs, 3600);
 }
 

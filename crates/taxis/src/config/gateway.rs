@@ -135,21 +135,21 @@ impl Default for BodyLimitConfig {
 pub struct CsrfConfig {
     /// Whether CSRF header checking is active.
     pub enabled: bool,
+    /// Explicit acknowledgement required when CSRF protection is disabled.
+    pub disable_acknowledged: bool,
     /// Required header name (e.g. `x-requested-with`).
     pub header_name: String,
     /// Required header value (e.g. `aletheia`).
-    pub header_value: String,
+    pub header_value: SecretString,
 }
 
 impl Default for CsrfConfig {
     fn default() -> Self {
-        // WHY: CSRF is disabled by default so the API works out-of-the-box
-        // without any client configuration. Operators who expose the gateway
-        // to a browser should explicitly enable it.
         Self {
-            enabled: false,
+            enabled: true,
+            disable_acknowledged: false,
             header_name: "x-requested-with".to_owned(),
-            header_value: "aletheia".to_owned(),
+            header_value: SecretString::from("aletheia"),
         }
     }
 }

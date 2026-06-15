@@ -222,6 +222,9 @@ mode = "{auth_mode}"
 # csrf:
 # [gateway.csrf]
 # enabled = true
+# disableAcknowledged = true  # Required only when enabled = false
+# headerName = "x-requested-with"
+# headerValue = "aletheia"
 
 # --- Agents ---
 [agents.defaults]

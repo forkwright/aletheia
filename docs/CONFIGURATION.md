@@ -186,9 +186,15 @@ HTTP gateway serving the API.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether CSRF header checking is active |
-| `header_name` | string | `"x-requested-with"` | Required header name |
-| `header_value` | string | `"aletheia"` | Required header value |
+| `enabled` | bool | `true` | Whether CSRF header checking is active |
+| `disableAcknowledged` | bool | `false` | Must be `true` when `enabled = false` |
+| `headerName` | string | `"x-requested-with"` | Required header name |
+| `headerValue` | secret string | `"aletheia"` | Required header value; redacted from config API responses |
+
+The documented bootstrap header for first-party clients and curl is
+`X-Requested-With: aletheia`. Operators who set a custom `headerValue` must
+provision the same value into their clients through local config or deployment
+secrets; the runtime config API redacts it.
 
 ### gateway.rate_limit
 
@@ -224,6 +230,7 @@ max_bytes = 2097152
 
 [gateway.csrf]
 enabled = true
+headerValue = "aletheia"
 ```
 
 ---

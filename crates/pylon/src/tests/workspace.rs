@@ -26,6 +26,7 @@ async fn app_with_large_body_limit() -> (axum::Router, tempfile::TempDir) {
         body_limit_bytes: 32 * 1024 * 1024,
         csrf: crate::security::CsrfConfig {
             enabled: false,
+            disable_acknowledged: true,
             ..crate::security::CsrfConfig::default()
         },
         ..SecurityConfig::default()
