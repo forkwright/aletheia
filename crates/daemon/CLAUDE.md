@@ -61,5 +61,5 @@ Per-nous background task runner: cron scheduling, maintenance services, prosoche
 
 ## Dependencies
 
-Uses: koina, chrono, cron, jiff, fjall, tokio, snafu, tracing
+Uses: koina, jiff, fjall, tokio, snafu, tracing
 Used by: aletheia (binary)
