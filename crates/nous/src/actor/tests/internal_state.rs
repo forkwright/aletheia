@@ -166,27 +166,81 @@ fn record_background_panic_increments_count() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
     assert_eq!(actor.runtime.background_panic_count, 0);
 
-    actor.record_background_panic();
+    actor.record_background_panic(None);
 
     assert_eq!(actor.runtime.background_panic_count, 1);
     assert_eq!(actor.runtime.background_panic_timestamps.len(), 1);
 }
 
 #[test]
-fn record_background_panic_does_not_enter_degraded() {
+fn record_background_panic_below_threshold_does_not_degrade_background_health() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
 
-    for _ in 0..10 {
-        actor.record_background_panic();
+    // NOTE: taxis `degraded_panic_threshold` defaults to 5.
+    for _ in 0..4 {
+        actor.record_background_panic(None);
     }
 
-    // Background panics never trigger degraded mode — only pipeline panics do.
+    // Background panics never trigger pipeline `Degraded` mode.
     assert_eq!(
         actor.channel.status,
         NousLifecycle::Idle,
-        "background panics must not enter degraded mode"
+        "background panics must not enter pipeline degraded mode"
     );
-    assert_eq!(actor.runtime.background_panic_count, 10);
+    assert_eq!(actor.runtime.background_panic_count, 4);
+    assert_eq!(actor.runtime.background_failure_total_count, 4);
+    assert_eq!(actor.runtime.background_failure_timestamps.len(), 4);
+    assert_eq!(
+        actor.runtime.background_failure_latest_kind.as_deref(),
+        Some("panic")
+    );
+
+    let (tx, mut rx) = tokio::sync::oneshot::channel();
+    actor.handle_status(tx);
+    let status = rx.try_recv().expect("status should be ready");
+    assert!(!status.background_health_degraded);
+    assert_eq!(status.background_failure_total_count, 4);
+    assert_eq!(status.background_failure_recent_count, 4);
+    assert_eq!(status.lifecycle, NousLifecycle::Idle);
+}
+
+#[test]
+fn record_background_panic_at_threshold_marks_background_health_degraded() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    for _ in 0..5 {
+        actor.record_background_panic(None);
+    }
+
+    // Pipeline lifecycle stays Idle; only explicit background health flips.
+    assert_eq!(
+        actor.channel.status,
+        NousLifecycle::Idle,
+        "background panics must not enter pipeline degraded mode"
+    );
+    assert_eq!(actor.runtime.background_panic_count, 5);
+    assert_eq!(actor.runtime.background_failure_total_count, 5);
+    assert_eq!(actor.runtime.background_failure_timestamps.len(), 5);
+
+    let degraded_window = Duration::from_secs(actor.nous_behavior.degraded_window_secs);
+    let recent = actor
+        .runtime
+        .background_failure_timestamps
+        .iter()
+        .filter(|t| t.elapsed() <= degraded_window)
+        .count();
+    assert!(
+        recent >= 5,
+        "recent background failures should reach threshold"
+    );
+
+    let (tx, mut rx) = tokio::sync::oneshot::channel();
+    actor.handle_status(tx);
+    let status = rx.try_recv().expect("status should be ready");
+    assert!(status.background_health_degraded);
+    assert_eq!(status.background_failure_total_count, 5);
+    assert_eq!(status.background_failure_recent_count, 5);
+    assert_eq!(status.lifecycle, NousLifecycle::Idle);
 }
 
 // ── turn.rs: apply_mistake_brake ─────────────────────────────────────────────

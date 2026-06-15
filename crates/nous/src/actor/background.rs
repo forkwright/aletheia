@@ -27,7 +27,7 @@ impl Drop for DistillationFlagGuard {
 }
 
 impl NousActor {
-    /// Reap completed background tasks, log failures, count panics, record metrics.
+    /// Reap completed background tasks, log failures, count panics/failures, record metrics.
     pub(super) fn reap_background_tasks(&mut self) {
         while let Some(result) = self.runtime.background_tasks.try_join_next() {
             match result {
@@ -36,11 +36,15 @@ impl NousActor {
                 Err(e) => {
                     if e.is_panic() {
                         // WHY: Background tasks run outside the main panic boundary.
-                        // They are logged but do NOT trigger degraded mode.
-                        self.record_background_panic();
+                        // They are logged and counted as background failures but do NOT
+                        // trigger the pipeline `Degraded` lifecycle.
+                        let message = e.to_string();
+                        self.record_background_panic(Some(message));
                         crate::metrics::record_background_failure(&self.id, "panic");
                     } else {
-                        warn!(nous_id = %self.id, error = %e, "background task failed");
+                        let message = e.to_string();
+                        warn!(nous_id = %self.id, error = %message, "background task failed");
+                        self.record_background_failure("error", Some(message));
                         crate::metrics::record_background_failure(&self.id, "error");
                     }
                 }
@@ -48,8 +52,8 @@ impl NousActor {
         }
     }
 
-    /// Record a background task panic occurrence. Logs a warning but does NOT trigger degraded mode.
-    pub(super) fn record_background_panic(&mut self) {
+    /// Record a background task panic occurrence. Logs a warning but does NOT trigger pipeline degraded mode.
+    pub(super) fn record_background_panic(&mut self, message: Option<String>) {
         self.runtime.background_panic_count += 1;
         let now = std::time::Instant::now();
         self.runtime.background_panic_timestamps.push(now);
@@ -63,12 +67,37 @@ impl NousActor {
             .background_panic_timestamps
             .retain(|t| *t > cutoff);
 
+        self.record_background_failure("panic", message);
+
         warn!(
             nous_id = %self.id,
             background_panic_count = self.runtime.background_panic_count,
             recent_background_panics = self.runtime.background_panic_timestamps.len(),
             "background task panicked"
         );
+    }
+
+    /// Record a generic background task failure (panic or non-panic join error).
+    ///
+    /// Updates the total/recent counters and latest message/kind exposed in
+    /// `NousStatus` and `ActorHealth`. Does NOT change the pipeline lifecycle.
+    pub(super) fn record_background_failure(&mut self, kind: &str, message: Option<String>) {
+        self.runtime.background_failure_total_count += 1;
+        let now = std::time::Instant::now();
+        self.runtime.background_failure_timestamps.push(now);
+
+        // WHY(#5147): keep only failures inside the configured degraded window so
+        // `background_health_degraded` reflects recent flapping, not ancient history.
+        let degraded_window = Duration::from_secs(self.nous_behavior.degraded_window_secs);
+        let cutoff = std::time::Instant::now()
+            .checked_sub(degraded_window)
+            .unwrap_or(self.runtime.started_at);
+        self.runtime
+            .background_failure_timestamps
+            .retain(|t| *t > cutoff);
+
+        self.runtime.background_failure_latest_kind = Some(kind.to_owned());
+        self.runtime.background_failure_latest_message = message;
     }
 
     pub(super) fn maybe_spawn_extraction(

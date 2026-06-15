@@ -241,29 +241,65 @@ fn check_provider_availability(state: &HealthState) -> HealthCheck {
     }
 }
 
-/// Check nous actor liveness.
+/// Check nous actor liveness and background health.
 async fn check_nous_actors(state: &HealthState) -> HealthCheck {
     let actor_health = state.nous_manager.check_health().await;
     let any_dead = actor_health.values().any(|h| !h.alive);
-    HealthCheck {
-        name: "nous_actors",
-        status: if actor_health.is_empty() || any_dead {
-            "fail"
-        } else {
-            "pass"
-        },
-        message: if actor_health.is_empty() {
-            Some("no nous actors registered".to_owned())
-        } else if any_dead {
-            let dead: Vec<_> = actor_health
-                .iter()
-                .filter(|(_, h)| !h.alive)
-                .map(|(id, _)| id.as_str())
-                .collect();
-            Some(format!("actors not responding: {}", dead.join(", ")))
-        } else {
-            None
-        },
+
+    if actor_health.is_empty() || any_dead {
+        return HealthCheck {
+            name: "nous_actors",
+            status: "fail",
+            message: if actor_health.is_empty() {
+                Some("no nous actors registered".to_owned())
+            } else {
+                let dead: Vec<_> = actor_health
+                    .iter()
+                    .filter(|(_, h)| !h.alive)
+                    .map(|(id, _)| id.as_str())
+                    .collect();
+                Some(format!("actors not responding: {}", dead.join(", ")))
+            },
+        };
+    }
+
+    let degraded: Vec<_> = actor_health
+        .iter()
+        .filter(|(_, h)| h.background_health_degraded)
+        .collect();
+
+    if degraded.is_empty() {
+        HealthCheck {
+            name: "nous_actors",
+            status: "pass",
+            message: None,
+        }
+    } else {
+        let summaries: Vec<String> = degraded
+            .iter()
+            .map(|(id, h)| {
+                let mut parts = vec![format!("id={id}")];
+                parts.push(format!(
+                    "recent={} total={}",
+                    h.background_failure_recent_count, h.background_failure_total_count
+                ));
+                if let Some(kind) = &h.background_failure_latest_kind {
+                    parts.push(format!("kind={kind}"));
+                }
+                if let Some(message) = &h.background_failure_latest_message {
+                    parts.push(format!("message={message}"));
+                }
+                parts.join(" ")
+            })
+            .collect();
+        HealthCheck {
+            name: "nous_actors",
+            status: "warn",
+            message: Some(format!(
+                "background health degraded: {}",
+                summaries.join("; ")
+            )),
+        }
     }
 }
 

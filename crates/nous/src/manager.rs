@@ -522,10 +522,26 @@ impl NousManager {
                 false
             };
 
-            let (panic_count, uptime) = if let Ok(status) = entry.handle.status().await {
-                (status.panic_count, status.uptime)
+            let (
+                panic_count,
+                uptime,
+                background_failure_total_count,
+                background_failure_recent_count,
+                background_failure_latest_message,
+                background_failure_latest_kind,
+                background_health_degraded,
+            ) = if let Ok(status) = entry.handle.status().await {
+                (
+                    status.panic_count,
+                    status.uptime,
+                    status.background_failure_total_count,
+                    status.background_failure_recent_count,
+                    status.background_failure_latest_message,
+                    status.background_failure_latest_kind,
+                    status.background_health_degraded,
+                )
             } else {
-                (0, entry.last_start.elapsed())
+                (0, entry.last_start.elapsed(), 0, 0, None, None, false)
             };
 
             results.insert(
@@ -534,6 +550,11 @@ impl NousManager {
                     alive,
                     panic_count,
                     uptime,
+                    background_failure_total_count,
+                    background_failure_recent_count,
+                    background_failure_latest_message,
+                    background_failure_latest_kind,
+                    background_health_degraded,
                 },
             );
         }

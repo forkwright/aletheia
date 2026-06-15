@@ -431,6 +431,18 @@ async fn check_health_reports_alive_actors() {
         syn_health.panic_count, 0,
         "healthy actor should have zero panics"
     );
+    assert_eq!(
+        syn_health.background_failure_total_count, 0,
+        "healthy actor should have zero background failures"
+    );
+    assert_eq!(
+        syn_health.background_failure_recent_count, 0,
+        "healthy actor should have zero recent background failures"
+    );
+    assert!(
+        !syn_health.background_health_degraded,
+        "healthy actor should not have degraded background health"
+    );
 
     mgr.shutdown_all().await;
 }
