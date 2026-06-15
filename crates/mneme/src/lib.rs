@@ -101,6 +101,11 @@ pub mod error {
     pub use graphe::error::Error;
 }
 
+/// Knowledge-domain error types and result alias (re-exported from `episteme`).
+pub mod knowledge_error {
+    pub use episteme::error::{Error, Result};
+}
+
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 pub mod portability {
     pub use graphe::portability::{

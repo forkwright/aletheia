@@ -1437,6 +1437,14 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                     eprintln!("  WARN: failed to add note: {e}");
                 }
             }
+
+            // WHY: import reports success only after the full per-session batch
+            // is durable. Otherwise a crash immediately after import can lose
+            // rows written after `import_session`.
+            store.ensure_durable().with_whatever_context(|_| {
+                format!("failed to ensure durability for session {}", session.id)
+            })?;
+
             summary.sessions += 1;
         }
 
@@ -2875,13 +2883,18 @@ workspace = "nous/{agent_id}"
             std::fs::read_to_string(oikos.nous_dir("imported-agent").join("SOUL.md")).unwrap();
         assert!(soul.contains("Imported Agent"));
 
-        // Verify sessions were imported.
+        // WHY: reopening the store exercises import durability before any
+        // unrelated durable write can mask missing imported history.
         let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
         let sessions = store.list_sessions(Some("imported-agent")).unwrap();
         assert_eq!(sessions.len(), 1, "one session should be imported");
 
-        let history = store.get_history(&sessions[0].id, None).unwrap();
-        assert_eq!(history.len(), 2, "two messages should be imported");
+        let history = store.get_history_raw(&sessions[0].id, None).unwrap();
+        assert_eq!(
+            history.len(),
+            2,
+            "two messages should be recoverable after reopen"
+        );
         assert_eq!(history[0].content, "hello");
         assert_eq!(history[1].content, "tool output");
     }

@@ -256,6 +256,7 @@ fn retention_summary_default_is_zeroed() {
     assert_eq!(s.messages_cleaned, 0);
     assert_eq!(s.blackboard_entries_cleaned, 0);
     assert_eq!(s.bytes_freed, 0);
+    assert_eq!(s.cap_sessions_cleaned, 0);
 }
 
 #[test]
@@ -265,6 +266,7 @@ fn retention_summary_serde_roundtrips_through_json() {
         messages_cleaned: 345,
         blackboard_entries_cleaned: 6,
         bytes_freed: 67_890,
+        cap_sessions_cleaned: 7,
     };
     let json = serde_json::to_string(&original).expect("serialize");
     let back: RetentionSummary = serde_json::from_str(&json).expect("deserialize");
@@ -276,6 +278,7 @@ fn retention_summary_serde_roundtrips_through_json() {
         original.blackboard_entries_cleaned
     );
     assert_eq!(back.bytes_freed, original.bytes_freed);
+    assert_eq!(back.cap_sessions_cleaned, original.cap_sessions_cleaned);
 }
 
 #[test]

@@ -632,6 +632,7 @@ pub(crate) async fn execute_builtin_with_behavior(
 
             tracing::info!(
                 sessions = summary.sessions_cleaned,
+                cap_sessions = summary.cap_sessions_cleaned,
                 messages = summary.messages_cleaned,
                 blackboard_entries = summary.blackboard_entries_cleaned,
                 bytes_freed = summary.bytes_freed,
@@ -641,8 +642,9 @@ pub(crate) async fn execute_builtin_with_behavior(
                 success: true,
                 errors: 0,
                 output: Some(format!(
-                    "{} sessions, {} messages, {} blackboard entries cleaned, {} bytes freed",
+                    "{} sessions ({} cap), {} messages, {} blackboard entries cleaned, {} bytes freed",
                     summary.sessions_cleaned,
+                    summary.cap_sessions_cleaned,
                     summary.messages_cleaned,
                     summary.blackboard_entries_cleaned,
                     summary.bytes_freed

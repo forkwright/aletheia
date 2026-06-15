@@ -61,13 +61,33 @@ Configured in `instance/config/aletheia.toml` under `data.retention`:
 [data.retention]
 session_max_age_days = 90           # Delete closed sessions older than 90 days
 orphan_message_max_age_days = 30    # Delete orphan messages older than 30 days
-max_sessions_per_nous = 0           # 0 = unlimited sessions per agent
+max_sessions_per_nous = 0           # 0 = unlimited; nonzero caps sessions per agent
 archive_before_delete = true        # Export to JSON before deleting
 ```
 
 The retention policy only deletes **closed** sessions (archived or distilled). Active sessions are never deleted regardless of age.
 
-When `archiveBeforeDelete` is true, each session is exported to `instance/data/archive/sessions/{session_id}.json` before removal.
+When `archiveBeforeDelete` is true, sessions deleted by age or by the cap are
+exported to `instance/data/archive/sessions/{session_id}.json` before removal.
+
+### Session cap
+
+`maxSessionsPerNous` (also accepted as the alias `max_sessions_per_nous`) controls the
+maximum number of retained sessions per agent. It is enforced only when
+`maintenance.retention.enabled` is `true`:
+
+- `0` is unlimited; no sessions are deleted to satisfy the cap.
+- A nonzero cap is enforced per `nous_id`. Sessions are ordered newest first by
+  `updated_at`, then by `id` ascending for ties. The newest
+  `maxSessionsPerNous` records are retained.
+- Active sessions are protected and are never deleted by the cap.
+- Archived and distilled sessions outside the retained slots are eligible for
+  deletion.
+- If `archiveBeforeDelete` is `true`, cap deletions are archived to
+  `instance/data/archive/sessions/{session_id}.json` before removal, using the
+  same archive path as TTL cleanup.
+- The retention summary reports cap-based session deletions separately from
+  TTL/orphan cleanup.
 
 ## Backup and export
 

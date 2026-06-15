@@ -618,6 +618,7 @@ async fn retention_with_executor_returns_summary() {
     let executor: Arc<dyn crate::maintenance::RetentionExecutor> = Arc::new(MockRetention {
         summary: RetentionSummary {
             sessions_cleaned: 3,
+            cap_sessions_cleaned: 1,
             messages_cleaned: 12,
             blackboard_entries_cleaned: 2,
             bytes_freed: 4096,
@@ -635,7 +636,7 @@ async fn retention_with_executor_returns_summary() {
     .expect("should succeed");
     assert!(result.success);
     let output = result.output.expect("output");
-    assert!(output.contains("3 sessions"));
+    assert!(output.contains("3 sessions (1 cap)"));
     assert!(output.contains("12 messages"));
     assert!(output.contains("2 blackboard entries"));
     assert!(output.contains("4096 bytes"));
