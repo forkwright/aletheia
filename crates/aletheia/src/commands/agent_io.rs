@@ -4429,6 +4429,8 @@ workspace = "nous/{agent_id}"
         // Existing behavior: config entry is written even for a partial export.
         let config = std::fs::read_to_string(oikos.config().join("aletheia.toml")).unwrap();
         assert!(config.contains(r#"id = "imported-agent""#));
+    }
+
     /// Criterion 5: the `review-skills list` surface must expose enough
     /// provenance for a human to decide — source session, evidence sessions,
     /// sequence hashes, extraction prompt/response refs, and per-tool redacted

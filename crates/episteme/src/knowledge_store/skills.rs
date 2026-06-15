@@ -294,18 +294,19 @@ impl KnowledgeStore {
             visibility: pending.visibility,
         };
 
-        let mut reviewed_pending = pending.clone();
-        reviewed_pending.content = pending_skill.to_json().map_err(|e| {
+        let reviewed_content = pending_skill.to_json().map_err(|e| {
             crate::error::EngineQuerySnafu {
                 message: format!("failed to serialize reviewed pending skill: {e}"),
             }
             .build()
         })?;
-        reviewed_pending
-            .provenance
-            .source_session_id
-            .clone_from(&source_session_id);
-        self.insert_fact(&reviewed_pending)?;
+
+        // WHY (#5421): write the new derived facts (fresh ULIDs, cannot collide
+        // with the pending row) first, then fold the pending-fact content
+        // replacement into the single atomic forget. If any write before the
+        // forget fails, the pending fact is left untouched and re-reviewable;
+        // there is no window where its content is reviewed but it is not yet
+        // forgotten.
         self.insert_fact(&approved_fact)?;
         self.insert_review_audit_fact(
             nous_id,
@@ -321,7 +322,11 @@ impl KnowledgeStore {
             },
         )?;
 
-        self.forget_fact(pending_fact_id, crate::knowledge::ForgetReason::Outdated)?;
+        self.forget_fact_with_content(
+            pending_fact_id,
+            crate::knowledge::ForgetReason::Outdated,
+            Some(&reviewed_content),
+        )?;
 
         Ok(new_id)
     }
@@ -356,18 +361,16 @@ impl KnowledgeStore {
         pending_skill.record_review(decision.clone());
         let source_session_id = pending_source_session_id(&pending_skill, pending);
 
-        let mut reviewed_pending = pending.clone();
-        reviewed_pending.content = pending_skill.to_json().map_err(|e| {
+        let reviewed_content = pending_skill.to_json().map_err(|e| {
             crate::error::EngineQuerySnafu {
                 message: format!("failed to serialize reviewed pending skill: {e}"),
             }
             .build()
         })?;
-        reviewed_pending
-            .provenance
-            .source_session_id
-            .clone_from(&source_session_id);
-        self.insert_fact(&reviewed_pending)?;
+
+        // WHY (#5421): audit fact (fresh ULID) first, then fold the pending
+        // content replacement into the single atomic forget. See
+        // `approve_pending_skill` for the failure-path reasoning.
         self.insert_review_audit_fact(
             nous_id,
             &crate::skills::SkillReviewAudit {
@@ -381,7 +384,11 @@ impl KnowledgeStore {
                 extraction_audit: pending_skill.extraction_audit.clone(),
             },
         )?;
-        self.forget_fact(pending_fact_id, crate::knowledge::ForgetReason::Incorrect)?;
+        self.forget_fact_with_content(
+            pending_fact_id,
+            crate::knowledge::ForgetReason::Incorrect,
+            Some(&reviewed_content),
+        )?;
         Ok(())
     }
 

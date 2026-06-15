@@ -355,6 +355,89 @@ fn reject_pending_skill_persists_review_audit() {
     assert_eq!(audits[0].decision.reason.as_deref(), Some("too specific"));
 }
 
+/// WHY (#5421): if a write before the final forget fails, the pending skill
+/// must be left intact — not partially mutated. A custom admission policy that
+/// rejects the approved `skill` fact forces `approve_pending_skill` to fail on
+/// its first write; the pending fact must remain un-forgotten with its original
+/// (un-reviewed) content and no audit trail written.
+#[test]
+fn approve_pending_skill_failure_leaves_pending_intact() {
+    use crate::admission::{
+        AdmissionDecision, AdmissionPolicy, AdmissionRejection, RejectionFactor,
+    };
+    use crate::knowledge::Fact;
+
+    #[derive(Debug)]
+    struct RejectSkillFacts;
+    impl AdmissionPolicy for RejectSkillFacts {
+        fn should_admit(&self, fact: &Fact) -> AdmissionDecision {
+            if fact.fact_type == "skill" {
+                return AdmissionDecision::Reject(AdmissionRejection {
+                    factor: RejectionFactor::LowUtility,
+                    reason: "test: reject approved skill to force a mid-sequence failure"
+                        .to_owned(),
+                });
+            }
+            AdmissionDecision::Admit
+        }
+    }
+
+    let store = crate::knowledge_store::KnowledgeStore::open_mem_with_config(
+        crate::knowledge_store::KnowledgeConfig {
+            dim: crate::test_fixtures::DIM,
+            admission_policy: Box::new(RejectSkillFacts),
+            ..Default::default()
+        },
+    )
+    .expect("open in-memory knowledge store for test");
+
+    let pending = make_pending_skill_fact("pending-fail", "alice", "doomed-skill");
+    let original_content = pending.content.clone();
+    store.insert_fact(&pending).expect("insert pending skill");
+    let pending_id = crate::id::FactId::new("pending-fail").expect("valid pending id");
+
+    let result = store.approve_pending_skill(
+        &pending_id,
+        "alice",
+        SkillReviewInput::new("reviewer-alice", Some("evidence matches".to_owned())),
+    );
+    assert!(
+        result.is_err(),
+        "approval must fail when the approved-skill write is rejected"
+    );
+
+    let pending_after = store
+        .read_facts_by_id("pending-fail")
+        .expect("read pending fact")
+        .into_iter()
+        .next()
+        .expect("pending fact still exists");
+    assert!(
+        !pending_after.lifecycle.is_forgotten,
+        "a failed approval must not forget the pending skill"
+    );
+    assert_eq!(
+        pending_after.content, original_content,
+        "a failed approval must not overwrite the pending skill content with the reviewed copy"
+    );
+    let still_pending = PendingSkill::from_json(&pending_after.content).expect("pending parses");
+    assert!(
+        still_pending.review.is_none(),
+        "a failed approval must leave the pending skill un-reviewed"
+    );
+
+    let audits = store
+        .audit_all_facts("alice", 100)
+        .expect("audit facts")
+        .into_iter()
+        .filter(|fact| fact.fact_type == "skill_review_audit")
+        .count();
+    assert_eq!(
+        audits, 0,
+        "a failed approval must not write a review audit fact"
+    );
+}
+
 #[test]
 fn skill_usage_tracking_via_increment_access() {
     let store = make_store();
