@@ -7,7 +7,9 @@
 use crate::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
 };
+use crate::skills::{PendingSkill, SkillReviewAudit, SkillReviewInput, SkillSourceEvidence};
 use crate::test_fixtures::{make_fact, make_store, test_ts};
+
 fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&str]) -> Fact {
     let content = serde_json::to_string(&crate::skill::SkillContent {
         name: skill_name.to_owned(),
@@ -35,6 +37,61 @@ fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&st
             tier: EpistemicTier::Assumed,
             source_session_id: None,
             stability_hours: 2190.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: crate::knowledge::FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
+        scope: None,
+        project_id: None,
+    }
+}
+
+fn make_pending_skill_fact(id: &str, nous_id: &str, skill_name: &str) -> Fact {
+    let extracted = crate::skills::ExtractedSkill {
+        name: skill_name.to_owned(),
+        description: format!("Skill: {skill_name}"),
+        steps: vec!["step 1".to_owned()],
+        tools_used: vec!["Read".to_owned()],
+        domain_tags: vec!["rust".to_owned()],
+        when_to_use: "When reviewing tests".to_owned(),
+    };
+    let mut pending = PendingSkill::new(&extracted, "candidate-1");
+    pending.source_session_id = Some("session-1".to_owned());
+    pending.source_evidence = SkillSourceEvidence {
+        candidate_id: "candidate-1".to_owned(),
+        nous_id: nous_id.to_owned(),
+        recurrence_count: 3,
+        session_refs: vec!["session-1".to_owned()],
+        normalized_sequence: vec!["Read".to_owned(), "Bash".to_owned()],
+        signature_hash: 42,
+        sequence_hashes: vec!["sequence-hash".to_owned()],
+        observations: Vec::new(),
+    };
+    let content = pending.to_json().expect("pending skill serializes");
+    Fact {
+        id: crate::id::FactId::new(id).expect("valid test id"),
+        nous_id: nous_id.to_owned(),
+        content,
+        fact_type: "skill_pending".to_owned(),
+        temporal: FactTemporal {
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.6,
+            tier: EpistemicTier::Inferred,
+            source_session_id: Some("session-1".to_owned()),
+            stability_hours: 720.0,
         },
         lifecycle: FactLifecycle {
             superseded_by: None,
@@ -184,6 +241,200 @@ fn search_skills_bm25() {
     assert!(
         results.iter().any(|f| f.id.as_str() == "sk-docker"),
         "search should find docker skill"
+    );
+}
+
+#[test]
+fn approve_pending_skill_persists_review_audit_and_source_session() {
+    let store = make_store();
+    let pending = make_pending_skill_fact("pending-1", "alice", "reviewable-skill");
+    store.insert_fact(&pending).expect("insert pending skill");
+    let pending_id = crate::id::FactId::new("pending-1").expect("valid pending id");
+
+    let approved_id = store
+        .approve_pending_skill(
+            &pending_id,
+            "alice",
+            SkillReviewInput::new("reviewer-alice", Some("evidence matches".to_owned())),
+        )
+        .expect("approve pending skill");
+
+    let approved = store
+        .read_facts_by_id(approved_id.as_str())
+        .expect("read approved fact")
+        .into_iter()
+        .next()
+        .expect("approved fact exists");
+    assert_eq!(
+        approved.provenance.source_session_id.as_deref(),
+        Some("session-1"),
+        "approved skill should link back to the source session"
+    );
+
+    let pending_after = store
+        .read_facts_by_id("pending-1")
+        .expect("read pending fact")
+        .into_iter()
+        .next()
+        .expect("pending fact remains for audit");
+    assert!(
+        pending_after.lifecycle.is_forgotten,
+        "approved pending skill should be forgotten after review"
+    );
+    let reviewed_pending =
+        PendingSkill::from_json(&pending_after.content).expect("reviewed pending parses");
+    let decision = reviewed_pending.review.expect("review decision stored");
+    assert_eq!(decision.reviewer, "reviewer-alice");
+    assert_eq!(decision.action, "approved");
+    assert_eq!(decision.reason.as_deref(), Some("evidence matches"));
+
+    let audit_fact = store
+        .audit_all_facts("alice", 100)
+        .expect("audit facts")
+        .into_iter()
+        .find(|fact| fact.fact_type == "skill_review_audit")
+        .expect("review audit fact stored");
+    let audit: SkillReviewAudit =
+        serde_json::from_str(&audit_fact.content).expect("review audit parses");
+    assert_eq!(audit.pending_fact_id, "pending-1");
+    assert_eq!(
+        audit.approved_fact_id.as_deref(),
+        Some(approved_id.as_str())
+    );
+    assert_eq!(audit.decision.reviewer, "reviewer-alice");
+    assert_eq!(audit.source_session_id.as_deref(), Some("session-1"));
+    assert_eq!(
+        audit.source_evidence.sequence_hashes,
+        vec!["sequence-hash".to_owned()],
+        "review audit should retain candidate sequence evidence"
+    );
+}
+
+#[test]
+fn reject_pending_skill_persists_review_audit() {
+    let store = make_store();
+    let pending = make_pending_skill_fact("pending-reject", "alice", "rejectable-skill");
+    store.insert_fact(&pending).expect("insert pending skill");
+    let pending_id = crate::id::FactId::new("pending-reject").expect("valid pending id");
+
+    store
+        .reject_pending_skill(
+            &pending_id,
+            "alice",
+            SkillReviewInput::new("reviewer-bob", Some("too specific".to_owned())),
+        )
+        .expect("reject pending skill");
+
+    let pending_after = store
+        .read_facts_by_id("pending-reject")
+        .expect("read rejected pending")
+        .into_iter()
+        .next()
+        .expect("pending fact exists");
+    assert!(
+        pending_after.lifecycle.is_forgotten,
+        "rejected pending skill should be forgotten"
+    );
+    let reviewed_pending =
+        PendingSkill::from_json(&pending_after.content).expect("reviewed pending parses");
+    let decision = reviewed_pending.review.expect("review decision stored");
+    assert_eq!(decision.reviewer, "reviewer-bob");
+    assert_eq!(decision.action, "rejected");
+
+    let audits: Vec<SkillReviewAudit> = store
+        .audit_all_facts("alice", 100)
+        .expect("audit facts")
+        .into_iter()
+        .filter(|fact| fact.fact_type == "skill_review_audit")
+        .map(|fact| serde_json::from_str(&fact.content).expect("review audit parses"))
+        .collect();
+    assert_eq!(audits.len(), 1, "one rejection audit should be stored");
+    assert_eq!(audits[0].pending_fact_id, "pending-reject");
+    assert_eq!(audits[0].approved_fact_id, None);
+    assert_eq!(audits[0].decision.action, "rejected");
+    assert_eq!(audits[0].decision.reason.as_deref(), Some("too specific"));
+}
+
+/// WHY (#5421): if a write before the final forget fails, the pending skill
+/// must be left intact — not partially mutated. A custom admission policy that
+/// rejects the approved `skill` fact forces `approve_pending_skill` to fail on
+/// its first write; the pending fact must remain un-forgotten with its original
+/// (un-reviewed) content and no audit trail written.
+#[test]
+fn approve_pending_skill_failure_leaves_pending_intact() {
+    use crate::admission::{
+        AdmissionDecision, AdmissionPolicy, AdmissionRejection, RejectionFactor,
+    };
+    use crate::knowledge::Fact;
+
+    #[derive(Debug)]
+    struct RejectSkillFacts;
+    impl AdmissionPolicy for RejectSkillFacts {
+        fn should_admit(&self, fact: &Fact) -> AdmissionDecision {
+            if fact.fact_type == "skill" {
+                return AdmissionDecision::Reject(AdmissionRejection {
+                    factor: RejectionFactor::LowUtility,
+                    reason: "test: reject approved skill to force a mid-sequence failure"
+                        .to_owned(),
+                });
+            }
+            AdmissionDecision::Admit
+        }
+    }
+
+    let store = crate::knowledge_store::KnowledgeStore::open_mem_with_config(
+        crate::knowledge_store::KnowledgeConfig {
+            dim: crate::test_fixtures::DIM,
+            admission_policy: Box::new(RejectSkillFacts),
+            ..Default::default()
+        },
+    )
+    .expect("open in-memory knowledge store for test");
+
+    let pending = make_pending_skill_fact("pending-fail", "alice", "doomed-skill");
+    let original_content = pending.content.clone();
+    store.insert_fact(&pending).expect("insert pending skill");
+    let pending_id = crate::id::FactId::new("pending-fail").expect("valid pending id");
+
+    let result = store.approve_pending_skill(
+        &pending_id,
+        "alice",
+        SkillReviewInput::new("reviewer-alice", Some("evidence matches".to_owned())),
+    );
+    assert!(
+        result.is_err(),
+        "approval must fail when the approved-skill write is rejected"
+    );
+
+    let pending_after = store
+        .read_facts_by_id("pending-fail")
+        .expect("read pending fact")
+        .into_iter()
+        .next()
+        .expect("pending fact still exists");
+    assert!(
+        !pending_after.lifecycle.is_forgotten,
+        "a failed approval must not forget the pending skill"
+    );
+    assert_eq!(
+        pending_after.content, original_content,
+        "a failed approval must not overwrite the pending skill content with the reviewed copy"
+    );
+    let still_pending = PendingSkill::from_json(&pending_after.content).expect("pending parses");
+    assert!(
+        still_pending.review.is_none(),
+        "a failed approval must leave the pending skill un-reviewed"
+    );
+
+    let audits = store
+        .audit_all_facts("alice", 100)
+        .expect("audit facts")
+        .into_iter()
+        .filter(|fact| fact.fact_type == "skill_review_audit")
+        .count();
+    assert_eq!(
+        audits, 0,
+        "a failed approval must not write a review audit fact"
     );
 }
 

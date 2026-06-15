@@ -529,14 +529,33 @@ impl KnowledgeStore {
         fact_id: &crate::id::FactId,
         reason: crate::knowledge::ForgetReason,
     ) -> crate::error::Result<crate::knowledge::Fact> {
+        self.forget_fact_with_content(fact_id, reason, None)
+    }
+
+    /// Soft-delete a fact, optionally replacing its content in the same write.
+    ///
+    /// WHY (#5421): the skill-review path must replace a pending fact's content
+    /// with the reviewed copy *and* mark it forgotten. Doing those as two
+    /// separate writes left a window where the content was mutated but the
+    /// fact was not yet forgotten — a partial state if a later write failed.
+    /// Folding the content replacement into the single forget `:put` makes the
+    /// pending-fact mutation atomic with the forget. `forget_fact` passes
+    /// `None` to preserve the existing content unchanged.
+    pub(crate) fn forget_fact_with_content(
+        &self,
+        fact_id: &crate::id::FactId,
+        reason: crate::knowledge::ForgetReason,
+        new_content: Option<&str>,
+    ) -> crate::error::Result<crate::knowledge::Fact> {
         let existing = self.read_facts_by_id(fact_id.as_str())?;
-        if existing.is_empty() {
+        let Some(current) = existing.first() else {
             return Err(crate::error::FactNotFoundSnafu {
                 id: fact_id.as_str(),
             }
             .build());
-        }
+        };
 
+        let content = new_content.unwrap_or(current.content.as_str());
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let script = r"
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
@@ -544,11 +563,12 @@ impl KnowledgeStore {
               access_count, last_accessed_at, stability_hours, fact_type,
               is_forgotten, forgotten_at, forget_reason, scope, project_id,
               visibility, sensitivity] :=
-                *facts{id, valid_from, content, nous_id, confidence, tier,
+                *facts{id, valid_from, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type,
                        scope, project_id, visibility, sensitivity},
                 id = $id,
+                content = $content,
                 is_forgotten = true,
                 forgotten_at = $now,
                 forget_reason = $reason
@@ -562,6 +582,10 @@ impl KnowledgeStore {
         params.insert(
             String::from("id"),
             crate::engine::DataValue::Str(fact_id.as_str().into()),
+        );
+        params.insert(
+            String::from("content"),
+            crate::engine::DataValue::Str(content.into()),
         );
         params.insert(
             String::from("now"),

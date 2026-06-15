@@ -115,7 +115,11 @@ impl NousActor {
                 &turn_result.tool_calls,
                 &turn_result.reasoning,
             );
-            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, session_key);
+            let source_session_id = self
+                .sessions
+                .get(session_key)
+                .map_or_else(|| session_key.to_owned(), |session| session.id.clone());
+            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &source_session_id);
             self.maybe_spawn_distillation(session_key).await;
             #[cfg(feature = "knowledge-store")]
             self.maybe_run_auto_dream();

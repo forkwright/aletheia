@@ -29,6 +29,7 @@ use crate::skills::{
     SequenceSignature, ToolCallRecord,
     heuristics::score_sequence,
     signature::{sequence_signature, signature_similarity},
+    tool_sequence_hash,
 };
 
 /// Minimum recurrence count to promote a candidate to a skill.
@@ -36,6 +37,35 @@ pub(crate) const PROMOTION_THRESHOLD: u32 = 3;
 
 /// Similarity threshold for merging two sequences into the same candidate.
 pub(crate) const SIMILARITY_THRESHOLD: f64 = 0.8;
+
+/// Maximum observation snapshots retained for one candidate.
+const MAX_EVIDENCE_OBSERVATIONS: usize = 12;
+
+/// Evidence for one observed tool-call sequence behind a skill candidate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillObservationEvidence {
+    /// Persisted source session ID for the observed sequence.
+    pub session_id: String,
+    /// SHA-256 hash over the redacted tool-call sequence.
+    pub sequence_hash: String,
+    /// Redacted tool-call details for reviewer inspection.
+    pub tool_calls: Vec<ToolCallRecord>,
+    /// When this observation was recorded.
+    pub observed_at: jiff::Timestamp,
+}
+
+impl SkillObservationEvidence {
+    /// Build evidence from a source session and redacted tool-call sequence.
+    #[must_use]
+    pub fn new(session_id: &str, tool_calls: &[ToolCallRecord]) -> Self {
+        Self {
+            session_id: session_id.to_owned(),
+            sequence_hash: tool_sequence_hash(tool_calls),
+            tool_calls: tool_calls.to_vec(),
+            observed_at: jiff::Timestamp::now(),
+        }
+    }
+}
 
 /// A tracked pattern that has been seen at least once and may be promoted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +90,9 @@ pub struct SkillCandidate {
     pub heuristic_score: f64,
     /// Detected pattern type from the first observation.
     pub pattern_type: Option<crate::skills::PatternType>,
+    /// Redacted observation evidence retained for review and audit.
+    #[serde(default)]
+    pub evidence: Vec<SkillObservationEvidence>,
 }
 
 impl SkillCandidate {
@@ -159,6 +192,7 @@ impl CandidateTracker {
 
         let sig = sequence_signature(tool_calls);
         let now = jiff::Timestamp::now();
+        let observation = SkillObservationEvidence::new(session_id, tool_calls);
 
         let mut candidates = self.candidates.lock().unwrap_or_else(|e| {
             tracing::warn!("CandidateTracker lock poisoned, recovering");
@@ -172,6 +206,10 @@ impl CandidateTracker {
             existing.last_seen = now;
             if !existing.session_refs.contains(&session_id.to_owned()) {
                 existing.session_refs.push(session_id.to_owned());
+            }
+            existing.evidence.push(observation);
+            if existing.evidence.len() > MAX_EVIDENCE_OBSERVATIONS {
+                existing.evidence.remove(0);
             }
 
             let new_count = existing.recurrence_count;
@@ -194,6 +232,7 @@ impl CandidateTracker {
             last_seen: now,
             heuristic_score: score.total,
             pattern_type: score.pattern_type,
+            evidence: vec![observation],
         });
 
         TrackResult::New
@@ -440,5 +479,78 @@ mod tests {
         let back = SkillCandidate::from_json(&json).expect("deserialisation should succeed");
         assert_eq!(back.id, candidates[0].id);
         assert_eq!(back.recurrence_count, 1);
+    }
+
+    #[test]
+    fn evidence_caps_and_survives_into_source_evidence() {
+        use crate::skills::SkillSourceEvidence;
+
+        // Observe the same pattern more times than the cap allows so the
+        // tracker must drop the oldest observations.
+        let tracker = CandidateTracker::new();
+        let total = MAX_EVIDENCE_OBSERVATIONS + 3;
+        for i in 0..total {
+            tracker.track_sequence(&good_seq(), &format!("session-{i}"), "nous1");
+        }
+
+        let candidates = tracker.candidates_for("nous1");
+        assert_eq!(
+            candidates.len(),
+            1,
+            "similar sequences merge into one candidate"
+        );
+        let candidate = candidates.first().expect("one merged candidate");
+        assert_eq!(
+            candidate.recurrence_count,
+            u32::try_from(total).expect("recurrence fits u32"),
+            "every occurrence is counted even past the evidence cap"
+        );
+        assert_eq!(
+            candidate.evidence.len(),
+            MAX_EVIDENCE_OBSERVATIONS,
+            "retained evidence is capped at MAX_EVIDENCE_OBSERVATIONS"
+        );
+
+        // The cap drops oldest-first, so the most relevant (most recent)
+        // observations are the ones retained.
+        assert_eq!(
+            candidate
+                .evidence
+                .first()
+                .expect("evidence present")
+                .session_id,
+            format!("session-{}", total - MAX_EVIDENCE_OBSERVATIONS),
+            "oldest observations are dropped first"
+        );
+        assert_eq!(
+            candidate
+                .evidence
+                .last()
+                .expect("evidence present")
+                .session_id,
+            format!("session-{}", total - 1),
+            "the most recent observation is retained"
+        );
+
+        // Capped evidence must survive the merge into the extraction's source
+        // evidence on the live `from_candidate` path.
+        let source = SkillSourceEvidence::from_candidate(candidate);
+        assert_eq!(
+            source.observations.len(),
+            MAX_EVIDENCE_OBSERVATIONS,
+            "capped observations reach SkillSourceEvidence"
+        );
+        assert_eq!(
+            source.sequence_hashes.len(),
+            MAX_EVIDENCE_OBSERVATIONS,
+            "one sequence hash per retained observation"
+        );
+        assert!(
+            source
+                .observations
+                .iter()
+                .all(|o| !o.sequence_hash.is_empty()),
+            "every retained observation carries a sequence hash"
+        );
     }
 }
