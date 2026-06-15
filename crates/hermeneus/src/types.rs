@@ -611,6 +611,8 @@ pub enum StopReason {
     MaxTokens,
     /// Hit a stop sequence.
     StopSequence,
+    /// Provider safety/content filter stopped generation.
+    ContentFiltered,
 }
 
 impl StopReason {
@@ -623,6 +625,7 @@ impl StopReason {
             Self::ToolUse => "tool_use",
             Self::MaxTokens => "max_tokens",
             Self::StopSequence => "stop_sequence",
+            Self::ContentFiltered => "content_filtered",
         }
     }
 }
@@ -636,6 +639,7 @@ impl std::str::FromStr for StopReason {
             "tool_use" => Ok(Self::ToolUse),
             "max_tokens" => Ok(Self::MaxTokens),
             "stop_sequence" => Ok(Self::StopSequence),
+            "content_filtered" => Ok(Self::ContentFiltered),
             other => Err(format!("unknown stop_reason: {other}")),
         }
     }
