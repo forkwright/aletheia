@@ -26,15 +26,15 @@ fn env_provider_name() {
 
 #[test]
 #[expect(unsafe_code, reason = "test-only env var manipulation")]
-fn env_provider_detects_oauth_by_prefix() {
+fn env_provider_undecodable_oauth_prefix_returns_none() {
     let var = "ALETHEIA_TEST_OAUTH_PREFIX_748";
     // SAFETY: test uses unique var name, no concurrent access
     unsafe { std::env::set_var(var, "sk-ant-oat-test-token-value") };
     let provider = EnvCredentialProvider::new(var);
-    let cred = provider
-        .get_credential()
-        .expect("oauth-prefixed token should yield credential");
-    assert_eq!(cred.source, CredentialSource::OAuth);
+    assert!(
+        provider.get_credential().is_none(),
+        "undecodable OAuth token should fall through"
+    );
     unsafe { std::env::remove_var(var) };
 }
 
@@ -158,18 +158,16 @@ fn env_provider_valid_oauth_returns_credential() {
 
 #[test]
 #[expect(unsafe_code, reason = "test-only env var manipulation")]
-fn env_provider_opaque_oauth_without_exp_is_returned() {
-    // WHY: Opaque token with OAuth prefix but no parseable exp must not be dropped.
+fn env_provider_opaque_oauth_without_exp_returns_none() {
     let var = "ALETHEIA_TEST_OPAQUE_OAUTH_505";
     let opaque = "sk-ant-oat-opaque-no-dots";
     // SAFETY: test uses unique var name, no concurrent access
     unsafe { std::env::set_var(var, opaque) };
     let provider = EnvCredentialProvider::new(var);
-    let cred = provider
-        .get_credential()
-        .expect("opaque oauth token should yield credential");
-    assert_eq!(cred.secret.expose_secret(), opaque);
-    assert_eq!(cred.source, CredentialSource::OAuth);
+    assert!(
+        provider.get_credential().is_none(),
+        "opaque OAuth token without decodable exp should fall through"
+    );
     unsafe { std::env::remove_var(var) };
 }
 
