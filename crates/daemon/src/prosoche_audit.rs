@@ -38,10 +38,10 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
-use eidos::knowledge::finding::{
+use mneme::finding::{
     EvidenceLevel, EvidenceRef, Finding, FindingStats, FindingSupport, stable_hash,
 };
-use eidos::meta::{ArtefactMeta, Stamped};
+use mneme::meta::{ArtefactMeta, Stamped};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::Instrument as _;

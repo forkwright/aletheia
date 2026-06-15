@@ -18,7 +18,6 @@ test-full = []
 
 [dependencies]
 aletheia-routing = { path = "../aletheia-routing" }
-eidos = { path = "../eidos" }
 episteme = { path = "../episteme", default-features = false }
 koina = { path = "../koina", features = ["fjall"] }
 mneme = { path = "../mneme" }

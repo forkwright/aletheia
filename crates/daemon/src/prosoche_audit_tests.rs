@@ -1,6 +1,6 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use eidos::meta::Stamped;
+use mneme::meta::Stamped;
 
 use super::*;
 
