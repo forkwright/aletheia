@@ -25,7 +25,10 @@ use crate::error::{DreamLockIoSnafu, Result};
 #[derive(Debug)]
 pub(crate) struct AcquiredLock {
     /// Path to the consolidation lock file.
-    path: PathBuf,
+    ///
+    /// WHY: `Option` lets explicit `mark_complete`/`rollback` take the path
+    /// once, so the subsequent `Drop` is a no-op and cleanup stays idempotent.
+    path: Option<PathBuf>,
     /// mtime before we acquired (None if lock file did not exist).
     prior_mtime: Option<std::time::SystemTime>,
 }
@@ -38,9 +41,13 @@ impl AcquiredLock {
     /// # Errors
     ///
     /// Returns `DreamLockIo` if the file cannot be written.
-    pub(crate) fn mark_complete(self) -> Result<()> {
+    pub(crate) fn mark_complete(mut self) -> Result<()> {
+        // WHY: take the path so `Drop` will not attempt a second cleanup.
+        let Some(path) = self.path.take() else {
+            return Ok(());
+        };
         // WHY: write empty body to signal "not held"; mtime of this write = lastConsolidatedAt.
-        write_file(&self.path, b"")?;
+        write_file(&path, b"")?;
         Ok(())
     }
 
@@ -52,25 +59,30 @@ impl AcquiredLock {
     /// # Errors
     ///
     /// Returns `DreamLockIo` if file operations fail.
-    pub(crate) fn rollback(self) -> Result<()> {
+    pub(crate) fn rollback(mut self) -> Result<()> {
+        // WHY: take the path so `Drop` will not attempt a second cleanup.
+        let Some(path) = self.path.take() else {
+            return Ok(());
+        };
         if let Some(prior) = self.prior_mtime {
             // WHY: clear PID body first, then restore mtime.
-            write_file(&self.path, b"")?;
+            write_file(&path, b"")?;
             // NOTE: write_file updates mtime to now, so we must re-apply the prior mtime.
             let times = std::fs::FileTimes::new().set_modified(prior);
-            let file = std::fs::File::options()
-                .write(true)
-                .open(&self.path)
-                .context(DreamLockIoSnafu {
-                    context: "open lock file for mtime restore",
-                })?;
+            let file =
+                std::fs::File::options()
+                    .write(true)
+                    .open(&path)
+                    .context(DreamLockIoSnafu {
+                        context: "open lock file for mtime restore",
+                    })?;
             file.set_times(times).context(DreamLockIoSnafu {
                 context: "restore lock file mtime",
             })?;
         } else {
             // WHY: no prior consolidation existed; DELETE to restore "never consolidated" state.
-            if self.path.exists() {
-                std::fs::remove_file(&self.path).context(DreamLockIoSnafu {
+            if path.exists() {
+                std::fs::remove_file(&path).context(DreamLockIoSnafu {
                     context: "DELETE lock file on rollback",
                 })?;
             }
@@ -81,6 +93,62 @@ impl AcquiredLock {
     /// The prior mtime for external inspection (e.g. consolidation timestamp).
     pub(crate) fn prior_mtime(&self) -> Option<&std::time::SystemTime> {
         self.prior_mtime.as_ref()
+    }
+}
+
+impl Drop for AcquiredLock {
+    /// Best-effort rollback when the lock is dropped without explicit completion.
+    ///
+    /// WHY: task cancellation or panic can leave the current PID in the lock
+    /// file until stale timeout. This `Drop` performs the same cleanup as
+    /// [`rollback`](AcquiredLock::rollback) without panicking on errors.
+    fn drop(&mut self) {
+        let Some(path) = self.path.take() else {
+            // NOTE: explicit `mark_complete` or `rollback` already took the path.
+            return;
+        };
+
+        if let Some(prior) = self.prior_mtime {
+            // WHY: clear PID body first, then restore prior mtime.
+            if let Err(e) = write_file(&path, b"") {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "AcquiredLock drop failed to clear PID body"
+                );
+                return;
+            }
+            let times = std::fs::FileTimes::new().set_modified(prior);
+            match std::fs::File::options().write(true).open(&path) {
+                Ok(file) => {
+                    if let Err(e) = file.set_times(times) {
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "AcquiredLock drop failed to restore lock file mtime"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "AcquiredLock drop failed to open lock file for mtime restore"
+                    );
+                }
+            }
+        } else {
+            // WHY: no prior consolidation existed; DELETE to restore "never consolidated" state.
+            if path.exists()
+                && let Err(e) = std::fs::remove_file(&path)
+            {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "AcquiredLock drop failed to remove lock file"
+                );
+            }
+        }
     }
 }
 
@@ -214,7 +282,7 @@ pub(crate) fn try_acquire(path: &Path, stale_threshold_secs: i64) -> Result<Opti
     }
 
     Ok(Some(AcquiredLock {
-        path: path.to_owned(),
+        path: Some(path.to_owned()),
         prior_mtime,
     }))
 }
@@ -406,6 +474,100 @@ mod tests {
         );
 
         acquired.rollback().unwrap_or_default();
+
+        // NOTE: mtime should be restored to the prior value.
+        let restored_mtime = lock_mtime(&lock_path).unwrap();
+        let delta = restored_mtime
+            .duration_since(past)
+            .unwrap_or(past.duration_since(restored_mtime).unwrap_or_default());
+        assert!(
+            delta < std::time::Duration::from_secs(2),
+            "restored mtime should be close to prior value, delta: {delta:?}"
+        );
+    }
+
+    #[test]
+    fn drop_performs_rollback_when_no_prior_mtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join(".consolidate-lock");
+
+        let acquired = try_acquire(&lock_path, DEFAULT_STALE_THRESHOLD_SECS)
+            .unwrap()
+            .unwrap();
+
+        assert!(lock_path.exists(), "lock file should exist after acquire");
+        drop(acquired);
+        assert!(
+            !lock_path.exists(),
+            "lock file should be removed when dropped with no prior mtime"
+        );
+    }
+
+    #[tokio::test]
+    async fn aborting_task_drops_lock_and_rolls_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join(".consolidate-lock");
+        let task_lock_path = lock_path.clone();
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+
+        let handle = tokio::spawn(async move {
+            let _acquired = try_acquire(&task_lock_path, DEFAULT_STALE_THRESHOLD_SECS)
+                .unwrap()
+                .unwrap();
+            assert!(
+                ready_tx.send(()).is_ok(),
+                "test receiver should wait for acquisition"
+            );
+            std::future::pending::<()>().await;
+        });
+
+        ready_rx.await.unwrap();
+        assert!(
+            lock_path.exists(),
+            "lock file should exist while task waits"
+        );
+
+        handle.abort();
+        let join_error = handle.await.unwrap_err();
+        assert!(join_error.is_cancelled(), "task should be cancelled");
+        assert!(
+            !lock_path.exists(),
+            "lock file should be removed when task is aborted"
+        );
+    }
+
+    #[test]
+    fn drop_performs_rollback_when_prior_mtime_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join(".consolidate-lock");
+
+        // NOTE: create a lock file with a known mtime (simulate prior consolidation).
+        write_file(&lock_path, b"").unwrap_or_default();
+        let past =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        let times = std::fs::FileTimes::new().set_modified(past);
+        let file = std::fs::File::options()
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        file.set_times(times).unwrap_or_default();
+        drop(file);
+
+        // WHY: stale threshold of 0 makes the existing lock reclaimable.
+        let acquired = try_acquire(&lock_path, 0).unwrap().unwrap();
+        assert!(
+            acquired.prior_mtime().is_some(),
+            "should capture prior mtime"
+        );
+
+        drop(acquired);
+
+        // NOTE: PID body should be cleared.
+        let contents = read_file_string(&lock_path).unwrap_or_default();
+        assert!(
+            contents.is_empty(),
+            "PID body should be cleared when dropped with prior mtime"
+        );
 
         // NOTE: mtime should be restored to the prior value.
         let restored_mtime = lock_mtime(&lock_path).unwrap();
