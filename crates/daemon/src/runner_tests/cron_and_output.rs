@@ -169,6 +169,7 @@ async fn unsuccessful_in_flight_result_records_failure_status_and_metrics() {
     let handle = tokio::spawn(async {
         Ok(ExecutionResult {
             success: false,
+            errors: 0,
             output: Some("probe detected violation".to_owned()),
         })
     });
@@ -225,6 +226,7 @@ async fn unsuccessful_in_flight_result_without_output_uses_fallback_error() {
     let handle = tokio::spawn(async {
         Ok(ExecutionResult {
             success: false,
+            errors: 0,
             output: None,
         })
     });
@@ -262,6 +264,7 @@ async fn repeated_unsuccessful_in_flight_results_accumulate_failures() {
         let handle = tokio::spawn(async move {
             Ok(ExecutionResult {
                 success: false,
+                errors: 0,
                 output: Some(output),
             })
         });
