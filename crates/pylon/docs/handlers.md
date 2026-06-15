@@ -336,7 +336,7 @@ Each SSE event has `data: <json>`. Event types:
 |------|--------|-------------|
 | `text_delta` | `text: string` | Incremental assistant text |
 | `thinking_delta` | `thinking: string` | Extended thinking text (when enabled) |
-| `tool_use` | `id, name, input` | Tool invocation |
+| `tool_use` | `tool_name, tool_id, input` | Tool invocation |
 | `tool_result` | `tool_use_id, content, is_error` | Tool result |
 | `message_complete` | `stop_reason, usage: {input_tokens, output_tokens}` | Turn end |
 | `error` | `code, message` | Error during turn |

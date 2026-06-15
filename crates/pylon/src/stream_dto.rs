@@ -37,8 +37,8 @@ pub(crate) enum SseEvent {
     /// The assistant is invoking a tool.
     #[serde(rename = "tool_use")]
     ToolUse {
-        id: String,
-        name: String,
+        tool_id: String,
+        tool_name: String,
         input: serde_json::Value,
     },
 
@@ -82,9 +82,10 @@ pub(crate) struct UsageData {
 
 /// SSE events for the turn streaming protocol (`POST /api/v1/sessions/stream`).
 ///
-/// Used by `koilon` and the Signal integration. Unified with `SseEvent` naming:
-/// event types use the same `message_start`/`message_complete` vocabulary,
-/// and all fields use `snake_case` per API.md (#3271).
+/// Used by `koilon` and the Signal integration. Event type names align with
+/// `SseEvent` (`message_start`, `text_delta`, `tool_use`, ...), and shared
+/// logical fields use `snake_case` per API.md (#3271). Individual event shapes
+/// may carry additional fields where the protocol requires them.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]

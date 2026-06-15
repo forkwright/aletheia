@@ -14,8 +14,8 @@ fn sse_event_type_text_delta() {
 #[test]
 fn sse_event_type_tool_use() {
     let event = crate::stream::SseEvent::ToolUse {
-        id: "t1".to_owned(),
-        name: "search".to_owned(),
+        tool_id: "t1".to_owned(),
+        tool_name: "search".to_owned(),
         input: serde_json::json!({}),
     };
     assert_eq!(event.event_type(), "tool_use");
@@ -80,6 +80,28 @@ fn sse_event_message_complete_serialization() {
     assert_eq!(json["usage"]["input_tokens"], 100);
     assert_eq!(json["usage"]["output_tokens"], 50);
     assert_eq!(json["request_id"], "req-789");
+}
+
+#[test]
+fn sse_event_tool_use_serialization() {
+    let event = crate::stream::SseEvent::ToolUse {
+        tool_id: "t1".to_owned(),
+        tool_name: "search".to_owned(),
+        input: serde_json::json!({"query": "paris"}),
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "tool_use");
+    assert_eq!(json["tool_id"], "t1");
+    assert_eq!(json["tool_name"], "search");
+    assert_eq!(json["input"]["query"], "paris");
+    assert!(
+        json.get("id").is_none(),
+        "legacy `id` field must not be serialized"
+    );
+    assert!(
+        json.get("name").is_none(),
+        "legacy `name` field must not be serialized"
+    );
 }
 
 #[test]

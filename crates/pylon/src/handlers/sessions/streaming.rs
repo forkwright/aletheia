@@ -1233,8 +1233,8 @@ async fn emit_turn_result_events_buffered(
 
     for tc in &result.tool_calls {
         let event = SseEvent::ToolUse {
-            id: tc.id.clone(),
-            name: tc.name.clone(),
+            tool_id: tc.id.clone(),
+            tool_name: tc.name.clone(),
             input: tc.input.clone(),
         };
         let seq = record_sse_event(buf, &event).await;

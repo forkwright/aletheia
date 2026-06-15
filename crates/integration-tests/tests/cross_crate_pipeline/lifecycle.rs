@@ -157,7 +157,12 @@ async fn tool_execution_round_trip() {
         .expect("tool_use event");
     let tool_use_data: serde_json::Value =
         serde_json::from_str(&tool_use_event.1).expect("parse tool_use");
-    assert_eq!(tool_use_data["name"], "note");
+    assert_eq!(tool_use_data["tool_name"], "note");
+    assert_eq!(tool_use_data["tool_id"], "tu_001");
+    assert!(
+        tool_use_data.get("name").is_none(),
+        "tool_use should not contain the legacy `name` field"
+    );
 
     assert!(
         event_types.contains(&"text_delta"),
