@@ -40,7 +40,12 @@ impl ToolExecutor for IntakeReportExecutor {
                 }
             };
 
-            let files = match poiesis_intake::generate_scaffold(&req) {
+            let files = match poiesis_scaffold::scaffold_report(
+                &req.slug,
+                &req.description,
+                poiesis_scaffold::Format::Typst,
+                false,
+            ) {
                 Ok(f) => f,
                 Err(e) => {
                     return Ok(ToolResult::error(format!("scaffold failed: {e}")));
@@ -76,7 +81,7 @@ fn intake_report_def() -> ToolDef {
         name: ToolName::from_static("intake_report"), // kanon:ignore RUST/expect
         description: "Parse free-form Slack-style text into a structured report scaffold. \
                       Classifies the request (Analysis, Report, Dashboard, or Unclassified) \
-                      via keyword matching and returns skeleton markdown files."
+                      via keyword matching and returns skeleton report files."
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {

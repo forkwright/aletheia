@@ -21,7 +21,12 @@ use poiesis_core::{
     Block, Document, Factbase, Metadata, QaIssue, QaIssueKind, QaReport, Renderer, RichText, Span,
 };
 use poiesis_lint::{LintConfig, Linter};
-use poiesis_theme::{sinks::emit_typst_template, summus};
+use poiesis_theme::{
+    Registry, ResolvedTheme, ThemeId,
+    lint::{RawColorLiteralRule, RawFontLiteralRule, UnknownTokenRule},
+    sinks::emit_typst_template,
+    summus,
+};
 use poiesis_verify::Verifier;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
@@ -80,22 +85,95 @@ fn typst_template_enum_values() -> Vec<String> {
         .collect()
 }
 
-fn render_chart_svg(data: &serde_json::Value) -> std::result::Result<Option<String>, String> {
+fn render_chart_svg(
+    data: &serde_json::Value,
+    theme: &ResolvedTheme,
+) -> std::result::Result<Option<String>, String> {
     let Some(chart_value) = data.get("chart") else {
         return Ok(None);
     };
 
     let chart: Chart = serde_json::from_value(chart_value.clone())
         .map_err(|e| format!("chart must be valid JSON: {e}"))?;
-    let theme = ChartResolvedTheme::from_poiesis_theme(&summus());
+    let chart_theme = ChartResolvedTheme::from_poiesis_theme(theme);
     let svg = render_chart(
         &chart,
-        &theme,
+        &chart_theme,
         &Canvas::Doc(DocCanvas::default()),
         ChartColorMode::Resolved,
     )
     .map_err(|e| format!("chart render failed: {e}"))?;
     Ok(Some(svg))
+}
+
+/// Extract an optional theme identifier from the parsed `data` object.
+///
+/// Looks for `theme`, `theme_id`, or `spec.theme` so callers can embed the
+/// theme choice in their report descriptor without adding a top-level argument.
+fn theme_id_from_data(data: &serde_json::Value) -> Option<String> {
+    data.as_object().and_then(|obj| {
+        obj.get("theme")
+            .or_else(|| obj.get("theme_id"))
+            .or_else(|| obj.get("spec").and_then(|spec| spec.get("theme")))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+    })
+}
+
+/// Resolve the report theme from tool inputs.
+///
+/// Resolution order:
+/// 1. Top-level `theme` argument.
+/// 2. `theme` / `theme_id` / `spec.theme` inside the parsed `data` object.
+/// 3. Embedded `summus()` fallback for backward compatibility.
+///
+/// Non-`summus` identifiers are parsed and resolved against a theme registry
+/// loaded from `<workspace>/themes`. Errors are returned as `ToolResult::error`
+/// so executors can return them directly.
+pub(crate) fn resolve_report_theme(
+    args: &serde_json::Value,
+    data: &serde_json::Value,
+    ctx: &ToolContext,
+) -> std::result::Result<ResolvedTheme, Box<ToolResult>> {
+    let candidate = extract_opt_str(args, "theme")
+        .map(str::to_owned)
+        .or_else(|| theme_id_from_data(data))
+        .filter(|s| !s.is_empty());
+
+    let Some(candidate) = candidate else {
+        return Ok(summus());
+    };
+
+    if candidate == "summus" {
+        return Ok(summus());
+    }
+
+    let id = ThemeId::parse(&candidate).map_err(|e| {
+        Box::new(ToolResult::error(format!(
+            "invalid theme id '{candidate}': {e}"
+        )))
+    })?;
+
+    let themes_dir = ctx.workspace.join("themes");
+    if !themes_dir.exists() {
+        return Err(Box::new(ToolResult::error(format!(
+            "themes registry directory not found at {}",
+            themes_dir.display()
+        ))));
+    }
+
+    let registry = Registry::load_dir(&themes_dir).map_err(|e| {
+        Box::new(ToolResult::error(format!(
+            "failed to load themes registry from {}: {e}",
+            themes_dir.display()
+        )))
+    })?;
+
+    registry.resolve(&id).map_err(|e| {
+        Box::new(ToolResult::error(format!(
+            "failed to resolve theme {id}: {e}"
+        )))
+    })
 }
 
 pub(crate) fn extract_zip_entry(
@@ -629,7 +707,12 @@ impl ToolExecutor for RenderTypstReportExecutor {
                 }
             };
 
-            if let Some(chart_svg) = match render_chart_svg(&data) {
+            let theme = match resolve_report_theme(args, &data, ctx) {
+                Ok(theme) => theme,
+                Err(e) => return Ok(*e),
+            };
+
+            if let Some(chart_svg) = match render_chart_svg(&data, &theme) {
                 Ok(svg) => svg,
                 Err(e) => return Ok(ToolResult::error(e)),
             } && let Some(obj) = data.as_object_mut()
@@ -637,7 +720,6 @@ impl ToolExecutor for RenderTypstReportExecutor {
                 obj.insert("chart_svg".to_owned(), serde_json::Value::String(chart_svg));
             }
 
-            let theme = summus();
             let theme_source = match emit_typst_template(&theme) {
                 Ok(source) => source,
                 Err(e) => {
@@ -755,6 +837,17 @@ fn render_typst_report_def() -> ToolDef {
                     },
                 ),
                 (
+                    "theme".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Theme identifier (e.g. `summus`). Overrides any theme \
+                                      declared inside `data`."
+                            .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
                     "data".to_owned(),
                     json_data_property("JSON object exposed to the template as `data.json`."),
                 ),
@@ -778,6 +871,53 @@ fn render_typst_report_def() -> ToolDef {
         auto_activate: false,
         groups: vec![ToolGroupId::Edit],
         tags: vec![ToolTag::Format],
+    }
+}
+
+fn walk_json_strings(
+    value: &serde_json::Value,
+    pointer: &str,
+    visitor: &mut impl FnMut(&str, &str),
+) {
+    match value {
+        serde_json::Value::String(s) => visitor(pointer, s),
+        serde_json::Value::Array(arr) => {
+            for (i, item) in arr.iter().enumerate() {
+                let child = format!("{pointer}/{i}");
+                walk_json_strings(item, &child, visitor);
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            for (key, item) in obj {
+                let child = if pointer.is_empty() {
+                    format!("/{key}")
+                } else {
+                    format!("{pointer}/{key}")
+                };
+                walk_json_strings(item, &child, visitor);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn looks_like_token_ref(value: &str) -> bool {
+    let parts: Vec<&str> = value.split('.').collect();
+    matches!(
+        parts.as_slice(),
+        ["color" | "type", "role", _]
+            | ["color", "tone" | "surface", _]
+            | ["type", "family" | "scale", _]
+            | ["space", _]
+            | ["chart", "series", _]
+    )
+}
+
+fn theme_violation_to_qa_issue(v: &poiesis_theme::lint::Violation) -> QaIssue {
+    QaIssue {
+        kind: QaIssueKind::ThemeViolation,
+        location: Some(v.pointer.clone()),
+        message: format!("[{}] {}", v.rule_id, v.message),
     }
 }
 
@@ -831,6 +971,31 @@ impl ToolExecutor for QaGateExecutor {
                 });
             }
 
+            let theme = summus();
+            let color_rule = RawColorLiteralRule;
+            let font_rule = RawFontLiteralRule;
+            let unknown_rule = UnknownTokenRule::new(&theme);
+
+            let mut visit_string = |pointer: &str, value: &str| {
+                for v in color_rule.scan(pointer, value) {
+                    issues.push(theme_violation_to_qa_issue(&v));
+                }
+                for v in font_rule.scan(pointer, value) {
+                    issues.push(theme_violation_to_qa_issue(&v));
+                }
+                if looks_like_token_ref(value)
+                    && let Some(v) = unknown_rule.check(pointer, value)
+                {
+                    issues.push(theme_violation_to_qa_issue(&v));
+                }
+            };
+
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(prose) {
+                walk_json_strings(&parsed, "", &mut visit_string);
+            } else {
+                visit_string("", prose);
+            }
+
             let report = QaReport::new(issues);
 
             match QaReport::to_json(&report) {
@@ -845,7 +1010,7 @@ fn qa_gate_def() -> ToolDef {
     ToolDef {
         name: koina::id::ToolName::from_static("qa_gate"), // kanon:ignore RUST/expect
         description:
-            "Run prose lint and optional factbase validation, returning a structured QA report."
+            "Run prose lint, theme token lint, and optional factbase validation, returning a structured QA report."
                 .to_owned(),
         extended_description: None,
         input_schema: InputSchema {

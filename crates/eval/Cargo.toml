@@ -16,7 +16,7 @@ test-core = []
 test-full = []
 
 [dependencies]
-eidos = { path = "../eidos" }
+mneme = { path = "../mneme", default-features = false }
 koina = { path = "../koina" }
 poiesis-typst = { path = "../poiesis/typst" }
 jiff = { workspace = true }

@@ -7,7 +7,7 @@
 //! crates' tests.
 
 use std::collections::HashSet;
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Write};
 use std::sync::{Arc, RwLock};
 
 use base64::Engine as _;
@@ -681,6 +681,102 @@ async fn qa_gate_banned_word_fails() {
 }
 
 #[tokio::test]
+async fn qa_gate_raw_color_literal_fails() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "qa_gate",
+        serde_json::json!({
+            "prose": serde_json::json!({
+                "slides": [{ "title_color": "#FF00AA" }]
+            }).to_string()
+        }),
+    );
+    let result = QaGateExecutor.execute(&input, &ctx).await.expect("exec");
+    assert!(!result.is_error, "qa_gate must succeed: {result:?}");
+    let text = result.content.text_summary();
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(
+        parsed["has_issues"], true,
+        "raw color must report issues: {parsed:?}"
+    );
+    let issues = parsed["issues"].as_array().expect("issues array");
+    assert!(
+        issues.iter().any(|i| {
+            i["kind"].as_str() == Some("theme_violation")
+                && i["message"].as_str().unwrap_or("").contains("raw color")
+        }),
+        "expected a theme color violation: {issues:?}"
+    );
+}
+
+#[tokio::test]
+async fn qa_gate_raw_font_literal_fails() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "qa_gate",
+        serde_json::json!({
+            "prose": serde_json::json!({
+                "style": "font-family: Arial"
+            }).to_string()
+        }),
+    );
+    let result = QaGateExecutor.execute(&input, &ctx).await.expect("exec");
+    assert!(!result.is_error, "qa_gate must succeed: {result:?}");
+    let text = result.content.text_summary();
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(
+        parsed["has_issues"], true,
+        "raw font must report issues: {parsed:?}"
+    );
+    let issues = parsed["issues"].as_array().expect("issues array");
+    assert!(
+        issues.iter().any(|i| {
+            i["kind"].as_str() == Some("theme_violation")
+                && i["message"].as_str().unwrap_or("").contains("raw font")
+        }),
+        "expected a theme font violation: {issues:?}"
+    );
+}
+
+#[tokio::test]
+async fn qa_gate_unknown_token_fails() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "qa_gate",
+        serde_json::json!({
+            "prose": serde_json::json!({
+                "fill": "color.role.fuchsia"
+            }).to_string()
+        }),
+    );
+    let result = QaGateExecutor.execute(&input, &ctx).await.expect("exec");
+    assert!(!result.is_error, "qa_gate must succeed: {result:?}");
+    let text = result.content.text_summary();
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(
+        parsed["has_issues"], true,
+        "unknown token must report issues: {parsed:?}"
+    );
+    let issues = parsed["issues"].as_array().expect("issues array");
+    assert!(
+        issues.iter().any(|i| {
+            i["kind"].as_str() == Some("theme_violation")
+                && i["message"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("unknown-token")
+        }),
+        "expected an unknown token violation: {issues:?}"
+    );
+}
+
+#[tokio::test]
 async fn report_renderers_reject_out_path_escape() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
@@ -758,5 +854,143 @@ fn render_typst_report_call_capability_requires_approval_when_out_path_present()
             .expect("approval"),
         ApprovalRequirement::Required,
         "out_path present means disk write"
+    );
+}
+
+const CUSTOM_THEME_TOML: &str = r##"
+[meta]
+id = "custom"
+title = "Custom"
+
+[color.role]
+navy = "#232E54"
+teal = "#318891"
+
+[color.tone]
+positive = "teal"
+neutral = "navy"
+
+[color.surface]
+page = "navy"
+
+[type.family]
+sans = ["Geist", "system-ui"]
+"##;
+
+fn write_theme_toml(themes_dir: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
+    std::fs::create_dir_all(themes_dir).expect("create themes dir");
+    let path = themes_dir.join(format!("{name}.toml"));
+    let mut file = std::fs::File::create(&path).expect("create theme toml");
+    file.write_all(body.as_bytes()).expect("write theme toml");
+    path
+}
+
+#[test]
+fn resolve_report_theme_defaults_to_summus() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let theme = resolve_report_theme(&serde_json::json!({}), &serde_json::json!({}), &ctx)
+        .expect("default theme resolves");
+    assert_eq!(theme.id.as_str(), "summus");
+}
+
+#[test]
+fn resolve_report_theme_top_level_arg_wins() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    write_theme_toml(&dir.path().join("themes"), "custom", CUSTOM_THEME_TOML);
+    let ctx = test_ctx(dir.path());
+
+    let theme = resolve_report_theme(
+        &serde_json::json!({ "theme": "custom" }),
+        &serde_json::json!({ "theme": "summus" }),
+        &ctx,
+    )
+    .expect("top-level theme wins");
+    assert_eq!(theme.id.as_str(), "custom");
+}
+
+#[test]
+fn resolve_report_theme_data_theme_id() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    write_theme_toml(&dir.path().join("themes"), "custom", CUSTOM_THEME_TOML);
+    let ctx = test_ctx(dir.path());
+
+    let theme = resolve_report_theme(
+        &serde_json::json!({}),
+        &serde_json::json!({ "theme_id": "custom" }),
+        &ctx,
+    )
+    .expect("data theme_id resolves");
+    assert_eq!(theme.id.as_str(), "custom");
+}
+
+#[test]
+fn resolve_report_theme_data_spec_theme() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    write_theme_toml(&dir.path().join("themes"), "custom", CUSTOM_THEME_TOML);
+    let ctx = test_ctx(dir.path());
+
+    let theme = resolve_report_theme(
+        &serde_json::json!({}),
+        &serde_json::json!({ "spec": { "theme": "custom" } }),
+        &ctx,
+    )
+    .expect("spec.theme resolves");
+    assert_eq!(theme.id.as_str(), "custom");
+}
+
+#[test]
+fn resolve_report_theme_invalid_id_is_error() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let err = resolve_report_theme(
+        &serde_json::json!({ "theme": "Bad Name" }),
+        &serde_json::json!({}),
+        &ctx,
+    )
+    .expect_err("invalid id must error");
+    let text = err.content.text_summary();
+    assert!(
+        text.contains("invalid theme id"),
+        "unexpected error: {text}"
+    );
+}
+
+#[test]
+fn resolve_report_theme_missing_registry_is_error() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let err = resolve_report_theme(
+        &serde_json::json!({ "theme": "custom" }),
+        &serde_json::json!({}),
+        &ctx,
+    )
+    .expect_err("missing registry must error");
+    let text = err.content.text_summary();
+    assert!(
+        text.contains("themes registry directory not found"),
+        "unexpected error: {text}"
+    );
+}
+
+#[test]
+fn resolve_report_theme_unknown_theme_is_error() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    write_theme_toml(&dir.path().join("themes"), "custom", CUSTOM_THEME_TOML);
+    let ctx = test_ctx(dir.path());
+
+    let err = resolve_report_theme(
+        &serde_json::json!({ "theme": "unknown" }),
+        &serde_json::json!({}),
+        &ctx,
+    )
+    .expect_err("unknown theme must error");
+    let text = err.content.text_summary();
+    assert!(
+        text.contains("failed to resolve theme"),
+        "unexpected error: {text}"
     );
 }

@@ -142,6 +142,19 @@ pub mod training {
     };
 }
 
+/// Finding types for attention-quality audits and eval reports.
+pub mod finding {
+    pub use eidos::knowledge::finding::{
+        ConfidenceSummary, EvidenceLevel, EvidenceRef, Finding, FindingStats, FindingSupport,
+        stable_hash,
+    };
+}
+
+/// Metadata provenance primitives for stamped artefacts.
+pub mod meta {
+    pub use eidos::meta::{ArtefactMeta, Provenance, ProvenanceProject, Stamped};
+}
+
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
 
 /// LLM-driven fact consolidation for knowledge maintenance.

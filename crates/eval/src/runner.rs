@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use eidos::meta::{ArtefactMeta, Stamped};
+use mneme::meta::{ArtefactMeta, Stamped};
 use tracing::{info, warn};
 
 use koina::secret::SecretString;

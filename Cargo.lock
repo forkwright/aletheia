@@ -168,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-classify"
-version = "0.1.0"
+version = "0.31.1"
 dependencies = [
  "jiff",
  "serde",
@@ -2862,9 +2862,9 @@ dependencies = [
 name = "dokimion"
 version = "0.31.1"
 dependencies = [
- "eidos",
  "jiff",
  "koina",
+ "mneme",
  "organon",
  "owo-colors",
  "poiesis-typst",
@@ -6391,7 +6391,6 @@ version = "0.31.1"
 dependencies = [
  "aletheia-routing",
  "axum 0.8.9",
- "eidos",
  "episteme",
  "fjall",
  "flate2",
@@ -7114,7 +7113,6 @@ name = "poiesis-intake"
 version = "0.31.1"
 dependencies = [
  "aletheia-lexica",
- "poiesis-scaffold",
  "serde",
  "serde_json",
  "snafu",
