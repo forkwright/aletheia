@@ -32,7 +32,7 @@ use crate::idempotency::LookupResult;
 use crate::middleware::RequestId;
 use crate::state::SessionsState;
 use crate::stream::{SseEvent, TurnOutcome, TurnStreamEvent as PylonTurnStreamEvent, UsageData};
-use crate::turn_buffer::TurnBufferHandle;
+use crate::turn_buffer::{REPLAY_GAP_REASON_BUFFER_CAPACITY, RecordOutcome, TurnBufferHandle};
 
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
@@ -449,8 +449,9 @@ pub async fn send_message(
                 turn_id: Some(turn_id.clone()),
                 request_id: Some(request_id_str.clone()),
             };
-            let seq = record_sse_event(&buf_handle_task, &event).await;
-            let _ = tx.send((seq, event)).await;
+            if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
+                let _ = tx.send(recorded).await;
+            }
 
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
@@ -531,8 +532,9 @@ pub async fn send_message(
                         message: err_message,
                         request_id: Some(request_id_str.clone()),
                     };
-                    let seq = record_sse_event(&buf_handle_task, &event).await;
-                    let _ = tx.send((seq, event)).await;
+                    if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
+                        let _ = tx.send(recorded).await;
+                    }
                     // WHY(#5164): Even when an `error` event is emitted, the following
                     // `message_complete` is the authoritative terminal marker. Clients must
                     // use `message_complete` to detect the end of the stream.
@@ -544,8 +546,9 @@ pub async fn send_message(
                         },
                         request_id: Some(request_id_str.clone()),
                     };
-                    let seq = record_sse_event(&buf_handle_task, &event).await;
-                    let _ = tx.send((seq, event)).await;
+                    if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
+                        let _ = tx.send(recorded).await;
+                    }
                     buf_handle_task.mark_failed().await;
                 }
             }
@@ -711,8 +714,9 @@ pub async fn stream_turn(
         turn_id: turn_id.clone(),
         request_id: Some(request_id.0.clone()),
     };
-    let seq = record_turn_event(&buf_handle, &start_event).await;
-    let _ = turn_tx.send((seq, start_event)).await;
+    if let Some(recorded) = record_turn_event(&buf_handle, &start_event).await {
+        let _ = turn_tx.send(recorded).await;
+    }
 
     let sid = session_id.clone();
     let aid = agent_id;
@@ -797,8 +801,10 @@ pub async fn stream_turn(
                     },
                     _ => continue,
                 };
-                let seq = record_turn_event(&bridge_buf, &turn_event).await;
-                if bridge_tx.send((seq, turn_event)).await.is_err() {
+                let Some(recorded) = record_turn_event(&bridge_buf, &turn_event).await else {
+                    continue;
+                };
+                if bridge_tx.send(recorded).await.is_err() {
                     break;
                 }
             }
@@ -859,8 +865,9 @@ pub async fn stream_turn(
                             error: None,
                         },
                     };
-                    let seq = record_turn_event(&buf_handle_task, &event).await;
-                    let _ = turn_tx.send((seq, event)).await;
+                    if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
+                        let _ = turn_tx.send(recorded).await;
+                    }
                     buf_handle_task.mark_completed().await;
 
                     event_bus.publish(crate::event_bus::DomainEvent::new(
@@ -877,8 +884,9 @@ pub async fn stream_turn(
                         message: err_message.clone(),
                         request_id: Some(stream_request_id.clone()),
                     };
-                    let seq = record_turn_event(&buf_handle_task, &event).await;
-                    let _ = turn_tx.send((seq, event)).await;
+                    if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
+                        let _ = turn_tx.send(recorded).await;
+                    }
                     // WHY(#5164): Even when an `error` event is emitted, the following
                     // `message_complete` is the authoritative terminal marker. TUI clients
                     // must use `message_complete` to detect the end of the stream.
@@ -897,8 +905,9 @@ pub async fn stream_turn(
                             error: Some(err_message),
                         },
                     };
-                    let seq = record_turn_event(&buf_handle_task, &event).await;
-                    let _ = turn_tx.send((seq, event)).await;
+                    if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
+                        let _ = turn_tx.send(recorded).await;
+                    }
                     buf_handle_task.mark_failed().await;
                 }
             }
@@ -1022,6 +1031,22 @@ fn lower_hex_char(nibble: u8) -> char {
         char::from(ASCII_DIGIT_ZERO + nibble)
     } else {
         char::from(ASCII_LOWER_A + (nibble - HEX_DECIMAL_DIGITS))
+    }
+}
+
+fn sse_replay_gap_event(dropped_after_seq: u64, retained_limit: usize) -> SseEvent {
+    SseEvent::ReplayGap {
+        reason: REPLAY_GAP_REASON_BUFFER_CAPACITY.to_owned(),
+        dropped_after_seq,
+        retained_limit,
+    }
+}
+
+fn turn_replay_gap_event(dropped_after_seq: u64, retained_limit: usize) -> PylonTurnStreamEvent {
+    PylonTurnStreamEvent::ReplayGap {
+        reason: REPLAY_GAP_REASON_BUFFER_CAPACITY.to_owned(),
+        dropped_after_seq,
+        retained_limit,
     }
 }
 
@@ -1231,8 +1256,9 @@ async fn emit_turn_result_events_buffered(
         let event = SseEvent::TextDelta {
             text: result.content.clone(),
         };
-        let seq = record_sse_event(buf, &event).await;
-        let _ = tx.send((seq, event)).await;
+        if let Some(recorded) = record_sse_event(buf, &event).await {
+            let _ = tx.send(recorded).await;
+        }
     }
 
     for tc in &result.tool_calls {
@@ -1241,8 +1267,9 @@ async fn emit_turn_result_events_buffered(
             name: tc.name.clone(),
             input: tc.input.clone(),
         };
-        let seq = record_sse_event(buf, &event).await;
-        let _ = tx.send((seq, event)).await;
+        if let Some(recorded) = record_sse_event(buf, &event).await {
+            let _ = tx.send(recorded).await;
+        }
 
         if let Some(ref result_content) = tc.result {
             let event = SseEvent::ToolResult {
@@ -1250,8 +1277,9 @@ async fn emit_turn_result_events_buffered(
                 content: result_content.clone(),
                 is_error: tc.is_error,
             };
-            let seq = record_sse_event(buf, &event).await;
-            let _ = tx.send((seq, event)).await;
+            if let Some(recorded) = record_sse_event(buf, &event).await {
+                let _ = tx.send(recorded).await;
+            }
         }
     }
 
@@ -1263,22 +1291,45 @@ async fn emit_turn_result_events_buffered(
         },
         request_id: request_id.map(ToOwned::to_owned),
     };
-    let seq = record_sse_event(buf, &event).await;
-    let _ = tx.send((seq, event)).await;
+    if let Some(recorded) = record_sse_event(buf, &event).await {
+        let _ = tx.send(recorded).await;
+    }
 }
 
-/// Record an [`SseEvent`] to the turn buffer. Returns the assigned sequence number.
-async fn record_sse_event(buf: &TurnBufferHandle, event: &SseEvent) -> u64 {
+/// Record an [`SseEvent`] to the turn buffer. Returns the retained event to send.
+async fn record_sse_event(buf: &TurnBufferHandle, event: &SseEvent) -> Option<(u64, SseEvent)> {
     let event_type = event.event_type().to_owned();
     let data = serde_json::to_string(event).unwrap_or_default();
-    buf.record(&event_type, &data).await
+    match buf.record(&event_type, &data).await {
+        RecordOutcome::Recorded { seq } => Some((seq, event.clone())),
+        RecordOutcome::ReplayGap {
+            seq,
+            dropped_after_seq,
+            retained_limit,
+        } => Some((seq, sse_replay_gap_event(dropped_after_seq, retained_limit))),
+        RecordOutcome::Dropped => None,
+    }
 }
 
-/// Record a [`TurnStreamEvent`] to the turn buffer. Returns the assigned sequence number.
-async fn record_turn_event(buf: &TurnBufferHandle, event: &PylonTurnStreamEvent) -> u64 {
+/// Record a [`TurnStreamEvent`] to the turn buffer. Returns the retained event to send.
+async fn record_turn_event(
+    buf: &TurnBufferHandle,
+    event: &PylonTurnStreamEvent,
+) -> Option<(u64, PylonTurnStreamEvent)> {
     let event_type = event.event_type().to_owned();
     let data = serde_json::to_string(event).unwrap_or_default();
-    buf.record(&event_type, &data).await
+    match buf.record(&event_type, &data).await {
+        RecordOutcome::Recorded { seq } => Some((seq, event.clone())),
+        RecordOutcome::ReplayGap {
+            seq,
+            dropped_after_seq,
+            retained_limit,
+        } => Some((
+            seq,
+            turn_replay_gap_event(dropped_after_seq, retained_limit),
+        )),
+        RecordOutcome::Dropped => None,
+    }
 }
 
 /// Reconnect to a turn's SSE event stream.
@@ -1353,9 +1404,10 @@ pub async fn reconnect_turn(
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(32);
 
     tokio::spawn(async move {
-        let (events, state) = handle.events_after(last_event_id).await;
-        let live = state == crate::turn_buffer::TurnState::Running;
-        let state_name = match state {
+        let mut last_seq = last_event_id;
+        let initial = handle.snapshot_after(last_seq).await;
+        let live = initial.state == crate::turn_buffer::TurnState::Running;
+        let state_name = match initial.state {
             crate::turn_buffer::TurnState::Running => "running",
             crate::turn_buffer::TurnState::Completed => "completed",
             crate::turn_buffer::TurnState::Failed => "failed",
@@ -1373,46 +1425,26 @@ pub async fn reconnect_turn(
             return;
         }
 
-        // Phase 1: Replay buffered events after last_event_id.
-        for event in events {
-            let sse_event = Event::default()
-                .event(event.event_type)
-                .data(event.data)
-                .id(event.seq.to_string());
-            if tx.send(Ok(sse_event)).await.is_err() {
-                return;
-            }
-        }
-
-        // Phase 2: If the turn has not finished, stream newly buffered events.
-        // WHY(#5165): A disconnected original request aborts the turn, so once
-        // the buffer reaches Completed/Failed only replay is available.
-        if state == crate::turn_buffer::TurnState::Running {
-            let notify = handle.notify_handle().await;
-            let mut last_seq = last_event_id;
-            // WHY: update last_seq to include events already replayed
-            let (replayed, _) = handle.events_after(0).await;
-            if let Some(last) = replayed.last() {
-                last_seq = last_seq.max(last.seq);
-            }
-
-            loop {
-                notify.notified().await;
-                let (new_events, new_state) = handle.events_after(last_seq).await;
-                for event in &new_events {
-                    let sse_event = Event::default()
-                        .event(event.event_type.clone())
-                        .data(event.data.clone())
-                        .id(event.seq.to_string());
-                    if tx.send(Ok(sse_event)).await.is_err() {
-                        return;
-                    }
-                    last_seq = event.seq;
-                }
-                if new_state != crate::turn_buffer::TurnState::Running {
-                    break;
+        // Replay and stream: snapshot_after is race-free (WHY: see #5453).
+        let mut snapshot = initial;
+        loop {
+            for event in snapshot.events {
+                let sse_event = Event::default()
+                    .event(event.event_type)
+                    .data(event.data)
+                    .id(event.seq.to_string());
+                last_seq = event.seq;
+                if tx.send(Ok(sse_event)).await.is_err() {
+                    return;
                 }
             }
+
+            if snapshot.state != crate::turn_buffer::TurnState::Running {
+                break;
+            }
+
+            snapshot.notified.await;
+            snapshot = handle.snapshot_after(last_seq).await;
         }
     });
 
