@@ -239,7 +239,8 @@ impl Router for PersonaRouter {
 mod tests {
     use std::io::Write as _;
     use std::sync::Arc;
-    use std::time::Duration;
+
+    use aletheia_routing::DEFAULT_ROUTING_WINDOW;
 
     use super::*;
     use crate::routing::store::AfterActionStore;
@@ -275,7 +276,7 @@ mod tests {
             store,
             StaticRouter::new(ProviderId::new(default)),
             5,
-            Duration::from_hours(168),
+            DEFAULT_ROUTING_WINDOW,
             0.1,
         );
         PersonaRouter::new(empirical)

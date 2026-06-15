@@ -74,16 +74,27 @@ impl EmpiricalRouter {
     ///
     /// Returns the static fallback provider when empirical data is absent or
     /// insufficient.  If `candidates` is empty the static default is returned.
+    #[cfg(test)]
     pub(crate) async fn pick(
         &self,
         task_category: &TaskCategory,
         candidates: &[ProviderId],
     ) -> ProviderId {
-        if candidates.is_empty() {
-            return self.fallback.pick(*task_category).clone();
-        }
+        self.pick_with_static_boundary(task_category, candidates, true)
+            .await
+    }
 
+    async fn pick_with_static_boundary(
+        &self,
+        task_category: &TaskCategory,
+        candidates: &[ProviderId],
+        static_allowed: bool,
+    ) -> ProviderId {
         let static_choice = self.fallback.pick(*task_category);
+
+        if candidates.is_empty() {
+            return static_choice.clone();
+        }
 
         let mut best_provider: Option<&ProviderId> = None;
         let mut best_rate: f64 = -1.0;
@@ -120,20 +131,32 @@ impl EmpiricalRouter {
         }
 
         let Some(winner) = best_provider else {
-            return static_choice.clone();
+            return if static_allowed {
+                static_choice.clone()
+            } else {
+                candidates
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| static_choice.clone())
+            };
         };
 
-        // Only override the static choice if the empirical winner is strictly
-        // better by at least `confidence_threshold`.
-        let static_rate = self
-            .store
-            .rolling_stats(static_choice, task_category, self.window)
-            .await
-            .and_then(|s| s.success_rate())
-            .unwrap_or(0.0);
+        // WHY: a disallowed static choice cannot veto an eligible empirical
+        // winner; otherwise a cloud default could leak through a local boundary.
+        // When the static choice is allowed, preserve the existing confidence
+        // threshold before switching away from it.
+        let static_rate = if static_allowed {
+            self.store
+                .rolling_stats(static_choice, task_category, self.window)
+                .await
+                .and_then(|s| s.success_rate())
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
 
         let gap = best_rate - static_rate;
-        if gap >= self.confidence_threshold {
+        if !static_allowed || gap >= self.confidence_threshold {
             tracing::info!(
                 empirical_winner = %winner,
                 static_choice = %static_choice,
@@ -168,7 +191,17 @@ impl Router for EmpiricalRouter {
     fn route<'a>(&'a self, features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
         Box::pin(async move {
             let category = features.effective_category();
-            let chosen = self.pick(&category, &features.candidates).await;
+            let candidates = features
+                .candidates
+                .iter()
+                .filter(|provider| features.candidate_allowed_by_boundary(provider))
+                .cloned()
+                .collect::<Vec<_>>();
+            let static_allowed =
+                features.candidate_allowed_by_boundary(self.fallback.pick(category));
+            let chosen = self
+                .pick_with_static_boundary(&category, &candidates, static_allowed)
+                .await;
             let confidence = self
                 .store
                 .rolling_stats(&chosen, &category, self.window)
@@ -207,13 +240,12 @@ impl Router for EmpiricalRouter {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use std::io::Write as _;
-    use std::time::Duration;
+
+    use aletheia_routing::{DEFAULT_ROUTING_WINDOW, RoutingBoundary};
 
     use super::*;
     use crate::routing::store::AfterActionStore;
     use crate::routing::{ProviderId, StaticRouter, TaskCategory};
-
-    const WINDOW: Duration = Duration::from_hours(168);
 
     fn session_line(model: &str, status: &str, category: &str) -> serde_json::Value {
         serde_json::json!({
@@ -242,7 +274,7 @@ mod tests {
             store,
             StaticRouter::new(ProviderId::new(default)),
             min_samples,
-            WINDOW,
+            DEFAULT_ROUTING_WINDOW,
             threshold,
         )
     }
@@ -359,5 +391,35 @@ mod tests {
             "confidence should be present when empirical data exists"
         );
         assert!(decision.confidence.unwrap() > 0.8);
+    }
+
+    #[tokio::test]
+    async fn route_excludes_cloud_candidate_for_local_hosted_boundary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lines = vec![];
+        for _ in 0..10 {
+            lines.push(session_line("cloud-only", "success", "feature"));
+        }
+        for _ in 0..6 {
+            lines.push(session_line("local", "success", "feature"));
+        }
+        for _ in 0..4 {
+            lines.push(session_line("local", "failed", "feature"));
+        }
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &lines);
+
+        let router = make_router(tmp.path(), "cloud-only", 5, 0.1).await;
+        let features = RequestFeatures::new(
+            vec![ProviderId::new("cloud-only"), ProviderId::new("local")],
+            Some(TaskCategory::Feature),
+            None,
+        )
+        .with_deployment_target(RoutingBoundary::LocalHosted)
+        .with_candidate_deployment_target("cloud-only", RoutingBoundary::Cloud)
+        .with_candidate_deployment_target("local", RoutingBoundary::LocalHosted);
+
+        let decision = router.route(&features).await;
+
+        assert_eq!(&*decision.provider, "local");
     }
 }

@@ -29,7 +29,9 @@ use tokio::sync::RwLock;
 use crate::types::{ProviderId, TaskCategory, TurnOutcome};
 
 const SECS_PER_DAY: u64 = 24 * 60 * 60;
-const DEFAULT_REFRESH_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
+
+/// Default rolling window for routing success-rate statistics.
+pub const DEFAULT_ROUTING_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
 
 /// Errors produced by [`AfterActionStore`] operations.
 #[derive(Debug, Snafu)]
@@ -132,7 +134,7 @@ impl AfterActionStore {
     ///
     /// Call [`refresh`](Self::refresh) to populate the cache from disk.
     pub fn new(dir: PathBuf) -> Self {
-        Self::new_with_window(dir, DEFAULT_REFRESH_WINDOW)
+        Self::new_with_window(dir, DEFAULT_ROUTING_WINDOW)
     }
 
     /// Create a store backed by `dir` with a bounded refresh window.
@@ -155,7 +157,7 @@ impl AfterActionStore {
     pub fn in_memory() -> Self {
         Self {
             dir: None,
-            window: DEFAULT_REFRESH_WINDOW,
+            window: DEFAULT_ROUTING_WINDOW,
             cache: RwLock::new(HashMap::new()),
             interactive: RwLock::new(HashMap::new()),
         }
@@ -397,7 +399,7 @@ fn merge_stats(target: &mut RollingStats, source: &RollingStats) {
 ///
 /// Returns [`TaskCategory::Feature`] for unrecognised strings so that new
 /// categories added in future PRs degrade gracefully on old store data.
-pub(crate) fn parse_category(s: &str) -> TaskCategory {
+fn parse_category(s: &str) -> TaskCategory {
     match s.parse::<TaskCategory>() {
         Ok(category) => category,
         Err(_) => TaskCategory::Feature,

@@ -18,14 +18,14 @@
 //!    [`AfterActionStore`] so future dispatch-side routing benefits from
 //!    interactive-path data (and vice versa). The empirical layer does *not*
 //!    replace the complexity router; it feeds the dispatch path's
-//!    [`energeia::routing::EmpiricalRouter`] with a richer signal set.
+//!    `energeia` empirical router with a richer signal set.
 
 #![deny(missing_docs)]
 
 pub mod store;
 pub mod types;
 
-pub use store::AfterActionStore;
+pub use store::{AfterActionStore, DEFAULT_ROUTING_WINDOW};
 pub use types::{RequestFeatures, RouterError, RoutingBoundary, RoutingDecision, TurnOutcome};
 
 use std::sync::Arc;
@@ -157,17 +157,8 @@ impl Router for RecordingRouter {
 /// secondary is a read-only fallback; recording against it would corrupt the
 /// primary's training signal.
 ///
-/// # Example
-///
-/// ```rust
-/// # use aletheia_routing::{FallthroughRouter, NoOpRouter};
-/// # use std::sync::Arc;
-/// let primary = Arc::new(NoOpRouter { provider: Arc::from("learned") });
-/// let fallback = Arc::new(NoOpRouter { provider: Arc::from("static") });
-/// // Fall through to `fallback` when primary confidence < 0.5.
-/// let router = FallthroughRouter::new(primary, fallback, 0.5);
-/// ```
-pub struct FallthroughRouter {
+#[cfg(test)]
+pub(crate) struct FallthroughRouter {
     /// Primary router — queried first on every `route` call.
     primary: Arc<dyn Router>,
     /// Fallback router — used when primary confidence is below threshold.
@@ -179,12 +170,13 @@ pub struct FallthroughRouter {
     threshold: f64,
 }
 
+#[cfg(test)]
 impl FallthroughRouter {
     /// Create a new `FallthroughRouter`.
     ///
     /// `threshold` is clamped to `[0.0, 1.0]`.
     #[must_use]
-    pub fn new(primary: Arc<dyn Router>, fallback: Arc<dyn Router>, threshold: f64) -> Self {
+    pub(crate) fn new(primary: Arc<dyn Router>, fallback: Arc<dyn Router>, threshold: f64) -> Self {
         Self {
             primary,
             fallback,
@@ -194,11 +186,12 @@ impl FallthroughRouter {
 
     /// Configured fallthrough confidence threshold.
     #[must_use]
-    pub fn threshold(&self) -> f64 {
+    pub(crate) fn threshold(&self) -> f64 {
         self.threshold
     }
 }
 
+#[cfg(test)]
 impl Router for FallthroughRouter {
     fn route<'a>(&'a self, features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
         Box::pin(async move {
@@ -370,5 +363,18 @@ mod tests {
         // NoOpRouter returns None confidence; threshold 0.0 means
         // None(=0.0) >= 0.0 is true, so primary wins.
         assert_eq!(decision.provider.as_ref(), "primary");
+    }
+
+    #[test]
+    fn fallthrough_router_threshold_getter_returns_clamped_value() {
+        let primary = Arc::new(NoOpRouter {
+            provider: Arc::from("primary"),
+        });
+        let fallback = Arc::new(NoOpRouter {
+            provider: Arc::from("fallback"),
+        });
+        let router = FallthroughRouter::new(primary, fallback, 2.0);
+
+        assert!((router.threshold() - 1.0).abs() < f64::EPSILON);
     }
 }
