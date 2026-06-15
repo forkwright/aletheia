@@ -95,6 +95,13 @@ pub enum LoopDetectorError {
         /// Threshold that triggered.
         limit: u32,
     },
+
+    /// The detector was configured with invalid parameters.
+    #[snafu(display("invalid loop detector configuration: {message}"))]
+    InvalidConfig {
+        /// Description of why the configuration is invalid.
+        message: String,
+    },
 }
 
 /// Ring-buffer detector for repeated identical tool-call signatures.
@@ -112,13 +119,27 @@ pub struct DoomLoopDetector {
 impl DoomLoopDetector {
     /// Create a new detector.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `capacity == 0` or `k == 0`.
-    #[must_use]
-    pub fn new(capacity: usize, k: usize) -> Self {
-        assert!(capacity > 0, "capacity must be > 0");
-        assert!(k > 0, "k must be > 0");
+    /// Returns [`LoopDetectorError::InvalidConfig`] if `capacity == 0` or
+    /// `k == 0`.
+    pub fn new(capacity: usize, k: usize) -> Result<Self, LoopDetectorError> {
+        if capacity == 0 {
+            return InvalidConfigSnafu {
+                message: "capacity must be > 0".to_owned(),
+            }
+            .fail();
+        }
+        if k == 0 {
+            return InvalidConfigSnafu {
+                message: "k must be > 0".to_owned(),
+            }
+            .fail();
+        }
+        Ok(Self::new_unchecked(capacity, k))
+    }
+
+    fn new_unchecked(capacity: usize, k: usize) -> Self {
         Self {
             ring: Vec::with_capacity(capacity),
             capacity,
@@ -177,13 +198,27 @@ pub struct PingPongDetector {
 impl PingPongDetector {
     /// Create a new detector.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `capacity == 0` or `k < 3`.
-    #[must_use]
-    pub fn new(capacity: usize, k: usize) -> Self {
-        assert!(capacity > 0, "capacity must be > 0");
-        assert!(k >= 3, "k must be >= 3 for meaningful ping-pong detection");
+    /// Returns [`LoopDetectorError::InvalidConfig`] if `capacity == 0` or
+    /// `k < 3`.
+    pub fn new(capacity: usize, k: usize) -> Result<Self, LoopDetectorError> {
+        if capacity == 0 {
+            return InvalidConfigSnafu {
+                message: "capacity must be > 0".to_owned(),
+            }
+            .fail();
+        }
+        if k < 3 {
+            return InvalidConfigSnafu {
+                message: "k must be >= 3 for meaningful ping-pong detection".to_owned(),
+            }
+            .fail();
+        }
+        Ok(Self::new_unchecked(capacity, k))
+    }
+
+    fn new_unchecked(capacity: usize, k: usize) -> Self {
         Self {
             ring: VecDeque::with_capacity(capacity),
             capacity,
@@ -271,12 +306,20 @@ pub struct NoProgressDetector {
 impl NoProgressDetector {
     /// Create a new detector.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `limit == 0`.
-    #[must_use]
-    pub fn new(limit: u32) -> Self {
-        assert!(limit > 0, "limit must be > 0");
+    /// Returns [`LoopDetectorError::InvalidConfig`] if `limit == 0`.
+    pub fn new(limit: u32) -> Result<Self, LoopDetectorError> {
+        if limit == 0 {
+            return InvalidConfigSnafu {
+                message: "limit must be > 0".to_owned(),
+            }
+            .fail();
+        }
+        Ok(Self::new_unchecked(limit))
+    }
+
+    fn new_unchecked(limit: u32) -> Self {
         Self {
             last_assistant_hash: None,
             consecutive_no_progress: 0,
@@ -353,20 +396,28 @@ impl LoopGuard {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            doom: DoomLoopDetector::new(20, 3),
-            ping_pong: PingPongDetector::new(20, 5),
-            no_progress: NoProgressDetector::new(3),
+            doom: DoomLoopDetector::new_unchecked(20, 3),
+            ping_pong: PingPongDetector::new_unchecked(20, 5),
+            no_progress: NoProgressDetector::new_unchecked(3),
         }
     }
 
     /// Create a new guard with custom thresholds.
-    #[must_use]
-    pub fn with_limits(doom_k: usize, ping_pong_k: usize, no_progress_limit: u32) -> Self {
-        Self {
-            doom: DoomLoopDetector::new(20, doom_k),
-            ping_pong: PingPongDetector::new(20, ping_pong_k),
-            no_progress: NoProgressDetector::new(no_progress_limit),
-        }
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LoopDetectorError::InvalidConfig`] if any of the underlying
+    /// detector constructors reject the configuration.
+    pub fn with_limits(
+        doom_k: usize,
+        ping_pong_k: usize,
+        no_progress_limit: u32,
+    ) -> Result<Self, LoopDetectorError> {
+        Ok(Self {
+            doom: DoomLoopDetector::new(20, doom_k)?,
+            ping_pong: PingPongDetector::new(20, ping_pong_k)?,
+            no_progress: NoProgressDetector::new(no_progress_limit)?,
+        })
     }
 
     /// Record a completed turn.

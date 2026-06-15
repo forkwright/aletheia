@@ -308,7 +308,7 @@ fn apply_loop_guard_preserves_missing_vs_empty_tool_result() {
         SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
     );
     actor.sessions.get_mut("s").unwrap().loop_guard =
-        hermeneus::loop_detector::LoopGuard::with_limits(3, 10, 10);
+        hermeneus::loop_detector::LoopGuard::with_limits(3, 10, 10).unwrap();
 
     let sequence = [
         make_tool_call_with_result("read_file", false, None),
@@ -335,7 +335,7 @@ fn apply_loop_guard_detects_ping_pong() {
     );
     // Use a custom loop guard with k=5 for ping-pong.
     actor.sessions.get_mut("s").unwrap().loop_guard =
-        hermeneus::loop_detector::LoopGuard::with_limits(10, 5, 10);
+        hermeneus::loop_detector::LoopGuard::with_limits(10, 5, 10).unwrap();
 
     let a = vec![make_tool_call("read_file", false)];
     let b = vec![make_tool_call("write_file", false)];
@@ -360,7 +360,7 @@ fn apply_loop_guard_detects_no_progress() {
     );
     // limit = 3 for no-progress.
     actor.sessions.get_mut("s").unwrap().loop_guard =
-        hermeneus::loop_detector::LoopGuard::with_limits(10, 5, 3);
+        hermeneus::loop_detector::LoopGuard::with_limits(10, 5, 3).unwrap();
 
     let tc = vec![make_tool_call("read_file", false)];
     for _ in 0..2 {
