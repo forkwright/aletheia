@@ -267,6 +267,7 @@ fn map_finish_reason(reason: &str) -> StopReason {
     match reason {
         "length" => StopReason::MaxTokens,
         "tool_calls" | "function_call" => StopReason::ToolUse,
+        "content_filter" => StopReason::ContentFiltered,
         _ => StopReason::EndTurn,
     }
 }
@@ -755,6 +756,16 @@ mod tests {
             }
             _ => panic!("expected ToolUse"),
         }
+    }
+
+    #[test]
+    fn content_filter_finish_reason_maps_to_content_filtered() {
+        let (_, resp) = process_chunks(&[
+            r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"content":"Par"}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{"content":"tial"}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"content_filter"}]}"#,
+        ]);
+        assert_eq!(resp.stop_reason, StopReason::ContentFiltered);
     }
 
     #[test]

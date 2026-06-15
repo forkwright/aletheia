@@ -168,12 +168,26 @@ pub async fn get_status(
         .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?;
     require_visible_nous(&claims, config)?;
 
-    let status = match state.nous_manager.get(&id) {
-        Some(handle) => handle
-            .status()
-            .await
-            .map_or_else(|_| "unknown".to_owned(), |s| s.lifecycle.to_string()),
-        None => "unknown".to_owned(),
+    let (
+        status,
+        background_failure_total_count,
+        background_failure_recent_count,
+        background_failure_latest_message,
+        background_failure_latest_kind,
+        background_health_degraded,
+    ) = match state.nous_manager.get(&id) {
+        Some(handle) => match handle.status().await {
+            Ok(s) => (
+                s.lifecycle.to_string(),
+                s.background_failure_total_count,
+                s.background_failure_recent_count,
+                s.background_failure_latest_message,
+                s.background_failure_latest_kind,
+                s.background_health_degraded,
+            ),
+            Err(_) => ("unknown".to_owned(), 0, 0, None, None, false),
+        },
+        None => ("unknown".to_owned(), 0, 0, None, None, false),
     };
 
     Ok(Json(NousStatus {
@@ -185,6 +199,11 @@ pub async fn get_status(
         thinking_budget: config.generation.thinking_budget,
         max_tool_iterations: config.limits.max_tool_iterations,
         status,
+        background_failure_total_count,
+        background_failure_recent_count,
+        background_failure_latest_message,
+        background_failure_latest_kind,
+        background_health_degraded,
     }))
 }
 
@@ -816,12 +835,25 @@ mod tests {
             thinking_budget: 10_000,
             max_tool_iterations: 10,
             status: "active".to_owned(),
+            background_failure_total_count: 5,
+            background_failure_recent_count: 2,
+            background_failure_latest_message: Some("indexer unreachable".to_owned()),
+            background_failure_latest_kind: Some("indexer".to_owned()),
+            background_health_degraded: true,
         };
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["id"], "syn");
         assert_eq!(json["context_window"], 200_000);
         assert_eq!(json["thinking_enabled"], true);
         assert_eq!(json["max_tool_iterations"], 10);
+        assert_eq!(json["background_failure_total_count"], 5);
+        assert_eq!(json["background_failure_recent_count"], 2);
+        assert_eq!(
+            json["background_failure_latest_message"],
+            "indexer unreachable"
+        );
+        assert_eq!(json["background_failure_latest_kind"], "indexer");
+        assert_eq!(json["background_health_degraded"], true);
     }
 
     #[test]

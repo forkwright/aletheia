@@ -35,6 +35,7 @@ use snafu::{ResultExt, Snafu};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::api::health::{HealthFetchError, parse_health_body};
 use crate::state::connection::{
     ConnectionConfig, ConnectionState, HEALTH_CHECK_INTERVAL, backoff_duration,
 };
@@ -63,6 +64,13 @@ pub enum ConnectionError {
         status: u16,
     },
 
+    /// Health endpoint returned a response that could not be parsed.
+    #[snafu(display("failed to parse health response: {message}"))]
+    MalformedResponse {
+        /// Parse error detail.
+        message: String,
+    },
+
     /// Connection attempt exceeded the configured timeout.
     #[snafu(display("connection timed out after {timeout_secs}s"))]
     Timeout {
@@ -80,6 +88,27 @@ pub enum ConnectionError {
         /// Underlying HTTP error.
         source: reqwest::Error,
     },
+}
+
+/// Readiness reported by a pylon health check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PylonReadiness {
+    /// Aggregate status from the health response (e.g. `healthy`, `unhealthy`).
+    pub(crate) status: String,
+}
+
+impl PylonReadiness {
+    /// Map the reported status to a connection state.
+    #[must_use]
+    pub(crate) fn to_connection_state(&self) -> ConnectionState {
+        if self.status == "healthy" {
+            ConnectionState::Connected
+        } else {
+            ConnectionState::ConnectedDegraded {
+                status: self.status.clone(),
+            }
+        }
+    }
 }
 
 /// Minimal HTTP client for pylon communication.
@@ -130,8 +159,9 @@ impl PylonClient {
 
     /// Check server reachability via `GET /api/health`.
     ///
-    /// Returns `Ok(())` if the server responds with a 2xx status.
-    pub async fn health(&self) -> Result<(), ConnectionError> {
+    /// Returns `Ok(PylonReadiness)` when the response is parseable 2xx or 503
+    /// JSON. Transport failures and unrecognised status codes are errors.
+    pub async fn health(&self) -> Result<PylonReadiness, ConnectionError> {
         let url = format!("{}/api/health", self.base_url);
         let resp = self
             .client
@@ -140,13 +170,19 @@ impl PylonClient {
             .await
             .context(HealthCheckSnafu)?;
 
-        if resp.status().is_success() {
-            Ok(())
-        } else {
-            UnhealthySnafu {
-                status: resp.status().as_u16(),
+        let status = resp.status();
+        let body = resp.text().await.context(HealthCheckSnafu)?;
+
+        match parse_health_body(status, &body) {
+            Ok(response) => Ok(PylonReadiness {
+                status: response.status,
+            }),
+            Err(HealthFetchError::Malformed(message)) => MalformedResponseSnafu { message }.fail(),
+            Err(HealthFetchError::Status(_)) => UnhealthySnafu {
+                status: status.as_u16(),
             }
-            .fail()
+            .fail(),
+            Err(HealthFetchError::Connection(message)) => MalformedResponseSnafu { message }.fail(),
         }
     }
 
@@ -258,9 +294,9 @@ impl ConnectionService {
             };
 
             match health_result {
-                Ok(()) => {
+                Ok(readiness) => {
                     tracing::info!(base_url = client.base_url(), "connected to pylon");
-                    self.emit(ConnectionState::Connected);
+                    self.emit(readiness.to_connection_state());
                     break;
                 }
                 Err(e) => {
@@ -313,10 +349,13 @@ impl ConnectionService {
             }
 
             match client.health().await {
-                Ok(()) => {
+                Ok(readiness) => {
+                    let state = readiness.to_connection_state();
                     if loss.failures > 0 {
                         tracing::info!("connection restored after {} failures", loss.failures);
-                        self.emit_recovery(&mut loss);
+                        self.emit_recovery(&mut loss, state);
+                    } else {
+                        self.emit(state);
                     }
                 }
                 Err(e) => {
@@ -359,9 +398,9 @@ impl ConnectionService {
             }
 
             match client.health().await {
-                Ok(()) => {
+                Ok(readiness) => {
                     tracing::info!("reconnected to pylon");
-                    self.emit_recovery(loss);
+                    self.emit_recovery(loss, readiness.to_connection_state());
                     return true;
                 }
                 Err(e) => {
@@ -397,9 +436,9 @@ impl ConnectionService {
     ///
     /// A silently-recovered blip leaves the signal untouched (still
     /// `Connected`), so no state flip or notification fires.
-    fn emit_recovery(&self, loss: &mut LossTracker) {
+    fn emit_recovery(&self, loss: &mut LossTracker, state: ConnectionState) {
         if loss.reported {
-            self.emit(ConnectionState::Connected);
+            self.emit(state);
         }
         *loss = LossTracker::default();
     }
@@ -497,6 +536,11 @@ mod tests {
 
         let err = ConnectionError::Unhealthy { status: 503 };
         assert_eq!(err.to_string(), "server returned unhealthy status: 503");
+
+        let err = ConnectionError::MalformedResponse {
+            message: "bad json".to_string(),
+        };
+        assert_eq!(err.to_string(), "failed to parse health response: bad json");
     }
 
     #[tokio::test]
@@ -547,14 +591,29 @@ mod tests {
         assert_eq!(client.base_url(), format!("http://localhost:{port}"));
     }
 
+    fn health_json_body(status: &str) -> String {
+        serde_json::json!({
+            "status": status,
+            "version": "0.13.1",
+            "git_sha": "abc123",
+            "uptime_seconds": 300,
+            "checks": [
+                {"name": "providers", "status": "pass", "message": null}
+            ],
+            "data_dir": "/tmp/data"
+        })
+        .to_string()
+    }
+
     /// Spawns a minimal HTTP server on an ephemeral port that responds with
     /// the configured status code and body for any request.
     ///
     /// Returns (port, server_task_handle). The server handles a single
     /// request, then exits.
-    async fn spawn_test_server(status: u16, body: &'static str) -> u16 {
+    async fn spawn_test_server(status: u16, body: impl Into<String>) -> u16 {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+        let body = body.into();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
@@ -588,20 +647,49 @@ mod tests {
     #[tokio::test]
     async fn pylon_client_health_succeeds_against_mock_server() {
         install_crypto();
-        let port = spawn_test_server(200, "ok").await;
+        let port = spawn_test_server(200, health_json_body("healthy")).await;
         let config = ConnectionConfig {
             server_url: format!("http://127.0.0.1:{port}"),
             ..ConnectionConfig::default()
         };
         let client = PylonClient::new(&config).unwrap();
-        let result = client.health().await;
-        assert!(result.is_ok(), "health check must succeed: {result:?}");
+        let readiness = client.health().await.expect("health check must succeed");
+        assert_eq!(readiness.status, "healthy");
     }
 
     #[tokio::test]
-    async fn pylon_client_health_returns_unhealthy_on_5xx() {
+    async fn pylon_client_health_returns_degraded_on_503_json() {
         install_crypto();
-        let port = spawn_test_server(503, "down").await;
+        let port = spawn_test_server(503, health_json_body("unhealthy")).await;
+        let config = ConnectionConfig {
+            server_url: format!("http://127.0.0.1:{port}"),
+            ..ConnectionConfig::default()
+        };
+        let client = PylonClient::new(&config).unwrap();
+        let readiness = client.health().await.expect("503 health JSON must parse");
+        assert_eq!(readiness.status, "unhealthy");
+    }
+
+    #[tokio::test]
+    async fn pylon_client_health_fails_on_unreachable_server() {
+        install_crypto();
+        let config = ConnectionConfig {
+            server_url: "http://127.0.0.1:1".to_string(),
+            ..ConnectionConfig::default()
+        };
+        let client = PylonClient::new(&config).unwrap();
+        let result = client.health().await;
+        assert!(result.is_err(), "unreachable server must return an error");
+        assert!(
+            matches!(result.unwrap_err(), ConnectionError::HealthCheck { .. }),
+            "transport failure must be HealthCheck"
+        );
+    }
+
+    #[tokio::test]
+    async fn pylon_client_health_fails_unhealthy_on_401() {
+        install_crypto();
+        let port = spawn_test_server(401, health_json_body("healthy")).await;
         let config = ConnectionConfig {
             server_url: format!("http://127.0.0.1:{port}"),
             ..ConnectionConfig::default()
@@ -610,15 +698,52 @@ mod tests {
         let result = client.health().await;
         assert!(result.is_err());
         match result.unwrap_err() {
-            ConnectionError::Unhealthy { status } => assert_eq!(status, 503),
+            ConnectionError::Unhealthy { status } => assert_eq!(status, 401),
             other => panic!("expected Unhealthy, got {other:?}"),
         }
     }
 
     #[tokio::test]
+    async fn pylon_client_health_fails_unhealthy_on_500() {
+        install_crypto();
+        let port = spawn_test_server(500, health_json_body("healthy")).await;
+        let config = ConnectionConfig {
+            server_url: format!("http://127.0.0.1:{port}"),
+            ..ConnectionConfig::default()
+        };
+        let client = PylonClient::new(&config).unwrap();
+        let result = client.health().await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConnectionError::Unhealthy { status } => assert_eq!(status, 500),
+            other => panic!("expected Unhealthy, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn pylon_client_health_fails_on_malformed_200_body() {
+        install_crypto();
+        let port = spawn_test_server(200, "not-json").await;
+        let config = ConnectionConfig {
+            server_url: format!("http://127.0.0.1:{port}"),
+            ..ConnectionConfig::default()
+        };
+        let client = PylonClient::new(&config).unwrap();
+        let result = client.health().await;
+        assert!(result.is_err(), "malformed JSON must fail");
+        assert!(
+            matches!(
+                result.unwrap_err(),
+                ConnectionError::MalformedResponse { .. }
+            ),
+            "malformed body must be MalformedResponse"
+        );
+    }
+
+    #[tokio::test]
     async fn service_emits_connected_against_mock_server() {
         install_crypto();
-        let port = spawn_test_server(200, "ok").await;
+        let port = spawn_test_server(200, health_json_body("healthy")).await;
         let config = ConnectionConfig {
             server_url: format!("http://127.0.0.1:{port}"),
             ..ConnectionConfig::default()
@@ -715,7 +840,7 @@ mod tests {
             ConnectionState::Reconnecting { attempt: 2 }
         ));
 
-        svc.emit_recovery(&mut loss);
+        svc.emit_recovery(&mut loss, ConnectionState::Connected);
         assert!(matches!(rx.try_recv().unwrap(), ConnectionState::Connected));
         assert_eq!(loss.failures, 0);
         assert!(!loss.reported);
@@ -729,13 +854,52 @@ mod tests {
 
         let mut loss = LossTracker::default();
         loss.record_failure();
-        svc.emit_recovery(&mut loss);
+        svc.emit_recovery(&mut loss, ConnectionState::Connected);
 
         assert!(
             rx.try_recv().is_err(),
             "recovery from an unreported blip must stay silent"
         );
         assert_eq!(loss.failures, 0);
+    }
+
+    #[tokio::test]
+    async fn service_emits_degraded_against_mock_server_503() {
+        install_crypto();
+        let port = spawn_test_server(503, health_json_body("unhealthy")).await;
+        let config = ConnectionConfig {
+            server_url: format!("http://127.0.0.1:{port}"),
+            ..ConnectionConfig::default()
+        };
+        let cancel = CancellationToken::new();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let svc_cancel = cancel.clone();
+        let svc = ConnectionService::new(config, svc_cancel, tx);
+        let handle = tokio::spawn(svc.run());
+
+        let mut saw_connecting = false;
+        let mut saw_degraded = false;
+        for _ in 0..20 {
+            match tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
+                Ok(Some(ConnectionState::Connecting)) => saw_connecting = true,
+                Ok(Some(ConnectionState::ConnectedDegraded { status }))
+                    if status == "unhealthy" =>
+                {
+                    saw_degraded = true;
+                    break;
+                }
+                Ok(Some(_other)) => {}
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+        cancel.cancel();
+        let _ = handle.await;
+        assert!(saw_connecting, "must transition through Connecting");
+        assert!(
+            saw_degraded,
+            "must reach ConnectedDegraded against unhealthy server"
+        );
     }
 
     #[tokio::test]

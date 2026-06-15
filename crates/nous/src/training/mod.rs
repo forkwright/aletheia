@@ -29,7 +29,7 @@
 //! clean stop reason are captured. The gate rejects:
 //! - Empty or whitespace-only responses
 //! - Tool-use-only turns (tool calls present but no text content)
-//! - Error, degraded, or max-tokens stop reasons
+//! - Error, degraded, content-filtered, or max-tokens stop reasons
 //!
 //! This keeps the training corpus clean of failure modes and non-content
 //! turns that would teach the model to reproduce degenerate outputs.
@@ -131,6 +131,8 @@ pub enum CaptureStopReason {
     MaxTokens,
     /// Hit a stop sequence — safe to capture.
     StopSequence,
+    /// Provider safety/content filter stopped generation.
+    ContentFiltered,
     /// Degraded mode — LLM was unavailable, response is synthetic.
     Degraded,
     /// Any unrecognized stop reason.
@@ -153,6 +155,7 @@ impl CaptureStopReason {
             "tool_use" => Self::ToolUse,
             "max_tokens" => Self::MaxTokens,
             "stop_sequence" => Self::StopSequence,
+            "content_filtered" => Self::ContentFiltered,
             "degraded" => Self::Degraded,
             _ => Self::Unknown,
         }
@@ -161,7 +164,10 @@ impl CaptureStopReason {
     /// Whether this stop reason indicates the response should be excluded
     /// from training data.
     fn is_rejected(self) -> bool {
-        matches!(self, Self::MaxTokens | Self::Degraded | Self::Unknown)
+        matches!(
+            self,
+            Self::MaxTokens | Self::Degraded | Self::Unknown | Self::ContentFiltered
+        )
     }
 }
 
@@ -727,8 +733,9 @@ impl TrainingCapture {
 
         // WHY: rejected stop reasons indicate the model failed to produce a
         // usable response (max_tokens = truncated, degraded = synthetic,
-        // unknown = unrecognized provider state). Including these would teach
-        // the model to reproduce failure modes.
+        // content_filtered = safety filter, unknown = unrecognized provider
+        // state). Including these would teach the model to reproduce failure
+        // modes.
         if input.stop_reason.is_rejected() {
             debug!(
                 session_id = input.session_id,

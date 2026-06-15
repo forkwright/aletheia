@@ -45,6 +45,84 @@ async fn reap_background_tasks_records_background_panic() {
         actor.runtime.background_panic_count, 1,
         "panic in background task should increment background_panic_count"
     );
+    assert_eq!(
+        actor.runtime.background_failure_total_count, 1,
+        "panic in background task should increment background_failure_total_count"
+    );
+    assert_eq!(
+        actor.runtime.background_failure_timestamps.len(),
+        1,
+        "panic in background task should record a failure timestamp"
+    );
+    assert_eq!(
+        actor.runtime.background_failure_latest_kind.as_deref(),
+        Some("panic"),
+        "latest background failure kind should be panic"
+    );
+    assert!(
+        actor
+            .runtime
+            .background_failure_latest_message
+            .as_deref()
+            .is_some_and(|m| m.contains("panicked")),
+        "panics captured by JoinSet should carry a panic message"
+    );
+    assert_eq!(
+        actor.channel.status,
+        NousLifecycle::Idle,
+        "background panic must not enter pipeline degraded mode"
+    );
+
+    let (tx, mut rx) = tokio::sync::oneshot::channel();
+    actor.handle_status(tx);
+    let status = rx.try_recv().expect("status should be ready");
+    assert_eq!(status.background_failure_total_count, 1);
+    assert_eq!(status.background_failure_recent_count, 1);
+    assert!(!status.background_health_degraded);
+}
+
+#[tokio::test]
+async fn reap_background_tasks_records_cancelled_task_as_error() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+
+    let abort_handle = actor
+        .runtime
+        .background_tasks
+        .spawn(std::future::pending::<()>());
+    abort_handle.abort();
+
+    tokio::task::yield_now().await;
+
+    actor.reap_background_tasks();
+
+    assert_eq!(
+        actor.runtime.background_panic_count, 0,
+        "cancelled task should not increment background_panic_count"
+    );
+    assert_eq!(
+        actor.runtime.background_failure_total_count, 1,
+        "cancelled task should increment background_failure_total_count"
+    );
+    assert_eq!(
+        actor.runtime.background_failure_latest_kind.as_deref(),
+        Some("error"),
+        "latest background failure kind should be error for cancelled task"
+    );
+    assert!(
+        actor
+            .runtime
+            .background_failure_latest_message
+            .as_deref()
+            .is_some_and(|m| m.contains("cancelled")),
+        "cancelled task should carry a cancellation message"
+    );
+
+    let (tx, mut rx) = tokio::sync::oneshot::channel();
+    actor.handle_status(tx);
+    let status = rx.try_recv().expect("status should be ready");
+    assert_eq!(status.background_failure_total_count, 1);
+    assert_eq!(status.background_failure_recent_count, 1);
+    assert!(!status.background_health_degraded);
 }
 
 #[tokio::test]

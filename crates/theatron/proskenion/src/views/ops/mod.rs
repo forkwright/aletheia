@@ -372,24 +372,11 @@ pub(crate) fn Ops() -> Element {
             // returns a JSON body even when the backend is unhealthy. Parse failures
             // and non-2xx/unparseable responses are stored as reachability errors
             // so the UI distinguishes server reachability from backend health.
-            let health_store_data = match health_res {
-                Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 503 => {
-                    match resp.json::<skene::api::types::HealthResponse>().await {
-                        Ok(data) => ServiceHealthStore::from_response(data),
-                        Err(err) => {
-                            tracing::warn!(error = %err, "failed to parse ops health response");
-                            ServiceHealthStore::unreachable(format!(
-                                "failed to parse health response: {err}"
-                            ))
-                        }
-                    }
-                }
-                Ok(resp) => ServiceHealthStore::unreachable(format!(
-                    "health endpoint returned {}",
-                    resp.status()
-                )),
-                Err(e) => ServiceHealthStore::unreachable(format!("connection error: {e}")),
-            };
+            let health_store_data =
+                match crate::api::health::fetch_health_response(health_res).await {
+                    Ok(data) => ServiceHealthStore::from_response(data),
+                    Err(err) => ServiceHealthStore::unreachable(err.to_string()),
+                };
 
             health_store.set(health_store_data);
 

@@ -155,6 +155,9 @@ pub(crate) fn ConnectView(
         ConnectionState::Disconnected => String::new(),
         ConnectionState::Connecting => "Connecting...".to_string(),
         ConnectionState::Connected => "Connected".to_string(),
+        ConnectionState::ConnectedDegraded { status } => {
+            format!("Connected ({status})")
+        }
         ConnectionState::Reconnecting { attempt } => {
             format!("Reconnecting (attempt {attempt})...")
         }
@@ -164,6 +167,7 @@ pub(crate) fn ConnectView(
 
     let status_color = match &*connection_state.read() {
         ConnectionState::Connected => "var(--status-success)",
+        ConnectionState::ConnectedDegraded { .. } => "var(--status-warning)",
         ConnectionState::Failed { .. } | ConnectionState::TimedOut => "var(--status-error)",
         ConnectionState::Reconnecting { .. } | ConnectionState::Connecting => {
             "var(--status-warning)"

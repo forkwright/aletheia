@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use snafu::prelude::*;
 use tokio::sync::Mutex;
@@ -714,6 +714,20 @@ impl RuntimeBuilder {
         }
 
         let nous_manager = Arc::new(nous_manager);
+
+        let health_poller_interval =
+            Duration::from_secs(self.config.nous_behavior.manager_health_interval_secs);
+        let health_poller_cancel = shutdown_token.child_token();
+        let health_poller_handle = NousManager::start_health_poller(
+            Arc::clone(&nous_manager),
+            health_poller_interval,
+            health_poller_cancel,
+        );
+        task_tracker.spawn(async move {
+            if let Err(e) = health_poller_handle.await {
+                warn!(error = %e, "nous manager health poller supervisor exited with an error");
+            }
+        });
 
         nous_manager.ready();
 

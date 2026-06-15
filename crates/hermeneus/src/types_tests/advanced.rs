@@ -281,6 +281,7 @@ mod proptests {
             Just(StopReason::ToolUse),
             Just(StopReason::MaxTokens),
             Just(StopReason::StopSequence),
+            Just(StopReason::ContentFiltered),
         ]) {
             let json = serde_json::to_string(&reason).expect("StopReason should serialize to JSON");
             let back: StopReason = serde_json::from_str(&json).expect("StopReason JSON should deserialize back");

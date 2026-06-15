@@ -214,13 +214,15 @@ fn ConnectedApp() -> Element {
 fn start_tray_sync() {
     let agents: Signal<AgentStore> = use_context();
     let mut tray: Signal<TrayState> = use_context();
+    let connection_state: Signal<ConnectionState> = use_context();
 
-    // WHY: Use use_effect so this re-runs whenever the agent store signal changes.
+    // WHY: Use use_effect so this re-runs whenever the agent store or connection
+    // state signals change. Degraded readiness is surfaced as a warning tray
+    // status rather than disconnected.
     use_effect(move || {
         let agent_store = agents.read();
-        // NOTE: Derive connection state from SSE connection presence.
-        let connected = !agent_store.is_empty();
-        let new_tray = platform::tray::derive_tray_state(&agent_store, connected, true);
+        let connection_state = connection_state.read();
+        let new_tray = platform::tray::derive_tray_state(&agent_store, &connection_state, true);
         tray.set(new_tray);
     });
 }
