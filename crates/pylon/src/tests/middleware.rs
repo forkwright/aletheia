@@ -385,6 +385,182 @@ async fn cors_explicit_origin_allows_browser_api_headers() {
     );
 }
 
+#[tokio::test]
+async fn cors_permissive_allows_idempotency_key_preflight_on_messages() {
+    let (state, _dir) = test_state().await;
+    let security = test_security_config();
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/sessions/sess-01/messages")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "POST")
+        .header("access-control-request-headers", "idempotency-key")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    let allow_methods = resp
+        .headers()
+        .get("access-control-allow-methods")
+        .expect("allow-methods must be present");
+    assert!(
+        allow_methods.to_str().unwrap().contains("POST"),
+        "POST must be allowed for message send preflight"
+    );
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("idempotency-key"),
+        "idempotency-key must be allowed on message send route"
+    );
+}
+
+#[tokio::test]
+async fn cors_explicit_origin_allows_idempotency_key_preflight_on_messages() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig {
+        cors: crate::security::CorsConfig {
+            allowed_origins: vec!["http://localhost:3000".to_owned()],
+            ..crate::security::CorsConfig::default()
+        },
+        csrf: crate::security::CsrfConfig {
+            enabled: false,
+            ..crate::security::CsrfConfig::default()
+        },
+        ..SecurityConfig::default()
+    };
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/sessions/sess-01/messages")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "POST")
+        .header("access-control-request-headers", "idempotency-key")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    assert_eq!(
+        resp.headers()
+            .get("access-control-allow-origin")
+            .map(|v| v.to_str().unwrap()),
+        Some("http://localhost:3000")
+    );
+    let allow_methods = resp
+        .headers()
+        .get("access-control-allow-methods")
+        .expect("allow-methods must be present");
+    assert!(
+        allow_methods.to_str().unwrap().contains("POST"),
+        "POST must be allowed for message send preflight"
+    );
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("idempotency-key"),
+        "idempotency-key must be allowed on message send route"
+    );
+}
+
+#[tokio::test]
+async fn cors_permissive_allows_last_event_id_preflight_on_turn_events() {
+    let (state, _dir) = test_state().await;
+    let security = test_security_config();
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/sessions/sess-01/turns/turn-01/events")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "GET")
+        .header("access-control-request-headers", "last-event-id")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    let allow_methods = resp
+        .headers()
+        .get("access-control-allow-methods")
+        .expect("allow-methods must be present");
+    assert!(
+        allow_methods.to_str().unwrap().contains("GET"),
+        "GET must be allowed for turn reconnect preflight"
+    );
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("last-event-id"),
+        "last-event-id must be allowed on turn reconnect route"
+    );
+}
+
+#[tokio::test]
+async fn cors_explicit_origin_allows_last_event_id_preflight_on_turn_events() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig {
+        cors: crate::security::CorsConfig {
+            allowed_origins: vec!["http://localhost:3000".to_owned()],
+            ..crate::security::CorsConfig::default()
+        },
+        csrf: crate::security::CsrfConfig {
+            enabled: false,
+            ..crate::security::CsrfConfig::default()
+        },
+        ..SecurityConfig::default()
+    };
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/sessions/sess-01/turns/turn-01/events")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "GET")
+        .header("access-control-request-headers", "last-event-id")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    assert_eq!(
+        resp.headers()
+            .get("access-control-allow-origin")
+            .map(|v| v.to_str().unwrap()),
+        Some("http://localhost:3000")
+    );
+    let allow_methods = resp
+        .headers()
+        .get("access-control-allow-methods")
+        .expect("allow-methods must be present");
+    assert!(
+        allow_methods.to_str().unwrap().contains("GET"),
+        "GET must be allowed for turn reconnect preflight"
+    );
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("last-event-id"),
+        "last-event-id must be allowed on turn reconnect route"
+    );
+}
+
 #[test]
 fn security_config_default_values() {
     let config = SecurityConfig::default();
