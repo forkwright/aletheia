@@ -175,6 +175,24 @@ fn accepts_valid_auth_modes() {
 }
 
 #[test]
+fn rejects_invalid_none_role() {
+    let section = json!({ "auth": { "noneRole": "Operator" } });
+    let result = validate_section("gateway", &section);
+    assert!(result.is_err(), "invalid noneRole should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors
+            .iter()
+            .any(|e| e.contains("gateway.auth.noneRole")),
+        "error should mention gateway.auth.noneRole: {err:?}"
+    );
+    assert!(
+        err.errors.iter().any(|e| e.contains("readonly")),
+        "error should list valid values: {err:?}"
+    );
+}
+
+#[test]
 fn accepts_provider_type_and_deployment_aliases() {
     let section = json!([
         {

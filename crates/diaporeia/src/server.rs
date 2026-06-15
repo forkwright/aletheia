@@ -93,7 +93,8 @@ impl DiaporeiaServer {
     ///
     /// Logic mirrors `tools::extract_role` but lives on the server struct
     /// so resource handlers can use it without depending on the tools module.
-    /// Malformed anonymous-role config falls back to `Readonly`.
+    /// Malformed anonymous-role config falls back to `Readonly` after logging
+    /// an error.
     async fn resolve_caller_role(
         &self,
         context: &rmcp::service::RequestContext<rmcp::RoleServer>,
@@ -101,13 +102,18 @@ impl DiaporeiaServer {
         let config = self.state.config.read().await;
 
         if config.gateway.auth.mode == "none" {
-            return config
-                .gateway
-                .auth
-                .none_role
-                .parse::<Role>()
-                .ok()
-                .or(Some(Role::Readonly));
+            let role = match config.gateway.auth.none_role.parse::<Role>() {
+                Ok(role) => role,
+                Err(err) => {
+                    tracing::error!(
+                        none_role = %config.gateway.auth.none_role,
+                        error = %err,
+                        "gateway.auth.noneRole is malformed; falling back to readonly"
+                    );
+                    Role::Readonly
+                }
+            };
+            return Some(role);
         }
 
         let parts = context.extensions.get::<http::request::Parts>()?;

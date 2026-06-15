@@ -45,7 +45,8 @@ const AGENT_ONLY_TOOLS: &[&str] = &[
 /// When a `JwtManager` is available, validates the signature before
 /// extracting claims (closes the payload-only decode bypass from #3337).
 /// In single-operator mode (`auth.mode = "none"`), returns the configured
-/// `none_role`, falling back to `Readonly` when the config is malformed.
+/// `none_role`, falling back to `Readonly` and logging an error when the
+/// config is malformed.
 ///
 /// Returns `None` only when auth info is unavailable or the token is invalid.
 async fn extract_role(
@@ -56,13 +57,18 @@ async fn extract_role(
 
     // NOTE: Single-operator mode has no auth; use the default role.
     if config.gateway.auth.mode == "none" {
-        return config
-            .gateway
-            .auth
-            .none_role
-            .parse::<Role>()
-            .ok()
-            .or(Some(Role::Readonly));
+        let role = match config.gateway.auth.none_role.parse::<Role>() {
+            Ok(role) => role,
+            Err(err) => {
+                tracing::error!(
+                    none_role = %config.gateway.auth.none_role,
+                    error = %err,
+                    "gateway.auth.noneRole is malformed; falling back to readonly"
+                );
+                Role::Readonly
+            }
+        };
+        return Some(role);
     }
 
     let parts = context.extensions.get::<http::request::Parts>()?;

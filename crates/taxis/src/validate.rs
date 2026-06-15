@@ -257,6 +257,7 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
 }
 
 const VALID_AUTH_MODES: &[&str] = &["none", "token", "jwt"];
+const VALID_NONE_ROLES: &[&str] = &["readonly", "agent", "operator", "admin"];
 
 /// Environment variable operators must set to `1` in order to accept a config
 /// write that sets `gateway.auth.mode = "none"`.
@@ -309,6 +310,16 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     {
         errors.push(format!(
             "gateway.auth.mode '{mode}' is invalid; must be one of: none, token, jwt"
+        ));
+    }
+
+    if let Some(auth) = value.get("auth")
+        && let Some(none_role) = auth.get("noneRole").and_then(Value::as_str)
+        && !VALID_NONE_ROLES.contains(&none_role)
+    {
+        errors.push(format!(
+            "gateway.auth.noneRole '{none_role}' is invalid; must be one of: {}",
+            VALID_NONE_ROLES.join(", ")
         ));
     }
 

@@ -38,7 +38,17 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         }
 
         if state.auth_mode == "none" {
-            let role = state.none_role.parse::<Role>().unwrap_or(Role::Readonly);
+            let role = match state.none_role.parse::<Role>() {
+                Ok(role) => role,
+                Err(err) => {
+                    tracing::error!(
+                        none_role = %state.none_role,
+                        error = %err,
+                        "gateway.auth.noneRole is malformed; falling back to readonly"
+                    );
+                    Role::Readonly
+                }
+            };
             return Ok(Self {
                 sub: "anonymous".to_owned(),
                 role,
