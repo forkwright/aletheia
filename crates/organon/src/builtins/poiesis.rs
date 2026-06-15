@@ -21,7 +21,11 @@ use poiesis_core::{
     Block, Document, Factbase, Metadata, QaIssue, QaIssueKind, QaReport, Renderer, RichText, Span,
 };
 use poiesis_lint::{LintConfig, Linter};
-use poiesis_theme::{sinks::emit_typst_template, summus};
+use poiesis_theme::{
+    lint::{RawColorLiteralRule, RawFontLiteralRule, UnknownTokenRule},
+    sinks::emit_typst_template,
+    summus,
+};
 use poiesis_verify::Verifier;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
@@ -781,6 +785,53 @@ fn render_typst_report_def() -> ToolDef {
     }
 }
 
+fn walk_json_strings(
+    value: &serde_json::Value,
+    pointer: &str,
+    visitor: &mut impl FnMut(&str, &str),
+) {
+    match value {
+        serde_json::Value::String(s) => visitor(pointer, s),
+        serde_json::Value::Array(arr) => {
+            for (i, item) in arr.iter().enumerate() {
+                let child = format!("{pointer}/{i}");
+                walk_json_strings(item, &child, visitor);
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            for (key, item) in obj {
+                let child = if pointer.is_empty() {
+                    format!("/{key}")
+                } else {
+                    format!("{pointer}/{key}")
+                };
+                walk_json_strings(item, &child, visitor);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn looks_like_token_ref(value: &str) -> bool {
+    let parts: Vec<&str> = value.split('.').collect();
+    matches!(
+        parts.as_slice(),
+        ["color" | "type", "role", _]
+            | ["color", "tone" | "surface", _]
+            | ["type", "family" | "scale", _]
+            | ["space", _]
+            | ["chart", "series", _]
+    )
+}
+
+fn theme_violation_to_qa_issue(v: &poiesis_theme::lint::Violation) -> QaIssue {
+    QaIssue {
+        kind: QaIssueKind::ThemeViolation,
+        location: Some(v.pointer.clone()),
+        message: format!("[{}] {}", v.rule_id, v.message),
+    }
+}
+
 // ── qa_gate ───────────────────────────────────────────────────────────────────
 
 struct QaGateExecutor;
@@ -831,6 +882,31 @@ impl ToolExecutor for QaGateExecutor {
                 });
             }
 
+            let theme = summus();
+            let color_rule = RawColorLiteralRule;
+            let font_rule = RawFontLiteralRule;
+            let unknown_rule = UnknownTokenRule::new(&theme);
+
+            let mut visit_string = |pointer: &str, value: &str| {
+                for v in color_rule.scan(pointer, value) {
+                    issues.push(theme_violation_to_qa_issue(&v));
+                }
+                for v in font_rule.scan(pointer, value) {
+                    issues.push(theme_violation_to_qa_issue(&v));
+                }
+                if looks_like_token_ref(value)
+                    && let Some(v) = unknown_rule.check(pointer, value)
+                {
+                    issues.push(theme_violation_to_qa_issue(&v));
+                }
+            };
+
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(prose) {
+                walk_json_strings(&parsed, "", &mut visit_string);
+            } else {
+                visit_string("", prose);
+            }
+
             let report = QaReport::new(issues);
 
             match QaReport::to_json(&report) {
@@ -845,7 +921,7 @@ fn qa_gate_def() -> ToolDef {
     ToolDef {
         name: koina::id::ToolName::from_static("qa_gate"), // kanon:ignore RUST/expect
         description:
-            "Run prose lint and optional factbase validation, returning a structured QA report."
+            "Run prose lint, theme token lint, and optional factbase validation, returning a structured QA report."
                 .to_owned(),
         extended_description: None,
         input_schema: InputSchema {

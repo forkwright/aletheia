@@ -681,6 +681,102 @@ async fn qa_gate_banned_word_fails() {
 }
 
 #[tokio::test]
+async fn qa_gate_raw_color_literal_fails() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "qa_gate",
+        serde_json::json!({
+            "prose": serde_json::json!({
+                "slides": [{ "title_color": "#FF00AA" }]
+            }).to_string()
+        }),
+    );
+    let result = QaGateExecutor.execute(&input, &ctx).await.expect("exec");
+    assert!(!result.is_error, "qa_gate must succeed: {result:?}");
+    let text = result.content.text_summary();
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(
+        parsed["has_issues"], true,
+        "raw color must report issues: {parsed:?}"
+    );
+    let issues = parsed["issues"].as_array().expect("issues array");
+    assert!(
+        issues.iter().any(|i| {
+            i["kind"].as_str() == Some("theme_violation")
+                && i["message"].as_str().unwrap_or("").contains("raw color")
+        }),
+        "expected a theme color violation: {issues:?}"
+    );
+}
+
+#[tokio::test]
+async fn qa_gate_raw_font_literal_fails() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "qa_gate",
+        serde_json::json!({
+            "prose": serde_json::json!({
+                "style": "font-family: Arial"
+            }).to_string()
+        }),
+    );
+    let result = QaGateExecutor.execute(&input, &ctx).await.expect("exec");
+    assert!(!result.is_error, "qa_gate must succeed: {result:?}");
+    let text = result.content.text_summary();
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(
+        parsed["has_issues"], true,
+        "raw font must report issues: {parsed:?}"
+    );
+    let issues = parsed["issues"].as_array().expect("issues array");
+    assert!(
+        issues.iter().any(|i| {
+            i["kind"].as_str() == Some("theme_violation")
+                && i["message"].as_str().unwrap_or("").contains("raw font")
+        }),
+        "expected a theme font violation: {issues:?}"
+    );
+}
+
+#[tokio::test]
+async fn qa_gate_unknown_token_fails() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input(
+        "qa_gate",
+        serde_json::json!({
+            "prose": serde_json::json!({
+                "fill": "color.role.fuchsia"
+            }).to_string()
+        }),
+    );
+    let result = QaGateExecutor.execute(&input, &ctx).await.expect("exec");
+    assert!(!result.is_error, "qa_gate must succeed: {result:?}");
+    let text = result.content.text_summary();
+    let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+    assert_eq!(
+        parsed["has_issues"], true,
+        "unknown token must report issues: {parsed:?}"
+    );
+    let issues = parsed["issues"].as_array().expect("issues array");
+    assert!(
+        issues.iter().any(|i| {
+            i["kind"].as_str() == Some("theme_violation")
+                && i["message"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("unknown-token")
+        }),
+        "expected an unknown token violation: {issues:?}"
+    );
+}
+
+#[tokio::test]
 async fn report_renderers_reject_out_path_escape() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
