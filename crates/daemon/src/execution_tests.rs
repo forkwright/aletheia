@@ -355,6 +355,7 @@ async fn routing_store_refresh_builtin_refreshes_attached_store() {
             std::time::Duration::from_hours(168),
         )
         .await
+        .expect("rolling stats query")
         .expect("refreshed stats");
     assert_eq!(stats.total, 1);
 }

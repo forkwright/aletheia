@@ -51,10 +51,12 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// TOML parse error during configuration loading.
-    #[snafu(display("failed to parse TOML config: {source}"))]
+    /// TOML parse error during configuration loading or encryption.
+    #[snafu(display("failed to parse TOML config at {}: {source}", path.display()))]
     ParseToml {
-        source: toml::de::Error,
+        path: PathBuf,
+        #[snafu(source(from(toml::de::Error, Box::new)))]
+        source: Box<toml::de::Error>,
         #[snafu(implicit)]
         location: snafu::Location,
     },

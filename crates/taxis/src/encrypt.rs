@@ -274,11 +274,8 @@ fn build_decrypt_error(reason: &str) -> error::Error {
 pub fn encrypt_config_file(toml_path: &Path, primary_key: &[u8; KEY_LEN]) -> Result<usize> {
     let content =
         std::fs::read_to_string(toml_path).context(error::ReadConfigSnafu { path: toml_path })?;
-    let mut value: toml::Value = toml::from_str(&content).map_err(|e| {
-        error::DecryptSnafu {
-            reason: format!("invalid TOML: {e}"),
-        }
-        .build()
+    let mut value: toml::Value = toml::from_str(&content).context(error::ParseTomlSnafu {
+        path: toml_path.to_path_buf(),
     })?;
 
     let count = encrypt_sensitive_values(&mut value, primary_key)?;
@@ -633,6 +630,28 @@ mod tests {
         let count = encrypt_sensitive_values(&mut value, &key).unwrap();
 
         assert_eq!(count, 0, "already-encrypted values must be skipped");
+    }
+
+    #[test]
+    fn encrypt_config_file_reports_toml_parse_error_as_parse_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("aletheia.toml");
+        koina::fs::write_restricted(&config_path, b"[gateway\nsigningKey = \"secret\"").unwrap();
+
+        let err = match encrypt_config_file(&config_path, &fixture_key()) {
+            Ok(count) => panic!("invalid TOML unexpectedly encrypted {count} values"),
+            Err(err) => err,
+        };
+        assert!(
+            matches!(
+                err,
+                error::Error::ParseToml {
+                    ref path,
+                    ..
+                } if path == &config_path
+            ),
+            "invalid TOML during encryption must not be reported as decrypt failure: {err:?}"
+        );
     }
 
     #[test]

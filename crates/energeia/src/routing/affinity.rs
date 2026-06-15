@@ -281,7 +281,16 @@ impl AffinityRouter {
         let cat_stats = self
             .store
             .rolling_stats(provider, category, self.window)
-            .await;
+            .await
+            .unwrap_or_else(|error| {
+                tracing::error!(
+                    error = %error,
+                    provider = %provider,
+                    category = %category,
+                    "affinity routing stats store unavailable"
+                );
+                None
+            });
         let category_success_rate = cat_stats.as_ref().and_then(RollingStats::success_rate);
 
         // Consistency: for binary (success/fail) outcomes, providers with very
@@ -342,18 +351,29 @@ impl AffinityRouter {
         let mut n = 0u32;
 
         for cat in &all_categories {
-            if let Some(stats) = self.store.rolling_stats(provider, cat, self.window).await
-                && let Some(rate) = stats.success_rate()
-            {
-                present += 1;
-                #[expect(
-                    clippy::float_arithmetic,
-                    reason = "accumulating category success rates for breadth metric"
-                )]
-                {
-                    total_rate += rate;
+            match self.store.rolling_stats(provider, cat, self.window).await {
+                Ok(Some(stats)) => {
+                    if let Some(rate) = stats.success_rate() {
+                        present += 1;
+                        #[expect(
+                            clippy::float_arithmetic,
+                            reason = "accumulating category success rates for breadth metric"
+                        )]
+                        {
+                            total_rate += rate;
+                        }
+                        n += 1;
+                    }
                 }
-                n += 1;
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        provider = %provider,
+                        category = %cat,
+                        "affinity routing breadth stats store unavailable"
+                    );
+                }
             }
         }
 

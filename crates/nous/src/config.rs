@@ -9,8 +9,11 @@ use mneme::knowledge::{EpistemicTier, MemoryScope};
 use mneme::workspace::ProjectId;
 use serde::{Deserialize, Serialize};
 use taxis::config::AgentBehaviorDefaults;
+use tracing::warn;
 
 use crate::recall::RecallConfig;
+
+const CONSECUTIVE_MISTAKE_LIMIT_ENV: &str = "KOINA_CONSECUTIVE_MISTAKE_LIMIT";
 
 /// Serde helpers for `Arc<str>`.
 mod arc_str {
@@ -369,37 +372,35 @@ fn default_max_tool_result_bytes() -> u32 {
     koina::defaults::MAX_TOOL_RESULT_BYTES
 }
 
+fn parse_u32_env_override(var_name: &str, raw_value: Option<String>, default: u32) -> u32 {
+    let Some(value) = raw_value else {
+        return default;
+    };
+
+    match value.parse::<u32>() {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            warn!(
+                env_var = var_name,
+                value = %value,
+                default,
+                error = %error,
+                "invalid numeric environment override, using default"
+            );
+            default
+        }
+    }
+}
+
 fn resolve_consecutive_mistake_limit(raw: Option<&str>) -> u32 {
     const VAR: &str = "KOINA_CONSECUTIVE_MISTAKE_LIMIT";
     const DEFAULT: u32 = koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT;
 
-    match raw {
-        Some(s) => {
-            if let Ok(v) = s.parse::<u32>() {
-                v
-            } else {
-                tracing::warn!(
-                    env_var = VAR,
-                    value = %s,
-                    fallback = DEFAULT,
-                    "ignoring malformed {}='{}'; using default {}",
-                    VAR,
-                    s,
-                    DEFAULT
-                );
-                DEFAULT
-            }
-        }
-        None => DEFAULT,
-    }
+    parse_u32_env_override(VAR, raw.map(str::to_owned), DEFAULT)
 }
 
 fn default_consecutive_mistake_limit() -> u32 {
-    resolve_consecutive_mistake_limit(
-        std::env::var("KOINA_CONSECUTIVE_MISTAKE_LIMIT")
-            .ok()
-            .as_deref(),
-    )
+    resolve_consecutive_mistake_limit(std::env::var(CONSECUTIVE_MISTAKE_LIMIT_ENV).ok().as_deref())
 }
 
 impl Default for NousConfig {
@@ -553,6 +554,32 @@ mod tests {
             config.limits.max_consecutive_tool_only_iterations, 3,
             "default tool-only iteration limit should be 3"
         );
+    }
+
+    #[test]
+    #[tracing_test::traced_test]
+    fn malformed_consecutive_mistake_limit_warns_and_falls_back() {
+        let default = koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT;
+
+        for value in ["abc", "-1"] {
+            let parsed = parse_u32_env_override(
+                CONSECUTIVE_MISTAKE_LIMIT_ENV,
+                Some(value.to_owned()),
+                default,
+            );
+            assert_eq!(
+                parsed, default,
+                "malformed override {value:?} must fall back to default"
+            );
+        }
+
+        assert!(logs_contain(CONSECUTIVE_MISTAKE_LIMIT_ENV));
+        assert!(logs_contain("abc"));
+        assert!(logs_contain("-1"));
+        assert!(logs_contain(&default.to_string()));
+        assert!(logs_contain(
+            "invalid numeric environment override, using default"
+        ));
     }
 
     #[test]
