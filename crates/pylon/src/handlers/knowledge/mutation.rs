@@ -55,7 +55,7 @@ pub async fn forget_fact(
                 tracing::info!(fact_id = %id, "fact forgotten");
                 Ok(StatusCode::NO_CONTENT)
             }
-            Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+            Err(mneme::knowledge_error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
                 location: snafu::location!(),
             }),
@@ -107,7 +107,7 @@ pub async fn restore_fact(
                 tracing::info!(fact_id = %id, "fact restored");
                 Ok(StatusCode::NO_CONTENT)
             }
-            Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+            Err(mneme::knowledge_error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
                 location: snafu::location!(),
             }),
@@ -177,7 +177,7 @@ pub async fn update_confidence(
                     serde_json::json!({ "status": "updated", "id": id, "confidence": body.confidence }),
                 ))
             }
-            Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+            Err(mneme::knowledge_error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
                 location: snafu::location!(),
             }),
@@ -256,7 +256,7 @@ pub async fn update_sensitivity(
                     "sensitivity": sensitivity.as_str(),
                 })))
             }
-            Err(mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+            Err(mneme::knowledge_error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
                 path: format!("fact/{id}"),
                 location: snafu::location!(),
             }),

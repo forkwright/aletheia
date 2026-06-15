@@ -385,7 +385,7 @@ pub fn store_audit_report(
 
         knowledge_store
             .insert_fact(&fact)
-            .context(crate::error::StoreSnafu)?;
+            .context(crate::error::KnowledgeStoreSnafu)?;
     }
 
     tracing::info!(
@@ -417,7 +417,7 @@ pub fn query_audit_history(
     let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
     knowledge_store
         .query_facts_by_type(nous_id, "audit", limit_i64)
-        .context(crate::error::StoreSnafu)
+        .context(crate::error::KnowledgeStoreSnafu)
 }
 
 #[cfg(test)]
