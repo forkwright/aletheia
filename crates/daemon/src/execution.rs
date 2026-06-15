@@ -805,9 +805,11 @@ async fn execute_knowledge_task(
             | BuiltinTask::ProposeRules
             | BuiltinTask::FjallBackup
             | BuiltinTask::PromptAuditRotation
-            | BuiltinTask::RoutingStoreRefresh => {
-                unreachable!("non-knowledge task routed to execute_knowledge_task")
+            | BuiltinTask::RoutingStoreRefresh => error::TaskFailedSnafu {
+                task_id: format!("{builtin_clone:?}"),
+                reason: "non-knowledge task routed to knowledge executor".to_owned(),
             }
+            .fail(),
         }?;
 
         report.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
