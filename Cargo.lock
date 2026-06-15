@@ -6553,6 +6553,7 @@ dependencies = [
  "taxis",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
  "z3",
  "zip 8.5.1",
