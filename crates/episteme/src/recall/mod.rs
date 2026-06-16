@@ -241,6 +241,8 @@ pub struct RecallEngine {
     weights: RecallWeights,
     /// Maximum access count for frequency normalization.
     max_access_count: f64,
+    /// Nous identifier used in metric labels. Defaults to `"_all"`.
+    nous_id: String,
     /// Optional reranker applied to the top-K after baseline scoring.
     #[cfg(feature = "reranker")]
     pub reranker: Option<std::sync::Arc<dyn reranker::Reranker>>,
@@ -271,6 +273,7 @@ impl RecallEngine {
         Self {
             weights: RecallWeights::default(),
             max_access_count: 100.0,
+            nous_id: "_all".to_owned(),
             #[cfg(feature = "reranker")]
             reranker: None,
             #[cfg(feature = "reranker")]
@@ -547,8 +550,40 @@ impl RecallEngine {
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        crate::metrics::record_recall_duration("_all", start.elapsed().as_secs_f64());
+        crate::metrics::record_recall_duration(&self.nous_id, start.elapsed().as_secs_f64());
         candidates
+    }
+
+    /// Rank candidates and record the duration metric under the given `nous_id`.
+    ///
+    /// WHY (#5777): `rank` records the metric under `self.nous_id` which
+    /// defaults to `"_all"`. Call this variant when the caller knows the
+    /// specific nous identifier at call time so per-nous performance is visible.
+    #[must_use]
+    #[instrument(skip(self, candidates), fields(count = candidates.len()))]
+    pub fn rank_for_nous(&self, candidates: Vec<ScoredResult>, nous_id: &str) -> Vec<ScoredResult> {
+        let start = std::time::Instant::now();
+        let mut ranked = candidates;
+        for candidate in &mut ranked {
+            candidate.score = self.compute_score(&candidate.factors);
+        }
+        ranked.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        crate::metrics::record_recall_duration(nous_id, start.elapsed().as_secs_f64());
+        ranked
+    }
+
+    /// Set the nous identifier used in metric labels.
+    ///
+    /// WHY (#5777): the metric `aletheia_recall_duration_seconds` was hardcoded
+    /// to `"_all"`, making per-nous performance invisible.
+    #[must_use]
+    pub fn with_nous_id(mut self, nous_id: impl Into<String>) -> Self {
+        self.nous_id = nous_id.into();
+        self
     }
 
     /// Access the current weights.
