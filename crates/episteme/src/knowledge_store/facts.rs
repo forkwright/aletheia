@@ -374,6 +374,15 @@ impl KnowledgeStore {
             String::from("sensitivity"),
             DataValue::Str(new_fact.sensitivity.as_str().into()),
         );
+        params.insert(
+            String::from("new_valid_to"),
+            DataValue::Str(
+                // WHY (#5862): parameterise the far-future sentinel so callers can
+                // supply the correct value and callers that read the stored string
+                // via `is_far_future` stay in sync regardless of sentinel format.
+                format_timestamp(&crate::knowledge::far_future()).into(),
+            ),
+        );
 
         self.run_mut(&queries::supersede_fact(), params)?;
         // WHY (#4662): supersession rewrites `facts` rows (old `valid_to`/
