@@ -266,14 +266,31 @@ fn parse_json_facts(content: &str) -> crate::error::Result<Vec<Fact>> {
 }
 
 fn parse_jsonl_facts(content: &str) -> crate::error::Result<Vec<Fact>> {
+    // WHY (#5758): accumulate valid facts and warn on bad lines rather than
+    // aborting the whole batch on the first parse failure. File-level I/O
+    // errors are still propagated by callers before reaching this function.
     let mut facts = Vec::new();
-    for line in content.lines() {
+    let mut bad_lines: u64 = 0;
+    for (idx, line) in content.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let fact: Fact = serde_json::from_str(line).context(crate::error::StoredJsonSnafu)?;
-        facts.push(fact);
+        match serde_json::from_str::<Fact>(line) {
+            Ok(fact) => facts.push(fact),
+            Err(err) => {
+                bad_lines += 1;
+                let line_no = idx + 1;
+                tracing::warn!(
+                    line_no,
+                    %err,
+                    "jsonl ingest: skipping unparseable line"
+                );
+            }
+        }
+    }
+    if bad_lines > 0 {
+        tracing::warn!(bad_lines, total = facts.len(), "jsonl ingest: completed with skipped lines");
     }
     Ok(facts)
 }
@@ -481,6 +498,17 @@ mod tests {
     fn parse_jsonl_facts_skips_empty_lines() {
         let jsonl = "\n{\"id\":\"fact-01\",\"nous_id\":\"syn\",\"fact_type\":\"observation\",\"content\":\"a\",\"valid_from\":\"2024-01-01T00:00:00Z\",\"valid_to\":\"9999-01-01T00:00:00Z\",\"recorded_at\":\"2024-01-01T00:00:00Z\",\"confidence\":0.7,\"tier\":\"inferred\",\"stability_hours\":72.0,\"access_count\":0,\"is_forgotten\":false}\n\n{\"id\":\"fact-02\",\"nous_id\":\"syn\",\"fact_type\":\"observation\",\"content\":\"b\",\"valid_from\":\"2024-01-01T00:00:00Z\",\"valid_to\":\"9999-01-01T00:00:00Z\",\"recorded_at\":\"2024-01-01T00:00:00Z\",\"confidence\":0.7,\"tier\":\"inferred\",\"stability_hours\":72.0,\"access_count\":0,\"is_forgotten\":false}\n";
         let facts = parse_jsonl_facts(jsonl).unwrap();
+        assert_eq!(facts.len(), 2);
+    }
+
+    #[test]
+    fn parse_jsonl_facts_skips_bad_lines() {
+        // WHY (#5758): a single unparseable line must not abort the entire batch.
+        let good = r#"{"id":"fact-01","nous_id":"syn","fact_type":"observation","content":"a","valid_from":"2024-01-01T00:00:00Z","valid_to":"9999-01-01T00:00:00Z","recorded_at":"2024-01-01T00:00:00Z","confidence":0.7,"tier":"inferred","stability_hours":72.0,"access_count":0,"is_forgotten":false}"#;
+        let bad = r#"not valid json {"broken":"#;
+        let jsonl = format!("{good}\n{bad}\n{good}\n");
+        let facts = parse_jsonl_facts(&jsonl).unwrap();
+        // Two valid lines; one bad line skipped.
         assert_eq!(facts.len(), 2);
     }
 
