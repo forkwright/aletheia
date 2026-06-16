@@ -66,7 +66,6 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `context_tokens` | u32 | `200000` | Context window budget (tokens) |
 | `max_output_tokens` | u32 | `16384` | Max tokens per response |
 | `bootstrap_max_tokens` | u32 | `40000` | Max tokens for bootstrap context injection |
-| `user_timezone` | string | `"UTC"` | IANA timezone for time-aware prompts |
 | `timeout_seconds` | u32 | `300` | LLM call timeout |
 | `thinking_enabled` | bool | `false` | Enable extended thinking |
 | `thinking_budget` | u32 | `10000` | Max tokens for extended thinking |
