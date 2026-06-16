@@ -85,6 +85,18 @@ static LLM_CONCURRENCY_LATENCY_EWMA: LazyLock<Family<ProviderLabels, Gauge<f64, 
 static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<Family<ProviderLabels, Gauge>> =
     LazyLock::new(Family::default);
 
+/// Normalize a model ID to a family name for use as a Prometheus label.
+///
+/// WHY(#5684): `Family<ModelStatusLabels, Histogram>` never evicts entries,
+/// so using raw model IDs (e.g. `claude-opus-4-20250514`) causes cardinality
+/// to grow unboundedly as versioned snapshots accumulate. Stripping the
+/// last dash-segment collapses all snapshots of a family to one label key.
+fn model_family_label(model: &str) -> &str {
+    model
+        .rfind('-')
+        .map_or(model, |pos| model.get(..pos).unwrap_or(model))
+}
+
 /// Register this crate's metrics with the shared registry.
 ///
 /// Called once at startup. Counter names registered here drop the `_total`
@@ -183,7 +195,7 @@ pub fn record_completion(
 pub fn record_latency(model: &str, status: &str, duration_secs: f64) {
     LLM_REQUEST_DURATION_SECONDS
         .get_or_create(&ModelStatusLabels {
-            model: model.to_owned(),
+            model: model_family_label(model).to_owned(),
             status: status.to_owned(),
         })
         .observe(duration_secs);
@@ -193,7 +205,7 @@ pub fn record_latency(model: &str, status: &str, duration_secs: f64) {
 pub fn record_ttft(model: &str, status: &str, duration_secs: f64) {
     LLM_TTFT_SECONDS
         .get_or_create(&ModelStatusLabels {
-            model: model.to_owned(),
+            model: model_family_label(model).to_owned(),
             status: status.to_owned(),
         })
         .observe(duration_secs);
@@ -386,6 +398,48 @@ mod tests {
                 "aletheia_llm_cache_tokens_total{provider=\"cache-test\",direction=\"write\"} 500"
             ),
             "got: {out2}"
+        );
+    }
+
+    #[test]
+    fn model_family_label_collapses_versioned_snapshots() {
+        // WHY(#5684): versioned model IDs must collapse to one label key so the
+        // Family<ModelStatusLabels, Histogram> does not grow unboundedly.
+        assert_eq!(
+            model_family_label("claude-opus-4-20250514"),
+            "claude-opus-4"
+        );
+        assert_eq!(model_family_label("claude-sonnet-4-6"), "claude-sonnet-4");
+        assert_eq!(
+            model_family_label("claude-haiku-4-5-20251001"),
+            "claude-haiku-4-5"
+        );
+        // Models without a dash version suffix are returned as-is.
+        assert_eq!(model_family_label("gpt-4o"), "gpt-4");
+        assert_eq!(model_family_label("llama3"), "llama3");
+    }
+
+    #[test]
+    fn record_latency_deduplicates_versioned_model_labels() {
+        // WHY(#5684): two versioned snapshots of the same family must produce
+        // a single histogram entry, not one per snapshot version string.
+        let r = fresh_registry();
+        record_latency("claude-opus-4-20250514", "ok", 1.0);
+        record_latency("claude-opus-4-20260101", "ok", 2.0);
+        let out = encode(&r);
+        // Both calls must map to the same label key "claude-opus-4".
+        assert!(
+            out.contains("model=\"claude-opus-4\""),
+            "expected normalized family label, got: {out}"
+        );
+        // The versioned snapshots must NOT appear as separate label sets.
+        assert!(
+            !out.contains("claude-opus-4-20250514"),
+            "raw versioned model ID must not appear as a label: {out}"
+        );
+        assert!(
+            !out.contains("claude-opus-4-20260101"),
+            "raw versioned model ID must not appear as a label: {out}"
         );
     }
 }

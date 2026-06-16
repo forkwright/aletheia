@@ -107,8 +107,21 @@ impl CcProfile {
     }
 }
 
+/// Cached result of `claude --version`, initialized once per process.
+///
+/// WHY(#5685): `std::process::Command::output()` is a blocking call.
+/// Running it on every `AnthropicProvider` construction starves the Tokio
+/// worker pool at startup. The version string is static for the process
+/// lifetime, so caching it in a `LazyLock` pays the blocking cost exactly
+/// once, before any async context is involved.
+static CC_VERSION: std::sync::LazyLock<Option<String>> =
+    std::sync::LazyLock::new(detect_cc_version_once);
+
 /// Detect the installed Claude Code version by running `claude --version`.
-fn detect_cc_version() -> Option<String> {
+///
+/// Must only be called from `CC_VERSION` initialization (i.e. outside any
+/// async context) — `std::process::Command::output()` is blocking.
+fn detect_cc_version_once() -> Option<String> {
     let output = Command::new("claude").arg("--version").output().ok()?;
 
     if !output.status.success() {
@@ -122,6 +135,11 @@ fn detect_cc_version() -> Option<String> {
         .next()
         .filter(|v| v.contains('.'))
         .map(str::to_owned)
+}
+
+/// Return the cached CC version detected at process start.
+fn detect_cc_version() -> Option<String> {
+    CC_VERSION.clone()
 }
 
 #[cfg(test)]
