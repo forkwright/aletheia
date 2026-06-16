@@ -225,6 +225,7 @@ pub mod dedup {
 /// Operational metrics registration for knowledge and session storage.
 pub mod metrics {
     pub use episteme::metrics::register as register_knowledge;
+    pub use episteme::metrics::{record_embedding_duration, record_extraction};
     pub use graphe::metrics::{record_backup_duration, register as register_sessions};
 }
 

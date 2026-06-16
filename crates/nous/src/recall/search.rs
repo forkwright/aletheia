@@ -57,12 +57,22 @@ pub use search_impl::{KnowledgeTextSearch, KnowledgeVectorSearch};
 
 /// Embed a query string into a vector via the given provider.
 pub(super) fn embed(query: &str, provider: &dyn EmbeddingProvider) -> error::Result<Vec<f32>> {
-    provider.embed(query).map_err(|e| {
+    let start = std::time::Instant::now();
+    let result = provider.embed(query).map_err(|e| {
         error::RecallEmbeddingSnafu {
             message: e.to_string(),
         }
         .build()
-    })
+    });
+    // WHY (#5780): wire the previously-dead metric so embedding latency is
+    // visible per provider.
+    if result.is_ok() {
+        mneme::metrics::record_embedding_duration(
+            provider.model_name(),
+            start.elapsed().as_secs_f64(),
+        );
+    }
+    result
 }
 
 /// Run a vector search with default HNSW ef=50.

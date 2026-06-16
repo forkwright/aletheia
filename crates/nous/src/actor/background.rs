@@ -648,6 +648,10 @@ async fn run_extraction(
 
     match engine.extract_refined(&messages, &provider).await {
         Ok(refined) => {
+            // WHY (#5780): record the metric only here so the success/error label
+            // is set correctly; the dead_code suppression on record_extraction is
+            // removed by this call site.
+            mneme::metrics::record_extraction(nous_id, true);
             let entities = refined.extraction.entities.len();
             let relationships = refined.extraction.relationships.len();
             let facts = refined.extraction.facts.len();
@@ -724,6 +728,7 @@ async fn run_extraction(
         }
         Err(e) => {
             warn!(nous_id = %nous_id, error = %e, "extraction failed");
+            mneme::metrics::record_extraction(nous_id, false);
             crate::metrics::record_background_failure(nous_id, "extraction");
         }
     }
