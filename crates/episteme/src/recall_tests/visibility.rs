@@ -238,3 +238,28 @@ fn min_visibility_empty_candidates() {
         "empty input should produce empty output"
     );
 }
+
+#[test]
+fn min_visibility_restricted_keeps_restricted_and_published() {
+    // WHY (#5868): docstring was inverted; this test pins the correct semantics —
+    // min=Restricted keeps facts at or above Restricted in the ordering
+    // Private < Shared < Restricted < Published.
+    let candidates = vec![
+        make_scored_with_visibility("alice", Visibility::Private),
+        make_scored_with_visibility("alice", Visibility::Shared),
+        make_scored_with_visibility("alice", Visibility::Restricted),
+        make_scored_with_visibility("alice", Visibility::Published),
+    ];
+    let filtered = filter_by_visibility(candidates, Visibility::Restricted);
+    assert_eq!(
+        filtered.len(),
+        2,
+        "min=Restricted should keep only Restricted and Published"
+    );
+    assert!(
+        filtered
+            .iter()
+            .all(|c| c.visibility >= Visibility::Restricted),
+        "Private and Shared must be excluded"
+    );
+}

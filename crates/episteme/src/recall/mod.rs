@@ -868,17 +868,17 @@ pub fn filter_by_cohort_visibility(
 
 /// Filter recall candidates by visibility level.
 ///
-/// Retains candidates whose visibility is **at most** `min` according to the
-/// ordering `Private < Shared < Restricted < Published`. This is an
-/// upper-bound filter: more visible (less restrictive) facts are excluded
-/// when a low `min` is set.
+/// Retains candidates whose visibility is **at least** `min` according to the
+/// ordering `Private < Shared < Restricted < Published`. This is a
+/// lower-bound filter: less visible (more restrictive) facts are excluded
+/// when a high `min` is set.
 ///
 /// | `min`          | Facts retained                          |
 /// |----------------|----------------------------------------|
-/// | `Private`      | `Private` only                         |
-/// | `Shared`       | `Private`, `Shared`                    |
-/// | `Restricted`   | `Private`, `Shared`, `Restricted`      |
-/// | `Published`    | all visibility levels                  |
+/// | `Private`      | all visibility levels                  |
+/// | `Shared`       | `Shared`, `Restricted`, `Published`    |
+/// | `Restricted`   | `Restricted`, `Published`              |
+/// | `Published`    | `Published` only                       |
 ///
 /// # Complexity
 ///
