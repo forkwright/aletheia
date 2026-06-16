@@ -173,10 +173,13 @@ pub struct PersistResult {
     pub causal_edges_inserted: usize,
     /// Number of fact-entity edges linked during persistence.
     pub fact_entities_inserted: usize,
+    /// Number of fact-entity edge insertions that failed.
+    pub fact_entity_link_failures: usize,
 }
 
 impl PersistResult {
-    /// Return whether no items were inserted and no relationships were skipped.
+    /// Return whether no items were inserted, no relationships were skipped,
+    /// and no fact-entity link failures occurred.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.entities_inserted == 0
@@ -184,5 +187,6 @@ impl PersistResult {
             && self.relationships_skipped == 0
             && self.facts_inserted == 0
             && self.causal_edges_inserted == 0
+            && self.fact_entity_link_failures == 0
     }
 }

@@ -685,12 +685,15 @@ Rules:
                 };
                 match store.insert_fact_entity(&f.id, &entity_id) {
                     Ok(()) => result.fact_entities_inserted += 1,
-                    Err(error) => tracing::debug!(
-                        %error,
-                        fact_id = %f.id,
-                        entity_id = %entity_id,
-                        "failed to link fact to referenced entity"
-                    ),
+                    Err(error) => {
+                        result.fact_entity_link_failures += 1;
+                        tracing::warn!(
+                            %error,
+                            fact_id = %f.id,
+                            entity_id = %entity_id,
+                            "failed to link fact to referenced entity"
+                        );
+                    }
                 }
             }
         }

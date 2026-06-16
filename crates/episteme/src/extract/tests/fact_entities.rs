@@ -116,3 +116,54 @@ fn extraction_skips_unknown_entity_references() {
         "unknown object reference must not create a dangling fact-entity edge"
     );
 }
+
+/// When the `fact_entities` relation is unavailable, fact persistence must
+/// still succeed and report the link failures without decrementing
+/// `facts_inserted`.
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn extraction_reports_fact_entity_link_failures() {
+    let store = crate::knowledge_store::KnowledgeStore::open_mem()
+        .expect("in-memory knowledge store should open successfully");
+
+    store
+        .run_mut_query("::remove fact_entities", std::collections::BTreeMap::new())
+        .expect("dropping fact_entities relation should succeed");
+
+    let engine = ExtractionEngine::new(ExtractionConfig::default());
+
+    let extraction = Extraction {
+        entities: vec![entity("Carol", "person"), entity("Haskell", "tool")],
+        relationships: vec![],
+        facts: vec![ExtractedFact {
+            subject: "Carol".to_owned(),
+            predicate: "likes".to_owned(),
+            object: "Haskell".to_owned(),
+            confidence: 0.85,
+            fact_type: None,
+            is_correction: false,
+        }],
+    };
+
+    let result = engine
+        .persist(&extraction, &store, "session:test", "syn")
+        .expect("persist should succeed even when fact-entity links fail");
+
+    assert_eq!(result.entities_inserted, 2, "both entities persist");
+    assert_eq!(
+        result.facts_inserted, 1,
+        "fact persists despite link failures"
+    );
+    assert_eq!(
+        result.fact_entities_inserted, 0,
+        "no fact-entity edges are inserted when the relation is missing"
+    );
+    assert_eq!(
+        result.fact_entity_link_failures, 2,
+        "both subject and object link failures must be reported"
+    );
+    assert!(
+        !result.is_empty(),
+        "result with link failures must not be considered empty"
+    );
+}
