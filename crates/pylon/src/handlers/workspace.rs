@@ -408,11 +408,10 @@ pub async fn open_file(
     let ext = resolved
         .extension()
         .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase());
+        .map(str::to_lowercase);
     let safe = ext
         .as_deref()
-        .map(|e| SAFE_OPEN_EXTENSIONS.contains(&e))
-        .unwrap_or(false);
+        .is_some_and(|e| SAFE_OPEN_EXTENSIONS.contains(&e));
     if !safe {
         return Err(BadRequestSnafu {
             message: format!(
