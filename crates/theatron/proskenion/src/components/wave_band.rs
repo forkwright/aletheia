@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::components::badge::status_badge_style;
 use crate::state::execution::{Wave, WaveStatus};
 
 const BAND_BASE: &str = "\
@@ -22,16 +23,6 @@ const WAVE_LABEL: &str = "\
     font-size: var(--text-base); \
     font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
-";
-
-const BADGE_BASE: &str = "\
-    display: inline-block; \
-    font-size: var(--text-xs); \
-    font-weight: var(--weight-semibold); \
-    padding: var(--space-1) var(--space-2); \
-    border-radius: var(--radius-lg); \
-    text-transform: uppercase; \
-    letter-spacing: 0.3px;\
 ";
 
 const TIME_STYLE: &str = "\
@@ -58,7 +49,7 @@ const PLANS_ROW: &str = "\
 pub(crate) fn WaveBand(wave: Wave, children: Element) -> Element {
     let (bg, border_color) = band_colors(wave.status);
     let band_style = format!("{BAND_BASE} background: {bg}; border-color: {border_color};");
-    let badge_style = status_badge_style(wave.status);
+    let badge_style = wave_badge_style(wave.status);
     let label = status_label(wave.status);
     let progress = wave.progress_pct();
 
@@ -117,13 +108,13 @@ fn progress_color(status: WaveStatus) -> &'static str {
 }
 
 #[must_use]
-pub(crate) fn status_badge_style(status: WaveStatus) -> String {
+pub(crate) fn wave_badge_style(status: WaveStatus) -> String {
     let (bg, color) = match status {
         WaveStatus::Active => ("var(--status-info-bg)", "var(--status-info)"),
         WaveStatus::Complete => ("var(--status-success-bg)", "var(--status-success)"),
         WaveStatus::Pending => ("var(--border)", "var(--text-muted)"),
     };
-    format!("{BADGE_BASE} background: {bg}; color: {color};")
+    status_badge_style(bg, color)
 }
 
 #[must_use]

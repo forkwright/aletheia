@@ -148,11 +148,7 @@ pub mod planning {
     /// Build the absolute URL for `GET` project verification.
     #[must_use]
     pub fn project_verification_url(base_url: &str, project_id: &str) -> String {
-        format!(
-            "{}{}",
-            base_url.trim_end_matches('/'),
-            project_verification_path(project_id)
-        )
+        keryx::url::join_base_path(base_url, &project_verification_path(project_id))
     }
 
     /// Build the path for `POST` project verification refresh.
@@ -169,11 +165,7 @@ pub mod planning {
     /// Build the absolute URL for `POST` project verification refresh.
     #[must_use]
     pub fn project_verification_refresh_url(base_url: &str, project_id: &str) -> String {
-        format!(
-            "{}{}",
-            base_url.trim_end_matches('/'),
-            project_verification_refresh_path(project_id)
-        )
+        keryx::url::join_base_path(base_url, &project_verification_refresh_path(project_id))
     }
 }
 

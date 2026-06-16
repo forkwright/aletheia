@@ -2,6 +2,8 @@
 
 use dioxus::prelude::*;
 
+use skeue::{StatusPill, StatusPillKind};
+
 use crate::components::chart::{ChartEntry, DonutChart, HorizBarChart};
 use crate::components::confidence_bar::ConfidenceBar;
 use crate::components::coverage_bar::CoverageBar;
@@ -100,11 +102,11 @@ pub(crate) fn ComponentLibrary() -> Element {
                 }
                 div {
                     style: "display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end;",
-                    StatusPill { label: "default" }
-                    StatusPill { label: "hover" }
-                    StatusPill { label: "active" }
-                    StatusPill { label: "disabled" }
-                    StatusPill { label: "focus" }
+                    StatusPill { kind: StatusPillKind::Natural, label: "default".to_string() }
+                    StatusPill { kind: StatusPillKind::Info, label: "hover".to_string() }
+                    StatusPill { kind: StatusPillKind::Success, label: "active".to_string() }
+                    StatusPill { kind: StatusPillKind::Natural, label: "disabled".to_string() }
+                    StatusPill { kind: StatusPillKind::Aporia, label: "focus".to_string() }
                 }
             }
 
@@ -363,16 +365,6 @@ fn ButtonDemo(label: &'static str, style_kind: &'static str, disabled: bool) -> 
         button {
             disabled,
             style: "{style} border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); font-size: var(--text-sm); font-weight: var(--weight-semibold); min-width: 92px;",
-            "{label}"
-        }
-    }
-}
-
-#[component]
-fn StatusPill(label: &'static str) -> Element {
-    rsx! {
-        span {
-            style: "font-size: var(--text-xs); color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--radius-full); padding: var(--space-1) var(--space-2); background: var(--bg-surface);",
             "{label}"
         }
     }

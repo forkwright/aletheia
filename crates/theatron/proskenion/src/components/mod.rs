@@ -2,6 +2,8 @@
 
 /// Agent presence roster for the sidebar (the sole agent home).
 pub(crate) mod agent_sidebar;
+/// Shared badge style helpers (wave / checkpoint / tool approval).
+pub(crate) mod badge;
 /// SVG chart primitives: horizontal bars, stacked bars, line charts, percentile bars.
 pub(crate) mod chart;
 pub mod chat;

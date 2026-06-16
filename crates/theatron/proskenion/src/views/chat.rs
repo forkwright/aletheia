@@ -263,11 +263,10 @@ pub(crate) fn Chat() -> Element {
                 .as_ref()
                 .map(|id| id.to_string())
                 .unwrap_or_else(|| "default".to_string());
-            let session_key = legacy_state
-                .read()
-                .session_key
-                .clone()
-                .unwrap_or_else(|| "desktop".to_string());
+            let Some(session_key) = legacy_state.read().session_key.clone() else {
+                tracing::warn!("no session key available — aborting send");
+                return;
+            };
 
             let mut rx = crate::api::streaming::stream_turn(
                 client,

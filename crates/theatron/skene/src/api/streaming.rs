@@ -44,7 +44,7 @@ pub fn stream_message(
     text: &str,
 ) -> mpsc::Receiver<StreamEvent> {
     let (tx, rx) = mpsc::channel(256);
-    let url = format!("{}/api/v1/sessions/stream", base_url.trim_end_matches('/'));
+    let url = keryx::url::join_base_path(base_url, "/api/v1/sessions/stream");
 
     let body = serde_json::json!({
         "message": text,

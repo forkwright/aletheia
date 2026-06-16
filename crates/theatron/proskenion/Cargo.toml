@@ -140,6 +140,8 @@ toml = "1.0"
 # Desktop notifications (freedesktop.org D-Bus on Linux)
 notify-rust = "4"
 
+tempfile = "3"
+
 [dev-dependencies]
 tempfile = "3"
 

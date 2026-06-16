@@ -1,6 +1,7 @@
 //! Service health panel: aggregate status and per-check rows from `/api/health`.
 
 use dioxus::prelude::*;
+use skeue::EmptyState;
 
 use crate::state::ops::{HealthCheckInfo, HealthStatus, ServiceHealthStore};
 
@@ -51,12 +52,6 @@ const MESSAGE_STYLE: &str = "\
     white-space: nowrap;\
 ";
 
-const EMPTY_STATE: &str = "\
-    color: var(--text-muted); \
-    font-size: var(--text-xs); \
-    padding: var(--space-1) 0;\
-";
-
 const STATUS_BADGE_BASE: &str = "\
     font-size: var(--text-xs); \
     font-weight: var(--weight-bold); \
@@ -85,7 +80,7 @@ pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
                     "{data.status.label()}"
                 }
                 if data.checks.is_empty() && data.error.is_none() {
-                    span { style: "{EMPTY_STATE}", "No checks loaded" }
+                    EmptyState { title: "No checks loaded".to_string() }
                 }
             }
 

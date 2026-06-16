@@ -19,6 +19,7 @@ use crate::state::sessions::{
     MessagePreview, SessionDetailStore, SessionListStore, SessionSelectionStore, SessionSort,
     StatusFilter,
 };
+use crate::state::toasts::{ToastSeverity, ToastStore};
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::sessions::actions::BulkActionBar;
 use crate::views::sessions::detail::{SessionDetail, SessionDetailEmpty};
@@ -348,10 +349,19 @@ pub(crate) fn Sessions() -> Element {
                         tracing::info!("archived session {id}");
                     }
                     Ok(resp) => {
-                        tracing::warn!(status = %resp.status(), "archive failed");
+                        let status = resp.status();
+                        tracing::warn!(%status, "archive failed");
+                        if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                            ts.write()
+                                .push(ToastSeverity::Error, format!("Archive failed: {status}"));
+                        }
                     }
                     Err(e) => {
                         tracing::warn!("archive error: {e}");
+                        if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                            ts.write()
+                                .push(ToastSeverity::Error, format!("Archive error: {e}"));
+                        }
                     }
                 }
             });
@@ -375,10 +385,19 @@ pub(crate) fn Sessions() -> Element {
                         tracing::info!("restored session {id}");
                     }
                     Ok(resp) => {
-                        tracing::warn!(status = %resp.status(), "restore failed");
+                        let status = resp.status();
+                        tracing::warn!(%status, "restore failed");
+                        if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                            ts.write()
+                                .push(ToastSeverity::Error, format!("Restore failed: {status}"));
+                        }
                     }
                     Err(e) => {
                         tracing::warn!("restore error: {e}");
+                        if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                            ts.write()
+                                .push(ToastSeverity::Error, format!("Restore error: {e}"));
+                        }
                     }
                 }
             });
