@@ -193,35 +193,7 @@ async fn run_task(
             );
         }
         ManualMaintenanceTask::DriftDetection => {
-            let report = DriftDetector::new(maint.drift_detection.clone())
-                .check()
-                .whatever_context("drift detection failed")?;
-            let template_display = report.template_root.display();
-            if report.template_available {
-                let missing = report.missing_files.len();
-                let extra = report.extra_files.len();
-                if missing == 0 && extra == 0 {
-                    println!("drift-detection: clean (template: {template_display})");
-                } else if verbose {
-                    println!(
-                        "drift-detection: {missing} missing, {extra} extra \
-                         (template: {template_display})"
-                    );
-                    for path in &report.missing_files {
-                        println!("  missing: {}", path.display());
-                    }
-                    for path in &report.extra_files {
-                        println!("  extra:   {}", path.display());
-                    }
-                } else {
-                    println!(
-                        "drift-detection: {missing} missing, {extra} extra  \
-                         (use --verbose to list files; template: {template_display})"
-                    );
-                }
-            } else {
-                println!("drift-detection: template unavailable (template: {template_display})");
-            }
+            run_drift_detection(maint.drift_detection.clone(), verbose)?;
         }
         ManualMaintenanceTask::DbMonitor => {
             let report = DbMonitor::new(maint.db_monitoring.clone())
@@ -277,6 +249,39 @@ async fn run_task(
             run_knowledge_task(definition, knowledge_executor).await?;
         }
         _ => whatever!("{}: not scheduled for manual run", definition.id()),
+    }
+    Ok(())
+}
+
+fn run_drift_detection(cfg: DriftDetectionConfig, verbose: bool) -> Result<()> {
+    let report = DriftDetector::new(cfg)
+        .check()
+        .whatever_context("drift detection failed")?;
+    let template_display = report.template_root.display();
+    if report.template_available {
+        let missing = report.missing_files.len();
+        let extra = report.extra_files.len();
+        if missing == 0 && extra == 0 {
+            println!("drift-detection: clean (template: {template_display})");
+        } else if verbose {
+            println!(
+                "drift-detection: {missing} missing, {extra} extra \
+                 (template: {template_display})"
+            );
+            for path in &report.missing_files {
+                println!("  missing: {}", path.display());
+            }
+            for path in &report.extra_files {
+                println!("  extra:   {}", path.display());
+            }
+        } else {
+            println!(
+                "drift-detection: {missing} missing, {extra} extra  \
+                 (use --verbose to list files; template: {template_display})"
+            );
+        }
+    } else {
+        println!("drift-detection: template unavailable (template: {template_display})");
     }
     Ok(())
 }
