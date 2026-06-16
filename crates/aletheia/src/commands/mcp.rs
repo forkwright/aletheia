@@ -14,9 +14,8 @@ use crate::runtime::RuntimeBuilder;
 pub(crate) async fn run(instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = Arc::new(resolve_oikos(instance_root)?);
     let config = load_config(&oikos).whatever_context("failed to load config")?;
-    let runtime = RuntimeBuilder::production(Arc::clone(&oikos), config.clone())
-        .build()
-        .await?;
+    let runtime =
+        Box::pin(RuntimeBuilder::production(Arc::clone(&oikos), config.clone()).build()).await?;
 
     let mcp_jwt = if runtime.state.auth_mode == "none" {
         None

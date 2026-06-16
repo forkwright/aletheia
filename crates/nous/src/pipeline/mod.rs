@@ -305,25 +305,6 @@ impl LoopDetector {
         }
     }
 
-    /// Create a loop detector configured from a deployment behavior config.
-    #[must_use]
-    pub fn with_behavior(
-        threshold: u32,
-        error_threshold: u32,
-        max_warnings: u32,
-        behavior: &taxis::config::NousBehaviorConfig,
-    ) -> Self {
-        Self {
-            history: VecDeque::with_capacity(behavior.loop_detection_window),
-            threshold,
-            error_threshold,
-            max_warnings,
-            warnings_issued: 0,
-            window: behavior.loop_detection_window,
-            cycle_detection_max_len: behavior.cycle_detection_max_len,
-        }
-    }
-
     /// Create a loop detector with explicit window and cycle-detection parameters.
     ///
     /// WHY: lets callers thread configured values without requiring a full
@@ -1191,7 +1172,15 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
-        let finalize_outcome = run_finalize_stage(config, &input, &result, session_store, emitter).await;
+        let finalize_outcome = run_stage_with_timeout(
+            config,
+            "finalize",
+            &mut time_budget,
+            emitter,
+            async { Ok(run_finalize_stage(config, &input, &result, session_store, emitter).await) },
+        )
+        .await
+        .unwrap_or(FinalizeOutcome::Failed);
         if finalize_outcome == FinalizeOutcome::Failed {
             tracing::warn!(nous_id = %config.id, "finalize failed; training/DPO capture suppressed for this turn");
         }

@@ -53,14 +53,14 @@ pub(super) fn start(
     lock_store: Arc<CronLockStore>,
     task_tracker: &TaskTracker,
     shutdown_token: &CancellationToken,
-) -> Result<()> {
+) {
     let enabled: Vec<&CronTaskConfig> = tasks.iter().filter(|t| t.enabled).collect();
     if enabled.is_empty() {
         info!(
             configured = tasks.len(),
             "dispatch cron executor: no enabled tasks; skipping scheduler startup"
         );
-        return Ok(());
+        return;
     }
 
     let mut cron_tasks: Vec<CronTask> = Vec::with_capacity(enabled.len());
@@ -80,7 +80,7 @@ pub(super) fn start(
             configured = tasks.len(),
             "dispatch cron executor: all enabled tasks failed to parse — scheduler not started"
         );
-        return Ok(());
+        return;
     }
 
     let theke = oikos.theke();
@@ -111,8 +111,6 @@ pub(super) fn start(
         }
         .instrument(tracing::info_span!("cron_executor")),
     );
-
-    Ok(())
 }
 
 fn build_cron_task(cfg: &CronTaskConfig) -> energeia::error::Result<CronTask> {

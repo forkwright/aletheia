@@ -791,10 +791,19 @@ pub(super) async fn run_execute_stage(
                 match tokio::time::timeout(std::time::Duration::from_millis(50), store_mutex.lock())
                     .await
                 {
-                    Ok(store) => store
-                        .get_distillation_summary(&input.session.id)
-                        .ok()
-                        .flatten(),
+                    Ok(store) => match store.get_distillation_summary(&input.session.id) {
+                        Ok(summary) => summary,
+                        Err(e) => {
+                            // WHY(#5245): a store read error is distinct from a genuine
+                            // no-cache; surface it instead of silently collapsing both to None.
+                            tracing::warn!(
+                                nous_id = %config.id,
+                                error = ?e,
+                                "degraded recovery: session store read error; no cache available"
+                            );
+                            None
+                        }
+                    },
                     Err(_contended) => {
                         tracing::warn!(
                             nous_id = %config.id,

@@ -174,6 +174,7 @@ fn default_stability_by_fact_type() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn knowledge_graph_data_audit_asserts_seeded_invariants() {
     let store = open_store(4);
     let provider = MockEmbeddingProvider::new(4);

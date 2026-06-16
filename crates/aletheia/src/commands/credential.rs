@@ -194,16 +194,15 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
         }
         #[cfg(feature = "keyring")]
         Action::Store { token } => {
-            let token_value = match token {
-                Some(t) => t,
-                None => {
-                    use std::io::Read;
-                    let mut buf = String::new();
-                    std::io::stdin().read_to_string(&mut buf).map_err(|e| {
-                        crate::error::Error::msg(format!("failed to read token from stdin: {e}"))
-                    })?;
-                    buf.trim().to_owned()
-                }
+            let token_value = if let Some(t) = token {
+                t
+            } else {
+                use std::io::Read;
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf).map_err(|e| {
+                    crate::error::Error::msg(format!("failed to read token from stdin: {e}"))
+                })?;
+                buf.trim().to_owned()
             };
 
             if token_value.is_empty() {

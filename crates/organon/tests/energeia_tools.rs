@@ -1,8 +1,14 @@
 //! Integration test for all 9 energeia tools.
 //!
-//! Creates an in-memory EnergeiaStore + MockEngine, registers all 9 tools with
-//! real EnergeiaServices, calls each with valid input, and verifies that each
-//! returns a non-error ToolResult.
+//! Creates an in-memory `EnergeiaStore` + `MockEngine`, registers all 9 tools with
+//! real `EnergeiaServices`, calls each with valid input, and verifies that each
+//! returns a non-error `ToolResult`.
+
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::indexing_slicing)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::unwrap_used)]
 
 use std::collections::HashSet;
 use std::pin::Pin;

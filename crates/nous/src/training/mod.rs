@@ -950,3 +950,35 @@ mod pii_filter_disabled_regression {
         );
     }
 }
+
+#[cfg(test)]
+mod manifest_read_regression {
+    use super::*;
+
+    #[test]
+    fn manifest_read_io_error_surfaces_as_read_manifest() {
+        // WHY(#5751): a present-but-unreadable manifest must surface as
+        // ReadManifest, not silently reset shard accounting to empty. A
+        // directory placed where the manifest file is expected makes
+        // read_to_string fail with an I/O error for any user (root included).
+        let tmp = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
+            pii_filter_enabled: false,
+            author_classifier_enabled: false,
+            author_classifier_threshold: 0.85,
+        };
+        let dir = tmp.path().join(&config.path);
+        std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("mkdir: {e}"));
+        std::fs::create_dir(dir.join("training-manifest.json"))
+            .unwrap_or_else(|e| panic!("dir-in-place: {e}"));
+
+        let result = TrainingCapture::new(tmp.path(), &config);
+        assert!(
+            matches!(result, Err(TrainingCaptureError::ReadManifest { .. })),
+            "manifest read I/O failure must surface as ReadManifest"
+        );
+    }
+}

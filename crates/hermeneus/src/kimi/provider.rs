@@ -334,37 +334,6 @@ impl LlmProvider for KimiProvider {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn warns_once_for_dropped_tools() {
-        assert!(!KimiProvider::warn_dropped_tools(0));
-        assert!(KimiProvider::warn_dropped_tools(1));
-        assert!(!KimiProvider::warn_dropped_tools(2));
-    }
-
-    #[test]
-    fn match_specificity_prefers_prefix_and_exact() {
-        let provider = KimiProvider {
-            kimi_binary: PathBuf::from("kimi"),
-            working_directory: PathBuf::from("."),
-            default_model: koina::models::names::kimi().to_owned(),
-            timeout: Duration::from_secs(1),
-        };
-        assert_eq!(
-            provider.match_specificity("kimi/experimental"),
-            Some(MatchKind::Prefix)
-        );
-        assert_eq!(
-            provider.match_specificity(koina::models::names::kimi()),
-            Some(MatchKind::Exact)
-        );
-        assert_eq!(provider.match_specificity("claude-sonnet-4-6"), None);
-    }
-}
-
 /// Find the `kimi` binary in `PATH`.
 fn find_kimi_binary() -> Result<PathBuf> {
     let paths = RealSystem.var_os("PATH").unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<OsString>, not Result — empty PATH is a valid fallback
@@ -395,4 +364,34 @@ fn find_kimi_binary() -> Result<PathBuf> {
             .to_owned(),
     }
     .build())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn warns_once_for_dropped_tools() {
+        assert!(!KimiProvider::warn_dropped_tools(0));
+        assert!(KimiProvider::warn_dropped_tools(1));
+        assert!(!KimiProvider::warn_dropped_tools(2));
+    }
+
+    #[test]
+    fn match_specificity_prefers_prefix_and_exact() {
+        let provider = KimiProvider {
+            kimi_binary: PathBuf::from("kimi"),
+            working_directory: PathBuf::from("."),
+            default_model: koina::models::names::kimi().to_owned(),
+            timeout: Duration::from_secs(1),
+        };
+        assert_eq!(
+            provider.match_specificity("kimi/experimental"),
+            Some(MatchKind::Prefix)
+        );
+        assert_eq!(
+            provider.match_specificity(koina::models::names::kimi()),
+            Some(MatchKind::Exact)
+        );
+        assert_eq!(provider.match_specificity("claude-sonnet-4-6"), None);
+    }
 }

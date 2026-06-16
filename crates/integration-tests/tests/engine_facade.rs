@@ -1,11 +1,9 @@
 //! Integration tests for the public `Db` facade: delegated methods and error behavior.
 #![cfg(feature = "engine-tests")]
-#![expect(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "integration tests: assertions panic on unexpected structure"
-)]
+// Integration tests: assertions panic on unexpected structure.
+#![allow(clippy::expect_used)]
+#![allow(clippy::indexing_slicing)]
+#![allow(clippy::unwrap_used)]
 
 use std::collections::BTreeMap;
 
