@@ -60,13 +60,16 @@ MCP server interface for external AI agents via the Model Context Protocol. 1.5K
 
 Knowledge graph tools require `mcp.knowledge_graph.enabled = true` in config (default `false`).
 
-## MCP resource templates (3)
+## MCP resource templates (6)
 
 All resource templates require Operator role (enforced by `list_resource_templates`).
 Resources are read-only.
 
 | URI template | Name | Description | Source |
 |-------------|------|-------------|--------|
+| `aletheia://nous/{nous_id}/soul` | Nous Soul | Identity and purpose for a nous agent | `crates/diaporeia/src/resources/nous.rs` |
+| `aletheia://nous/{nous_id}/identity` | Nous Identity | Name and emoji identity for a nous agent | `crates/diaporeia/src/resources/nous.rs` |
+| `aletheia://nous/{nous_id}/memory` | Nous Memory | Long-term memory for a nous agent | `crates/diaporeia/src/resources/nous.rs` |
 | `aletheia://nous/{nous_id}/goals` | Nous Goals | Active goals for a nous agent | `crates/diaporeia/src/resources/nous.rs` |
 | `aletheia://nous/{nous_id}/tools` | Nous Tools | Tool inventory for a nous agent | `crates/diaporeia/src/resources/nous.rs` |
 | `aletheia://config` | Aletheia Configuration | Runtime configuration (sensitive fields redacted) | `crates/diaporeia/src/resources/config.rs` |

@@ -37,7 +37,7 @@ Configuration cascade and path resolution: TOML loading, oikos directory structu
 
 - **TOML cascade**: Compiled defaults -> TOML file -> `ALETHEIA_*` env vars. Later wins. Merge is a serde_json::Value deep merge; env overlay walks `ALETHEIA_*` with `__` separators.
 - **Env interpolation**: `${VAR:-default}` and `${VAR:?error}` syntax in TOML values, resolved before TOML parse.
-- **Encrypted values**: `enc:` prefix triggers AES-256-GCM decryption using `~/.config/aletheia/primary.key`.
+- **Encrypted values**: `enc:` prefix triggers ChaCha20-Poly1305 decryption using `~/.config/aletheia/primary.key`.
 - **Three-tier cascade**: File lookup walks nous/{id}/ -> shared/ -> theke/. Most specific wins.
 - **Hot-reload**: Gateway port/bind/TLS/auth require restart. All other config paths are live-reloadable.
 - **Preflight checks**: Disk space, port availability, and directory permissions checked before startup.
