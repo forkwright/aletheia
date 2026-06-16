@@ -46,10 +46,10 @@ pub struct SubscribeParams {
 ///
 /// Cancel-safe. Axum handler; cancellation drops the future with no
 /// side effects beyond not returning a response.
-#[instrument(skip(state, _claims))]
+#[instrument(skip(state, claims))]
 pub async fn subscribe(
     State(state): State<EventBusState>,
-    _claims: Claims,
+    claims: Claims,
     Query(params): Query<SubscribeParams>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
     let topics: Vec<String> = params
@@ -66,6 +66,12 @@ pub async fn subscribe(
         });
     }
 
+    // SECURITY(#5341, #4994, #4617): Scoped tokens may only subscribe to
+    // events for their own nous_id. Unscoped Operator/Admin tokens retain
+    // full firehose access. This makes the event bus respect the same
+    // least-privilege boundary as direct agent/session APIs.
+    let scoped_nous_id: Option<String> = claims.nous_id.clone();
+
     let heartbeat_secs = state
         .config
         .read()
@@ -77,6 +83,15 @@ pub async fn subscribe(
 
     let stream = BroadcastStream::new(rx).filter_map(move |result| match result {
         Ok(DomainEvent { topic, payload, .. }) if topics.contains(&topic) => {
+            // SECURITY(#5341, #4994, #4617): For scoped tokens, filter events
+            // to those whose payload carries a matching nous_id. Events without
+            // a nous_id field are cross-agent events; withhold from scoped tokens.
+            if let Some(ref scoped) = scoped_nous_id {
+                let event_nous_id = payload.get("nous_id").and_then(|v| v.as_str());
+                if event_nous_id != Some(scoped.as_str()) {
+                    return None;
+                }
+            }
             match serde_json::to_string(&payload) {
                 Ok(data) => Some(Ok(Event::default().event(&topic).data(data))),
                 Err(e) => {

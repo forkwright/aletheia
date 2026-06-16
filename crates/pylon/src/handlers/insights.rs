@@ -11,7 +11,7 @@ use jiff::ToSpan;
 use mneme::types::{Message, Role, Session, UsageRecord};
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
-use crate::extract::Claims;
+use crate::extract::{Claims, require_nous_access, require_role};
 use crate::insights::anomaly::detect_anomalies;
 use crate::state::InsightsState;
 use crate::types::insights::{
@@ -50,8 +50,16 @@ fn usize_to_f64(n: usize) -> f64 {
 )]
 pub async fn get_agent_perf(
     State(state): State<InsightsState>,
-    _claims: Claims,
-) -> Json<AgentPerformanceListResponse> {
+    claims: Claims,
+) -> Result<Json<AgentPerformanceListResponse>, ApiError> {
+    // SECURITY(#4618): Aggregate all-agent view requires unscoped Operator.
+    // Scoped tokens see nothing here — they must use the per-agent endpoint.
+    require_role(&claims, symbolon::types::Role::Operator)?;
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot access aggregate agent metrics; use /metrics/agents/{id}",
+        ));
+    }
     // WHY: Collect agent configs outside spawn_blocking because configs()
     // returns references tied to the manager's lifetime.
     let agent_configs: Vec<(String, Option<String>)> = state
@@ -103,10 +111,10 @@ pub async fn get_agent_perf(
         performances.push(perf);
     }
 
-    Json(AgentPerformanceListResponse {
+    Ok(Json(AgentPerformanceListResponse {
         agents: performances,
         anomalies,
-    })
+    }))
 }
 
 /// GET /api/v1/metrics/agents/{id}: performance metrics for a single agent.
@@ -123,9 +131,11 @@ pub async fn get_agent_perf(
 )]
 pub async fn get_agent_perf_one(
     State(state): State<InsightsState>,
-    _claims: Claims,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<AgentPerformance>, ApiError> {
+    // SECURITY(#4618): Scoped tokens may only view their own agent's metrics.
+    require_nous_access(&claims, &id)?;
     let config = state
         .nous_manager
         .get_config(&id)
@@ -157,8 +167,10 @@ pub async fn get_agent_perf_one(
 #[utoipa::path(
     get,
     path = "/api/v1/metrics/quality",
+    params(MetricsQuery),
     responses(
         (status = 200, description = "Quality metrics", body = QualityMetricsResponse),
+        (status = 400, description = "Invalid query parameters", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -166,15 +178,32 @@ pub async fn get_agent_perf_one(
 pub async fn get_quality_metrics(
     State(state): State<InsightsState>,
     _claims: Claims,
-) -> Json<QualityMetricsResponse> {
+    Query(query): Query<MetricsQuery>,
+) -> Result<Json<QualityMetricsResponse>, ApiError> {
+    validate_metrics_query(&query)?;
+
     let state_clone = state.clone();
+    // WHY(#5668): Use date-range filtering to bound the session scan and avoid
+    // loading unbounded message content. compute_quality_series needs only
+    // m.created_at and m.role; load a capped message count per session.
     let (sessions, messages) = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
-        let sessions = store.list_sessions(None).map_err(ApiError::from)?;
+        let all_sessions = store.list_sessions(None).map_err(ApiError::from)?;
 
+        // Apply date-range filter at the application layer to match the
+        // pattern used by load_token_metrics (store lacks a date-query API).
+        let sessions: Vec<Session> = all_sessions
+            .into_iter()
+            .filter(|s| date_in_range(&s.created_at, &query))
+            .collect();
+
+        // WHY(#5668): cap per-session history at 500 messages; quality series
+        // needs only role and timestamp, not full content. This bounds
+        // allocation at O(sessions * 500) instead of O(all-message-content).
+        let quality_limit: i64 = 500;
         let mut messages = Vec::new();
         for session in &sessions {
-            match store.get_history(&session.id, None) {
+            match store.get_history(&session.id, Some(quality_limit)) {
                 Ok(mut ms) => messages.append(&mut ms),
                 Err(e) => {
                     warn!(session_id = %session.id, error = %e, "failed to load messages for quality metrics");
@@ -193,7 +222,7 @@ pub async fn get_quality_metrics(
     .unwrap_or_else(|_| (Vec::new(), Vec::new()));
 
     let series = compute_quality_series(&sessions, &messages);
-    Json(QualityMetricsResponse { series })
+    Ok(Json(QualityMetricsResponse { series }))
 }
 
 /// Granularity values accepted by the metrics endpoints.
@@ -255,9 +284,16 @@ fn validate_optional_date(field: &str, value: Option<&str>) -> Result<(), ApiErr
 )]
 pub async fn get_token_metrics(
     State(state): State<InsightsState>,
-    _claims: Claims,
+    claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<TokenMetricsResponse>, ApiError> {
+    // SECURITY(#4618): Token aggregate view requires unscoped Operator.
+    require_role(&claims, symbolon::types::Role::Operator)?;
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot access aggregate token metrics",
+        ));
+    }
     validate_metrics_query(&query)?;
     Ok(Json(load_token_metrics(state, query).await))
 }
@@ -276,9 +312,16 @@ pub async fn get_token_metrics(
 )]
 pub async fn get_cost_metrics(
     State(state): State<InsightsState>,
-    _claims: Claims,
+    claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<CostMetricsResponse>, ApiError> {
+    // SECURITY(#4618): Cost aggregate view requires unscoped Operator.
+    require_role(&claims, symbolon::types::Role::Operator)?;
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot access aggregate cost metrics",
+        ));
+    }
     validate_metrics_query(&query)?;
     let tokens = load_token_metrics(state, query).await;
     Ok(Json(costs_from_tokens(&tokens)))

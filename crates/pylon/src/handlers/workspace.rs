@@ -32,6 +32,17 @@ const SEARCH_LIMIT_CAP: usize = 1000;
 /// memory, disk, or abuse vector through binary drops, scripts, or bulk data.
 const WRITE_LIMIT_BYTES: usize = 10 * 1024 * 1024;
 
+/// File extensions safe to open via xdg-open (#5339).
+///
+/// WHY(#5339): `opener::open` invokes the system desktop handler, which can
+/// execute scripts, URL schemes, `.desktop` launchers, and HTML. Restricting
+/// to known view-only formats prevents the endpoint from being used to trigger
+/// active/executable file types against the operator desktop.
+const SAFE_OPEN_EXTENSIONS: &[&str] = &[
+    "md", "markdown", "mdx", "txt", "text", "rst", "org", "pdf", "png", "jpg", "jpeg", "gif",
+    "svg", "webp", "csv", "tsv", "json", "toml", "yaml", "yml",
+];
+
 /// File extensions the workspace write endpoint is allowed to create or
 /// overwrite.
 ///
@@ -59,8 +70,11 @@ const WRITABLE_EXTENSIONS: &[&str] = &[
 )]
 pub async fn list_files(
     State(state): State<WorkspaceState>,
+    claims: Claims,
     Query(query): Query<FilesQuery>,
 ) -> Result<Json<Vec<FileEntry>>, ApiError> {
+    // SECURITY(#5338): Minimum Agent role for workspace reads.
+    require_role(&claims, Role::Agent)?;
     let dir = resolve_workspace_directory(&state.workspace_root, query.path.as_deref())?;
     let mut entries = Vec::new();
 
@@ -127,7 +141,10 @@ pub async fn list_files(
 )]
 pub async fn git_status(
     State(state): State<WorkspaceState>,
+    claims: Claims,
 ) -> Result<Json<Vec<GitStatusEntry>>, ApiError> {
+    // SECURITY(#5338): Minimum Agent role for workspace reads.
+    require_role(&claims, Role::Agent)?;
     let output = Command::new("git")
         .arg("-C")
         .arg(&state.workspace_root)
@@ -192,8 +209,11 @@ pub async fn git_status(
 )]
 pub async fn file_content(
     State(state): State<WorkspaceState>,
+    claims: Claims,
     Query(query): Query<ContentQuery>,
 ) -> Result<Response, ApiError> {
+    // SECURITY(#5338): Minimum Agent role for workspace reads.
+    require_role(&claims, Role::Agent)?;
     let path = resolve_workspace_file(&state.workspace_root, &query.path)?;
     let metadata = std::fs::symlink_metadata(&path).map_err(|_err| {
         NotFoundSnafu {
@@ -382,6 +402,27 @@ pub async fn open_file(
         .build());
     }
 
+    // SECURITY(#5339): Restrict to view-only file extensions before invoking
+    // xdg-open. Active/executable/URL/script-like files must not be opened
+    // server-side without explicit operator review.
+    let ext = resolved
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+    let safe = ext
+        .as_deref()
+        .map(|e| SAFE_OPEN_EXTENSIONS.contains(&e))
+        .unwrap_or(false);
+    if !safe {
+        return Err(BadRequestSnafu {
+            message: format!(
+                "file extension is not in the safe-open allowlist: {}",
+                request.path
+            ),
+        }
+        .build());
+    }
+
     let open_path = resolved.clone();
     let relative = relative_workspace_path(&state.workspace_root, &resolved)?;
 
@@ -424,8 +465,11 @@ pub async fn open_file(
 )]
 pub async fn file_diff(
     State(state): State<WorkspaceState>,
+    claims: Claims,
     Query(query): Query<DiffQuery>,
 ) -> Result<Response, ApiError> {
+    // SECURITY(#5338): Minimum Agent role for workspace reads.
+    require_role(&claims, Role::Agent)?;
     let relative = normalize_relative_path(&query.path)?;
     let output = Command::new("git")
         .arg("-C")
@@ -480,8 +524,11 @@ pub async fn file_diff(
 )]
 pub async fn search(
     State(state): State<WorkspaceState>,
+    claims: Claims,
     Query(mut query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
+    // SECURITY(#5338): Minimum Agent role for workspace reads.
+    require_role(&claims, Role::Agent)?;
     if query.q.trim().is_empty() {
         return Err(BadRequestSnafu {
             message: "search query 'q' must not be empty".to_owned(),

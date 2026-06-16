@@ -32,7 +32,20 @@ pub(crate) const METRICS_CONTENT_TYPE: &str =
     clippy::expect_used,
     reason = "writing into a String never fails; the fmt::Error branch is unreachable"
 )]
-pub async fn expose(State(state): State<MetricsState>) -> impl IntoResponse {
+pub async fn expose(
+    State(state): State<MetricsState>,
+    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<std::net::SocketAddr>,
+) -> axum::response::Response {
+    // SECURITY(#4995): Restrict to loopback when loopback_only_metrics is set.
+    // This is the default when gateway.bind = "localhost".
+    if state.loopback_only_metrics && !peer.ip().is_loopback() {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            [(axum::http::header::CONTENT_TYPE, "text/plain")],
+            "metrics endpoint is restricted to loopback connections",
+        )
+            .into_response();
+    }
     let uptime = state.start_time.elapsed().as_secs_f64();
 
     let session_count = state
@@ -54,7 +67,7 @@ pub async fn expose(State(state): State<MetricsState>) -> impl IntoResponse {
         .encode(&mut buffer)
         .expect("encoding into a String is infallible");
 
-    ([(CONTENT_TYPE, METRICS_CONTENT_TYPE)], buffer)
+    ([(CONTENT_TYPE, METRICS_CONTENT_TYPE)], buffer).into_response()
 }
 
 #[cfg(test)]

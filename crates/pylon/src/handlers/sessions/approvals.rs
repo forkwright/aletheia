@@ -19,7 +19,8 @@ use utoipa::ToSchema;
 use crate::error::{
     ApiError, ErrorResponse, FieldError, SessionNotFoundSnafu, ValidationFailedSnafu,
 };
-use crate::extract::{Claims, require_role};
+use crate::extract::{Claims, require_nous_access, require_role};
+use crate::handlers::sessions::find_session;
 use crate::state::SessionsState;
 
 /// Operator decision payload for a pending tool approval.
@@ -68,6 +69,12 @@ pub async fn resolve(
     Json(body): Json<ApprovalRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     require_role(&claims, Role::Operator)?;
+
+    // SECURITY(#4584, #5340): Resolve session ownership and enforce nous scope
+    // before routing the decision. A scoped operator token must not be able
+    // to approve/deny another agent's tool gate by knowing the session id.
+    let session = find_session(&state, &session_id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
 
     let choice = match body.decision.as_str() {
         "approved" => ApprovalChoice::Approved,
@@ -175,6 +182,14 @@ async fn resolve_path_decision(
     choice: ApprovalChoice,
 ) -> Result<impl IntoResponse, ApiError> {
     require_role(&claims, Role::Operator)?;
+    // SECURITY(#5340): Legacy path-based routes carry no session_id so nous
+    // ownership cannot be verified. Scoped tokens must not use this path;
+    // unscoped operator tokens retain full access for backward compatibility.
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens must use the session-scoped approval route",
+        ));
+    }
 
     let routed = state
         .approval_registry

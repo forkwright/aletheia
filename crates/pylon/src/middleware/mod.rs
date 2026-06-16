@@ -367,7 +367,7 @@ mod user_rate_limiter;
 
 pub use deprecation::{DeprecationInfo, DeprecationLayer, DeprecationMap, deprecate};
 pub use etag::{ETagLayer, ETagService};
-pub use rate_limiter::{RateLimiter, rate_limit};
+pub use rate_limiter::{RateLimiter, rate_limit, spawn_anon_cleanup};
 pub use user_rate_limiter::{
     EndpointCategory, UserRateLimiter, per_user_rate_limit, spawn_stale_cleanup,
 };

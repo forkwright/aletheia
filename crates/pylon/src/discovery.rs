@@ -112,11 +112,26 @@ pub(crate) async fn remove_discovery_file(data_dir: &Path) {
 /// Returns `None` if Tailscale is not installed, not running, or the
 /// output cannot be parsed.
 async fn query_tailscale_ip() -> Option<String> {
-    let output = tokio::process::Command::new("tailscale")
-        .args(["status", "--json"])
-        .output()
-        .await
-        .ok()?;
+    // WHY(#5756): Without a timeout, a hung Tailscale IPC stall blocks
+    // server startup indefinitely. The doc comment on `write_discovery_file`
+    // claims "best-effort" -- that is only true for process-exit failures,
+    // not hung subprocesses. A 5s ceiling makes the claim correct for all
+    // failure modes and matches the symbolon credential-refresh timeout.
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new("tailscale")
+            .args(["status", "--json"])
+            .output(),
+    )
+    .await;
+    let output = match result {
+        Ok(Ok(out)) => out,
+        Ok(Err(_)) => return None,
+        Err(_elapsed) => {
+            warn!("tailscale status timed out after 5s; skipping Tailscale IP discovery");
+            return None;
+        }
+    };
 
     if !output.status.success() {
         warn!(status = %output.status, "tailscale status exited with error");

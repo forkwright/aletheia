@@ -24,7 +24,7 @@ use crate::handlers::{
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
     enrich_error_response, inject_request_id, per_user_rate_limit, rate_limit, record_http_metrics,
-    require_bearer_auth, require_csrf_header, spawn_stale_cleanup,
+    require_bearer_auth, require_csrf_header, spawn_anon_cleanup, spawn_stale_cleanup,
 };
 use crate::openapi;
 use crate::security::SecurityConfig;
@@ -248,6 +248,9 @@ pub fn build_router_with(
             RateLimiter::new(security.rate_limit.requests_per_minute)
                 .with_trust_proxy(security.rate_limit.trust_proxy),
         );
+        // WHY(#5664): Evict stale per-IP entries on a background task so the
+        // HashMap does not grow without bound over long-lived deployments.
+        spawn_anon_cleanup(Arc::clone(&limiter), shutdown.clone());
         router = router
             .layer(axum::middleware::from_fn(rate_limit))
             .layer(axum::Extension(limiter));

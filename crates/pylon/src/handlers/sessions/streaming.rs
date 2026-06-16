@@ -1403,7 +1403,21 @@ pub async fn reconnect_turn(
     let handle = TurnBufferHandle::new(buf);
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(32);
 
-    tokio::spawn(async move {
+    // WHY(#5678): Wire shutdown so reconnect tasks do not outlive graceful
+    // shutdown. The turn_cancel token is also passed into AbortOnDrop so
+    // client disconnect aborts the task (mirrors the send_message pattern).
+    let shutdown_token = state.shutdown.child_token();
+    let turn_cancel = CancellationToken::new();
+    let task_cancel = turn_cancel.clone();
+
+    // WHY(#5678): Bound the task lifetime to the turn buffer TTL (5 min) so a
+    // reconnect to an orphaned Running buffer cannot block indefinitely.
+    let max_live = Duration::from_secs(5 * 60);
+
+    let reconnect_task = tokio::spawn(async move {
+        let deadline = tokio::time::sleep(max_live);
+        tokio::pin!(deadline);
+
         let mut last_seq = last_event_id;
         let initial = handle.snapshot_after(last_seq).await;
         let live = initial.state == crate::turn_buffer::TurnState::Running;
@@ -1443,12 +1457,39 @@ pub async fn reconnect_turn(
                 break;
             }
 
-            snapshot.notified.await;
+            tokio::select! {
+                biased;
+                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                () = shutdown_token.cancelled() => {
+                    tracing::info!("shutdown: cancelling in-flight SSE reconnect");
+                    break;
+                }
+                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                () = task_cancel.cancelled() => break,
+                // SAFETY: cancel-safe. tokio::time::sleep is cancel-safe.
+                () = &mut deadline => {
+                    tracing::warn!("reconnect_turn exceeded max live time; closing stream");
+                    break;
+                }
+                // SAFETY: cancel-safe. Notified::notified() is cancel-safe.
+                () = snapshot.notified => {}
+            }
             snapshot = handle.snapshot_after(last_seq).await;
         }
     });
 
-    Ok(Sse::new(ReceiverStream::new(rx)).keep_alive(
+    // WHY(#5678): GuardedStream aborts the reconnect task on client disconnect
+    // and cancels `turn_cancel` so the loop exits cleanly (mirrors send_message).
+    let stream = GuardedStream {
+        inner: ReceiverStream::new(rx),
+        _guard: AbortOnDrop {
+            task: reconnect_task,
+            turn_cancel,
+            _idem_guard: None,
+        },
+    };
+
+    Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))
             .text("ping"),
