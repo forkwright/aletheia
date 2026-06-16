@@ -420,9 +420,15 @@ impl KnowledgeStore {
                 if let Some(sensitivity_str) = row.get(3).and_then(|v| v.get_str())
                     && !sensitivity_str.is_empty()
                 {
-                    result.sensitivity = sensitivity_str
-                        .parse::<crate::knowledge::FactSensitivity>()
-                        .unwrap_or_default();
+                    // SECURITY (#5753): warn and skip rather than silently
+                    // defaulting to Public on an undecodable sensitivity value.
+                    match sensitivity_str.parse::<crate::knowledge::FactSensitivity>() {
+                        Ok(s) => result.sensitivity = s,
+                        Err(_) => tracing::warn!(
+                            sensitivity_str,
+                            "hydrate: undecodable fact sensitivity; field not updated"
+                        ),
+                    }
                 }
             }
         }
@@ -526,11 +532,22 @@ impl KnowledgeStore {
                     .and_then(|v| v.get_str())
                     .unwrap_or("")
                     .to_owned();
-                let sensitivity = row
-                    .get(3)
-                    .and_then(|v| v.get_str())
-                    .and_then(|s| s.parse::<crate::knowledge::FactSensitivity>().ok())
-                    .unwrap_or_default();
+                let sensitivity = {
+                    // SECURITY (#5753): warn on undecodable sensitivity rather
+                    // than silently defaulting to Public.
+                    let raw = row.get(3).and_then(|v| v.get_str()).unwrap_or("");
+                    if raw.is_empty() {
+                        crate::knowledge::FactSensitivity::default()
+                    } else {
+                        match raw.parse::<crate::knowledge::FactSensitivity>() {
+                            Ok(s) => s,
+                            Err(_) => {
+                                tracing::warn!(raw, "search: undecodable fact sensitivity; defaulting to Public");
+                                crate::knowledge::FactSensitivity::default()
+                            }
+                        }
+                    }
+                };
                 let scope = row
                     .get(4)
                     .and_then(|v| v.get_str())
@@ -669,11 +686,22 @@ impl KnowledgeStore {
                     .and_then(|v| v.get_str())
                     .unwrap_or("")
                     .to_owned();
-                let sensitivity = row
-                    .get(3)
-                    .and_then(|v| v.get_str())
-                    .and_then(|s| s.parse::<crate::knowledge::FactSensitivity>().ok())
-                    .unwrap_or_default();
+                let sensitivity = {
+                    // SECURITY (#5753): warn on undecodable sensitivity rather
+                    // than silently defaulting to Public.
+                    let raw = row.get(3).and_then(|v| v.get_str()).unwrap_or("");
+                    if raw.is_empty() {
+                        crate::knowledge::FactSensitivity::default()
+                    } else {
+                        match raw.parse::<crate::knowledge::FactSensitivity>() {
+                            Ok(s) => s,
+                            Err(_) => {
+                                tracing::warn!(raw, "search: undecodable fact sensitivity; defaulting to Public");
+                                crate::knowledge::FactSensitivity::default()
+                            }
+                        }
+                    }
+                };
                 let scope = row
                     .get(4)
                     .and_then(|v| v.get_str())
