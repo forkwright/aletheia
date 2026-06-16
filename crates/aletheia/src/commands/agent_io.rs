@@ -692,6 +692,16 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             notes,
             messages,
             usage_records: Some(usage_records),
+            // WHY(#5783): faithfully round-trip session identity metadata that v1
+            // silently dropped; artefact_meta stays excluded (store-internal).
+            parent_session_id: session.origin.parent_session_id,
+            thread_id: session.origin.thread_id,
+            transport: session.origin.transport,
+            display_name: session.origin.display_name,
+            last_input_tokens: Some(session.metrics.last_input_tokens),
+            bootstrap_hash: session.metrics.bootstrap_hash,
+            last_distilled_at: session.metrics.last_distilled_at,
+            computed_context_tokens: Some(session.metrics.computed_context_tokens),
         });
     }
 
@@ -1079,11 +1089,20 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     let agent_file: mneme::portability::AgentFile =
         serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
 
-    if agent_file.version != mneme::portability::AGENT_FILE_VERSION {
+    // WHY(#5782): reject only FUTURE versions outright; older files upgrade
+    // transparently because every additive field carries serde(default).
+    if agent_file.version > mneme::portability::AGENT_FILE_VERSION {
         return Err(import_error(&ImportError::VersionMismatch {
             version: agent_file.version,
             expected: mneme::portability::AGENT_FILE_VERSION,
         }));
+    }
+    if agent_file.version < mneme::portability::AGENT_FILE_VERSION {
+        tracing::warn!(
+            from_version = agent_file.version,
+            to_version = mneme::portability::AGENT_FILE_VERSION,
+            "upgrading agent file from an older format version; absent fields default"
+        );
     }
 
     // WARNING(#4241): if --target-id is absent, the imported nous.id is
@@ -1352,17 +1371,22 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                         metrics: SessionMetrics {
                             token_count_estimate: session.token_count_estimate,
                             message_count: session.message_count,
-                            last_input_tokens: 0,
-                            bootstrap_hash: None,
+                            // WHY(#5783): restore identity metrics from the export;
+                            // absent in v1 files, where serde(default) yields None/0.
+                            last_input_tokens: session.last_input_tokens.unwrap_or(0),
+                            bootstrap_hash: session.bootstrap_hash.clone(),
                             distillation_count: session.distillation_count,
-                            last_distilled_at: None,
-                            computed_context_tokens: 0,
+                            last_distilled_at: session.last_distilled_at.clone(),
+                            computed_context_tokens: session.computed_context_tokens.unwrap_or(0),
                         },
                         origin: SessionOrigin {
-                            parent_session_id: None,
-                            thread_id: None,
-                            transport: Some("import".to_owned()),
-                            display_name: None,
+                            // WHY(#5783): faithful round-trip — preserve origin
+                            // metadata exactly as exported (including None), so a
+                            // re-export is byte-identical (the #4163 fidelity contract).
+                            parent_session_id: session.parent_session_id.clone(),
+                            thread_id: session.thread_id.clone(),
+                            transport: session.transport.clone(),
+                            display_name: session.display_name.clone(),
                         },
                         artefact_meta: None,
                     },
@@ -2356,6 +2380,14 @@ mod tests {
                     cache_write_tokens: 4,
                     model: Some("claude-sonnet-4-6".to_owned()),
                 }]),
+                parent_session_id: None,
+                thread_id: None,
+                transport: None,
+                display_name: None,
+                last_input_tokens: None,
+                bootstrap_hash: None,
+                last_distilled_at: None,
+                computed_context_tokens: None,
             }],
             memory: None,
             knowledge: None,
@@ -3912,6 +3944,14 @@ workspace = "nous/{agent_id}"
                 tool_name: None,
             }],
             usage_records: None,
+            parent_session_id: None,
+            thread_id: None,
+            transport: None,
+            display_name: None,
+            last_input_tokens: None,
+            bootstrap_hash: None,
+            last_distilled_at: None,
+            computed_context_tokens: None,
         }];
         file
     }
@@ -3945,7 +3985,9 @@ workspace = "nous/{agent_id}"
     }
 
     #[test]
-    fn import_rejects_old_version() {
+    fn import_accepts_v1_file() {
+        // WHY(#5782): an older-version file must upgrade transparently rather than
+        // hard-reject — additive fields carry serde(default).
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -3954,7 +3996,7 @@ workspace = "nous/{agent_id}"
         let mut agent_file = minimal_agent_file();
         agent_file.version = mneme::portability::AGENT_FILE_VERSION - 1;
         let json = serde_json::to_string(&agent_file).unwrap();
-        let agent_path = dir.path().join("old.agent.json");
+        let agent_path = dir.path().join("v1.agent.json");
         std::fs::write(&agent_path, json).unwrap();
 
         let args = ImportArgs {
@@ -3966,10 +4008,8 @@ workspace = "nous/{agent_id}"
             dry_run: false,
             allow_unknown_values: false,
         };
-        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("agent file is version"), "got: {msg}");
-        assert!(msg.contains("requires v"), "got: {msg}");
+        import_agent(Some(&dir.path().to_path_buf()), &args)
+            .expect("older-version agent file should import after transparent upgrade");
     }
 
     #[test]
