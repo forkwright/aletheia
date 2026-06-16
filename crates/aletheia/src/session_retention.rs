@@ -123,8 +123,8 @@ impl RetentionExecutor for SessionRetentionAdapter {
             sessions_cleaned: counters.sessions_cleaned,
             messages_cleaned: counters.messages_cleaned,
             blackboard_entries_cleaned,
-            bytes_freed: counters.bytes_freed,
             cap_sessions_cleaned: counters.cap_sessions_cleaned,
+            bytes_freed: counters.bytes_freed,
         })
     }
 }
@@ -223,6 +223,7 @@ fn enforce_session_cap(
     let all_sessions = store
         .list_sessions(None)
         .map_err(|e| retention_failure(format!("list sessions failed: {e}")))?;
+
     let mut counters = RetentionCounters::default();
 
     let mut by_nous: std::collections::HashMap<&str, Vec<&Session>> =
@@ -249,7 +250,7 @@ fn enforce_session_cap(
                         None
                     };
                     store.delete_session(&session.id).map_err(|e| {
-                        retention_failure(format!("delete session '{}' failed: {e}", session.id))
+                        retention_failure(format!("delete session {} failed: {e}", session.id))
                     })?;
                     counters.sessions_cleaned = counters.sessions_cleaned.saturating_add(1);
                     counters.cap_sessions_cleaned = counters.cap_sessions_cleaned.saturating_add(1);
@@ -270,6 +271,7 @@ fn enforce_session_cap(
             "session cap retention pass completed"
         );
     }
+
     Ok(counters)
 }
 

@@ -323,6 +323,13 @@ pub struct TaskStatus {
     pub in_flight: bool,
     /// Most recent error message, if the last execution failed. (#2212)
     pub last_error: Option<String>,
+    /// Where this status was sourced from: `"live"` (in-memory runner) or
+    /// `"persisted"` (restored from the task-state store). (#5131)
+    #[serde(default = "default_data_source")]
+    pub data_source: String,
+    /// ISO 8601 timestamp of the underlying data (last run), if known. (#5131)
+    #[serde(default)]
+    pub as_of: Option<String>,
     /// Number of non-fatal errors reported by the last execution.
     /// Maintenance tasks may complete with partial errors (e.g. knowledge
     /// graph updates that fail per-item but do not abort the whole task).
@@ -336,6 +343,10 @@ pub struct TaskStatus {
     /// Human-readable reason when the task is unavailable or not scheduled.
     #[serde(default)]
     pub reason: Option<String>,
+}
+
+fn default_data_source() -> String {
+    "live".to_owned()
 }
 
 #[inline]
@@ -475,6 +486,8 @@ mod tests {
             consecutive_failures: 0,
             in_flight: false,
             last_error: None,
+            data_source: "live".to_owned(),
+            as_of: None,
             last_errors: 3,
             available: true,
             reason: Some("test reason".to_owned()),

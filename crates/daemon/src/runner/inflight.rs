@@ -4,7 +4,7 @@ use tracing::Instrument;
 
 use crate::schedule::TaskStatus;
 
-use super::{DaemonOutputMode, ExecutionResult, TaskRunner, truncate_output};
+use super::{DaemonOutputMode, ExecutionResult, TaskOutcome, TaskRunner, truncate_output};
 
 impl TaskRunner {
     /// Get status of all registered tasks.
@@ -13,6 +13,14 @@ impl TaskRunner {
     ///
     /// O(t) where t is the number of registered tasks.
     pub fn status(&self) -> Vec<TaskStatus> {
+        // WHY(#5131): when a state store is attached the displayed numbers were
+        // restored from disk, so label them "persisted" to disambiguate from a
+        // fresh in-memory runner that has never executed a task.
+        let data_source = if self.state_store.is_some() {
+            "persisted"
+        } else {
+            "live"
+        };
         self.tasks
             .iter()
             .map(|t| TaskStatus {
@@ -25,6 +33,8 @@ impl TaskRunner {
                 consecutive_failures: t.consecutive_failures,
                 in_flight: self.in_flight.contains_key(&t.def.id),
                 last_error: t.last_error.clone(),
+                data_source: data_source.to_owned(),
+                as_of: t.last_run.map(|ts| ts.to_string()),
                 last_errors: t.last_errors,
                 available: true,
                 reason: None,
@@ -81,19 +91,25 @@ impl TaskRunner {
                 let duration = in_flight.started_at.elapsed();
 
                 match in_flight.handle.await {
-                    Ok(Ok(result)) if result.success => {
-                        self.log_result(&task_id, &result);
-                        self.maybe_queue_self_prompt(&task_id, &result);
-                        self.record_task_completion(&task_id, duration, result.errors);
-                    }
                     Ok(Ok(result)) => {
                         self.log_result(&task_id, &result);
-                        let reason = result
-                            .output
-                            .as_deref()
-                            .filter(|s| !s.is_empty())
-                            .unwrap_or("task returned success=false");
-                        self.record_task_failure(&task_id, reason);
+                        self.maybe_queue_self_prompt(&task_id, &result);
+                        match result.outcome {
+                            TaskOutcome::Success => {
+                                self.record_task_completion(&task_id, duration, result.errors);
+                            }
+                            TaskOutcome::Failed => {
+                                let reason = result
+                                    .output
+                                    .as_deref()
+                                    .filter(|s| !s.is_empty())
+                                    .unwrap_or("task reported failure");
+                                self.record_task_failure(&task_id, reason);
+                            }
+                            TaskOutcome::Skipped => {
+                                self.record_task_skip(&task_id);
+                            }
+                        }
                     }
                     Ok(Err(e)) => {
                         tracing::warn!(
@@ -140,7 +156,7 @@ impl TaskRunner {
         }
     }
 
-    /// Check if a completed task's output contains a `## Follow-up` section
+    /// Check if a completed task output contains a Follow-up section
     /// and, if self-prompting is enabled and rate-allowed, spawn a self-prompt.
     ///
     /// WHY: self-prompting closes the feedback loop. A prosoche check that finds
@@ -177,7 +193,7 @@ impl TaskRunner {
 
         // WHY: spawn as a detached task. Self-prompt execution should not block
         // the main scheduler loop. Failures are logged but do not affect the
-        // originating task's status.
+        // originating task status.
         let task_name = "self_prompt";
         tokio::spawn(
             async move {
@@ -195,7 +211,7 @@ impl TaskRunner {
                 )
                 .await;
                 match result {
-                    Ok(r) if r.success => {
+                    Ok(r) if r.is_success() => {
                         tracing::info!(
                             nous_id = %nous_id,
                             source_task = %task_id_owned,

@@ -34,7 +34,7 @@ async fn self_prompt_not_queued_when_disabled() {
     runner.register(make_echo_task("test-task"));
 
     let result = ExecutionResult {
-        success: true,
+        outcome: TaskOutcome::Success,
         errors: 0,
         output: Some("## Follow-up\nInvestigate disk usage.\n".to_owned()),
     };
@@ -64,7 +64,7 @@ async fn self_prompt_queued_when_enabled_with_follow_up() {
     runner.register(make_echo_task("test-task"));
 
     let result = ExecutionResult {
-        success: true,
+        outcome: TaskOutcome::Success,
         errors: 0,
         output: Some("## Follow-up\nCheck /data disk usage.\n".to_owned()),
     };
@@ -89,7 +89,7 @@ async fn self_prompt_rate_limited_after_max() {
     runner.register(make_echo_task("test-task"));
 
     let result = ExecutionResult {
-        success: true,
+        outcome: TaskOutcome::Success,
         errors: 0,
         output: Some("## Follow-up\nFirst action.\n".to_owned()),
     };
@@ -97,7 +97,7 @@ async fn self_prompt_rate_limited_after_max() {
     assert_eq!(runner.self_prompt_limiter.count("test-nous"), 1);
 
     let result2 = ExecutionResult {
-        success: true,
+        outcome: TaskOutcome::Success,
         errors: 0,
         output: Some("## Follow-up\nSecond action.\n".to_owned()),
     };
@@ -121,7 +121,7 @@ fn self_prompt_no_follow_up_no_dispatch() {
     runner.register(make_echo_task("test-task"));
 
     let result = ExecutionResult {
-        success: true,
+        outcome: TaskOutcome::Success,
         errors: 0,
         output: Some("Everything is fine. No issues.".to_owned()),
     };
@@ -222,7 +222,7 @@ async fn builtin_prosoche_without_bridge_runs_local_check() {
 
     assert!(result.is_ok());
     let exec_result = result.unwrap();
-    assert!(exec_result.success);
+    assert!(exec_result.is_success());
     assert!(
         exec_result
             .output
@@ -246,7 +246,7 @@ async fn probe_audit_without_bridge_returns_failure() {
 
     assert!(result.is_ok());
     let exec_result = result.unwrap();
-    assert!(!exec_result.success);
+    assert!(!exec_result.is_success());
     assert!(
         exec_result
             .output
@@ -275,7 +275,7 @@ async fn self_audit_without_bridge_runs_local_runner() {
 
     assert!(result.is_ok());
     let exec_result = result.unwrap();
-    assert!(exec_result.success);
+    assert!(exec_result.is_success());
     assert!(
         exec_result
             .output
@@ -299,7 +299,7 @@ async fn knowledge_task_without_executor_returns_unconfigured_failure() {
 
     assert!(result.is_ok());
     let exec_result = result.unwrap();
-    assert!(!exec_result.success);
+    assert!(!exec_result.is_success());
     assert!(
         exec_result
             .output

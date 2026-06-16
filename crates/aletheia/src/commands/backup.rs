@@ -25,9 +25,10 @@ pub(crate) enum BackupAction {
     },
     /// Prune old whole-instance backups
     Prune {
-        /// Number of backups to keep
-        #[arg(long, default_value_t = 5)]
-        keep: usize,
+        /// Number of backups to keep. Defaults to the configured
+        /// `maintenance.backup.backup_retention_count`. (#5136)
+        #[arg(long)]
+        keep: Option<usize>,
         /// Skip confirmation prompt
         #[arg(long)]
         yes: bool,
@@ -55,9 +56,10 @@ pub(crate) struct BackupArgs {
     /// Prune old backups
     #[arg(long)]
     pub prune: bool,
-    /// Number of backups to keep when pruning
-    #[arg(long, default_value_t = 5)]
-    pub keep: usize,
+    /// Number of backups to keep when pruning. Defaults to the configured
+    /// `maintenance.backup.backup_retention_count`. (#5136)
+    #[arg(long)]
+    pub keep: Option<usize>,
     /// Output as JSON (for --list)
     #[arg(long)]
     pub json: bool,
@@ -73,15 +75,18 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
         Some(BackupAction::Verify { path }) => run_verify(path),
         Some(BackupAction::List { json }) => {
             let oikos = super::resolve_oikos(instance_root)?;
-            run_instance(&oikos, true, false, 5, *json, false)
+            let keep = configured_retention_count(&oikos);
+            run_instance(&oikos, true, false, keep, *json, false)
         }
         Some(BackupAction::Prune { keep, yes }) => {
             let oikos = super::resolve_oikos(instance_root)?;
-            run_instance(&oikos, false, true, *keep, false, *yes)
+            let keep = keep.unwrap_or_else(|| configured_retention_count(&oikos));
+            run_instance(&oikos, false, true, keep, false, *yes)
         }
         Some(BackupAction::Create) => {
             let oikos = super::resolve_oikos(instance_root)?;
-            run_instance(&oikos, false, false, 5, false, false)
+            let keep = configured_retention_count(&oikos);
+            run_instance(&oikos, false, false, keep, false, false)
         }
         None => {
             let oikos = super::resolve_oikos(instance_root)?;
@@ -93,9 +98,22 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
                 yes,
                 ..
             } = args;
+            let keep = keep.unwrap_or_else(|| configured_retention_count(&oikos));
             run_instance(&oikos, list, prune, keep, json, yes)
         }
     }
+}
+
+/// Resolve the configured whole-instance backup retention count. (#5136)
+///
+/// Falls back to the [`BackupSettings`](taxis::config::BackupSettings) default
+/// (7) when the config cannot be loaded, so the CLI never silently keeps the
+/// old hard-coded value of 5.
+fn configured_retention_count(oikos: &taxis::oikos::Oikos) -> usize {
+    taxis::loader::load_config(oikos).map_or_else(
+        |_| taxis::config::BackupSettings::default().backup_retention_count,
+        |config| config.maintenance.backup.backup_retention_count,
+    )
 }
 
 // ── Verify ─────────────────────────────────────────────────────────────────
@@ -203,6 +221,7 @@ fn run_instance(
         backup_dir: oikos.backups().join("instance"),
         interval_hours: 24,
         retention_count: keep,
+        additional_workspaces: Vec::new(),
     };
     let manager = InstanceBackup::new(config);
 
@@ -364,6 +383,7 @@ mod tests {
                 exclusion_reason: None,
             }],
             optional_stores: Vec::new(),
+            workspace_omissions: Vec::new(),
             total_bytes: 0,
         };
         write_text_file(

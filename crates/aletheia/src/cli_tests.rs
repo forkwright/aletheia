@@ -477,7 +477,7 @@ fn backup_prune_with_keep_parses() {
             ..
         })) => {
             assert!(prune, "prune flag should be set");
-            assert_eq!(keep, 3, "keep count should be set");
+            assert_eq!(keep, Some(3), "keep count should be set");
             assert!(yes, "yes flag should be set");
         }
         _ => panic!("expected Backup command"),
@@ -516,7 +516,7 @@ fn backup_prune_subcommand_parses() {
             action: Some(BackupAction::Prune { keep, yes }),
             ..
         })) => {
-            assert_eq!(keep, 7, "keep should be set");
+            assert_eq!(keep, Some(7), "keep should be set");
             assert!(yes, "yes should be set");
         }
         _ => panic!("expected Backup Prune subcommand"),

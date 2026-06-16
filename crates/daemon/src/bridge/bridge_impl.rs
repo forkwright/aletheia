@@ -19,11 +19,9 @@ impl DaemonBridge for NoopBridge {
     ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
         Box::pin(async {
             tracing::warn!("no daemon bridge configured — prompt not sent");
-            Ok(ExecutionResult {
-                success: false,
-                errors: 0,
-                output: Some("no bridge configured".to_owned()),
-            })
+            Ok(ExecutionResult::skipped(Some(
+                "no bridge configured".to_owned(),
+            )))
         })
     }
 }

@@ -22,6 +22,8 @@ use crate::prosoche_audit::{
     BehaviorPatternSnapshot, ProsocheAuditRunner, ProsocheState, SessionSnapshot,
 };
 use crate::runner::ExecutionResult;
+#[cfg(test)]
+use crate::runner::TaskOutcome;
 use crate::schedule::{BuiltinTask, TaskAction};
 
 pub(crate) struct ExecutionContext<'a> {
@@ -110,11 +112,7 @@ async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
 
     if output.status.success() {
         tracing::debug!(cmd = %cmd, stdout = %stdout, "command succeeded");
-        Ok(ExecutionResult {
-            success: true,
-            errors: 0,
-            output: Some(stdout.into_owned()),
-        })
+        Ok(ExecutionResult::success(Some(stdout.into_owned())))
     } else {
         let reason = if stderr.is_empty() {
             format!("exit code: {}", output.status)
@@ -238,14 +236,10 @@ pub(crate) async fn execute_builtin_with_behavior(
                     Ok(result) => {
                         tracing::debug!(
                             nous_id = %nous_id,
-                            success = result.success,
+                            success = result.is_success(),
                             "prosoche dispatch succeeded"
                         );
-                        Ok(ExecutionResult {
-                            success: true,
-                            errors: 0,
-                            output: Some("dispatched".to_owned()),
-                        })
+                        Ok(ExecutionResult::success(Some("dispatched".to_owned())))
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -253,11 +247,9 @@ pub(crate) async fn execute_builtin_with_behavior(
                             error = %e,
                             "prosoche dispatch failed"
                         );
-                        Ok(ExecutionResult {
-                            success: false,
-                            errors: 0,
-                            output: Some(format!("dispatch failed: {e}")),
-                        })
+                        Ok(ExecutionResult::failed(Some(format!(
+                            "dispatch failed: {e}"
+                        ))))
                     }
                 }
             } else {
@@ -272,14 +264,10 @@ pub(crate) async fn execute_builtin_with_behavior(
                     check = check.with_knowledge_store(store);
                 }
                 let result = check.run().await?;
-                Ok(ExecutionResult {
-                    success: true,
-                    errors: 0,
-                    output: Some(
-                        serde_json::to_string(&result)
-                            .unwrap_or_else(|_| "prosoche check complete".to_owned()),
-                    ),
-                })
+                Ok(ExecutionResult::success(Some(
+                    serde_json::to_string(&result)
+                        .unwrap_or_else(|_| "prosoche check complete".to_owned()),
+                )))
             }
         }
         BuiltinTask::DecayRefresh
@@ -313,14 +301,10 @@ pub(crate) async fn execute_builtin_with_behavior(
                 bytes_freed = report.bytes_freed,
                 "maintenance: trace rotation complete"
             );
-            Ok(ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some(format!(
-                    "{} files rotated, {} pruned, {} bytes freed",
-                    report.files_rotated, report.files_pruned, report.bytes_freed
-                )),
-            })
+            Ok(ExecutionResult::success(Some(format!(
+                "{} files rotated, {} pruned, {} bytes freed",
+                report.files_rotated, report.files_pruned, report.bytes_freed
+            ))))
         }
         BuiltinTask::DriftDetection => {
             let config = maintenance
@@ -342,13 +326,9 @@ pub(crate) async fn execute_builtin_with_behavior(
                     template_path = %template_display,
                     "maintenance: drift detection template unavailable"
                 );
-                return Ok(ExecutionResult {
-                    success: false,
-                    errors: 0,
-                    output: Some(format!(
-                        "drift detection template unavailable: {template_display}"
-                    )),
-                });
+                return Ok(ExecutionResult::failed(Some(format!(
+                    "drift detection template unavailable: {template_display}"
+                ))));
             }
 
             tracing::info!(
@@ -390,17 +370,13 @@ pub(crate) async fn execute_builtin_with_behavior(
                 );
             }
 
-            Ok(ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some(format!(
-                    "{} missing, {} optional missing, {} extra (template: {})",
-                    report.missing_files.len(),
-                    report.optional_missing_files.len(),
-                    report.extra_files.len(),
-                    template_display,
-                )),
-            })
+            Ok(ExecutionResult::success(Some(format!(
+                "{} missing, {} optional missing, {} extra (template: {})",
+                report.missing_files.len(),
+                report.optional_missing_files.len(),
+                report.extra_files.len(),
+                template_display,
+            ))))
         }
         BuiltinTask::DbSizeMonitor => {
             let config = maintenance
@@ -431,20 +407,14 @@ pub(crate) async fn execute_builtin_with_behavior(
                 databases = %summary.join(", "),
                 "maintenance: db monitor complete"
             );
-            Ok(ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some(summary.join(", ")),
-            })
+            Ok(ExecutionResult::success(Some(summary.join(", "))))
         }
         BuiltinTask::RoutingStoreRefresh => {
             let Some(store) = maintenance.and_then(|config| config.after_action_store.clone())
             else {
-                return Ok(ExecutionResult {
-                    success: false,
-                    errors: 0,
-                    output: Some("skipped — no after-action store configured".to_owned()),
-                });
+                return Ok(ExecutionResult::skipped(Some(
+                    "skipped — no after-action store configured".to_owned(),
+                )));
             };
 
             store.refresh().await.map_err(|source| {
@@ -456,11 +426,9 @@ pub(crate) async fn execute_builtin_with_behavior(
             })?;
 
             tracing::info!("maintenance: routing after-action store refresh complete");
-            Ok(ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some("routing after-action store refreshed".to_owned()),
-            })
+            Ok(ExecutionResult::success(Some(
+                "routing after-action store refreshed".to_owned(),
+            )))
         }
         BuiltinTask::SelfAudit => {
             let audit_dir = maintenance
@@ -486,11 +454,11 @@ pub(crate) async fn execute_builtin_with_behavior(
                     outcome.check_summary.len()
                 )
             };
-            Ok(ExecutionResult {
-                success: outcome.last_persist_error.is_none(),
-                errors: 0,
-                output: Some(output),
-            })
+            if outcome.last_persist_error.is_none() {
+                Ok(ExecutionResult::success(Some(output)))
+            } else {
+                Ok(ExecutionResult::failed(Some(output)))
+            }
         }
         BuiltinTask::ProbeAudit => execute_probe_audit(nous_id, bridge, cancel.clone()).await,
         BuiltinTask::EvolutionSearch => {
@@ -513,13 +481,9 @@ pub(crate) async fn execute_builtin_with_behavior(
             // extracting a follow-up from prosoche output. This arm handles
             // the case where it's registered as a standalone task (should not
             // happen in normal operation).
-            Ok(ExecutionResult {
-                success: false,
-                errors: 0,
-                output: Some(
-                    "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
-                ),
-            })
+            Ok(ExecutionResult::failed(Some(
+                "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
+            )))
         }
         BuiltinTask::ProposeRules => {
             let data_dir = maintenance.map_or_else(
@@ -556,13 +520,9 @@ pub(crate) async fn execute_builtin_with_behavior(
                 context: "propose-rules",
             })??;
 
-            Ok(ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some(
-                    "rule proposals written to instance/data/rule_proposals.toml".to_owned(),
-                ),
-            })
+            Ok(ExecutionResult::success(Some(
+                "rule proposals written to instance/data/rule_proposals.toml".to_owned(),
+            )))
         }
         BuiltinTask::InstanceBackup => {
             let config = maintenance
@@ -601,14 +561,10 @@ pub(crate) async fn execute_builtin_with_behavior(
                 pruned = report.backups_pruned,
                 "maintenance: whole-instance backup complete"
             );
-            Ok(ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some(format!(
-                    "{} files copied ({} bytes), {} old backups pruned",
-                    report.files_copied, report.bytes_copied, report.backups_pruned
-                )),
-            })
+            Ok(ExecutionResult::success(Some(format!(
+                "{} files copied ({} bytes), {} old backups pruned",
+                report.files_copied, report.bytes_copied, report.backups_pruned
+            ))))
         }
         BuiltinTask::PromptAuditRotation => {
             let config = maintenance
@@ -631,27 +587,21 @@ pub(crate) async fn execute_builtin_with_behavior(
                 bytes_freed = report.bytes_freed,
                 "maintenance: prompt audit rotation complete"
             );
-            Ok(ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some(format!(
-                    "{} files pruned, {} retained, {} malformed skipped, {} fallback-pruned, {} bytes freed",
-                    report.files_pruned,
-                    report.files_retained,
-                    report.malformed_files_skipped,
-                    report.fallback_files_pruned,
-                    report.bytes_freed
-                )),
-            })
+            Ok(ExecutionResult::success(Some(format!(
+                "{} files pruned, {} retained, {} malformed skipped, {} fallback-pruned, {} bytes freed",
+                report.files_pruned,
+                report.files_retained,
+                report.malformed_files_skipped,
+                report.fallback_files_pruned,
+                report.bytes_freed
+            ))))
         }
         BuiltinTask::RetentionExecution => {
             let Some(executor) = retention_executor else {
                 tracing::info!("retention execution skipped — no executor configured");
-                return Ok(ExecutionResult {
-                    success: true,
-                    errors: 0,
-                    output: Some("skipped — no executor".to_owned()),
-                });
+                return Ok(ExecutionResult::skipped(Some(
+                    "skipped — no executor".to_owned(),
+                )));
             };
             let summary = tokio::task::spawn_blocking(move || {
                 let _span = tracing::info_span!("retention_execution").entered();
@@ -670,18 +620,14 @@ pub(crate) async fn execute_builtin_with_behavior(
                 bytes_freed = summary.bytes_freed,
                 "maintenance: retention complete"
             );
-            Ok(ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some(format!(
-                    "{} sessions ({} cap), {} messages, {} blackboard entries cleaned, {} bytes freed",
-                    summary.sessions_cleaned,
-                    summary.cap_sessions_cleaned,
-                    summary.messages_cleaned,
-                    summary.blackboard_entries_cleaned,
-                    summary.bytes_freed
-                )),
-            })
+            Ok(ExecutionResult::success(Some(format!(
+                "{} sessions ({} cap), {} messages, {} blackboard entries cleaned, {} bytes freed",
+                summary.sessions_cleaned,
+                summary.cap_sessions_cleaned,
+                summary.messages_cleaned,
+                summary.blackboard_entries_cleaned,
+                summary.bytes_freed
+            ))))
         }
     }
 }
@@ -700,11 +646,9 @@ async fn execute_probe_audit(
     cancel: CancellationToken,
 ) -> Result<ExecutionResult> {
     let Some(bridge) = bridge else {
-        return Ok(ExecutionResult {
-            success: false,
-            errors: 0,
-            output: Some("no bridge configured".to_owned()),
-        });
+        return Ok(ExecutionResult::skipped(Some(
+            "no bridge configured".to_owned(),
+        )));
     };
 
     let probe_set = ProbeSet::default_probes();
@@ -756,11 +700,12 @@ async fn execute_probe_audit(
                 }
             }
 
-            Ok(ExecutionResult {
-                success: dispatch_result.success,
-                errors: 0,
-                output: Some(summary.one_line()),
-            })
+            let outcome = if dispatch_result.is_success() {
+                ExecutionResult::success(Some(summary.one_line()))
+            } else {
+                ExecutionResult::failed(Some(summary.one_line()))
+            };
+            Ok(outcome)
         }
         Err(e) => {
             tracing::warn!(
@@ -768,11 +713,9 @@ async fn execute_probe_audit(
                 error = %e,
                 "probe-audit dispatch failed"
             );
-            Ok(ExecutionResult {
-                success: false,
-                errors: 0,
-                output: Some(format!("probe-audit dispatch failed: {e}")),
-            })
+            Ok(ExecutionResult::failed(Some(format!(
+                "probe-audit dispatch failed: {e}"
+            ))))
         }
     }
 }
@@ -788,11 +731,9 @@ async fn execute_knowledge_task(
             task = ?builtin,
             "knowledge maintenance skipped: no executor configured"
         );
-        return Ok(ExecutionResult {
-            success: false,
-            errors: 0,
-            output: Some("no knowledge maintenance executor configured".to_owned()),
-        });
+        return Ok(ExecutionResult::skipped(Some(
+            "no knowledge maintenance executor configured".to_owned(),
+        )));
     };
 
     let task_name = format!("{builtin:?}");
@@ -915,11 +856,9 @@ async fn execute_lesson_extraction(
         let training_dir = candidates.iter().find(|p| p.exists());
 
         let Some(training_dir) = training_dir else {
-            return Ok(ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some("skipped: no training data directory found".to_owned()),
-            });
+            return Ok(ExecutionResult::skipped(Some(
+                "skipped: no training data directory found".to_owned(),
+            )));
         };
 
         execute_lesson_extraction_from_dir(&nous_id, training_dir, executor.as_ref())
@@ -1011,13 +950,9 @@ fn execute_ops_fact_extraction_blocking(
         "operational fact extraction complete"
     );
 
-    Ok(ExecutionResult {
-        success: true,
-        errors: 0,
-        output: Some(format!(
-            "{count} operational facts extracted, {count} inserted"
-        )),
-    })
+    Ok(ExecutionResult::success(Some(format!(
+        "{count} operational facts extracted, {count} inserted"
+    ))))
 }
 
 fn execute_lesson_extraction_from_dir(
@@ -1051,16 +986,12 @@ fn execute_lesson_extraction_from_dir(
         "lesson extraction complete"
     );
 
-    Ok(ExecutionResult {
-        success: true,
-        errors: 0,
-        output: Some(format!(
-            "{lesson_count} lessons extracted, {} facts produced, {inserted} inserted ({} violations, {} lint summaries read)",
-            durable_facts.len(),
-            extraction.violations_read,
-            extraction.lint_summaries_read,
-        )),
-    })
+    Ok(ExecutionResult::success(Some(format!(
+        "{lesson_count} lessons extracted, {} facts produced, {inserted} inserted ({} violations, {} lint summaries read)",
+        durable_facts.len(),
+        extraction.violations_read,
+        extraction.lint_summaries_read,
+    ))))
 }
 
 fn extracted_facts_to_facts(

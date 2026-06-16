@@ -25,7 +25,7 @@ pub use gateway::{
     PerUserRateLimitConfig, RateLimitConfig, TlsConfig,
 };
 pub use maintenance::{
-    CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
+    BackupSettings, CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
     DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, KnowledgeGraphMcpConfig,
     LoggingSettings, MaintenanceSettings, McpConfig, McpRateLimitConfig, PromptAuditSettings,
     ProsocheActiveWindowSettings, ProsocheExternalTimerSettings, ProsocheMaintenanceSettings,

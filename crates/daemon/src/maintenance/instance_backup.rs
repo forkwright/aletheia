@@ -34,6 +34,12 @@ pub struct InstanceBackupConfig {
     pub interval_hours: u64,
     /// Maximum number of backup snapshots to retain.
     pub retention_count: usize,
+    /// Additional agent workspaces to include: `(logical name, source path)`. (#5139)
+    ///
+    /// Each path is classified at backup time: paths inside `instance_root` are
+    /// copied; absolute paths outside the root are recorded as omissions with a
+    /// warning rather than silently dropped.
+    pub additional_workspaces: Vec<(String, PathBuf)>,
 }
 
 impl Default for InstanceBackupConfig {
@@ -44,8 +50,20 @@ impl Default for InstanceBackupConfig {
             backup_dir: PathBuf::from("instance/data/backups/instance"),
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         }
     }
+}
+
+/// Records an agent workspace that was not copied into a backup set. (#5139)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceOmission {
+    /// Logical workspace name.
+    pub name: String,
+    /// Source path that was omitted.
+    pub source_path: PathBuf,
+    /// Why the workspace was omitted (e.g. `absolute-outside-root`).
+    pub reason: String,
 }
 
 /// A single store entry recorded in the backup manifest.
@@ -87,6 +105,9 @@ pub struct BackupManifest {
     pub stores: Vec<StoreEntry>,
     /// Optional data directories copied when present.
     pub optional_stores: Vec<StoreEntry>,
+    /// Agent workspaces that were not copied into this set. (#5139)
+    #[serde(default)]
+    pub workspace_omissions: Vec<WorkspaceOmission>,
     /// Total bytes copied across all stores.
     pub total_bytes: u64,
 }
@@ -125,6 +146,7 @@ pub struct InstanceBackup {
 struct BackupBuild {
     stores: Vec<StoreEntry>,
     optional_stores: Vec<StoreEntry>,
+    workspace_omissions: Vec<WorkspaceOmission>,
     total_bytes: u64,
     total_files: u32,
     snapshot_time: String,
@@ -147,6 +169,7 @@ impl BackupBuild {
         Self {
             stores: Vec::new(),
             optional_stores: Vec::new(),
+            workspace_omissions: Vec::new(),
             total_bytes: 0,
             total_files: 0,
             snapshot_time: jiff::Zoned::now().to_string(),
@@ -255,6 +278,7 @@ impl InstanceBackup {
         self.copy_config(&backup_path, &mut build)?;
         self.copy_workspace_dirs(&backup_path, &mut build)?;
         self.copy_configured_agent_workspaces(&backup_path, &mut build)?;
+        self.copy_additional_workspaces(&backup_path, &mut build)?;
         self.copy_optional_data_dirs(&backup_path, &mut build)?;
         self.copy_prompt_audit_dirs(&backup_path, &mut build)?;
 
@@ -290,7 +314,17 @@ impl InstanceBackup {
         // WHY: include subsecond precision to avoid collisions when backups
         // are triggered in rapid succession (e.g. tests or manual runs).
         let timestamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S%.3f").to_string();
-        Ok(self.config.backup_dir.join(timestamp))
+        let backup_path = self.config.backup_dir.join(timestamp);
+
+        // WHY(#5140): a backup set contains credentials and session data; create
+        // the set directory eagerly with owner-only (0o700) permissions so the
+        // copied contents are never world-readable on a shared host.
+        fs::create_dir_all(&backup_path).context(error::MaintenanceIoSnafu {
+            context: format!("creating backup set dir {}", backup_path.display()),
+        })?;
+        set_dir_restrictive(&backup_path);
+
+        Ok(backup_path)
     }
 
     fn required_store_paths(&self) -> error::Result<(PathBuf, PathBuf)> {
@@ -349,6 +383,63 @@ impl InstanceBackup {
                 PathBuf::from("config"),
                 false,
             )?;
+
+            // WHY(#5140): credentials and TLS keys are copied verbatim into the
+            // backup; tighten the copied files to owner-only (0o600) so a backup
+            // set never leaks secrets through permissive file modes.
+            for sub in ["credentials", "tls"] {
+                let dst = backup_path.join("config").join(sub);
+                if dst.exists() {
+                    set_files_restrictive(&dst);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Copy operator-configured additional agent workspaces. (#5139)
+    ///
+    /// Paths inside `instance_root` are copied. Absolute paths outside the root
+    /// are recorded as omissions with a warning rather than silently dropped,
+    /// because copying arbitrary external paths into a backup set is unsafe.
+    fn copy_additional_workspaces(
+        &self,
+        backup_path: &Path,
+        build: &mut BackupBuild,
+    ) -> error::Result<()> {
+        for (name, src) in &self.config.additional_workspaces {
+            if !src.exists() {
+                warn!(
+                    workspace = %name,
+                    path = %src.display(),
+                    "additional workspace not found — skipping"
+                );
+                build.workspace_omissions.push(WorkspaceOmission {
+                    name: name.clone(),
+                    source_path: src.clone(),
+                    reason: String::from("missing"),
+                });
+                continue;
+            }
+
+            if src.starts_with(&self.config.instance_root) {
+                let rel_path = src
+                    .strip_prefix(&self.config.instance_root)
+                    .unwrap_or(src.as_path());
+                let rel = Path::new("workspace").join(rel_path);
+                build.copy_entry(name, src.clone(), &backup_path.join(&rel), rel, true)?;
+            } else {
+                warn!(
+                    workspace = %name,
+                    path = %src.display(),
+                    "additional workspace is outside instance root — omitting from backup"
+                );
+                build.workspace_omissions.push(WorkspaceOmission {
+                    name: name.clone(),
+                    source_path: src.clone(),
+                    reason: String::from("absolute-outside-root"),
+                });
+            }
         }
         Ok(())
     }
@@ -530,6 +621,7 @@ impl InstanceBackup {
             source_root: self.config.instance_root.clone(),
             stores: build.stores,
             optional_stores: build.optional_stores,
+            workspace_omissions: build.workspace_omissions,
             total_bytes: build.total_bytes,
         };
         let manifest_path = backup_path.join("manifest.json");
@@ -564,12 +656,20 @@ impl InstanceBackup {
             if !path.is_dir() || !path.join("manifest.json").is_file() {
                 continue;
             }
-            let metadata = entry.metadata().context(error::MaintenanceIoSnafu {
-                context: format!("reading backup metadata: {}", path.display()),
-            })?;
-            let created = metadata.modified().context(error::MaintenanceIoSnafu {
-                context: format!("reading backup mtime: {}", path.display()),
-            })?;
+
+            // WHY(#5138): order by the manifest's recorded `created_at` rather
+            // than directory mtime, which a restore/rsync/touch can rewrite and
+            // would corrupt auto-prune ordering. A manifest that cannot be read
+            // or parsed is skipped (and logged) so it is never auto-pruned on a
+            // wrong assumption about its age.
+            let Some(created) = manifest_created_time(&path) else {
+                warn!(
+                    path = %path.display(),
+                    "skipping backup with unreadable or malformed manifest"
+                );
+                continue;
+            };
+
             let size_bytes = dir_size(&path);
             let name = entry.file_name().to_string_lossy().into_owned();
             entries.push(BackupEntry {
@@ -899,6 +999,57 @@ fn dir_size(path: &Path) -> u64 {
     total
 }
 
+/// Parse the `created_at` field from a backup set's manifest into a
+/// [`SystemTime`]. Returns `None` if the manifest is missing, unreadable, or
+/// the timestamp cannot be parsed. (#5138)
+fn manifest_created_time(backup_path: &Path) -> Option<std::time::SystemTime> {
+    let manifest_json = fs::read_to_string(backup_path.join("manifest.json")).ok()?;
+    let manifest: BackupManifest = serde_json::from_str(&manifest_json).ok()?;
+    let zoned: jiff::Zoned = manifest.created_at.parse().ok()?;
+    Some(std::time::SystemTime::from(zoned.timestamp()))
+}
+
+/// Set owner-only (0o700) permissions on a directory. No-op on non-Unix. (#5140)
+#[cfg(unix)]
+fn set_dir_restrictive(path: &Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+    if let Err(e) = fs::set_permissions(path, fs::Permissions::from_mode(0o700)) {
+        warn!(
+            path = %path.display(),
+            error = %e,
+            "failed to set restrictive permissions on backup directory"
+        );
+    }
+}
+
+#[cfg(not(unix))]
+fn set_dir_restrictive(_path: &Path) {}
+
+/// Set owner-only (0o600) permissions on every regular file under `dir`,
+/// recursing into subdirectories. No-op on non-Unix. (#5140)
+#[cfg(unix)]
+fn set_files_restrictive(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            set_files_restrictive(&path);
+        } else if let Err(e) = fs::set_permissions(&path, fs::Permissions::from_mode(0o600)) {
+            warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to set restrictive permissions on backup file"
+            );
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn set_files_restrictive(_dir: &Path) {}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
@@ -938,6 +1089,7 @@ mod tests {
             backup_dir: backup_dir.clone(),
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         };
 
         let manager = InstanceBackup::new(config);
@@ -1052,6 +1204,7 @@ workspace = "{}"
             backup_dir,
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         });
         let report = manager.create_backup().expect("backup succeeds");
         let backup_path = report.backup_path.expect("backup path set");
@@ -1162,6 +1315,7 @@ workspace = "{}"
             backup_dir: backup_dir.clone(),
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         };
 
         let manager = InstanceBackup::new(config);
@@ -1207,6 +1361,7 @@ workspace = "{}"
                 exclusion_reason: None,
             }],
             optional_stores: Vec::new(),
+            workspace_omissions: Vec::new(),
             total_bytes: 0,
         };
         write_text_file(
@@ -1245,6 +1400,7 @@ workspace = "{}"
             backup_dir: backup_dir.clone(),
             interval_hours: 24,
             retention_count: 2,
+            additional_workspaces: Vec::new(),
         };
 
         let manager = InstanceBackup::new(config);
@@ -1278,6 +1434,7 @@ workspace = "{}"
             backup_dir,
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         };
 
         let manager = InstanceBackup::new(config);

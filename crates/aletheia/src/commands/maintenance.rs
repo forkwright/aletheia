@@ -43,6 +43,12 @@ pub(crate) enum Action {
         #[arg(long)]
         verbose: bool,
     },
+    /// Clear the persisted failure/backoff/disable state for a task so it
+    /// becomes eligible to run again. (#5130)
+    Reset {
+        /// Task ID whose persisted state should be reset.
+        task: String,
+    },
 }
 
 pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
@@ -61,6 +67,19 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 .with_maintenance(maint.clone())
                 .with_knowledge_maintenance_opt(knowledge_executor.clone());
             runner.register_maintenance_tasks();
+
+            // WHY(#5131): the daemon persists task state to disk. The CLI runs
+            // in a separate process with a fresh in-memory runner, so without
+            // restoring the persisted state, `status` always reported zero runs
+            // and never reflected backoff or auto-disable. Load it if present.
+            let state_root = oikos.data().join("daemon-task-state").join("system");
+            if state_root.exists()
+                && let Ok(store) = oikonomos::state::TaskStateStore::open(&state_root)
+            {
+                runner = runner.with_state_store(store);
+                runner.restore_state();
+            }
+
             let statuses = merge_unavailable_tasks(runner.status(), &maint, &runner);
             let prosoche_summary = prosoche_path_summary(&config.maintenance.prosoche);
             if json {
@@ -132,7 +151,43 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 run_task(definition, &maint, knowledge_executor.as_ref(), verbose).await?;
             }
         }
+        Action::Reset { task } => reset_task_state(&oikos, &task)?,
     }
+    Ok(())
+}
+
+/// Clear the persisted failure/backoff/disable state for a single task. (#5130)
+///
+/// Re-enables the task, zeroes the consecutive-failure counter, and clears the
+/// backoff deadline and last error so the daemon will schedule it again on its
+/// next start.
+fn reset_task_state(oikos: &Oikos, task_id: &str) -> Result<()> {
+    let state_root = oikos.data().join("daemon-task-state").join("system");
+    if !state_root.exists() {
+        whatever!("no persisted task state found at {}", state_root.display());
+    }
+
+    let store = oikonomos::state::TaskStateStore::open(&state_root)
+        .whatever_context("failed to open task-state store")?;
+    let states = store
+        .load_all()
+        .whatever_context("failed to load task state")?;
+
+    let Some(mut state) = states.into_iter().find(|s| s.task_id == task_id) else {
+        whatever!("no persisted state for task '{task_id}'");
+    };
+
+    state.enabled = Some(true);
+    state.consecutive_failures = 0;
+    state.backoff_until_ts = None;
+    state.last_error = None;
+    state.schema_version = oikonomos::state::TASK_STATE_SCHEMA_VERSION;
+
+    store
+        .save(&state)
+        .whatever_context("failed to persist reset task state")?;
+
+    println!("Reset persisted state for task '{task_id}' (re-enabled, backoff cleared).");
     Ok(())
 }
 
@@ -505,6 +560,8 @@ fn merge_unavailable_tasks(
             consecutive_failures: 0,
             in_flight: false,
             last_error: None,
+            data_source: "live".to_owned(),
+            as_of: None,
             last_errors: 0,
             available: reason.is_none(),
             reason,
@@ -591,6 +648,7 @@ pub(crate) fn build_config(
             backup_dir: oikos.backups().join("instance"),
             interval_hours: settings.backup.backup_interval_hours,
             retention_count: settings.backup.backup_retention_count,
+            additional_workspaces: Vec::new(),
         },
         backup_metrics: None,
         prosoche_audit_dir: oikos.data().join("prosoche-audits"),
