@@ -81,10 +81,9 @@ regenerate the L3 API index before pushing:
 
 ```bash
 uv run scripts/llm-extract-l3.py
-git add _llm/ && git commit -m "chore(_llm): regenerate L3 API index"
 ```
 
-The `_llm freshness` CI check fails the PR if the index is stale.
+The pre-push hook does this automatically when Rust sources change. Do not `git add _llm/` — `_llm/L3-api-index/` and `_llm/manifest.toml` are gitignored. The `_llm freshness` CI gate verifies the extractor runs without error and its output files exist; it does not diff against a committed copy.
 
 ## Gate Trailer
 
