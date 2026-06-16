@@ -103,7 +103,7 @@ See [Daemon Workers](#daemon-workers). Maintenance tasks inherit the same isolat
 
 The following components can turn a local failure into a process-wide crash:
 
-1. **Krites Datalog engine** - `panic!` on internal invariant violations during query planning and JSON serialization.
+1. **Krites Datalog engine** - `unreachable!` on the f64 IEEE 754 exhaustiveness invariant during JSON export; query-planning invariant violations now return typed errors.
 2. ~~Pylon signal handler setup~~ - **resolved** (`server.rs:428`, `508`).
 3. ~~Nous manager health poller~~ - **resolved** (`crates/nous/src/manager.rs:895`).
 
@@ -124,18 +124,19 @@ The following components can turn a local failure into a process-wide crash:
 | Tool executors | Errors returned; sandbox no-op on non-Linux | Request | Isolate and return errors | ✅ None |
 | Pylon signal handlers | Signal-installation failures log warnings | Signal path | Continue serving without the failed signal path | ✅ None (resolved: `server.rs:428`, `508`) |
 | Pylon streaming handlers | Spawned tasks awaited, `JoinError` mapped to SSE | Request | Per-request failure isolation | ✅ None |
-| Krites query engine | `panic!` on internal invariant violations | Process | Return `Result` error to caller | `data/json.rs:76`, `query/graph.rs:127`, `query/graph.rs:205`, `query/magic.rs:217`, `query/stratify.rs:203` |
-| Krites storage backend | `unreachable!` on assumed-live transaction | Process | Return corruption/error instead of panic | `storage/fjall_backend.rs:194` |
+| Krites query engine | `unreachable!` on the f64 IEEE 754 exhaustiveness invariant during JSON export | Process | Return `Result` error to caller | `data/json.rs:65` |
+| Krites query engine - resolved planning invariants | Internal invariant violations during query planning now return typed errors | Process | Return `Result` error to caller | ✅ None (resolved: `query/graph.rs:127`, `query/graph.rs:205`, `query/magic.rs:217`, `query/stratify.rs:203`) |
+| Krites storage backend | Assumed-live transaction access now returns a typed error | Process | Return corruption/error instead of panic | ✅ None (resolved: `storage/fjall_backend.rs:194`) |
 
 ## Detailed citation index
 
 ### Krites
-- `crates/krites/src/data/json.rs:76` - `panic!("found bottom")` on `DataValue::Bot` during JSON export.
-- `crates/krites/src/query/graph.rs:127` - `panic!("safe_pending verified non-empty above")` in topological sort.
-- `crates/krites/src/query/graph.rs:205` - `panic!("ids[at] set earlier in dfs")` in SCC computation.
-- `crates/krites/src/query/magic.rs:217` - `panic!("freshly-defaulted MagicRulesOrFixed must be Rules")` in query rewrite.
-- `crates/krites/src/query/stratify.rs:203` - `panic!("graph key must exist in SCC indices")` in stratification.
-- `crates/krites/src/storage/fjall_backend.rs:194` - `unreachable!("INVARIANT: tx is always Some while FjallWriteTx is live")`.
+- `crates/krites/src/data/json.rs:65` - `unreachable!` on the f64 IEEE 754 exhaustiveness invariant during JSON export. `DataValue::Bot` is handled in the `Null | Bot` arm and emitted as `JsonValue::Null`.
+- ~~`crates/krites/src/query/graph.rs:127` - empty `safe_pending` stack in topological sort.~~ Resolved: now returns a typed error.
+- ~~`crates/krites/src/query/graph.rs:205` - missing `ids[at]` entry in SCC computation.~~ Resolved: now returns a typed error.
+- ~~`crates/krites/src/query/magic.rs:217` - defaulted `MagicRulesOrFixed` in query rewrite.~~ Resolved: now returns a typed error.
+- ~~`crates/krites/src/query/stratify.rs:203` - missing SCC index for a graph key.~~ Resolved: now returns a typed error.
+- ~~`crates/krites/src/storage/fjall_backend.rs:194` - assumed-live `tx` in `FjallWriteTx`.~~ Resolved: now returns a typed error.
 
 ### Hermeneus
 - `crates/hermeneus/src/concurrency.rs:24` - `parking_lot::Mutex` (resolved: replaces `std::sync::Mutex`; no poisoning on panic).
