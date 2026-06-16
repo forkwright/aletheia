@@ -7,10 +7,10 @@
 //! for the turn that created it.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use nous::approval::ApprovalDecision;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ApprovalKey {
@@ -26,6 +26,9 @@ struct ApprovalEntry {
 /// Concurrent map from `(turn_id, tool_id)` → approval-decision sender.
 #[derive(Default)]
 pub struct ApprovalRegistry {
+    // WHY: std::sync::Mutex (not tokio) so Guard::drop can call remove_turn
+    // synchronously without spawning — avoids fire-and-forget race with
+    // runtime shutdown and makes panics in cleanup observable.
     inner: Mutex<HashMap<ApprovalKey, ApprovalEntry>>,
 }
 
@@ -46,6 +49,11 @@ impl ApprovalRegistry {
     }
 
     /// Register one pending tool approval for an active turn.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned (indicates a prior panic in
+    /// `remove_turn` or `try_send`).
     pub async fn register_tool(
         &self,
         session_id: &str,
@@ -53,7 +61,7 @@ impl ApprovalRegistry {
         tool_id: String,
         sender: mpsc::Sender<ApprovalDecision>,
     ) {
-        let mut map = self.inner.lock().await;
+        let mut map = self.inner.lock().expect("approval registry lock poisoned");
         map.insert(
             ApprovalKey {
                 turn_id: turn_id.to_owned(),
@@ -71,6 +79,10 @@ impl ApprovalRegistry {
     /// When `session_id` is `Some`, it must match the pending entry's session
     /// context. Returns `false` if no exact pending entry exists, the session
     /// context does not match, or the receiver has dropped.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     pub async fn try_send(
         &self,
         session_id: Option<&str>,
@@ -82,7 +94,7 @@ impl ApprovalRegistry {
             turn_id: turn_id.to_owned(),
             tool_id: tool_id.to_owned(),
         };
-        let mut map = self.inner.lock().await;
+        let mut map = self.inner.lock().expect("approval registry lock poisoned");
         let Some(entry) = map.get(&key) else {
             return false;
         };
@@ -98,8 +110,8 @@ impl ApprovalRegistry {
         sender.try_send(decision).is_ok()
     }
 
-    async fn remove_turn(&self, session_id: &str, turn_id: &str) {
-        let mut map = self.inner.lock().await;
+    fn remove_turn(&self, session_id: &str, turn_id: &str) {
+        let mut map = self.inner.lock().expect("approval registry lock poisoned");
         map.retain(|key, entry| key.turn_id != turn_id || entry.session_id != session_id);
     }
 }
@@ -114,10 +126,11 @@ pub struct Guard {
 impl Drop for Guard {
     fn drop(&mut self) {
         if let (Some(sid), Some(turn_id)) = (self.session_id.take(), self.turn_id.take()) {
-            let registry = Arc::clone(&self.registry);
-            tokio::spawn(async move {
-                registry.remove_turn(&sid, &turn_id).await;
-            });
+            // WHY: call remove_turn directly (no spawn) so cleanup is
+            // deterministic and any panic in remove_turn propagates to the
+            // caller — eliminating the fire-and-forget race with runtime
+            // shutdown that the prior tokio::spawn pattern had (#5737).
+            self.registry.remove_turn(&sid, &turn_id);
         }
     }
 }
@@ -178,15 +191,36 @@ mod tests {
             let _guard = reg.register_turn("sess-2".to_owned(), "turn-2".to_owned());
             reg.register_tool("sess-2", "turn-2", "t-2".to_owned(), tx)
                 .await;
-            assert!(reg.inner.lock().await.contains_key(&ApprovalKey {
+            assert!(reg.inner.lock().expect("lock").contains_key(&ApprovalKey {
                 turn_id: "turn-2".to_owned(),
                 tool_id: "t-2".to_owned(),
             }));
         }
-        // Allow the spawned removal task to run.
+        // WHY: cleanup is now synchronous (no spawn), so no yield/sleep needed.
+        assert!(reg.inner.lock().expect("lock").is_empty());
+    }
+
+    #[tokio::test]
+    async fn guard_drop_under_task_abort_is_synchronous() {
+        // WHY(#5737): verify that Guard::drop completes cleanup without
+        // relying on a spawned task — so abort/shutdown cannot drop entries.
+        let reg = Arc::new(ApprovalRegistry::new());
+        let (tx, _rx) = mpsc::channel::<ApprovalDecision>(4);
+        let reg2 = Arc::clone(&reg);
+        let handle = tokio::spawn(async move {
+            let _guard = reg2.register_turn("sess-3".to_owned(), "turn-3".to_owned());
+            reg2.register_tool("sess-3", "turn-3", "t-3".to_owned(), tx)
+                .await;
+            // Yield so the abort can land while we hold the guard.
+            tokio::task::yield_now().await;
+        });
+        // Give task time to register and yield.
         tokio::task::yield_now().await;
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        assert!(reg.inner.lock().await.is_empty());
+        handle.abort();
+        // Await the aborted handle so drop runs.
+        let _ = handle.await;
+        // Guard::drop must have removed the entry synchronously on abort.
+        assert!(reg.inner.lock().expect("lock").is_empty());
     }
 
     #[tokio::test]
@@ -246,10 +280,8 @@ mod tests {
             .await;
 
         drop(guard_a);
-        tokio::task::yield_now().await;
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-        let map = reg.inner.lock().await;
+        let map = reg.inner.lock().expect("lock");
         assert!(!map.contains_key(&ApprovalKey {
             turn_id: "turn-a".to_owned(),
             tool_id: "tool-a".to_owned(),
