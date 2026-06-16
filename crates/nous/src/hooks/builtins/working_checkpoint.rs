@@ -120,8 +120,13 @@ impl TurnHook for WorkingCheckpointInjector {
                 section.push_str("\n</history>");
             }
 
-            if section.len() > self.key_info_max_chars {
-                section.truncate(self.key_info_max_chars);
+            if section.chars().count() > self.key_info_max_chars {
+                // WHY: truncate at a char boundary to avoid splitting multibyte sequences
+                let byte_end = section
+                    .char_indices()
+                    .nth(self.key_info_max_chars)
+                    .map_or(section.len(), |(i, _)| i);
+                section.truncate(byte_end);
                 section.push_str("\n...[truncated]");
             }
 

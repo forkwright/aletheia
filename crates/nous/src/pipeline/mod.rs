@@ -324,6 +324,29 @@ impl LoopDetector {
         }
     }
 
+    /// Create a loop detector with explicit window and cycle-detection parameters.
+    ///
+    /// WHY: lets callers thread configured values without requiring a full
+    /// [`taxis::config::NousBehaviorConfig`] reference in the execute stage.
+    #[must_use]
+    pub fn with_window(
+        threshold: u32,
+        error_threshold: u32,
+        max_warnings: u32,
+        window: usize,
+        cycle_detection_max_len: usize,
+    ) -> Self {
+        Self {
+            history: VecDeque::with_capacity(window),
+            threshold,
+            error_threshold,
+            max_warnings,
+            warnings_issued: 0,
+            window,
+            cycle_detection_max_len,
+        }
+    }
+
     /// Record a tool call and check for loop patterns.
     ///
     /// Returns [`LoopVerdict::Ok`] if no pattern is detected,
@@ -1040,18 +1063,18 @@ pub(crate) async fn run_pipeline(
         stages_completed += 1;
 
         // WHY: Fire before_compact hooks before any compaction happens.
+        let pre_compact_tokens: u64 = ctx
+            .messages
+            .iter()
+            .map(|m| u64::try_from(m.token_estimate.max(0)).unwrap_or(0))
+            .sum();
+        let pre_compact_message_count = ctx.messages.len();
+
         if let Some(hook_registry) = hooks {
-            let initial_message_count = ctx.messages.len();
-            // NOTE: distillation_number is not available yet in the pipeline context,
-            // so we use a placeholder value of 1 for the structural compaction phase.
             let compact_ctx = CompactionContext {
                 nous_id: &config.id,
-                messages_distilled: initial_message_count,
-                tokens_before: ctx
-                    .messages
-                    .iter()
-                    .map(|m| u64::try_from(m.token_estimate.max(0)).unwrap_or(0))
-                    .sum(),
+                messages_distilled: pre_compact_message_count,
+                tokens_before: pre_compact_tokens,
                 tokens_after: 0, // Not known until after compaction
                 distillation_number: 1,
             };
@@ -1088,7 +1111,7 @@ pub(crate) async fn run_pipeline(
 
         // WHY: Fire after_compact hooks after compaction completes.
         if let Some(hook_registry) = hooks {
-            let tokens_after = ctx
+            let tokens_after: u64 = ctx
                 .messages
                 .iter()
                 .map(|m| u64::try_from(m.token_estimate.max(0)).unwrap_or(0))
@@ -1096,7 +1119,7 @@ pub(crate) async fn run_pipeline(
             let compact_ctx = CompactionContext {
                 nous_id: &config.id,
                 messages_distilled: ctx.messages.len(),
-                tokens_before: 0, // Would need to track from before
+                tokens_before: pre_compact_tokens,
                 tokens_after,
                 distillation_number: 1,
             };
@@ -1168,11 +1191,10 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
-        run_stage_with_timeout(config, "finalize", &mut time_budget, emitter, async {
-            run_finalize_stage(config, &input, &result, session_store, emitter).await;
-            Ok(())
-        })
-        .await?;
+        let finalize_outcome = run_finalize_stage(config, &input, &result, session_store, emitter).await;
+        if finalize_outcome == FinalizeOutcome::Failed {
+            tracing::warn!(nous_id = %config.id, "finalize failed; training/DPO capture suppressed for this turn");
+        }
         stages_completed += 1;
 
         enforce_turn_time_budget(&time_budget, config, "reflection", emitter)?;
@@ -1210,7 +1232,7 @@ pub(crate) async fn run_pipeline(
                 )
             };
 
-        if pipeline_config.training.enabled {
+        if pipeline_config.training.enabled && finalize_outcome == FinalizeOutcome::Persisted {
             match crate::training::TrainingCapture::new(oikos.root(), &pipeline_config.training) {
                 Ok(mut capture) => {
                     // NOTE: one entry per tool call with success/error
@@ -1296,7 +1318,7 @@ pub(crate) async fn run_pipeline(
         // quality-filtered turn data feeds both pipelines. Uses a global
         // extractor because the pipeline task has no persistent actor state.
         // Session IDs are ULID-based and globally unique.
-        if pipeline_config.training.enabled {
+        if pipeline_config.training.enabled && finalize_outcome == FinalizeOutcome::Persisted {
             // WHY(#3786): authorship gate skips agent-authored turns to prevent
             // preference pairs derived from AI-generated text.
             let dpo_passes_authorship = if pipeline_config.training.author_classifier_enabled {
@@ -1574,9 +1596,9 @@ pub mod triage;
 mod stages;
 
 use stages::{
-    run_context_stage, run_execute_stage, run_finalize_stage, run_full_compact_stage,
-    run_guard_stage, run_history_stage, run_microcompact_stage, run_recall_stage,
-    run_reflection_stage,
+    FinalizeOutcome, run_context_stage, run_execute_stage, run_finalize_stage,
+    run_full_compact_stage, run_guard_stage, run_history_stage, run_microcompact_stage,
+    run_recall_stage, run_reflection_stage,
 };
 
 #[cfg(test)]

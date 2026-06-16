@@ -109,6 +109,13 @@ pub enum TrainingCaptureError {
         to: PathBuf,
         source: std::io::Error,
     },
+
+    /// Failed to read the training manifest file that exists on disk.
+    #[snafu(display("failed to read training manifest {}: {source}", path.display()))]
+    ReadManifest {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 /// Result alias for training capture operations.
@@ -469,8 +476,9 @@ impl TrainingCapture {
         let legacy_path = dir.join("conversations.jsonl");
 
         let mut manifest = if manifest_path.exists() {
-            // kanon:ignore RUST/no-result-unwrap-or-default — manifest read failure yields empty string; serde handles empty gracefully
-            let content = fs::read_to_string(&manifest_path).unwrap_or_default();
+            let content = fs::read_to_string(&manifest_path).context(ReadManifestSnafu {
+                path: &manifest_path,
+            })?;
             serde_json::from_str(&content).unwrap_or_else(|_| TrainingManifest::new())
         } else {
             TrainingManifest::new()

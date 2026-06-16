@@ -149,6 +149,8 @@ pub(super) fn build_nous_runtime_config(
             max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
             max_consecutive_tool_only_iterations: 3,
             consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
+            loop_detection_window: 50,
+            cycle_detection_max_len: 10,
         },
         domains,
         private: resolved.private,
