@@ -410,7 +410,7 @@ pub(super) fn rows_to_facts(
         let scope = parse_optional_scope(row.get(17))?;
         let project_id = parse_optional_project_id(row.get(18))?;
         let visibility = parse_visibility(row.get(19))?;
-        let sensitivity = parse_fact_sensitivity(row.get(20));
+        let sensitivity = parse_fact_sensitivity(row.get(20))?;
 
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         let superseded_by_id = superseded_by
@@ -578,7 +578,7 @@ pub(super) fn rows_to_raw_facts(
         let scope = parse_optional_scope(row.get(17))?;
         let project_id = parse_optional_project_id(row.get(18))?;
         let visibility = parse_visibility(row.get(19))?;
-        let sensitivity = parse_fact_sensitivity(row.get(20));
+        let sensitivity = parse_fact_sensitivity(row.get(20))?;
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         let superseded_by_id = superseded_by
             .map(crate::id::FactId::new)
@@ -654,7 +654,7 @@ pub(super) fn rows_to_facts_partial(
             .build()
         })?)?;
         let tier = parse_epistemic_tier(&tier_str);
-        let sensitivity = parse_fact_sensitivity(row.get(4));
+        let sensitivity = parse_fact_sensitivity(row.get(4))?;
 
         let fact_id = crate::id::FactId::new(id).context(crate::error::InvalidIdSnafu)?;
         out.push(Fact {
@@ -750,7 +750,7 @@ pub(super) fn rows_to_recall_results(
             .get(8)
             .and_then(|v| extract_str(v).ok())
             .unwrap_or_default();
-        let sensitivity = parse_fact_sensitivity(row.get(9));
+        let sensitivity = parse_fact_sensitivity(row.get(9))?;
         out.push(RecallResult {
             content,
             distance,
@@ -1010,14 +1010,33 @@ pub(super) fn extract_bool(val: &crate::engine::DataValue) -> crate::error::Resu
     }
 }
 
+/// Decode the `sensitivity` column. Like `scope` and `visibility`, a
+/// present-but-undecodable value must error rather than silently widen to
+/// `Public` (the default/least-restrictive variant), which would allow a
+/// `Confidential` fact to egress to cloud providers undetected (#5753).
 #[cfg(feature = "mneme-engine")]
 fn parse_fact_sensitivity(
     val: Option<&crate::engine::DataValue>,
-) -> crate::knowledge::FactSensitivity {
-    val.and_then(|v| extract_str(v).ok())
-        .filter(|s| !s.is_empty())
-        .and_then(|s| s.parse::<crate::knowledge::FactSensitivity>().ok())
-        .unwrap_or_default()
+) -> crate::error::Result<crate::knowledge::FactSensitivity> {
+    let cell = val.ok_or_else(|| {
+        crate::error::ConversionSnafu {
+            message: "fact row: missing sensitivity column",
+        }
+        .build()
+    })?;
+    match extract_optional_str(cell)?.filter(|s| !s.is_empty()) {
+        None => Ok(crate::knowledge::FactSensitivity::default()),
+        Some(s) => s
+            .parse::<crate::knowledge::FactSensitivity>()
+            .map_err(|_unparsed| {
+                crate::error::ConversionSnafu {
+                    message: format!(
+                        "fact row: undecodable sensitivity '{s}' — refusing to default to Public"
+                    ),
+                }
+                .build()
+            }),
+    }
 }
 
 /// Decode the nullable `scope` column. A SQL null or empty string is a genuine

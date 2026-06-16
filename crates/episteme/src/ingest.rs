@@ -267,13 +267,27 @@ fn parse_json_facts(content: &str) -> crate::error::Result<Vec<Fact>> {
 
 fn parse_jsonl_facts(content: &str) -> crate::error::Result<Vec<Fact>> {
     let mut facts = Vec::new();
-    for line in content.lines() {
+    let mut parse_errors: Vec<(usize, String)> = Vec::new();
+    for (line_idx, line) in content.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let fact: Fact = serde_json::from_str(line).context(crate::error::StoredJsonSnafu)?;
-        facts.push(fact);
+        match serde_json::from_str::<Fact>(line) {
+            Ok(fact) => facts.push(fact),
+            Err(e) => parse_errors.push((line_idx + 1, e.to_string())),
+        }
+    }
+    if !parse_errors.is_empty() {
+        // WHY (#5758): log per-line errors but continue — a single malformed line
+        // should not discard an entire batch of otherwise valid facts.
+        for (line_num, err) in &parse_errors {
+            tracing::warn!(
+                line = line_num,
+                error = %err,
+                "skipping malformed JSONL fact line; valid facts in the batch are still stored"
+            );
+        }
     }
     Ok(facts)
 }

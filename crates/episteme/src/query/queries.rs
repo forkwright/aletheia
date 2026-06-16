@@ -1,11 +1,12 @@
 //! Builder-generated query scripts for `KnowledgeStore` operations.
 
-// WHY: `#[expect]` cannot be used here; this module is only compiled with the mneme-engine
-// feature, so the expectation would be unfulfilled in default-feature compilations.
-#![allow(
-    clippy::enum_glob_use,
-    clippy::wildcard_imports,
-    reason = "query builders use glob imports for enum field variants"
+#![cfg_attr(
+    feature = "mneme-engine",
+    expect(
+        clippy::enum_glob_use,
+        clippy::wildcard_imports,
+        reason = "query builders use glob imports for enum field variants"
+    )
 )]
 
 use super::*;

@@ -53,7 +53,7 @@ pub mod evidence_gap;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub mod extract;
 /// Graph-enhanced recall scoring: PageRank boost, community proximity, supersession chains.
-pub(crate) mod graph_intelligence;
+pub mod graph_intelligence;
 /// Data source ingestion pipeline: file → chunk → fact extraction.
 pub mod ingest;
 /// Instinct system: behavioral memory from tool usage patterns.
