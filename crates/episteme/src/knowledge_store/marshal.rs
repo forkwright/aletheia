@@ -222,7 +222,7 @@ pub(super) fn embedding_to_params(
 )]
 pub(super) fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
     if a.is_empty() && b.is_empty() {
-        return 1.0;
+        return 0.0;
     }
     let set_a: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
     let set_b: std::collections::HashSet<&str> = b.iter().map(String::as_str).collect();
@@ -1157,12 +1157,14 @@ mod tests {
     }
 
     #[test]
-    fn tool_overlap_both_empty_returns_one() {
+    fn tool_overlap_both_empty_returns_zero() {
+        // WHY: two empty tool lists share no tools; Jaccard of empty sets is 0/0
+        // which we define as 0.0 (no overlap), not 1.0 (spurious full match).
         let a: Vec<String> = Vec::new();
         let b: Vec<String> = Vec::new();
         assert!(
-            (compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON,
-            "both-empty tool sets should yield overlap 1.0"
+            compute_tool_overlap(&a, &b).abs() < f64::EPSILON,
+            "both-empty tool sets should yield overlap 0.0"
         );
     }
 

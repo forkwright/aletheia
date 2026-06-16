@@ -250,7 +250,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 )]
 fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
     if a.is_empty() && b.is_empty() {
-        return 1.0;
+        return 0.0;
     }
     let set_a: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
     let set_b: std::collections::HashSet<&str> = b.iter().map(String::as_str).collect();
