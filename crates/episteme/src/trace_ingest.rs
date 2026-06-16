@@ -246,29 +246,46 @@ impl TraceIngestLayer {
 
     /// Flush buffered events into the Datalog knowledge store.
     ///
-    /// Drains the buffer and executes one `:put` statement per event.  Errors
-    /// from individual puts are logged at `WARN` level and do not abort the
-    /// remaining writes — operational telemetry is best-effort.
+    /// Attempts to write every buffered event with one `:put` statement per event.
+    /// Events that fail to persist are retained in the layer buffer so a later
+    /// flush can retry them; they are not lost.
     ///
-    /// Requires the `mneme-engine` feature.  Without it this is a no-op that
-    /// still drains the buffer (preventing unbounded growth).
+    /// Returns `(written, dropped_or_not_written_this_cycle)` where:
+    /// - `written` is the number of events successfully persisted this cycle.
+    /// - `dropped_or_not_written_this_cycle` is the number of events that were
+    ///   not persisted this cycle. These events remain in the buffer for retry,
+    ///   so they are not permanently dropped.
+    ///
+    /// Requires the `mneme-engine` feature.  Without it this method is not
+    /// available; the non-engine build uses `flush_noop` to prevent unbounded
+    /// buffer growth when no knowledge store is wired in.
     #[cfg(feature = "mneme-engine")]
-    pub fn flush(&self, store: &crate::knowledge_store::KnowledgeStore) {
+    #[must_use = "flush returns per-cycle write counts that callers should observe"]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "event persistence stays colocated with the event-to-query mapping for auditability"
+    )]
+    pub fn flush(&self, store: &crate::knowledge_store::KnowledgeStore) -> (usize, usize) {
         use std::collections::BTreeMap;
 
         use crate::engine::DataValue;
 
         let events = self.drain();
-        if events.is_empty() {
-            return;
+        let attempted = events.len();
+        if attempted == 0 {
+            return (0, 0);
         }
 
-        tracing::debug!(
-            count = events.len(),
-            "trace_ingest: flushing buffered events"
-        );
+        tracing::debug!(count = attempted, "trace_ingest: flushing buffered events");
+
+        let mut written = 0usize;
+        let mut failed_events = Vec::with_capacity(attempted);
+        let mut last_error = None;
 
         for event in events {
+            // WHY: failed writes must be re-buffered after `event` is moved into query params.
+            let retained_event = event.clone();
+
             let (script, params) = match event {
                 TraceEvent::TurnCompleted {
                     session_id,
@@ -332,10 +349,36 @@ impl TraceIngestLayer {
                 }
             };
 
-            if let Err(e) = store.run_mut_query(script, params) {
-                tracing::warn!(error = %e, "trace_ingest: failed to write event to ops relation");
+            match store.run_mut_query(script, params) {
+                Ok(_) => written += 1,
+                Err(e) => {
+                    if last_error.is_none() {
+                        last_error = Some(e.to_string());
+                    }
+                    failed_events.push(retained_event);
+                }
             }
         }
+
+        let not_written = failed_events.len();
+        if not_written > 0 {
+            {
+                let mut buf = self.buffer.lock();
+                buf.extend(failed_events);
+            }
+
+            if let Some(error) = last_error {
+                tracing::warn!(
+                    attempted = attempted,
+                    written = written,
+                    not_written = not_written,
+                    error = %error,
+                    "trace_ingest: failed to write some buffered events to ops relations; events retained for retry"
+                );
+            }
+        }
+
+        (written, not_written)
     }
 
     /// No-op drain when `mneme-engine` is not enabled.
@@ -667,7 +710,9 @@ mod tests {
                 },
             );
 
-            layer.flush(&store);
+            let (written, not_written) = layer.flush(&store);
+            assert_eq!(written, 1, "expected one event to be written");
+            assert_eq!(not_written, 0, "expected no events to be dropped");
 
             let result = store
                 .run_query(
@@ -694,7 +739,9 @@ mod tests {
                 },
             );
 
-            layer.flush(&store);
+            let (written, not_written) = layer.flush(&store);
+            assert_eq!(written, 1, "expected one event to be written");
+            assert_eq!(not_written, 0, "expected no events to be dropped");
 
             let result = store
                 .run_query(
@@ -720,7 +767,9 @@ mod tests {
                 },
             );
 
-            layer.flush(&store);
+            let (written, not_written) = layer.flush(&store);
+            assert_eq!(written, 1, "expected one event to be written");
+            assert_eq!(not_written, 0, "expected no events to be dropped");
 
             let result = store
                 .run_query(
@@ -729,6 +778,103 @@ mod tests {
                 )
                 .expect("query failed");
             assert_eq!(result.row_count(), 1, "expected one ops_errors row");
+        }
+
+        #[test]
+        fn flush_reports_failed_count_and_retains_events_for_retry() {
+            // WHY: a store without ops schema gives deterministic write failures
+            // without relying on filesystem permissions or fjall internals.
+            let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig::default())
+                .expect("knowledge store init failed");
+            let layer = TraceIngestLayer::new();
+
+            super::push_event(
+                &layer,
+                TraceEvent::TurnCompleted {
+                    session_id: "sess-degraded-1".to_owned(),
+                    nous_id: "syn".to_owned(),
+                    model: "claude-3".to_owned(),
+                    tokens: 100,
+                    duration_ms: 50,
+                    timestamp: "2026-04-06T12:00:00Z".to_owned(),
+                },
+            );
+            super::push_event(
+                &layer,
+                TraceEvent::ToolExecuted {
+                    session_id: "sess-degraded-2".to_owned(),
+                    tool_name: "web_search".to_owned(),
+                    success: true,
+                    duration_ms: 120,
+                    timestamp: "2026-04-06T12:01:00Z".to_owned(),
+                },
+            );
+            super::push_event(
+                &layer,
+                TraceEvent::ErrorOccurred {
+                    session_id: "sess-degraded-3".to_owned(),
+                    error_class: "timeout".to_owned(),
+                    message: "connection timed out".to_owned(),
+                    timestamp: "2026-04-06T12:02:00Z".to_owned(),
+                },
+            );
+
+            let (written, not_written) = layer.flush(&store);
+            assert_eq!(written, 0, "no events should be written without ops schema");
+            assert_eq!(
+                not_written, 3,
+                "all failed events should be reported as not written"
+            );
+            assert_eq!(
+                layer.pending(),
+                3,
+                "failed events must be retained in the buffer for retry"
+            );
+
+            for ddl in OPS_DDL {
+                store
+                    .run_mut_query(ddl, std::collections::BTreeMap::new())
+                    .expect("ops DDL failed");
+            }
+
+            let (written, not_written) = layer.flush(&store);
+            assert_eq!(
+                written, 3,
+                "all retained events should be written after schema is applied"
+            );
+            assert_eq!(
+                not_written, 0,
+                "no events should remain after successful retry"
+            );
+            assert_eq!(
+                layer.pending(),
+                0,
+                "buffer should be empty after successful flush"
+            );
+
+            let turns = store
+                .run_query(
+                    "?[session_id] := *ops_turns{session_id}",
+                    std::collections::BTreeMap::new(),
+                )
+                .expect("ops_turns query failed");
+            assert_eq!(turns.row_count(), 1, "expected one ops_turns row");
+
+            let tools = store
+                .run_query(
+                    "?[session_id] := *ops_tools{session_id}",
+                    std::collections::BTreeMap::new(),
+                )
+                .expect("ops_tools query failed");
+            assert_eq!(tools.row_count(), 1, "expected one ops_tools row");
+
+            let errors = store
+                .run_query(
+                    "?[session_id] := *ops_errors{session_id}",
+                    std::collections::BTreeMap::new(),
+                )
+                .expect("ops_errors query failed");
+            assert_eq!(errors.row_count(), 1, "expected one ops_errors row");
         }
     }
 }

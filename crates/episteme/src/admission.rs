@@ -232,9 +232,11 @@ impl StructuredAdmissionPolicy {
         }
         let hash = Self::content_hash(fact);
         // INVARIANT: lock is never held across await points; no risk of deadlock here.
-        self.seen_hashes
+        let guard = self
+            .seen_hashes
             .lock()
-            .is_ok_and(|guard| guard.contains(&hash))
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.contains(&hash)
     }
 
     /// Record the content hash of an admitted fact.
@@ -246,9 +248,11 @@ impl StructuredAdmissionPolicy {
             return;
         }
         let hash = Self::content_hash(fact);
-        if let Ok(mut guard) = self.seen_hashes.lock() {
-            guard.insert(hash);
-        }
+        let mut guard = self
+            .seen_hashes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.insert(hash);
     }
 
     /// Score a fact across all five factors.
@@ -619,6 +623,51 @@ mod tests {
         );
         if let AdmissionDecision::Reject(r) = decision {
             assert_eq!(r.factor, RejectionFactor::LowNovelty);
+        }
+    }
+
+    #[test]
+    fn content_hash_dedup_does_not_fail_open_on_poisoned_mutex() {
+        let policy = StructuredAdmissionPolicy::new(StructuredAdmissionConfig::default());
+        let fact = make_fact(
+            "The user prefers snake_case naming conventions for Rust variables",
+            0.95,
+            "preference",
+        );
+
+        assert!(
+            policy.should_admit(&fact).is_admitted(),
+            "first insertion of a high-quality fact must be admitted"
+        );
+
+        let poison_result = std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    let _guard = policy
+                        .seen_hashes
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    panic!("intentional mutex poison");
+                })
+                .join()
+        });
+        assert!(
+            poison_result.is_err(),
+            "test setup must poison the deduplication mutex"
+        );
+
+        let duplicate = make_fact(
+            "The user prefers snake_case naming conventions for Rust variables",
+            0.95,
+            "preference",
+        );
+        let decision = policy.should_admit(&duplicate);
+        assert!(
+            !decision.is_admitted(),
+            "duplicate must not be treated as novel after mutex poison"
+        );
+        if let AdmissionDecision::Reject(rejection) = decision {
+            assert_eq!(rejection.factor, RejectionFactor::LowNovelty);
         }
     }
 
