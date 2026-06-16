@@ -98,6 +98,22 @@ pub enum ManualMaintenanceTask {
     SerendipityDiscovery,
 }
 
+impl ManualMaintenanceTask {
+    /// Returns `true` for tasks that need a `KnowledgeMaintenanceExecutor` to run.
+    #[must_use]
+    pub fn requires_knowledge_executor(self) -> bool {
+        matches!(
+            self,
+            Self::DecayRefresh
+                | Self::EntityDedup
+                | Self::GraphRecompute
+                | Self::SkillDecay
+                | Self::DerivedFactsMaterialize
+                | Self::SerendipityDiscovery
+        )
+    }
+}
+
 /// Canonical metadata for one maintenance task.
 #[derive(Debug, Clone, Copy)]
 pub struct MaintenanceTaskDefinition {

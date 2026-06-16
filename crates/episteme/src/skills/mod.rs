@@ -12,7 +12,7 @@
 //!   → LLM extraction generates skill definition (separate)
 //! ```
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub mod candidate;
 pub mod extract;
@@ -210,70 +210,4 @@ fn hex_char(nibble: u8) -> char {
         10..=15 => char::from(b'a' + (nibble - 10)),
         _ => '0',
     }
-}
-
-/// Evidence captured for a single session that contributed to a learned skill.
-///
-/// Keeps the redacted tool sequence observed in that session plus a hash that
-/// identifies the turn/sequence without storing user text.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillEvidence {
-    /// Session in which the pattern was observed.
-    // kanon:ignore RUST/primitive-for-domain-id — JSON serialization type for knowledge-store fact content fields
-    pub session_id: String,
-    /// Deterministic hash of the full tool-call sequence in this session.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub turn_sequence_hash: Option<String>,
-    /// Redacted tool-call records from the session.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tool_calls: Vec<ToolCallRecord>,
-}
-
-/// Audit record for an LLM skill-extraction pass.
-///
-/// When the provider does not expose real audit refs, we fall back to
-/// deterministic SHA-256 hashes of the prompt and response material so the
-/// extraction remains reproducible and referencable.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExtractionAudit {
-    /// SHA-256 hash of the extraction prompt (system + user messages).
-    pub prompt_hash: String,
-    /// SHA-256 hash of the raw LLM response, if one was received.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_hash: Option<String>,
-    /// Model identifier used for extraction, if known.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
-    /// When the extraction occurred.
-    pub extracted_at: jiff::Timestamp,
-}
-
-/// Review decision attached to a pending or approved learned skill.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReviewDecision {
-    /// Actor that performed the review (e.g. user ID or "operator").
-    pub actor: String,
-    /// Action taken: `"approved"` or `"rejected"`.
-    pub action: String,
-    /// Optional free-form reason for the decision.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-    /// When the decision was recorded.
-    pub decided_at: jiff::Timestamp,
-}
-
-/// Compute a lowercase hex SHA-256 digest of `data`.
-#[must_use]
-pub fn sha256_hex(data: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    let digest = hasher.finalize();
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        out.push(char::from(HEX[usize::from(byte >> 4)]));
-        out.push(char::from(HEX[usize::from(byte & 0x0f)]));
-    }
-    out
 }

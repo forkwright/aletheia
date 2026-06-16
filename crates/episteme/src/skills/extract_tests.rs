@@ -318,17 +318,13 @@ async fn extractor_returns_skill_on_valid_response() {
     let candidate = sample_candidate();
     let seqs = sample_sequences();
 
-    let (skill, audit) = extractor
+    let skill = extractor
         .extract_skill(&candidate, &seqs)
         .await
         .expect("mock provider returns valid response");
     assert_eq!(
         skill.name, "test-driven-bug-fix",
         "extractor should return skill with name parsed from provider response"
-    );
-    assert!(
-        !audit.prompt_hash.is_empty(),
-        "extractor should return a prompt hash audit ref"
     );
 }
 
@@ -554,10 +550,6 @@ fn pending_skill_approved_status() {
             origin: "extracted".to_owned(),
             triggers: vec![],
             always: false,
-            pending_fact_id: None,
-            source_evidence: vec![],
-            extraction_audit: None,
-            review_decision: None,
         },
         candidate_id: "c".to_owned(),
         status: "approved".to_owned(),
@@ -621,10 +613,6 @@ fn make_skill(name: &str, tools: &[&str]) -> SkillContent {
         origin: "extracted".to_owned(),
         triggers: vec![],
         always: false,
-        pending_fact_id: None,
-        source_evidence: vec![],
-        extraction_audit: None,
-        review_decision: None,
     }
 }
 
@@ -826,83 +814,4 @@ fn name_similarity_totally_different() {
         sim < 0.1,
         "totally different names should have low similarity: {sim}"
     );
-}
-
-#[test]
-fn pending_skill_deserializes_without_new_provenance_fields() {
-    let old_json = r#"{
-        "skill": {
-            "name": "legacy-skill",
-            "description": "d",
-            "steps": [],
-            "tools_used": [],
-            "domain_tags": [],
-            "origin": "extracted",
-            "triggers": [],
-            "always": false
-        },
-        "candidate_id": "cand-legacy",
-        "status": "pending_review",
-        "extracted_at": "2026-01-01T00:00:00Z"
-    }"#;
-    let pending = PendingSkill::from_json(old_json).expect("legacy pending skill deserializes");
-    assert_eq!(pending.skill.name, "legacy-skill");
-    assert_eq!(pending.candidate_id, "cand-legacy");
-    assert!(pending.is_pending());
-    assert!(pending.source_evidence.is_empty());
-    assert!(pending.extraction_audit.is_none());
-    assert!(pending.review_decision.is_none());
-}
-
-#[test]
-fn pending_skill_provenance_roundtrip() {
-    let extracted = ExtractedSkill {
-        name: "provenance-skill".to_owned(),
-        description: "d".to_owned(),
-        steps: vec!["step 1".to_owned()],
-        tools_used: vec!["Read".to_owned()],
-        domain_tags: vec!["test".to_owned()],
-        when_to_use: "For tests".to_owned(),
-    };
-    let audit = ExtractionAudit {
-        prompt_hash: sha256_hex(b"prompt"),
-        response_hash: Some(sha256_hex(b"response")),
-        model: Some("test-model".to_owned()),
-        extracted_at: jiff::Timestamp::now(),
-    };
-    let evidence = vec![SkillEvidence {
-        session_id: "session-1".to_owned(),
-        turn_sequence_hash: Some(sha256_hex(b"seq")),
-        tool_calls: vec![ToolCallRecord::with_hashes(
-            "Read",
-            100,
-            false,
-            Some(sha256_hex(b"input")),
-            Some(sha256_hex(b"result")),
-        )],
-    }];
-    let pending = PendingSkill::with_provenance(&extracted, "cand-003", evidence.clone(), audit);
-    let json = pending
-        .to_json()
-        .expect("pending with provenance serializes");
-    let back = PendingSkill::from_json(&json).expect("pending with provenance deserializes");
-    assert_eq!(back.source_evidence.len(), 1);
-    assert_eq!(back.source_evidence[0].session_id, "session-1");
-    assert!(back.extraction_audit.is_some());
-    assert_eq!(
-        back.extraction_audit.as_ref().unwrap().prompt_hash,
-        pending.extraction_audit.as_ref().unwrap().prompt_hash
-    );
-}
-
-#[test]
-fn tool_call_record_deserializes_without_hash_fields() {
-    let old_json = r#"{"tool_name":"Read","is_error":false,"duration_ms":50}"#;
-    let record: ToolCallRecord =
-        serde_json::from_str(old_json).expect("legacy record deserializes");
-    assert_eq!(record.tool_name, "Read");
-    assert!(!record.is_error);
-    assert_eq!(record.duration_ms, 50);
-    assert!(record.tool_input_hash.is_none());
-    assert!(record.tool_result_hash.is_none());
 }

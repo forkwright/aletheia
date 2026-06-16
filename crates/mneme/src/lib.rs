@@ -317,7 +317,6 @@ pub mod skills {
 
     /// Skill extraction provider types.
     pub mod extract {
-        pub use episteme::skills::ExtractionAudit;
         pub use episteme::skills::extract::{
             LlmCallSnafu, PendingSkill, SkillExtractionAudit, SkillExtractionError,
             SkillExtractionProvider,

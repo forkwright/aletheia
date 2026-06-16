@@ -197,7 +197,7 @@ impl NousActor {
         tool_calls: &[crate::pipeline::ToolCall],
         source_session_id: &str,
     ) {
-        use mneme::skills::{ToolCallRecord, TrackResult, sha256_hex};
+        use mneme::skills::{ToolCallRecord, TrackResult};
 
         if tool_calls.is_empty() {
             return;
@@ -219,35 +219,6 @@ impl NousActor {
                 )
             })
             .collect();
-
-        let turn_sequence_hash = {
-            let mut material = String::with_capacity(records.len() * 64);
-            for tc in &records {
-                material.push_str(&tc.tool_name);
-                material.push('|');
-                material.push_str(if tc.is_error { "true" } else { "false" });
-                material.push('|');
-                material.push_str(&tc.duration_ms.to_string());
-                material.push('|');
-                match &tc.tool_input_hash {
-                    Some(hash) => {
-                        material.push_str("some:");
-                        material.push_str(hash);
-                    }
-                    None => material.push_str("none"),
-                }
-                material.push('|');
-                match &tc.tool_result_hash {
-                    Some(hash) => {
-                        material.push_str("some:");
-                        material.push_str(hash);
-                    }
-                    None => material.push_str("none"),
-                }
-                material.push('\n');
-            }
-            sha256_hex(material.as_bytes())
-        };
 
         let nous_id = self.id.clone();
         let result =
@@ -279,7 +250,6 @@ impl NousActor {
     fn spawn_skill_extraction(
         &mut self,
         candidate_id: &str,
-        session_key: &str,
         tool_calls: &[mneme::skills::ToolCallRecord],
         source_session_id: &str,
     ) {
@@ -292,8 +262,6 @@ impl NousActor {
         let providers = Arc::clone(&self.services.providers);
         let nous_id = self.id.clone();
         let candidate_id = candidate_id.to_owned();
-        let session_key = session_key.to_owned();
-        let turn_sequence_hash = turn_sequence_hash.to_owned();
         let tool_calls = tool_calls.to_vec();
         let source_session_id = source_session_id.to_owned();
         let tracker = Arc::clone(&self.services.candidate_tracker);
@@ -318,8 +286,6 @@ impl NousActor {
                         providers,
                         &nous_id,
                         &candidate_id,
-                        &session_key,
-                        &turn_sequence_hash,
                         &tool_calls,
                         &source_session_id,
                         &tracker,
@@ -845,14 +811,12 @@ async fn run_skill_extraction(
     providers: Arc<ProviderRegistry>,
     nous_id: &str,
     candidate_id: &str,
-    session_key: &str,
-    turn_sequence_hash: &str,
     tool_calls: &[mneme::skills::ToolCallRecord],
     source_session_id: &str,
     tracker: &mneme::skills::CandidateTracker,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
-    use mneme::skills::{SkillEvidence, SkillExtractor};
+    use mneme::skills::SkillExtractor;
 
     let candidates = tracker.candidates_for(nous_id);
     let Some(candidate) = candidates.iter().find(|c| c.id == candidate_id) else {
@@ -982,8 +946,7 @@ async fn run_skill_extraction(
 
             #[cfg(not(feature = "knowledge-store"))]
             {
-                // WHY: suppress unused-variable warnings in non-knowledge-store builds.
-                let _ = (candidate_id, session_key, turn_sequence_hash);
+                let _ = candidate_id; // WHY: suppress unused-variable warning in non-knowledge-store builds
                 info!("skill extracted but knowledge-store feature disabled, not persisting");
             }
         }

@@ -125,10 +125,6 @@ impl ExtractedSkill {
             origin: "extracted".to_owned(),
             triggers: vec![],
             always: false,
-            pending_fact_id: None,
-            source_evidence: vec![],
-            extraction_audit: None,
-            review_decision: None,
         }
     }
 }
@@ -148,9 +144,6 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
     ///
     /// `tool_call_sequences` should contain the tool call sequences from each
     /// session where the pattern was observed (one vec per session).
-    ///
-    /// Returns the parsed skill together with an [`ExtractionAudit`] record
-    /// containing deterministic hashes of the prompt and raw LLM response.
     ///
     /// # Errors
     ///
@@ -179,7 +172,6 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
     ) -> Result<SkillExtractionResult, SkillExtractionError> {
         let system = EXTRACTION_SYSTEM_PROMPT;
         let user_message = build_extraction_prompt(candidate, tool_call_sequences);
-        let prompt = format!("{system}\n\n{user_message}");
         let response = self.provider.complete(system, &user_message).await?;
         let audit = SkillExtractionAudit {
             model: model.map(str::to_owned),

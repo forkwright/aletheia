@@ -486,7 +486,6 @@ fn is_supported_extension(path: &Path) -> bool {
     )
 }
 
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(

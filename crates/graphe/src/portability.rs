@@ -110,6 +110,10 @@ pub struct NousInfo {
 /// Binary workspace file entry with optional base64 payload.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
 pub struct BinaryFile {
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -582,15 +586,18 @@ mod tests {
     }
 
     #[test]
-    fn omission_round_trips() {
-        let original = Omission {
+    fn omitted_section_round_trips() {
+        let original = OmittedSection {
             section: "knowledge".to_owned(),
             reason: "store exists but could not be opened".to_owned(),
+            count: Some(3),
         };
-        let json = serde_json::to_string(&original).expect("Omission is serializable");
-        let restored: Omission = serde_json::from_str(&json).expect("round-trip JSON is valid");
+        let json = serde_json::to_string(&original).expect("OmittedSection is serializable");
+        let restored: OmittedSection =
+            serde_json::from_str(&json).expect("round-trip JSON is valid");
         assert_eq!(restored.section, original.section);
         assert_eq!(restored.reason, original.reason);
+        assert_eq!(restored.count, original.count);
     }
 
     #[test]
@@ -617,28 +624,38 @@ mod tests {
     }
 
     #[test]
-    fn omissions_use_camel_case_keys() {
+    fn omitted_sections_use_camel_case_keys() {
         let agent = AgentFile {
-            omissions: Some(vec![Omission {
-                section: "knowledge".to_owned(),
-                reason: "corrupt store".to_owned(),
-            }]),
+            export_metadata: Some(ExportMetadata {
+                lossless: false,
+                omitted_sections: vec![OmittedSection {
+                    section: "knowledge".to_owned(),
+                    reason: "corrupt store".to_owned(),
+                    count: None,
+                }],
+                truncations: Vec::new(),
+            }),
             ..sample_agent_file()
         };
         let value: serde_json::Value = serde_json::to_value(&agent).expect("serializable");
-        let omissions = value.get("omissions").expect("omissions key must exist");
-        let first = &omissions.as_array().expect("array")[0];
+        let metadata = value
+            .get("exportMetadata")
+            .expect("exportMetadata key must exist");
+        let omitted = metadata
+            .get("omittedSections")
+            .expect("omittedSections key must exist");
+        let first = &omitted.as_array().expect("array")[0];
         assert!(first.get("section").is_some(), "missing section");
         assert!(first.get("reason").is_some(), "missing reason");
     }
 
     #[test]
-    fn omissions_omitted_when_none() {
+    fn export_metadata_omitted_when_none() {
         let agent = sample_agent_file();
         let json = serde_json::to_string(&agent).expect("AgentFile is serializable");
         assert!(
-            !json.contains("\"omissions\""),
-            "omissions=None should be omitted"
+            !json.contains("\"exportMetadata\""),
+            "export_metadata=None should be omitted"
         );
     }
 }

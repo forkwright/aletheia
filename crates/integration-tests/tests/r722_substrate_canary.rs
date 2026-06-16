@@ -260,10 +260,6 @@ mod fixtures {
             origin: "manual".to_owned(),
             triggers: vec![],
             always: true,
-            pending_fact_id: None,
-            source_evidence: vec![],
-            extraction_audit: None,
-            review_decision: None,
         };
         let always_2 = mneme::skill::SkillContent {
             name: "git-commit".to_owned(),
@@ -274,10 +270,6 @@ mod fixtures {
             origin: "manual".to_owned(),
             triggers: vec![],
             always: true,
-            pending_fact_id: None,
-            source_evidence: vec![],
-            extraction_audit: None,
-            review_decision: None,
         };
         let lazy_1 = mneme::skill::SkillContent {
             name: "docker-build".to_owned(),
@@ -288,10 +280,6 @@ mod fixtures {
             origin: "manual".to_owned(),
             triggers: vec!["docker".to_owned()],
             always: false,
-            pending_fact_id: None,
-            source_evidence: vec![],
-            extraction_audit: None,
-            review_decision: None,
         };
         let lazy_2 = mneme::skill::SkillContent {
             name: "k8s-deploy".to_owned(),
@@ -302,10 +290,6 @@ mod fixtures {
             origin: "manual".to_owned(),
             triggers: vec!["deploy".to_owned()],
             always: false,
-            pending_fact_id: None,
-            source_evidence: vec![],
-            extraction_audit: None,
-            review_decision: None,
         };
         let lazy_3 = mneme::skill::SkillContent {
             name: "terraform-plan".to_owned(),
@@ -316,10 +300,6 @@ mod fixtures {
             origin: "manual".to_owned(),
             triggers: vec!["infra".to_owned()],
             always: false,
-            pending_fact_id: None,
-            source_evidence: vec![],
-            extraction_audit: None,
-            review_decision: None,
         };
         vec![
             (serde_json::to_string(&always_1).unwrap(), true),

@@ -576,6 +576,7 @@ pub(super) async fn run_full_compact_stage(
     );
 
     ctx.messages = result.messages;
+    let tokens_reclaimed = result.metrics.tokens_reclaimed();
     ctx.compaction_metrics = Some(result.metrics);
 
     if fallback_used {
@@ -599,7 +600,7 @@ pub(super) async fn run_full_compact_stage(
         nous_id: config.id.to_string(),
         kind: "full".to_owned(),
         input_message_count: result.audit_record.input_message_count,
-        tokens_reclaimed: result.metrics.tokens_reclaimed(),
+        tokens_reclaimed,
     });
 
     let duration_secs = start.elapsed().as_secs_f64();

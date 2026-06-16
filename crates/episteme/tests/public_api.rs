@@ -648,10 +648,6 @@ mod parse_skill_md {
             origin: "manual".to_owned(),
             triggers: vec![],
             always: false,
-            pending_fact_id: None,
-            source_evidence: vec![],
-            extraction_audit: None,
-            review_decision: None,
         };
         assert_eq!(sc.name, "n");
         assert_eq!(sc.steps.len(), 1);

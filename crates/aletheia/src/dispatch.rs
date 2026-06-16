@@ -458,10 +458,6 @@ mod tests {
             origin: "seeded".to_owned(),
             triggers: vec![],
             always: false,
-            pending_fact_id: None,
-            source_evidence: vec![],
-            extraction_audit: None,
-            review_decision: None,
         })
         .expect("skill content serializes");
 

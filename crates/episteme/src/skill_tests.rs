@@ -255,10 +255,6 @@ fn skill_content_serde_roundtrip() {
         origin: "manual".to_owned(),
         triggers: vec![],
         always: false,
-        pending_fact_id: None,
-        source_evidence: vec![],
-        extraction_audit: None,
-        review_decision: None,
     };
     let json = serde_json::to_string(&skill).expect("SkillContent serializes to JSON");
     let back: SkillContent =
@@ -449,10 +445,6 @@ fn export_skill() -> SkillContent {
         origin: "manual".to_owned(),
         triggers: vec![],
         always: false,
-        pending_fact_id: None,
-        source_evidence: vec![],
-        extraction_audit: None,
-        review_decision: None,
     }
 }
 

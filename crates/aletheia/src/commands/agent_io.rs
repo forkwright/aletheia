@@ -348,11 +348,7 @@ enum KnowledgeExportStatus {
 /// but cannot be opened or enumerated, so callers can decide whether to fail
 /// or produce a partial export.
 #[cfg(feature = "recall")]
-fn export_knowledge(
-    oikos: &Oikos,
-    nous_id: &str,
-    allow_partial: bool,
-) -> Result<KnowledgeExportStatus> {
+fn export_knowledge(oikos: &Oikos, nous_id: &str) -> Result<KnowledgeExportStatus> {
     use mneme::knowledge_store::KnowledgeStore;
     use mneme::portability::{FactEntityEdge, KnowledgeExport};
 
@@ -399,20 +395,31 @@ fn export_knowledge(
             .list_relationships_between_entities(&entity_ids)
             .with_whatever_context(|_| format!("failed to list relationships for '{nous_id}'"))?;
 
-    Ok(Some(KnowledgeExport {
-        facts,
-        entities,
-        relationships,
-        fact_entity_edges,
-    }))
+        Ok(KnowledgeExport {
+            facts,
+            entities,
+            relationships,
+            fact_entity_edges,
+        })
+    }
+
+    match try_enumerate(&store, nous_id) {
+        Ok(export) => {
+            if export.facts.is_empty()
+                && export.entities.is_empty()
+                && export.relationships.is_empty()
+            {
+                Ok(KnowledgeExportStatus::Missing)
+            } else {
+                Ok(KnowledgeExportStatus::Exported(export))
+            }
+        }
+        Err(err) => Err(err),
+    }
 }
 
 #[cfg(not(feature = "recall"))]
-fn export_knowledge(
-    _oikos: &Oikos,
-    _nous_id: &str,
-    _allow_partial: bool,
-) -> Result<KnowledgeExportStatus> {
+fn export_knowledge(_oikos: &Oikos, _nous_id: &str) -> Result<KnowledgeExportStatus> {
     Ok(KnowledgeExportStatus::Missing)
 }
 
@@ -712,21 +719,23 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             Some(row) => serde_json::from_str::<serde_json::Value>(&row.value).ok(),
             None => None,
         };
-        coverage_sections.push(SectionCoverage {
-            section: "sessions".to_owned(),
-            status: session_status.to_owned(),
-            reason: if session_status == "partial" {
-                Some(format!(
-                    "limited to {} messages per session; re-export with --max-messages 0 for a lossless archive",
-                    args.max_messages
-                ))
-            } else {
-                None
-            },
-            count: Some(sessions.len()),
+        sessions.push(ExportedSession {
+            id: session.id,
+            session_key: session.session_key,
+            status: session.status.to_string(),
+            session_type: session.session_type.to_string(),
+            message_count: session.metrics.message_count,
+            token_count_estimate: session.metrics.token_count_estimate,
+            distillation_count: session.metrics.distillation_count,
+            created_at: session.created_at,
+            updated_at: session.updated_at,
+            working_state,
+            distillation_priming: None,
+            notes,
+            messages,
+            usage_records: Some(usage_records),
         });
-        sessions
-    };
+    }
 
     // WHY(#4163): top-level knowledge comes from the live store (typed
     // Facts/Entities/Relationships). Vectors + opaque graph (`memory`) are a
@@ -742,7 +751,8 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     }
 
     let knowledge = match export_knowledge(&oikos, &args.nous_id) {
-        Ok(k) => k,
+        Ok(KnowledgeExportStatus::Exported(export)) => Some(export),
+        Ok(KnowledgeExportStatus::Missing) | Ok(KnowledgeExportStatus::Omitted { .. }) => None,
         Err(err) => {
             if args.allow_partial {
                 eprintln!(
@@ -2534,7 +2544,6 @@ workspace = "nous/{agent_id}"
             compact: false,
             force: false,
             allow_partial: false,
-
         };
         export_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
 
@@ -2593,7 +2602,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
@@ -2714,7 +2722,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
@@ -2835,7 +2842,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
@@ -2956,7 +2962,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
@@ -3024,7 +3029,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
@@ -3573,7 +3577,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
@@ -3719,7 +3722,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
@@ -3779,7 +3781,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
@@ -3922,7 +3923,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
@@ -3957,7 +3957,6 @@ workspace = "nous/{agent_id}"
                 compact: true,
                 force: false,
                 allow_partial: false,
-
             },
         )
         .unwrap();
