@@ -62,7 +62,7 @@ Configured in `instance/config/aletheia.toml` under `data.retention`:
 session_max_age_days = 90           # Delete closed sessions older than 90 days
 orphan_message_max_age_days = 30    # Delete orphan messages older than 30 days
 max_sessions_per_nous = 0           # 0 = unlimited; nonzero caps sessions per agent
-archive_before_delete = true        # Export to JSON before deleting
+archiveBeforeDelete = true        # Export to JSON before deleting
 ```
 
 The retention policy only deletes **closed** sessions (archived or distilled). Active sessions are never deleted regardless of age.

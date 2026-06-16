@@ -48,7 +48,7 @@ Aletheia is a single-binary Rust agent runtime with 48 workspace crates plus the
 | `poiesis-deck` | `crates/poiesis/deck` | Slide deck authoring model for poiesis. |
 | `poiesis-deck-layout` | `crates/poiesis/deck-layout` | Layout engine for poiesis slide decks. |
 | `poiesis-doc` | `crates/poiesis/doc` | DOCX write and inspect backend for poiesis. |
-| `poiesis-text` | `crates/poiesis/text` | Text extraction and document conversion helpers for poiesis. |
+| `poiesis-text` | `crates/poiesis/text` | PDF and ODT document rendering backends for poiesis. |
 | `poiesis-printer-chromium` | `crates/poiesis/printer-chromium` | Chromium-based headless print backend for poiesis. |
 | `poiesis-diff` | `crates/poiesis/diff` | Cell-level diff for XLSX and PPTX documents. |
 | `poiesis-inspect` | `crates/poiesis/inspect` | Text extraction from PDF, XLSX, and PPTX documents. |
