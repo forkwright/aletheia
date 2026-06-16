@@ -552,7 +552,7 @@ async fn self_audit_persist_failure_returns_unsuccessful_result() {
     .await
     .expect("should compute report even when persistence fails");
 
-    assert!(!result.success);
+    assert!(!result.is_success());
     let output = result.output.as_deref().unwrap_or_default();
     assert!(output.contains("report computed but not persisted"));
     assert!(output.contains("persist error"));
@@ -662,7 +662,10 @@ async fn drift_detection_missing_template_reports_unsuccessful() {
     .await
     .expect("should not error even when template is missing");
 
-    assert!(!result.success, "missing template must be unsuccessful");
+    assert!(
+        !result.is_success(),
+        "missing template must be unsuccessful"
+    );
     let output = result.output.as_deref().unwrap_or_default();
     assert!(
         output.contains("template unavailable"),
@@ -925,7 +928,7 @@ async fn self_audit_default_instinct_check_is_not_stub() {
         confidence_claims: 0,
     });
 
-    let (report, _persist) = runner.run_audit(&state).await;
+    let report = runner.run_audit(&state).await;
 
     assert!(
         report

@@ -45,7 +45,6 @@ use mneme::finding::{
 use mneme::meta::{ArtefactMeta, Stamped};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use snafu::IntoError as _;
 use tracing::Instrument as _;
 
 /// The five categories of prosoche self-audit check, one per

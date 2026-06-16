@@ -168,7 +168,7 @@ async fn unsuccessful_in_flight_result_records_failure_status_and_metrics() {
 
     let handle = tokio::spawn(async {
         Ok(ExecutionResult {
-            success: false,
+            outcome: TaskOutcome::Failed,
             errors: 0,
             output: Some("probe detected violation".to_owned()),
         })
@@ -225,7 +225,7 @@ async fn unsuccessful_in_flight_result_without_output_uses_fallback_error() {
 
     let handle = tokio::spawn(async {
         Ok(ExecutionResult {
-            success: false,
+            outcome: TaskOutcome::Failed,
             errors: 0,
             output: None,
         })
@@ -247,7 +247,7 @@ async fn unsuccessful_in_flight_result_without_output_uses_fallback_error() {
     let statuses = runner.status();
     assert_eq!(
         statuses[0].last_error,
-        Some("task returned success=false".to_owned()),
+        Some("task reported failure".to_owned()),
         "missing output should use concise fallback last_error"
     );
     assert_eq!(statuses[0].consecutive_failures, 1);
@@ -263,7 +263,7 @@ async fn repeated_unsuccessful_in_flight_results_accumulate_failures() {
         let output = format!("failure number {n}");
         let handle = tokio::spawn(async move {
             Ok(ExecutionResult {
-                success: false,
+                outcome: TaskOutcome::Failed,
                 errors: 0,
                 output: Some(output),
             })

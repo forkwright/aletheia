@@ -277,6 +277,7 @@ impl InstanceBackup {
         self.copy_required_stores(&backup_path, &mut build)?;
         self.copy_config(&backup_path, &mut build)?;
         self.copy_workspace_dirs(&backup_path, &mut build)?;
+        self.copy_configured_agent_workspaces(&backup_path, &mut build)?;
         self.copy_additional_workspaces(&backup_path, &mut build)?;
         self.copy_optional_data_dirs(&backup_path, &mut build)?;
         self.copy_prompt_audit_dirs(&backup_path, &mut build)?;
@@ -1203,6 +1204,7 @@ workspace = "{}"
             backup_dir,
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         });
         let report = manager.create_backup().expect("backup succeeds");
         let backup_path = report.backup_path.expect("backup path set");

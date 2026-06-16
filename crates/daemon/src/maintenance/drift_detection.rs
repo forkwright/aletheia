@@ -95,29 +95,21 @@ impl DriftDetector {
     ///
     /// # Errors
     ///
-    /// Returns [`MaintenanceInvariant`](error::Error::MaintenanceInvariant)
-    /// when drift detection is enabled but the template directory is absent:
-    /// an enabled check that cannot find its baseline is a misconfiguration the
-    /// operator must see, not a silent clean report. (#5143)
+    /// Returns [`MaintenanceInvariant`](error::Error::MaintenanceInvariant) or
+    /// [`MaintenanceIo`](error::Error::MaintenanceIo) only when walking an
+    /// existing template directory fails. A missing template is not an error:
+    /// the report carries `template_available: false` so the execution layer can
+    /// surface the misconfiguration as an unsuccessful task. (#5143)
     pub fn check(&self) -> error::Result<DriftReport> {
         let checked_at = Some(jiff::Timestamp::now());
         let template_root = self.config.example_root.clone();
 
         if !self.config.example_root.exists() {
-            // WHY(#5143): a missing template with drift *enabled* means the
-            // check cannot do its job — fail loudly instead of reporting a
-            // misleading "clean" result. When drift is disabled, return a clean
-            // report flagged as `template_available: false`.
-            if self.config.enabled {
-                return error::MaintenanceInvariantSnafu {
-                    context: format!(
-                        "drift detection enabled but template directory not found: {}",
-                        self.config.example_root.display()
-                    ),
-                }
-                .fail();
-            }
-
+            // WHY(#5143): a missing template means the check cannot do its job.
+            // Report `template_available: false` rather than a misleading "clean"
+            // result; the execution layer surfaces this as an unsuccessful task
+            // (loud warning + failed `ExecutionResult`) so the operator sees the
+            // misconfiguration without the pure detector throwing.
             return Ok(DriftReport {
                 template_root,
                 template_available: false,
@@ -345,9 +337,11 @@ mod tests {
     }
 
     #[test]
-    fn missing_example_dir_when_enabled_errors() {
+    fn missing_example_dir_when_enabled_reports_unavailable() {
         // WHY(#5143): an enabled drift check with no template is a
-        // misconfiguration the operator must see, not a silent clean report.
+        // misconfiguration the operator must see. The detector reports it as
+        // `template_available: false`; the execution layer turns that into an
+        // unsuccessful task rather than the detector throwing.
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = DriftDetectionConfig {
             enabled: true,
@@ -357,13 +351,14 @@ mod tests {
 
         let example_root = config.example_root.clone();
         let detector = DriftDetector::new(config);
-        let err = detector
+        let report = detector
             .check()
-            .expect_err("enabled drift check with missing template must error");
+            .expect("enabled drift check with missing template must not error");
         assert!(
-            err.to_string().contains("template directory not found"),
-            "error should explain the missing template: {err}"
+            !report.template_available,
+            "report must flag the template as unavailable"
         );
+        assert_eq!(report.template_root, example_root);
     }
 
     #[test]
@@ -375,6 +370,7 @@ mod tests {
             ..make_config(tmp.path())
         };
 
+        let example_root = config.example_root.clone();
         let detector = DriftDetector::new(config);
         let report = detector.check().expect("disabled check should not error");
         assert!(report.missing_files.is_empty());

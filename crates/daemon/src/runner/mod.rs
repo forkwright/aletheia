@@ -116,7 +116,12 @@ pub enum TaskOutcome {
 }
 
 /// Outcome of executing a single task action.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+///
+/// WHY(#5129): no `Default` derive — a task outcome must be an explicit
+/// `Success`/`Failed`/`Skipped` classification (constructed via the
+/// `success`/`failed`/`skipped` constructors), never a silent default that
+/// would mask misclassification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
     /// Terminal outcome classification for the task.
     pub outcome: TaskOutcome,

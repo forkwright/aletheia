@@ -378,7 +378,7 @@ async fn audit_runner_runs_all_checks() {
     let runner = ProsocheAuditRunner::default_checks(dir.path());
 
     let state = make_state("test-nous");
-    let (report, _persist) = runner.run_audit(&state).await;
+    let report = runner.run_audit(&state).await;
 
     assert_eq!(report.nous_id, "test-nous");
     // All 5 check kinds must appear in the summary.
@@ -412,7 +412,7 @@ async fn audit_findings_are_stamped() {
     let runner = ProsocheAuditRunner::default_checks(dir.path());
 
     let state = make_state("test-nous");
-    let (report, _persist) = runner.run_audit(&state).await;
+    let report = runner.run_audit(&state).await;
 
     let meta = report.stamp();
     // Producer must follow the "<crate>@<version>" convention.
@@ -442,7 +442,7 @@ async fn audit_runner_persists_report_to_disk() {
     let runner = ProsocheAuditRunner::default_checks(dir.path());
 
     let state = make_state("test-nous");
-    let (report, _persist) = runner.run_audit(&state).await;
+    let report = runner.run_audit(&state).await;
 
     // At least one JSON file should exist in the audit dir.
     let entries: Vec<_> = std::fs::read_dir(dir.path())
@@ -477,7 +477,7 @@ async fn audit_report_serde_round_trip() {
     let dir = tempfile::tempdir().expect("create tempdir");
     let runner = ProsocheAuditRunner::default_checks(dir.path());
     let state = make_state("serde-test-nous");
-    let (report, _persist) = runner.run_audit(&state).await;
+    let report = runner.run_audit(&state).await;
 
     let json = serde_json::to_string_pretty(&report.report).expect("serialize");
     let back: AuditReport = serde_json::from_str(&json).expect("deserialize");
@@ -491,7 +491,7 @@ async fn report_provenance_records_check_versions_and_hashes() {
     let dir = tempfile::tempdir().expect("create tempdir");
     let runner = ProsocheAuditRunner::default_checks(dir.path());
     let state = make_state("provenance-nous");
-    let (report, _persist) = runner.run_audit(&state).await;
+    let report = runner.run_audit(&state).await;
 
     let provenance = report.provenance.as_ref().expect("provenance envelope");
     assert_eq!(provenance.report_version, "1.1.0");
