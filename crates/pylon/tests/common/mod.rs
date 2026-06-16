@@ -187,6 +187,7 @@ impl TestEnvBuilder {
             metrics_registry,
             event_bus: Arc::new(pylon::event_bus::EventBus::new(256)),
             approval_registry: Arc::new(pylon::approval_registry::ApprovalRegistry::new()),
+            loopback_only_metrics: false,
         });
 
         TestEnv { state, _tmp: tmp }
