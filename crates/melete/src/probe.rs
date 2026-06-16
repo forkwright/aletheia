@@ -20,6 +20,8 @@
 //! Future work may add an LLM-powered probe generator and verifier for higher
 //! recall on subtle distillation errors.
 
+use std::collections::HashSet;
+
 use crate::flush::{FlushItem, MemoryFlush};
 
 /// A probe question generated from a distilled fact.
@@ -74,11 +76,11 @@ pub struct ProbeReport {
     /// Individual verification results.
     pub verifications: Vec<ProbeVerification>,
     /// Indices of flush items that failed verification, grouped by category.
-    pub failed_decisions: Vec<usize>,
+    pub failed_decisions: HashSet<usize>,
     /// Indices of flush items that failed verification.
-    pub failed_corrections: Vec<usize>,
+    pub failed_corrections: HashSet<usize>,
     /// Indices of flush items that failed verification.
-    pub failed_facts: Vec<usize>,
+    pub failed_facts: HashSet<usize>,
 }
 
 impl ProbeReport {
@@ -185,9 +187,9 @@ impl ProbeVerifier {
         let transcript_tokens = tokenize(transcript);
 
         let mut verifications = Vec::with_capacity(probes.len());
-        let mut failed_decisions = Vec::new();
-        let mut failed_corrections = Vec::new();
-        let mut failed_facts = Vec::new();
+        let mut failed_decisions = HashSet::new();
+        let mut failed_corrections = HashSet::new();
+        let mut failed_facts = HashSet::new();
 
         for probe in probes {
             // INVARIANT: probe indices are generated from flush.{decisions,corrections,facts}
@@ -218,19 +220,13 @@ impl ProbeVerifier {
             if !passed {
                 match probe.source_category {
                     ProbeCategory::Decision => {
-                        if !failed_decisions.contains(&probe.source_index) {
-                            failed_decisions.push(probe.source_index);
-                        }
+                        failed_decisions.insert(probe.source_index);
                     }
                     ProbeCategory::Correction => {
-                        if !failed_corrections.contains(&probe.source_index) {
-                            failed_corrections.push(probe.source_index);
-                        }
+                        failed_corrections.insert(probe.source_index);
                     }
                     ProbeCategory::Fact => {
-                        if !failed_facts.contains(&probe.source_index) {
-                            failed_facts.push(probe.source_index);
-                        }
+                        failed_facts.insert(probe.source_index);
                     }
                 }
             }
@@ -425,6 +421,21 @@ mod tests {
             !report.all_passed(),
             "ungrounded fact should fail verification"
         );
+        assert_eq!(report.failed_facts.len(), 1);
+    }
+
+    #[test]
+    fn duplicate_failed_probes_are_deduplicated() {
+        let verifier = ProbeVerifier::new(ProbeConfig {
+            min_overlap: 0.15,
+            max_probes_per_item: 3,
+        });
+        let flush = make_flush(&[
+            "Apollo missions reached the lunar surface. Neural networks require backpropagation.",
+        ]);
+        let transcript = "We reviewed the quarterly budget and staffing plan.";
+        let report = verifier.verify(&flush, transcript);
+        assert!(!report.all_passed(), "ungrounded fact should fail");
         assert_eq!(report.failed_facts.len(), 1);
     }
 
