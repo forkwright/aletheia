@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 // WHY: lock held only during synchronous .take() on Option<JoinHandle>: no await while locked
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Mutex, RwLock}; // kanon:ignore RUST/std-mutex-in-async
 use std::time::Duration;
 
@@ -43,29 +43,141 @@ enum ShutdownOutcome {
 }
 
 struct ActorEntry {
-    handle: NousHandle,
+    /// Wrapped in `Mutex<_>` so the manager can swap the handle for a restarted
+    /// actor while the entry itself is accessed through a shared reference.
+    handle: Mutex<NousHandle>,
     /// Wrapped in `Mutex<Option<_>>` so `shutdown_readonly` can take the handle
     /// from a shared reference, await it, and confirm the actor has stopped.
     join: Mutex<Option<JoinHandle<()>>>,
     config: NousConfig,
     pipeline_config: PipelineConfig,
     /// Number of consecutive health-check misses.
-    consecutive_misses: u32,
+    consecutive_misses: AtomicU32,
     /// Number of times this actor has been restarted.
-    restart_count: u32,
+    restart_count: AtomicU32,
     /// When the actor was last (re)started.
-    last_start: std::time::Instant,
+    last_start: Mutex<std::time::Instant>,
     /// When the actor was last restarted. `None` until first restart.
     /// Used to determine if `restart_count` should decay after stable operation.
-    last_restart: Option<std::time::Instant>,
+    last_restart: Mutex<Option<std::time::Instant>>,
     /// Shared with the actor task. `true` while the actor is processing a turn.
     /// Readable without queuing through the inbox: used by `check_health` to
     /// distinguish a busy (healthy) actor from an unresponsive (dead) one.
-    active_turn: Arc<AtomicBool>,
+    /// Wrapped in `RwLock` so `restart_actor` can swap the Arc for a new actor.
+    active_turn: RwLock<Arc<AtomicBool>>,
     /// Monotonic timestamp (millis since actor start) when the current turn began.
     /// 0 when idle. Used by `check_health` to detect stuck turns that have been
     /// active longer than `stuck_turn_timeout_secs`. (#3254)
-    turn_started_at_ms: Arc<AtomicU64>,
+    /// Wrapped in `RwLock` so `restart_actor` can swap the Arc for a new actor.
+    turn_started_at_ms: RwLock<Arc<AtomicU64>>,
+}
+
+impl ActorEntry {
+    /// Clone the current actor handle.
+    fn current_handle(&self) -> NousHandle {
+        self.handle
+            .lock()
+            .unwrap_or_else(|e| {
+                warn!("actor handle mutex poisoned, recovering");
+                e.into_inner()
+            })
+            .clone()
+    }
+
+    /// Replace the stored actor handle.
+    fn set_handle(&self, handle: NousHandle) {
+        *self.handle.lock().unwrap_or_else(|e| {
+            warn!("actor handle mutex poisoned, recovering");
+            e.into_inner()
+        }) = handle;
+    }
+
+    /// Take the join handle, if any.
+    fn take_join(&self) -> Option<JoinHandle<()>> {
+        self.join
+            .lock()
+            .unwrap_or_else(|e| {
+                warn!("join mutex poisoned, recovering");
+                e.into_inner()
+            })
+            .take()
+    }
+
+    /// Store a new join handle.
+    fn set_join(&self, join: JoinHandle<()>) {
+        *self.join.lock().unwrap_or_else(|e| {
+            warn!("join mutex poisoned, recovering");
+            e.into_inner()
+        }) = Some(join);
+    }
+
+    /// Read the current `active_turn` flag.
+    fn current_active_turn(&self) -> bool {
+        self.active_turn
+            .read()
+            .unwrap_or_else(|e| {
+                warn!("active_turn lock poisoned, recovering");
+                e.into_inner()
+            })
+            .load(Ordering::Acquire)
+    }
+
+    /// Read the current turn-start timestamp.
+    fn current_turn_started_at_ms(&self) -> u64 {
+        self.turn_started_at_ms
+            .read()
+            .unwrap_or_else(|e| {
+                warn!("turn_started_at_ms lock poisoned, recovering");
+                e.into_inner()
+            })
+            .load(Ordering::Acquire)
+    }
+
+    /// Swap the `active_turn` Arc for a new actor's shared flag.
+    fn replace_active_turn(&self, active_turn: Arc<AtomicBool>) {
+        *self.active_turn.write().unwrap_or_else(|e| {
+            warn!("active_turn lock poisoned, recovering");
+            e.into_inner()
+        }) = active_turn;
+    }
+
+    /// Swap the `turn_started_at_ms` Arc for a new actor's shared timestamp.
+    fn replace_turn_started_at_ms(&self, turn_started_at_ms: Arc<AtomicU64>) {
+        *self.turn_started_at_ms.write().unwrap_or_else(|e| {
+            warn!("turn_started_at_ms lock poisoned, recovering");
+            e.into_inner()
+        }) = turn_started_at_ms;
+    }
+
+    /// Effective restart count for backoff calculation, accounting for decay.
+    fn effective_restart_count(&self, decay_window_secs: u64) -> u32 {
+        let restart_count = self.restart_count.load(Ordering::SeqCst);
+        if restart_count == 0 {
+            return 0;
+        }
+        let last_restart = *self.last_restart.lock().unwrap_or_else(|e| {
+            warn!("last_restart lock poisoned, recovering");
+            e.into_inner()
+        });
+        let last_start = *self.last_start.lock().unwrap_or_else(|e| {
+            warn!("last_start lock poisoned, recovering");
+            e.into_inner()
+        });
+        let stable_since = last_restart.unwrap_or(last_start);
+        if stable_since.elapsed() >= std::time::Duration::from_secs(decay_window_secs) {
+            0
+        } else {
+            restart_count
+        }
+    }
+
+    /// Time since the actor was last started or restarted.
+    fn last_start_instant(&self) -> std::time::Instant {
+        *self.last_start.lock().unwrap_or_else(|e| {
+            warn!("last_start lock poisoned, recovering");
+            e.into_inner()
+        })
+    }
 }
 
 /// Manages the lifecycle of all nous actors.
@@ -101,6 +213,10 @@ pub struct NousManager {
     /// `AfterActionStore` backend. `None` when empirical routing is disabled
     /// (the default); actors fall back to [`NoOpRouter`](aletheia_routing::NoOpRouter).
     empirical_router: Option<Arc<dyn Router>>,
+    /// Shared health-poller supervisor state. Updated by [`start_health_poller`].
+    poller_running: AtomicBool,
+    poller_restart_count: AtomicU64,
+    poller_last_error: Mutex<Option<String>>,
 }
 
 impl NousManager {
@@ -148,6 +264,9 @@ impl NousManager {
             tool_config: RwLock::new(Arc::new(tool_config)),
             audit_log: None,
             empirical_router: None,
+            poller_running: AtomicBool::new(false),
+            poller_restart_count: AtomicU64::new(0),
+            poller_last_error: Mutex::new(None),
         }
     }
 
@@ -222,36 +341,51 @@ impl NousManager {
         config.apply_recall_profile(&mut pipeline_config);
         let id = config.id.to_string();
 
-        if let Some(old) = self.actors.remove(&id) {
+        let old_entry = self.actors.remove(&id);
+        if let Some(old) = old_entry {
             warn!(nous_id = %id, "replacing existing actor");
             // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown of replaced actor
-            let _ = old.handle.shutdown().await;
-            // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old
-                .join
-                .lock()
-                .unwrap_or_else(|e| {
-                    warn!(nous_id = %id, "join mutex poisoned, recovering");
-                    e.into_inner()
-                })
-                .take();
-            if let Some(join) = join_opt {
+            let old_handle = old.current_handle();
+            let old_join = old.take_join();
+            let _ = old_handle.shutdown().await;
+            if let Some(join) = old_join {
                 let _ = join.await;
             }
         }
 
-        self.spawn_inner(config, pipeline_config).await
+        let (handle, join_handle, active_turn, turn_started_at_ms) = self
+            .spawn_actor(config.clone(), pipeline_config.clone())
+            .await?;
+
+        info!(nous_id = %id, "actor spawned");
+        self.actors.insert(
+            id,
+            ActorEntry {
+                handle: Mutex::new(handle.clone()),
+                join: Mutex::new(Some(join_handle)),
+                config,
+                pipeline_config,
+                consecutive_misses: AtomicU32::new(0),
+                restart_count: AtomicU32::new(0),
+                last_start: Mutex::new(std::time::Instant::now()),
+                last_restart: Mutex::new(None),
+                active_turn: RwLock::new(active_turn),
+                turn_started_at_ms: RwLock::new(turn_started_at_ms),
+            },
+        );
+        Ok(handle)
     }
 
-    /// Internal spawn that does not check for existing actors.
+    /// Spawn a new nous actor without touching the manager's actor map.
     ///
-    /// Validates the workspace before creating the actor. Returns an error if
-    /// validation fails (e.g., missing SOUL.md), preventing zombie entries (#3248).
-    async fn spawn_inner(
-        &mut self,
+    /// Validates the workspace, builds bootstrap sections, registers with the
+    /// cross-nous router, and returns the handle and shared state for the caller
+    /// to store. Used by [`spawn`] and by the health-poller restart path.
+    async fn spawn_actor(
+        &self,
         config: NousConfig,
         pipeline_config: PipelineConfig,
-    ) -> crate::error::Result<NousHandle> {
+    ) -> crate::error::Result<(NousHandle, JoinHandle<()>, Arc<AtomicBool>, Arc<AtomicU64>)> {
         let id = config.id.to_string();
 
         // WHY: Validate before creating the actor so a validation failure (e.g.,
@@ -316,8 +450,8 @@ impl NousManager {
         #[cfg(not(feature = "knowledge-store"))]
         let vector_search = self.vector_search.clone();
         let (handle, join_handle, active_turn, turn_started_at_ms) = actor::spawn(
-            config.clone(),
-            pipeline_config.clone(),
+            config,
+            pipeline_config,
             Arc::clone(&self.providers),
             Arc::clone(&self.tools),
             Arc::clone(&self.oikos),
@@ -337,29 +471,13 @@ impl NousManager {
             self.empirical_router.clone(),
         );
 
-        info!(nous_id = %id, "actor spawned");
-        self.actors.insert(
-            id,
-            ActorEntry {
-                handle: handle.clone(),
-                join: Mutex::new(Some(join_handle)),
-                config,
-                pipeline_config,
-                consecutive_misses: 0,
-                restart_count: 0,
-                last_start: std::time::Instant::now(),
-                last_restart: None,
-                active_turn,
-                turn_started_at_ms,
-            },
-        );
-        Ok(handle)
+        Ok((handle, join_handle, active_turn, turn_started_at_ms))
     }
 
     /// Look up a handle by nous id.
     #[must_use]
-    pub fn get(&self, nous_id: &str) -> Option<&NousHandle> {
-        self.actors.get(nous_id).map(|e| &e.handle)
+    pub fn get(&self, nous_id: &str) -> Option<NousHandle> {
+        self.actors.get(nous_id).map(ActorEntry::current_handle)
     }
 
     /// Access the shared secret vault used by all managed actors.
@@ -447,18 +565,26 @@ impl NousManager {
             });
             *guard = Arc::new(tool_config.clone());
         }
-        for (id, config, pipeline_config) in configs {
-            if let Some(entry) = self.actors.get(&id) {
-                entry
-                    .handle
-                    .reload_config(
-                        config,
-                        pipeline_config,
-                        tool_config.clone(),
-                        DEFAULT_SEND_TIMEOUT,
-                    )
-                    .await?;
-            }
+        let to_reload: Vec<(NousHandle, NousConfig, PipelineConfig)> = {
+            let actors = &self.actors;
+            configs
+                .into_iter()
+                .filter_map(|(id, config, pipeline_config)| {
+                    actors
+                        .get(&id)
+                        .map(|entry| (entry.current_handle(), config, pipeline_config))
+                })
+                .collect()
+        };
+        for (handle, config, pipeline_config) in to_reload {
+            handle
+                .reload_config(
+                    config,
+                    pipeline_config,
+                    tool_config.clone(),
+                    DEFAULT_SEND_TIMEOUT,
+                )
+                .await?;
         }
         Ok(())
     }
@@ -481,9 +607,27 @@ impl NousManager {
         let mut results = BTreeMap::new();
         let ping_timeout = Duration::from_secs(self.nous_behavior.manager_ping_timeout_secs);
         let stuck_timeout_ms = self.nous_behavior.stuck_turn_timeout_secs * 1_000;
-        for (id, entry) in &self.actors {
-            let ping_result = entry.handle.ping(ping_timeout).await;
-            let is_active = entry.active_turn.load(Ordering::Acquire);
+
+        // WHY: snapshot actor state before awaiting so the actors read lock is
+        // never held across an await point.
+        let snapshot: Vec<(String, NousHandle, bool, u64, std::time::Instant)> = {
+            let actors = &self.actors;
+            actors
+                .iter()
+                .map(|(id, entry)| {
+                    (
+                        id.clone(),
+                        entry.current_handle(),
+                        entry.current_active_turn(),
+                        entry.current_turn_started_at_ms(),
+                        entry.last_start_instant(),
+                    )
+                })
+                .collect()
+        };
+
+        for (id, handle, is_active, turn_start, last_start) in snapshot {
+            let ping_result = handle.ping(ping_timeout).await;
             // WHY: An actor processing a long turn cannot dequeue Ping messages
             // until the turn completes. Treat active_turn=true as a liveness
             // signal so busy actors are not incorrectly declared dead.
@@ -493,7 +637,6 @@ impl NousManager {
             let alive = if ping_result.is_ok() {
                 true
             } else if is_active {
-                let turn_start = entry.turn_started_at_ms.load(Ordering::Acquire);
                 if turn_start == 0 {
                     // WHY: active_turn is true but timestamp is 0: inconsistent
                     // state. Treat as alive to avoid false restarts.
@@ -504,7 +647,7 @@ impl NousManager {
                         clippy::as_conversions,
                         reason = "u128→u64: actor uptime in ms won't exceed u64::MAX"
                     )]
-                    let now_ms = entry.last_start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
+                    let now_ms = last_start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
                     let turn_duration_ms = now_ms.saturating_sub(turn_start);
                     if turn_duration_ms > stuck_timeout_ms {
                         warn!(
@@ -522,18 +665,39 @@ impl NousManager {
                 false
             };
 
-            let (panic_count, uptime) = if let Ok(status) = entry.handle.status().await {
-                (status.panic_count, status.uptime)
+            let (
+                panic_count,
+                uptime,
+                background_failure_total_count,
+                background_failure_recent_count,
+                background_failure_latest_message,
+                background_failure_latest_kind,
+                background_health_degraded,
+            ) = if let Ok(status) = handle.status().await {
+                (
+                    status.panic_count,
+                    status.uptime,
+                    status.background_failure_total_count,
+                    status.background_failure_recent_count,
+                    status.background_failure_latest_message,
+                    status.background_failure_latest_kind,
+                    status.background_health_degraded,
+                )
             } else {
-                (0, entry.last_start.elapsed())
+                (0, last_start.elapsed(), 0, 0, None, None, false)
             };
 
             results.insert(
-                id.clone(),
+                id,
                 ActorHealth {
                     alive,
                     panic_count,
                     uptime,
+                    background_failure_total_count,
+                    background_failure_recent_count,
+                    background_failure_latest_message,
+                    background_failure_latest_kind,
+                    background_health_degraded,
                 },
             );
         }
@@ -554,42 +718,60 @@ impl NousManager {
     /// miss counters may have been incremented without the corresponding restart
     /// being attempted. Only call from non-cancellable contexts (e.g. a dedicated
     /// poller task that never races with a cancellation signal).
-    pub async fn health_cycle(&mut self) {
+    pub async fn health_cycle(&self) {
         let health = self.check_health().await;
         let restart_decay_window =
             Duration::from_secs(self.nous_behavior.manager_restart_decay_window_secs);
 
         let mut to_restart: Vec<String> = Vec::new();
 
-        for (id, actor_health) in &health {
-            if let Some(entry) = self.actors.get_mut(id) {
+        {
+            let actors = &self.actors;
+            for (id, actor_health) in &health {
+                let Some(entry) = actors.get(id) else {
+                    continue;
+                };
+
                 // WHY: proactively decay restart_count during stable operation so
                 // that a crash after long uptime starts from a fresh backoff, not
                 // the penalty accumulated from prior rapid-fire failures.
-                if entry.restart_count > 0 {
-                    let stable_since = entry.last_restart.unwrap_or(entry.last_start);
+                if entry.restart_count.load(Ordering::SeqCst) > 0 {
+                    let stable_since = {
+                        let last_restart = *entry.last_restart.lock().unwrap_or_else(|e| {
+                            warn!(nous_id = %id, "last_restart lock poisoned, recovering");
+                            e.into_inner()
+                        });
+                        let last_start = *entry.last_start.lock().unwrap_or_else(|e| {
+                            warn!(nous_id = %id, "last_start lock poisoned, recovering");
+                            e.into_inner()
+                        });
+                        last_restart.unwrap_or(last_start)
+                    };
                     if stable_since.elapsed() >= restart_decay_window {
                         debug!(
                             nous_id = %id,
-                            old_restart_count = entry.restart_count,
+                            old_restart_count = entry.restart_count.load(Ordering::SeqCst),
                             "restart_count decayed to 0 after stable operation"
                         );
-                        entry.restart_count = 0;
-                        entry.last_restart = None;
+                        entry.restart_count.store(0, Ordering::SeqCst);
+                        *entry.last_restart.lock().unwrap_or_else(|e| {
+                            warn!(nous_id = %id, "last_restart lock poisoned, recovering");
+                            e.into_inner()
+                        }) = None;
                     }
                 }
 
                 if actor_health.alive {
-                    entry.consecutive_misses = 0;
+                    entry.consecutive_misses.store(0, Ordering::SeqCst);
                 } else {
-                    entry.consecutive_misses += 1;
-                    if entry.consecutive_misses == 1 {
+                    let misses = entry.consecutive_misses.fetch_add(1, Ordering::SeqCst) + 1;
+                    if misses == 1 {
                         warn!(nous_id = %id, "actor missed health check");
                     }
-                    if entry.consecutive_misses >= self.nous_behavior.manager_dead_threshold {
+                    if misses >= self.nous_behavior.manager_dead_threshold {
                         error!(
                             nous_id = %id,
-                            misses = entry.consecutive_misses,
+                            misses,
                             "actor declared dead — scheduling restart"
                         );
                         to_restart.push(id.clone());
@@ -604,21 +786,25 @@ impl NousManager {
     }
 
     /// Restart a dead actor with exponential backoff.
-    async fn restart_actor(&mut self, id: &str) {
-        let Some(entry) = self.actors.get(id) else {
-            return;
-        };
-
-        let restart_decay_window =
-            Duration::from_secs(self.nous_behavior.manager_restart_decay_window_secs);
-        let restart_count = if let Some(last_restart) = entry.last_restart {
-            if last_restart.elapsed() >= restart_decay_window {
-                0
-            } else {
-                entry.restart_count
-            }
-        } else {
-            entry.restart_count
+    async fn restart_actor(&self, id: &str) {
+        // Snapshot everything we need from the entry before any await so we
+        // don't hold a manager borrow across await points.
+        let (config, pipeline_config, raw_restart_count, restart_count, old_handle, old_join) = {
+            let actors = &self.actors;
+            let Some(entry) = actors.get(id) else {
+                return;
+            };
+            let raw_restart_count = entry.restart_count.load(Ordering::SeqCst);
+            let restart_count =
+                entry.effective_restart_count(self.nous_behavior.manager_restart_decay_window_secs);
+            (
+                entry.config.clone(),
+                entry.pipeline_config.clone(),
+                raw_restart_count,
+                restart_count,
+                entry.current_handle(),
+                entry.take_join(),
+            )
         };
 
         let backoff = calculate_backoff(
@@ -642,56 +828,50 @@ impl NousManager {
 
         tokio::time::sleep(backoff).await;
 
-        let config = entry.config.clone();
-        let pipeline_config = entry.pipeline_config.clone();
-        let prev_restart_count = entry.restart_count;
-
-        if let Some(old) = self.actors.remove(id) {
-            // WHY: take join handle before awaiting: must not hold MutexGuard across .await
-            let join_opt = old
-                .join
-                .lock()
-                .unwrap_or_else(|e| {
-                    warn!(nous_id = %id, "join mutex poisoned, recovering");
-                    e.into_inner()
-                })
-                .take();
-            if let Some(join) = join_opt {
-                let restart_drain_timeout =
-                    Duration::from_secs(self.nous_behavior.manager_restart_drain_timeout_secs);
-                match tokio::time::timeout(restart_drain_timeout, join).await {
-                    Ok(_) => {
-                        tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
-                    }
-                    Err(_) => {
-                        tracing::warn!(
-                            nous_id = %id,
-                            drain_timeout_secs = self.nous_behavior.manager_restart_drain_timeout_secs,
-                            "actor did not drain within timeout, spawning replacement — concurrent store access possible"
-                        );
-                    }
+        let _ = old_handle.shutdown().await;
+        if let Some(join) = old_join {
+            let restart_drain_timeout =
+                Duration::from_secs(self.nous_behavior.manager_restart_drain_timeout_secs);
+            match tokio::time::timeout(restart_drain_timeout, join).await {
+                Ok(_) => {
+                    tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        nous_id = %id,
+                        drain_timeout_secs = self.nous_behavior.manager_restart_drain_timeout_secs,
+                        "actor did not drain within timeout, spawning replacement — concurrent store access possible"
+                    );
                 }
             }
         }
 
-        match self
-            .spawn_inner(config.clone(), pipeline_config.clone())
-            .await
-        {
-            Ok(handle) => {
-                if let Some(entry) = self.actors.get_mut(id) {
-                    entry.restart_count = restart_count + 1;
-                    entry.last_restart = Some(std::time::Instant::now());
-                    entry.consecutive_misses = 0;
+        match self.spawn_actor(config, pipeline_config).await {
+            Ok((handle, join_handle, active_turn, turn_started_at_ms)) => {
+                if let Some(entry) = self.actors.get(id) {
+                    entry.set_handle(handle);
+                    entry.set_join(join_handle);
+                    entry.replace_active_turn(active_turn);
+                    entry.replace_turn_started_at_ms(turn_started_at_ms);
+                    entry.consecutive_misses.store(0, Ordering::SeqCst);
+                    entry
+                        .restart_count
+                        .store(restart_count + 1, Ordering::SeqCst);
+                    *entry.last_start.lock().unwrap_or_else(|e| {
+                        warn!(nous_id = %id, "last_start lock poisoned, recovering");
+                        e.into_inner()
+                    }) = std::time::Instant::now();
+                    *entry.last_restart.lock().unwrap_or_else(|e| {
+                        warn!(nous_id = %id, "last_restart lock poisoned, recovering");
+                        e.into_inner()
+                    }) = Some(std::time::Instant::now());
                 }
 
                 info!(
                     nous_id = %id,
-                    restart_count = prev_restart_count + 1,
+                    restart_count = raw_restart_count + 1,
                     "actor restarted successfully"
                 );
-
-                drop(handle);
             }
             Err(e) => {
                 error!(
@@ -713,10 +893,12 @@ impl NousManager {
     ///
     /// The supervisor stops when `cancel` fires.
     pub fn start_health_poller(
-        manager: Arc<TokioMutex<Self>>,
+        manager: Arc<Self>,
         interval: Duration,
         cancel: CancellationToken,
     ) -> JoinHandle<()> {
+        manager.poller_running.store(true, Ordering::SeqCst);
+        let manager_for_supervisor = Arc::clone(&manager);
         tokio::spawn(
             async move {
                 let cancel_for_supervisor = cancel.clone();
@@ -730,8 +912,12 @@ impl NousManager {
                     },
                     cancel_for_supervisor,
                     Duration::from_secs(5),
+                    Some(Arc::clone(&manager_for_supervisor)),
                 )
                 .await;
+                manager_for_supervisor
+                    .poller_running
+                    .store(false, Ordering::SeqCst);
             }
             .instrument(tracing::info_span!("health_poller_supervisor")),
         )
@@ -740,7 +926,7 @@ impl NousManager {
     /// Spawn one health-poller task. This is the inner task supervised by
     /// [`start_health_poller`].
     fn spawn_single_health_poller(
-        manager: Arc<TokioMutex<Self>>,
+        manager: Arc<Self>,
         interval: Duration,
         cancel: CancellationToken,
     ) -> JoinHandle<()> {
@@ -751,11 +937,10 @@ impl NousManager {
                     tokio::select! {
                         // SAFETY: cancel-safe. `tokio::time::sleep` is cancel-safe:
                         // if dropped before it fires, the sleep is simply abandoned
-                        // and a new one starts next iteration. The mutex lock and
-                        // `health_cycle` call only run once the sleep completes.
+                        // and a new one starts next iteration. `health_cycle` only
+                        // runs once the sleep completes.
                         () = tokio::time::sleep(interval) => {
-                            let mut mgr = manager.lock().await;
-                            mgr.health_cycle().await;
+                            manager.health_cycle().await;
                         }
                         // SAFETY: cancel-safe. `CancellationToken::cancelled()` is
                         // cancel-safe; dropping it before it fires has no side effects.
@@ -794,19 +979,28 @@ impl NousManager {
     }
 
     async fn list_visible(&self, include_private: bool) -> Vec<NousStatus> {
-        let mut statuses = Vec::with_capacity(self.actors.len());
-        for entry in self.actors.values() {
-            if !include_private && entry.config.private {
-                continue;
+        let handles: Vec<(String, NousHandle, bool)> = {
+            let actors = &self.actors;
+            let mut statuses = Vec::with_capacity(actors.len());
+            for (id, entry) in actors {
+                if !include_private && entry.config.private {
+                    continue;
+                }
+                statuses.push((id.clone(), entry.current_handle(), entry.config.private));
             }
-            match entry.handle.status().await {
-                Ok(status) => statuses.push(status),
+            statuses
+        };
+
+        let mut result = Vec::with_capacity(handles.len());
+        for (id, handle, _private) in handles {
+            match handle.status().await {
+                Ok(status) => result.push(status),
                 Err(_) => {
-                    warn!(nous_id = entry.handle.id(), "failed to query actor status");
+                    warn!(nous_id = %id, "failed to query actor status");
                 }
             }
         }
-        statuses
+        result
     }
 
     /// Gracefully shut down all actors, bounded by `shutdown_timeout_secs`.
@@ -833,30 +1027,32 @@ impl NousManager {
     /// and for callers that need a different budget (e.g. a fast-path shutdown
     /// triggered by SIGKILL-like signals).
     pub async fn shutdown_all_with_timeout(&mut self, timeout: Duration) {
+        // WHY: take ownership of the whole map so the drain is atomic and we
+        // never hold a borrow across an await.
+        let entries: HashMap<String, ActorEntry> = std::mem::take(&mut self.actors);
+
         info!(
-            count = self.actors.len(),
+            count = entries.len(),
             timeout_secs = timeout.as_secs(),
             "shutting down all actors"
         );
 
         if let Some(ref router) = self.router {
-            for id in self.actors.keys() {
+            for id in entries.keys() {
                 router.unregister(id).await;
             }
         }
 
-        let handles: Vec<(String, NousHandle)> = self
-            .actors
+        let handles: Vec<(String, NousHandle)> = entries
             .iter()
-            .map(|(id, e)| (id.clone(), e.handle.clone()))
+            .map(|(id, e)| (id.clone(), e.current_handle()))
             .collect();
 
         // WHY: take all join handles before any await: must not hold MutexGuard across .await
-        let joins: Vec<(String, Option<JoinHandle<()>>)> = self
-            .actors
-            .drain()
+        let joins: Vec<(String, Option<JoinHandle<()>>)> = entries
+            .into_iter()
             .map(|(id, e)| {
-                let join = e.join.try_lock().ok().and_then(|mut g| g.take());
+                let join = e.take_join();
                 (id, join)
             })
             .collect();
@@ -948,28 +1144,36 @@ impl NousManager {
     /// Cancel-safe. Token cancellation is idempotent; partial completion
     /// leaves remaining actors running until the runtime exits.
     pub async fn drain(&self, timeout: Duration) {
-        info!(count = self.actors.len(), "draining all actors");
+        // WHY: snapshot handles and join handles before awaiting so the manager
+        // borrow is never held across an await point.
+        let entries: Vec<(String, NousHandle, Option<JoinHandle<()>>)> = {
+            let actors = &self.actors;
+            info!(count = actors.len(), "draining all actors");
+            actors
+                .iter()
+                .map(|(id, entry)| (id.clone(), entry.current_handle(), entry.take_join()))
+                .collect()
+        };
 
         self.cancel.cancel();
 
         if let Some(ref router) = self.router {
-            for id in self.actors.keys() {
+            for (id, _handle, _join) in &entries {
                 router.unregister(id).await;
             }
         }
 
         // WHY: explicit Shutdown messages wake actors blocking on inbox recv
-        for entry in self.actors.values() {
-            if let Err(e) = entry.handle.shutdown().await {
-                warn!(nous_id = entry.handle.id(), error = %e, "failed to send shutdown");
+        for (id, handle, _join) in &entries {
+            if let Err(e) = handle.shutdown().await {
+                warn!(nous_id = %id, error = %e, "failed to send shutdown");
             }
         }
 
         // WHY: take handles before await: must not hold MutexGuard across .await
         let mut join_set: JoinSet<(String, Result<(), tokio::task::JoinError>)> = JoinSet::new();
-        for (id, entry) in &self.actors {
-            if let Some(join) = entry.join.try_lock().ok().and_then(|mut g| g.take()) {
-                let id = id.clone();
+        for (id, _handle, join_opt) in entries {
+            if let Some(join) = join_opt {
                 join_set.spawn(async move { (id, join.await) });
             }
         }
@@ -1003,19 +1207,26 @@ impl NousManager {
     /// Cancel-safe. Each `shutdown` send is independent; partial completion
     /// leaves remaining actors running (they stop when the `Arc` drops).
     pub async fn shutdown_readonly(&self) {
-        info!(count = self.actors.len(), "shutting down all actors");
+        let handles: Vec<(String, NousHandle)> = {
+            let actors = &self.actors;
+            info!(count = actors.len(), "shutting down all actors");
+            actors
+                .iter()
+                .map(|(id, entry)| (id.clone(), entry.current_handle()))
+                .collect()
+        };
 
         if let Some(ref router) = self.router {
-            for id in self.actors.keys() {
+            for (id, _handle) in &handles {
                 router.unregister(id).await;
             }
         }
 
         self.cancel.cancel();
 
-        for entry in self.actors.values() {
-            if let Err(e) = entry.handle.shutdown().await {
-                warn!(nous_id = entry.handle.id(), error = %e, "failed to send shutdown");
+        for (id, handle) in &handles {
+            if let Err(e) = handle.shutdown().await {
+                warn!(nous_id = %id, error = %e, "failed to send shutdown");
             }
         }
     }
@@ -1024,6 +1235,23 @@ impl NousManager {
     #[must_use]
     pub fn count(&self) -> usize {
         self.actors.len()
+    }
+
+    /// Snapshot of the health-poller supervisor state.
+    #[must_use]
+    pub fn poller_snapshot(&self) -> crate::message::ManagerPollerSnapshot {
+        crate::message::ManagerPollerSnapshot {
+            running: self.poller_running.load(Ordering::SeqCst),
+            restart_count: self.poller_restart_count.load(Ordering::SeqCst),
+            last_error: self
+                .poller_last_error
+                .lock()
+                .unwrap_or_else(|e| {
+                    warn!("poller_last_error lock poisoned, recovering");
+                    e.into_inner()
+                })
+                .clone(),
+        }
     }
 
     /// Register a new agent with default pipeline configuration.
@@ -1057,8 +1285,11 @@ async fn supervise_health_poller(
     mut spawn_poller: impl FnMut() -> JoinHandle<()>,
     cancel: CancellationToken,
     backoff: Duration,
+    manager: Option<Arc<NousManager>>,
 ) {
-    let mut restart_count = 0u64;
+    let mut restart_count = manager
+        .as_ref()
+        .map_or(0, |m| m.poller_restart_count.load(Ordering::SeqCst));
     loop {
         if cancel.is_cancelled() {
             break;
@@ -1076,6 +1307,14 @@ async fn supervise_health_poller(
                     break;
                 }
                 restart_count += 1;
+                if let Some(ref m) = manager {
+                    m.poller_restart_count
+                        .store(restart_count, Ordering::SeqCst);
+                    *m.poller_last_error.lock().unwrap_or_else(|e| {
+                        warn!("poller_last_error lock poisoned, recovering");
+                        e.into_inner()
+                    }) = Some(e.to_string());
+                }
                 error!(
                     error = %e,
                     restart_count,

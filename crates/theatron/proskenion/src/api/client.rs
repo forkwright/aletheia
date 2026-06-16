@@ -93,6 +93,14 @@ pub(crate) async fn open_workspace_file(
 /// as a default header. Views should call this instead of `Client::new()`
 /// so that all API requests carry the auth token.
 pub(crate) fn authenticated_client(config: &ConnectionConfig) -> Client {
+    build_authenticated_client(config, Some(Duration::from_secs(30)))
+}
+
+pub(crate) fn authenticated_streaming_client(config: &ConnectionConfig) -> Client {
+    build_authenticated_client(config, None)
+}
+
+fn build_authenticated_client(config: &ConnectionConfig, timeout: Option<Duration>) -> Client {
     let mut headers = HeaderMap::new();
 
     if let Some(ref token) = config.auth_token
@@ -103,14 +111,16 @@ pub(crate) fn authenticated_client(config: &ConnectionConfig) -> Client {
 
     // WHY: fall back to default client if builder fails (e.g. no TLS provider
     // installed yet); views already handle HTTP errors gracefully.
-    Client::builder()
+    let mut builder = Client::builder()
         .default_headers(headers)
-        .timeout(Duration::from_secs(30))
-        .build()
-        .unwrap_or_else(|err| {
-            tracing::warn!(error = %err, "failed to build authenticated HTTP client");
-            Client::new()
-        })
+        .connect_timeout(Duration::from_secs(30));
+    if let Some(timeout) = timeout {
+        builder = builder.timeout(timeout);
+    }
+    builder.build().unwrap_or_else(|err| {
+        tracing::warn!(error = %err, "failed to build authenticated HTTP client");
+        Client::new()
+    })
 }
 
 #[cfg(test)]
@@ -168,6 +178,30 @@ mod tests {
             ..ConnectionConfig::default()
         };
         let client = authenticated_client(&config);
+        let debug = format!("{client:?}");
+        assert!(!debug.is_empty());
+    }
+
+    #[test]
+    fn streaming_client_builds_with_token() {
+        install_crypto();
+        let config = ConnectionConfig {
+            auth_token: Some("stream-token-456".to_string()),
+            ..ConnectionConfig::default()
+        };
+        let client = authenticated_streaming_client(&config);
+        let debug = format!("{client:?}");
+        assert!(!debug.is_empty());
+    }
+
+    #[test]
+    fn streaming_client_ignores_invalid_token() {
+        install_crypto();
+        let config = ConnectionConfig {
+            auth_token: Some("bad\x00token".to_string()),
+            ..ConnectionConfig::default()
+        };
+        let client = authenticated_streaming_client(&config);
         let debug = format!("{client:?}");
         assert!(!debug.is_empty());
     }

@@ -149,7 +149,6 @@ pub fn inspect_docx(bytes: &[u8]) -> Result<DocxSummary> {
     })?;
 
     let mut reader = quick_xml::Reader::from_reader(xml_bytes.as_slice());
-    reader.config_mut().trim_text(true);
 
     let mut paragraphs: Vec<String> = Vec::new();
     let mut current_text = String::new();
@@ -295,6 +294,20 @@ fn render_pandoc_from_doc(
 mod tests {
     use super::*;
 
+    fn docx_with_document_xml(document_xml: &[u8]) -> Vec<u8> {
+        use std::io::Write as _;
+
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(cursor);
+        zip.start_file("word/document.xml", SimpleFileOptions::default())
+            .expect("start document.xml entry");
+        zip.write_all(document_xml).expect("write document.xml");
+        zip.finish().expect("finish zip").into_inner()
+    }
+
     #[test]
     fn render_docx_simple() {
         let data = serde_json::json!({
@@ -347,6 +360,26 @@ mod tests {
         let bytes = render_docx(&data).expect("render must succeed");
         let summary = inspect_docx(&bytes).expect("inspect must succeed");
         assert_eq!(summary.paragraphs, vec!["Alpha", "Beta"]);
+    }
+
+    #[test]
+    fn inspect_docx_preserves_space_only_run_between_words() {
+        let bytes = docx_with_document_xml(
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r><w:rPr><w:b/></w:rPr><w:t>Net</w:t></w:r>
+      <w:r><w:t xml:space="preserve"> </w:t></w:r>
+      <w:r><w:rPr><w:i/></w:rPr><w:t>Revenue</w:t></w:r>
+    </w:p>
+  </w:body>
+</w:document>"#,
+        );
+
+        let summary = inspect_docx(&bytes).expect("inspect must succeed");
+
+        assert_eq!(summary.paragraphs, vec!["Net Revenue"]);
     }
 
     #[test]

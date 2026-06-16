@@ -21,6 +21,7 @@ use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{DeploymentTarget, LlmProvider, leak_models};
+use crate::retry::backoff_delay;
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::error::{map_error_response, map_request_error};
@@ -264,7 +265,7 @@ impl OpenAiProvider {
 
         for attempt in 0..=self.config.max_retries {
             if attempt > 0 {
-                tokio::time::sleep(backoff_delay(attempt)).await;
+                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
             let headers = self.build_headers()?;
 
@@ -395,7 +396,7 @@ impl OpenAiProvider {
 
         for attempt in 0..=self.config.max_retries {
             if attempt > 0 {
-                tokio::time::sleep(backoff_delay(attempt)).await;
+                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
             let mut response = match self.send_streaming_request(&url, &body).await {
@@ -557,14 +558,6 @@ impl OpenAiProvider {
     }
 }
 
-/// Exponential backoff without jitter for the OpenAI retry loop.
-fn backoff_delay(attempt: u32) -> Duration {
-    let base_ms: u64 = 500;
-    let cap_ms: u64 = 30_000;
-    let delay = base_ms.saturating_mul(1_u64 << attempt.min(6));
-    Duration::from_millis(delay.min(cap_ms))
-}
-
 fn elapsed_millis_u64(start: Instant) -> u64 {
     u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
@@ -678,6 +671,7 @@ impl LlmProvider for OpenAiProvider {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use crate::models::BACKOFF_MAX_MS;
 
     #[test]
     fn rejects_plain_http_to_non_loopback() {
@@ -767,5 +761,32 @@ mod tests {
         // the enum would let Cloud providers admit `Internal`/`Confidential` facts.
         assert!(DeploymentTarget::Cloud < DeploymentTarget::LocalHosted);
         assert!(DeploymentTarget::LocalHosted < DeploymentTarget::Embedded);
+    }
+
+    #[test]
+    fn backoff_delay_respects_retry_after() {
+        let err = error::RateLimitedSnafu {
+            retry_after_ms: 5000_u64,
+        }
+        .build();
+        let delay = backoff_delay(1, Some(&err));
+        assert_eq!(
+            delay,
+            Duration::from_secs(5),
+            "should use retry-after from rate limit error"
+        );
+    }
+
+    #[test]
+    fn backoff_delay_exponential_growth() {
+        let d1 = backoff_delay(1, None);
+        let d2 = backoff_delay(2, None);
+        let d3 = backoff_delay(3, None);
+        assert!(d1 < d2, "attempt 2 delay should exceed attempt 1");
+        assert!(d2 < d3, "attempt 3 delay should exceed attempt 2");
+        assert!(
+            d3 <= Duration::from_millis(BACKOFF_MAX_MS + BACKOFF_MAX_MS / 4),
+            "delay should be capped near BACKOFF_MAX_MS"
+        );
     }
 }

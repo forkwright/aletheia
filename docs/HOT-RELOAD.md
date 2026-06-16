@@ -43,8 +43,9 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | `gateway.cors.maxAgeSecs` | Hot | Preflight cache duration; read per-request |
 | `gateway.bodyLimit.maxBytes` | **Cold** | Body limit configured in Axum router at startup |
 | `gateway.csrf.enabled` | **Cold** | CSRF middleware layer initialized at startup |
-| `gateway.csrf.headerName` | Hot | Header name read per-request when CSRF enabled |
-| `gateway.csrf.headerValue` | Hot | Expected value read per-request when CSRF enabled |
+| `gateway.csrf.disableAcknowledged` | **Cold** | Acknowledgement for running without CSRF protection |
+| `gateway.csrf.headerName` | **Cold** | Header name captured by CSRF middleware at startup |
+| `gateway.csrf.headerValue` | **Cold** | Expected value captured by CSRF middleware at startup |
 | `gateway.rateLimit.enabled` | Hot | Rate limiting can be toggled at runtime |
 | `gateway.rateLimit.requestsPerMinute` | Hot | Rate limit threshold read per-request |
 | `gateway.rateLimit.perUser.enabled` | Hot | Per-user rate limiting toggle |
@@ -288,7 +289,7 @@ Both are classified Cold in this document. A code fix to add `gateway.auth.noneR
 
 ### Cold field detail: `gateway.csrf`
 
-**Note:** The `RESTART_PREFIXES` includes `gateway.csrf` as a cold prefix, meaning the **entire** CSRF config subtree requires restart. While `gateway.csrf.headerName` and `gateway.csrf.headerValue` are evaluated per-request, the middleware layer that performs CSRF checking is initialized at startup with the `enabled` flag. Therefore, the entire subtree is classified as Cold for consistency.
+**Note:** The `RESTART_PREFIXES` includes `gateway.csrf` as a cold prefix, meaning the **entire** CSRF config subtree requires restart. The middleware layer and its configured header name/value are initialized at startup, so changes take effect after restart.
 
 ### Cold field detail: `channels`
 

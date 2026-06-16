@@ -132,15 +132,18 @@ fn drift_detector_reports_missing_files_via_public_api() {
         report.checked_at.is_some(),
         "checked_at must be populated on success"
     );
+    assert!(report.template_available);
+    assert_eq!(report.template_root, example_root);
 }
 
 #[test]
-fn drift_detector_missing_example_root_returns_empty_report() {
+fn drift_detector_missing_example_root_reports_unavailable() {
     let tmp = tempfile::tempdir().expect("tempdir");
+    let example_root = tmp.path().join("does-not-exist");
     let config = DriftDetectionConfig {
         enabled: true,
         instance_root: tmp.path().join("instance"),
-        example_root: tmp.path().join("does-not-exist"),
+        example_root: example_root.clone(),
         alert_on_missing: true,
         ignore_patterns: Vec::new(),
         optional_patterns: Vec::new(),
@@ -157,6 +160,8 @@ fn drift_detector_missing_example_root_returns_empty_report() {
         report.checked_at.is_some(),
         "checked_at must still be stamped"
     );
+    assert!(!report.template_available);
+    assert_eq!(report.template_root, example_root);
 }
 
 #[test]

@@ -9,8 +9,11 @@ use mneme::knowledge::{EpistemicTier, MemoryScope};
 use mneme::workspace::ProjectId;
 use serde::{Deserialize, Serialize};
 use taxis::config::AgentBehaviorDefaults;
+use tracing::warn;
 
 use crate::recall::RecallConfig;
+
+const CONSECUTIVE_MISTAKE_LIMIT_ENV: &str = "KOINA_CONSECUTIVE_MISTAKE_LIMIT";
 
 /// Serde helpers for `Arc<str>`.
 mod arc_str {
@@ -357,10 +360,7 @@ fn default_session_token_cap() -> u64 {
 }
 
 fn default_chars_per_token() -> u32 {
-    // WHY: must match AgentDefaults::chars_per_token default in taxis so that
-    //      the serde default (used when deserialising NousConfig directly)
-    //      is identical to the value wired at startup via ResolvedNousConfig.
-    4
+    koina::defaults::CHARS_PER_TOKEN
 }
 
 /// Default prosoche model: Haiku-tier for cheap heartbeat checks.
@@ -372,11 +372,35 @@ fn default_max_tool_result_bytes() -> u32 {
     koina::defaults::MAX_TOOL_RESULT_BYTES
 }
 
+fn parse_u32_env_override(var_name: &str, raw_value: Option<String>, default: u32) -> u32 {
+    let Some(value) = raw_value else {
+        return default;
+    };
+
+    match value.parse::<u32>() {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            warn!(
+                env_var = var_name,
+                value = %value,
+                default,
+                error = %error,
+                "invalid numeric environment override, using default"
+            );
+            default
+        }
+    }
+}
+
+fn resolve_consecutive_mistake_limit(raw: Option<&str>) -> u32 {
+    const VAR: &str = "KOINA_CONSECUTIVE_MISTAKE_LIMIT";
+    const DEFAULT: u32 = koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT;
+
+    parse_u32_env_override(VAR, raw.map(str::to_owned), DEFAULT)
+}
+
 fn default_consecutive_mistake_limit() -> u32 {
-    std::env::var("KOINA_CONSECUTIVE_MISTAKE_LIMIT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT)
+    resolve_consecutive_mistake_limit(std::env::var(CONSECUTIVE_MISTAKE_LIMIT_ENV).ok().as_deref())
 }
 
 impl Default for NousConfig {
@@ -533,6 +557,32 @@ mod tests {
     }
 
     #[test]
+    #[tracing_test::traced_test]
+    fn malformed_consecutive_mistake_limit_warns_and_falls_back() {
+        let default = koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT;
+
+        for value in ["abc", "-1"] {
+            let parsed = parse_u32_env_override(
+                CONSECUTIVE_MISTAKE_LIMIT_ENV,
+                Some(value.to_owned()),
+                default,
+            );
+            assert_eq!(
+                parsed, default,
+                "malformed override {value:?} must fall back to default"
+            );
+        }
+
+        assert!(logs_contain(CONSECUTIVE_MISTAKE_LIMIT_ENV));
+        assert!(logs_contain("abc"));
+        assert!(logs_contain("-1"));
+        assert!(logs_contain(&default.to_string()));
+        assert!(logs_contain(
+            "invalid numeric environment override, using default"
+        ));
+    }
+
+    #[test]
     fn pipeline_config_defaults() {
         let config = PipelineConfig::default();
         assert!((config.history_budget_ratio - 0.6).abs() < f64::EPSILON);
@@ -635,7 +685,7 @@ mod tests {
                 bootstrap_max_tokens: 20_000,
                 thinking_enabled: true,
                 thinking_budget: 5_000,
-                chars_per_token: 4,
+                chars_per_token: koina::defaults::CHARS_PER_TOKEN,
                 prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
                     .to_owned(),
                 complexity: ComplexityConfig::default(),
@@ -680,5 +730,24 @@ mod tests {
             config.generation.prosoche_model,
             koina::models::task_role_default(koina::models::TaskRole::Prosoche)
         );
+    }
+
+    #[test]
+    fn consecutive_mistake_limit_env_override_honored_when_valid() {
+        assert_eq!(resolve_consecutive_mistake_limit(Some("7")), 7);
+        assert_eq!(resolve_consecutive_mistake_limit(Some("0")), 0);
+    }
+
+    #[test]
+    fn consecutive_mistake_limit_env_override_falls_back_when_malformed() {
+        let default = koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT;
+        assert_eq!(resolve_consecutive_mistake_limit(None), default);
+        assert_eq!(resolve_consecutive_mistake_limit(Some("")), default);
+        assert_eq!(
+            resolve_consecutive_mistake_limit(Some("not-a-number")),
+            default
+        );
+        assert_eq!(resolve_consecutive_mistake_limit(Some("-3")), default);
+        assert_eq!(resolve_consecutive_mistake_limit(Some(" 5 ")), default);
     }
 }

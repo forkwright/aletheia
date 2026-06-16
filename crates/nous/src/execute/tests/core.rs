@@ -218,6 +218,69 @@ async fn configured_fallback_models_are_used_for_retryable_primary_failure() {
 }
 
 #[tokio::test]
+async fn configured_fallback_used_when_primary_provider_marked_down() {
+    // WHY(#5260): when the primary provider is already marked Down in the
+    // registry, the execute stage must still use a configured fallback model
+    // instead of treating the resulting ApiRequest as a permanent failure.
+    let primary = Arc::new(FallbackSequenceProvider::new(
+        "primary",
+        &["test-model"],
+        Vec::new(),
+    ));
+    let secondary = Arc::new(FallbackSequenceProvider::new(
+        "secondary",
+        &["fallback-model"],
+        vec![Ok(make_text_response("fallback answer"))],
+    ));
+    let mut providers = ProviderRegistry::new();
+    providers.register_with_config(
+        Box::new(ArcProvider(Arc::clone(&primary))),
+        HealthConfig {
+            consecutive_failure_threshold: 1,
+            ..HealthConfig::default()
+        },
+    );
+    providers.register(Box::new(ArcProvider(Arc::clone(&secondary))));
+
+    let err = llm_error::ApiRequestSnafu {
+        message: "forced transient error".to_owned(),
+    }
+    .build();
+    providers.record_error("primary", &err);
+    providers.record_error("primary", &err);
+    assert!(
+        matches!(
+            providers.provider_health("primary"),
+            Some(ProviderHealth::Down { .. })
+        ),
+        "primary provider should be Down"
+    );
+
+    let mut config = test_config();
+    config.generation.fallback_models = vec!["fallback-model".to_owned()];
+    config.generation.retries_before_fallback = 1;
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute should fall back when primary provider is Down");
+
+    assert_eq!(result.content, "fallback answer");
+    assert!(
+        primary.called_models().is_empty(),
+        "primary provider should not be called when already Down"
+    );
+    assert_eq!(secondary.called_models(), ["fallback-model"]);
+}
+
+#[tokio::test]
 async fn configured_fallback_reports_aggregate_when_all_models_fail() {
     let primary = Arc::new(FallbackSequenceProvider::new(
         "primary",
@@ -597,6 +660,43 @@ async fn max_iterations_respected() {
     .await
     .expect("should not error");
 
+    assert_eq!(
+        result.usage.llm_calls, 3,
+        "should stop after max_tool_iterations=3 LLM calls"
+    );
+}
+
+#[tokio::test]
+async fn max_iterations_reports_stop_reason() {
+    let mut providers = ProviderRegistry::new();
+    let responses: Vec<CompletionResponse> = (0..10)
+        .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
+        .collect();
+    providers.register(Box::new(
+        MockProvider::with_responses(responses).models(&["test-model"]),
+    ));
+
+    let tools = make_registry_with("exec", Box::new(EchoExecutor));
+    let mut config = test_config();
+    config.limits.max_tool_iterations = 3;
+    config.limits.loop_detection_threshold = 100;
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("should not error");
+
+    assert_eq!(
+        result.stop_reason, "max_tool_iterations",
+        "stop reason should report max tool iterations cutoff"
+    );
     assert_eq!(
         result.usage.llm_calls, 3,
         "should stop after max_tool_iterations=3 LLM calls"

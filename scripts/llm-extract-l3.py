@@ -182,7 +182,15 @@ def workspace_members() -> list[tuple[str, Path]]:
 
 
 def hash_crate_sources(crate_dir: Path) -> str:
-    """SHA-256 of all .rs file contents in a crate, sorted by relative path."""
+    """SHA-256 of all .rs files in a crate, sorted by crate-relative POSIX path.
+
+    Walks every `*.rs` file under `crate_dir` except files inside a `target/`
+    directory. Files are sorted by their path relative to the crate root using
+    forward slashes. For each file the hasher is updated with the UTF-8 bytes
+    of that relative path followed by the raw file bytes. This matches the
+    contract implemented by `compute_crate_source_hash` in
+    `crates/nous/src/bootstrap/mod.rs`.
+    """
     h = hashlib.sha256()
     rs_files = sorted(
         f for f in crate_dir.rglob("*.rs") if "target" not in f.parts
@@ -684,6 +692,8 @@ def write_manifest(
         "[levels.L3]",
         'path = "L3-api-index"',
         'generator = "scripts/llm-extract-l3.py"',
+        'source_hash_algorithm = "sha256"',
+        "source_hash_version = 1",
         "",
     ])
 

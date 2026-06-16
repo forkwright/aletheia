@@ -1,7 +1,7 @@
 [package]
 name = "poiesis-intake"
 version.workspace = true
-description = "Parse Slack-style request text into a structured report scaffold"
+description = "Parse Slack-style request text into a structured intake request"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -13,7 +13,6 @@ workspace = true
 
 [dependencies]
 aletheia-lexica = { workspace = true }
-poiesis-scaffold = { path = "../scaffold" }
 serde = { workspace = true }
 snafu = { workspace = true }
 tracing = { workspace = true }

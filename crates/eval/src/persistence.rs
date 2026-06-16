@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use eidos::meta::Stamped as _;
+use mneme::meta::Stamped as _;
 use serde::Serialize;
 use snafu::ResultExt;
 
@@ -482,7 +482,7 @@ mod tests {
         );
 
         let meta_content = std::fs::read_to_string(&meta_path).expect("should read meta file");
-        let meta: eidos::meta::ArtefactMeta =
+        let meta: mneme::meta::ArtefactMeta =
             serde_json::from_str(&meta_content).expect("meta should be valid JSON");
         assert!(
             meta.producer.starts_with("dokimion@"),

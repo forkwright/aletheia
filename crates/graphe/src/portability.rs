@@ -25,12 +25,49 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// drop fields that v2 expects to round-trip.
 pub const AGENT_FILE_VERSION: u32 = 2;
 
-/// Minimum version that understands the `omissions` partial-export metadata.
-///
-/// v2 producers that do not populate `omissions` are still valid; the field is
-/// optional and omitted when empty. Consumers that do not recognize it can
-/// safely ignore it.
-pub const AGENT_FILE_OMISSIONS_VERSION: u32 = 2;
+/// Machine-readable metadata describing the completeness of an export.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportMetadata {
+    /// Whether the export contains every populated slot the format supports.
+    #[serde(default)]
+    pub lossless: bool,
+    /// Sections that were omitted because they were excluded or unavailable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub omitted_sections: Vec<OmittedSection>,
+    /// Slots where the exported data was truncated by operator request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub truncations: Vec<TruncationRecord>,
+}
+
+/// A section that was omitted from an export.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmittedSection {
+    /// Section name, e.g. "knowledge" or "sessions".
+    pub section: String,
+    /// Human/machine-readable reason, e.g. "`store_unavailable`".
+    pub reason: String,
+    /// Number of omitted items, when meaningful.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<usize>,
+}
+
+/// A truncation applied to an export slot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TruncationRecord {
+    /// Section name, e.g. "`session_messages`".
+    pub section: String,
+    /// Identifier of the truncated item, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
+    /// Maximum number of items that were exported.
+    pub limit: usize,
+    /// Original number of items, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original: Option<usize>,
+}
 
 /// Portable agent file: wire-compatible with the TypeScript `AgentFile` format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,58 +88,9 @@ pub struct AgentFile {
     /// Knowledge graph export (facts, entities, relationships).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub knowledge: Option<KnowledgeExport>,
-    /// Machine-readable record of which sections are complete, partial, or
-    /// omitted from this export.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub coverage: Option<CoverageMetadata>,
-    /// Sections that were intentionally omitted from this export and why.
-    ///
-    /// Populated when `--allow-partial` is used and a section (for example
-    /// typed knowledge) exists on disk but cannot be opened or enumerated.
-    /// Absent when the export is complete or when missing sections simply had
-    /// no data.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub omissions: Option<Vec<Omission>>,
-}
-
-/// Record of a section omitted from an export and the reason it was skipped.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[expect(
-    missing_docs,
-    reason = "portability struct fields are self-documenting by name"
-)]
-pub struct Omission {
-    pub section: String,
-    pub reason: String,
-}
-
-/// Machine-readable summary of which sections of the agent file are
-/// complete, partial, or omitted.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[expect(
-    missing_docs,
-    reason = "portability struct fields are self-documenting by name"
-)]
-pub struct CoverageMetadata {
-    pub sections: Vec<SectionCoverage>,
-}
-
-/// Coverage status for a single agent-file section.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[expect(
-    missing_docs,
-    reason = "portability struct fields are self-documenting by name"
-)]
-pub struct SectionCoverage {
-    pub section: String,
-    pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub count: Option<usize>,
+    /// Export completeness metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_metadata: Option<ExportMetadata>,
 }
 
 /// Agent identity and configuration snapshot.
@@ -397,8 +385,7 @@ mod tests {
             }],
             memory: None,
             knowledge: None,
-            coverage: None,
-            omissions: None,
+            export_metadata: None,
         }
     }
 

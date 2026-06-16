@@ -643,6 +643,37 @@ fn classify_returns_classification() {
 }
 
 #[test]
+fn classify_malformed_response_returns_unclassifiable_error() {
+    let classifier = MockClassifier {
+        response: "I cannot determine the relationship".to_owned(),
+    };
+    let fact = make_fact("alice works at globex", 0.8, vec![1.0]);
+    let candidates = vec![make_candidate(
+        "f-1",
+        "alice works at acme",
+        0.7,
+        EpistemicTier::Inferred,
+        0.85,
+    )];
+
+    let err = classify_against_candidates(&classifier, &fact, &candidates)
+        .expect_err("malformed classifier output must fail closed");
+
+    assert!(
+        matches!(
+            err,
+            ConflictError::Unclassifiable {
+                ref response_snippet,
+                threshold,
+                ..
+            } if response_snippet.contains("cannot determine")
+                && (threshold - DEFAULT_UNCLASSIFIABLE_RATE_THRESHOLD).abs() < f64::EPSILON
+        ),
+        "expected unclassifiable error, got {err:?}"
+    );
+}
+
+#[test]
 fn classify_each_type_produces_correct_action() {
     for (response, expected_action) in [
         (

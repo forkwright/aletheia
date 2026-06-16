@@ -1347,6 +1347,7 @@ pub(crate) async fn run_pipeline(
                         &input.content,
                         &result.content,
                         correction_signal.is_correction,
+                        pipeline_config.training.pii_filter_enabled,
                     )
                 {
                     match writer.write_pair(&pair) {

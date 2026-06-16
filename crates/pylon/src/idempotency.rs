@@ -1,9 +1,10 @@
 //! Idempotency-key cache for deduplicating `POST /sessions/{id}/messages`.
 //!
-//! Stores a bounded, TTL-evicting map of `(principal, idempotency_key, state)` tuples so that
-//! retried requests with the same key and same authenticated principal return the cached response
-//! instead of creating duplicate turns. Keys are namespaced per principal so one principal cannot
-//! observe or replay another principal's cached response.
+//! Stores a bounded, TTL-evicting map of `(principal, idempotency_key, context, state)` tuples so
+//! retried requests with the same key, same authenticated principal, same resolved session, and
+//! same request body return the cached response instead of creating duplicate turns. Keys are
+//! namespaced per principal, then bound to a resolved session and body fingerprint so one session
+//! cannot observe or replay another session's cached response.
 
 use std::collections::{HashMap, VecDeque};
 // WHY: lock not held across await points
@@ -37,8 +38,15 @@ struct CacheInner {
 }
 
 struct CacheEntry {
+    context: RequestContext,
     state: EntryState,
     created_at: Instant,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RequestContext {
+    session_id: String,
+    body_fingerprint: String,
 }
 
 /// The state of a cached idempotency entry.
@@ -66,6 +74,26 @@ pub(crate) enum LookupResult {
     },
     /// A request with this key is still in progress.
     Conflict,
+    /// This key was already bound to a different session or request body.
+    Rejected { reason: RejectionReason },
+}
+
+/// Why an idempotency key was rejected.
+#[derive(Debug)]
+pub(crate) enum RejectionReason {
+    /// The same key was already used in a different resolved session.
+    CrossSession,
+    /// The same key was already used with a different request body.
+    BodyMismatch,
+}
+
+impl RejectionReason {
+    pub(crate) fn message(&self) -> &'static str {
+        match self {
+            Self::CrossSession => "idempotency key is already bound to a different session",
+            Self::BodyMismatch => "idempotency key is already bound to a different request body",
+        }
+    }
 }
 
 /// Build a composite cache key that namespaces `key` under `principal`.
@@ -75,6 +103,13 @@ pub(crate) enum LookupResult {
 /// separate key component.
 fn composite_key(principal: &str, key: &str) -> String {
     format!("{principal}\x00{key}")
+}
+
+fn request_context(session_id: &str, body_fingerprint: &str) -> RequestContext {
+    RequestContext {
+        session_id: session_id.to_owned(),
+        body_fingerprint: body_fingerprint.to_owned(),
+    }
 }
 
 impl Default for IdempotencyCache {
@@ -112,23 +147,41 @@ impl IdempotencyCache {
         })
     }
 
-    /// Look up a (principal, key) pair. On miss, atomically inserts it as `InFlight`.
+    /// Look up a (principal, key, session, body) tuple.
     ///
-    /// The cache entry is keyed by `"{principal}\x00{key}"` so that two different
-    /// principals presenting identical `Idempotency-Key` header values never collide.
-    /// The NUL separator cannot appear in valid ASCII header values, ensuring no
-    /// ambiguity between a principal that ends with a substring of another key.
+    /// On miss, atomically inserts it as `InFlight`. The map entry is keyed by
+    /// `"{principal}\x00{key}"` so two different principals presenting identical
+    /// `Idempotency-Key` header values never collide. The stored context binds that
+    /// key to the resolved session and request body fingerprint; reusing it for any
+    /// other session or body is rejected instead of being treated as a replay.
     ///
     /// # Complexity
     ///
     /// O(1) for the `HashMap` lookup. O(k) for eviction of expired entries
     /// where k is the number of expired entries at the front of the LRU queue.
-    pub(crate) fn check_or_insert(&self, principal: &str, key: &str) -> LookupResult {
+    pub(crate) fn check_or_insert(
+        &self,
+        principal: &str,
+        key: &str,
+        session_id: &str,
+        body_fingerprint: &str,
+    ) -> LookupResult {
         let composite = composite_key(principal, key);
+        let context = request_context(session_id, body_fingerprint);
         let mut inner = self.lock_inner();
         inner.evict_expired();
 
         if let Some(entry) = inner.entries.get(&composite) {
+            if entry.context.session_id != context.session_id {
+                return LookupResult::Rejected {
+                    reason: RejectionReason::CrossSession,
+                };
+            }
+            if entry.context.body_fingerprint != context.body_fingerprint {
+                return LookupResult::Rejected {
+                    reason: RejectionReason::BodyMismatch,
+                };
+            }
             return match &entry.state {
                 EntryState::InFlight => LookupResult::Conflict,
                 EntryState::Completed { status, body } => LookupResult::Hit {
@@ -149,6 +202,7 @@ impl IdempotencyCache {
         inner.entries.insert(
             composite.clone(),
             CacheEntry {
+                context,
                 state: EntryState::InFlight,
                 created_at: Instant::now(),
             },
@@ -158,21 +212,47 @@ impl IdempotencyCache {
         LookupResult::Miss
     }
 
-    /// Mark a (principal, key) pair as completed with the given response.
-    pub(crate) fn complete(&self, principal: &str, key: &str, status: StatusCode, body: String) {
+    /// Mark a (principal, key, session, body) tuple as completed with the given response.
+    pub(crate) fn complete(
+        &self,
+        principal: &str,
+        key: &str,
+        session_id: &str,
+        body_fingerprint: &str,
+        status: StatusCode,
+        body: String,
+    ) {
         let composite = composite_key(principal, key);
+        let context = request_context(session_id, body_fingerprint);
         let mut inner = self.lock_inner();
-        if let Some(entry) = inner.entries.get_mut(&composite) {
+        if let Some(entry) = inner.entries.get_mut(&composite)
+            && entry.context == context
+        {
             entry.state = EntryState::Completed { status, body };
         }
     }
 
-    /// Remove a (principal, key) pair from the cache (e.g. on error, to allow retry).
-    pub(crate) fn remove(&self, principal: &str, key: &str) {
+    /// Remove a (principal, key, session, body) tuple from the cache.
+    ///
+    /// Used on errors to allow an exact retry without clearing another session's binding.
+    pub(crate) fn remove(
+        &self,
+        principal: &str,
+        key: &str,
+        session_id: &str,
+        body_fingerprint: &str,
+    ) {
         let composite = composite_key(principal, key);
+        let context = request_context(session_id, body_fingerprint);
         let mut inner = self.lock_inner();
-        inner.entries.remove(&composite);
-        inner.order.retain(|k| k != &composite);
+        if inner
+            .entries
+            .get(&composite)
+            .is_some_and(|entry| entry.context == context)
+        {
+            inner.entries.remove(&composite);
+            inner.order.retain(|k| k != &composite);
+        }
     }
 
     /// Number of entries currently in the cache (for testing).
@@ -218,20 +298,29 @@ mod tests {
         let cache = IdempotencyCache::new();
         let principal = "alice";
         let key = "test-key-001";
+        let session_id = "session-a";
+        let body_fingerprint = "sha256:body-a";
 
         assert!(matches!(
-            cache.check_or_insert(principal, key),
+            cache.check_or_insert(principal, key, session_id, body_fingerprint),
             LookupResult::Miss
         ));
 
         assert!(matches!(
-            cache.check_or_insert(principal, key),
+            cache.check_or_insert(principal, key, session_id, body_fingerprint),
             LookupResult::Conflict
         ));
 
-        cache.complete(principal, key, StatusCode::OK, r#"{"ok":true}"#.to_owned());
+        cache.complete(
+            principal,
+            key,
+            session_id,
+            body_fingerprint,
+            StatusCode::OK,
+            r#"{"ok":true}"#.to_owned(),
+        );
 
-        match cache.check_or_insert(principal, key) {
+        match cache.check_or_insert(principal, key, session_id, body_fingerprint) {
             LookupResult::Hit { status, body } => {
                 assert_eq!(status, StatusCode::OK);
                 assert_eq!(body, r#"{"ok":true}"#);
@@ -245,14 +334,16 @@ mod tests {
         let cache = IdempotencyCache::new();
         let principal = "alice";
         let key = "retry-key";
+        let session_id = "session-a";
+        let body_fingerprint = "sha256:body-a";
 
         assert!(matches!(
-            cache.check_or_insert(principal, key),
+            cache.check_or_insert(principal, key, session_id, body_fingerprint),
             LookupResult::Miss
         ));
-        cache.remove(principal, key);
+        cache.remove(principal, key, session_id, body_fingerprint);
         assert!(matches!(
-            cache.check_or_insert(principal, key),
+            cache.check_or_insert(principal, key, session_id, body_fingerprint),
             LookupResult::Miss
         ));
     }
@@ -271,7 +362,7 @@ mod tests {
 
         let principal = "alice";
         for i in 0..4 {
-            cache.check_or_insert(principal, &format!("key-{i}"));
+            cache.check_or_insert(principal, &format!("key-{i}"), "session-a", "sha256:body-a");
         }
 
         assert_eq!(cache.len(), 3);
@@ -300,9 +391,9 @@ mod tests {
             max_key_length: DEFAULT_MAX_KEY_LENGTH,
         };
 
-        cache.check_or_insert("alice", "expired-key");
+        cache.check_or_insert("alice", "expired-key", "session-a", "sha256:body-a");
         assert!(matches!(
-            cache.check_or_insert("alice", "expired-key"),
+            cache.check_or_insert("alice", "expired-key", "session-a", "sha256:body-a"),
             LookupResult::Miss
         ));
     }
@@ -314,21 +405,25 @@ mod tests {
     fn different_principals_same_key_are_isolated() {
         let cache = IdempotencyCache::new();
         let key = "shared-key-value";
+        let session_id = "session-a";
+        let body_fingerprint = "sha256:body-a";
 
         // Alice sends a request and it completes.
         assert!(matches!(
-            cache.check_or_insert("alice", key),
+            cache.check_or_insert("alice", key, session_id, body_fingerprint),
             LookupResult::Miss
         ));
         cache.complete(
             "alice",
             key,
+            session_id,
+            body_fingerprint,
             StatusCode::OK,
             r#"{"user":"alice"}"#.to_owned(),
         );
 
         // Alice's replay returns her own cached response.
-        match cache.check_or_insert("alice", key) {
+        match cache.check_or_insert("alice", key, session_id, body_fingerprint) {
             LookupResult::Hit { body, .. } => {
                 assert_eq!(body, r#"{"user":"alice"}"#);
             }
@@ -337,19 +432,29 @@ mod tests {
 
         // Bob uses the same Idempotency-Key but must see a Miss — not Alice's response.
         assert!(
-            matches!(cache.check_or_insert("bob", key), LookupResult::Miss),
+            matches!(
+                cache.check_or_insert("bob", key, session_id, body_fingerprint),
+                LookupResult::Miss
+            ),
             "bob must not see alice's cache entry"
         );
 
         // Bob's entry is in-flight until he completes; a second call from Bob is a Conflict.
         assert!(matches!(
-            cache.check_or_insert("bob", key),
+            cache.check_or_insert("bob", key, session_id, body_fingerprint),
             LookupResult::Conflict
         ));
 
         // Bob completing his entry does not disturb Alice's cached entry.
-        cache.complete("bob", key, StatusCode::OK, r#"{"user":"bob"}"#.to_owned());
-        match cache.check_or_insert("alice", key) {
+        cache.complete(
+            "bob",
+            key,
+            session_id,
+            body_fingerprint,
+            StatusCode::OK,
+            r#"{"user":"bob"}"#.to_owned(),
+        );
+        match cache.check_or_insert("alice", key, session_id, body_fingerprint) {
             LookupResult::Hit { body, .. } => {
                 assert_eq!(
                     body, r#"{"user":"alice"}"#,
@@ -358,7 +463,7 @@ mod tests {
             }
             other => panic!("expected Hit for alice after bob's complete, got {other:?}"),
         }
-        match cache.check_or_insert("bob", key) {
+        match cache.check_or_insert("bob", key, session_id, body_fingerprint) {
             LookupResult::Hit { body, .. } => {
                 assert_eq!(body, r#"{"user":"bob"}"#);
             }
@@ -371,21 +476,65 @@ mod tests {
     fn remove_is_principal_scoped() {
         let cache = IdempotencyCache::new();
         let key = "shared-removable-key";
+        let session_id = "session-a";
+        let body_fingerprint = "sha256:body-a";
 
-        cache.check_or_insert("alice", key);
-        cache.check_or_insert("bob", key);
+        cache.check_or_insert("alice", key, session_id, body_fingerprint);
+        cache.check_or_insert("bob", key, session_id, body_fingerprint);
 
         // Remove only alice's entry.
-        cache.remove("alice", key);
+        cache.remove("alice", key, session_id, body_fingerprint);
 
         assert!(
-            matches!(cache.check_or_insert("alice", key), LookupResult::Miss),
+            matches!(
+                cache.check_or_insert("alice", key, session_id, body_fingerprint),
+                LookupResult::Miss
+            ),
             "alice's entry should be gone after remove"
         );
         assert!(
-            matches!(cache.check_or_insert("bob", key), LookupResult::Conflict),
+            matches!(
+                cache.check_or_insert("bob", key, session_id, body_fingerprint),
+                LookupResult::Conflict
+            ),
             "bob's in-flight entry must be unaffected"
         );
+    }
+
+    #[test]
+    fn same_key_different_session_rejected() {
+        let cache = IdempotencyCache::new();
+        let key = "shared-session-key";
+
+        assert!(matches!(
+            cache.check_or_insert("alice", key, "session-a", "sha256:body-a"),
+            LookupResult::Miss
+        ));
+
+        match cache.check_or_insert("alice", key, "session-b", "sha256:body-a") {
+            LookupResult::Rejected {
+                reason: RejectionReason::CrossSession,
+            } => {}
+            other => panic!("expected cross-session rejection, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn same_key_different_body_rejected() {
+        let cache = IdempotencyCache::new();
+        let key = "shared-body-key";
+
+        assert!(matches!(
+            cache.check_or_insert("alice", key, "session-a", "sha256:body-a"),
+            LookupResult::Miss
+        ));
+
+        match cache.check_or_insert("alice", key, "session-a", "sha256:body-b") {
+            LookupResult::Rejected {
+                reason: RejectionReason::BodyMismatch,
+            } => {}
+            other => panic!("expected body mismatch rejection, got {other:?}"),
+        }
     }
 
     impl std::fmt::Debug for LookupResult {
@@ -394,6 +543,7 @@ mod tests {
                 Self::Miss => write!(f, "Miss"),
                 Self::Hit { status, .. } => write!(f, "Hit({status})"),
                 Self::Conflict => write!(f, "Conflict"),
+                Self::Rejected { reason } => write!(f, "Rejected({reason:?})"),
             }
         }
     }

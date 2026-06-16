@@ -321,6 +321,22 @@ fn quality_gate_rejects_unknown_stop_reason() {
     assert!(!captured, "unknown stop reason should be rejected");
 }
 
+#[test]
+fn quality_gate_rejects_content_filtered_stop_reason() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        stop_reason: CaptureStopReason::ContentFiltered,
+        ..good_input()
+    });
+    assert!(
+        !captured,
+        "content_filtered stop reason should be rejected from training capture"
+    );
+}
+
 // -- Quality gate: tool-use-only ----------------------------------------------
 
 #[test]
@@ -661,6 +677,10 @@ fn capture_stop_reason_from_str() {
     assert_eq!(
         CaptureStopReason::parse("degraded"),
         CaptureStopReason::Degraded
+    );
+    assert_eq!(
+        CaptureStopReason::parse("content_filtered"),
+        CaptureStopReason::ContentFiltered
     );
     assert_eq!(
         CaptureStopReason::parse("error"),

@@ -34,32 +34,27 @@ BenchmarkRunner (crates/eval/src/benchmarks/runner.rs)
 
 ### Per-question flow (live runner)
 
-1. Derive a per-question memory namespace from the configured `nous_id`, the
-   benchmark run id, and the question id.
-2. `POST /api/v1/sessions` - create a fresh session keyed to the question under
-   that namespace.
-3. Ingest the haystack sessions using the configured ingestion mode:
-   * **User-only mode** (default): replay every **user turn** as a plain user
-     message. Assistant/system/tool turns are skipped to avoid contaminating
-     the answer signal.
-   * **Role-preserving mode**: replay every non-empty turn as a user message
-     with a structured provenance header (`role`, `speaker`, `turn_id`,
-     `timestamp`, `provenance`). Historical assistant/system/tool content is
-     tagged as transcript evidence and is not treated as a fresh assistant
-     answer.
-4. `POST /api/v1/sessions/{id}/messages` - ask the benchmark question
-5. Collect the SSE stream; extract concatenated `text_delta` events
-6. Score the answer with `score_answer(actual, expected_answers)`
-7. In isolated mode, `DELETE /api/v1/sessions/{id}` archives the session. The
-   namespace itself is disposable: each question uses a distinct derived
-   `nous_id`, so typed memory/vector/fact side effects cannot leak across
-   questions even if the underlying store is not scrubbed.
+1. `POST /api/v1/sessions` - create a session keyed to the question and
+   `eval_run_id` (official-parity mode), or reuse the single
+   continuous-memory session
+2. `POST /api/v1/knowledge/ingest` - seed the full haystack transcript into
+   the knowledge store as markdown. Every turn keeps its original role
+   (`user`, `assistant`, `system`, `tool`, or dataset speaker labels) so the
+   memory pipeline sees the complete conversation without replaying the
+   turns as user messages and contaminating the answer signal.
+3. `POST /api/v1/sessions/{id}/messages` - ask the benchmark question
+4. Collect the SSE stream; extract concatenated `text_delta` events
+5. Score the answer with `score_answer(actual, expected_answers)`
+6. In official-parity mode, `DELETE /api/v1/sessions/{id}` closes the
+   session after the question. In continuous-memory mode the session stays
+   open so earlier questions remain in context.
 
-Per-question errors are logged and scored as zero - a network hiccup does
-not abort the entire run. The runner produces a `BenchmarkReport` with
-`exact_match_rate()`, `mean_f1()`, and a `per_category()` breakdown.
-Each `QuestionResult` includes an `ingestion_log` that records, per turn,
-whether it was ingested, excluded, or errored, plus aggregate counts.
+Per-question ingestion errors are surfaced in the question result instead
+of being silently ignored. Other per-question errors are logged and scored
+as zero - a network hiccup does not abort the entire run. The runner
+produces a `BenchmarkReport` tagged with `eval_run_id` and per-question
+`id`, plus `exact_match_rate()`, `mean_f1()`, and a `per_category()`
+breakdown.
 
 ### Test coverage (already passing)
 
@@ -70,8 +65,8 @@ The runner has 193 passing tests (`cargo test -p dokimion`):
 | Dataset parsers (LongMemEval + LoCoMo) | 14 | JSON format, alternates, multi-session, error cases |
 | Scoring (EM, F1, contains) | 10 | exact, normalized, partial, substring, duplicates |
 | Report aggregation | 3 | empty, EM+F1 math, per-category grouping |
-| Runner unit tests | 9 | role filtering, config defaults, max_questions, role-preserving provenance header |
-| Runner integration tests (wiremock) | 9 | perfect answer, wrong answer, empty dataset, metadata, category, max_questions, role-preserving ingestion, user-only exclusion, empty-turn handling |
+| Runner unit tests | 8 | transcript role preservation, config defaults, mode mapping, max_questions |
+| Runner integration tests (wiremock) | 6 | perfect answer, wrong answer, empty dataset, metadata, category, max_questions |
 
 ---
 
@@ -213,69 +208,27 @@ Configure `BenchmarkRunnerConfig` for production runs:
 | `session_key_prefix` | `"bench"` | Include date: `"bench-20260412"` |
 | `question_timeout` | 120s | Increase to 300s for long haystack ingestion |
 | `max_questions` | all | Use `Some(50)` for a fast representive sample |
-| `close_between_questions` | true | **Isolated mode.** Each question runs under a disposable `nous_id` namespace derived from `nous_id`, run id, and question id. Use this for official benchmark metrics. |
-| `close_between_questions` | false | **Continuous-memory mode.** Reuses the configured `nous_id` for every question. Label results as `continuous-memory` experiments, not official isolated scores. |
+| `close_between_questions` | true | `true` = `OfficialParity` (fresh session per question); `false` = `ContinuousMemory` (shared session). See [Execution modes](#execution-modes). |
 | `judge` | `None` | Set to an `LlmJudgeConfig` for LLM-as-judge scoring |
 | `retrieval_k` | `None` | Set to `Some(k)` to compute Recall@k / NDCG@k from the knowledge store |
 
-### Ingestion modes and parity
+### Execution modes
 
-The runner supports two ingestion modes, selectable via
-`BenchmarkRunner::with_ingestion_mode`:
+The runner supports two explicitly separated modes, controlled by
+`close_between_questions` on `BenchmarkRunnerConfig`:
 
-| Mode | Behavior | Use when |
-|---|---|---|
-| `UserOnly` (default) | User turns are sent as plain user messages; assistant/system/tool turns are excluded. | Backward-compatible runs; datasets where all evidence is user-authored. |
-| `RolePreserving` | Every non-empty turn is sent as a user message with a provenance header preserving the original role, speaker, turn id, timestamp, and dataset provenance. | LongMemEval `single-session-assistant` or any dataset where assistant/system/tool turns contain required evidence. |
+| Mode | `close_between_questions` | Session behavior | Use case |
+|---|---|---|---|
+| **Official parity** | `true` (default) | Fresh session per question; session closed after each question | Published benchmark numbers; each question evaluated in isolation |
+| **Continuous memory** | `false` | One session shared across all questions; session closed at the end of the run | Simulates a real user conversation where earlier Q&A pairs remain in context |
 
-The modes are reported separately: each `QuestionResult` carries an
-`ingestion_log` with the mode, per-turn outcome (`Ingested`/`Excluded`/`Error`),
-and aggregate counts. This lets downstream analysis compare parity between
-user-only and role-preserving runs without rerunning the dataset.
-
-Role-preserving mode does **not** ask the live model to regenerate historical
-assistant content. Assistant/system/tool turns are wrapped in a structured
-header so the memory pipeline can extract and recall them as transcript
-evidence, not as new assistant answers.
-
-### Memory isolation and the EvalClient API gap
-
-In isolated mode the runner enforces memory isolation by deriving a unique
-`nous_id` for every question:
-
-```text
-{nous_id}-{sanitized_run_id}-{sanitized_question_id}
-```
-
-Session keys are tagged with the run id, question id, index, and the word
-`isolated`; reports set `provenance.memory_ref` to
-`memory-benchmark-isolated-nous-{nous_id}`. In continuous mode the configured
-`nous_id` is preserved and session keys are tagged with `continuous`;
-`provenance.memory_ref` is set to
-`memory-benchmark-continuous-nous-{nous_id}`.
-
-The runner can only verify isolation to the extent that `EvalClient` exposes
-relevant APIs:
-
-- `create_session` and `search_knowledge` accept a `nous_id`, so the runner can
-  route each question to its derived namespace.
-- `close_session` archives the HTTP session (best-effort cleanup).
-- `create_session` returns the bound `nous_id`, so the runner can warn when a
-  session was created under an unexpected namespace.
-
-What `EvalClient` does **not** expose today:
-
-- A first-class memory namespace parameter independent of `nous_id`.
-- A way to create a disposable agent that is active immediately (the existing
-  `POST /api/v1/nous` endpoint writes config and requires a server restart).
-- A way to delete a `nous_id` or bulk-delete its associated facts, vectors, and
-  embeddings after a question.
-
-Because each question uses a distinct derived `nous_id`, cross-question leakage
-is prevented at the identity level: later questions never read or write under a
-previous question's namespace. Leftover per-namespace data in the backing store
-does not affect parity, but operators may still want to prune abandoned
-benchmark agents periodically.
+**Isolation note:** A fresh session removes prior question/answer pairs from
+the live prompt, but the underlying knowledge store is scoped to the
+`nous_id`. For true disposable-memory isolation in official-parity mode,
+use a dedicated, disposable `nous_id` for each benchmark run (for example,
+`benchmark-{date}`) and discard the agent after the run. The runner tags
+every generated artifact with the run's `eval_run_id` and each question's
+`id` so results can be traced back to a clean namespace.
 
 ### Capturing results
 
@@ -307,6 +260,8 @@ Record the following for each run and add to the Results table:
 | Error rate | Fraction of questions logged as `"scored as no-answer"` |
 | Aletheia version | `git rev-parse HEAD` at time of run |
 | Nous model | Model ID from `GET /api/v1/nous/{id}` |
+| `eval_run_id` | Run identifier from `BenchmarkReport.provenance.eval_run_id` |
+| Mode | `OfficialParity` or `ContinuousMemory` used for the run |
 
 ---
 

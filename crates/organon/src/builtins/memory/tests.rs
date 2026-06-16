@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
+use graphe::store::SessionStore;
 use koina::id::{NousId, SessionId, ToolName};
 
 use crate::registry::ToolRegistry;
@@ -358,6 +359,37 @@ async fn note_rejects_over_500_chars() {
     assert!(
         result.content.text_summary().contains("500"),
         "expected result.content.text_summary().contains(\"500\") to be true"
+    );
+}
+
+#[tokio::test]
+async fn note_category_schema_derived_from_session_store() {
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let name = ToolName::new("note").expect("valid");
+    let def = reg.get_def(&name).expect("found");
+    let category = def
+        .input_schema
+        .properties
+        .get("category")
+        .expect("category property");
+
+    let expected: Vec<String> = SessionStore::VALID_CATEGORIES
+        .iter()
+        .map(|&category| category.to_owned())
+        .collect();
+    assert_eq!(
+        category.enum_values,
+        Some(expected),
+        "expected category enum_values to match SessionStore::VALID_CATEGORIES"
+    );
+
+    assert!(
+        !category
+            .description
+            .contains("task, decision, preference, correction, context"),
+        "category description should not enumerate valid categories inline: {}",
+        category.description
     );
 }
 

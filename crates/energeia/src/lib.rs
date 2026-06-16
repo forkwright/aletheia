@@ -8,7 +8,8 @@
 //!
 //! # Architecture
 //!
-//! - [`engine::DispatchEngine`] — session execution backend (Agent SDK HTTP/SSE)
+//! - [`engine::DispatchEngine`] — session execution backend (currently: Claude
+//!   CLI subprocess; target: Agent SDK HTTP/SSE)
 //! - [`http`] — subprocess-based `DispatchEngine` implementation and mock engine
 //! - [`session`] — per-prompt session management: spawn, monitor, resume, budget enforce
 //! - [`qa::QaGate`] — quality assurance evaluation (mechanical + LLM)
@@ -19,6 +20,8 @@
 //! - [`routing`] — static and empirical provider selection (success-rate based)
 //! - [`types`] — dispatch specs, outcomes, QA results
 //! - [`error`] — snafu error types with location tracking
+
+pub(crate) const CLI_BINARY: &str = "claude";
 
 /// Agent SDK engine: OAuth-enabled, permission-aware dispatch backend.
 pub mod agent_sdk;

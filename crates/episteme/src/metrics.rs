@@ -57,6 +57,8 @@ static KNOWLEDGE_EXTRACTIONS_TOTAL: LazyLock<Family<NousStatusLabels, Counter>> 
 static KNOWLEDGE_ADMISSION_TOTAL: LazyLock<Family<AdmissionLabels, Counter>> =
     LazyLock::new(Family::default);
 
+static CONFLICT_UNCLASSIFIABLE_TOTAL: LazyLock<Counter> = LazyLock::new(Counter::default);
+
 fn recall_duration_histogram() -> Histogram {
     Histogram::new([0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0])
 }
@@ -101,6 +103,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_knowledge_admission",
         "Total admission decisions by agent, fact type, outcome, and rejection reason",
         KNOWLEDGE_ADMISSION_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_conflict_unclassifiable",
+        "Total unclassifiable conflict classifier responses; use rate() for unclassifiable-rate alerts",
+        CONFLICT_UNCLASSIFIABLE_TOTAL.clone(),
     );
 }
 
@@ -178,6 +185,12 @@ pub(crate) fn record_admission_ok(nous_id: &str, fact_type: &str) {
             reason: String::new(),
         })
         .inc();
+}
+
+/// Record an unparseable conflict-classifier response.
+#[cfg(any(feature = "mneme-engine", test))]
+pub(crate) fn record_conflict_unclassifiable() {
+    CONFLICT_UNCLASSIFIABLE_TOTAL.inc();
 }
 
 #[cfg(test)]
@@ -277,6 +290,17 @@ mod tests {
                  fact_type=\"preference\",outcome=\"admitted\",reason=\"\"} 1"
             ),
             "admitted label set missing; got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_conflict_unclassifiable() {
+        let r = fresh_registry();
+        record_conflict_unclassifiable();
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_conflict_unclassifiable_total"),
+            "got: {out}"
         );
     }
 }

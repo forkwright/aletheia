@@ -256,6 +256,7 @@ fn retention_summary_default_is_zeroed() {
     assert_eq!(s.messages_cleaned, 0);
     assert_eq!(s.blackboard_entries_cleaned, 0);
     assert_eq!(s.bytes_freed, 0);
+    assert_eq!(s.cap_sessions_cleaned, 0);
 }
 
 #[test]
@@ -265,6 +266,7 @@ fn retention_summary_serde_roundtrips_through_json() {
         messages_cleaned: 345,
         blackboard_entries_cleaned: 6,
         bytes_freed: 67_890,
+        cap_sessions_cleaned: 7,
     };
     let json = serde_json::to_string(&original).expect("serialize");
     let back: RetentionSummary = serde_json::from_str(&json).expect("deserialize");
@@ -276,6 +278,7 @@ fn retention_summary_serde_roundtrips_through_json() {
         original.blackboard_entries_cleaned
     );
     assert_eq!(back.bytes_freed, original.bytes_freed);
+    assert_eq!(back.cap_sessions_cleaned, original.cap_sessions_cleaned);
 }
 
 #[test]
@@ -296,6 +299,26 @@ fn maintenance_report_serde_roundtrips_through_json() {
     assert_eq!(back.errors, original.errors);
     assert_eq!(back.duration_ms, original.duration_ms);
     assert_eq!(back.detail, original.detail);
+}
+
+#[test]
+fn drift_report_exposes_template_root_and_availability() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let example_root = tmp.path().join("missing-template");
+    let config = DriftDetectionConfig {
+        enabled: true,
+        instance_root: tmp.path().join("instance"),
+        example_root: example_root.clone(),
+        alert_on_missing: true,
+        ignore_patterns: Vec::new(),
+        optional_patterns: Vec::new(),
+    };
+
+    let report = DriftDetector::new(config).check().expect("check succeeds");
+
+    assert!(!report.template_available);
+    assert_eq!(report.template_root, example_root);
+    assert!(report.checked_at.is_some());
 }
 
 // ── DaemonConfig TOML round-trip, SelfPromptConfig JSON round-trip ──
@@ -421,6 +444,7 @@ fn execution_result_serde_roundtrips_through_json() {
     let original = ExecutionResult {
         success: true,
         output: Some("ok".to_owned()),
+        errors: 0,
     };
     let json = serde_json::to_string(&original).expect("serialize ExecutionResult");
     let back: ExecutionResult = serde_json::from_str(&json).expect("deserialize ExecutionResult");
@@ -440,6 +464,9 @@ fn task_status_serde_roundtrips_through_json() {
         consecutive_failures: 0,
         in_flight: false,
         last_error: None,
+        last_errors: 0,
+        available: true,
+        reason: None,
     };
     let json = serde_json::to_string(&original).expect("serialize TaskStatus");
     let back: TaskStatus = serde_json::from_str(&json).expect("deserialize TaskStatus");

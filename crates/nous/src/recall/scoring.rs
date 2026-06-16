@@ -136,13 +136,13 @@ pub struct RecallConfig {
     /// Characters per token for recall budget estimation.
     ///
     /// Wired from `agents.defaults.chars_per_token` at startup.
-    /// Default: 4 (1 token ≈ 4 chars).
+    /// Default: `koina::defaults::CHARS_PER_TOKEN` (1 token ≈ 4 chars).
     #[serde(default = "default_chars_per_token")]
     pub chars_per_token: u64,
 }
 
 pub(super) fn default_chars_per_token() -> u64 {
-    4
+    u64::from(koina::defaults::CHARS_PER_TOKEN)
 }
 
 fn default_surprise_threshold() -> f64 {

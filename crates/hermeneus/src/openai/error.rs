@@ -29,7 +29,6 @@ pub(crate) struct WireErrorDetail {
     )]
     pub error_type: Option<String>,
     #[serde(default)]
-    #[expect(dead_code, reason = "captured for debugging; not dispatched on yet")]
     pub code: Option<String>,
 }
 
@@ -57,18 +56,21 @@ pub(crate) async fn map_error_response(
 
     let detail = serde_json::from_str::<WireErrorResponse>(&body)
         .ok()
-        .map(|e| e.error.message);
+        .map(|e| e.error);
 
-    let message = detail.unwrap_or_else(|| {
-        if body.is_empty() {
-            format!("HTTP {status}")
-        } else {
-            // WHY: bounded slice so we do not paste a multi-megabyte HTML
-            // error page into the error chain.
-            let trimmed: String = body.chars().take(512).collect();
-            format!("HTTP {status}: {trimmed}")
-        }
-    });
+    let message = detail.as_ref().map_or_else(
+        || {
+            if body.is_empty() {
+                format!("HTTP {status}")
+            } else {
+                // WHY: bounded slice so we do not paste a multi-megabyte HTML
+                // error page into the error chain.
+                let trimmed: String = body.chars().take(512).collect();
+                format!("HTTP {status}: {trimmed}")
+            }
+        },
+        |d| d.message.clone(),
+    );
 
     tracing::warn!(
         status,
@@ -76,6 +78,24 @@ pub(crate) async fn map_error_response(
         credential_source,
         "OpenAI-compatible API error response"
     );
+
+    let code = detail.as_ref().and_then(|d| d.code.as_deref());
+
+    if code == Some("invalid_api_key") {
+        return error::AuthFailedSnafu { message }.build();
+    }
+
+    if code == Some("context_length_exceeded") {
+        return error::ApiSnafu {
+            status: 400u16,
+            message,
+            context: Box::new(ApiErrorContext {
+                model: model.to_owned(),
+                credential_source: credential_source.to_owned(),
+            }),
+        }
+        .build();
+    }
 
     match status {
         401 | 403 => error::AuthFailedSnafu { message }.build(),

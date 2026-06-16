@@ -139,11 +139,23 @@ pub(super) fn spawn_trace_ingest_flush(
                 tokio::select! {
                     biased;
                     () = token.cancelled() => {
-                        layer.flush(&store);
+                        let (written, not_written) = layer.flush(&store);
+                        tracing::debug!(
+                            written,
+                            not_written,
+                            "trace_ingest: final flush complete"
+                        );
                         break;
                     }
                     _ = interval.tick() => {
-                        layer.flush(&store);
+                        let (written, not_written) = layer.flush(&store);
+                        if written > 0 || not_written > 0 {
+                            tracing::debug!(
+                                written,
+                                not_written,
+                                "trace_ingest: periodic flush complete"
+                            );
+                        }
                     }
                 }
             }

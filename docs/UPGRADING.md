@@ -142,7 +142,7 @@ The new binary will create fresh fjall stores on startup.
 ### Pre-upgrade checklist
 
 Before any upgrade:
-1. `aletheia backup`: creates timestamped database backup
+1. `aletheia backup`: creates a timestamped whole-instance backup set
 2. Save the current binary: `cp /usr/local/bin/aletheia /usr/local/bin/aletheia.prev`
 3. Record current version: `aletheia health | jq .version`
 

@@ -46,7 +46,7 @@ pub mod runner;
 /// Dataset validation primitives shared by benchmark loaders.
 pub mod validation;
 
-pub use self::runner::{BenchmarkRunner, BenchmarkRunnerConfig};
+pub use self::runner::{BenchmarkMode, BenchmarkRunner, BenchmarkRunnerConfig};
 
 /// Re-export of [`EvalClient`](crate::client::EvalClient) for external use.
 ///

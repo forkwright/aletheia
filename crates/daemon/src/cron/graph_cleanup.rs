@@ -39,6 +39,7 @@ pub(crate) async fn execute_graph_cleanup(
     let Some(executor) = knowledge_executor else {
         return Ok(crate::runner::ExecutionResult {
             success: false,
+            errors: 0,
             output: Some("no knowledge executor configured".to_owned()),
         });
     };
@@ -66,6 +67,7 @@ pub(crate) async fn execute_graph_cleanup(
 
     Ok(crate::runner::ExecutionResult {
         success: true,
+        errors: 0,
         output: Some(format!(
             "graph cleanup: {} processed, {} removed in {}ms",
             report.items_processed, report.items_modified, report.duration_ms

@@ -2,13 +2,8 @@
 
 use std::path::PathBuf;
 
+use koina::secret::SecretString;
 use taxis::config::{GatewayConfig, PerUserRateLimitConfig};
-
-/// The insecure default CSRF token value shipped in the default config.
-///
-/// When this value is detected, `from_gateway` replaces it with a
-/// cryptographically random per-instance token.
-const INSECURE_CSRF_DEFAULT: &str = "aletheia";
 
 /// CORS-specific security settings.
 #[derive(Debug, Clone)]
@@ -33,18 +28,21 @@ impl Default for CorsConfig {
 pub struct CsrfConfig {
     /// Whether the CSRF header check is active.
     pub enabled: bool,
+    /// Explicit acknowledgement required when CSRF protection is disabled.
+    pub disable_acknowledged: bool,
     /// HTTP header name for CSRF validation.
     pub header_name: String,
-    /// Expected CSRF header value (per-instance CSPRNG token).
-    pub header_value: String,
+    /// Expected CSRF header value.
+    pub header_value: SecretString,
 }
 
 impl Default for CsrfConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            disable_acknowledged: false,
             header_name: "x-requested-with".to_owned(),
-            header_value: generate_csrf_token(),
+            header_value: SecretString::from("aletheia"),
         }
     }
 }
@@ -109,36 +107,10 @@ pub struct SecurityConfig {
     pub rate_limit: RateLimitConfig,
 }
 
-/// Generate a cryptographically random 32-character hex CSRF token.
-fn generate_csrf_token() -> String {
-    use std::fmt::Write as _;
-    let bytes: [u8; 16] = rand::random();
-    let mut s = String::with_capacity(32);
-    for b in &bytes {
-        // NOTE: String's fmt::Write implementation is infallible.
-        let _ = write!(s, "{b:02x}");
-    }
-    s
-}
-
 impl SecurityConfig {
     /// Build security config from the gateway configuration section.
-    ///
-    /// When the configured CSRF token matches the insecure shipped default,
-    /// a per-instance CSPRNG token is generated to replace it.
     #[must_use]
     pub fn from_gateway(gateway: &GatewayConfig) -> Self {
-        // WHY: The default token "aletheia" is published in docs and config
-        // examples, making it guessable. Any deployment that hasn't set a
-        // custom value gets a unique random token per server start instead.
-        let csrf_header_value = if gateway.csrf.header_value == INSECURE_CSRF_DEFAULT
-            || gateway.csrf.header_value.is_empty()
-        {
-            generate_csrf_token()
-        } else {
-            gateway.csrf.header_value.clone()
-        };
-
         Self {
             body_limit_bytes: gateway.body_limit.max_bytes,
             cors: CorsConfig {
@@ -147,8 +119,9 @@ impl SecurityConfig {
             },
             csrf: CsrfConfig {
                 enabled: gateway.csrf.enabled,
+                disable_acknowledged: gateway.csrf.disable_acknowledged,
                 header_name: gateway.csrf.header_name.clone(),
-                header_value: csrf_header_value,
+                header_value: gateway.csrf.header_value.clone(),
             },
             tls: TlsConfig {
                 enabled: gateway.tls.enabled,
@@ -182,27 +155,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn from_gateway_replaces_insecure_default_token() {
+    fn from_gateway_preserves_default_csrf_header_value() {
         let gateway = GatewayConfig::default();
-        assert_eq!(gateway.csrf.header_value, INSECURE_CSRF_DEFAULT);
         let sec = SecurityConfig::from_gateway(&gateway);
-        assert_ne!(
-            sec.csrf.header_value, INSECURE_CSRF_DEFAULT,
-            "insecure default must be replaced with a CSPRNG token"
-        );
         assert_eq!(
-            sec.csrf.header_value.len(),
-            32,
-            "token must be 32 hex chars"
+            sec.csrf.header_value.expose_secret(),
+            "aletheia",
+            "default CSRF bootstrap header value must match the documented client header"
         );
     }
 
     #[test]
     fn from_gateway_preserves_custom_csrf_token() {
         let mut gateway = GatewayConfig::default();
-        gateway.csrf.header_value = "my-custom-token-value".to_owned();
+        gateway.csrf.header_value = SecretString::from("my-custom-token-value");
         let sec = SecurityConfig::from_gateway(&gateway);
-        assert_eq!(sec.csrf.header_value, "my-custom-token-value");
+        assert_eq!(
+            sec.csrf.header_value.expose_secret(),
+            "my-custom-token-value"
+        );
     }
 
     #[test]
@@ -211,23 +182,6 @@ mod tests {
         assert!(
             !sec.rate_limit.trust_proxy,
             "trust_proxy must default to false"
-        );
-    }
-
-    #[test]
-    fn generate_csrf_token_produces_32_hex_chars() {
-        let token = generate_csrf_token();
-        assert_eq!(token.len(), 32);
-        assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn generate_csrf_token_is_not_static() {
-        let a = generate_csrf_token();
-        let b = generate_csrf_token();
-        assert_ne!(
-            a, b,
-            "consecutive tokens must differ (collision is astronomically unlikely)"
         );
     }
 }

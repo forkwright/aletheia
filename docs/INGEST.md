@@ -18,11 +18,12 @@ aletheia ingest <PATH> [--format <FORMAT>] [--nous-id <ID>] [--dry-run] [--url <
 | `--nous-id` | `pronoea`                     | Owning nous (agent) for ingested facts; matches the agent `init -y` scaffolds. Override with `--nous-id <ID>` to target a different nous. |
 | `--dry-run` | off                           | Parse + report but do not write to the store               |
 | `--url`     | `http://127.0.0.1:18789`      | Forward to a running server instead of writing directly    |
-| `--token`   | `ALETHEIA_TOKEN` env var      | Bearer token for authenticated gateways                    |
+| `--token`   | `ALETHEIA_API_TOKEN` env var  | Bearer token for authenticated API routes                  |
 
 If a server is reachable at `--url`, ingest forwards through the API.
 Otherwise it writes directly to the local knowledge store under the
-current instance root.
+current instance root. Both paths use the same per-file format detection,
+per-file error handling, and final summary.
 
 ## Formats
 
@@ -160,17 +161,7 @@ non-deterministic partial state.
 Per-fact insert failures (e.g., a fact that fails admission control)
 are tolerated the same way and counted in `skipped`.
 
-### API path
-
-If a server is reachable at `--url`, `ingest` forwards each supported
-file as a separate `POST /api/v1/knowledge/ingest` request. This means
-both the direct path and the API path traverse directories recursively,
-detect the format per file when `--format auto` is used, report
-per-file insert/skip counts, and continue past individual file errors.
-
-`--dry-run` shows the per-file JSON request bodies that would be sent
-without contacting the server.
-
-When the gateway is configured to require authentication (`token` or
-`jwt` mode), pass a bearer token with `--token <TOKEN>` or by setting
-the `ALETHEIA_TOKEN` environment variable.
+When a server is running at `--url`, the same directory walk and
+per-file processing are performed on the client; each file is sent to
+the ingest API individually so that per-file format detection and
+per-file error reporting are preserved.

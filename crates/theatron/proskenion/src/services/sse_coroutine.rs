@@ -6,6 +6,7 @@
 //! through [`SseEventRouter`](super::sse::SseEventRouter).
 
 use dioxus::prelude::*;
+use skene::api::types::SseEvent;
 use tokio_util::sync::CancellationToken;
 
 use crate::api::sse::SseConnection;
@@ -42,9 +43,7 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
     let base_url = config.server_url.trim_end_matches('/').to_string();
     let cancel = CancellationToken::new();
 
-    // WHY: Build the HTTP client from the shared authenticated client helper
-    // so auth headers are included in the SSE request.
-    let client = crate::api::client::authenticated_client(config);
+    let client = crate::api::client::authenticated_streaming_client(config);
 
     spawn(async move {
         let mut sse = SseConnection::connect(client, &base_url, cancel);
@@ -53,6 +52,14 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
         let mut loss_announced = false;
 
         while let Some(event) = sse.next().await {
+            if let SseEvent::StreamLagged { dropped } = &event {
+                let (severity, message) = stream_lagged_toast(*dropped);
+                if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
+                    store.write().push(severity, message);
+                }
+                continue;
+            }
+
             let prev_connected = router.state().connection.is_connected();
 
             if router.apply(&event) {
@@ -122,6 +129,13 @@ fn connection_toast(
     }
 }
 
+fn stream_lagged_toast(dropped: u64) -> (ToastSeverity, String) {
+    (
+        ToastSeverity::Warning,
+        format!("Stream lagged; {dropped} events dropped - resync required"),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,6 +145,17 @@ mod tests {
         let mut announced = false;
         assert!(connection_toast(false, true, &mut announced).is_none());
         assert!(!announced);
+    }
+
+    #[test]
+    fn stream_lagged_toast_warns_with_drop_count() {
+        assert_eq!(
+            stream_lagged_toast(7),
+            (
+                ToastSeverity::Warning,
+                "Stream lagged; 7 events dropped - resync required".to_string()
+            )
+        );
     }
 
     #[test]

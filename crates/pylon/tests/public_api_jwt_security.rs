@@ -146,37 +146,35 @@ fn security_config_default_enables_csrf() {
         config.csrf.enabled,
         "CSRF defaults to enabled for safety: opt-out, not opt-in"
     );
+    assert!(
+        !config.csrf.disable_acknowledged,
+        "CSRF disable acknowledgement defaults to false"
+    );
     assert_eq!(config.csrf.header_name, "x-requested-with");
 }
 
 #[test]
-fn csrf_config_default_generates_random_32_hex_token() {
+fn csrf_config_default_uses_documented_bootstrap_header_value() {
     let csrf = CsrfConfig::default();
     assert_eq!(
-        csrf.header_value.len(),
-        32,
-        "CSRF token must be 32 hex chars"
-    );
-    assert!(
-        csrf.header_value.chars().all(|c| c.is_ascii_hexdigit()),
-        "CSRF token must be hexadecimal"
-    );
-    assert_ne!(
-        csrf.header_value, "aletheia",
-        "must not use the legacy insecure static default"
+        csrf.header_value.expose_secret(),
+        "aletheia",
+        "default CSRF header value must match the documented first-party client header"
     );
 }
 
 #[test]
-fn csrf_config_default_tokens_differ_across_instances() {
-    // WHY: Regression test for #1690 — if generate_csrf_token ever regresses
-    // to a static seed, this will catch it without requiring cryptanalysis.
-    let a = CsrfConfig::default();
-    let b = CsrfConfig::default();
-    assert_ne!(
-        a.header_value, b.header_value,
-        "consecutive defaults must produce distinct CSPRNG tokens"
+fn csrf_config_debug_redacts_header_value() {
+    let csrf = CsrfConfig {
+        header_value: SecretString::from("synthetic-csrf-secret"),
+        ..CsrfConfig::default()
+    };
+    let debug = format!("{csrf:?}");
+    assert!(
+        !debug.contains("synthetic-csrf-secret"),
+        "debug output must not expose the CSRF header value"
     );
+    assert!(debug.contains("[REDACTED]"));
 }
 
 #[test]

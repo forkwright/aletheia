@@ -112,6 +112,7 @@ async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
         tracing::debug!(cmd = %cmd, stdout = %stdout, "command succeeded");
         Ok(ExecutionResult {
             success: true,
+            errors: 0,
             output: Some(stdout.into_owned()),
         })
     } else {
@@ -242,6 +243,7 @@ pub(crate) async fn execute_builtin_with_behavior(
                         );
                         Ok(ExecutionResult {
                             success: true,
+                            errors: 0,
                             output: Some("dispatched".to_owned()),
                         })
                     }
@@ -253,6 +255,7 @@ pub(crate) async fn execute_builtin_with_behavior(
                         );
                         Ok(ExecutionResult {
                             success: false,
+                            errors: 0,
                             output: Some(format!("dispatch failed: {e}")),
                         })
                     }
@@ -271,6 +274,7 @@ pub(crate) async fn execute_builtin_with_behavior(
                 let result = check.run().await?;
                 Ok(ExecutionResult {
                     success: true,
+                    errors: 0,
                     output: Some(
                         serde_json::to_string(&result)
                             .unwrap_or_else(|_| "prosoche check complete".to_owned()),
@@ -311,6 +315,7 @@ pub(crate) async fn execute_builtin_with_behavior(
             );
             Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some(format!(
                     "{} files rotated, {} pruned, {} bytes freed",
                     report.files_rotated, report.files_pruned, report.bytes_freed
@@ -330,11 +335,28 @@ pub(crate) async fn execute_builtin_with_behavior(
                 context: "drift detection",
             })??;
 
+            let template_display = report.template_root.display();
+
+            if !report.template_available {
+                tracing::warn!(
+                    template_path = %template_display,
+                    "maintenance: drift detection template unavailable"
+                );
+                return Ok(ExecutionResult {
+                    success: false,
+                    errors: 0,
+                    output: Some(format!(
+                        "drift detection template unavailable: {template_display}"
+                    )),
+                });
+            }
+
             tracing::info!(
                 missing = report.missing_files.len(),
                 optional_missing = report.optional_missing_files.len(),
                 extra = report.extra_files.len(),
                 permission_issues = report.permission_issues.len(),
+                template_path = %template_display,
                 "maintenance: drift detection complete"
             );
 
@@ -370,11 +392,13 @@ pub(crate) async fn execute_builtin_with_behavior(
 
             Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some(format!(
-                    "{} missing, {} optional missing, {} extra",
+                    "{} missing, {} optional missing, {} extra (template: {})",
                     report.missing_files.len(),
                     report.optional_missing_files.len(),
-                    report.extra_files.len()
+                    report.extra_files.len(),
+                    template_display,
                 )),
             })
         }
@@ -409,6 +433,7 @@ pub(crate) async fn execute_builtin_with_behavior(
             );
             Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some(summary.join(", ")),
             })
         }
@@ -417,6 +442,7 @@ pub(crate) async fn execute_builtin_with_behavior(
             else {
                 return Ok(ExecutionResult {
                     success: false,
+                    errors: 0,
                     output: Some("skipped — no after-action store configured".to_owned()),
                 });
             };
@@ -432,6 +458,7 @@ pub(crate) async fn execute_builtin_with_behavior(
             tracing::info!("maintenance: routing after-action store refresh complete");
             Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some("routing after-action store refreshed".to_owned()),
             })
         }
@@ -440,14 +467,29 @@ pub(crate) async fn execute_builtin_with_behavior(
                 .map_or_else(default_prosoche_audit_dir, |m| m.prosoche_audit_dir.clone());
             let runner = ProsocheAuditRunner::default_checks(&audit_dir);
             let state = build_prosoche_audit_state(nous_id);
-            let report = runner.run_audit(&state).await;
+            let outcome = runner.run_audit(&state).await;
+            let output = if let Some(err) = outcome.last_persist_error.as_deref() {
+                format!(
+                    "prosoche self-audit report computed but not persisted: {} findings across {} checks; persist error: {err}",
+                    outcome.findings.len(),
+                    outcome.check_summary.len()
+                )
+            } else {
+                let persisted = outcome
+                    .persisted_path
+                    .as_ref()
+                    .map(|path| format!("; report persisted to {}", path.display()))
+                    .unwrap_or_default();
+                format!(
+                    "prosoche self-audit complete: {} findings across {} checks{persisted}",
+                    outcome.findings.len(),
+                    outcome.check_summary.len()
+                )
+            };
             Ok(ExecutionResult {
-                success: true,
-                output: Some(format!(
-                    "prosoche self-audit complete: {} findings across {} checks",
-                    report.findings.len(),
-                    report.check_summary.len()
-                )),
+                success: outcome.last_persist_error.is_none(),
+                errors: 0,
+                output: Some(output),
             })
         }
         BuiltinTask::ProbeAudit => execute_probe_audit(nous_id, bridge, cancel.clone()).await,
@@ -473,6 +515,7 @@ pub(crate) async fn execute_builtin_with_behavior(
             // happen in normal operation).
             Ok(ExecutionResult {
                 success: false,
+                errors: 0,
                 output: Some(
                     "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
                 ),
@@ -515,12 +558,13 @@ pub(crate) async fn execute_builtin_with_behavior(
 
             Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some(
                     "rule proposals written to instance/data/rule_proposals.toml".to_owned(),
                 ),
             })
         }
-        BuiltinTask::FjallBackup => {
+        BuiltinTask::InstanceBackup => {
             let config = maintenance
                 .map_or_else(InstanceBackupConfig::default, |m| m.instance_backup.clone());
             let backup_metrics = maintenance.and_then(|m| m.backup_metrics.clone());
@@ -559,6 +603,7 @@ pub(crate) async fn execute_builtin_with_behavior(
             );
             Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some(format!(
                     "{} files copied ({} bytes), {} old backups pruned",
                     report.files_copied, report.bytes_copied, report.backups_pruned
@@ -588,6 +633,7 @@ pub(crate) async fn execute_builtin_with_behavior(
             );
             Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some(format!(
                     "{} files pruned, {} retained, {} malformed skipped, {} fallback-pruned, {} bytes freed",
                     report.files_pruned,
@@ -603,6 +649,7 @@ pub(crate) async fn execute_builtin_with_behavior(
                 tracing::info!("retention execution skipped — no executor configured");
                 return Ok(ExecutionResult {
                     success: true,
+                    errors: 0,
                     output: Some("skipped — no executor".to_owned()),
                 });
             };
@@ -617,6 +664,7 @@ pub(crate) async fn execute_builtin_with_behavior(
 
             tracing::info!(
                 sessions = summary.sessions_cleaned,
+                cap_sessions = summary.cap_sessions_cleaned,
                 messages = summary.messages_cleaned,
                 blackboard_entries = summary.blackboard_entries_cleaned,
                 bytes_freed = summary.bytes_freed,
@@ -624,9 +672,11 @@ pub(crate) async fn execute_builtin_with_behavior(
             );
             Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some(format!(
-                    "{} sessions, {} messages, {} blackboard entries cleaned, {} bytes freed",
+                    "{} sessions ({} cap), {} messages, {} blackboard entries cleaned, {} bytes freed",
                     summary.sessions_cleaned,
+                    summary.cap_sessions_cleaned,
                     summary.messages_cleaned,
                     summary.blackboard_entries_cleaned,
                     summary.bytes_freed
@@ -652,6 +702,7 @@ async fn execute_probe_audit(
     let Some(bridge) = bridge else {
         return Ok(ExecutionResult {
             success: false,
+            errors: 0,
             output: Some("no bridge configured".to_owned()),
         });
     };
@@ -707,6 +758,7 @@ async fn execute_probe_audit(
 
             Ok(ExecutionResult {
                 success: dispatch_result.success,
+                errors: 0,
                 output: Some(summary.one_line()),
             })
         }
@@ -718,6 +770,7 @@ async fn execute_probe_audit(
             );
             Ok(ExecutionResult {
                 success: false,
+                errors: 0,
                 output: Some(format!("probe-audit dispatch failed: {e}")),
             })
         }
@@ -737,6 +790,7 @@ async fn execute_knowledge_task(
         );
         return Ok(ExecutionResult {
             success: false,
+            errors: 0,
             output: Some("no knowledge maintenance executor configured".to_owned()),
         });
     };
@@ -781,11 +835,13 @@ async fn execute_knowledge_task(
             | BuiltinTask::LessonExtraction
             | BuiltinTask::SelfPrompt
             | BuiltinTask::ProposeRules
-            | BuiltinTask::FjallBackup
+            | BuiltinTask::InstanceBackup
             | BuiltinTask::PromptAuditRotation
-            | BuiltinTask::RoutingStoreRefresh => {
-                unreachable!("non-knowledge task routed to execute_knowledge_task")
+            | BuiltinTask::RoutingStoreRefresh => error::TaskFailedSnafu {
+                task_id: format!("{builtin_clone:?}"),
+                reason: "non-knowledge task routed to knowledge executor".to_owned(),
             }
+            .fail(),
         }?;
 
         report.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -805,29 +861,25 @@ async fn execute_knowledge_task(
         context: format!("knowledge maintenance: {builtin:?}"),
     })??;
 
-    let success = report.is_success();
-    let mut output = format!(
-        "{} processed, {} modified, {} errors in {}ms",
-        report.items_processed, report.items_modified, report.errors, report.duration_ms
-    );
-    if let Some(detail) = &report.detail {
-        output.push_str(&format!(": {detail}"));
-    }
+    let outcome = report.outcome();
+    let output = match outcome {
+        crate::maintenance::MaintenanceOutcome::Success => format!(
+            "{} processed, {} modified in {}ms",
+            report.items_processed, report.items_modified, report.duration_ms
+        ),
+        crate::maintenance::MaintenanceOutcome::Degraded => format!(
+            "degraded: {} processed, {} modified, {} non-fatal errors in {}ms",
+            report.items_processed, report.items_modified, report.errors, report.duration_ms
+        ),
+        crate::maintenance::MaintenanceOutcome::Failure => {
+            format!(
+                "failed: {} processed, {} modified in {}ms",
+                report.items_processed, report.items_modified, report.duration_ms
+            )
+        }
+    };
 
-    if !success {
-        tracing::warn!(
-            task = ?builtin,
-            items_processed = report.items_processed,
-            items_modified = report.items_modified,
-            errors = report.errors,
-            "knowledge maintenance completed with errors"
-        );
-    }
-
-    Ok(ExecutionResult {
-        success,
-        output: Some(output),
-    })
+    Ok(ExecutionResult::from_maintenance_report(&report, output))
 }
 
 /// Execute lesson extraction from training data JSONL files.
@@ -865,6 +917,7 @@ async fn execute_lesson_extraction(
         let Some(training_dir) = training_dir else {
             return Ok(ExecutionResult {
                 success: true,
+                errors: 0,
                 output: Some("skipped: no training data directory found".to_owned()),
             });
         };
@@ -960,6 +1013,7 @@ fn execute_ops_fact_extraction_blocking(
 
     Ok(ExecutionResult {
         success: true,
+        errors: 0,
         output: Some(format!(
             "{count} operational facts extracted, {count} inserted"
         )),
@@ -999,6 +1053,7 @@ fn execute_lesson_extraction_from_dir(
 
     Ok(ExecutionResult {
         success: true,
+        errors: 0,
         output: Some(format!(
             "{lesson_count} lessons extracted, {} facts produced, {inserted} inserted ({} violations, {} lint summaries read)",
             durable_facts.len(),

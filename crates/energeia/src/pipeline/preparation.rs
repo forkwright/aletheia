@@ -107,7 +107,9 @@ impl PipelineStage for PreparationStage {
 
         ctx.resume_policy = crate::resume::ResumePolicy::default();
         let mut engine_config = EngineConfig::new(crate::engine::AgentOptions::new())
-            .idle_timeout_opt(cfg.session_idle_timeout);
+            .idle_timeout_opt(cfg.session_idle_timeout)
+            .routing(cfg.routing.clone())
+            .after_action_log_dir(ctx.after_action_log_dir.clone());
         for dir in &cfg.additional_dirs {
             engine_config = engine_config.add_dir(dir.clone());
         }

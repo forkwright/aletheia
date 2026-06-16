@@ -65,6 +65,7 @@ async fn router_emits_hsts_header_when_tls_enabled() {
         },
         csrf: CsrfConfig {
             enabled: false,
+            disable_acknowledged: true,
             ..CsrfConfig::default()
         },
         ..SecurityConfig::default()
@@ -96,6 +97,7 @@ async fn oversized_body_returns_413_payload_too_large() {
         body_limit_bytes: 64,
         csrf: CsrfConfig {
             enabled: false,
+            disable_acknowledged: true,
             ..CsrfConfig::default()
         },
         ..SecurityConfig::default()

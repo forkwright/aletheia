@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# git-guard.sh - inspect tool:called payloads for destructive git operations.
+# git-guard.sh - template for a future hook that would inspect tool:called
+# payloads for destructive git operations.
 #
-# Receives the tool:called event payload on stdin as JSON.
+# UNSUPPORTED BEFORE v1.0: this script is not executed by the runtime today.
+# If the external shell-hook format is implemented in the future, it would
+# receive the tool:called event payload on stdin as JSON.
+#
 # Exits:
 #   0 - no issue detected
 #   1 - operator-approval required (warns or blocks per ALETHEIA_GIT_GUARD_BLOCK)

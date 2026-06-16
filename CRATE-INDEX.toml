@@ -305,7 +305,7 @@ test-full = "full test tier fixtures"
 path = "crates/organon"
 layer = "tool"
 purpose = "Tool registry, definitions, and built-in tool executors"
-depends_on = ["eidos", "energeia", "hermeneus", "koina", "poiesis-core", "poiesis-sheet", "poiesis-slides", "poiesis-text", "taxis"]
+depends_on = ["eidos", "energeia", "hermeneus", "koina", "poiesis-core", "poiesis-sheet", "poiesis-slides", "poiesis-theme", "poiesis-text", "taxis"]
 used_by = ["agora", "aletheia", "diaporeia", "dokimion", "integration-tests", "nous", "pylon", "thesauros"]
 
 [crates.organon.features]
@@ -449,7 +449,7 @@ path = "crates/poiesis/theme"
 layer = "types"
 purpose = "Theme registry, token model, and brand-asset sinks (CSS, OOXML clrScheme, Pandoc doc-vars) for poiesis"
 depends_on = []
-used_by = []
+used_by = ["organon", "poiesis-charts"]
 features = {}
 
 [crates.poiesis-typst]

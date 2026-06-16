@@ -183,7 +183,7 @@ curl -N http://localhost:18789/api/v1/sessions/SESSION_ID/messages \
 
 The messages endpoint streams the response as Server-Sent Events (SSE).
 
-**Note:** If CSRF is enabled in your config (it is by default in the example config), you must include the `X-Requested-With: aletheia` header on all state-changing requests (POST, PUT, DELETE). Read-only GET requests do not require it.
+**Note:** CSRF is enabled by default. Include the documented bootstrap header `X-Requested-With: aletheia` on all state-changing requests (POST, PUT, DELETE). Read-only GET requests do not require it.
 
 ---
 
@@ -192,7 +192,7 @@ The messages endpoint streams the response as Server-Sent Events (SSE).
 ```bash
 aletheia -r ./instance      # start the server
 aletheia tui                 # talk to your agent (in another terminal)
-aletheia backup              # create a database backup
+aletheia backup              # create a whole-instance backup set
 aletheia --help              # full command reference
 ```
 
@@ -219,7 +219,12 @@ customize:
 EnvironmentFile=-%h/aletheia/instance/config/env
 ExecStart=/usr/bin/env %h/.local/bin/aletheia -r %h/aletheia/instance
 ReadWritePaths=%h/aletheia/instance
+WorkingDirectory=%h/aletheia
 ```
+
+Drift detection resolves the sibling `instance.example` template from the
+configured instance root. If the template is unavailable, the drift-detection
+task reports degraded/failed rather than clean.
 
 The environment file is owned by the instance. Start from the checked-in
 template when you need process-manager environment variables:
@@ -349,7 +354,7 @@ mode = "none"
 
 ### API requests rejected with 403 / missing CSRF header
 
-If CSRF protection is enabled (default in the example config), state-changing requests require the header `X-Requested-With: aletheia`. Add `-H "X-Requested-With: aletheia"` to your curl commands. The TUI handles this automatically.
+CSRF protection is enabled by default, so state-changing requests require the header `X-Requested-With: aletheia`. Add `-H "X-Requested-With: aletheia"` to your curl commands. The TUI handles this automatically.
 
 ### Server can't find the instance directory
 

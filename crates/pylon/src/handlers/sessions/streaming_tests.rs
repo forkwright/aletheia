@@ -4,6 +4,7 @@ use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -24,7 +25,7 @@ fn reconnect_path() -> axum::extract::Path<(String, String)> {
     axum::extract::Path(("ses-a".to_owned(), "turn-a".to_owned()))
 }
 
-async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
+async fn reconnect_running_test_state() -> (SessionsState, tempfile::TempDir, TurnBufferHandle) {
     let tmp = tempfile::TempDir::new().expect("tmpdir");
     let session_store = Arc::new(Mutex::new(
         mneme::store::SessionStore::open_in_memory().expect("in-memory store"),
@@ -75,9 +76,59 @@ async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
     handle
         .record("text_delta", r#"{"type":"text_delta","text":"secret"}"#)
         .await;
-    handle.mark_completed().await;
 
+    (state, tmp, handle)
+}
+
+async fn reconnect_test_state() -> (SessionsState, tempfile::TempDir) {
+    let (state, tmp, handle) = reconnect_running_test_state().await;
+    handle.mark_completed().await;
     (state, tmp)
+}
+
+async fn collect_sse_response(response: axum::response::Response) -> String {
+    let bytes = tokio::time::timeout(
+        Duration::from_secs(1),
+        axum::body::to_bytes(response.into_body(), usize::MAX),
+    )
+    .await
+    .expect("SSE body timed out")
+    .expect("SSE body");
+    String::from_utf8(bytes.to_vec()).expect("SSE body utf8")
+}
+
+fn reconnect_path_for(turn_id: &str) -> axum::extract::Path<(String, String)> {
+    axum::extract::Path(("ses-a".to_owned(), turn_id.to_owned()))
+}
+
+async fn reconnect_running_test_state_for(
+    turn_id: &str,
+) -> (SessionsState, TurnBufferHandle, tempfile::TempDir) {
+    let (state, tmp) = reconnect_test_state().await;
+    let buffer = state
+        .turn_buffer_registry
+        .get_or_create("ses-a", turn_id)
+        .await;
+    let handle = TurnBufferHandle::new(buffer);
+    handle
+        .record("text_delta", r#"{"type":"text_delta","text":"first"}"#)
+        .await;
+    (state, handle, tmp)
+}
+
+async fn response_body(response: impl IntoResponse) -> String {
+    let response = response.into_response();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read body");
+    String::from_utf8(bytes.to_vec()).expect("utf8 body")
+}
+
+fn parse_sse_data_events(body: &str) -> Vec<serde_json::Value> {
+    body.lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .filter_map(|data| serde_json::from_str(data.trim()).ok())
+        .collect()
 }
 
 // ── extract_idempotency_key ──
@@ -465,6 +516,60 @@ fn sse_event_message_complete_serializes_correctly() {
     drop(result);
 }
 
+#[test]
+fn turn_complete_event_payload_includes_partial_stop_reason() {
+    let result = nous::pipeline::TurnResult {
+        content: "partial response".to_owned(),
+        tool_calls: Vec::new(),
+        usage: nous::pipeline::TurnUsage {
+            input_tokens: 10,
+            output_tokens: 20,
+            ..nous::pipeline::TurnUsage::default()
+        },
+        signals: Vec::new(),
+        stop_reason: "max_tool_iterations".to_owned(),
+        degraded: None,
+        reasoning: String::new(),
+        model_used: "test-model".to_owned(),
+        tool_surface_hashes: Vec::new(),
+    };
+
+    let payload = turn_complete_event_payload("ses-1", "nous-1", "turn-1", &result);
+
+    assert_eq!(
+        payload
+            .get("session_id")
+            .and_then(serde_json::Value::as_str),
+        Some("ses-1")
+    );
+    assert_eq!(
+        payload.get("nous_id").and_then(serde_json::Value::as_str),
+        Some("nous-1")
+    );
+    assert_eq!(
+        payload.get("turn_id").and_then(serde_json::Value::as_str),
+        Some("turn-1")
+    );
+    assert_eq!(
+        payload
+            .get("input_tokens")
+            .and_then(serde_json::Value::as_u64),
+        Some(10)
+    );
+    assert_eq!(
+        payload
+            .get("output_tokens")
+            .and_then(serde_json::Value::as_u64),
+        Some(20)
+    );
+    assert_eq!(
+        payload
+            .get("stop_reason")
+            .and_then(serde_json::Value::as_str),
+        Some("max_tool_iterations")
+    );
+}
+
 #[tokio::test]
 async fn reconnect_turn_rejects_cross_nous_scoped_caller() {
     let (state, _tmp) = reconnect_test_state().await;
@@ -503,6 +608,225 @@ async fn reconnect_turn_rejects_cross_nous_scoped_caller() {
     assert!(allowed.is_ok(), "operator reconnect should succeed");
 }
 
+#[tokio::test]
+async fn reconnect_turn_receives_message_complete_after_live_wait() {
+    let (state, _tmp, handle) = reconnect_running_test_state().await;
+
+    let reconnect = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path(),
+    )
+    .await
+    .expect("reconnect");
+    let body_task = tokio::spawn(collect_sse_response(reconnect.into_response()));
+
+    tokio::time::sleep(Duration::from_millis(25)).await;
+    handle
+        .record(
+            "message_complete",
+            r#"{"type":"message_complete","stop_reason":"end_turn"}"#,
+        )
+        .await;
+    handle.mark_completed().await;
+
+    let body = body_task.await.expect("body task");
+    assert!(body.contains("event: text_delta"), "body: {body}");
+    assert!(body.contains("event: message_complete"), "body: {body}");
+    assert!(body.contains("end_turn"), "body: {body}");
+}
+
+#[tokio::test]
+async fn reconnect_turn_receives_error_after_live_wait() {
+    let (state, _tmp, handle) = reconnect_running_test_state().await;
+
+    let reconnect = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path(),
+    )
+    .await
+    .expect("reconnect");
+    let body_task = tokio::spawn(collect_sse_response(reconnect.into_response()));
+
+    tokio::time::sleep(Duration::from_millis(25)).await;
+    handle
+        .record(
+            "error",
+            r#"{"type":"error","code":"turn_failed","message":"failed"}"#,
+        )
+        .await;
+    handle.mark_failed().await;
+
+    let body = body_task.await.expect("body task");
+    assert!(body.contains("event: text_delta"), "body: {body}");
+    assert!(body.contains("event: error"), "body: {body}");
+    assert!(body.contains("turn_failed"), "body: {body}");
+}
+
+// ── reconnect lifecycle event ──
+
+#[tokio::test]
+async fn reconnect_completed_buffer_reports_completed_replay_only() {
+    let (state, _tmp) = reconnect_test_state().await;
+    let sse = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path(),
+    )
+    .await
+    .expect("reconnect should succeed");
+    let body = response_body(sse).await;
+    let events = parse_sse_data_events(&body);
+    assert!(
+        !events.is_empty(),
+        "reconnect must emit at least the lifecycle event"
+    );
+    let lifecycle = events.first().expect("lifecycle event");
+    assert_eq!(
+        lifecycle.get("type").and_then(serde_json::Value::as_str),
+        Some("turn_reconnect_state")
+    );
+    assert_eq!(
+        lifecycle.get("state").and_then(serde_json::Value::as_str),
+        Some("completed")
+    );
+    assert_eq!(
+        lifecycle.get("live").and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| { e.get("type").and_then(serde_json::Value::as_str) == Some("text_delta") }),
+        "completed reconnect must still replay buffered events"
+    );
+}
+
+#[tokio::test]
+async fn reconnect_failed_buffer_reports_failed_replay_only() {
+    let (state, _tmp) = reconnect_test_state().await;
+    let buffer = state
+        .turn_buffer_registry
+        .get_or_create("ses-a", "turn-failed")
+        .await;
+    let handle = TurnBufferHandle::new(buffer);
+    handle
+        .record(
+            "error",
+            r#"{"type":"error","code":"turn_failed","message":"synthetic failure"}"#,
+        )
+        .await;
+    handle.mark_failed().await;
+
+    let sse = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path_for("turn-failed"),
+    )
+    .await
+    .expect("reconnect should succeed");
+    let body = response_body(sse).await;
+    let events = parse_sse_data_events(&body);
+    assert!(
+        !events.is_empty(),
+        "reconnect must emit at least the lifecycle event"
+    );
+    let lifecycle = events.first().expect("lifecycle event");
+    assert_eq!(
+        lifecycle.get("type").and_then(serde_json::Value::as_str),
+        Some("turn_reconnect_state")
+    );
+    assert_eq!(
+        lifecycle.get("state").and_then(serde_json::Value::as_str),
+        Some("failed")
+    );
+    assert_eq!(
+        lifecycle.get("live").and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e.get("type").and_then(serde_json::Value::as_str) == Some("error")),
+        "failed reconnect must replay buffered error events"
+    );
+}
+
+#[tokio::test]
+async fn reconnect_running_buffer_reports_running_live_and_streams_later_event() {
+    let (state, handle, _tmp) = reconnect_running_test_state_for("turn-running").await;
+    let state_for_reconnect = state;
+    let handle_for_producer = handle.clone();
+
+    let reconnect = tokio::spawn(async move {
+        let sse = reconnect_turn(
+            axum::extract::State(state_for_reconnect),
+            claims(Role::Operator, None),
+            HeaderMap::new(),
+            reconnect_path_for("turn-running"),
+        )
+        .await
+        .expect("reconnect should succeed");
+        response_body(sse).await
+    });
+
+    // WHY(#5165): let the reconnect stream enter the live-wait loop before
+    // publishing the next synthetic event.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    handle_for_producer
+        .record("text_delta", r#"{"type":"text_delta","text":"second"}"#)
+        .await;
+    handle_for_producer.mark_completed().await;
+
+    let body = tokio::time::timeout(Duration::from_secs(2), reconnect)
+        .await
+        .expect("reconnect should finish before timeout")
+        .expect("reconnect task should not panic");
+    let events = parse_sse_data_events(&body);
+    assert!(
+        !events.is_empty(),
+        "reconnect must emit at least the lifecycle event"
+    );
+    let lifecycle = events.first().expect("lifecycle event");
+    assert_eq!(
+        lifecycle.get("type").and_then(serde_json::Value::as_str),
+        Some("turn_reconnect_state")
+    );
+    assert_eq!(
+        lifecycle.get("state").and_then(serde_json::Value::as_str),
+        Some("running")
+    );
+    assert_eq!(
+        lifecycle.get("live").and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+
+    let deltas: Vec<_> = events
+        .iter()
+        .filter(|e| e.get("type").and_then(serde_json::Value::as_str) == Some("text_delta"))
+        .collect();
+    assert_eq!(
+        deltas.len(),
+        2,
+        "running reconnect must replay the buffered delta and then stream the later delta"
+    );
+    let first = deltas.first().expect("first text delta");
+    let second = deltas.get(1).expect("second text delta");
+    assert_eq!(
+        first.get("text").and_then(serde_json::Value::as_str),
+        Some("first")
+    );
+    assert_eq!(
+        second.get("text").and_then(serde_json::Value::as_str),
+        Some("second")
+    );
+}
+
 // ── IdempotencyGuard ──
 
 #[test]
@@ -510,17 +834,28 @@ fn idempotency_guard_releases_in_flight_on_drop() {
     let cache = Arc::new(crate::idempotency::IdempotencyCache::new());
     let principal = "alice".to_owned();
     let key = "drop-key".to_owned();
+    let session_id = "session-a".to_owned();
+    let body_fingerprint = send_message_body_fingerprint("Hello!");
 
     assert!(
-        matches!(cache.check_or_insert(&principal, &key), LookupResult::Miss),
+        matches!(
+            cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
+            LookupResult::Miss
+        ),
         "precondition: key must be inserted"
     );
 
     {
-        let guard = IdempotencyGuard::new(Arc::clone(&cache), principal.clone(), key.clone());
+        let guard = IdempotencyGuard::new(
+            Arc::clone(&cache),
+            principal.clone(),
+            key.clone(),
+            session_id.clone(),
+            body_fingerprint.clone(),
+        );
         assert!(
             matches!(
-                cache.check_or_insert(&principal, &key),
+                cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
                 LookupResult::Conflict
             ),
             "key must still be in flight while the guard lives"
@@ -529,7 +864,10 @@ fn idempotency_guard_releases_in_flight_on_drop() {
     }
 
     assert!(
-        matches!(cache.check_or_insert(&principal, &key), LookupResult::Miss),
+        matches!(
+            cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
+            LookupResult::Miss
+        ),
         "dropping the guard must release the in-flight key"
     );
 }
@@ -539,26 +877,36 @@ fn idempotency_guard_preserves_completed_entry() {
     let cache = Arc::new(crate::idempotency::IdempotencyCache::new());
     let principal = "alice".to_owned();
     let key = "complete-key".to_owned();
+    let session_id = "session-a".to_owned();
+    let body_fingerprint = send_message_body_fingerprint("Hello!");
 
     assert!(matches!(
-        cache.check_or_insert(&principal, &key),
+        cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
         LookupResult::Miss
     ));
     cache.complete(
         &principal,
         &key,
+        &session_id,
+        &body_fingerprint,
         axum::http::StatusCode::OK,
         r#"{"ok":true}"#.to_owned(),
     );
 
     {
-        let guard = IdempotencyGuard::new(Arc::clone(&cache), principal.clone(), key.clone());
+        let guard = IdempotencyGuard::new(
+            Arc::clone(&cache),
+            principal.clone(),
+            key.clone(),
+            session_id.clone(),
+            body_fingerprint.clone(),
+        );
         guard.mark_completed();
     }
 
     assert!(
         matches!(
-            cache.check_or_insert(&principal, &key),
+            cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
             LookupResult::Hit { .. }
         ),
         "mark_completed must prevent the guard from deleting a finished entry"
@@ -573,21 +921,28 @@ fn idempotency_guard_shared_completion_flag() {
     let cache = Arc::new(crate::idempotency::IdempotencyCache::new());
     let principal = "alice".to_owned();
     let key = "shared-key".to_owned();
+    let session_id = "session-a".to_owned();
+    let body_fingerprint = send_message_body_fingerprint("Hello!");
 
     assert!(matches!(
-        cache.check_or_insert(&principal, &key),
+        cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
         LookupResult::Miss
     ));
 
-    let (task_guard, stream_guard) =
-        IdempotencyGuard::new_pair(Arc::clone(&cache), principal.clone(), key.clone());
+    let (task_guard, stream_guard) = IdempotencyGuard::new_pair(
+        Arc::clone(&cache),
+        principal.clone(),
+        key.clone(),
+        session_id.clone(),
+        body_fingerprint.clone(),
+    );
 
     task_guard.mark_completed();
     drop(stream_guard);
 
     assert!(
         matches!(
-            cache.check_or_insert(&principal, &key),
+            cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
             LookupResult::Conflict
         ),
         "shared completion flag must keep the in-flight entry intact"

@@ -27,7 +27,7 @@ impl Drop for DistillationFlagGuard {
 }
 
 impl NousActor {
-    /// Reap completed background tasks, log failures, count panics, record metrics.
+    /// Reap completed background tasks, log failures, count panics/failures, record metrics.
     pub(super) fn reap_background_tasks(&mut self) {
         while let Some(result) = self.runtime.background_tasks.try_join_next() {
             match result {
@@ -36,11 +36,15 @@ impl NousActor {
                 Err(e) => {
                     if e.is_panic() {
                         // WHY: Background tasks run outside the main panic boundary.
-                        // They are logged but do NOT trigger degraded mode.
-                        self.record_background_panic();
+                        // They are logged and counted as background failures but do NOT
+                        // trigger the pipeline `Degraded` lifecycle.
+                        let message = e.to_string();
+                        self.record_background_panic(Some(message));
                         crate::metrics::record_background_failure(&self.id, "panic");
                     } else {
-                        warn!(nous_id = %self.id, error = %e, "background task failed");
+                        let message = e.to_string();
+                        warn!(nous_id = %self.id, error = %message, "background task failed");
+                        self.record_background_failure("error", Some(message));
                         crate::metrics::record_background_failure(&self.id, "error");
                     }
                 }
@@ -48,8 +52,8 @@ impl NousActor {
         }
     }
 
-    /// Record a background task panic occurrence. Logs a warning but does NOT trigger degraded mode.
-    pub(super) fn record_background_panic(&mut self) {
+    /// Record a background task panic occurrence. Logs a warning but does NOT trigger pipeline degraded mode.
+    pub(super) fn record_background_panic(&mut self, message: Option<String>) {
         self.runtime.background_panic_count += 1;
         let now = std::time::Instant::now();
         self.runtime.background_panic_timestamps.push(now);
@@ -63,12 +67,37 @@ impl NousActor {
             .background_panic_timestamps
             .retain(|t| *t > cutoff);
 
+        self.record_background_failure("panic", message);
+
         warn!(
             nous_id = %self.id,
             background_panic_count = self.runtime.background_panic_count,
             recent_background_panics = self.runtime.background_panic_timestamps.len(),
             "background task panicked"
         );
+    }
+
+    /// Record a generic background task failure (panic or non-panic join error).
+    ///
+    /// Updates the total/recent counters and latest message/kind exposed in
+    /// `NousStatus` and `ActorHealth`. Does NOT change the pipeline lifecycle.
+    pub(super) fn record_background_failure(&mut self, kind: &str, message: Option<String>) {
+        self.runtime.background_failure_total_count += 1;
+        let now = std::time::Instant::now();
+        self.runtime.background_failure_timestamps.push(now);
+
+        // WHY(#5147): keep only failures inside the configured degraded window so
+        // `background_health_degraded` reflects recent flapping, not ancient history.
+        let degraded_window = Duration::from_secs(self.nous_behavior.degraded_window_secs);
+        let cutoff = std::time::Instant::now()
+            .checked_sub(degraded_window)
+            .unwrap_or(self.runtime.started_at);
+        self.runtime
+            .background_failure_timestamps
+            .retain(|t| *t > cutoff);
+
+        self.runtime.background_failure_latest_kind = Some(kind.to_owned());
+        self.runtime.background_failure_latest_message = message;
     }
 
     pub(super) fn maybe_spawn_extraction(
@@ -166,7 +195,7 @@ impl NousActor {
     pub(super) fn maybe_spawn_skill_analysis(
         &mut self,
         tool_calls: &[crate::pipeline::ToolCall],
-        session_key: &str,
+        source_session_id: &str,
     ) {
         use mneme::skills::{ToolCallRecord, TrackResult, sha256_hex};
 
@@ -177,20 +206,16 @@ impl NousActor {
         let records: Vec<ToolCallRecord> = tool_calls
             .iter()
             .map(|tc| {
-                let input_hash = match serde_json::to_string(&tc.input) {
-                    Ok(serialized) => Some(sha256_hex(serialized.as_bytes())),
-                    Err(error) => {
-                        warn!(tool_name = %tc.name, %error, "failed to hash tool input for skill evidence");
-                        None
-                    }
+                let record = if tc.is_error {
+                    ToolCallRecord::errored(&tc.name, tc.duration_ms)
+                } else {
+                    ToolCallRecord::new(&tc.name, tc.duration_ms)
                 };
-                let result_hash = tc.result.as_ref().map(|r| sha256_hex(r.as_bytes()));
-                ToolCallRecord::with_hashes(
-                    &tc.name,
-                    tc.duration_ms,
-                    tc.is_error,
-                    input_hash,
-                    result_hash,
+                record.with_evidence(
+                    &tc.id,
+                    &tc.input,
+                    tc.result.as_deref(),
+                    tc.receipt.as_deref(),
                 )
             })
             .collect();
@@ -228,7 +253,7 @@ impl NousActor {
         let result =
             self.services
                 .candidate_tracker
-                .track_sequence(&records, session_key, &nous_id);
+                .track_sequence(&records, source_session_id, &nous_id);
 
         match result {
             TrackResult::Rejected => {
@@ -241,13 +266,8 @@ impl NousActor {
                 info!(count, "skill analysis: candidate recurrence updated");
             }
             TrackResult::Promoted(candidate_id) => {
-                info!(candidate_id = %candidate_id, "skill analysis: candidate promoted, spawning LLM extraction");
-                self.spawn_skill_extraction(
-                    &candidate_id,
-                    session_key,
-                    &records,
-                    &turn_sequence_hash,
-                );
+                info!(candidate_id = %candidate_id, "skill analysis: candidate promoted, spawning extraction");
+                self.spawn_skill_extraction(&candidate_id, &records, source_session_id);
             }
             _ => {
                 // WHY: TrackResult is #[non_exhaustive]; future variants are silently ignored here.
@@ -261,7 +281,7 @@ impl NousActor {
         candidate_id: &str,
         session_key: &str,
         tool_calls: &[mneme::skills::ToolCallRecord],
-        turn_sequence_hash: &str,
+        source_session_id: &str,
     ) {
         let Some(ref extraction_config) = self.pipeline_config.extraction else {
             return;
@@ -275,6 +295,7 @@ impl NousActor {
         let session_key = session_key.to_owned();
         let turn_sequence_hash = turn_sequence_hash.to_owned();
         let tool_calls = tool_calls.to_vec();
+        let source_session_id = source_session_id.to_owned();
         let tracker = Arc::clone(&self.services.candidate_tracker);
         #[cfg(feature = "knowledge-store")]
         let knowledge_store = self.stores.knowledge_store.clone();
@@ -300,6 +321,7 @@ impl NousActor {
                         &session_key,
                         &turn_sequence_hash,
                         &tool_calls,
+                        &source_session_id,
                         &tracker,
                         #[cfg(feature = "knowledge-store")]
                         knowledge_store.as_ref(),
@@ -813,7 +835,11 @@ async fn run_extraction(
     clippy::too_many_lines,
     reason = "three-phase skill extraction pipeline: extract, persist, lifecycle; splitting would obscure the sequential flow"
 )]
-/// Run LLM skill extraction as a background task. Logs results, never panics.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "background skill extraction runner needs provider state, ids, evidence, tracker, and optional store"
+)]
+/// Run skill extraction as a background task. Logs results, never panics.
 async fn run_skill_extraction(
     model: &str,
     providers: Arc<ProviderRegistry>,
@@ -822,6 +848,7 @@ async fn run_skill_extraction(
     session_key: &str,
     turn_sequence_hash: &str,
     tool_calls: &[mneme::skills::ToolCallRecord],
+    source_session_id: &str,
     tracker: &mneme::skills::CandidateTracker,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
@@ -836,11 +863,22 @@ async fn run_skill_extraction(
     let provider = crate::extraction::HermeneusSkillExtractionProvider::new(providers, model);
     let extractor = SkillExtractor::new(provider);
 
-    // NOTE: only current-turn tool calls available; historical sequences not yet collected
-    let sequences = vec![tool_calls.to_vec()];
+    let sequences = if candidate.evidence.is_empty() {
+        vec![tool_calls.to_vec()]
+    } else {
+        candidate
+            .evidence
+            .iter()
+            .map(|item| item.tool_calls.clone())
+            .collect()
+    };
 
-    match extractor.extract_skill(candidate, &sequences).await {
-        Ok((extracted, mut audit)) => {
+    match extractor
+        .extract_skill_with_audit(candidate, &sequences, Some(model))
+        .await
+    {
+        Ok(result) => {
+            let extracted = result.skill;
             info!(
                 nous_id = %nous_id,
                 skill_name = %extracted.name,
@@ -869,33 +907,14 @@ async fn run_skill_extraction(
                     }
                 }
 
-                let mut evidence = Vec::with_capacity(1);
-                evidence.push(SkillEvidence {
-                    session_id: session_key.to_owned(),
-                    turn_sequence_hash: Some(turn_sequence_hash.to_owned()),
-                    tool_calls: tool_calls.to_vec(),
-                });
-                // WHY: Include the candidate's other session refs when available
-                // so reviewers can see the full recurrence pattern, not just the
-                // turn that triggered promotion.
-                for session_id in &candidate.session_refs {
-                    if *session_id == session_key {
-                        continue;
-                    }
-                    evidence.push(SkillEvidence {
-                        session_id: session_id.clone(),
-                        turn_sequence_hash: None,
-                        tool_calls: vec![],
-                    });
-                }
-
-                audit.model = Some(model.to_owned());
-                let pending = mneme::skills::PendingSkill::with_provenance(
+                let mut pending = mneme::skills::PendingSkill::new_with_provenance(
                     &extracted,
-                    candidate_id,
-                    evidence,
-                    audit,
+                    candidate,
+                    result.audit,
                 );
+                if pending.source_session_id.is_none() {
+                    pending.source_session_id = Some(source_session_id.to_owned());
+                }
                 match pending.to_json() {
                     Ok(content) => {
                         use mneme::knowledge::{
@@ -925,7 +944,7 @@ async fn run_skill_extraction(
                             provenance: FactProvenance {
                                 confidence: 0.6, // Pending review: moderate confidence
                                 tier: mneme::knowledge::EpistemicTier::Inferred,
-                                source_session_id: Some(session_key.to_owned()),
+                                source_session_id: pending.source_session_id.clone(),
                                 stability_hours: 720.0,
                             },
                             lifecycle: FactLifecycle {
@@ -1102,4 +1121,136 @@ async fn run_background_distillation(
         messages_distilled = result.messages_distilled,
         "background distillation complete"
     );
+}
+
+// WHY: knowledge-store gates both `KnowledgeStore` and the persistence branch
+// of `run_skill_extraction`; the test exercises that branch end-to-end.
+#[cfg(all(test, feature = "knowledge-store"))]
+#[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+mod tests {
+    use std::sync::Arc;
+
+    use hermeneus::provider::ProviderRegistry;
+    use hermeneus::test_utils::MockProvider;
+
+    use super::run_skill_extraction;
+
+    /// Drive real candidate/turn data through `run_skill_extraction` and assert
+    /// the persisted pending skill carries derived source-session, redacted
+    /// tool-call evidence with sequence hashes, and extraction audit refs.
+    #[tokio::test]
+    async fn run_skill_extraction_persists_pending_with_provenance() {
+        let skill_json = r#"{
+            "name": "diagnose-and-patch",
+            "description": "Diagnose a failure then patch it",
+            "steps": ["grep", "read", "edit"],
+            "tools_used": ["Grep", "Read", "Edit", "Bash"],
+            "domain_tags": ["debugging"],
+            "when_to_use": "when fixing bugs"
+        }"#;
+
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(
+            MockProvider::new(skill_json).models(&["test-model"]),
+        ));
+        let providers = Arc::new(providers);
+
+        // Build a candidate via the live tracker path with a secret-bearing
+        // tool call so redaction is exercised, not assumed.
+        let secret = "super-secret-token-value";
+        let tool_calls = vec![
+            mneme::skills::ToolCallRecord::new("Grep", 10).with_evidence(
+                "t0",
+                &serde_json::json!({ "pattern": "needle" }),
+                Some("hits"),
+                Some("receipt-0"),
+            ),
+            mneme::skills::ToolCallRecord::new("Read", 10),
+            mneme::skills::ToolCallRecord::new("Read", 10),
+            mneme::skills::ToolCallRecord::new("Edit", 10).with_evidence(
+                "t3",
+                &serde_json::json!({ "api_key": secret }),
+                Some("patched"),
+                Some("receipt-3"),
+            ),
+            mneme::skills::ToolCallRecord::new("Bash", 10),
+            mneme::skills::ToolCallRecord::new("Bash", 10),
+        ];
+
+        let tracker = mneme::skills::CandidateTracker::new();
+        tracker.track_sequence(&tool_calls, "session-alpha", "review-nous");
+        let candidate_id = tracker
+            .candidates_for("review-nous")
+            .pop()
+            .expect("candidate tracked")
+            .id;
+
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+
+        run_skill_extraction(
+            "test-model",
+            providers,
+            "review-nous",
+            &candidate_id,
+            &tool_calls,
+            "turn-derived-session",
+            &tracker,
+            Some(&store),
+        )
+        .await;
+
+        let pending_facts = store
+            .find_pending_skills("review-nous")
+            .expect("pending skills query");
+        assert_eq!(pending_facts.len(), 1, "one pending skill persisted");
+        let pending_fact = pending_facts.first().expect("one pending skill persisted");
+
+        let pending = mneme::skills::PendingSkill::from_json(&pending_fact.content)
+            .expect("pending skill deserializes");
+
+        // Source session is derived (from the candidate evidence on the live
+        // path), never None.
+        assert_eq!(
+            pending.source_session_id.as_deref(),
+            Some("session-alpha"),
+            "source session derived from candidate evidence"
+        );
+        assert_eq!(
+            pending_fact.provenance.source_session_id.as_deref(),
+            Some("session-alpha"),
+            "fact provenance carries the derived source session"
+        );
+
+        // Evidence carries a non-empty sequence hash.
+        let observation = pending
+            .source_evidence
+            .observations
+            .first()
+            .expect("observation evidence present");
+        assert!(
+            !observation.sequence_hash.is_empty(),
+            "observation carries a sequence hash"
+        );
+
+        // Tool-call params are redacted, with the secret value absent.
+        let redacted = observation
+            .tool_calls
+            .iter()
+            .find(|tc| tc.tool_name == "Edit")
+            .and_then(|tc| tc.redacted_input.as_ref())
+            .and_then(|value| value.get("api_key"))
+            .and_then(serde_json::Value::as_str)
+            .expect("redacted api_key present");
+        assert_eq!(redacted, "[REDACTED]", "secret tool param is redacted");
+        assert!(
+            !pending_fact.content.contains(secret),
+            "secret value must not be persisted"
+        );
+
+        // Extraction prompt/response audit refs are retained.
+        assert!(
+            pending.extraction_audit.is_some(),
+            "extraction audit refs retained"
+        );
+    }
 }

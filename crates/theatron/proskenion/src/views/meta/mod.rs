@@ -676,15 +676,17 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         client.get(&journal_url).send(),
     );
 
-    let health: HealthApiResponse = match health_res {
-        Ok(resp) if resp.status().is_success() => optional_json(resp, "health").await,
-        Ok(resp) => {
-            return FetchState::Error(format!("health endpoint returned {}", resp.status()));
-        }
-        Err(e) => {
-            return FetchState::Error(format!("connection error: {e}"));
-        }
-    };
+    let health: HealthApiResponse =
+        match crate::api::health::fetch_health_response(health_res).await {
+            Ok(data) => HealthApiResponse {
+                status: data.status,
+                uptime_seconds: data.uptime_seconds,
+                version: data.version,
+            },
+            Err(err) => {
+                return FetchState::Error(err.to_string());
+            }
+        };
 
     let tokens: TokenMetricsApiResponse = match tokens_res {
         Ok(resp) if resp.status().is_success() => optional_json(resp, "token metrics").await,

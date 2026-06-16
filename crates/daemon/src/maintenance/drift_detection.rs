@@ -70,6 +70,10 @@ pub struct DriftReport {
     pub extra_files: Vec<PathBuf>,
     /// Files with permission discrepancies (path, description).
     pub permission_issues: Vec<(PathBuf, String)>,
+    /// Resolved path to the template directory the check was run against.
+    pub template_root: PathBuf,
+    /// Whether the configured template directory exists.
+    pub template_available: bool,
     /// When the check was performed.
     pub checked_at: Option<jiff::Timestamp>,
 }
@@ -88,15 +92,22 @@ impl DriftDetector {
 
     /// Run drift detection. Returns a report of discrepancies.
     pub fn check(&self) -> error::Result<DriftReport> {
+        let checked_at = Some(jiff::Timestamp::now());
+        let template_root = self.config.example_root.clone();
+
         if !self.config.example_root.exists() {
             return Ok(DriftReport {
-                checked_at: Some(jiff::Timestamp::now()),
+                template_root,
+                template_available: false,
+                checked_at,
                 ..Default::default()
             });
         }
 
         let mut report = DriftReport {
-            checked_at: Some(jiff::Timestamp::now()),
+            template_root,
+            template_available: true,
+            checked_at,
             ..Default::default()
         };
 
@@ -312,17 +323,20 @@ mod tests {
     }
 
     #[test]
-    fn missing_example_dir_returns_empty() {
+    fn missing_example_dir_reports_unavailable() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = DriftDetectionConfig {
             example_root: tmp.path().join("nonexistent"),
             ..make_config(tmp.path())
         };
 
+        let example_root = config.example_root.clone();
         let detector = DriftDetector::new(config);
         let report = detector.check().expect("should not error");
         assert!(report.missing_files.is_empty());
         assert!(report.checked_at.is_some());
+        assert!(!report.template_available);
+        assert_eq!(report.template_root, example_root);
     }
 
     #[test]
@@ -335,9 +349,12 @@ mod tests {
         fs::create_dir_all(config.instance_root.join("config")).unwrap();
         write_fixture(config.instance_root.join("config/aletheia.toml"), "");
 
+        let example_root = config.example_root.clone();
         let detector = DriftDetector::new(config);
         let report = detector.check().expect("check succeeds");
         assert!(report.missing_files.is_empty());
+        assert!(report.template_available);
+        assert_eq!(report.template_root, example_root);
     }
 
     #[test]
@@ -412,10 +429,13 @@ mod tests {
         fs::create_dir_all(&config.example_root).unwrap();
         fs::create_dir_all(&config.instance_root).unwrap();
 
+        let example_root = config.example_root.clone();
         let detector = DriftDetector::new(config);
         let report = detector.check().expect("check succeeds");
         assert!(report.missing_files.is_empty());
         assert!(report.extra_files.is_empty());
+        assert!(report.template_available);
+        assert_eq!(report.template_root, example_root);
     }
 
     #[test]

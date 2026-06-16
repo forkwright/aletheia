@@ -105,6 +105,24 @@ fn env_provider_now_seconds_division_is_correct() {
     unsafe { std::env::remove_var(var) };
 }
 
+// WHY: regression for #5761. A malformed sk-ant-oat* token whose JWT expiry
+// cannot be decoded must be rejected so the credential chain can fall through.
+#[test]
+#[expect(unsafe_code, reason = "test-only env var manipulation")]
+fn env_provider_malformed_oauth_token_with_undecodable_exp_returns_none() {
+    let var = "ALETHEIA_5761_ENV_MALFORMED_OAUTH";
+    let token = "sk-ant-oat.not-valid-base64!!!.stub";
+
+    // SAFETY: test uses unique var name, no concurrent access
+    unsafe { std::env::set_var(var, token) };
+    let provider = EnvCredentialProvider::new(var);
+    assert!(
+        provider.get_credential().is_none(),
+        "malformed OAuth token with undecodable expiry must fall through"
+    );
+    unsafe { std::env::remove_var(var) };
+}
+
 // ---- FileCredentialProvider --------------------------------------------------
 
 // WHY: kills the `get_credential` → `None` and `name` → `"xyzzy"`/`""`

@@ -2,12 +2,16 @@
 //! aletheia instance via HTTP.
 //!
 //! For each question in the dataset:
-//! 1. Create a fresh session for the haystack ingestion
-//! 2. POST every turn from the haystack sessions as a user message
-//!    (so the memory pipeline extracts facts during ingestion)
-//! 3. POST the question as a final user message
-//! 4. Collect the assistant's SSE response
-//! 5. Score the response against the expected answers
+//! 1. Create a fresh session for the question (official-parity mode) or reuse
+//!    the single continuous-memory session.
+//! 2. Seed the full haystack transcript — preserving historical `assistant`,
+//!    `system`, `tool`, and speaker-labeled turns — into the knowledge store
+//!    through `POST /api/v1/knowledge/ingest`. This keeps the evidence out of
+//!    the final prompt as user messages, avoiding answer contamination while
+//!    still giving the memory pipeline access to the full conversation.
+//! 3. Surface any ingestion errors instead of swallowing them.
+//! 4. POST the benchmark question as a user message.
+//! 5. Collect the assistant's SSE response and score it.
 //!
 //! In isolated mode (`close_between_questions == true`) each question runs
 //! under a disposable memory namespace derived from the configured `nous_id`,
@@ -19,13 +23,14 @@
 //! dataset. See [`BenchmarkRunnerConfig`] for per-question timeouts and
 //! concurrency controls.
 
+use std::fmt::Write as _;
 use std::time::Duration;
 
 use tracing::{info, instrument, warn};
 
 use crate::client::EvalClient;
 use crate::error::Result;
-use crate::provenance::EvalProvenance;
+use crate::provenance::{EvalProvenance, generate_eval_run_id};
 
 use super::{
     BenchmarkIngestionLog, BenchmarkIngestionMode, BenchmarkQuestion, BenchmarkReport,
@@ -33,6 +38,25 @@ use super::{
     RetrievalScoringMode, RetrievedFact, TurnIngestionOutcome, TurnIngestionRecord, judge, metrics,
     score_answer,
 };
+
+/// Benchmark execution mode.
+///
+/// * `OfficialParity` — each question gets its own session. The session is
+///   closed after the question so that prior question/answer pairs do not sit
+///   in the live context. This matches the standard evaluation protocol. Full
+///   memory isolation also requires a dedicated, disposable `nous_id` for the
+///   run; the runner tags every artifact with `eval_run_id` and `question_id`
+///   so results can be traced back to a clean namespace.
+/// * `ContinuousMemory` — all questions share one long-running session. This
+///   simulates a real user conversation where earlier questions and answers
+///   remain in context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BenchmarkMode {
+    /// Clean-session protocol used for official results.
+    OfficialParity,
+    /// Shared-session protocol that simulates continuous use.
+    ContinuousMemory,
+}
 
 /// Configuration for a benchmark run.
 #[derive(Debug, Clone)]
@@ -49,12 +73,8 @@ pub struct BenchmarkRunnerConfig {
     /// Maximum questions to evaluate. `None` means all questions.
     /// Useful for smoke tests (`max_questions = Some(5)`).
     pub max_questions: Option<usize>,
-    /// When true, run each question under a disposable per-question memory
-    /// namespace derived from `nous_id`, the run id, and the question id.
-    /// Session keys and provenance are tagged with `isolated` and the question
-    /// id so reports can distinguish official isolated metrics.
-    /// When false, all questions reuse the configured `nous_id` (simulates
-    /// continuous memory) and session keys are tagged with `continuous`.
+    /// When true, each question gets a fresh session (`OfficialParity`).
+    /// When false, all questions share one session (`ContinuousMemory`).
     pub close_between_questions: bool,
     /// Optional LLM-as-judge configuration. When set, each answer is also
     /// evaluated by an external LLM for binary correctness.
@@ -62,8 +82,21 @@ pub struct BenchmarkRunnerConfig {
     /// When set, query the knowledge store after ingestion and compute
     /// Recall@k and NDCG@k against the expected answers.
     pub retrieval_k: Option<usize>,
-    /// Shared provenance envelope for the benchmark run.
+    /// Shared provenance envelope for the benchmark run. The
+    /// `provenance.eval_run_id` is used to tag generated artifacts.
     pub provenance: EvalProvenance,
+}
+
+impl BenchmarkRunnerConfig {
+    /// Return the execution mode implied by this configuration.
+    #[must_use]
+    pub fn mode(&self) -> BenchmarkMode {
+        if self.close_between_questions {
+            BenchmarkMode::OfficialParity
+        } else {
+            BenchmarkMode::ContinuousMemory
+        }
+    }
 }
 
 impl Default for BenchmarkRunnerConfig {
@@ -76,7 +109,7 @@ impl Default for BenchmarkRunnerConfig {
             close_between_questions: true,
             judge: None,
             retrieval_k: None,
-            provenance: EvalProvenance::new("er-benchmark-default", "http://localhost"),
+            provenance: EvalProvenance::new(generate_eval_run_id(), "http://localhost"),
         }
     }
 }
@@ -154,49 +187,40 @@ impl BenchmarkRunner {
     /// Returns an error if session creation fails for the first question.
     /// Per-question errors after that are recorded as zero-score results
     /// rather than aborting the run.
-    #[instrument(skip(self, benchmark), fields(benchmark = benchmark.name()))]
+    #[instrument(skip(self, benchmark), fields(benchmark = benchmark.name(), eval_run_id = %self.config.provenance.eval_run_id))]
     pub async fn run(&self, benchmark: &dyn MemoryBenchmark) -> Result<BenchmarkReport> {
         let total = benchmark.len();
         let limit = self.config.max_questions.unwrap_or(total);
         info!(
             benchmark = benchmark.name(),
-            total, limit, "starting benchmark run"
+            eval_run_id = %self.config.provenance.eval_run_id,
+            total, limit,
+            mode = ?self.config.mode(),
+            "starting benchmark run"
         );
 
         let mut results = Vec::new();
+        let mut shared_session: Option<String> = None;
         for (i, question) in benchmark.questions().take(limit).enumerate() {
             info!(
                 index = i + 1,
                 id = %question.id,
                 category = %question.category,
+                eval_run_id = %self.config.provenance.eval_run_id,
                 "processing benchmark question"
             );
 
-            let result = self.run_question(i, question).await;
+            let result = self.run_question(i, question, &mut shared_session).await;
             results.push(result);
         }
 
-        let memory_mode = if self.config.close_between_questions {
-            "isolated"
-        } else {
-            "continuous"
-        };
-        let provenance = self
-            .config
-            .provenance
-            .clone()
-            .with_audit_refs(
-                None,
-                None,
-                None,
-                None,
-                Some(format!(
-                    "memory-benchmark-{}-nous-{}",
-                    memory_mode, self.config.nous_id
-                )),
-            )
-            .finished();
-        let report = BenchmarkReport::new(benchmark.name(), results).with_provenance(provenance);
+        // Clean up the shared continuous-memory session at the end of the run.
+        if let Some(session_id) = shared_session.take() {
+            let _ = self.client.close_session(&session_id).await;
+        }
+
+        let report = BenchmarkReport::new(benchmark.name(), results)
+            .with_provenance(self.config.provenance.clone().finished());
         info!(
             total = report.total,
             em_rate = report.exact_match_rate(),
@@ -207,18 +231,20 @@ impl BenchmarkRunner {
     }
 
     /// Execute a single question end-to-end: ingest sessions, ask question, score.
-    async fn run_question(&self, index: usize, question: BenchmarkQuestion) -> QuestionResult {
-        let namespace = question_namespace(&self.config, index, &question.id);
-        info!(
-            index = index + 1,
-            id = %question.id,
-            category = %question.category,
-            memory_mode = ?namespace.mode,
-            namespace = %namespace.tag,
-            "processing benchmark question"
+    async fn run_question(
+        &self,
+        index: usize,
+        question: BenchmarkQuestion,
+        shared_session: &mut Option<String>,
+    ) -> QuestionResult {
+        let session_key = format!(
+            "{}-{}-{index}-{}",
+            self.config.session_key_prefix, self.config.provenance.eval_run_id, question.id
         );
 
-        let execution = self.execute_question(&question, &namespace).await;
+        let execution = self
+            .execute_question(&question, &session_key, shared_session)
+            .await;
         let status = execution.status;
         let score = score_for_status(status, &execution.answer, &question.expected_answers);
         let judge_score = self
@@ -248,11 +274,12 @@ impl BenchmarkRunner {
     async fn execute_question(
         &self,
         question: &BenchmarkQuestion,
-        namespace: &QuestionNamespace,
+        session_key: &str,
+        shared_session: &mut Option<String>,
     ) -> QuestionExecution {
         match tokio::time::timeout(
             self.config.question_timeout,
-            self.ingest_and_ask(question, namespace),
+            self.ingest_and_ask(question, session_key, shared_session),
         )
         .await
         {
@@ -271,6 +298,7 @@ impl BenchmarkRunner {
             Ok(Err(e)) => {
                 warn!(
                     id = %question.id,
+                    eval_run_id = %self.config.provenance.eval_run_id,
                     error = %e,
                     "benchmark question failed before producing a scorable answer"
                 );
@@ -288,6 +316,7 @@ impl BenchmarkRunner {
                 .build();
                 warn!(
                     id = %question.id,
+                    eval_run_id = %self.config.provenance.eval_run_id,
                     error = %e,
                     "benchmark question timed out before producing a scorable answer"
                 );
@@ -318,6 +347,7 @@ impl BenchmarkRunner {
                     if !score.status.is_scored() {
                         warn!(
                             id = %question.id,
+                            eval_run_id = %self.config.provenance.eval_run_id,
                             error = ?score.error_message,
                             "judge evaluation failed"
                         );
@@ -325,7 +355,12 @@ impl BenchmarkRunner {
                     Some(score)
                 }
                 Err(e) => {
-                    warn!(id = %question.id, error = %e, "judge evaluation failed");
+                    warn!(
+                        id = %question.id,
+                        eval_run_id = %self.config.provenance.eval_run_id,
+                        error = %e,
+                        "judge evaluation failed"
+                    );
                     Some(judge::JudgeScore::configuration_error(
                         config,
                         &question.question,
@@ -395,7 +430,12 @@ impl BenchmarkRunner {
                     (Some(retrieved), Some(scoring), Some(r), Some(n))
                 }
                 Err(e) => {
-                    warn!(id = %question.id, error = %e, "knowledge search failed");
+                    warn!(
+                        id = %question.id,
+                        eval_run_id = %self.config.provenance.eval_run_id,
+                        error = %e,
+                        "knowledge search failed"
+                    );
                     (None, None, None, None)
                 }
             }
@@ -404,99 +444,63 @@ impl BenchmarkRunner {
         }
     }
 
-    /// Ingest haystack sessions, ask the question, return the assistant's answer
-    /// and a per-turn ingestion log.
+    /// Ingest the haystack transcript into the knowledge store, ask the
+    /// question, and return the assistant's answer.
     async fn ingest_and_ask(
         &self,
         question: &BenchmarkQuestion,
-        namespace: &QuestionNamespace,
-    ) -> Result<(String, BenchmarkIngestionLog)> {
-        let session = self
-            .client
-            .create_session(&namespace.effective_nous_id, &namespace.session_key)
-            .await?;
-        let session_id = session.id;
-
-        // WHY: Best-effort verification that the backend bound the session to
-        // the expected namespace. A mismatch means the isolation contract is
-        // broken (e.g., the backend rejected the derived `nous_id` and fell
-        // back to the configured one). This is a warning, not a hard failure,
-        // because some backends may not support disposable per-question agents.
-        if session.nous_id != namespace.effective_nous_id {
-            warn!(
-                id = %question.id,
-                expected_nous_id = %namespace.effective_nous_id,
-                actual_nous_id = %session.nous_id,
-                "session created under unexpected nous_id; memory isolation may be compromised"
-            );
-        }
-
-        let mut log = BenchmarkIngestionLog {
-            mode: self.ingestion_mode,
-            ..BenchmarkIngestionLog::default()
+        session_key: &str,
+        shared_session: &mut Option<String>,
+    ) -> Result<String> {
+        // Create a new session for official parity, or reuse the single
+        // continuous-memory session.
+        let session_id = if let (BenchmarkMode::ContinuousMemory, Some(id)) =
+            (self.config.mode(), shared_session.as_ref())
+        {
+            id.clone()
+        } else {
+            let session = self
+                .client
+                .create_session(&self.config.nous_id, session_key)
+                .await?;
+            let id = session.id;
+            if self.config.mode() == BenchmarkMode::ContinuousMemory {
+                *shared_session = Some(id.clone());
+            }
+            id
         };
 
-        // WHY: User-only mode replays user turns as plain user messages. In
-        // role-preserving mode every non-empty turn is sent as a user message
-        // with a structured provenance header so original transcript roles are
-        // preserved. Assistant/system/tool turns are tagged as transcript
-        // evidence and are not treated as fresh assistant answers.
-        for haystack in &question.sessions {
-            for turn in haystack {
-                if turn.content.trim().is_empty() {
-                    log.turns.push(TurnIngestionRecord {
-                        role: turn.role.clone(),
-                        outcome: TurnIngestionOutcome::Excluded,
-                        error_message: Some("empty content".to_owned()),
-                        provenance: turn.provenance.clone(),
-                    });
-                    log.excluded_count += 1;
-                    continue;
-                }
+        // WHY: Seed the full transcript into the knowledge store instead of
+        // replaying every retained turn as a user message. This preserves
+        // historical assistant/system/tool/speaker evidence while keeping the
+        // final answer turn free of contamination from the haystack.
+        let transcript = build_transcript_markdown(question);
+        if !transcript.trim().is_empty() {
+            let response = self
+                .client
+                .ingest_transcript(&self.config.nous_id, &transcript)
+                .await?;
 
-                let is_user = role_is_user(&turn.role);
-                if !is_user && self.ingestion_mode == BenchmarkIngestionMode::UserOnly {
-                    log.turns.push(TurnIngestionRecord {
-                        role: turn.role.clone(),
-                        outcome: TurnIngestionOutcome::Excluded,
-                        error_message: None,
-                        provenance: turn.provenance.clone(),
-                    });
-                    log.excluded_count += 1;
-                    continue;
+            if !response.errors.is_empty() {
+                let summary = response
+                    .errors
+                    .iter()
+                    .take(5)
+                    .map(|e| {
+                        let id = e.id.as_deref().unwrap_or("-");
+                        format!("fact[{}] id={id}: {}", e.index, e.message)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                return crate::error::BenchmarkSnafu {
+                    message: format!(
+                        "transcript ingestion failed ({} errors, {} inserted, {} skipped): {summary}",
+                        response.errors.len(),
+                        response.inserted,
+                        response.skipped
+                    ),
                 }
-
-                let message = match self.ingestion_mode {
-                    BenchmarkIngestionMode::UserOnly => turn.content.clone(),
-                    BenchmarkIngestionMode::RolePreserving => format_role_preserving_turn(turn),
-                };
-
-                match self.client.send_message(&session_id, &message).await {
-                    Ok(_) => {
-                        log.turns.push(TurnIngestionRecord {
-                            role: turn.role.clone(),
-                            outcome: TurnIngestionOutcome::Ingested,
-                            error_message: None,
-                            provenance: turn.provenance.clone(),
-                        });
-                        log.ingested_count += 1;
-                    }
-                    Err(e) => {
-                        warn!(
-                            id = %question.id,
-                            role = %turn.role,
-                            error = %e,
-                            "benchmark turn ingestion failed; continuing with remaining turns"
-                        );
-                        log.turns.push(TurnIngestionRecord {
-                            role: turn.role.clone(),
-                            outcome: TurnIngestionOutcome::Error,
-                            error_message: Some(e.to_string()),
-                            provenance: turn.provenance.clone(),
-                        });
-                        log.error_count += 1;
-                    }
-                }
+                .fail();
             }
         }
 
@@ -507,49 +511,36 @@ impl BenchmarkRunner {
 
         let answer = crate::sse::extract_text(&events);
 
-        if self.config.close_between_questions {
-            // kanon:ignore RUST/no-silent-result-swallow — session close is best-effort cleanup between benchmark questions
+        if self.config.mode() == BenchmarkMode::OfficialParity {
+            // WHY: Best-effort cleanup keeps the live session list from
+            // growing unbounded during a large benchmark run.
             let _ = self.client.close_session(&session_id).await;
-            info!(
-                id = %question.id,
-                session_id = %session_id,
-                namespace = %namespace.tag,
-                "closed isolated benchmark session"
-            );
+            if shared_session.as_ref() == Some(&session_id) {
+                *shared_session = None;
+            }
         }
 
         Ok((answer, log))
     }
 }
 
-/// Format a benchmark turn for role-preserving ingestion.
+/// Build a markdown document that preserves every turn and its original role.
 ///
-/// The content is wrapped in a structured provenance header so the original
-/// transcript role, speaker, turn id, timestamp, and dataset provenance are
-/// retained. The turn is sent as a user message, so historical
-/// assistant/system/tool content is not mistaken for a fresh assistant answer.
-fn format_role_preserving_turn(turn: &BenchmarkTurn) -> String {
-    let speaker = turn.speaker.as_deref().unwrap_or("");
-    let turn_id = turn.turn_id.as_deref().unwrap_or("");
-    let timestamp = turn.timestamp.as_deref().unwrap_or("");
-    let provenance = turn.provenance.as_deref().unwrap_or("");
-    format!(
-        "[transcript role={} speaker={} turn_id={} timestamp={} provenance={}]\n{}",
-        turn.role, speaker, turn_id, timestamp, provenance, turn.content
-    )
-}
-
-/// Return true if the role label corresponds to a user-authored turn.
-///
-/// Supports both aletheia-native roles (`user`) and benchmark-native speaker
-/// labels (e.g. `Alice`, `Bob`). Assistant roles (`assistant`, `Assistant`,
-/// `system`, `tool`, `tool_result`) are treated as non-user.
-///
-/// Non-user turns are skipped in user-only ingestion mode and sent with a
-/// structured provenance header in role-preserving mode.
-fn role_is_user(role: &str) -> bool {
-    let lower = role.to_lowercase();
-    lower != "assistant" && lower != "system" && lower != "tool_result" && lower != "tool"
+/// The document is sent to `POST /api/v1/knowledge/ingest` so the memory
+/// pipeline can extract facts from the full conversation without the turns
+/// being replayed as user messages.
+fn build_transcript_markdown(question: &BenchmarkQuestion) -> String {
+    let mut out = String::new();
+    for (session_idx, session) in question.sessions.iter().enumerate() {
+        let _ = write!(out, "## Session {session_idx}\n\n");
+        for (turn_idx, (role, content)) in session.iter().enumerate() {
+            if content.trim().is_empty() {
+                continue;
+            }
+            let _ = write!(out, "### turn {turn_idx} — {role}\n\n{content}\n\n");
+        }
+    }
+    out
 }
 
 fn millis_from_duration(duration: Duration) -> u64 {
@@ -697,69 +688,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn role_is_user_accepts_user() {
-        assert!(role_is_user("user"));
-        assert!(role_is_user("User"));
-        assert!(role_is_user("USER"));
-    }
 
-    #[test]
-    fn role_is_user_rejects_assistant() {
-        assert!(!role_is_user("assistant"));
-        assert!(!role_is_user("Assistant"));
-        assert!(!role_is_user("system"));
-        assert!(!role_is_user("tool_result"));
-        assert!(!role_is_user("tool"));
-    }
-
-    #[test]
-    fn role_is_user_accepts_locomo_speaker_labels() {
-        // NOTE: LoCoMo uses speaker labels instead of roles.
-        assert!(role_is_user("Alice"));
-        assert!(role_is_user("Bob"));
-        assert!(role_is_user("Charlie"));
-    }
-
-    #[test]
-    fn role_preserving_turn_includes_provenance_header() {
-        let turn = BenchmarkTurn {
-            role: "assistant".to_owned(),
-            content: "Your favorite color is blue.".to_owned(),
-            speaker: None,
-            turn_id: Some("s0:t1".to_owned()),
-            timestamp: Some("2024-01-01T00:00:00Z".to_owned()),
-            provenance: Some("LongMemEval:q1:session_0:turn_1".to_owned()),
-        };
-
-        let formatted = format_role_preserving_turn(&turn);
-
-        assert!(formatted.starts_with("[transcript "));
-        assert!(formatted.contains("role=assistant"));
-        assert!(formatted.contains("turn_id=s0:t1"));
-        assert!(formatted.contains("provenance=LongMemEval:q1:session_0:turn_1"));
-        assert!(formatted.ends_with("Your favorite color is blue."));
-    }
-
-    #[test]
-    fn role_preserving_turn_omits_empty_optional_fields() {
-        let turn = BenchmarkTurn {
-            role: "user".to_owned(),
-            content: "Hello.".to_owned(),
-            speaker: None,
-            turn_id: None,
-            timestamp: None,
-            provenance: None,
-        };
-
-        let formatted = format_role_preserving_turn(&turn);
-
-        assert_eq!(
-            formatted,
-            "[transcript role=user speaker= turn_id= timestamp= provenance=]\nHello."
-        );
-    }
-
-    #[test]
     fn config_default_has_sensible_values() {
         let config = BenchmarkRunnerConfig::default();
         assert_eq!(config.nous_id, "benchmark");
@@ -767,8 +696,19 @@ mod tests {
         assert_eq!(config.question_timeout, Duration::from_mins(2));
         assert!(config.max_questions.is_none());
         assert!(config.close_between_questions);
+        assert_eq!(config.mode(), BenchmarkMode::OfficialParity);
+        assert!(!config.provenance.eval_run_id.is_empty());
         assert!(config.judge.is_none());
         assert!(config.retrieval_k.is_none());
+    }
+
+    #[test]
+    fn continuous_mode_derived_from_close_between_questions_false() {
+        let config = BenchmarkRunnerConfig {
+            close_between_questions: false,
+            ..Default::default()
+        };
+        assert_eq!(config.mode(), BenchmarkMode::ContinuousMemory);
     }
 
     #[test]
@@ -784,6 +724,52 @@ mod tests {
             .take(config.max_questions.unwrap_or(items.len()))
             .collect();
         assert_eq!(taken.len(), 3);
+    }
+
+    #[test]
+    fn transcript_markdown_preserves_roles() {
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: vec![vec![
+                ("user".to_owned(), "My favorite color is blue.".to_owned()),
+                ("assistant".to_owned(), "Noted.".to_owned()),
+                ("system".to_owned(), "Preference updated.".to_owned()),
+            ]],
+            question: "What color?".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            expected_evidence_refs: Vec::new(),
+            category: "single-session".to_owned(),
+        };
+
+        let md = build_transcript_markdown(&question);
+        assert!(md.contains("## Session 0"));
+        assert!(md.contains("### turn 0 — user"));
+        assert!(md.contains("My favorite color is blue."));
+        assert!(md.contains("### turn 1 — assistant"));
+        assert!(md.contains("Noted."));
+        assert!(md.contains("### turn 2 — system"));
+        assert!(md.contains("Preference updated."));
+    }
+
+    #[test]
+    fn transcript_markdown_skips_empty_turns() {
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: vec![vec![
+                ("user".to_owned(), "Hello".to_owned()),
+                ("assistant".to_owned(), "   ".to_owned()),
+                ("user".to_owned(), "World".to_owned()),
+            ]],
+            question: "What?".to_owned(),
+            expected_answers: vec!["World".to_owned()],
+            expected_evidence_refs: Vec::new(),
+            category: "single-session".to_owned(),
+        };
+
+        let md = build_transcript_markdown(&question);
+        assert!(md.contains("Hello"));
+        assert!(!md.contains("turn 1"));
+        assert!(md.contains("World"));
     }
 
     #[test]

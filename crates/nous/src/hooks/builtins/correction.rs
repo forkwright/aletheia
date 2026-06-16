@@ -1,19 +1,28 @@
 //! Correction hooks: capture operator corrections and inject them into future turns.
 //!
 //! Two hooks work together:
-//! - [`CorrectionDetector`]: runs in `on_turn_complete` to scan for correction patterns
-//!   in user messages and persist them to a JSON file.
-//! - [`CorrectionInjector`]: runs in `before_query` to read persisted corrections
-//!   and append them to the system prompt.
+//! - [`CorrectionDetector`]: runs in `on_turn_complete` (currently a no-op
+//!   placeholder; detection happens in [`CorrectionInjector::before_query`]).
+//! - [`CorrectionInjector`]: runs in `before_query` to detect corrections in the
+//!   user message, persist them as typed [`CorrectionRecord`]s, and inject
+//!   active corrections scoped to the current `nous_id`/`session_id` into the
+//!   system prompt.
 //!
-//! Storage format: `<workspace>/corrections.json` — a JSON array of [`Correction`] entries.
+//! Storage format: `<workspace>/corrections.json` — a JSON array of typed
+//! [`CorrectionRecord`] entries. Writes are serialized with a module-local lock
+//! and committed atomically via a temporary file + rename so concurrent readers
+//! always see a complete file.
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use taxis::config::AgentBehaviorDefaults;
+use tokio::sync::Mutex as TokioMutex;
 use tracing::{debug, warn};
 
 use crate::hooks::{HookResult, QueryContext, TurnContext, TurnHook};
@@ -21,53 +30,113 @@ use crate::hooks::{HookResult, QueryContext, TurnContext, TurnHook};
 /// Filename for the corrections store within the agent workspace.
 const CORRECTIONS_FILENAME: &str = "corrections.json";
 
+/// Module-local write lock to serialize read-modify-write cycles on the
+/// corrections file. Keeps locking simple and scoped to this module.
+static WRITE_LOCK: OnceLock<TokioMutex<()>> = OnceLock::new();
+
+fn write_lock() -> &'static TokioMutex<()> {
+    WRITE_LOCK.get_or_init(|| TokioMutex::new(()))
+}
+
+/// Monotonic suffix for temporary correction files.
+static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Stable identifier for a correction record.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(crate) struct CorrectionId(String);
+
+impl CorrectionId {
+    /// Derive a stable ID from the scope and source hash.
+    pub(crate) fn for_scope(nous_id: &str, session_id: &str, source_hash: &str) -> Self {
+        let input = format!("{nous_id}:{session_id}:{source_hash}");
+        let digest = sha256_hex(input.as_bytes());
+        let prefix: String = digest.chars().take(16).collect();
+        Self(format!("corr-{prefix}"))
+    }
+}
+
+/// Lifecycle status of a correction record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CorrectionStatus {
+    /// Correction is active and should be injected.
+    #[default]
+    Active,
+    /// Correction has been dismissed and should not be injected.
+    Dismissed,
+}
+
 /// A persisted behavioral correction from the operator.
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct Correction {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct CorrectionRecord {
+    /// Stable record identifier.
+    pub id: CorrectionId,
+    /// Agent (`nous`) this correction belongs to.
+    pub nous_id: String,
+    /// Session this correction was recorded in.
+    pub session_id: String,
+    /// Turn number within the session when the correction was recorded.
+    pub turn_number: u64,
+    /// Stable hash of the full source message used for replay deduplication.
+    pub source_hash: String,
+    /// Monotonic revision counter, incremented on status transitions.
+    pub revision: u64,
+    /// Current lifecycle status.
+    pub status: CorrectionStatus,
+    /// Provenance: the original (possibly truncated) user message.
+    pub source_message: String,
     /// The extracted correction text.
     pub text: String,
     /// ISO 8601 timestamp when the correction was recorded.
     pub created_at: String,
-    /// The original user message that triggered the correction.
-    pub source_message: String,
 }
 
-/// Raw deserialization type for [`Correction`].
-#[derive(Debug, Clone, Deserialize)]
-struct CorrectionRaw {
-    text: String,
-    created_at: String,
-    source_message: String,
-}
+impl CorrectionRecord {
+    /// Create a new active correction record.
+    pub(crate) fn new(
+        nous_id: impl Into<String>,
+        session_id: impl Into<String>,
+        turn_number: u64,
+        text: impl Into<String>,
+        source_message: impl Into<String>,
+    ) -> Self {
+        let nous_id = nous_id.into();
+        let session_id = session_id.into();
+        let text = text.into();
+        let source_message_full = source_message.into();
+        let source_hash = sha256_hex(source_message_full.as_bytes());
+        let id = CorrectionId::for_scope(&nous_id, &session_id, &source_hash);
 
-impl From<CorrectionRaw> for Correction {
-    fn from(raw: CorrectionRaw) -> Self {
         Self {
-            text: raw.text,
-            created_at: raw.created_at,
-            source_message: raw.source_message,
+            id,
+            nous_id,
+            session_id,
+            turn_number,
+            source_hash,
+            revision: 0,
+            status: CorrectionStatus::Active,
+            source_message: truncate_source(&source_message_full),
+            text,
+            created_at: jiff::Timestamp::now().to_string(),
         }
     }
-}
 
-// WHY: Manual Deserialize to satisfy RUST/serde-bypass-constructor:
-// `CorrectionDetector`/`CorrectionInjector` in this file expose `new()`
-// constructors, so serde must route through a conversion
-// (`From<CorrectionRaw>`) rather than populating fields directly.
-impl<'de> Deserialize<'de> for Correction {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        CorrectionRaw::deserialize(deserializer).map(Self::from)
+    /// Transition the record to a new status, bumping the revision when the
+    /// status actually changes.
+    #[cfg(test)]
+    pub(crate) fn transition_to(&mut self, status: CorrectionStatus) {
+        if self.status != status {
+            self.status = status;
+            self.revision += 1;
+        }
     }
 }
 
 /// Detects correction patterns in user messages and persists them.
 ///
-/// Runs in `on_turn_complete` (after the LLM responds) so the detector
-/// sees the full user message that was just processed. Detection uses
-/// keyword matching for correction-intent phrases.
+/// Runs in `on_turn_complete` (after the LLM responds). The primary detection
+/// path lives in [`CorrectionInjector::before_query`] because `QueryContext`
+/// carries the user message.
 pub(crate) struct CorrectionDetector {
     /// Path to the agent workspace directory.
     ///
@@ -97,22 +166,6 @@ impl TurnHook for CorrectionDetector {
         context: &'a TurnContext<'_>,
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         Box::pin(async move {
-            // WHY: Extract the user message from the turn result content is not
-            // available in TurnContext. Instead, scan the assistant response for
-            // correction acknowledgment patterns. However, the user message is
-            // what we need to scan. The pipeline passes the user message in
-            // QueryContext (before_query), not TurnContext (on_turn_complete).
-            //
-            // Design decision: scan the assistant's response for signs it
-            // acknowledged a correction. This is less reliable than scanning the
-            // user message directly, so we use a different approach: the
-            // CorrectionInjector in before_query detects corrections from the
-            // user message and persists them immediately. The detector hook is
-            // kept as a secondary path for corrections embedded in multi-turn
-            // context.
-            //
-            // For the primary detection path, see CorrectionInjector::before_query.
-
             debug!(
                 nous_id = context.nous_id,
                 "correction_detector: turn complete, no-op in on_turn_complete"
@@ -163,13 +216,15 @@ impl TurnHook for CorrectionInjector {
                     "correction_injector: detected correction in user message"
                 );
 
-                let correction = Correction {
-                    text: correction_text,
-                    created_at: jiff::Timestamp::now().to_string(),
-                    source_message: truncate_source(user_message),
-                };
+                let record = CorrectionRecord::new(
+                    context.nous_id,
+                    context.session_id,
+                    context.turn_number,
+                    correction_text,
+                    user_message,
+                );
 
-                if let Err(e) = append_correction(&self.workspace, correction).await {
+                if let Err(e) = persist_correction(&self.workspace, record).await {
                     warn!(
                         nous_id = context.nous_id,
                         error = %e,
@@ -180,7 +235,13 @@ impl TurnHook for CorrectionInjector {
                 }
             }
 
-            let corrections = match load_corrections(&self.workspace).await {
+            let corrections = match load_corrections(
+                &self.workspace,
+                context.nous_id,
+                context.session_id,
+            )
+            .await
+            {
                 Ok(c) => c,
                 Err(e) => {
                     debug!(
@@ -332,63 +393,146 @@ fn corrections_path(workspace: &Path) -> PathBuf {
     workspace.join(CORRECTIONS_FILENAME)
 }
 
-/// Load corrections from the workspace file.
+/// Load active corrections for a specific scope from the workspace file.
 ///
 /// Returns an empty vec if the file does not exist. Returns an error only
-/// on actual I/O or parse failures.
-async fn load_corrections(workspace: &Path) -> Result<Vec<Correction>, std::io::Error> {
+/// on actual I/O or parse failures. Non-active records are skipped.
+async fn load_corrections(
+    workspace: &Path,
+    nous_id: &str,
+    session_id: &str,
+) -> Result<Vec<CorrectionRecord>, std::io::Error> {
+    let records = load_all_records(workspace).await?;
+    Ok(records
+        .into_iter()
+        .filter(|record| {
+            record.status == CorrectionStatus::Active
+                && record.nous_id == nous_id
+                && record.session_id == session_id
+        })
+        .collect())
+}
+
+/// Load all correction records from the workspace file without filtering.
+async fn load_all_records(workspace: &Path) -> Result<Vec<CorrectionRecord>, std::io::Error> {
     let path = corrections_path(workspace);
 
     match tokio::fs::read_to_string(&path).await {
         Ok(content) => {
-            let corrections: Vec<Correction> = serde_json::from_str(&content).map_err(|e| {
+            let records: Vec<CorrectionRecord> = serde_json::from_str(&content).map_err(|e| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!("invalid corrections JSON: {e}"),
                 )
             })?;
-            Ok(corrections)
+            Ok(records)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(e) => Err(e),
     }
 }
 
-/// Append a correction to the workspace file, enforcing the max cap.
-async fn append_correction(workspace: &Path, correction: Correction) -> Result<(), std::io::Error> {
+/// Persist a correction, preventing replay duplicates by source hash/scope.
+///
+/// Holds a module-local lock while reading, deduplicating, capping, and
+/// atomically writing the file.
+async fn persist_correction(
+    workspace: &Path,
+    correction: CorrectionRecord,
+) -> Result<(), std::io::Error> {
     let path = corrections_path(workspace);
+    let _guard = write_lock().lock().await;
 
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
 
-    let mut corrections = match load_corrections(workspace).await {
-        Ok(c) => c,
+    let mut records = match load_all_records(workspace).await {
+        Ok(records) => records,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(e),
     };
 
-    corrections.push(correction);
+    // Prevent replay duplicates scoped to (nous_id, session_id, source_hash).
+    let duplicate = records.iter().any(|record| {
+        record.nous_id == correction.nous_id
+            && record.session_id == correction.session_id
+            && record.source_hash == correction.source_hash
+    });
+    if duplicate {
+        return Ok(());
+    }
+
+    records.push(correction);
 
     // WHY: Evict oldest corrections when over the cap. Operator's most recent
     // corrections are more likely to be relevant.
     let max_corrections = AgentBehaviorDefaults::default().corrections_max_corrections;
     debug!(max_corrections, "corrections cap enforced");
-    if corrections.len() > max_corrections {
-        let excess = corrections.len() - max_corrections;
-        corrections.drain(..excess);
+    if records.len() > max_corrections {
+        let excess = records.len() - max_corrections;
+        records.drain(..excess);
     }
 
-    let json = serde_json::to_string_pretty(&corrections)
+    write_corrections_atomic(&path, &records).await
+}
+
+/// Serialize records to a temporary file and atomically rename it into place.
+async fn write_corrections_atomic(
+    path: &Path,
+    records: &[CorrectionRecord],
+) -> Result<(), std::io::Error> {
+    let json = serde_json::to_string_pretty(records)
         .map_err(|e| std::io::Error::other(format!("failed to serialize corrections: {e}")))?;
 
-    tokio::fs::write(&path, json).await
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "corrections path has no parent directory",
+        )
+    })?;
+
+    let suffix = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp_name = format!("{CORRECTIONS_FILENAME}.tmp.{suffix}");
+    let tmp_path = parent.join(&tmp_name);
+
+    tokio::fs::write(&tmp_path, json).await?;
+    tokio::fs::rename(&tmp_path, path).await?;
+
+    Ok(())
+}
+
+// -- Hashing --
+
+/// Compute a stable hex-encoded SHA-256 hash of the given input.
+fn sha256_hex(input: impl AsRef<[u8]>) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input);
+    hex_encode(&hasher.finalize())
+}
+
+/// Encode bytes as lowercase hex without external dependencies.
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(nibble_to_hex(byte >> 4));
+        out.push(nibble_to_hex(byte & 0x0F));
+    }
+    out
+}
+
+fn nibble_to_hex(n: u8) -> char {
+    if n < 10 {
+        char::from(b'0' + n)
+    } else {
+        char::from(b'a' + n - 10)
+    }
 }
 
 // -- System prompt formatting --
 
 /// Format corrections into a system prompt section.
-fn format_corrections_section(corrections: &[Correction]) -> String {
+fn format_corrections_section(corrections: &[CorrectionRecord]) -> String {
     let mut section = String::from(
         "## Operator Corrections\n\n\
          The following behavioral corrections have been recorded by the operator. \

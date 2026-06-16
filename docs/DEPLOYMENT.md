@@ -192,14 +192,9 @@ This displays the current token or a way to generate one. Tokens are managed by 
 
 ### POST/PUT/DELETE CSRF protection
 
-Enable CSRF protection by adding to `aletheia.toml`:
-
-```toml
-[gateway.csrf]
-enabled = true
-```
-
-When enabled, all state-changing requests (POST, PUT, DELETE, PATCH) to `/api/v1/` must include the header:
+CSRF protection is enabled by default. All state-changing requests (POST, PUT,
+DELETE, PATCH) to `/api/v1/` must include the configured header. The default
+bootstrap value is:
 
 ```
 X-Requested-With: aletheia
@@ -216,7 +211,18 @@ curl -X POST \
   http://127.0.0.1:18789/api/v1/sessions
 ```
 
-Missing the CSRF header returns `403 Forbidden` when CSRF is enabled. Enable CSRF on any instance exposed to a network.
+Missing the CSRF header returns `403 Forbidden`. If a deployment intentionally
+disables CSRF, the config must carry the acknowledgement flag:
+
+```toml
+[gateway.csrf]
+enabled = false
+disableAcknowledged = true
+```
+
+Operators who set a custom `headerValue` must provision the same value into
+their clients through local config or deployment secrets. The runtime config
+API redacts `gateway.csrf.headerValue`.
 
 ### No authentication mode
 
@@ -364,9 +370,14 @@ Status values: `healthy` (all pass), `degraded` (warnings, e.g. no LLM provider)
 
 ## Prosoche heartbeat timer
 
-The optional user timer checks the running server and then executes the local
-prosoche self-audit task. The timer starts one minute after activation and runs
-every five minutes.
+The optional user timer is the **external** prosoche heartbeat path. It checks
+the running server and then executes the local prosoche self-audit task. The
+timer starts one minute after activation and runs every five minutes.
+
+Use this timer when `[maintenance.prosoche].mode` is set to `"external"` or
+`"both"`. With the default `mode = "daemon"`, the daemon's in-process scheduler
+handles prosoche internally and the timer is unnecessary; running both without
+`mode = "both"` can execute the self-audit twice.
 
 ```bash
 install -m 0755 scripts/aletheia-heartbeat.sh ~/.local/bin/aletheia-heartbeat
@@ -455,6 +466,9 @@ The template sets
 `EnvironmentFile` from `%h/aletheia/instance/config/env` (silently ignored if absent).
 `ReadWritePaths=%h/aletheia/instance` grants write access to the instance under
 `ProtectSystem=strict`; update it when you change the instance root.
+Drift detection resolves the sibling `instance.example` template from the
+configured instance root; if the template is unavailable, the task reports
+degraded/failed rather than clean.
 If your API key is stored in `instance/config/credentials/anthropic.json` (written by
 `aletheia init`), no extra environment setup is needed.
 
@@ -501,6 +515,10 @@ aletheia maintenance run drift-detection        # check instance structure
 aletheia maintenance run db-monitor             # check database sizes
 aletheia maintenance run all                    # run everything
 ```
+
+Drift detection compares the live instance root against the sibling
+`instance.example` template. If the template directory is unavailable, the task
+reports degraded/failed rather than clean.
 
 ---
 

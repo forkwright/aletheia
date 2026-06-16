@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use axum::routing::post;
 use tower::ServiceExt;
 
 use super::helpers::*;
@@ -66,6 +67,7 @@ async fn oversized_body_returns_413() {
         body_limit_bytes: 100,
         csrf: crate::security::CsrfConfig {
             enabled: false,
+            disable_acknowledged: true,
             ..crate::security::CsrfConfig::default()
         },
         ..SecurityConfig::default()
@@ -121,9 +123,7 @@ async fn csrf_allows_post_with_correct_header() {
         },
         ..SecurityConfig::default()
     };
-    // WHY: The CSRF token is now a per-instance CSPRNG value. Read it from
-    // the SecurityConfig so the test sends the correct token, not "aletheia".
-    let csrf_token = security.csrf.header_value.clone();
+    let csrf_token = security.csrf.header_value.expose_secret().to_owned();
     let router = build_router(state, &security);
 
     let token = default_token();
@@ -205,9 +205,7 @@ async fn csrf_allows_delete_with_correct_header() {
         },
         ..SecurityConfig::default()
     };
-    // WHY: The CSRF token is now a per-instance CSPRNG value. Read it from
-    // the SecurityConfig so the test sends the correct token, not "aletheia".
-    let csrf_token = security.csrf.header_value.clone();
+    let csrf_token = security.csrf.header_value.expose_secret().to_owned();
     let router = build_router(Arc::clone(&state), &security);
 
     let token = default_token();
@@ -260,6 +258,26 @@ async fn cors_permissive_when_no_origins_configured() {
 
     let resp = router.oneshot(req).await.unwrap();
     assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn csrf_middleware_without_state_rejects_post() {
+    let router = axum::Router::new()
+        .route("/write", post(|| async { StatusCode::OK }))
+        .layer(axum::middleware::from_fn(
+            crate::middleware::require_csrf_header,
+        ));
+
+    let resp = router
+        .oneshot(Request::post("/write").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "missing CsrfState must not bypass CSRF protection"
+    );
 }
 
 #[tokio::test]
@@ -367,6 +385,182 @@ async fn cors_explicit_origin_allows_browser_api_headers() {
     );
 }
 
+#[tokio::test]
+async fn cors_permissive_allows_idempotency_key_preflight_on_messages() {
+    let (state, _dir) = test_state().await;
+    let security = test_security_config();
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/sessions/sess-01/messages")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "POST")
+        .header("access-control-request-headers", "idempotency-key")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    let allow_methods = resp
+        .headers()
+        .get("access-control-allow-methods")
+        .expect("allow-methods must be present");
+    assert!(
+        allow_methods.to_str().unwrap().contains("POST"),
+        "POST must be allowed for message send preflight"
+    );
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("idempotency-key"),
+        "idempotency-key must be allowed on message send route"
+    );
+}
+
+#[tokio::test]
+async fn cors_explicit_origin_allows_idempotency_key_preflight_on_messages() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig {
+        cors: crate::security::CorsConfig {
+            allowed_origins: vec!["http://localhost:3000".to_owned()],
+            ..crate::security::CorsConfig::default()
+        },
+        csrf: crate::security::CsrfConfig {
+            enabled: false,
+            ..crate::security::CsrfConfig::default()
+        },
+        ..SecurityConfig::default()
+    };
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/sessions/sess-01/messages")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "POST")
+        .header("access-control-request-headers", "idempotency-key")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    assert_eq!(
+        resp.headers()
+            .get("access-control-allow-origin")
+            .map(|v| v.to_str().unwrap()),
+        Some("http://localhost:3000")
+    );
+    let allow_methods = resp
+        .headers()
+        .get("access-control-allow-methods")
+        .expect("allow-methods must be present");
+    assert!(
+        allow_methods.to_str().unwrap().contains("POST"),
+        "POST must be allowed for message send preflight"
+    );
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("idempotency-key"),
+        "idempotency-key must be allowed on message send route"
+    );
+}
+
+#[tokio::test]
+async fn cors_permissive_allows_last_event_id_preflight_on_turn_events() {
+    let (state, _dir) = test_state().await;
+    let security = test_security_config();
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/sessions/sess-01/turns/turn-01/events")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "GET")
+        .header("access-control-request-headers", "last-event-id")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    let allow_methods = resp
+        .headers()
+        .get("access-control-allow-methods")
+        .expect("allow-methods must be present");
+    assert!(
+        allow_methods.to_str().unwrap().contains("GET"),
+        "GET must be allowed for turn reconnect preflight"
+    );
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("last-event-id"),
+        "last-event-id must be allowed on turn reconnect route"
+    );
+}
+
+#[tokio::test]
+async fn cors_explicit_origin_allows_last_event_id_preflight_on_turn_events() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig {
+        cors: crate::security::CorsConfig {
+            allowed_origins: vec!["http://localhost:3000".to_owned()],
+            ..crate::security::CorsConfig::default()
+        },
+        csrf: crate::security::CsrfConfig {
+            enabled: false,
+            ..crate::security::CsrfConfig::default()
+        },
+        ..SecurityConfig::default()
+    };
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/sessions/sess-01/turns/turn-01/events")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "GET")
+        .header("access-control-request-headers", "last-event-id")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    assert_eq!(
+        resp.headers()
+            .get("access-control-allow-origin")
+            .map(|v| v.to_str().unwrap()),
+        Some("http://localhost:3000")
+    );
+    let allow_methods = resp
+        .headers()
+        .get("access-control-allow-methods")
+        .expect("allow-methods must be present");
+    assert!(
+        allow_methods.to_str().unwrap().contains("GET"),
+        "GET must be allowed for turn reconnect preflight"
+    );
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("last-event-id"),
+        "last-event-id must be allowed on turn reconnect route"
+    );
+}
+
 #[test]
 fn security_config_default_values() {
     let config = SecurityConfig::default();
@@ -374,18 +568,13 @@ fn security_config_default_values() {
     assert_eq!(config.cors.max_age_secs, 3600);
     assert_eq!(config.body_limit_bytes, 1_048_576);
     assert!(config.csrf.enabled);
+    assert!(!config.csrf.disable_acknowledged);
     assert_eq!(config.csrf.header_name, "x-requested-with");
-    // WHY: The default CSRF token is now a CSPRNG-generated 32-char hex string
-    // rather than the static "aletheia" value, which was guessable.
-    assert_eq!(config.csrf.header_value.len(), 32);
-    assert!(
-        config
-            .csrf
-            .header_value
-            .chars()
-            .all(|c| c.is_ascii_hexdigit())
+    assert_eq!(
+        config.csrf.header_value.expose_secret(),
+        "aletheia",
+        "default CSRF header value must match the documented bootstrap header"
     );
-    assert_ne!(config.csrf.header_value, "aletheia");
     assert!(!config.tls.enabled);
     assert!(config.tls.cert_path.is_none());
     assert!(config.tls.key_path.is_none());
@@ -398,9 +587,9 @@ fn security_config_from_gateway() {
     let gw = GatewayConfig::default();
     let config = SecurityConfig::from_gateway(&gw);
     assert!(!config.tls.enabled);
-    // WHY: CSRF defaults to disabled so the API works out-of-the-box;
-    // operators enable it explicitly when exposing to browsers (#1690).
-    assert!(!config.csrf.enabled);
+    assert!(config.csrf.enabled);
+    assert!(!config.csrf.disable_acknowledged);
+    assert_eq!(config.csrf.header_value.expose_secret(), "aletheia");
     assert_eq!(config.cors.max_age_secs, 3600);
 }
 

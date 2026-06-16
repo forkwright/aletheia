@@ -29,7 +29,9 @@ use tokio::sync::RwLock;
 use crate::types::{ProviderId, TaskCategory, TurnOutcome};
 
 const SECS_PER_DAY: u64 = 24 * 60 * 60;
-const DEFAULT_REFRESH_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
+
+/// Default rolling window for routing success-rate statistics.
+pub const DEFAULT_ROUTING_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
 
 /// Errors produced by [`AfterActionStore`] operations.
 #[derive(Debug, Snafu)]
@@ -132,7 +134,7 @@ impl AfterActionStore {
     ///
     /// Call [`refresh`](Self::refresh) to populate the cache from disk.
     pub fn new(dir: PathBuf) -> Self {
-        Self::new_with_window(dir, DEFAULT_REFRESH_WINDOW)
+        Self::new_with_window(dir, DEFAULT_ROUTING_WINDOW)
     }
 
     /// Create a store backed by `dir` with a bounded refresh window.
@@ -155,7 +157,7 @@ impl AfterActionStore {
     pub fn in_memory() -> Self {
         Self {
             dir: None,
-            window: DEFAULT_REFRESH_WINDOW,
+            window: DEFAULT_ROUTING_WINDOW,
             cache: RwLock::new(HashMap::new()),
             interactive: RwLock::new(HashMap::new()),
         }
@@ -163,34 +165,25 @@ impl AfterActionStore {
 
     /// Return rolling stats for a specific (provider, category) pair.
     ///
-    /// Returns `None` when the pair has no entries in the cache.
+    /// Returns `Ok(None)` when the pair has no entries in a healthy cache.
+    /// Returns `Err` when a requested window requires rebuilding from an
+    /// unreadable backing directory.
     pub async fn rolling_stats(
         &self,
         provider: &ProviderId,
         cat: &TaskCategory,
         window: std::time::Duration,
-    ) -> Option<RollingStats> {
+    ) -> Result<Option<RollingStats>, AfterActionStoreError> {
         if window != self.window
             && let Some(dir) = &self.dir
         {
-            return match self.build_cache(dir, window).await {
-                Ok(mut cache) => {
-                    self.merge_interactive(&mut cache).await;
-                    cache.get(&(provider.clone(), *cat)).cloned()
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        error = %error,
-                        requested_window_days = ?window_file_limit(window),
-                        "failed to build requested routing stats window"
-                    );
-                    None
-                }
-            };
+            let mut cache = self.build_cache(dir, window).await?;
+            self.merge_interactive(&mut cache).await;
+            return Ok(cache.get(&(provider.clone(), *cat)).cloned());
         }
 
         let cache = self.cache.read().await;
-        cache.get(&(provider.clone(), *cat)).cloned()
+        Ok(cache.get(&(provider.clone(), *cat)).cloned())
     }
 
     /// Directly record the outcome of an interactive turn.
@@ -397,7 +390,7 @@ fn merge_stats(target: &mut RollingStats, source: &RollingStats) {
 ///
 /// Returns [`TaskCategory::Feature`] for unrecognised strings so that new
 /// categories added in future PRs degrade gracefully on old store data.
-pub(crate) fn parse_category(s: &str) -> TaskCategory {
+fn parse_category(s: &str) -> TaskCategory {
     match s.parse::<TaskCategory>() {
         Ok(category) => category,
         Err(_) => TaskCategory::Feature,
@@ -462,6 +455,7 @@ mod tests {
                 Duration::from_hours(168),
             )
             .await
+            .unwrap()
             .unwrap();
         assert_eq!(a.successes, 9);
         assert_eq!(a.failures, 1);
@@ -488,6 +482,7 @@ mod tests {
                 Duration::from_hours(168),
             )
             .await
+            .unwrap()
             .unwrap();
         assert_eq!(stats.total, 2);
     }
@@ -516,6 +511,7 @@ mod tests {
                 Duration::from_hours(240),
             )
             .await
+            .unwrap()
             .unwrap();
         assert_eq!(recent.total, 10);
         assert!(
@@ -526,6 +522,7 @@ mod tests {
                     Duration::from_hours(240),
                 )
                 .await
+                .unwrap()
                 .is_none()
         );
     }
@@ -555,6 +552,7 @@ mod tests {
                     Duration::from_hours(480),
                 )
                 .await
+                .unwrap()
                 .is_some()
         );
         assert!(
@@ -565,7 +563,29 @@ mod tests {
                     Duration::from_hours(240),
                 )
                 .await
+                .unwrap()
                 .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn rolling_stats_differing_window_returns_io_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("not-a-directory");
+        std::fs::write(&file_path, "not jsonl").unwrap();
+
+        let store = AfterActionStore::new_with_window(file_path, Duration::from_hours(480));
+        let result = store
+            .rolling_stats(
+                &ProviderId::new("provider-a"),
+                &TaskCategory::Feature,
+                Duration::from_hours(240),
+            )
+            .await;
+
+        assert!(
+            matches!(result, Err(AfterActionStoreError::Io { .. })),
+            "expected I/O error, got {result:?}"
         );
     }
 
@@ -602,6 +622,7 @@ mod tests {
                 Duration::from_hours(168),
             )
             .await
+            .unwrap()
             .unwrap();
         assert_eq!(stats.total, 10);
         assert_eq!(stats.successes, 8);
@@ -634,6 +655,7 @@ mod tests {
                     Duration::from_hours(168),
                 )
                 .await
+                .unwrap()
                 .is_none()
         );
     }
@@ -658,6 +680,7 @@ mod tests {
         let stats = store
             .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(1))
             .await
+            .unwrap()
             .unwrap();
         assert_eq!(stats.total, 5);
         assert_eq!(stats.successes, 4);
@@ -695,6 +718,7 @@ mod tests {
         let stats = store
             .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(1))
             .await
+            .unwrap()
             .unwrap();
 
         // 3 dispatch successes + 1 interactive success + 1 interactive failure = 5 total

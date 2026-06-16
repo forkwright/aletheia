@@ -8,7 +8,7 @@ fn sig(name: &str, args: &str, result: &str) -> ToolCallSignature {
 
 #[test]
 fn polling_does_not_trigger() {
-    let mut detector = DoomLoopDetector::new(10, 3);
+    let mut detector = DoomLoopDetector::new(10, 3).unwrap();
     let base = sig("tail", "{\"file\":\"/var/log/syslog\"}", "");
 
     for i in 0..5 {
@@ -20,7 +20,7 @@ fn polling_does_not_trigger() {
 
 #[test]
 fn identical_calls_trigger() {
-    let mut detector = DoomLoopDetector::new(10, 3);
+    let mut detector = DoomLoopDetector::new(10, 3).unwrap();
     let s = sig("cat", "{\"file\":\"/etc/hosts\"}", "127.0.0.1 localhost");
 
     detector.record(s).unwrap();
@@ -35,7 +35,7 @@ fn identical_calls_trigger() {
 
 #[test]
 fn ring_capacity_evicts_oldest() {
-    let mut detector = DoomLoopDetector::new(10, 3);
+    let mut detector = DoomLoopDetector::new(10, 3).unwrap();
     let s = sig("echo", "{\"msg\":\"hi\"}", "hi");
 
     detector.record(s).unwrap();
@@ -49,7 +49,7 @@ fn ring_capacity_evicts_oldest() {
 
 #[test]
 fn reset_clears_history() {
-    let mut detector = DoomLoopDetector::new(10, 3);
+    let mut detector = DoomLoopDetector::new(10, 3).unwrap();
     let s = sig("echo", "{\"msg\":\"hi\"}", "hi");
 
     detector.record(s).unwrap();
@@ -62,7 +62,7 @@ fn reset_clears_history() {
 
 #[test]
 fn capacity_eviction_avoids_false_trigger() {
-    let mut detector = DoomLoopDetector::new(10, 3);
+    let mut detector = DoomLoopDetector::new(10, 3).unwrap();
     let dup = sig("dup", "{}", "a");
 
     detector.record(dup).unwrap();
@@ -79,7 +79,7 @@ fn capacity_eviction_avoids_false_trigger() {
 
 #[test]
 fn ping_pong_ababa_triggers() {
-    let mut det = PingPongDetector::new(10, 5);
+    let mut det = PingPongDetector::new(10, 5).unwrap();
     let a = sig("read", "{\"f\":\"a\"}", "out-a");
     let b = sig("write", "{\"f\":\"b\"}", "out-b");
 
@@ -97,7 +97,7 @@ fn ping_pong_ababa_triggers() {
 
 #[test]
 fn ping_pong_abcab_does_not_trigger() {
-    let mut det = PingPongDetector::new(10, 5);
+    let mut det = PingPongDetector::new(10, 5).unwrap();
     let a = sig("a", "{}", "1");
     let b = sig("b", "{}", "2");
     let c = sig("c", "{}", "3");
@@ -111,7 +111,7 @@ fn ping_pong_abcab_does_not_trigger() {
 
 #[test]
 fn ping_pong_same_tool_no_trigger() {
-    let mut det = PingPongDetector::new(10, 5);
+    let mut det = PingPongDetector::new(10, 5).unwrap();
     let a = sig("same", "{}", "x");
 
     for _ in 0..6 {
@@ -121,7 +121,7 @@ fn ping_pong_same_tool_no_trigger() {
 
 #[test]
 fn ping_pong_abab_does_not_trigger_with_k5() {
-    let mut det = PingPongDetector::new(10, 5);
+    let mut det = PingPongDetector::new(10, 5).unwrap();
     let a = sig("a", "{}", "1");
     let b = sig("b", "{}", "2");
 
@@ -134,7 +134,7 @@ fn ping_pong_abab_does_not_trigger_with_k5() {
 
 #[test]
 fn ping_pong_triggers_on_trailing_pattern_after_interruption() {
-    let mut det = PingPongDetector::new(10, 5);
+    let mut det = PingPongDetector::new(10, 5).unwrap();
     let a = sig("read", "{}", "r");
     let b = sig("write", "{}", "w");
     let c = sig("search", "{}", "s");
@@ -156,7 +156,7 @@ fn ping_pong_triggers_on_trailing_pattern_after_interruption() {
 
 #[test]
 fn ping_pong_capacity_evicts_oldest() {
-    let mut det = PingPongDetector::new(5, 5);
+    let mut det = PingPongDetector::new(5, 5).unwrap();
     let a = sig("a", "{}", "1");
     let b = sig("b", "{}", "2");
 
@@ -173,7 +173,7 @@ fn ping_pong_capacity_evicts_oldest() {
 
 #[test]
 fn ping_pong_reset_clears() {
-    let mut det = PingPongDetector::new(10, 5);
+    let mut det = PingPongDetector::new(10, 5).unwrap();
     let a = sig("a", "{}", "1");
     let b = sig("b", "{}", "2");
 
@@ -193,7 +193,7 @@ fn ping_pong_reset_clears() {
 
 #[test]
 fn ping_pong_capacity_one_never_detects() {
-    let mut det = PingPongDetector::new(1, 3);
+    let mut det = PingPongDetector::new(1, 3).unwrap();
     let a = sig("a", "{}", "1");
     let b = sig("b", "{}", "2");
 
@@ -207,7 +207,7 @@ fn ping_pong_capacity_one_never_detects() {
 
 #[test]
 fn no_progress_same_hash_three_turns_triggers() {
-    let mut det = NoProgressDetector::new(3);
+    let mut det = NoProgressDetector::new(3).unwrap();
     det.record_turn(42, true).unwrap();
     det.record_turn(42, true).unwrap();
     let err = det.record_turn(42, true).unwrap_err();
@@ -226,7 +226,7 @@ fn no_progress_same_hash_three_turns_triggers() {
 
 #[test]
 fn no_progress_different_hash_resets() {
-    let mut det = NoProgressDetector::new(3);
+    let mut det = NoProgressDetector::new(3).unwrap();
     det.record_turn(42, true).unwrap();
     det.record_turn(42, true).unwrap();
     det.record_turn(99, true).unwrap(); // different hash resets
@@ -236,7 +236,7 @@ fn no_progress_different_hash_resets() {
 
 #[test]
 fn no_progress_no_tool_does_not_increment_nor_reset() {
-    let mut det = NoProgressDetector::new(3);
+    let mut det = NoProgressDetector::new(3).unwrap();
     det.record_turn(42, true).unwrap();
     det.record_turn(42, true).unwrap();
     // No-tool turn: counter stays at 2, last_hash stays at 42.
@@ -254,7 +254,7 @@ fn no_progress_no_tool_does_not_increment_nor_reset() {
 
 #[test]
 fn no_progress_no_tool_streak_never_triggers() {
-    let mut det = NoProgressDetector::new(3);
+    let mut det = NoProgressDetector::new(3).unwrap();
     det.record_turn(1, false).unwrap();
     det.record_turn(1, false).unwrap();
     det.record_turn(1, false).unwrap();
@@ -264,7 +264,7 @@ fn no_progress_no_tool_streak_never_triggers() {
 
 #[test]
 fn no_progress_reset_clears() {
-    let mut det = NoProgressDetector::new(3);
+    let mut det = NoProgressDetector::new(3).unwrap();
     det.record_turn(42, true).unwrap();
     det.record_turn(42, true).unwrap();
     det.reset();
@@ -273,7 +273,7 @@ fn no_progress_reset_clears() {
 
 #[test]
 fn no_progress_first_tool_turn_sets_counter_to_one() {
-    let mut det = NoProgressDetector::new(3);
+    let mut det = NoProgressDetector::new(3).unwrap();
     det.record_turn(42, true).unwrap();
     assert_eq!(det.consecutive_no_progress, 1);
 }
@@ -284,7 +284,7 @@ fn no_progress_first_tool_turn_sets_counter_to_one() {
 fn loop_guard_doom_wins_over_ping_pong() {
     // Sequence: A, A, A — doom fires at the 3rd A (3 identical).
     // Ping-pong requires A-B-A-B-A, so it never fires here.
-    let mut guard = LoopGuard::with_limits(3, 5, 3);
+    let mut guard = LoopGuard::with_limits(3, 5, 3).unwrap();
     let tc = [("tool", "{}", "res")];
 
     guard.record("ok", "", &tc).unwrap();
@@ -299,7 +299,7 @@ fn loop_guard_doom_wins_over_ping_pong() {
 
 #[test]
 fn loop_guard_ping_pong_on_alternation() {
-    let mut guard = LoopGuard::with_limits(10, 5, 3);
+    let mut guard = LoopGuard::with_limits(10, 5, 3).unwrap();
     let a = [("read", "{}", "r")];
     let b = [("write", "{}", "w")];
 
@@ -318,7 +318,7 @@ fn loop_guard_ping_pong_on_alternation() {
 
 #[test]
 fn loop_guard_no_progress_on_repeated_content() {
-    let mut guard = LoopGuard::with_limits(10, 5, 3);
+    let mut guard = LoopGuard::with_limits(10, 5, 3).unwrap();
     let tc = [("tool", "{}", "res")];
 
     guard.record("same", "", &tc).unwrap();
@@ -333,7 +333,7 @@ fn loop_guard_no_progress_on_repeated_content() {
 
 #[test]
 fn loop_guard_no_progress_no_tool_never_fires() {
-    let mut guard = LoopGuard::with_limits(10, 5, 3);
+    let mut guard = LoopGuard::with_limits(10, 5, 3).unwrap();
     let tc: &[(&str, &str, &str)] = &[];
 
     guard.record("same", "", tc).unwrap();
@@ -345,7 +345,7 @@ fn loop_guard_no_progress_no_tool_never_fires() {
 
 #[test]
 fn loop_guard_multiple_tools_per_turn() {
-    let mut guard = LoopGuard::with_limits(10, 5, 3);
+    let mut guard = LoopGuard::with_limits(10, 5, 3).unwrap();
     let tc1 = [("a", "{}", "1"), ("b", "{}", "2")];
     let tc2 = [("c", "{}", "3")];
     let tc3 = [("d", "{}", "4")];
@@ -358,7 +358,7 @@ fn loop_guard_multiple_tools_per_turn() {
 
 #[test]
 fn loop_guard_reset_on_user_message_clears_all() {
-    let mut guard = LoopGuard::with_limits(3, 5, 3);
+    let mut guard = LoopGuard::with_limits(3, 5, 3).unwrap();
     let tc = [("tool", "{}", "res")];
 
     guard.record("ok", "", &tc).unwrap();
@@ -372,7 +372,7 @@ fn loop_guard_reset_on_user_message_clears_all() {
 
 #[test]
 fn loop_guard_reasoning_changes_hash() {
-    let mut guard = LoopGuard::with_limits(10, 5, 2);
+    let mut guard = LoopGuard::with_limits(10, 5, 2).unwrap();
     let tc = [("tool", "{}", "res")];
 
     guard.record("ok", "think A", &tc).unwrap();
@@ -393,7 +393,7 @@ fn loop_guard_empty_tool_calls_ok() {
 
 #[test]
 fn legitimate_workflow_no_false_positives() {
-    let mut guard = LoopGuard::with_limits(3, 5, 3);
+    let mut guard = LoopGuard::with_limits(3, 5, 3).unwrap();
     let ops: Vec<(&str, &str, &str)> = vec![
         ("read", "{\"f\":\"a\"}", "a"),
         ("read", "{\"f\":\"b\"}", "b"),
@@ -411,7 +411,7 @@ fn legitimate_workflow_no_false_positives() {
 #[test]
 fn ping_pong_trailing_after_interruption() {
     // [A,B,A,B,C,A,B,A,B,A] → ping-pong fires on trailing A-B-A-B-A.
-    let mut det = PingPongDetector::new(12, 5);
+    let mut det = PingPongDetector::new(12, 5).unwrap();
     let a = sig("read", "{}", "r");
     let b = sig("write", "{}", "w");
     let c = sig("search", "{}", "s");
@@ -431,7 +431,7 @@ fn ping_pong_trailing_after_interruption() {
 fn doom_and_ping_pong_ordering_documented() {
     // With the same signature sequence, doom is checked before ping-pong
     // per tool-call record. This test documents that ordering.
-    let mut guard = LoopGuard::with_limits(3, 3, 3);
+    let mut guard = LoopGuard::with_limits(3, 3, 3).unwrap();
     let a = [("tool", "{}", "same")];
 
     guard.record("ok", "", &a).unwrap();
@@ -443,5 +443,79 @@ fn doom_and_ping_pong_ordering_documented() {
     assert!(
         matches!(err, LoopDetectorError::DoomLoopDetected { k: 3, .. }),
         "doom must fire before ping-pong on identical sequences"
+    );
+}
+
+// ── Invalid configuration ─────────────────────────────────────────────────
+
+#[test]
+fn doom_loop_detector_rejects_zero_capacity() {
+    let err = DoomLoopDetector::new(0, 3).unwrap_err();
+    assert!(
+        matches!(err, LoopDetectorError::InvalidConfig { .. }),
+        "expected InvalidConfig for zero capacity, got {err:?}"
+    );
+}
+
+#[test]
+fn doom_loop_detector_rejects_zero_k() {
+    let err = DoomLoopDetector::new(10, 0).unwrap_err();
+    assert!(
+        matches!(err, LoopDetectorError::InvalidConfig { .. }),
+        "expected InvalidConfig for zero k, got {err:?}"
+    );
+}
+
+#[test]
+fn ping_pong_detector_rejects_zero_capacity() {
+    let err = PingPongDetector::new(0, 3).unwrap_err();
+    assert!(
+        matches!(err, LoopDetectorError::InvalidConfig { .. }),
+        "expected InvalidConfig for zero capacity, got {err:?}"
+    );
+}
+
+#[test]
+fn ping_pong_detector_rejects_k_below_three() {
+    let err = PingPongDetector::new(10, 2).unwrap_err();
+    assert!(
+        matches!(err, LoopDetectorError::InvalidConfig { .. }),
+        "expected InvalidConfig for k < 3, got {err:?}"
+    );
+}
+
+#[test]
+fn no_progress_detector_rejects_zero_limit() {
+    let err = NoProgressDetector::new(0).unwrap_err();
+    assert!(
+        matches!(err, LoopDetectorError::InvalidConfig { .. }),
+        "expected InvalidConfig for zero limit, got {err:?}"
+    );
+}
+
+#[test]
+fn loop_guard_with_limits_rejects_invalid_doom_k() {
+    let err = LoopGuard::with_limits(0, 5, 3).unwrap_err();
+    assert!(
+        matches!(err, LoopDetectorError::InvalidConfig { .. }),
+        "expected InvalidConfig for doom_k == 0, got {err:?}"
+    );
+}
+
+#[test]
+fn loop_guard_with_limits_rejects_invalid_ping_pong_k() {
+    let err = LoopGuard::with_limits(3, 2, 3).unwrap_err();
+    assert!(
+        matches!(err, LoopDetectorError::InvalidConfig { .. }),
+        "expected InvalidConfig for ping_pong_k < 3, got {err:?}"
+    );
+}
+
+#[test]
+fn loop_guard_with_limits_rejects_invalid_no_progress_limit() {
+    let err = LoopGuard::with_limits(3, 5, 0).unwrap_err();
+    assert!(
+        matches!(err, LoopDetectorError::InvalidConfig { .. }),
+        "expected InvalidConfig for no_progress_limit == 0, got {err:?}"
     );
 }

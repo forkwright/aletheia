@@ -28,18 +28,24 @@ Shell: [standards/](standards/)
 
 ### Loading recipes
 
-Task-specific context selection is defined in [`_llm/recipes.toml`](_llm/recipes.toml). Use it to decide which resolution levels to load:
+Task-specific context selection is defined in [`_llm/recipes.toml`](_llm/recipes.toml). Bootstrap resolves recipes by name; the agent client consumes `CLAUDE.md` separately.
 
-| Task type | Recipe | What to load | Token budget |
-|-----------|--------|--------------|-------------|
-| Cold start / first interaction | `cold_start` | `L1-workspace.md` + `manifest.toml` + `CLAUDE.md` | ~5,700 |
+| Task type | Recipe | Bootstrap loads | Token budget |
+|-----------|--------|-----------------|-------------|
+| Cold start / first interaction | `cold_start` | `L1-workspace.md` + `L2-crate-summaries/*.md` | ~5,700 |
+| General in-session turn | `in_session` | `L1-workspace.md` + `current_state.toml` | ~1,500 |
+| Cross-crate refactor | `cross_crate_refactor` | `L1-workspace.md` + `L2-crate-summaries/*.md` + `L3-api-index/*.md` | ~250K |
 | Single-crate edit | `edit_crate` | L2(crate) + L3(crate) + source(crate) | varies |
-| Cross-crate refactor | `cross_crate_refactor` | `L1-workspace.md` + `manifest.toml` + L3(touched crates) | ~250K |
 | New HTTP endpoint | `add_endpoint` | `architecture.toml` + `api.toml` + L3(pylon, nous) | ~65K |
 | New built-in tool | `add_tool` | `architecture.toml` + L3(organon) + `builtins/` source | ~35K |
 | Bug fix in known crate | `fix_bug` | `architecture.toml` + L3(crate) + source(crate) | ~45K |
 
-The `nous` crate provides [`RecipeRegistry`](crates/nous/src/recipes.rs) for parsing and selecting recipes at bootstrap time. L2 summaries now include one-line recent-change notes; use them before reading source for post-2026-05-08 substrate orientation.
+`edit_crate`, `add_endpoint`, `add_tool`, and `fix_bug` are parameterised and
+are intended for agent on-demand tooling rather than automatic bootstrap
+selection. The `nous` crate provides [`RecipeRegistry`](crates/nous/src/recipes.rs)
+for parsing and selecting recipes by task description. L2 summaries now include
+one-line recent-change notes; use them before reading source for
+post-2026-05-08 substrate orientation.
 
 ### Config
 

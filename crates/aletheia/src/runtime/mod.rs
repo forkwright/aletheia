@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use snafu::prelude::*;
 use tokio::sync::Mutex;
@@ -107,6 +107,35 @@ fn resolve_pack_paths(oikos: &Oikos, configured: &[PathBuf]) -> Vec<PathBuf> {
         .iter()
         .map(|path| resolve_pack_path(oikos, path))
         .collect()
+}
+
+/// Build a per-agent prosoche `TaskDef` from config values.
+///
+/// WHY: keep task ID/name/schedule conversion in one place so the runtime
+/// registration stays readable and the mapping from config to `TaskDef` is
+/// easy to unit-test without constructing a full `Runtime`.
+fn prosoche_task_def(
+    agent_id: &str,
+    task_id: &str,
+    name: &str,
+    enabled: bool,
+    interval_secs: u64,
+    active_window: Option<(u8, u8)>,
+    action: oikonomos::schedule::BuiltinTask,
+) -> oikonomos::schedule::TaskDef {
+    oikonomos::schedule::TaskDef {
+        id: task_id.to_owned(),
+        name: name.to_owned(),
+        nous_id: agent_id.to_owned(),
+        schedule: oikonomos::schedule::Schedule::Interval(std::time::Duration::from_secs(
+            interval_secs,
+        )),
+        action: oikonomos::schedule::TaskAction::Builtin(action),
+        enabled,
+        active_window,
+        catch_up: false,
+        ..oikonomos::schedule::TaskDef::default()
+    }
 }
 
 impl RuntimeBuilder {
@@ -739,6 +768,20 @@ impl RuntimeBuilder {
 
         let nous_manager = Arc::new(nous_manager);
 
+        let health_poller_interval =
+            Duration::from_secs(self.config.nous_behavior.manager_health_interval_secs);
+        let health_poller_cancel = shutdown_token.child_token();
+        let health_poller_handle = NousManager::start_health_poller(
+            Arc::clone(&nous_manager),
+            health_poller_interval,
+            health_poller_cancel,
+        );
+        task_tracker.spawn(async move {
+            if let Err(e) = health_poller_handle.await {
+                warn!(error = %e, "nous manager health poller supervisor exited with an error");
+            }
+        });
+
         nous_manager.ready();
 
         let ready_rx = nous_manager.ready_rx();
@@ -776,36 +819,39 @@ impl RuntimeBuilder {
                     })?,
                 )
                 .with_maintenance(maintenance_config.clone());
-                runner.register(oikonomos::schedule::TaskDef {
-                    id: format!("{}-prosoche", agent_def.id),
-                    name: "Prosoche attention check".to_owned(),
-                    nous_id: agent_def.id.clone(),
-                    schedule: oikonomos::schedule::Schedule::Interval(
-                        std::time::Duration::from_mins(45),
-                    ),
-                    action: oikonomos::schedule::TaskAction::Builtin(
-                        oikonomos::schedule::BuiltinTask::Prosoche,
-                    ),
-                    enabled: true,
-                    active_window: Some((8, 23)),
-                    catch_up: false,
-                    ..oikonomos::schedule::TaskDef::default()
-                });
-                runner.register(oikonomos::schedule::TaskDef {
-                    id: format!("{}-prosoche-self-audit", agent_def.id),
-                    name: "Prosoche self-audit".to_owned(),
-                    nous_id: agent_def.id.clone(),
-                    schedule: oikonomos::schedule::Schedule::Interval(
-                        std::time::Duration::from_hours(6),
-                    ),
-                    action: oikonomos::schedule::TaskAction::Builtin(
-                        oikonomos::schedule::BuiltinTask::SelfAudit,
-                    ),
-                    enabled: true,
-                    active_window: Some((8, 23)),
-                    catch_up: false,
-                    ..oikonomos::schedule::TaskDef::default()
-                });
+                let prosoche = &self.config.maintenance.prosoche;
+                if prosoche.mode.runs_daemon_tasks() {
+                    if prosoche.heartbeat.enabled {
+                        runner.register(prosoche_task_def(
+                            &agent_def.id,
+                            &format!("{}-prosoche", agent_def.id),
+                            "Prosoche attention check",
+                            prosoche.heartbeat.enabled,
+                            prosoche.heartbeat.interval_secs,
+                            prosoche
+                                .heartbeat
+                                .active_window
+                                .as_ref()
+                                .map(|w| (w.start_hour, w.end_hour)),
+                            oikonomos::schedule::BuiltinTask::Prosoche,
+                        ));
+                    }
+                    if prosoche.self_audit.enabled {
+                        runner.register(prosoche_task_def(
+                            &agent_def.id,
+                            &format!("{}-prosoche-self-audit", agent_def.id),
+                            "Prosoche self-audit",
+                            prosoche.self_audit.enabled,
+                            prosoche.self_audit.interval_secs,
+                            prosoche
+                                .self_audit
+                                .active_window
+                                .as_ref()
+                                .map(|w| (w.start_hour, w.end_hour)),
+                            oikonomos::schedule::BuiltinTask::SelfAudit,
+                        ));
+                    }
+                }
                 let daemon_span = tracing::info_span!("daemon", nous.id = %agent_def.id);
                 task_tracker.spawn(
                     async move {
@@ -944,7 +990,7 @@ mod tests {
     use tempfile::TempDir;
     use thesauros::loader::load_packs;
 
-    use super::resolve_pack_paths;
+    use super::{prosoche_task_def, resolve_pack_paths};
 
     static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -1033,5 +1079,59 @@ mod tests {
         let pack = packs.first().expect("one pack loaded");
         assert_eq!(pack.manifest.name, "absolute-test");
         assert_eq!(pack.root, pack_dir);
+    }
+
+    #[test]
+    fn prosoche_task_def_uses_config_values() {
+        let def = prosoche_task_def(
+            "alice",
+            "alice-prosoche",
+            "Prosoche attention check",
+            true,
+            42,
+            Some((8, 23)),
+            oikonomos::schedule::BuiltinTask::Prosoche,
+        );
+
+        assert_eq!(def.id, "alice-prosoche");
+        assert_eq!(def.name, "Prosoche attention check");
+        assert_eq!(def.nous_id, "alice");
+        assert!(def.enabled);
+        assert!(!def.catch_up);
+        assert_eq!(def.active_window, Some((8, 23)));
+        match def.schedule {
+            oikonomos::schedule::Schedule::Interval(d) => {
+                assert_eq!(d, std::time::Duration::from_secs(42));
+            }
+            other => panic!("expected Interval schedule, got {other:?}"),
+        }
+        match def.action {
+            oikonomos::schedule::TaskAction::Builtin(
+                oikonomos::schedule::BuiltinTask::Prosoche,
+            ) => {}
+            other => panic!("expected Prosoche builtin, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prosoche_task_def_honors_disabled_flag_and_self_audit_action() {
+        let def = prosoche_task_def(
+            "bob",
+            "bob-prosoche-self-audit",
+            "Prosoche self-audit",
+            false,
+            3600,
+            None,
+            oikonomos::schedule::BuiltinTask::SelfAudit,
+        );
+
+        assert!(!def.enabled);
+        assert_eq!(def.active_window, None);
+        match def.action {
+            oikonomos::schedule::TaskAction::Builtin(
+                oikonomos::schedule::BuiltinTask::SelfAudit,
+            ) => {}
+            other => panic!("expected SelfAudit builtin, got {other:?}"),
+        }
     }
 }

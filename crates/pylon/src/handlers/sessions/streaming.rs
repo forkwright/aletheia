@@ -8,6 +8,7 @@ use std::time::Duration;
 use axum::Json;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
+use sha2::{Digest as _, Sha256};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
@@ -31,10 +32,32 @@ use crate::idempotency::LookupResult;
 use crate::middleware::RequestId;
 use crate::state::SessionsState;
 use crate::stream::{SseEvent, TurnOutcome, TurnStreamEvent as PylonTurnStreamEvent, UsageData};
-use crate::turn_buffer::TurnBufferHandle;
+use crate::turn_buffer::{REPLAY_GAP_REASON_BUFFER_CAPACITY, RecordOutcome, TurnBufferHandle};
 
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
+
+const HEX_HIGH_NIBBLE_SHIFT: u8 = 4;
+const HEX_LOW_NIBBLE_MASK: u8 = 0x0f;
+const HEX_DECIMAL_DIGITS: u8 = 10;
+const ASCII_DIGIT_ZERO: u8 = b'0';
+const ASCII_LOWER_A: u8 = b'a';
+
+fn turn_complete_event_payload(
+    session_id: &str,
+    nous_id: &str,
+    turn_id: &str,
+    result: &TurnResult,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session_id,
+        "nous_id": nous_id,
+        "turn_id": turn_id,
+        "input_tokens": result.usage.input_tokens,
+        "output_tokens": result.usage.output_tokens,
+        "stop_reason": result.stop_reason.as_str(),
+    })
+}
 
 /// Guard that aborts a spawned task and releases an in-flight idempotency key
 /// when the SSE stream is dropped.
@@ -68,6 +91,8 @@ struct IdempotencyGuard {
     cache: Arc<crate::idempotency::IdempotencyCache>,
     principal: String,
     key: String,
+    session_id: String,
+    body_fingerprint: String,
     completed: Arc<AtomicBool>,
 }
 
@@ -77,11 +102,15 @@ impl IdempotencyGuard {
         cache: Arc<crate::idempotency::IdempotencyCache>,
         principal: String,
         key: String,
+        session_id: String,
+        body_fingerprint: String,
     ) -> Self {
         Self {
             cache,
             principal,
             key,
+            session_id,
+            body_fingerprint,
             completed: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -94,18 +123,24 @@ impl IdempotencyGuard {
         cache: Arc<crate::idempotency::IdempotencyCache>,
         principal: String,
         key: String,
+        session_id: String,
+        body_fingerprint: String,
     ) -> (Self, Self) {
         let completed = Arc::new(AtomicBool::new(false));
         let task_guard = Self {
             cache: Arc::clone(&cache),
             principal: principal.clone(),
             key: key.clone(),
+            session_id: session_id.clone(),
+            body_fingerprint: body_fingerprint.clone(),
             completed: Arc::clone(&completed),
         };
         let stream_guard = Self {
             cache,
             principal,
             key,
+            session_id,
+            body_fingerprint,
             completed,
         };
         (task_guard, stream_guard)
@@ -119,7 +154,12 @@ impl IdempotencyGuard {
 impl Drop for IdempotencyGuard {
     fn drop(&mut self) {
         if !self.completed.load(Ordering::Acquire) {
-            self.cache.remove(&self.principal, &self.key);
+            self.cache.remove(
+                &self.principal,
+                &self.key,
+                &self.session_id,
+                &self.body_fingerprint,
+            );
         }
     }
 }
@@ -161,7 +201,7 @@ impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> 
     path = "/api/v1/sessions/{id}/messages",
     params(
         ("id" = String, Path, description = "Session ID"),
-        ("Idempotency-Key" = Option<String>, Header, description = "Optional idempotency key (max 64 chars). Duplicate keys with a completed request return the cached response; duplicate keys with an in-flight request return 409 Conflict."),
+        ("Idempotency-Key" = Option<String>, Header, description = "Optional idempotency key (max 64 chars). Duplicate keys with the same resolved session and request body return the cached response; duplicate keys with an in-flight request, a different session, or a different request body return 409 Conflict."),
     ),
     request_body = SendMessageRequest,
     responses(
@@ -200,8 +240,75 @@ pub async fn send_message(
     let idempotency_key =
         extract_idempotency_key(&headers, state.idempotency_cache.max_key_length)?;
 
+    let session = find_session(&state, &session_id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
+
+    // WHY: archived sessions must not accept new messages (#1250).
+    if session.status != SessionStatus::Active {
+        return Err(ConflictSnafu {
+            message: "cannot send message to a session that is not active",
+        }
+        .build());
+    }
+
+    let content = body.content;
+
+    // WHY(#3275): field-level validation for send_message content.
+    let max_msg_bytes = state.config.read().await.api_limits.max_message_bytes;
+    if content.is_empty() {
+        return Err(ValidationFailedSnafu {
+            errors: vec![FieldError {
+                field: "content".to_owned(),
+                code: "required".to_owned(),
+                message: "must not be empty".to_owned(),
+            }],
+        }
+        .build());
+    }
+    if content.len() > max_msg_bytes {
+        return Err(ValidationFailedSnafu {
+            errors: vec![FieldError {
+                field: "content".to_owned(),
+                code: "too_long".to_owned(),
+                message: format!("exceeds maximum size of {max_msg_bytes} bytes"),
+            }],
+        }
+        .build());
+    }
+
+    let nous_id = &session.nous_id;
+    let handle = state
+        .nous_manager
+        .get(nous_id)
+        .ok_or_else(|| {
+            InternalSnafu {
+                message: format!("no actor for nous {nous_id}"),
+            }
+            .build()
+        })?
+        .clone();
+
+    if let Some(config) = state.nous_manager.get_config(nous_id)
+        && state
+            .provider_registry
+            .find_provider(&config.generation.model)
+            .is_none()
+    {
+        return Err(InternalSnafu {
+            message: format!("no provider for model {}", config.generation.model),
+        }
+        .build());
+    }
+
+    let body_fingerprint = send_message_body_fingerprint(&content);
+
     if let Some(ref key) = idempotency_key {
-        match state.idempotency_cache.check_or_insert(&claims.sub, key) {
+        match state.idempotency_cache.check_or_insert(
+            &claims.sub,
+            key,
+            &session_id,
+            &body_fingerprint,
+        ) {
             LookupResult::Miss => {}
             LookupResult::Hit { body, .. } => {
                 tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
@@ -268,6 +375,12 @@ pub async fn send_message(
                 }
                 .build());
             }
+            LookupResult::Rejected { reason } => {
+                return Err(ConflictSnafu {
+                    message: reason.message(),
+                }
+                .build());
+            }
         }
     }
 
@@ -280,71 +393,13 @@ pub async fn send_message(
                 Arc::clone(&state.idempotency_cache),
                 claims.sub.clone(),
                 key.clone(),
+                session_id.clone(),
+                body_fingerprint.clone(),
             );
             (Some(task_guard), Some(stream_guard))
         }
         None => (None, None),
     };
-
-    let session = find_session(&state, &session_id).await?;
-    require_nous_access(&claims, &session.nous_id)?;
-
-    // WHY: archived sessions must not accept new messages (#1250).
-    if session.status != SessionStatus::Active {
-        return Err(ConflictSnafu {
-            message: "cannot send message to a session that is not active",
-        }
-        .build());
-    }
-
-    let content = body.content;
-
-    // WHY(#3275): field-level validation for send_message content.
-    let max_msg_bytes = state.config.read().await.api_limits.max_message_bytes;
-    if content.is_empty() {
-        return Err(ValidationFailedSnafu {
-            errors: vec![FieldError {
-                field: "content".to_owned(),
-                code: "required".to_owned(),
-                message: "must not be empty".to_owned(),
-            }],
-        }
-        .build());
-    }
-    if content.len() > max_msg_bytes {
-        return Err(ValidationFailedSnafu {
-            errors: vec![FieldError {
-                field: "content".to_owned(),
-                code: "too_long".to_owned(),
-                message: format!("exceeds maximum size of {max_msg_bytes} bytes"),
-            }],
-        }
-        .build());
-    }
-
-    let nous_id = &session.nous_id;
-    let handle = state
-        .nous_manager
-        .get(nous_id)
-        .ok_or_else(|| {
-            InternalSnafu {
-                message: format!("no actor for nous {nous_id}"),
-            }
-            .build()
-        })?
-        .clone();
-
-    if let Some(config) = state.nous_manager.get_config(nous_id)
-        && state
-            .provider_registry
-            .find_provider(&config.generation.model)
-            .is_none()
-    {
-        return Err(InternalSnafu {
-            message: format!("no provider for model {}", config.generation.model),
-        }
-        .build());
-    }
 
     let session_key = session.session_key.clone();
     // WHY(#3276): channel carries (seq, event) pairs so the stream mapper can
@@ -354,6 +409,8 @@ pub async fn send_message(
 
     let idem_key = idempotency_key.clone();
     let idem_principal = claims.sub.clone();
+    let idem_session_id = session_id.clone();
+    let idem_body_fingerprint = body_fingerprint.clone();
     let idem_cache = Arc::clone(&state.idempotency_cache);
 
     // WHY(#3276): Create a turn buffer so events emitted before a disconnect
@@ -392,8 +449,9 @@ pub async fn send_message(
                 turn_id: Some(turn_id.clone()),
                 request_id: Some(request_id_str.clone()),
             };
-            let seq = record_sse_event(&buf_handle_task, &event).await;
-            let _ = tx.send((seq, event)).await;
+            if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
+                let _ = tx.send(recorded).await;
+            }
 
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
@@ -426,13 +484,7 @@ pub async fn send_message(
 
                     event_bus.publish(crate::event_bus::DomainEvent::new(
                         "turn.complete",
-                        serde_json::json!({
-                            "session_id": sid,
-                            "nous_id": session.nous_id,
-                            "turn_id": turn_id,
-                            "input_tokens": result.usage.input_tokens,
-                            "output_tokens": result.usage.output_tokens,
-                        }),
+                        turn_complete_event_payload(&sid, &session.nous_id, &turn_id, &result),
                     ));
 
                     // NOTE: Store the turn summary so cache-hit replays return real data.
@@ -443,7 +495,14 @@ pub async fn send_message(
                             "output_tokens": result.usage.output_tokens,
                         })
                         .to_string();
-                        idem_cache.complete(&idem_principal, key, axum::http::StatusCode::OK, body);
+                        idem_cache.complete(
+                            &idem_principal,
+                            key,
+                            &idem_session_id,
+                            &idem_body_fingerprint,
+                            axum::http::StatusCode::OK,
+                            body,
+                        );
                     }
                     // WHY(#5453): Mark the idempotency guard completed so the shared
                     // stream-side guard does not delete the now-cached entry when the
@@ -459,7 +518,12 @@ pub async fn send_message(
 
                     // WHY: Remove idempotency entry on error so the client can retry.
                     if let Some(ref key) = idem_key {
-                        idem_cache.remove(&idem_principal, key);
+                        idem_cache.remove(
+                            &idem_principal,
+                            key,
+                            &idem_session_id,
+                            &idem_body_fingerprint,
+                        );
                     }
 
                     let (err_code, err_message) = turn_error_info(&err);
@@ -468,8 +532,9 @@ pub async fn send_message(
                         message: err_message,
                         request_id: Some(request_id_str.clone()),
                     };
-                    let seq = record_sse_event(&buf_handle_task, &event).await;
-                    let _ = tx.send((seq, event)).await;
+                    if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
+                        let _ = tx.send(recorded).await;
+                    }
                     // WHY(#5164): Even when an `error` event is emitted, the following
                     // `message_complete` is the authoritative terminal marker. Clients must
                     // use `message_complete` to detect the end of the stream.
@@ -481,8 +546,9 @@ pub async fn send_message(
                         },
                         request_id: Some(request_id_str.clone()),
                     };
-                    let seq = record_sse_event(&buf_handle_task, &event).await;
-                    let _ = tx.send((seq, event)).await;
+                    if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
+                        let _ = tx.send(recorded).await;
+                    }
                     buf_handle_task.mark_failed().await;
                 }
             }
@@ -648,8 +714,9 @@ pub async fn stream_turn(
         turn_id: turn_id.clone(),
         request_id: Some(request_id.0.clone()),
     };
-    let seq = record_turn_event(&buf_handle, &start_event).await;
-    let _ = turn_tx.send((seq, start_event)).await;
+    if let Some(recorded) = record_turn_event(&buf_handle, &start_event).await {
+        let _ = turn_tx.send(recorded).await;
+    }
 
     let sid = session_id.clone();
     let aid = agent_id;
@@ -734,8 +801,10 @@ pub async fn stream_turn(
                     },
                     _ => continue,
                 };
-                let seq = record_turn_event(&bridge_buf, &turn_event).await;
-                if bridge_tx.send((seq, turn_event)).await.is_err() {
+                let Some(recorded) = record_turn_event(&bridge_buf, &turn_event).await else {
+                    continue;
+                };
+                if bridge_tx.send(recorded).await.is_err() {
                     break;
                 }
             }
@@ -796,19 +865,14 @@ pub async fn stream_turn(
                             error: None,
                         },
                     };
-                    let seq = record_turn_event(&buf_handle_task, &event).await;
-                    let _ = turn_tx.send((seq, event)).await;
+                    if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
+                        let _ = turn_tx.send(recorded).await;
+                    }
                     buf_handle_task.mark_completed().await;
 
                     event_bus.publish(crate::event_bus::DomainEvent::new(
                         "turn.complete",
-                        serde_json::json!({
-                            "session_id": sid,
-                            "nous_id": aid,
-                            "turn_id": turn_id,
-                            "input_tokens": result.usage.input_tokens,
-                            "output_tokens": result.usage.output_tokens,
-                        }),
+                        turn_complete_event_payload(&sid, &aid, &turn_id, &result),
                     ));
                 }
                 Err(err) => {
@@ -820,8 +884,9 @@ pub async fn stream_turn(
                         message: err_message.clone(),
                         request_id: Some(stream_request_id.clone()),
                     };
-                    let seq = record_turn_event(&buf_handle_task, &event).await;
-                    let _ = turn_tx.send((seq, event)).await;
+                    if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
+                        let _ = turn_tx.send(recorded).await;
+                    }
                     // WHY(#5164): Even when an `error` event is emitted, the following
                     // `message_complete` is the authoritative terminal marker. TUI clients
                     // must use `message_complete` to detect the end of the stream.
@@ -840,8 +905,9 @@ pub async fn stream_turn(
                             error: Some(err_message),
                         },
                     };
-                    let seq = record_turn_event(&buf_handle_task, &event).await;
-                    let _ = turn_tx.send((seq, event)).await;
+                    if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
+                        let _ = turn_tx.send(recorded).await;
+                    }
                     buf_handle_task.mark_failed().await;
                 }
             }
@@ -941,6 +1007,46 @@ fn sse_event_to_axum_with_id((seq, event): (u64, SseEvent)) -> Result<Event, Inf
                 )
                 .id(seq.to_string()))
         }
+    }
+}
+
+fn send_message_body_fingerprint(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"send_message\0content\0");
+    hasher.update(content.len().to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(content.as_bytes());
+
+    let digest = hasher.finalize();
+    let mut hex = String::from("sha256:");
+    for byte in digest {
+        hex.push(lower_hex_char(byte >> HEX_HIGH_NIBBLE_SHIFT));
+        hex.push(lower_hex_char(byte & HEX_LOW_NIBBLE_MASK));
+    }
+    hex
+}
+
+fn lower_hex_char(nibble: u8) -> char {
+    if nibble < HEX_DECIMAL_DIGITS {
+        char::from(ASCII_DIGIT_ZERO + nibble)
+    } else {
+        char::from(ASCII_LOWER_A + (nibble - HEX_DECIMAL_DIGITS))
+    }
+}
+
+fn sse_replay_gap_event(dropped_after_seq: u64, retained_limit: usize) -> SseEvent {
+    SseEvent::ReplayGap {
+        reason: REPLAY_GAP_REASON_BUFFER_CAPACITY.to_owned(),
+        dropped_after_seq,
+        retained_limit,
+    }
+}
+
+fn turn_replay_gap_event(dropped_after_seq: u64, retained_limit: usize) -> PylonTurnStreamEvent {
+    PylonTurnStreamEvent::ReplayGap {
+        reason: REPLAY_GAP_REASON_BUFFER_CAPACITY.to_owned(),
+        dropped_after_seq,
+        retained_limit,
     }
 }
 
@@ -1150,8 +1256,9 @@ async fn emit_turn_result_events_buffered(
         let event = SseEvent::TextDelta {
             text: result.content.clone(),
         };
-        let seq = record_sse_event(buf, &event).await;
-        let _ = tx.send((seq, event)).await;
+        if let Some(recorded) = record_sse_event(buf, &event).await {
+            let _ = tx.send(recorded).await;
+        }
     }
 
     for tc in &result.tool_calls {
@@ -1160,8 +1267,9 @@ async fn emit_turn_result_events_buffered(
             name: tc.name.clone(),
             input: tc.input.clone(),
         };
-        let seq = record_sse_event(buf, &event).await;
-        let _ = tx.send((seq, event)).await;
+        if let Some(recorded) = record_sse_event(buf, &event).await {
+            let _ = tx.send(recorded).await;
+        }
 
         if let Some(ref result_content) = tc.result {
             let event = SseEvent::ToolResult {
@@ -1169,8 +1277,9 @@ async fn emit_turn_result_events_buffered(
                 content: result_content.clone(),
                 is_error: tc.is_error,
             };
-            let seq = record_sse_event(buf, &event).await;
-            let _ = tx.send((seq, event)).await;
+            if let Some(recorded) = record_sse_event(buf, &event).await {
+                let _ = tx.send(recorded).await;
+            }
         }
     }
 
@@ -1182,22 +1291,45 @@ async fn emit_turn_result_events_buffered(
         },
         request_id: request_id.map(ToOwned::to_owned),
     };
-    let seq = record_sse_event(buf, &event).await;
-    let _ = tx.send((seq, event)).await;
+    if let Some(recorded) = record_sse_event(buf, &event).await {
+        let _ = tx.send(recorded).await;
+    }
 }
 
-/// Record an [`SseEvent`] to the turn buffer. Returns the assigned sequence number.
-async fn record_sse_event(buf: &TurnBufferHandle, event: &SseEvent) -> u64 {
+/// Record an [`SseEvent`] to the turn buffer. Returns the retained event to send.
+async fn record_sse_event(buf: &TurnBufferHandle, event: &SseEvent) -> Option<(u64, SseEvent)> {
     let event_type = event.event_type().to_owned();
     let data = serde_json::to_string(event).unwrap_or_default();
-    buf.record(&event_type, &data).await
+    match buf.record(&event_type, &data).await {
+        RecordOutcome::Recorded { seq } => Some((seq, event.clone())),
+        RecordOutcome::ReplayGap {
+            seq,
+            dropped_after_seq,
+            retained_limit,
+        } => Some((seq, sse_replay_gap_event(dropped_after_seq, retained_limit))),
+        RecordOutcome::Dropped => None,
+    }
 }
 
-/// Record a [`TurnStreamEvent`] to the turn buffer. Returns the assigned sequence number.
-async fn record_turn_event(buf: &TurnBufferHandle, event: &PylonTurnStreamEvent) -> u64 {
+/// Record a [`TurnStreamEvent`] to the turn buffer. Returns the retained event to send.
+async fn record_turn_event(
+    buf: &TurnBufferHandle,
+    event: &PylonTurnStreamEvent,
+) -> Option<(u64, PylonTurnStreamEvent)> {
     let event_type = event.event_type().to_owned();
     let data = serde_json::to_string(event).unwrap_or_default();
-    buf.record(&event_type, &data).await
+    match buf.record(&event_type, &data).await {
+        RecordOutcome::Recorded { seq } => Some((seq, event.clone())),
+        RecordOutcome::ReplayGap {
+            seq,
+            dropped_after_seq,
+            retained_limit,
+        } => Some((
+            seq,
+            turn_replay_gap_event(dropped_after_seq, retained_limit),
+        )),
+        RecordOutcome::Dropped => None,
+    }
 }
 
 /// Reconnect to a turn's SSE event stream.
@@ -1272,47 +1404,47 @@ pub async fn reconnect_turn(
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(32);
 
     tokio::spawn(async move {
-        // Phase 1: Replay buffered events after last_event_id.
-        let (events, state) = handle.events_after(last_event_id).await;
-        for event in events {
-            let sse_event = Event::default()
-                .event(event.event_type)
-                .data(event.data)
-                .id(event.seq.to_string());
-            if tx.send(Ok(sse_event)).await.is_err() {
-                return;
-            }
+        let mut last_seq = last_event_id;
+        let initial = handle.snapshot_after(last_seq).await;
+        let live = initial.state == crate::turn_buffer::TurnState::Running;
+        let state_name = match initial.state {
+            crate::turn_buffer::TurnState::Running => "running",
+            crate::turn_buffer::TurnState::Completed => "completed",
+            crate::turn_buffer::TurnState::Failed => "failed",
+        };
+        let control_data = serde_json::json!({
+            "type": "turn_reconnect_state",
+            "state": state_name,
+            "live": live,
+        })
+        .to_string();
+        let control_event = Event::default()
+            .event("turn_reconnect_state")
+            .data(control_data);
+        if tx.send(Ok(control_event)).await.is_err() {
+            return;
         }
 
-        // Phase 2: If the turn has not finished, stream newly buffered events.
-        // WHY(#5165): A disconnected original request aborts the turn, so once
-        // the buffer reaches Completed/Failed only replay is available.
-        if state == crate::turn_buffer::TurnState::Running {
-            let notify = handle.notify_handle().await;
-            let mut last_seq = last_event_id;
-            // WHY: update last_seq to include events already replayed
-            let (replayed, _) = handle.events_after(0).await;
-            if let Some(last) = replayed.last() {
-                last_seq = last_seq.max(last.seq);
+        // Replay and stream: snapshot_after is race-free (WHY: see #5453).
+        let mut snapshot = initial;
+        loop {
+            for event in snapshot.events {
+                let sse_event = Event::default()
+                    .event(event.event_type)
+                    .data(event.data)
+                    .id(event.seq.to_string());
+                last_seq = event.seq;
+                if tx.send(Ok(sse_event)).await.is_err() {
+                    return;
+                }
             }
 
-            loop {
-                notify.notified().await;
-                let (new_events, new_state) = handle.events_after(last_seq).await;
-                for event in &new_events {
-                    let sse_event = Event::default()
-                        .event(event.event_type.clone())
-                        .data(event.data.clone())
-                        .id(event.seq.to_string());
-                    if tx.send(Ok(sse_event)).await.is_err() {
-                        return;
-                    }
-                    last_seq = event.seq;
-                }
-                if new_state != crate::turn_buffer::TurnState::Running {
-                    break;
-                }
+            if snapshot.state != crate::turn_buffer::TurnState::Running {
+                break;
             }
+
+            snapshot.notified.await;
+            snapshot = handle.snapshot_after(last_seq).await;
         }
     });
 

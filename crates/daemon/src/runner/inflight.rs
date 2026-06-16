@@ -25,6 +25,9 @@ impl TaskRunner {
                 consecutive_failures: t.consecutive_failures,
                 in_flight: self.in_flight.contains_key(&t.def.id),
                 last_error: t.last_error.clone(),
+                last_errors: t.last_errors,
+                available: true,
+                reason: None,
             })
             .collect()
     }
@@ -78,16 +81,19 @@ impl TaskRunner {
                 let duration = in_flight.started_at.elapsed();
 
                 match in_flight.handle.await {
+                    Ok(Ok(result)) if result.success => {
+                        self.log_result(&task_id, &result);
+                        self.maybe_queue_self_prompt(&task_id, &result);
+                        self.record_task_completion(&task_id, duration, result.errors);
+                    }
                     Ok(Ok(result)) => {
                         self.log_result(&task_id, &result);
-                        if result.success {
-                            self.maybe_queue_self_prompt(&task_id, &result);
-                            self.record_task_completion(&task_id, duration);
-                        } else {
-                            let reason =
-                                result.output.as_deref().unwrap_or("task reported failure");
-                            self.record_task_failure(&task_id, reason);
-                        }
+                        let reason = result
+                            .output
+                            .as_deref()
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or("task returned success=false");
+                        self.record_task_failure(&task_id, reason);
                     }
                     Ok(Err(e)) => {
                         tracing::warn!(

@@ -1,5 +1,6 @@
 //! Shared routing types: [`RequestFeatures`], [`RoutingDecision`], [`TurnOutcome`], [`RouterError`].
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use snafu::Snafu;
@@ -171,7 +172,7 @@ impl From<String> for ProviderId {
 ///
 /// Mirrors `hermeneus::provider::DeploymentTarget` without creating a hard
 /// dependency on `hermeneus`. Routers use this to filter out candidates whose
-/// `deployment_target` exceeds the allowed boundary for the current request.
+/// `deployment_target` is less private than the current request boundary.
 ///
 /// Ordering: `Cloud < LocalHosted < Embedded` (same as the hermeneus variant).
 /// A request with `RoutingBoundary::LocalHosted` allows providers at
@@ -219,14 +220,16 @@ pub struct RequestFeatures {
 
     /// Maximum allowed deployment boundary for this request.
     ///
-    /// Routers that respect sovereignty must not select providers whose
-    /// deployment target exceeds this boundary. Defaults to
+    /// Routers that respect sovereignty must select only providers whose
+    /// deployment target is at least as private as this boundary. Defaults to
     /// [`RoutingBoundary::Cloud`] so existing call-sites are not broken.
     ///
     /// WHY(#3969): the Q-learner and fallthrough router need this in context
     /// so they can filter candidates by sovereignty without out-of-band state.
     #[doc(hidden)]
     pub deployment_target: RoutingBoundary,
+
+    candidate_deployment_targets: HashMap<ProviderId, RoutingBoundary>,
 }
 
 impl RequestFeatures {
@@ -244,6 +247,7 @@ impl RequestFeatures {
             task_category,
             prompt_text,
             deployment_target: RoutingBoundary::default(),
+            candidate_deployment_targets: HashMap::new(),
         }
     }
 
@@ -254,6 +258,40 @@ impl RequestFeatures {
     pub fn with_deployment_target(mut self, boundary: RoutingBoundary) -> Self {
         self.deployment_target = boundary;
         self
+    }
+
+    /// Set the deployment boundary for one candidate provider.
+    ///
+    /// Routers use configured candidate boundaries to filter providers before
+    /// scoring. Candidates without metadata remain eligible so existing callers
+    /// do not lose their fallback route when provider config is unavailable.
+    #[must_use]
+    pub fn with_candidate_deployment_target(
+        mut self,
+        provider: impl Into<ProviderId>,
+        boundary: RoutingBoundary,
+    ) -> Self {
+        self.candidate_deployment_targets
+            .insert(provider.into(), boundary);
+        self
+    }
+
+    /// Return the configured deployment boundary for `provider`, if known.
+    #[must_use]
+    pub fn candidate_deployment_target(&self, provider: &ProviderId) -> Option<RoutingBoundary> {
+        self.candidate_deployment_targets.get(provider).copied()
+    }
+
+    /// Return whether `provider` may receive this request.
+    ///
+    /// Unknown provider boundaries are allowed for compatibility. Configured
+    /// candidates must be at least as private as the request boundary:
+    /// `Cloud` accepts every candidate, `LocalHosted` rejects cloud-only
+    /// candidates, and `Embedded` accepts only embedded candidates.
+    #[must_use]
+    pub fn candidate_allowed_by_boundary(&self, provider: &ProviderId) -> bool {
+        self.candidate_deployment_target(provider)
+            .is_none_or(|boundary| boundary >= self.deployment_target)
     }
 
     /// Resolve the effective task category.
@@ -433,5 +471,19 @@ mod tests {
         let f = RequestFeatures::new(Vec::new(), None, None)
             .with_deployment_target(RoutingBoundary::Embedded);
         assert_eq!(f.deployment_target, RoutingBoundary::Embedded);
+    }
+
+    #[test]
+    fn request_features_candidate_deployment_targets_gate_boundaries() {
+        let f = RequestFeatures::new(Vec::new(), None, None)
+            .with_deployment_target(RoutingBoundary::LocalHosted)
+            .with_candidate_deployment_target("cloud", RoutingBoundary::Cloud)
+            .with_candidate_deployment_target("local", RoutingBoundary::LocalHosted)
+            .with_candidate_deployment_target("embedded", RoutingBoundary::Embedded);
+
+        assert!(!f.candidate_allowed_by_boundary(&ProviderId::new("cloud")));
+        assert!(f.candidate_allowed_by_boundary(&ProviderId::new("local")));
+        assert!(f.candidate_allowed_by_boundary(&ProviderId::new("embedded")));
+        assert!(f.candidate_allowed_by_boundary(&ProviderId::new("unknown")));
     }
 }

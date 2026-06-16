@@ -1,5 +1,7 @@
 // kanon:ignore RUST/file-too-long — cohesive HTTP client; extracting now would fragment request/response handling
 //! HTTP client for the Aletheia gateway REST API.
+use std::time::Duration;
+
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
 
@@ -18,18 +20,10 @@ use super::types::{
     UpdateSensitivityRequest,
 };
 
-/// Build the shared reqwest client used by all API paths (REST, streaming, SSE).
-///
-/// Default headers set here apply to every request made with this client:
-/// - Authorization: Bearer <token> (if a token is configured)
-/// - x-requested-with: aletheia (CSRF mitigation: server rejects absent header)
-/// - Content-Type: application/json
-/// - Accept: application/json (SSE callers override this per-request to text/event-stream)
-///
-/// WHY: A single client shares the connection pool and TLS session cache across all
-/// request types. Building one per call creates
-/// a new pool per turn and leaks connections until they time out.
-pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const REST_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn default_headers(token: Option<&str>) -> Result<header::HeaderMap> {
     let mut headers = header::HeaderMap::new();
 
     if let Some(t) = token {
@@ -51,13 +45,31 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
         header::HeaderValue::from_static("application/json"),
     );
 
+    Ok(headers)
+}
+
+/// Build the reqwest client used for short REST API calls.
+pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
     Client::builder()
         .cookie_store(true)
-        .timeout(std::time::Duration::from_secs(30))
-        .default_headers(headers)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REST_REQUEST_TIMEOUT)
+        .default_headers(default_headers(token)?)
         .build()
         .context(HttpSnafu {
-            operation: "build HTTP client",
+            operation: "build REST HTTP client",
+        })
+}
+
+/// Build the reqwest client used for long-lived SSE/streaming connections.
+pub(crate) fn build_streaming_client(token: Option<&str>) -> Result<Client> {
+    Client::builder()
+        .cookie_store(true)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .default_headers(default_headers(token)?)
+        .build()
+        .context(HttpSnafu {
+            operation: "build streaming HTTP client",
         })
 }
 
@@ -65,6 +77,7 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
 #[derive(Clone)]
 pub struct ApiClient {
     client: Client,
+    streaming_client: Client,
     base_url: String,
     token: Option<SecretString>,
 }
@@ -84,7 +97,7 @@ impl ApiClient {
     /// # Errors
     ///
     /// Returns [`ApiError::InvalidToken`] if `token` contains characters invalid in HTTP headers.
-    /// Returns [`ApiError::Http`] if the HTTP client cannot be constructed.
+    /// Returns [`ApiError::Http`] if either HTTP client cannot be constructed.
     #[must_use]
     #[expect(
         clippy::double_must_use,
@@ -93,9 +106,11 @@ impl ApiClient {
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self> {
         // kanon:ignore RUST/pub-visibility
         let client = build_http_client(token.as_deref())?;
+        let streaming_client = build_streaming_client(token.as_deref())?;
 
         Ok(Self {
             client,
+            streaming_client,
             base_url: base_url.trim_end_matches('/').to_string(),
             token: token.map(SecretString::from),
         })
@@ -988,10 +1003,53 @@ impl ApiClient {
         .fail()
     }
 
-    /// The shared HTTP client, pre-configured with auth and default headers.
+    /// The REST HTTP client, pre-configured with auth and default headers.
     #[must_use]
     pub fn raw_client(&self) -> &Client {
         // kanon:ignore RUST/pub-visibility
         &self.client
+    }
+
+    /// The streaming HTTP client, pre-configured with auth and default headers.
+    #[must_use]
+    pub fn streaming_client(&self) -> &Client {
+        // kanon:ignore RUST/pub-visibility
+        &self.streaming_client
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rest_client_builds_with_timeout() {
+        let client = build_http_client(None);
+        assert!(client.is_ok(), "REST client must build");
+    }
+
+    #[test]
+    fn streaming_client_builds_without_total_timeout() {
+        let client = build_streaming_client(None);
+        assert!(client.is_ok(), "streaming client must build");
+    }
+
+    #[test]
+    fn invalid_token_fails_for_rest_and_streaming() {
+        let invalid = "\n";
+        assert!(build_http_client(Some(invalid)).is_err());
+        assert!(build_streaming_client(Some(invalid)).is_err());
+    }
+
+    #[test]
+    fn api_client_provides_distinct_rest_and_streaming_clients() {
+        let client = match ApiClient::new("http://localhost:18789", None) {
+            Ok(client) => client,
+            Err(err) => panic!("ApiClient must build both clients: {err}"),
+        };
+        assert!(!std::ptr::eq(
+            client.raw_client(),
+            client.streaming_client()
+        ));
     }
 }

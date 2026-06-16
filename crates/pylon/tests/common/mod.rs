@@ -215,6 +215,7 @@ pub fn permissive_security() -> SecurityConfig {
     SecurityConfig {
         csrf: CsrfConfig {
             enabled: false,
+            disable_acknowledged: true,
             ..CsrfConfig::default()
         },
         ..SecurityConfig::default()

@@ -3,8 +3,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use graphe::store::SessionStore;
 use indexmap::IndexMap;
-
 use koina::id::ToolName;
 
 use crate::error::Result;
@@ -129,10 +129,13 @@ fn note_def() -> ToolDef {
                     "category".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description:
-                            "Note category: task, decision, preference, correction, context"
-                                .to_owned(),
-                        enum_values: None,
+                        description: "Note category".to_owned(),
+                        enum_values: Some(
+                            SessionStore::VALID_CATEGORIES
+                                .iter()
+                                .map(|&category| category.to_owned())
+                                .collect(),
+                        ),
                         default: Some(serde_json::json!("context")),
                     },
                 ),

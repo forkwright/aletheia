@@ -273,6 +273,16 @@ impl_from_error!(mneme::error::Error, |err| {
         ),
     }
     .build(),
+    SessionCreate { .. } | Storage { .. } | StoredJson { .. } | Io { .. } => {
+        tracing::error!(error = %err, "mneme internal error");
+        InternalSnafu {
+            message: err.to_string(),
+        }
+        .build()
+    }
+});
+
+impl_from_error!(mneme::knowledge_error::Error, |err| {
     FactNotFound { id, .. } => NotFoundSnafu {
         path: format!("fact/{id}"),
     }
@@ -291,7 +301,13 @@ impl_from_error!(mneme::error::Error, |err| {
         message: err.to_string(),
     }
     .build(),
-    EngineInit { .. } | EngineQuery { .. } | SchemaVersion { .. } | Conversion { .. } => {
+    EngineInit { .. }
+    | EngineQuery { .. }
+    | SchemaVersion { .. }
+    | Conversion { .. }
+    | QueryRewrite { .. }
+    | EnhancedSearch { .. }
+    | EmbeddingDrift { .. } => {
         tracing::error!(error = %err, "mneme engine error");
         InternalSnafu {
             message: format!("engine error: {err}"),
@@ -310,13 +326,6 @@ impl_from_error!(mneme::error::Error, |err| {
         message: err.to_string(),
     }
     .build(),
-    SessionCreate { .. } | Storage { .. } | StoredJson { .. } | Io { .. } => {
-        tracing::error!(error = %err, "mneme internal error");
-        InternalSnafu {
-            message: err.to_string(),
-        }
-        .build()
-    }
 });
 
 impl_from_error!(hermeneus::error::Error, |err| {
@@ -908,7 +917,7 @@ mod tests {
 
     #[test]
     fn mneme_fact_not_found_maps_to_404() {
-        let mneme_err = mneme::error::Error::FactNotFound {
+        let mneme_err = mneme::knowledge_error::Error::FactNotFound {
             id: "fact-01abc".to_owned(),
             location: snafu::location!(),
         };
@@ -919,7 +928,7 @@ mod tests {
 
     #[test]
     fn mneme_empty_content_maps_to_400() {
-        let mneme_err = mneme::error::Error::EmptyContent {
+        let mneme_err = mneme::knowledge_error::Error::EmptyContent {
             location: snafu::location!(),
         };
         let api_err = ApiError::from(mneme_err);
@@ -989,7 +998,7 @@ mod tests {
 
     #[test]
     fn mneme_invalid_confidence_maps_to_400() {
-        let mneme_err = mneme::error::Error::InvalidConfidence {
+        let mneme_err = mneme::knowledge_error::Error::InvalidConfidence {
             value: 1.5,
             location: snafu::location!(),
         };

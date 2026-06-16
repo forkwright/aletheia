@@ -66,7 +66,6 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `context_tokens` | u32 | `200000` | Context window budget (tokens) |
 | `max_output_tokens` | u32 | `16384` | Max tokens per response |
 | `bootstrap_max_tokens` | u32 | `40000` | Max tokens for bootstrap context injection |
-| `user_timezone` | string | `"UTC"` | IANA timezone for time-aware prompts |
 | `timeout_seconds` | u32 | `300` | LLM call timeout |
 | `thinking_enabled` | bool | `false` | Enable extended thinking |
 | `thinking_budget` | u32 | `10000` | Max tokens for extended thinking |
@@ -186,9 +185,15 @@ HTTP gateway serving the API.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether CSRF header checking is active |
-| `header_name` | string | `"x-requested-with"` | Required header name |
-| `header_value` | string | `"aletheia"` | Required header value |
+| `enabled` | bool | `true` | Whether CSRF header checking is active |
+| `disableAcknowledged` | bool | `false` | Must be `true` when `enabled = false` |
+| `headerName` | string | `"x-requested-with"` | Required header name |
+| `headerValue` | secret string | `"aletheia"` | Required header value; redacted from config API responses |
+
+The documented bootstrap header for first-party clients and curl is
+`X-Requested-With: aletheia`. Operators who set a custom `headerValue` must
+provision the same value into their clients through local config or deployment
+secrets; the runtime config API redacts it.
 
 ### gateway.rate_limit
 
@@ -224,6 +229,7 @@ max_bytes = 2097152
 
 [gateway.csrf]
 enabled = true
+headerValue = "aletheia"
 ```
 
 ---
@@ -454,7 +460,7 @@ The `aletheia add-nous` scaffolding command currently validates only `anthropic`
 |-------|------|---------|-------------|
 | `session_max_age_days` | u32 | `90` | Max age for closed sessions |
 | `orphan_message_max_age_days` | u32 | `30` | Max age for orphaned messages |
-| `max_sessions_per_nous` | u32 | `0` | Max sessions per agent (0 = unlimited) |
+| `max_sessions_per_nous` | u32 | `0` | Max sessions per agent (0 = unlimited). A nonzero value is enforced per `nous_id` when retention is enabled. |
 | `archive_before_delete` | bool | `true` | Export sessions to JSON before deletion |
 
 ```toml
@@ -462,6 +468,26 @@ The `aletheia add-nous` scaffolding command currently validates only `anthropic`
 session_max_age_days = 90
 archive_before_delete = true
 ```
+
+### Session cap semantics
+
+The TOML key is `maxSessionsPerNous`; `max_sessions_per_nous` is also accepted as
+an alias. When `maintenance.retention.enabled` is `true` and
+`maxSessionsPerNous` is greater than `0`, the retention task enforces a per-agent
+(`nous_id`) cap:
+
+- `0` means unlimited; no cap-based deletions occur.
+- A nonzero cap is enforced per `nous_id`. Sessions are ordered newest first by
+  `updated_at`, then by `id` ascending for ties. The newest `maxSessionsPerNous`
+  records are retained.
+- Active sessions are protected and are never deleted by the cap.
+- Archived and distilled sessions that fall outside the retained slots are
+  eligible for deletion.
+- If `archiveBeforeDelete` is `true`, cap deletions are exported to
+  `instance/data/archive/sessions/{session_id}.json` before removal, using the
+  same archive path as TTL cleanup.
+- The retention summary reports the count of cap-based session deletions
+  separately from TTL/orphan cleanup.
 
 ---
 
@@ -552,6 +578,10 @@ Background maintenance tasks. Some run automatically when the server is running;
 
 ### maintenance.drift_detection
 
+Drift detection compares the live instance root against the sibling
+`instance.example` template. If the template directory is unavailable, the task
+reports degraded/failed rather than clean.
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether drift detection runs |
@@ -580,29 +610,33 @@ gates all scheduled knowledge-maintenance tasks. It defaults to `false`.
 When set to `true` **and** a knowledge executor is available, the daemon
 registers the following implemented tasks (`crates/daemon/src/runner/registration.rs`):
 
-| Task ID | Cadence | Purpose |
-|---------|---------|---------|
-| `decay-refresh` | every 4 hours | Refresh temporal decay scores |
-| `entity-dedup` | every 6 hours | Merge duplicate knowledge graph entities |
-| `graph-recompute` | every 8 hours | Recompute PageRank / centrality scores |
-| `skill-decay` | daily at 06:00 | Retire stale skills |
-| `derived-facts-materialize` | every 6 hours | Materialize derived Datalog rules |
+| Task ID | Cadence | Purpose | Manual run |
+|---------|---------|---------|------------|
+| `decay-refresh` | every 4 hours | Refresh temporal decay scores | yes |
+| `entity-dedup` | every 6 hours | Merge duplicate knowledge graph entities | yes |
+| `graph-recompute` | every 8 hours | Recompute PageRank / centrality scores | yes |
+| `skill-decay` | daily at 06:00 | Retire stale skills | yes |
+| `derived-facts-materialize` | every 6 hours | Materialize derived Datalog rules | yes |
 
-The same task IDs are recognized by `aletheia maintenance run <task>`. When a
-knowledge executor is available (for example, when the `recall` feature is
-enabled and the shared knowledge store can be opened), the CLI runs the task
-through the same executor used by the daemon. Without a knowledge executor, the
-CLI returns a structured reason such as `no knowledge maintenance executor
-configured` instead of an `unknown task` error.
+If a task completes with non-fatal errors (for example, a per-fact persistence
+failure during decay refresh), the runner records the task as **degraded**,
+preserves the non-fatal error count in task status/metrics, and does not treat
+it as a hard failure. The outcome is surfaced as `success = false` with an
+explanatory message per the existing binary task-outcome policy.
 
-The following tasks are **not implemented or scheduled** today; calling them
-via `aletheia maintenance run` returns a structured "task is planned but not yet
-implemented" result (`crates/daemon/src/maintenance/registry.rs`):
+The following tasks are **not implemented or scheduled** today; `aletheia maintenance run <id>`
+returns a structured "not scheduled" result and `aletheia maintenance status`
+shows them as `planned`/`unavailable` (`crates/aletheia/src/commands/maintenance.rs`):
 
 - `embedding-refresh` — requires an `EmbeddingProvider` bridge.
 - `knowledge-gc` / edge pruning — no concrete store contract.
 - `index-maintenance` — no concrete store contract.
 - `graph-health-check` — no concrete diagnostic contract.
+
+Implemented knowledge-maintenance tasks also return `unavailable` when the
+knowledge store cannot be opened (for example, when the `recall` feature is
+disabled or the knowledge database directory does not exist). `aletheia maintenance run all`
+skips unavailable knowledge tasks rather than aborting the whole batch.
 
 `aletheia maintenance status` lists every task in the daemon registry. Tasks
 that are not scheduled show a reason (for example, `knowledge maintenance is
@@ -637,6 +671,45 @@ enabled = true
 [maintenance.knowledge_maintenance_serendipity]
 enabled = true
 cadence = "0 0 7 * * *"
+```
+
+### maintenance.prosoche
+
+Prosoche heartbeat and self-audit scheduling. The mode selects whether the
+in-process daemon scheduler, an external systemd timer, both, or neither drive
+the heartbeat path. Defaults preserve the historical daemon-only behavior.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | string | `"daemon"` | Scheduling owner: `"daemon"`, `"external"`, `"both"`, or `"disabled"` |
+| `heartbeat.enabled` | bool | `true` | Run the per-agent prosoche attention check |
+| `heartbeat.intervalSecs` | u64 | `2700` | Attention-check interval (45 minutes) |
+| `heartbeat.activeWindow` | object | `{ startHour = 8, endHour = 23 }` | Optional hour window `(startHour, endHour)` for attention checks |
+| `selfAudit.enabled` | bool | `true` | Run the prosoche self-audit task |
+| `selfAudit.intervalSecs` | u64 | `21600` | Self-audit interval (6 hours) |
+| `selfAudit.activeWindow` | object | `{ startHour = 8, endHour = 23 }` | Optional hour window `(startHour, endHour)` for self-audits |
+| `externalTimer.enabled` | bool | `false` | Use the external `aletheia-health.timer` path |
+| `externalTimer.taskId` | string | `"prosoche-self-audit"` | Task id invoked by `scripts/aletheia-heartbeat.sh` |
+| `externalTimer.intervalSecs` | u64 | `300` | Cadence of the external timer (must match the systemd unit) |
+
+```toml
+[maintenance.prosoche]
+mode = "daemon"
+
+[maintenance.prosoche.heartbeat]
+enabled = true
+intervalSecs = 2700
+activeWindow = { startHour = 8, endHour = 23 }
+
+[maintenance.prosoche.selfAudit]
+enabled = true
+intervalSecs = 21600
+activeWindow = { startHour = 8, endHour = 23 }
+
+[maintenance.prosoche.externalTimer]
+enabled = false
+taskId = "prosoche-self-audit"
+intervalSecs = 300
 ```
 
 ---
@@ -803,6 +876,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `ALETHEIA_METRICS_URL` | `scripts/health-monitor.sh` | Metrics endpoint. Defaults to `http://localhost:18789/metrics`. |
 | `ALETHEIA_NOTIFY_TO` | `scripts/health-monitor.sh` | Optional `signal-cli` recipient for health alerts. |
 | `ALETHEIA_HEARTBEAT_TASK` | `scripts/aletheia-heartbeat.sh` | Task id pinged by the heartbeat. Defaults to `prosoche-self-audit`. |
+| `ALETHEIA_HEARTBEAT_INTERVAL_SECS` | `scripts/aletheia-heartbeat.sh`, `aletheia-health.timer` | External heartbeat cadence in seconds. Defaults to `300` and must stay in sync with the systemd timer. |
 | `ALETHEIA_PRIMARY_KEY` | `taxis::encrypt` | Master encryption key. Overrides the instance keyfile when set. Security-sensitive. |
 | `ALETHEIA_JWT_SECRET` | `taxis` gateway | JWT signing key used when `gateway.jwt_secret` is unset. Security-sensitive. |
 | `ALETHEIA_ALLOW_AUTH_NONE` | `taxis::validate` | Operator gate: set to `1` to permit `auth = "none"`. Off by default. Security-sensitive. |
