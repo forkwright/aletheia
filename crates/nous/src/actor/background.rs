@@ -238,7 +238,12 @@ impl NousActor {
             }
             TrackResult::Promoted(candidate_id) => {
                 info!(candidate_id = %candidate_id, "skill analysis: candidate promoted, spawning extraction");
-                self.spawn_skill_extraction(&candidate_id, &records, source_session_id);
+                self.spawn_skill_extraction(
+                    &candidate_id,
+                    &records,
+                    #[cfg(feature = "knowledge-store")]
+                    source_session_id,
+                );
             }
             _ => {
                 // WHY: TrackResult is #[non_exhaustive]; future variants are silently ignored here.
@@ -251,7 +256,7 @@ impl NousActor {
         &mut self,
         candidate_id: &str,
         tool_calls: &[mneme::skills::ToolCallRecord],
-        source_session_id: &str,
+        #[cfg(feature = "knowledge-store")] source_session_id: &str,
     ) {
         let Some(ref extraction_config) = self.pipeline_config.extraction else {
             return;
@@ -263,6 +268,7 @@ impl NousActor {
         let nous_id = self.id.clone();
         let candidate_id = candidate_id.to_owned();
         let tool_calls = tool_calls.to_vec();
+        #[cfg(feature = "knowledge-store")]
         let source_session_id = source_session_id.to_owned();
         let tracker = Arc::clone(&self.services.candidate_tracker);
         #[cfg(feature = "knowledge-store")]
@@ -287,6 +293,7 @@ impl NousActor {
                         &nous_id,
                         &candidate_id,
                         &tool_calls,
+                        #[cfg(feature = "knowledge-store")]
                         &source_session_id,
                         &tracker,
                         #[cfg(feature = "knowledge-store")]
@@ -773,10 +780,6 @@ async fn run_extraction(
     clippy::too_many_lines,
     reason = "three-phase skill extraction pipeline: extract, persist, lifecycle; splitting would obscure the sequential flow"
 )]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "background skill extraction runner needs provider state, ids, evidence, tracker, and optional store"
-)]
 /// Run skill extraction as a background task. Logs results, never panics.
 async fn run_skill_extraction(
     model: &str,
@@ -784,7 +787,7 @@ async fn run_skill_extraction(
     nous_id: &str,
     candidate_id: &str,
     tool_calls: &[mneme::skills::ToolCallRecord],
-    source_session_id: &str,
+    #[cfg(feature = "knowledge-store")] source_session_id: &str,
     tracker: &mneme::skills::CandidateTracker,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
