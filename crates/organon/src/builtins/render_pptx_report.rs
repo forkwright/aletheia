@@ -8,9 +8,11 @@ use std::pin::Pin;
 
 use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
-use poiesis_theme::{sinks::emit_base_pptx, summus};
+use poiesis_theme::sinks::emit_base_pptx;
 
-use crate::builtins::poiesis::{extract_zip_entry, json_data_property, rewrite_zip};
+use crate::builtins::poiesis::{
+    extract_zip_entry, json_data_property, resolve_report_theme, rewrite_zip,
+};
 use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -60,7 +62,12 @@ impl ToolExecutor for RenderPptxReportExecutor {
                 }
             };
 
-            let base_pptx = match emit_base_pptx(&summus()) {
+            let theme = match resolve_report_theme(args, &data, ctx) {
+                Ok(theme) => theme,
+                Err(e) => return Ok(*e),
+            };
+
+            let base_pptx = match emit_base_pptx(&theme) {
                 Ok(bytes) => bytes,
                 Err(e) => {
                     return Ok(ToolResult::error(format!("theme pptx sink failed: {e}")));
@@ -130,6 +137,17 @@ fn render_pptx_report_def() -> ToolDef {
                     json_data_property(
                         "JSON slide descriptor object (slides array with title and content).",
                     ),
+                ),
+                (
+                    "theme".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Theme identifier (e.g. `summus`). Overrides any theme \
+                                      declared inside `data`."
+                            .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
                 ),
                 (
                     "out_path".to_owned(),

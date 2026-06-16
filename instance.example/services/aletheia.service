@@ -22,8 +22,13 @@ Environment=RUST_BACKTRACE=1
 # NOTE: Change this path if your instance config/env lives elsewhere.
 EnvironmentFile=-%h/aletheia/instance/config/env
 # %h expands to the user's home directory at runtime.
+# NOTE: This unit expects the installed layout:
+#   %h/aletheia/instance         (live instance root)
+#   %h/aletheia/instance.example (drift-detection template)
 # NOTE: Change the binary or instance path if your layout differs.
 ExecStart=/usr/bin/env %h/.local/bin/aletheia -r %h/aletheia/instance
+# NOTE: Keep the service cwd at the layout root for logs and relative operator commands.
+WorkingDirectory=%h/aletheia
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -78,8 +83,10 @@ WantedBy=default.target
 #    sed -i 's|%h/.local/bin/aletheia|/usr/local/bin/aletheia|g' ~/.config/systemd/user/aletheia.service
 #
 # 3. If your instance is not at ~/aletheia/instance, edit ExecStart,
-#    EnvironmentFile, and ReadWritePaths, e.g.:
+#    EnvironmentFile, ReadWritePaths, and WorkingDirectory. Keep instance.example
+#    as a sibling of the instance root, e.g.:
 #    sed -i 's|%h/aletheia/instance|/srv/aletheia/instance|g' ~/.config/systemd/user/aletheia.service
+#    sed -i 's|WorkingDirectory=%h/aletheia|WorkingDirectory=/srv/aletheia|g' ~/.config/systemd/user/aletheia.service
 #
 # 4. Enable and start:
 #    systemctl --user daemon-reload

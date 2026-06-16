@@ -43,7 +43,7 @@ jobs:
   analyze-rust:
     name: Analyze (rust)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     permissions:
       security-events: write
       contents: read

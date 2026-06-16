@@ -7,6 +7,7 @@
     reason = "test: vec indices are valid after asserting sufficient length"
 )]
 use super::*;
+use std::str::FromStr;
 
 #[test]
 fn role_serde_roundtrip() {
@@ -24,6 +25,7 @@ fn stop_reason_serde_roundtrip() {
         StopReason::ToolUse,
         StopReason::MaxTokens,
         StopReason::StopSequence,
+        StopReason::ContentFiltered,
     ] {
         let json = serde_json::to_string(&reason).expect("StopReason should serialize to JSON");
         let back: StopReason =
@@ -33,6 +35,26 @@ fn stop_reason_serde_roundtrip() {
             "StopReason should round-trip through JSON unchanged"
         );
     }
+}
+
+#[test]
+fn stop_reason_as_str_and_from_str() {
+    let cases = [
+        (StopReason::EndTurn, "end_turn"),
+        (StopReason::ToolUse, "tool_use"),
+        (StopReason::MaxTokens, "max_tokens"),
+        (StopReason::StopSequence, "stop_sequence"),
+        (StopReason::ContentFiltered, "content_filtered"),
+    ];
+    for (reason, s) in cases {
+        assert_eq!(reason.as_str(), s, "as_str should return {s}");
+        assert_eq!(
+            StopReason::from_str(s).expect("valid variant"),
+            reason,
+            "from_str should parse {s}"
+        );
+    }
+    assert!(StopReason::from_str("content_filter").is_err());
 }
 
 #[test]

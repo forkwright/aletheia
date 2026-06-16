@@ -1063,7 +1063,7 @@ async fn consecutive_mistake_brake_fires_at_configured_limit() {
 fn doom_loop_detector_fires_on_identical_calls_ignores_polling() {
     use hermeneus::loop_detector::{DoomLoopDetector, ToolCallSignature};
 
-    let mut detector = DoomLoopDetector::new(10, 3);
+    let mut detector = DoomLoopDetector::new(10, 3).unwrap();
 
     // Polling: same args, different results → should NOT fire.
     let base = ToolCallSignature::from_parts("tail", "{\"file\":\"/var/log/syslog\"}", "");
@@ -1101,7 +1101,7 @@ fn doom_loop_detector_ping_pong_and_no_progress() {
 
     // ── PingPongDetector: A-B-A-B-A fires, A-B-C does not ──────────────────
     {
-        let mut det = PingPongDetector::new(10, 5);
+        let mut det = PingPongDetector::new(10, 5).unwrap();
         let a = ToolCallSignature::from_parts("read_file", "{\"path\":\"a\"}", "content-a");
         let b = ToolCallSignature::from_parts("write_file", "{\"path\":\"b\"}", "ok");
 
@@ -1117,7 +1117,7 @@ fn doom_loop_detector_ping_pong_and_no_progress() {
     }
 
     {
-        let mut det = PingPongDetector::new(10, 5);
+        let mut det = PingPongDetector::new(10, 5).unwrap();
         let a = ToolCallSignature::from_parts("read_file", "{\"path\":\"a\"}", "content-a");
         let b = ToolCallSignature::from_parts("write_file", "{\"path\":\"b\"}", "ok");
         let c = ToolCallSignature::from_parts("search", "{\"q\":\"foo\"}", "results");
@@ -1132,7 +1132,7 @@ fn doom_loop_detector_ping_pong_and_no_progress() {
 
     // ── NoProgressDetector: same hash × limit fires; different hash resets ──
     {
-        let mut det = NoProgressDetector::new(3);
+        let mut det = NoProgressDetector::new(3).unwrap();
         det.record_turn(0xdead_beef, true).expect("turn 1 ok");
         det.record_turn(0xdead_beef, true).expect("turn 2 ok");
         let err = det
@@ -1145,7 +1145,7 @@ fn doom_loop_detector_ping_pong_and_no_progress() {
     }
 
     {
-        let mut det = NoProgressDetector::new(3);
+        let mut det = NoProgressDetector::new(3).unwrap();
         det.record_turn(0xaaaa, true).expect("turn 1 ok");
         det.record_turn(0xaaaa, true).expect("turn 2 ok");
         det.record_turn(0xbbbb, true)
@@ -1156,7 +1156,7 @@ fn doom_loop_detector_ping_pong_and_no_progress() {
 
     // ── LoopGuard composite: ping-pong surfaces through the guard ───────────
     {
-        let mut guard = LoopGuard::with_limits(10, 5, 10);
+        let mut guard = LoopGuard::with_limits(10, 5, 10).unwrap();
         let a = [("read_file", "{\"path\":\"a\"}", "content-a")];
         let b = [("write_file", "{\"path\":\"b\"}", "ok")];
 
@@ -1176,7 +1176,7 @@ fn doom_loop_detector_ping_pong_and_no_progress() {
 
     // ── LoopGuard reset: guard clears on operator intervention ──────────────
     {
-        let mut guard = LoopGuard::with_limits(3, 5, 3);
+        let mut guard = LoopGuard::with_limits(3, 5, 3).unwrap();
         let tc = [("cat", "{\"file\":\"/etc/hosts\"}", "127.0.0.1 localhost")];
 
         guard.record("ok 1", "", &tc).expect("guard pre-reset 1");

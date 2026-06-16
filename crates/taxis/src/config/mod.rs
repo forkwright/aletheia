@@ -25,11 +25,13 @@ pub use gateway::{
     PerUserRateLimitConfig, RateLimitConfig, TlsConfig,
 };
 pub use maintenance::{
-    CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
+    BackupSettings, CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
     DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, KnowledgeGraphMcpConfig,
     LoggingSettings, MaintenanceSettings, McpConfig, McpRateLimitConfig, PromptAuditSettings,
-    RedactionSettings, RepomixMcpConfig, RetentionSettings, SandboxSettings,
-    SerendipityMaintenanceSettings, TraceRotationSettings, WatchdogSettings,
+    ProsocheActiveWindowSettings, ProsocheExternalTimerSettings, ProsocheMaintenanceSettings,
+    ProsocheScheduleMode, ProsocheTaskScheduleSettings, RedactionSettings, RepomixMcpConfig,
+    RetentionSettings, SandboxSettings, SerendipityMaintenanceSettings, TraceRotationSettings,
+    WatchdogSettings,
 };
 pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,

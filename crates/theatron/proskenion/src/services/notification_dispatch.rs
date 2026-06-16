@@ -103,7 +103,7 @@ impl NotificationDispatch {
         self.flush_expired_groups(prefs, dnd, window_focused, on_sent, toast_fallback);
 
         match event {
-            SseEvent::TurnAfter { nous_id, .. } => {
+            SseEvent::TurnAfter { nous_id, .. } | SseEvent::TurnComplete { nous_id, .. } => {
                 self.on_turn_after(nous_id, prefs, dnd, window_focused, on_sent, toast_fallback);
             }
             SseEvent::ToolFailed {

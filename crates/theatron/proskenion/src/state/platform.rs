@@ -6,11 +6,13 @@ use serde::{Deserialize, Serialize};
 use skene::id::NousId;
 
 use super::agents::AgentStatus;
+use super::connection::ConnectionState;
 
 /// Aggregate agent status for the system tray icon.
 ///
-/// Priority ordering: Disconnected > Error > Active > Normal. The tray icon
-/// reflects the most urgent status across all agents.
+/// Priority ordering: Disconnected > Error > Active > Degraded > Normal. The
+/// tray icon reflects the most urgent status across all agents and the
+/// underlying server connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum TrayIconStatus {
@@ -21,6 +23,8 @@ pub enum TrayIconStatus {
     Active,
     /// At least one agent is in an error state.
     Error,
+    /// Connected, but server reports degraded/unhealthy readiness.
+    Degraded,
     /// Disconnected from the pylon server.
     Disconnected,
 }
@@ -28,8 +32,11 @@ pub enum TrayIconStatus {
 impl TrayIconStatus {
     /// Derive aggregate status from individual agent statuses and connection state.
     #[must_use]
-    pub(crate) fn from_agents(statuses: &[AgentStatus], connected: bool) -> Self {
-        if !connected {
+    pub(crate) fn from_agents(
+        statuses: &[AgentStatus],
+        connection_state: &ConnectionState,
+    ) -> Self {
+        if connection_state.needs_connect_view() {
             return Self::Disconnected;
         }
         if statuses.iter().any(|s| matches!(s, AgentStatus::Error)) {
@@ -37,6 +44,9 @@ impl TrayIconStatus {
         }
         if statuses.iter().any(|s| matches!(s, AgentStatus::Active)) {
             return Self::Active;
+        }
+        if matches!(connection_state, ConnectionState::ConnectedDegraded { .. }) {
+            return Self::Degraded;
         }
         Self::Normal
     }
@@ -226,7 +236,7 @@ mod tests {
     fn tray_icon_all_idle_connected() {
         let statuses = vec![AgentStatus::Idle, AgentStatus::Idle];
         assert_eq!(
-            TrayIconStatus::from_agents(&statuses, true),
+            TrayIconStatus::from_agents(&statuses, &ConnectionState::Connected),
             TrayIconStatus::Normal
         );
     }
@@ -235,7 +245,7 @@ mod tests {
     fn tray_icon_any_active() {
         let statuses = vec![AgentStatus::Idle, AgentStatus::Active];
         assert_eq!(
-            TrayIconStatus::from_agents(&statuses, true),
+            TrayIconStatus::from_agents(&statuses, &ConnectionState::Connected),
             TrayIconStatus::Active
         );
     }
@@ -244,7 +254,7 @@ mod tests {
     fn tray_icon_error_takes_priority_over_active() {
         let statuses = vec![AgentStatus::Active, AgentStatus::Error];
         assert_eq!(
-            TrayIconStatus::from_agents(&statuses, true),
+            TrayIconStatus::from_agents(&statuses, &ConnectionState::Connected),
             TrayIconStatus::Error
         );
     }
@@ -253,7 +263,7 @@ mod tests {
     fn tray_icon_disconnected_takes_highest_priority() {
         let statuses = vec![AgentStatus::Error, AgentStatus::Active];
         assert_eq!(
-            TrayIconStatus::from_agents(&statuses, false),
+            TrayIconStatus::from_agents(&statuses, &ConnectionState::Disconnected),
             TrayIconStatus::Disconnected
         );
     }
@@ -261,8 +271,50 @@ mod tests {
     #[test]
     fn tray_icon_empty_agents_connected() {
         assert_eq!(
-            TrayIconStatus::from_agents(&[], true),
+            TrayIconStatus::from_agents(&[], &ConnectionState::Connected),
             TrayIconStatus::Normal
+        );
+    }
+
+    #[test]
+    fn tray_icon_degraded_when_connection_degraded() {
+        let statuses = vec![AgentStatus::Idle];
+        assert_eq!(
+            TrayIconStatus::from_agents(
+                &statuses,
+                &ConnectionState::ConnectedDegraded {
+                    status: "unhealthy".to_string()
+                }
+            ),
+            TrayIconStatus::Degraded
+        );
+    }
+
+    #[test]
+    fn tray_icon_active_takes_priority_over_degraded() {
+        let statuses = vec![AgentStatus::Active];
+        assert_eq!(
+            TrayIconStatus::from_agents(
+                &statuses,
+                &ConnectionState::ConnectedDegraded {
+                    status: "unhealthy".to_string()
+                }
+            ),
+            TrayIconStatus::Active
+        );
+    }
+
+    #[test]
+    fn tray_icon_error_takes_priority_over_degraded() {
+        let statuses = vec![AgentStatus::Error];
+        assert_eq!(
+            TrayIconStatus::from_agents(
+                &statuses,
+                &ConnectionState::ConnectedDegraded {
+                    status: "unhealthy".to_string()
+                }
+            ),
+            TrayIconStatus::Error
         );
     }
 

@@ -187,6 +187,12 @@ pub(crate) struct ReviewSkillsArgs {
     /// Fact ID of the pending skill (required for approve/reject)
     #[arg(short, long)]
     pub fact_id: Option<String>,
+    /// Reviewer actor recorded on approve/reject decisions
+    #[arg(long)]
+    pub reviewer: Option<String>,
+    /// Optional review reason recorded on approve/reject decisions
+    #[arg(long)]
+    pub reason: Option<String>,
     /// Server URL for lock detection
     #[arg(long, default_value = "http://127.0.0.1:18789")]
     // kanon:ignore SECURITY/hardcoded-loopback-url -- CLI default, user-overridable at runtime via --url flag
@@ -1437,6 +1443,14 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                     eprintln!("  WARN: failed to add note: {e}");
                 }
             }
+
+            // WHY: import reports success only after the full per-session batch
+            // is durable. Otherwise a crash immediately after import can lose
+            // rows written after `import_session`.
+            store.ensure_durable().with_whatever_context(|_| {
+                format!("failed to ensure durability for session {}", session.id)
+            })?;
+
             summary.sessions += 1;
         }
 
@@ -1778,19 +1792,7 @@ pub(crate) async fn review_skills(
                 for fact in &pending {
                     match PendingSkill::from_json(&fact.content) {
                         Ok(ps) => {
-                            println!("  ID: {}", fact.id);
-                            println!("  Name: {}", ps.skill.name);
-                            println!(
-                                "  Description: {}",
-                                ps.skill.description.lines().next().unwrap_or("")
-                            );
-                            println!("  Tools: {}", ps.skill.tools_used.join(", "));
-                            println!("  Tags: {}", ps.skill.domain_tags.join(", "));
-                            println!("  Steps: {}", ps.skill.steps.len());
-                            println!("  Status: {}", ps.status);
-                            println!("  Candidate: {}", ps.candidate_id);
-                            println!("  Extracted: {}", ps.extracted_at);
-                            println!();
+                            print_pending_skill_for_review(fact, &ps);
                         }
                         Err(e) => {
                             eprintln!("  SKIP {}: failed to parse: {e}", fact.id);
@@ -1803,8 +1805,9 @@ pub(crate) async fn review_skills(
                     crate::error::Error::msg("--fact-id required for approve action")
                 })?;
                 let fact_id = mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
+                let review = skill_review_input(args)?;
                 let new_id = store
-                    .approve_pending_skill(&fact_id, nous_id)
+                    .approve_pending_skill(&fact_id, nous_id, review)
                     .whatever_context("failed to approve skill")?;
                 println!("Approved: {fid} → new skill fact: {new_id}");
             }
@@ -1813,8 +1816,9 @@ pub(crate) async fn review_skills(
                     crate::error::Error::msg("--fact-id required for reject action")
                 })?;
                 let fact_id = mneme::id::FactId::new(fid).whatever_context("invalid fact id")?;
+                let review = skill_review_input(args)?;
                 store
-                    .reject_pending_skill(&fact_id)
+                    .reject_pending_skill(&fact_id, nous_id, review)
                     .whatever_context("failed to reject skill")?;
                 println!("Rejected: {fid}");
             }
@@ -1833,6 +1837,151 @@ pub(crate) async fn review_skills(
             "review-skills requires the 'recall' feature (KnowledgeStore). \
              Build with: cargo build --features recall"
         );
+    }
+}
+
+#[cfg(feature = "recall")]
+const REVIEW_INPUT_PREVIEW_CHARS: usize = 160;
+
+#[cfg(feature = "recall")]
+fn print_pending_skill_for_review(fact: &mneme::knowledge::Fact, ps: &mneme::skills::PendingSkill) {
+    // WHY: the review surface is built as a pure String so the provenance it
+    // exposes (source session, evidence sessions, sequence hashes, extraction
+    // refs, redacted tool input) can be asserted in tests without capturing
+    // stdout. Behaviour is identical to printing each line.
+    print!("{}", format_pending_skill_for_review(fact, ps));
+}
+
+#[cfg(feature = "recall")]
+fn format_pending_skill_for_review(
+    fact: &mneme::knowledge::Fact,
+    ps: &mneme::skills::PendingSkill,
+) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
+    let _ = writeln!(out, "  ID: {}", fact.id);
+    let _ = writeln!(out, "  Name: {}", ps.skill.name);
+    let _ = writeln!(
+        out,
+        "  Description: {}",
+        ps.skill.description.lines().next().unwrap_or("")
+    );
+    let _ = writeln!(out, "  Tools: {}", ps.skill.tools_used.join(", "));
+    let _ = writeln!(out, "  Tags: {}", ps.skill.domain_tags.join(", "));
+    let _ = writeln!(out, "  Steps: {}", ps.skill.steps.len());
+    let _ = writeln!(out, "  Status: {}", ps.status);
+    let _ = writeln!(out, "  Candidate: {}", ps.candidate_id);
+    let source_session = ps
+        .source_session_id
+        .as_deref()
+        .or(fact.provenance.source_session_id.as_deref())
+        .or_else(|| ps.source_evidence.session_refs.first().map(String::as_str))
+        .unwrap_or("unknown");
+    let _ = writeln!(out, "  Source session: {source_session}");
+    if !ps.source_evidence.session_refs.is_empty() {
+        let _ = writeln!(
+            out,
+            "  Evidence sessions: {}",
+            ps.source_evidence.session_refs.join(", ")
+        );
+    }
+    if !ps.source_evidence.sequence_hashes.is_empty() {
+        let _ = writeln!(
+            out,
+            "  Sequence hashes: {}",
+            ps.source_evidence.sequence_hashes.join(", ")
+        );
+    }
+    if let Some(ref audit) = ps.extraction_audit {
+        let _ = writeln!(
+            out,
+            "  Extraction: prompt {}:{}, response {}:{}",
+            audit.user_prompt_ref.algorithm,
+            audit.user_prompt_ref.digest,
+            audit.response_ref.algorithm,
+            audit.response_ref.digest
+        );
+    }
+    if let Some(observation) = ps.source_evidence.observations.first() {
+        let _ = writeln!(out, "  Evidence tools:");
+        for tool in &observation.tool_calls {
+            let _ = writeln!(out, "{}", format_tool_evidence_for_review(tool));
+        }
+    }
+    let _ = writeln!(out, "  Extracted: {}", ps.extracted_at);
+    let _ = writeln!(out);
+    out
+}
+
+#[cfg(feature = "recall")]
+fn format_tool_evidence_for_review(tool: &mneme::skills::ToolCallRecord) -> String {
+    let input = tool
+        .redacted_input
+        .as_ref()
+        .and_then(|value| serde_json::to_string(value).ok())
+        .map_or_else(
+            || "{}".to_owned(),
+            |value| truncate_for_review(&value, REVIEW_INPUT_PREVIEW_CHARS),
+        );
+    let result = tool.result_ref.as_ref().map_or_else(
+        || "none".to_owned(),
+        |ref_| format!("{}:{}", ref_.algorithm, ref_.digest),
+    );
+    let status = if tool.is_error { "error" } else { "ok" };
+    format!(
+        "    - {} [{}] input={} result_ref={}",
+        tool.tool_name, status, input, result
+    )
+}
+
+#[cfg(feature = "recall")]
+fn skill_review_input(args: &ReviewSkillsArgs) -> Result<mneme::skills::SkillReviewInput> {
+    let reviewer = args
+        .reviewer
+        .as_deref()
+        .and_then(non_empty_trimmed)
+        .map(str::to_owned)
+        .or_else(derive_skill_reviewer)
+        .ok_or_else(|| {
+            crate::error::Error::msg(
+                "reviewer required: pass --reviewer or set ALETHEIA_REVIEWER, GIT_AUTHOR_NAME, USER, or USERNAME",
+            )
+        })?;
+    let reason = args
+        .reason
+        .as_deref()
+        .and_then(non_empty_trimmed)
+        .map(str::to_owned);
+    Ok(mneme::skills::SkillReviewInput::new(reviewer, reason))
+}
+
+#[cfg(feature = "recall")]
+fn derive_skill_reviewer() -> Option<String> {
+    ["ALETHEIA_REVIEWER", "GIT_AUTHOR_NAME", "USER", "USERNAME"]
+        .iter()
+        .filter_map(|key| std::env::var(key).ok())
+        .find_map(|value| non_empty_trimmed(&value).map(str::to_owned))
+}
+
+#[cfg(feature = "recall")]
+fn non_empty_trimmed(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+#[cfg(feature = "recall")]
+fn truncate_for_review(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
     }
 }
 
@@ -2875,13 +3024,18 @@ workspace = "nous/{agent_id}"
             std::fs::read_to_string(oikos.nous_dir("imported-agent").join("SOUL.md")).unwrap();
         assert!(soul.contains("Imported Agent"));
 
-        // Verify sessions were imported.
+        // WHY: reopening the store exercises import durability before any
+        // unrelated durable write can mask missing imported history.
         let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
         let sessions = store.list_sessions(Some("imported-agent")).unwrap();
         assert_eq!(sessions.len(), 1, "one session should be imported");
 
-        let history = store.get_history(&sessions[0].id, None).unwrap();
-        assert_eq!(history.len(), 2, "two messages should be imported");
+        let history = store.get_history_raw(&sessions[0].id, None).unwrap();
+        assert_eq!(
+            history.len(),
+            2,
+            "two messages should be recoverable after reopen"
+        );
         assert_eq!(history[0].content, "hello");
         assert_eq!(history[1].content, "tool output");
     }
@@ -4288,5 +4442,150 @@ workspace = "nous/{agent_id}"
         // Existing behavior: config entry is written even for a partial export.
         let config = std::fs::read_to_string(oikos.config().join("aletheia.toml")).unwrap();
         assert!(config.contains(r#"id = "imported-agent""#));
+    }
+
+    /// Criterion 5: the `review-skills list` surface must expose enough
+    /// provenance for a human to decide — source session, evidence sessions,
+    /// sequence hashes, extraction prompt/response refs, and per-tool redacted
+    /// input + result reference — without leaking redacted secret values.
+    #[cfg(feature = "recall")]
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive provenance fixture plus full review-surface assertions"
+    )]
+    fn review_skills_list_renders_full_provenance_without_leaking_secrets() {
+        use episteme::skills::{
+            CandidateTracker, ContentEvidenceRef, ExtractedSkill, PendingSkill,
+            SkillExtractionAudit, ToolCallRecord,
+        };
+        use mneme::knowledge::{
+            EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+            FactTemporal, Visibility,
+        };
+
+        // Build a candidate on the live tracker path so its evidence carries a
+        // real sequence hash and redacted tool input rather than hand-built
+        // structs.
+        let secret = "super-secret-token-value";
+        let tool_calls = vec![
+            ToolCallRecord::new("Grep", 10).with_evidence(
+                "t0",
+                &serde_json::json!({ "pattern": "needle" }),
+                Some("hits"),
+                Some("receipt-0"),
+            ),
+            ToolCallRecord::new("Read", 10),
+            ToolCallRecord::new("Read", 10),
+            ToolCallRecord::new("Edit", 10).with_evidence(
+                "t3",
+                &serde_json::json!({ "api_key": secret }),
+                Some("patched"),
+                Some("receipt-3"),
+            ),
+            ToolCallRecord::new("Bash", 10),
+            ToolCallRecord::new("Bash", 10),
+        ];
+        let tracker = CandidateTracker::new();
+        tracker.track_sequence(&tool_calls, "session-alpha", "review-nous");
+        let candidate = tracker
+            .candidates_for("review-nous")
+            .pop()
+            .expect("candidate tracked");
+        let seq_hash = candidate
+            .evidence
+            .first()
+            .expect("observation evidence present")
+            .sequence_hash
+            .clone();
+        assert!(!seq_hash.is_empty(), "observation carries a sequence hash");
+
+        let extracted = ExtractedSkill {
+            name: "diagnose-and-patch".to_owned(),
+            description: "Diagnose a failure then patch it".to_owned(),
+            steps: vec!["grep".to_owned(), "read".to_owned(), "edit".to_owned()],
+            tools_used: vec!["Grep".to_owned(), "Read".to_owned(), "Edit".to_owned()],
+            domain_tags: vec!["debugging".to_owned()],
+            when_to_use: "when fixing bugs".to_owned(),
+        };
+        let audit = SkillExtractionAudit {
+            model: Some("haiku-test".to_owned()),
+            system_prompt_ref: ContentEvidenceRef::sha256("extraction_system_prompt", "system"),
+            user_prompt_ref: ContentEvidenceRef::sha256("extraction_user_prompt", "user prompt"),
+            response_ref: ContentEvidenceRef::sha256("extraction_response", "response body"),
+            extracted_at: jiff::Timestamp::now(),
+        };
+        let pending = PendingSkill::new_with_provenance(&extracted, &candidate, audit);
+
+        let now = jiff::Timestamp::now();
+        let fact = Fact {
+            id: mneme::id::FactId::new("01ARZ3NDEKTSV4RRFFQ69G5FAV").expect("valid fact id"),
+            nous_id: "review-nous".to_owned(),
+            content: pending.to_json().expect("pending serializes"),
+            fact_type: "skill_pending".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            temporal: FactTemporal {
+                valid_from: now,
+                valid_to: now,
+                recorded_at: now,
+            },
+            provenance: FactProvenance {
+                confidence: 0.6,
+                tier: EpistemicTier::Inferred,
+                source_session_id: None,
+                stability_hours: 720.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
+        };
+
+        // Exercise the exact `review-skills list` rendering path: parse the
+        // fact content back, then format it for review.
+        let parsed = PendingSkill::from_json(&fact.content).expect("pending deserializes");
+        let rendered = format_pending_skill_for_review(&fact, &parsed);
+
+        assert!(
+            rendered.contains("01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+            "fact id surfaced: {rendered}"
+        );
+        assert!(
+            rendered.contains("Source session: session-alpha"),
+            "source session surfaced: {rendered}"
+        );
+        assert!(
+            rendered.contains("Evidence sessions: session-alpha"),
+            "evidence session surfaced: {rendered}"
+        );
+        assert!(
+            rendered.contains(&seq_hash),
+            "sequence hash surfaced: {rendered}"
+        );
+        assert!(
+            rendered.contains("Extraction: prompt sha256:"),
+            "extraction prompt/response refs surfaced: {rendered}"
+        );
+        assert!(
+            rendered.contains("[REDACTED]"),
+            "redacted tool input surfaced: {rendered}"
+        );
+        assert!(
+            rendered.contains("result_ref=sha256:"),
+            "tool result reference surfaced: {rendered}"
+        );
+        assert!(
+            !rendered.contains(secret),
+            "secret value must not leak into the review surface: {rendered}"
+        );
     }
 }

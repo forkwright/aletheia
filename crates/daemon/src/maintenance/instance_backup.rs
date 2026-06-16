@@ -6,6 +6,7 @@
 //! needed for run replay/review. A JSON manifest records every covered store,
 //! its source path, snapshot time, byte count, and verification status.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -33,6 +34,12 @@ pub struct InstanceBackupConfig {
     pub interval_hours: u64,
     /// Maximum number of backup snapshots to retain.
     pub retention_count: usize,
+    /// Additional agent workspaces to include: `(logical name, source path)`. (#5139)
+    ///
+    /// Each path is classified at backup time: paths inside `instance_root` are
+    /// copied; absolute paths outside the root are recorded as omissions with a
+    /// warning rather than silently dropped.
+    pub additional_workspaces: Vec<(String, PathBuf)>,
 }
 
 impl Default for InstanceBackupConfig {
@@ -43,8 +50,20 @@ impl Default for InstanceBackupConfig {
             backup_dir: PathBuf::from("instance/data/backups/instance"),
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         }
     }
+}
+
+/// Records an agent workspace that was not copied into a backup set. (#5139)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceOmission {
+    /// Logical workspace name.
+    pub name: String,
+    /// Source path that was omitted.
+    pub source_path: PathBuf,
+    /// Why the workspace was omitted (e.g. `absolute-outside-root`).
+    pub reason: String,
 }
 
 /// A single store entry recorded in the backup manifest.
@@ -62,6 +81,15 @@ pub struct StoreEntry {
     pub byte_count: u64,
     /// Verification status: `ok`, `missing`, or `error`.
     pub status: String,
+    /// Agent that produced this store, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    /// Workspace source classification, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_source_class: Option<String>,
+    /// Reason this store was excluded from the backup, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exclusion_reason: Option<String>,
 }
 
 /// Whole-instance backup manifest.
@@ -77,6 +105,9 @@ pub struct BackupManifest {
     pub stores: Vec<StoreEntry>,
     /// Optional data directories copied when present.
     pub optional_stores: Vec<StoreEntry>,
+    /// Agent workspaces that were not copied into this set. (#5139)
+    #[serde(default)]
+    pub workspace_omissions: Vec<WorkspaceOmission>,
     /// Total bytes copied across all stores.
     pub total_bytes: u64,
 }
@@ -115,9 +146,22 @@ pub struct InstanceBackup {
 struct BackupBuild {
     stores: Vec<StoreEntry>,
     optional_stores: Vec<StoreEntry>,
+    workspace_omissions: Vec<WorkspaceOmission>,
     total_bytes: u64,
     total_files: u32,
     snapshot_time: String,
+}
+
+/// Arguments for recording an optional store entry without copying.
+struct OptionalStoreRecord {
+    name: String,
+    source_path: PathBuf,
+    backup_path: PathBuf,
+    status: String,
+    agent_id: Option<String>,
+    workspace_source_class: Option<String>,
+    exclusion_reason: Option<String>,
+    byte_count: u64,
 }
 
 impl BackupBuild {
@@ -125,6 +169,7 @@ impl BackupBuild {
         Self {
             stores: Vec::new(),
             optional_stores: Vec::new(),
+            workspace_omissions: Vec::new(),
             total_bytes: 0,
             total_files: 0,
             snapshot_time: jiff::Zoned::now().to_string(),
@@ -149,6 +194,9 @@ impl BackupBuild {
             snapshot_time: self.snapshot_time.clone(),
             byte_count: bytes,
             status: String::from("ok"),
+            agent_id: None,
+            workspace_source_class: None,
+            exclusion_reason: None,
         };
         if optional {
             self.optional_stores.push(entry);
@@ -156,6 +204,50 @@ impl BackupBuild {
             self.stores.push(entry);
         }
         Ok(())
+    }
+
+    /// Copy a configured agent workspace and record its coverage metadata.
+    fn copy_configured_workspace_entry(
+        &mut self,
+        name: &str,
+        src: PathBuf,
+        dst: &Path,
+        backup_path: PathBuf,
+        agent_id: String,
+        workspace_source_class: String,
+    ) -> error::Result<()> {
+        let (bytes, files) = copy_path(&src, dst)?;
+        self.total_bytes += bytes;
+        self.total_files += files;
+        let entry = StoreEntry {
+            name: String::from(name),
+            source_path: src,
+            backup_path,
+            snapshot_time: self.snapshot_time.clone(),
+            byte_count: bytes,
+            status: String::from("ok"),
+            agent_id: Some(agent_id),
+            workspace_source_class: Some(workspace_source_class),
+            exclusion_reason: None,
+        };
+        self.optional_stores.push(entry);
+        Ok(())
+    }
+
+    fn record_optional_entry(&mut self, record: OptionalStoreRecord) {
+        self.total_bytes += record.byte_count;
+        let entry = StoreEntry {
+            name: record.name,
+            source_path: record.source_path,
+            backup_path: record.backup_path,
+            snapshot_time: self.snapshot_time.clone(),
+            byte_count: record.byte_count,
+            status: record.status,
+            agent_id: record.agent_id,
+            workspace_source_class: record.workspace_source_class,
+            exclusion_reason: record.exclusion_reason,
+        };
+        self.optional_stores.push(entry);
     }
 }
 
@@ -174,6 +266,7 @@ impl InstanceBackup {
     /// - `stores/sessions.db/` (required).
     /// - `config/` copy of `instance/config/`.
     /// - `workspace/nous/`, `workspace/shared/`, `workspace/theke/` if present.
+    /// - `workspace/configured/<agent>/` for configured agent workspaces inside the instance root.
     /// - `data/archive/`, `data/prosoche-audits/`, `data/prompt-audit/`, `logs/prompt-audit/` if present.
     ///
     /// After creating the backup, old backups beyond `retention_count` are pruned.
@@ -184,6 +277,8 @@ impl InstanceBackup {
         self.copy_required_stores(&backup_path, &mut build)?;
         self.copy_config(&backup_path, &mut build)?;
         self.copy_workspace_dirs(&backup_path, &mut build)?;
+        self.copy_configured_agent_workspaces(&backup_path, &mut build)?;
+        self.copy_additional_workspaces(&backup_path, &mut build)?;
         self.copy_optional_data_dirs(&backup_path, &mut build)?;
         self.copy_prompt_audit_dirs(&backup_path, &mut build)?;
 
@@ -219,7 +314,17 @@ impl InstanceBackup {
         // WHY: include subsecond precision to avoid collisions when backups
         // are triggered in rapid succession (e.g. tests or manual runs).
         let timestamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S%.3f").to_string();
-        Ok(self.config.backup_dir.join(timestamp))
+        let backup_path = self.config.backup_dir.join(timestamp);
+
+        // WHY(#5140): a backup set contains credentials and session data; create
+        // the set directory eagerly with owner-only (0o700) permissions so the
+        // copied contents are never world-readable on a shared host.
+        fs::create_dir_all(&backup_path).context(error::MaintenanceIoSnafu {
+            context: format!("creating backup set dir {}", backup_path.display()),
+        })?;
+        set_dir_restrictive(&backup_path);
+
+        Ok(backup_path)
     }
 
     fn required_store_paths(&self) -> error::Result<(PathBuf, PathBuf)> {
@@ -278,6 +383,63 @@ impl InstanceBackup {
                 PathBuf::from("config"),
                 false,
             )?;
+
+            // WHY(#5140): credentials and TLS keys are copied verbatim into the
+            // backup; tighten the copied files to owner-only (0o600) so a backup
+            // set never leaks secrets through permissive file modes.
+            for sub in ["credentials", "tls"] {
+                let dst = backup_path.join("config").join(sub);
+                if dst.exists() {
+                    set_files_restrictive(&dst);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Copy operator-configured additional agent workspaces. (#5139)
+    ///
+    /// Paths inside `instance_root` are copied. Absolute paths outside the root
+    /// are recorded as omissions with a warning rather than silently dropped,
+    /// because copying arbitrary external paths into a backup set is unsafe.
+    fn copy_additional_workspaces(
+        &self,
+        backup_path: &Path,
+        build: &mut BackupBuild,
+    ) -> error::Result<()> {
+        for (name, src) in &self.config.additional_workspaces {
+            if !src.exists() {
+                warn!(
+                    workspace = %name,
+                    path = %src.display(),
+                    "additional workspace not found — skipping"
+                );
+                build.workspace_omissions.push(WorkspaceOmission {
+                    name: name.clone(),
+                    source_path: src.clone(),
+                    reason: String::from("missing"),
+                });
+                continue;
+            }
+
+            if src.starts_with(&self.config.instance_root) {
+                let rel_path = src
+                    .strip_prefix(&self.config.instance_root)
+                    .unwrap_or(src.as_path());
+                let rel = Path::new("workspace").join(rel_path);
+                build.copy_entry(name, src.clone(), &backup_path.join(&rel), rel, true)?;
+            } else {
+                warn!(
+                    workspace = %name,
+                    path = %src.display(),
+                    "additional workspace is outside instance root — omitting from backup"
+                );
+                build.workspace_omissions.push(WorkspaceOmission {
+                    name: name.clone(),
+                    source_path: src.clone(),
+                    reason: String::from("absolute-outside-root"),
+                });
+            }
         }
         Ok(())
     }
@@ -297,6 +459,113 @@ impl InstanceBackup {
                 build.copy_entry(name, src, &backup_path.join(rel), PathBuf::from(rel), true)?;
             }
         }
+        Ok(())
+    }
+
+    fn copy_configured_agent_workspaces(
+        &self,
+        backup_path: &Path,
+        build: &mut BackupBuild,
+    ) -> error::Result<()> {
+        // WHY: load the operator config so the backup manifest inventories every
+        // configured agent workspace, even paths that are excluded from copying.
+        let oikos = taxis::oikos::Oikos::from_root(&self.config.instance_root);
+        let instance_root = oikos.root();
+        let config = match taxis::loader::load_config(&oikos) {
+            Ok(config) => config,
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "skipping configured agent workspace inventory: failed to load aletheia config"
+                );
+                return Ok(());
+            }
+        };
+
+        // WHY: two agents may share the same workspace directory. Copy it once
+        // and record every agent that points at it with the same backup path.
+        let mut copied: HashMap<PathBuf, PathBuf> = HashMap::new();
+
+        for agent in &config.agents.list {
+            let source = resolve_workspace_source(instance_root, &agent.workspace);
+            let name = format!("workspace:{}", agent.id);
+            let configured_backup_path = PathBuf::from("workspace/configured").join(&agent.id);
+
+            let source_class = classify_workspace_source(instance_root, &agent.workspace, &source);
+
+            if source_class == "absolute-outside-root" {
+                build.record_optional_entry(OptionalStoreRecord {
+                    name,
+                    source_path: source,
+                    backup_path: configured_backup_path,
+                    status: String::from("excluded"),
+                    agent_id: Some(agent.id.clone()),
+                    workspace_source_class: Some(source_class),
+                    exclusion_reason: Some(String::from(
+                        "absolute workspace outside instance root requires explicit backup policy",
+                    )),
+                    byte_count: 0,
+                });
+                continue;
+            }
+
+            if !source.exists() {
+                build.record_optional_entry(OptionalStoreRecord {
+                    name,
+                    source_path: source,
+                    backup_path: configured_backup_path,
+                    status: String::from("excluded"),
+                    agent_id: Some(agent.id.clone()),
+                    workspace_source_class: Some(source_class),
+                    exclusion_reason: Some(String::from("workspace path missing")),
+                    byte_count: 0,
+                });
+                continue;
+            }
+
+            // If the workspace is one of the fixed directories already copied,
+            // point the manifest at the existing backup location.
+            if let Some(existing_backup_path) = existing_fixed_backup_path(instance_root, &source) {
+                let byte_count = dir_size(&source);
+                build.record_optional_entry(OptionalStoreRecord {
+                    name,
+                    source_path: source,
+                    backup_path: existing_backup_path,
+                    status: String::from("ok"),
+                    agent_id: Some(agent.id.clone()),
+                    workspace_source_class: Some(source_class),
+                    exclusion_reason: None,
+                    byte_count,
+                });
+                continue;
+            }
+
+            if let Some(existing_backup_path) = copied.get(&source) {
+                build.record_optional_entry(OptionalStoreRecord {
+                    name,
+                    source_path: source,
+                    backup_path: existing_backup_path.clone(),
+                    status: String::from("ok"),
+                    agent_id: Some(agent.id.clone()),
+                    workspace_source_class: Some(source_class),
+                    exclusion_reason: None,
+                    byte_count: 0,
+                });
+                continue;
+            }
+
+            let dst = backup_path.join(&configured_backup_path);
+            build.copy_configured_workspace_entry(
+                &name,
+                source.clone(),
+                &dst,
+                configured_backup_path.clone(),
+                agent.id.clone(),
+                source_class.clone(),
+            )?;
+            copied.insert(source, configured_backup_path);
+        }
+
         Ok(())
     }
 
@@ -352,6 +621,7 @@ impl InstanceBackup {
             source_root: self.config.instance_root.clone(),
             stores: build.stores,
             optional_stores: build.optional_stores,
+            workspace_omissions: build.workspace_omissions,
             total_bytes: build.total_bytes,
         };
         let manifest_path = backup_path.join("manifest.json");
@@ -386,12 +656,20 @@ impl InstanceBackup {
             if !path.is_dir() || !path.join("manifest.json").is_file() {
                 continue;
             }
-            let metadata = entry.metadata().context(error::MaintenanceIoSnafu {
-                context: format!("reading backup metadata: {}", path.display()),
-            })?;
-            let created = metadata.modified().context(error::MaintenanceIoSnafu {
-                context: format!("reading backup mtime: {}", path.display()),
-            })?;
+
+            // WHY(#5138): order by the manifest's recorded `created_at` rather
+            // than directory mtime, which a restore/rsync/touch can rewrite and
+            // would corrupt auto-prune ordering. A manifest that cannot be read
+            // or parsed is skipped (and logged) so it is never auto-pruned on a
+            // wrong assumption about its age.
+            let Some(created) = manifest_created_time(&path) else {
+                warn!(
+                    path = %path.display(),
+                    "skipping backup with unreadable or malformed manifest"
+                );
+                continue;
+            };
+
             let size_bytes = dir_size(&path);
             let name = entry.file_name().to_string_lossy().into_owned();
             entries.push(BackupEntry {
@@ -491,6 +769,21 @@ impl InstanceBackup {
             .filter(|store| store.name != "knowledge.fjall" && store.name != "sessions.db")
             .chain(manifest.optional_stores.iter())
         {
+            if store.status != "ok" {
+                let err = if let Some(reason) = &store.exclusion_reason {
+                    format!("{}: {}", store.name, reason)
+                } else {
+                    format!("{}: backup status is not ok", store.name)
+                };
+                result
+                    .store_results
+                    .push((store.name.clone(), Err(err.clone())));
+                if result.first_error.is_none() {
+                    result.first_error = Some(err);
+                }
+                continue;
+            }
+
             let store_path = path.join(&store.backup_path);
             match verify_manifest_store(&store.name, &store_path) {
                 Ok(total) => result.store_results.push((store.name.clone(), Ok(total))),
@@ -578,6 +871,50 @@ fn verify_manifest_store(name: &str, path: &Path) -> std::result::Result<usize, 
     Ok(usize::try_from(dir_size(path)).unwrap_or(usize::MAX))
 }
 
+/// Resolve a configured workspace string against the instance root.
+///
+/// WHY: relative workspace paths resolve to the instance root; absolute
+/// paths are taken as-is so operators can point outside the oikos.
+fn resolve_workspace_source(instance_root: &Path, workspace: &str) -> PathBuf {
+    let workspace_path = Path::new(workspace);
+    if workspace_path.is_absolute() {
+        workspace_path.to_path_buf()
+    } else {
+        instance_root.join(workspace_path)
+    }
+}
+
+/// Classify a configured workspace for manifest attribution.
+///
+/// NOTE: this uses absolute-path prefix checks instead of `canonicalize`
+/// so missing or outside-root paths can be classified without requiring
+/// the directory to exist on disk.
+fn classify_workspace_source(instance_root: &Path, workspace: &str, source: &Path) -> String {
+    if !Path::new(workspace).is_absolute() {
+        return String::from("in-root");
+    }
+    if source.starts_with(instance_root) {
+        String::from("absolute-inside-root")
+    } else {
+        String::from("absolute-outside-root")
+    }
+}
+
+/// Map a workspace that lives under a fixed copied root to its backup path.
+fn existing_fixed_backup_path(instance_root: &Path, source: &Path) -> Option<PathBuf> {
+    for (dir_name, backup_prefix) in [
+        ("nous", "workspace/nous"),
+        ("shared", "workspace/shared"),
+        ("theke", "workspace/theke"),
+    ] {
+        let root_dir = instance_root.join(dir_name);
+        if let Ok(rel) = source.strip_prefix(&root_dir) {
+            return Some(PathBuf::from(backup_prefix).join(rel));
+        }
+    }
+    None
+}
+
 fn write_text_file(path: &Path, contents: &str) -> error::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context(error::MaintenanceIoSnafu {
@@ -662,6 +999,57 @@ fn dir_size(path: &Path) -> u64 {
     total
 }
 
+/// Parse the `created_at` field from a backup set's manifest into a
+/// [`SystemTime`]. Returns `None` if the manifest is missing, unreadable, or
+/// the timestamp cannot be parsed. (#5138)
+fn manifest_created_time(backup_path: &Path) -> Option<std::time::SystemTime> {
+    let manifest_json = fs::read_to_string(backup_path.join("manifest.json")).ok()?;
+    let manifest: BackupManifest = serde_json::from_str(&manifest_json).ok()?;
+    let zoned: jiff::Zoned = manifest.created_at.parse().ok()?;
+    Some(std::time::SystemTime::from(zoned.timestamp()))
+}
+
+/// Set owner-only (0o700) permissions on a directory. No-op on non-Unix. (#5140)
+#[cfg(unix)]
+fn set_dir_restrictive(path: &Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+    if let Err(e) = fs::set_permissions(path, fs::Permissions::from_mode(0o700)) {
+        warn!(
+            path = %path.display(),
+            error = %e,
+            "failed to set restrictive permissions on backup directory"
+        );
+    }
+}
+
+#[cfg(not(unix))]
+fn set_dir_restrictive(_path: &Path) {}
+
+/// Set owner-only (0o600) permissions on every regular file under `dir`,
+/// recursing into subdirectories. No-op on non-Unix. (#5140)
+#[cfg(unix)]
+fn set_files_restrictive(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            set_files_restrictive(&path);
+        } else if let Err(e) = fs::set_permissions(&path, fs::Permissions::from_mode(0o600)) {
+            warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to set restrictive permissions on backup file"
+            );
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn set_files_restrictive(_dir: &Path) {}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
@@ -701,6 +1089,7 @@ mod tests {
             backup_dir: backup_dir.clone(),
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         };
 
         let manager = InstanceBackup::new(config);
@@ -744,6 +1133,171 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "single fixture covers #5139 workspace classes and duplicate handling"
+    )]
+    fn create_backup_records_configured_agent_workspaces() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+        fs::create_dir_all(instance_root.join("config")).unwrap();
+
+        make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+        make_fjall_store(&instance_root.join("data").join("sessions.db"));
+
+        let relative_source = instance_root.join("workspaces").join("relative");
+        let inside_source = instance_root.join("workspaces").join("inside");
+        let outside_source = tmp.path().join("outside");
+        let duplicate_source = instance_root.join("workspaces").join("duplicate");
+        for path in [
+            &relative_source,
+            &inside_source,
+            &outside_source,
+            &duplicate_source,
+        ] {
+            fs::create_dir_all(path).unwrap();
+            write_text_file(&path.join("NOTE.md"), "workspace").unwrap();
+        }
+
+        let config_toml = format!(
+            r#"
+[[agents.list]]
+id = "alice"
+workspace = "workspaces/relative"
+
+[[agents.list]]
+id = "bob"
+workspace = "{}"
+
+[[agents.list]]
+id = "carol"
+workspace = "{}"
+
+[[agents.list]]
+id = "dana"
+workspace = "workspaces/missing"
+
+[[agents.list]]
+id = "erin"
+workspace = "{}"
+
+[[agents.list]]
+id = "frank"
+workspace = "{}"
+"#,
+            inside_source.display(),
+            outside_source.display(),
+            duplicate_source.display(),
+            duplicate_source.display()
+        );
+        write_text_file(
+            &instance_root.join("config").join("aletheia.toml"),
+            &config_toml,
+        )
+        .unwrap();
+
+        let backup_dir = tmp.path().join("backups");
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir,
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let report = manager.create_backup().expect("backup succeeds");
+        let backup_path = report.backup_path.expect("backup path set");
+        let manifest: BackupManifest =
+            serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
+                .unwrap();
+
+        let entry_for = |agent_id: &str| {
+            manifest
+                .optional_stores
+                .iter()
+                .find(|entry| entry.agent_id.as_deref() == Some(agent_id))
+                .unwrap_or_else(|| panic!("missing workspace entry for {agent_id}"))
+        };
+
+        let alice = entry_for("alice");
+        assert_eq!(alice.status, "ok");
+        assert_eq!(alice.workspace_source_class.as_deref(), Some("in-root"));
+        assert_eq!(
+            alice.backup_path,
+            PathBuf::from("workspace").join("configured").join("alice")
+        );
+        assert!(
+            backup_path
+                .join(&alice.backup_path)
+                .join("NOTE.md")
+                .is_file()
+        );
+
+        let bob = entry_for("bob");
+        assert_eq!(bob.status, "ok");
+        assert_eq!(
+            bob.workspace_source_class.as_deref(),
+            Some("absolute-inside-root")
+        );
+        assert_eq!(
+            bob.backup_path,
+            PathBuf::from("workspace").join("configured").join("bob")
+        );
+        assert!(backup_path.join(&bob.backup_path).join("NOTE.md").is_file());
+
+        let carol = entry_for("carol");
+        assert_eq!(carol.status, "excluded");
+        assert_eq!(
+            carol.workspace_source_class.as_deref(),
+            Some("absolute-outside-root")
+        );
+        assert!(
+            carol
+                .exclusion_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("outside"))
+        );
+
+        let dana = entry_for("dana");
+        assert_eq!(dana.status, "excluded");
+        assert_eq!(dana.workspace_source_class.as_deref(), Some("in-root"));
+        assert!(
+            dana.exclusion_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("missing"))
+        );
+
+        let erin = entry_for("erin");
+        let frank = entry_for("frank");
+        assert_eq!(erin.status, "ok");
+        assert_eq!(frank.status, "ok");
+        assert_eq!(&frank.backup_path, &erin.backup_path);
+        assert_eq!(
+            manifest
+                .optional_stores
+                .iter()
+                .filter(|entry| entry.backup_path == erin.backup_path)
+                .count(),
+            2
+        );
+        assert!(
+            backup_path
+                .join(&erin.backup_path)
+                .join("NOTE.md")
+                .is_file()
+        );
+
+        let verify = InstanceBackup::verify_backup(&backup_path).unwrap();
+        assert!(
+            verify
+                .first_error
+                .as_deref()
+                .is_some_and(|error| error.contains("outside") || error.contains("missing"))
+        );
+    }
+
+    #[test]
     fn verify_backup_passes_for_complete_set() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let instance_root = tmp.path().join("instance");
@@ -761,6 +1315,7 @@ mod tests {
             backup_dir: backup_dir.clone(),
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         };
 
         let manager = InstanceBackup::new(config);
@@ -801,8 +1356,12 @@ mod tests {
                 snapshot_time: jiff::Zoned::now().to_string(),
                 byte_count: 0,
                 status: String::from("ok"),
+                agent_id: None,
+                workspace_source_class: None,
+                exclusion_reason: None,
             }],
             optional_stores: Vec::new(),
+            workspace_omissions: Vec::new(),
             total_bytes: 0,
         };
         write_text_file(
@@ -841,6 +1400,7 @@ mod tests {
             backup_dir: backup_dir.clone(),
             interval_hours: 24,
             retention_count: 2,
+            additional_workspaces: Vec::new(),
         };
 
         let manager = InstanceBackup::new(config);
@@ -874,6 +1434,7 @@ mod tests {
             backup_dir,
             interval_hours: 24,
             retention_count: 7,
+            additional_workspaces: Vec::new(),
         };
 
         let manager = InstanceBackup::new(config);

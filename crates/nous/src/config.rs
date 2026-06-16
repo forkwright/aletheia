@@ -685,7 +685,7 @@ mod tests {
                 bootstrap_max_tokens: 20_000,
                 thinking_enabled: true,
                 thinking_budget: 5_000,
-                chars_per_token: 4,
+                chars_per_token: koina::defaults::CHARS_PER_TOKEN,
                 prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
                     .to_owned(),
                 complexity: ComplexityConfig::default(),

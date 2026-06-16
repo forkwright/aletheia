@@ -35,11 +35,9 @@ pub(crate) async fn execute_reflection(
     cancel: CancellationToken,
 ) -> crate::error::Result<crate::runner::ExecutionResult> {
     let Some(bridge) = bridge else {
-        return Ok(crate::runner::ExecutionResult {
-            success: false,
-            errors: 0,
-            output: Some("no bridge configured".to_owned()),
-        });
+        return Ok(crate::runner::ExecutionResult::skipped(Some(
+            "no bridge configured".to_owned(),
+        )));
     };
 
     let prompt = concat!(
@@ -56,14 +54,12 @@ pub(crate) async fn execute_reflection(
         Ok(result) => {
             tracing::info!(
                 nous_id = %nous_id,
-                success = result.success,
+                success = result.is_success(),
                 "reflection cron: dispatch succeeded"
             );
-            Ok(crate::runner::ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some("reflection cycle dispatched".to_owned()),
-            })
+            Ok(crate::runner::ExecutionResult::success(Some(
+                "reflection cycle dispatched".to_owned(),
+            )))
         }
         Err(e) => {
             tracing::warn!(
@@ -71,11 +67,9 @@ pub(crate) async fn execute_reflection(
                 error = %e,
                 "reflection cron: dispatch failed"
             );
-            Ok(crate::runner::ExecutionResult {
-                success: false,
-                errors: 0,
-                output: Some(format!("reflection dispatch failed: {e}")),
-            })
+            Ok(crate::runner::ExecutionResult::failed(Some(format!(
+                "reflection dispatch failed: {e}"
+            ))))
         }
     }
 }
@@ -97,7 +91,7 @@ mod tests {
         let result = execute_reflection("test-nous", None, CancellationToken::new())
             .await
             .expect("should not error");
-        assert!(!result.success);
+        assert!(!result.is_success());
         assert!(result.output.expect("has output").contains("no bridge"));
     }
 }

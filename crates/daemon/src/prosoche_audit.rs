@@ -34,14 +34,15 @@
 //! existing trait contract.
 
 use std::io::Write as _;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
-use eidos::knowledge::finding::{
+use mneme::finding::{
     EvidenceLevel, EvidenceRef, Finding, FindingStats, FindingSupport, stable_hash,
 };
-use eidos::meta::{ArtefactMeta, Stamped};
+use mneme::meta::{ArtefactMeta, Stamped};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::Instrument as _;
@@ -1573,6 +1574,36 @@ impl Stamped for AuditReport {
     }
 }
 
+/// Result of running and persisting a prosoche self-audit pass.
+///
+/// The computed [`AuditReport`] is always produced, even when persistence fails.
+/// The outcome records whether the report was written to disk (`persisted_path`)
+/// or why the write failed (`last_persist_error`). Only one of those two fields
+/// will be set for any given run.
+#[derive(Debug, Clone)]
+pub struct ProsocheAuditOutcome {
+    /// The computed audit report, independent of persistence success or failure.
+    pub report: AuditReport,
+    /// Path where the report was persisted, when persistence succeeded.
+    pub persisted_path: Option<PathBuf>,
+    /// Human-readable persistence error, when persistence failed.
+    pub last_persist_error: Option<String>,
+}
+
+impl Deref for ProsocheAuditOutcome {
+    type Target = AuditReport;
+
+    fn deref(&self) -> &Self::Target {
+        &self.report
+    }
+}
+
+impl DerefMut for ProsocheAuditOutcome {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.report
+    }
+}
+
 /// Runs all registered prosoche checks and persists the resulting findings.
 ///
 /// # Usage
@@ -1624,11 +1655,12 @@ impl ProsocheAuditRunner {
     }
 
     /// Run all registered checks against `state`, persist the report, and
-    /// return the completed [`AuditReport`].
+    /// return a [`ProsocheAuditOutcome`] containing the completed [`AuditReport`].
     ///
     /// Each check runs sequentially (they're fast heuristics). The runner
     /// captures check panics as [`CheckFailure`] records rather than failing
-    /// the whole audit.
+    /// the whole audit. A persistence failure is captured in the outcome and
+    /// never fails the audit.
     ///
     /// # Observability
     ///
@@ -1636,7 +1668,7 @@ impl ProsocheAuditRunner {
     ///   (emitted by each check implementation).
     /// - `tracing::info!` at audit completion with total `findings_count`.
     #[tracing::instrument(skip(self, state), fields(nous_id = %state.nous_id))]
-    pub async fn run_audit(&self, state: &ProsocheState) -> AuditReport {
+    pub async fn run_audit(&self, state: &ProsocheState) -> ProsocheAuditOutcome {
         let mut all_findings: Vec<Finding> = Vec::new();
         let mut check_summary: Vec<CheckSummary> = Vec::new();
         let mut check_provenances: Vec<CheckProvenance> = Vec::new();
@@ -1713,8 +1745,8 @@ impl ProsocheAuditRunner {
         };
 
         // WHY: a persist failure is logged but never fails the audit — the
-        // report is still returned to the caller.
-        match self.storage.persist(&report) {
+        // report is still returned to the caller inside the outcome.
+        let (persisted_path, last_persist_error) = match self.storage.persist(&report) {
             Ok(path) => {
                 tracing::info!(
                     nous_id = %state.nous_id,
@@ -1722,6 +1754,7 @@ impl ProsocheAuditRunner {
                     path = %path.display(),
                     "prosoche self-audit complete"
                 );
+                (Some(path), None)
             }
             Err(e) => {
                 tracing::warn!(
@@ -1730,10 +1763,15 @@ impl ProsocheAuditRunner {
                     error = %e,
                     "prosoche self-audit complete — report persist failed"
                 );
+                (None, Some(e.to_string()))
             }
-        }
+        };
 
-        report
+        ProsocheAuditOutcome {
+            report,
+            persisted_path,
+            last_persist_error,
+        }
     }
 }
 

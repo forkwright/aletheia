@@ -1,6 +1,7 @@
 //! Runtime context and service locator passed to tool executors.
 
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use koina::id::{NousId, SessionId, ToolName};
 use taxis::config::ToolLimitsConfig;
+use tokio_util::sync::CancellationToken;
 
 use crate::surface::EffectiveToolSurface;
 
@@ -17,6 +19,10 @@ use super::services::{
     BlackboardStore, CrossNousService, KnowledgeSearchService, MessageService, NoteStore,
     PlanningService, SpawnService,
 };
+
+tokio::task_local! {
+    static TURN_CANCEL: CancellationToken;
+}
 
 /// Configuration for server-side tools that execute on the API provider's infrastructure.
 ///
@@ -194,6 +200,22 @@ pub struct EffectiveSurfaceBinding {
 }
 
 impl ToolContext {
+    /// Return the current turn cancellation token, or a detached token outside turns.
+    #[must_use]
+    pub fn turn_cancel(&self) -> CancellationToken {
+        TURN_CANCEL
+            .try_with(Clone::clone)
+            .unwrap_or_else(|_| CancellationToken::new())
+    }
+
+    /// Run a future with a turn cancellation token visible to tool executors.
+    pub async fn scope_turn_cancel<F>(token: CancellationToken, future: F) -> F::Output
+    where
+        F: Future,
+    {
+        TURN_CANCEL.scope(token, future).await
+    }
+
     /// Bind an effective surface for this context until the returned guard drops.
     #[must_use]
     pub fn bind_effective_surface(

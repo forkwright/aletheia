@@ -7,7 +7,7 @@ pub use context::{ServerToolConfig, ToolContext, ToolServices};
 pub use services::{
     BlackboardEntry, BlackboardStore, CrossNousService, DatalogResult, FactSummary,
     KnowledgeSearchService, MemoryResult, MessageService, NoteEntry, NoteStore, PlanningPlanInput,
-    PlanningService, SpawnRequest, SpawnResult, SpawnService, WorkingCheckpoint,
+    PlanningService, SpawnContext, SpawnRequest, SpawnResult, SpawnService, WorkingCheckpoint,
     WorkingCheckpointStore,
 };
 

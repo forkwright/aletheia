@@ -290,3 +290,87 @@ async fn streaming_fallback_uses_approval_gate_for_mandatory_tool() {
     assert_eq!(tool_start, 0, "denied fallback call must not execute");
     assert_eq!(tool_result, 1);
 }
+
+#[tokio::test]
+async fn streaming_max_iterations_reports_stop_reason() {
+    let mut providers = ProviderRegistry::new();
+    let responses: Vec<CompletionResponse> = (0..10)
+        .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
+        .collect();
+    providers.register(Box::new(StreamingMockProvider::with_responses(responses)));
+
+    let tools = make_registry_with("exec", Box::new(EchoExecutor));
+    let mut config = test_config();
+    config.limits.max_tool_iterations = 3;
+    config.limits.loop_detection_threshold = 100;
+
+    let (tx, _rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+    let result = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming");
+
+    assert_eq!(
+        result.stop_reason, "max_tool_iterations",
+        "streaming stop reason should report max tool iterations cutoff"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 3,
+        "streaming should stop after max_tool_iterations=3 LLM calls"
+    );
+}
+
+#[tokio::test]
+async fn streaming_client_disconnect_reports_stop_reason() {
+    let mut providers = ProviderRegistry::new();
+    // WHY: the provider would loop forever on tool_use if disconnect were ignored.
+    let responses: Vec<CompletionResponse> = (0..10)
+        .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
+        .collect();
+    providers.register(Box::new(StreamingMockProvider::with_responses(responses)));
+
+    let tools = make_registry_with("exec", Box::new(EchoExecutor));
+    let mut config = test_config();
+    config.limits.max_tool_iterations = 100;
+    config.limits.loop_detection_threshold = 1000;
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+    drop(rx);
+
+    let result = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming");
+
+    assert_eq!(
+        result.stop_reason, "client_disconnect",
+        "streaming stop reason should report client disconnect"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 0,
+        "disconnected stream should not call the LLM"
+    );
+    assert!(
+        result.tool_calls.is_empty(),
+        "disconnected stream should not dispatch tools"
+    );
+}

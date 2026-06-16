@@ -268,14 +268,13 @@ async fn idempotency_key_not_stranded_after_disconnect() {
     assert_eq!(resp.status(), StatusCode::OK);
     drop(resp);
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
-    let lookup =
-        state
-            .idempotency_cache
-            .check_or_insert("test-user", key, id, &body_fingerprint("Hello!"));
-    assert!(
-        !matches!(lookup, crate::idempotency::LookupResult::Conflict),
-        "in-flight idempotency key must not be stranded after disconnect"
+    // WHY(#5453): retry through the handler to prove the in-flight entry was
+    // released when the first response was dropped.
+    let retry = send_message_req(id, Some(key));
+    let retry_resp = router.clone().oneshot(retry).await.unwrap();
+    assert_ne!(
+        retry_resp.status(),
+        StatusCode::CONFLICT,
+        "retry after disconnect must not return 409 Conflict"
     );
 }

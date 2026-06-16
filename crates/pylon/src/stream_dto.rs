@@ -69,6 +69,14 @@ pub(crate) enum SseEvent {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+
+    /// Replay cannot be complete because the in-memory turn buffer truncated.
+    #[serde(rename = "replay_gap")]
+    ReplayGap {
+        reason: String,
+        dropped_after_seq: u64,
+        retained_limit: usize,
+    },
 }
 
 /// Token usage summary sent with `message_complete`.
@@ -151,6 +159,14 @@ pub(crate) enum TurnStreamEvent {
         /// Per-request correlation ID for cross-system error tracing.
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
+    },
+
+    /// Replay cannot be complete because the in-memory turn buffer truncated.
+    #[serde(rename = "replay_gap")]
+    ReplayGap {
+        reason: String,
+        dropped_after_seq: u64,
+        retained_limit: usize,
     },
 }
 

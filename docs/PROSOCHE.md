@@ -60,6 +60,23 @@ Tasks support optional **active windows** `(start_hour, end_hour)` to restrict e
 
 Each agent has an `instance/nous/<agent-id>/PROSOCHE.md` file that defines its heartbeat checklist. A template is provided at `instance.example/nous/_template/PROSOCHE.md`.
 
+### Server scheduling
+
+Daemon-side prosoche scheduling is configured under `[maintenance.prosoche]`:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `mode` | `"daemon"` | `"daemon"` uses the in-process scheduler; `"external"` uses the systemd timer; `"both"` runs both; `"disabled"` turns scheduling off |
+| `heartbeat.intervalSecs` | `2700` | Per-agent attention-check cadence (45 minutes) |
+| `selfAudit.intervalSecs` | `21600` | Self-audit cadence (6 hours) |
+| `externalTimer.taskId` | `"prosoche-self-audit"` | Task id invoked by the external heartbeat script |
+| `externalTimer.intervalSecs` | `300` | External timer cadence (must match `aletheia-health.timer`) |
+
+The default `mode = "daemon"` preserves the historical behavior where the
+`TaskRunner` registers one attention check and one self-audit per agent. Set
+`mode = "external"` or `"both"` when you install `aletheia-health.timer` and
+want the systemd path to own the heartbeat.
+
 The checklist specifies what the agent should check on each heartbeat tick:
 
 1. **Calendar**: upcoming events in the next 4 hours

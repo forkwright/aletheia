@@ -6,13 +6,14 @@
 //! data model and event handlers.
 
 use crate::state::agents::{AgentStatus, AgentStore};
+use crate::state::connection::ConnectionState;
 use crate::state::platform::{TrayIconStatus, TrayState};
 
 /// Derive `TrayState` from the current agent store and connection state.
 #[must_use]
 pub(crate) fn derive_tray_state(
     agents: &AgentStore,
-    connected: bool,
+    connection_state: &ConnectionState,
     window_visible: bool,
 ) -> TrayState {
     let all = agents.all();
@@ -23,7 +24,7 @@ pub(crate) fn derive_tray_state(
         .count();
 
     TrayState {
-        icon_status: TrayIconStatus::from_agents(&statuses, connected),
+        icon_status: TrayIconStatus::from_agents(&statuses, connection_state),
         agent_count: all.len(),
         processing_count,
         window_visible,
@@ -61,7 +62,7 @@ mod tests {
             ("syn", AgentStatus::Active),
             ("arc", AgentStatus::Idle),
         ]);
-        let tray = derive_tray_state(&store, true, false);
+        let tray = derive_tray_state(&store, &ConnectionState::Connected, false);
         assert_eq!(tray.icon_status, TrayIconStatus::Active);
         assert_eq!(tray.agent_count, 2);
         assert_eq!(tray.processing_count, 1);
@@ -71,7 +72,23 @@ mod tests {
     #[test]
     fn derive_tray_state_disconnected() {
         let store = make_store(vec![("syn", AgentStatus::Active)]);
-        let tray = derive_tray_state(&store, false, true);
+        let tray = derive_tray_state(&store, &ConnectionState::Disconnected, true);
         assert_eq!(tray.icon_status, TrayIconStatus::Disconnected);
+    }
+
+    #[test]
+    fn derive_tray_state_degraded() {
+        let store = make_store(vec![("syn", AgentStatus::Idle)]);
+        let tray = derive_tray_state(
+            &store,
+            &ConnectionState::ConnectedDegraded {
+                status: "unhealthy".to_string(),
+            },
+            true,
+        );
+        assert_eq!(tray.icon_status, TrayIconStatus::Degraded);
+        assert_eq!(tray.agent_count, 1);
+        assert_eq!(tray.processing_count, 0);
+        assert!(tray.window_visible);
     }
 }

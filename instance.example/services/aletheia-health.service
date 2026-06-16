@@ -6,6 +6,7 @@ After=aletheia.service
 [Service]
 Type=oneshot
 Environment=ALETHEIA_URL=http://127.0.0.1:18789
+Environment=ALETHEIA_HEARTBEAT_TASK=prosoche-self-audit
 ExecStart=/usr/bin/env %h/.local/bin/aletheia-heartbeat
 StandardOutput=journal
 StandardError=journal

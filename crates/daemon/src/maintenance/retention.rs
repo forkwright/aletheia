@@ -28,6 +28,10 @@ pub struct RetentionSummary {
     /// Number of expired blackboard entries removed.
     #[serde(default)]
     pub blackboard_entries_cleaned: u32,
+    /// Number of sessions removed to enforce a session cap: the per-agent
+    /// cap (#5134) and the per-nous `maxSessionsPerNous` cap.
+    #[serde(default)]
+    pub cap_sessions_cleaned: u32,
     /// Total bytes reclaimed from storage.
     pub bytes_freed: u64,
 }
@@ -67,6 +71,7 @@ mod tests {
                 messages_cleaned: 100,
                 blackboard_entries_cleaned: 7,
                 bytes_freed: 1024,
+                cap_sessions_cleaned: 0,
             },
         };
 
@@ -96,6 +101,7 @@ mod tests {
         assert_eq!(summary.messages_cleaned, 0);
         assert_eq!(summary.blackboard_entries_cleaned, 0);
         assert_eq!(summary.bytes_freed, 0);
+        assert_eq!(summary.cap_sessions_cleaned, 0);
     }
 
     #[test]

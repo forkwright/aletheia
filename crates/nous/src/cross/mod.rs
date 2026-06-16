@@ -803,6 +803,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ask_graph_cleaned_up_on_cancellation() {
+        let router = CrossNousRouter::default();
+        let (tx, _rx) = mpsc::channel(1);
+        // NOTE: Pre-filling the inbox makes `ask_inner` suspend at
+        // `sender.send(envelope).await`.
+        // INVARIANT: the edge is inserted before that point, so aborting the
+        // task must not leave stale graph state.
+        tx.try_send(CrossNousEnvelope {
+            message: CrossNousMessage::new("filler", "target", "filler"),
+        })
+        .unwrap();
+        router.register("target", tx).await;
+
+        let msg = CrossNousMessage::new("sender", "target", "question")
+            .with_reply(Duration::from_secs(60));
+
+        let spawned_router = router.clone();
+        let handle = tokio::spawn(async move { spawned_router.ask(msg).await });
+        tokio::task::yield_now().await;
+
+        handle.abort();
+        let _ = handle.await;
+
+        // NOTE: give any spawned async cleanup a chance to run.
+        tokio::task::yield_now().await;
+
+        assert_eq!(router.ask_graph.read().await.edge_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn pending_reply_cleaned_up_on_cancellation() {
+        let (router, mut rx) = setup_router().await;
+        let msg = CrossNousMessage::new("sender", "target", "question")
+            .with_reply(Duration::from_secs(60));
+
+        let spawned_router = router.clone();
+        let handle = tokio::spawn(async move { spawned_router.ask(msg).await });
+
+        // INVARIANT: receiving the envelope proves the pending-reply entry was
+        // inserted before the ask future is aborted.
+        let _envelope = rx.recv().await.unwrap();
+
+        handle.abort();
+        let _ = handle.await;
+
+        // NOTE: give any spawned async cleanup a chance to run.
+        tokio::task::yield_now().await;
+
+        assert_eq!(router.pending_reply_count().await, 0);
+        assert_eq!(router.ask_graph.read().await.edge_count(), 0);
+    }
+
+    #[tokio::test]
     async fn ask_graph_cleaned_up_on_delivery_failure() {
         let router = CrossNousRouter::default();
         let (tx, rx) = mpsc::channel(1);

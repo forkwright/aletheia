@@ -241,7 +241,14 @@ pub(super) async fn run_recall_stage(
                 .with_project_scope(project_recall_scope(pipeline_config))
                 .with_surprise_calculator(surprise_calc.clone());
             let result = recall_stage.run_bm25(content, &config.id, ts, budget);
-            apply_recall_result(result, ctx, &span, config.recall.late_inject_anchor);
+            apply_recall_result(
+                result,
+                ctx,
+                &span,
+                config.recall.late_inject_anchor,
+                emitter,
+                config.id.as_ref(),
+            );
         } else {
             span.record("status", "skipped");
             emitter.emit(&StageSkipped {
@@ -269,7 +276,14 @@ pub(super) async fn run_recall_stage(
             Some(&recall_bridge),
             Some(&recall_bridge),
         );
-        apply_recall_result(result, ctx, &span, config.recall.late_inject_anchor);
+        apply_recall_result(
+            result,
+            ctx,
+            &span,
+            config.recall.late_inject_anchor,
+            emitter,
+            config.id.as_ref(),
+        );
     } else {
         span.record("status", "skipped");
         emitter.emit(&StageSkipped {
@@ -475,9 +489,11 @@ pub(super) async fn run_full_compact_stage(
     let (request, preserved) =
         crate::compact::full::build_summary_request(&ctx.messages, &compact_config, prompt);
 
+    let mut fallback_used = false;
     let summary = match compact_with_llm(config, providers, request).await {
         Ok(summary) => summary,
         Err(error) => {
+            fallback_used = true;
             warn!(
                 error = %error,
                 nous_id = %config.id,
@@ -497,7 +513,17 @@ pub(super) async fn run_full_compact_stage(
 
     ctx.messages = result.messages;
     ctx.compaction_metrics = Some(result.metrics);
-    span.record("status", "ok");
+
+    if fallback_used {
+        span.record("status", "degraded");
+        emitter.emit(&StageError {
+            nous_id: config.id.to_string(),
+            stage: "full_compact",
+            error_type: "llm_fallback".to_owned(),
+        });
+    } else {
+        span.record("status", "ok");
+    }
 
     let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
@@ -1009,6 +1035,8 @@ fn apply_recall_result(
     ctx: &mut PipelineContext,
     span: &tracing::Span,
     late_inject_anchor: bool,
+    emitter: &EventEmitter,
+    nous_id: &str,
 ) {
     match result {
         Ok(recall_result) => {
@@ -1049,6 +1077,11 @@ fn apply_recall_result(
         Err(e) => {
             tracing::warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
             span.record("status", "error");
+            emitter.emit(&StageError {
+                nous_id: nous_id.to_owned(),
+                stage: "recall",
+                error_type: "recall_failed".to_owned(),
+            });
         }
     }
 }

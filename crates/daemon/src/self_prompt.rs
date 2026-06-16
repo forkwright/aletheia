@@ -255,11 +255,9 @@ pub(crate) async fn execute_self_prompt_with_cancel(
     cancel: CancellationToken,
 ) -> crate::error::Result<crate::runner::ExecutionResult> {
     let Some(bridge) = bridge else {
-        return Ok(crate::runner::ExecutionResult {
-            success: false,
-            errors: 0,
-            output: Some("no bridge configured".to_owned()),
-        });
+        return Ok(crate::runner::ExecutionResult::skipped(Some(
+            "no bridge configured".to_owned(),
+        )));
     };
 
     tracing::info!(
@@ -275,14 +273,12 @@ pub(crate) async fn execute_self_prompt_with_cancel(
         Ok(result) => {
             tracing::info!(
                 nous_id = %nous_id,
-                success = result.success,
+                success = result.is_success(),
                 "self-prompt dispatch succeeded"
             );
-            Ok(crate::runner::ExecutionResult {
-                success: true,
-                errors: 0,
-                output: Some("self-prompt dispatched".to_owned()),
-            })
+            Ok(crate::runner::ExecutionResult::success(Some(
+                "self-prompt dispatched".to_owned(),
+            )))
         }
         Err(e) => {
             tracing::warn!(
@@ -290,11 +286,9 @@ pub(crate) async fn execute_self_prompt_with_cancel(
                 error = %e,
                 "self-prompt dispatch failed"
             );
-            Ok(crate::runner::ExecutionResult {
-                success: false,
-                errors: 0,
-                output: Some(format!("self-prompt dispatch failed: {e}")),
-            })
+            Ok(crate::runner::ExecutionResult::failed(Some(format!(
+                "self-prompt dispatch failed: {e}"
+            ))))
         }
     }
 }
@@ -499,7 +493,7 @@ mod tests {
         let result = execute_self_prompt("test-nous", "do something", None)
             .await
             .expect("should not error");
-        assert!(!result.success);
+        assert!(!result.is_success());
         assert!(result.output.expect("has output").contains("no bridge"));
     }
 
@@ -509,8 +503,8 @@ mod tests {
         let result = execute_self_prompt("test-nous", "investigate disk", Some(&bridge))
             .await
             .expect("should not error");
-        // NOTE: NoopBridge returns success=false, but the dispatch itself succeeds.
-        assert!(result.success);
+        // NOTE: NoopBridge reports a skip, but the dispatch itself succeeds.
+        assert!(result.is_success());
         assert!(
             result
                 .output

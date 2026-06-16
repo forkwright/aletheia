@@ -238,7 +238,6 @@ toolGroups = ["read", "plan", "verify"]
 # child agents.
 # toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
 max_output_tokens = 16384
-user_timezone = "{timezone}"
 timeout_seconds = 300
 # thinking_enabled = false
 # thinking_budget = 10000
@@ -299,7 +298,6 @@ source = "{credential_source}"
         auth_mode = a.auth_mode,
         model = a.model,
         pricing_key = pricing_key,
-        timezone = a.timezone,
         agent_id = a.agent_id,
         agent_name = a.agent_name,
         workspace = workspace,

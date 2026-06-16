@@ -12,8 +12,15 @@ use snafu::ResultExt as _;
 
 use crate::error::Result;
 
+/// Current schema version for persisted [`TaskState`] records.
+///
+/// WHY(#5130): older records (written before the extra fields were added)
+/// deserialize with `schema_version == 0` via `#[serde(default)]`, letting the
+/// runner distinguish migrated-forward records from current ones.
+pub const TASK_STATE_SCHEMA_VERSION: u32 = 1;
+
 /// Persisted execution state for a single registered task.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TaskState {
     /// Task ID matching `TaskDef::id`.
     // kanon:ignore RUST/primitive-for-domain-id — TaskState::task_id mirrors TaskDef::id, a user-configured cron task identifier persisted as raw string
@@ -24,6 +31,22 @@ pub struct TaskState {
     pub run_count: u64,
     /// Consecutive failures since the last success.
     pub consecutive_failures: u32,
+    /// Schema version of this persisted record. `0` for records written before
+    /// the extended fields existed.
+    #[serde(default)]
+    pub schema_version: u32,
+    /// Whether the task was enabled at persist time. `None` for legacy records.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// ISO 8601 timestamp until which the task is in backoff, if any.
+    #[serde(default)]
+    pub backoff_until_ts: Option<String>,
+    /// Most recent error message if the last execution failed.
+    #[serde(default)]
+    pub last_error: Option<String>,
+    /// Terminal outcome of the last execution: `success`, `failed`, or `skipped`.
+    #[serde(default)]
+    pub last_outcome: Option<String>,
 }
 
 mod fjall_store;
@@ -292,12 +315,19 @@ mod tests {
             last_run_ts: Some("2026-01-01T00:00:00Z".to_owned()),
             run_count: 42,
             consecutive_failures: 1,
+            schema_version: TASK_STATE_SCHEMA_VERSION,
+            enabled: Some(true),
+            backoff_until_ts: None,
+            last_error: None,
+            last_outcome: Some("success".to_owned()),
         };
         store.save(&state).unwrap();
 
         let loaded = store.load_all().unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].task_id, "test-task");
+        assert_eq!(loaded[0].enabled, Some(true));
+        assert_eq!(loaded[0].last_outcome.as_deref(), Some("success"));
         assert_eq!(loaded[0].run_count, 42);
         assert_eq!(loaded[0].consecutive_failures, 1);
         assert_eq!(
@@ -316,6 +346,7 @@ mod tests {
             last_run_ts: None,
             run_count: 1,
             consecutive_failures: 0,
+            ..TaskState::default()
         };
         store.save(&state).unwrap();
 
@@ -324,6 +355,7 @@ mod tests {
             last_run_ts: Some("2026-03-01T12:00:00Z".to_owned()),
             run_count: 5,
             consecutive_failures: 0,
+            ..TaskState::default()
         };
         store.save(&updated).unwrap();
 
@@ -353,6 +385,7 @@ mod tests {
                     last_run_ts: Some("2026-03-13T10:00:00Z".to_owned()),
                     run_count: 7,
                     consecutive_failures: 2,
+                    ..TaskState::default()
                 })
                 .unwrap();
         }

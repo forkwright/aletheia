@@ -37,11 +37,9 @@ pub(crate) async fn execute_graph_cleanup(
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
 ) -> crate::error::Result<crate::runner::ExecutionResult> {
     let Some(executor) = knowledge_executor else {
-        return Ok(crate::runner::ExecutionResult {
-            success: false,
-            errors: 0,
-            output: Some("no knowledge executor configured".to_owned()),
-        });
+        return Ok(crate::runner::ExecutionResult::skipped(Some(
+            "no knowledge executor configured".to_owned(),
+        )));
     };
 
     let nous_id_owned = nous_id.to_owned();
@@ -65,14 +63,10 @@ pub(crate) async fn execute_graph_cleanup(
         context: "graph cleanup cron",
     })??;
 
-    Ok(crate::runner::ExecutionResult {
-        success: true,
-        errors: 0,
-        output: Some(format!(
-            "graph cleanup: {} processed, {} removed in {}ms",
-            report.items_processed, report.items_modified, report.duration_ms
-        )),
-    })
+    Ok(crate::runner::ExecutionResult::success(Some(format!(
+        "graph cleanup: {} processed, {} removed in {}ms",
+        report.items_processed, report.items_modified, report.duration_ms
+    ))))
 }
 
 #[cfg(test)]
@@ -92,7 +86,7 @@ mod tests {
         let result = execute_graph_cleanup("test-nous", None)
             .await
             .expect("should not error");
-        assert!(!result.success);
+        assert!(!result.is_success());
         assert!(
             result
                 .output

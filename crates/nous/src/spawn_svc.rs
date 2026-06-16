@@ -5,7 +5,6 @@ use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
 use hermeneus::provider::ProviderRegistry;
@@ -18,7 +17,7 @@ use mneme::embedding::EmbeddingProvider;
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
-use organon::types::{SpawnRequest, SpawnResult, SpawnService, ToolServices};
+use organon::types::{SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolServices};
 use taxis::oikos::Oikos;
 use tokio::sync::Mutex;
 
@@ -240,9 +239,11 @@ impl SpawnService for SpawnServiceImpl {
     fn spawn_and_run(
         &self,
         request: SpawnRequest,
-        parent_nous_id: &str,
+        context: SpawnContext,
     ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
-        let (spawn_id, config, session_key) = self.build_spawn_config(&request, parent_nous_id);
+        let parent_nous_id = context.parent_nous_id.clone();
+        let parent_cancel = context.parent_cancel.clone();
+        let (spawn_id, config, session_key) = self.build_spawn_config(&request, &parent_nous_id);
         let timeout = Duration::from_secs(request.timeout_secs);
         let task = request.task.clone();
         let workspace = config.workspace.clone();
@@ -299,8 +300,9 @@ impl SpawnService for SpawnServiceImpl {
                     return Err(format!("failed to write SOUL.md: {e}"));
                 }
 
-                // WHY: ephemeral actors get their own cancellation token: short-lived, no shared parent
-                let ephemeral_cancel = CancellationToken::new();
+                // WHY(#5088): child actor lifetime is tied to the parent turn so
+                // parent cancellation does not leave spawned work running.
+                let ephemeral_cancel = parent_cancel.child_token();
                 let actor_cancel = ephemeral_cancel.clone();
                 let (cross_tx, cross_rx) = if let Some(router) = router.as_ref() {
                     let (tx, rx) = tokio::sync::mpsc::channel(32);
@@ -337,23 +339,31 @@ impl SpawnService for SpawnServiceImpl {
                 // turn itself when the parent timeout fires. Wrapping only the
                 // waiting future with `tokio::time::timeout` drops the reply but
                 // leaves the pipeline running inside the actor (#4776).
-                let turn_cancel = CancellationToken::new();
-                let result = tokio::time::timeout(
-                    timeout,
-                    handle.send_turn_with_cancel(
-                        &session_key,
-                        None,
-                        &task,
-                        DEFAULT_SEND_TIMEOUT,
-                        turn_cancel.clone(),
-                    ),
-                )
-                .await;
-
-                if result.is_err() {
-                    turn_cancel.cancel();
-                    ephemeral_cancel.cancel();
-                }
+                let turn_cancel = ephemeral_cancel.child_token();
+                let result = tokio::select! {
+                    biased;
+                    () = parent_cancel.cancelled() => {
+                        turn_cancel.cancel();
+                        ephemeral_cancel.cancel();
+                        None
+                    }
+                    result = tokio::time::timeout(
+                        timeout,
+                        handle.send_turn_with_cancel(
+                            &session_key,
+                            None,
+                            &task,
+                            DEFAULT_SEND_TIMEOUT,
+                            turn_cancel.clone(),
+                        ),
+                    ) => {
+                        if result.is_err() {
+                            turn_cancel.cancel();
+                            ephemeral_cancel.cancel();
+                        }
+                        Some(result)
+                    }
+                };
 
                 // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown of ephemeral actor
                 let _ = handle.shutdown().await;
@@ -366,22 +376,31 @@ impl SpawnService for SpawnServiceImpl {
                 let _ = tokio::fs::remove_dir_all(&nous_dir).await;
 
                 match result {
-                    Ok(Ok(turn)) => Ok(SpawnResult {
+                    Some(Ok(Ok(turn))) => Ok(SpawnResult {
                         content: turn.content,
                         is_error: false,
                         input_tokens: turn.usage.input_tokens,
                         output_tokens: turn.usage.output_tokens,
                     }),
-                    Ok(Err(e)) => Ok(SpawnResult {
+                    Some(Ok(Err(e))) => Ok(SpawnResult {
                         content: format!("Sub-agent error: {e}"),
                         is_error: true,
                         input_tokens: 0,
                         output_tokens: 0,
                     }),
-                    Err(_elapsed) => {
+                    Some(Err(_elapsed)) => {
                         warn!(timeout_secs = timeout.as_secs(), "sub-agent timed out");
                         Ok(SpawnResult {
                             content: format!("Sub-agent timed out after {}s", timeout.as_secs()),
+                            is_error: true,
+                            input_tokens: 0,
+                            output_tokens: 0,
+                        })
+                    }
+                    None => {
+                        warn!("sub-agent cancelled by parent turn");
+                        Ok(SpawnResult {
+                            content: "Sub-agent cancelled by parent turn".to_owned(),
                             is_error: true,
                             input_tokens: 0,
                             output_tokens: 0,
@@ -474,7 +493,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 30,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");
@@ -548,7 +567,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 30,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");
@@ -650,7 +669,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 1,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");
@@ -675,6 +694,62 @@ mod tests {
         assert!(
             !stuck.completed(),
             "stuck provider should not complete after cancellation"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn spawn_parent_cancel_returns_error_and_stops_child() {
+        let (_dir, oikos) = make_oikos();
+
+        let stuck = Arc::new(StuckProvider::new());
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(StuckProvider::clone_ref(&stuck)));
+        let svc = SpawnServiceImpl::new(Arc::new(providers), Arc::new(ToolRegistry::new()), oikos);
+        let parent_cancel = tokio_util::sync::CancellationToken::new();
+        let context = SpawnContext::new("test-parent", parent_cancel.clone());
+        let task = tokio::spawn(async move {
+            svc.spawn_and_run(
+                SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Stuck task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                context,
+            )
+            .await
+            .expect("spawn")
+        });
+
+        for _ in 0..50 {
+            if stuck.started() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            stuck.started(),
+            "stuck provider should have started the child turn"
+        );
+
+        parent_cancel.cancel();
+        let result = tokio::time::timeout(Duration::from_secs(3), task)
+            .await
+            .expect("parent cancellation should return promptly")
+            .expect("spawn task should not panic");
+
+        assert!(result.is_error);
+        assert!(result.content.contains("cancelled by parent turn"));
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), stuck.dropped())
+                .await
+                .is_ok(),
+            "stuck provider future should be dropped after parent cancellation"
+        );
+        assert!(
+            !stuck.completed(),
+            "stuck provider should not complete after parent cancellation"
         );
     }
 
@@ -813,7 +888,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 30,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");
@@ -835,7 +910,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 30,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");

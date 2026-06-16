@@ -1,7 +1,7 @@
 [package]
 name = "poiesis-theme"
 version.workspace = true
-description = "(scaffold) Theme registry, token model, and brand-asset sinks (CSS, OOXML clrScheme, Pandoc doc-vars) for poiesis"
+description = "Theme registry, token model, and brand-asset sinks (CSS, OOXML clrScheme, Pandoc doc-vars) for poiesis"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -25,8 +25,3 @@ tempfile = { version = "=3.27.0", default-features = false }
 
 [lints]
 workspace = true
-
-[package.metadata.kanon]
-maturity = "scaffold"
-since = "2026-05-28"
-exit-criteria = "Wire ResolvedTheme into the poiesis Renderer trait (B-001), pack assets/<name>-base.pptx (B-004), register THEME/* rules with the QA gate (B-008), and add the byte-stable offsite-CSS regression test (B-003 / B-011)."

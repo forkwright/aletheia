@@ -1,13 +1,10 @@
 //! Cost estimation and retry backoff utilities.
 
 use std::collections::HashMap;
-use std::time::Duration;
 
-use koina::retry::BackoffStrategy;
-
-use crate::error;
-use crate::models::{BACKOFF_BASE_MS, BACKOFF_MAX_MS};
 use crate::provider::ModelPricing;
+
+pub(crate) use crate::retry::backoff_delay;
 
 /// Derive the model family name by stripping the last dash-separated segment.
 ///
@@ -112,19 +109,4 @@ pub(crate) fn estimate_cost_with_cache(
             + usage.cache_write_tokens as f64 * p.input_cost_per_mtok * koina::models::cache_write_ratio()) // kanon:ignore RUST/as-cast
             / 1_000_000.0
     }
-}
-
-pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> Duration {
-    if let Some(error::Error::RateLimited { retry_after_ms, .. }) = last_error {
-        return Duration::from_millis(*retry_after_ms);
-    }
-
-    let strategy = BackoffStrategy::ExponentialJitter {
-        base: Duration::from_millis(BACKOFF_BASE_MS),
-        factor: 2,
-        max_delay: Duration::from_millis(BACKOFF_MAX_MS),
-    };
-    // WHY: call site passes 1-indexed attempt; delay_for_attempt is 0-indexed
-    let delay = strategy.delay_for_attempt(attempt.saturating_sub(1));
-    delay.max(Duration::from_millis(100))
 }

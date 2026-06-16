@@ -580,3 +580,68 @@ async fn send_message_start_event_includes_reconnect_ids() {
         "turn_id must be a non-empty string"
     );
 }
+
+#[tokio::test]
+async fn send_message_reconnect_replays_buffered_events() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "Reconnect replay test" })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    let body = body_string(resp).await;
+    let events = collect_sse_data_events(&body);
+
+    let start =
+        find_sse_event(&events, "message_start").expect("stream must contain message_start");
+    let session_id = start["session_id"].as_str().unwrap();
+    let turn_id = start["turn_id"].as_str().unwrap();
+
+    let token = default_token();
+    let reconnect_req = Request::builder()
+        .method("GET")
+        .uri(format!(
+            "/api/v1/sessions/{session_id}/turns/{turn_id}/events"
+        ))
+        .header("authorization", format!("Bearer {token}"))
+        .header("last-event-id", "0")
+        .body(Body::empty())
+        .unwrap();
+    let reconnect_resp = router.oneshot(reconnect_req).await.unwrap();
+    assert_eq!(reconnect_resp.status(), StatusCode::OK);
+    let ct = reconnect_resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(ct.contains("text/event-stream"));
+
+    let reconnect_body = body_string(reconnect_resp).await;
+    let replayed = collect_sse_data_events(&reconnect_body);
+
+    let lifecycle = replayed
+        .first()
+        .expect("reconnect must emit lifecycle state");
+    assert_eq!(lifecycle["type"], "turn_reconnect_state");
+    assert_eq!(lifecycle["state"], "completed");
+    assert_eq!(lifecycle["live"], false);
+
+    let replayed_start =
+        find_sse_event(&replayed, "message_start").expect("reconnect must replay message_start");
+    assert_eq!(replayed_start["session_id"], session_id);
+    assert_eq!(replayed_start["turn_id"], turn_id);
+    assert!(
+        find_sse_event(&replayed, "text_delta").is_some(),
+        "reconnect must replay buffered text_delta"
+    );
+    assert!(
+        find_sse_event(&replayed, "message_complete").is_some(),
+        "reconnect must replay buffered message_complete"
+    );
+}

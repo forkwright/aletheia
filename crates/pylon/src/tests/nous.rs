@@ -227,6 +227,17 @@ async fn nous_status_response_has_all_fields() {
     assert!(body["thinking_budget"].is_number());
     assert!(body["max_tool_iterations"].is_number());
     assert!(body["status"].is_string());
+    assert!(body["background_failure_total_count"].is_number());
+    assert!(body["background_failure_recent_count"].is_number());
+    assert!(
+        body["background_failure_latest_message"].is_null()
+            || body["background_failure_latest_message"].is_string()
+    );
+    assert!(
+        body["background_failure_latest_kind"].is_null()
+            || body["background_failure_latest_kind"].is_string()
+    );
+    assert!(body["background_health_degraded"].is_boolean());
 }
 
 #[tokio::test]

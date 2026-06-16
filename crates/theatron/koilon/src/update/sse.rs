@@ -98,7 +98,7 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
     );
 
     app.restore_sse(Some(crate::api::sse::SseConnection::connect(
-        app.client.raw_client().clone(),
+        app.client.streaming_client().clone(),
         &app.config.url,
     )));
 
@@ -218,6 +218,19 @@ pub(crate) fn handle_sse_distill_before(app: &mut App, nous_id: NousId) {
 pub(crate) fn handle_sse_distill_stage(app: &mut App, nous_id: NousId, stage: String) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.compaction_stage = Some(sanitize_for_display(&stage).into_owned());
+    }
+}
+
+#[tracing::instrument(skip_all, fields(dropped))]
+pub(crate) async fn handle_sse_stream_lagged(app: &mut App, dropped: u64) {
+    app.connection.sse_last_event_at = Some(std::time::Instant::now());
+    app.viewport.error_toast = Some(ErrorToast::new(format!(
+        "Stream lagged; {dropped} events dropped - resyncing..."
+    )));
+    // WHY: the server explicitly told us we missed events; refresh the focused
+    // session so the UI does not stay stale relative to the recovered stream.
+    if !app.connection.is_stream_busy() {
+        app.load_focused_session().await;
     }
 }
 

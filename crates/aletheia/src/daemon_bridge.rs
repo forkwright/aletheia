@@ -43,13 +43,11 @@ impl DaemonBridge for NousDaemonBridge {
         let prompt = prompt.to_owned();
 
         Box::pin(async move {
-            let Some(handle) = self.nous_manager.get(&nous_id).cloned() else {
+            let Some(handle) = self.nous_manager.get(&nous_id) else {
                 tracing::warn!(nous_id = %nous_id, "daemon bridge: nous actor not found");
-                return Ok(ExecutionResult {
-                    success: false,
-                    errors: 0,
-                    output: Some(format!("nous actor {nous_id} not found")),
-                });
+                return Ok(ExecutionResult::failed(Some(format!(
+                    "nous actor {nous_id} not found"
+                ))));
             };
 
             match send_turn_with_cancel_timeout(
@@ -67,11 +65,7 @@ impl DaemonBridge for NousDaemonBridge {
                         content_len = result.content.len(),
                         "daemon bridge: prompt delivered"
                     );
-                    Ok(ExecutionResult {
-                        success: true,
-                        errors: 0,
-                        output: Some(result.content),
-                    })
+                    Ok(ExecutionResult::success(Some(result.content)))
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -79,11 +73,7 @@ impl DaemonBridge for NousDaemonBridge {
                         error = %e,
                         "daemon bridge: turn failed"
                     );
-                    Ok(ExecutionResult {
-                        success: false,
-                        errors: 0,
-                        output: Some(format!("turn failed: {e}")),
-                    })
+                    Ok(ExecutionResult::failed(Some(format!("turn failed: {e}"))))
                 }
             }
         })

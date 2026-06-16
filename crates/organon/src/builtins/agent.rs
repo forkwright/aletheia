@@ -12,8 +12,8 @@ use super::workspace::{extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, SpawnRequest, SpawnResult, ToolCategory,
-    ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, SpawnContext, SpawnRequest, SpawnResult,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.agent_dispatch_timeout_secs`.
@@ -63,7 +63,8 @@ impl ToolExecutor for SessionsSpawnExecutor {
                 timeout_secs: timeout,
             };
 
-            match spawn_svc.spawn_and_run(request, ctx.nous_id.as_str()).await {
+            let spawn_context = SpawnContext::new(ctx.nous_id.as_str(), ctx.turn_cancel());
+            match spawn_svc.spawn_and_run(request, spawn_context).await {
                 Ok(result) => {
                     let json = serde_json::json!({
                         "content": result.content,
@@ -118,6 +119,7 @@ impl ToolExecutor for SessionsDispatchExecutor {
             let default_timeout = extract_opt_u64(&input.arguments, "timeoutSeconds")
                 .unwrap_or(ctx.tool_config.agent_dispatch_timeout_secs);
             let nous_id = ctx.nous_id.as_str().to_owned();
+            let parent_cancel = ctx.turn_cancel();
 
             let mut join_set = tokio::task::JoinSet::new();
 
@@ -151,10 +153,14 @@ impl ToolExecutor for SessionsDispatchExecutor {
 
                 let svc = Arc::clone(spawn_svc);
                 let parent = nous_id.clone();
-                join_set.spawn(async move { svc.spawn_and_run(request, &parent).await });
+                let cancel = parent_cancel.clone();
+                join_set.spawn(async move {
+                    svc.spawn_and_run(request, SpawnContext::new(parent, cancel))
+                        .await
+                });
             }
 
-            Ok(aggregate_dispatch_results(join_set).await)
+            Ok(aggregate_dispatch_results(join_set, parent_cancel).await)
         })
     }
 }
@@ -173,11 +179,30 @@ impl ToolExecutor for SessionsDispatchExecutor {
 /// inside the workspace's `too_many_lines` clippy threshold.
 async fn aggregate_dispatch_results(
     mut join_set: tokio::task::JoinSet<std::result::Result<SpawnResult, String>>,
+    parent_cancel: tokio_util::sync::CancellationToken,
 ) -> ToolResult {
     let mut results = Vec::with_capacity(join_set.len());
     let mut failure_reasons: Vec<String> = Vec::new();
     let mut success_count: u32 = 0;
-    while let Some(join_result) = join_set.join_next().await {
+    let mut parent_cancelled = false;
+    while !join_set.is_empty() {
+        let join_result = if parent_cancelled {
+            join_set.join_next().await
+        } else {
+            tokio::select! {
+                result = join_set.join_next() => result,
+                () = parent_cancel.cancelled() => {
+                    parent_cancelled = true;
+                    join_set.abort_all();
+                    continue;
+                }
+            }
+        };
+
+        let Some(join_result) = join_result else {
+            break;
+        };
+
         match join_result {
             Ok(Ok(spawn_result)) => {
                 if spawn_result.is_error {
@@ -199,6 +224,13 @@ async fn aggregate_dispatch_results(
                 failure_reasons.push(format!("spawn error: {e}"));
                 results.push(serde_json::json!({
                     "content": format!("Spawn error: {e}"),
+                    "is_error": true,
+                }));
+            }
+            Err(e) if parent_cancelled && e.is_cancelled() => {
+                failure_reasons.push("sub-agent cancelled by parent turn".to_owned());
+                results.push(serde_json::json!({
+                    "content": "Cancelled by parent turn",
                     "is_error": true,
                 }));
             }
@@ -373,8 +405,8 @@ mod tests {
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
     use crate::types::{
-        ServerToolConfig, SpawnRequest, SpawnResult, SpawnService, ToolContext, ToolInput,
-        ToolServices,
+        ServerToolConfig, SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolContext,
+        ToolInput, ToolServices,
     };
 
     fn mock_ctx() -> ToolContext {
@@ -424,7 +456,7 @@ mod tests {
         fn spawn_and_run(
             &self,
             _request: SpawnRequest,
-            _parent_nous_id: &str,
+            _context: SpawnContext,
         ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
             Box::pin(async {
                 Ok(SpawnResult {
@@ -435,6 +467,34 @@ mod tests {
                 })
             })
         }
+    }
+
+    #[tokio::test]
+    async fn dispatch_aggregation_aborts_pending_children_on_parent_cancel() {
+        let parent_cancel = tokio_util::sync::CancellationToken::new();
+        let mut join_set = tokio::task::JoinSet::new();
+        join_set.spawn(async {
+            std::future::pending::<std::result::Result<SpawnResult, String>>().await
+        });
+
+        parent_cancel.cancel();
+        let result = super::aggregate_dispatch_results(join_set, parent_cancel).await;
+
+        assert!(
+            result.is_error,
+            "expected parent cancellation to fail dispatch"
+        );
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("Cancelled by parent turn"),
+            "expected cancelled child outcome in payload"
+        );
+        assert!(
+            result.outcome.failure_reason().contains("parent turn"),
+            "expected parent cancellation reason"
+        );
     }
 
     #[tokio::test]

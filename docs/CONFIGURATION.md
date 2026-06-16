@@ -66,7 +66,6 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `context_tokens` | u32 | `200000` | Context window budget (tokens) |
 | `max_output_tokens` | u32 | `16384` | Max tokens per response |
 | `bootstrap_max_tokens` | u32 | `40000` | Max tokens for bootstrap context injection |
-| `user_timezone` | string | `"UTC"` | IANA timezone for time-aware prompts |
 | `timeout_seconds` | u32 | `300` | LLM call timeout |
 | `thinking_enabled` | bool | `false` | Enable extended thinking |
 | `thinking_budget` | u32 | `10000` | Max tokens for extended thinking |
@@ -461,7 +460,7 @@ The `aletheia add-nous` scaffolding command currently validates only `anthropic`
 |-------|------|---------|-------------|
 | `session_max_age_days` | u32 | `90` | Max age for closed sessions |
 | `orphan_message_max_age_days` | u32 | `30` | Max age for orphaned messages |
-| `max_sessions_per_nous` | u32 | `0` | Max sessions per agent (0 = unlimited) |
+| `max_sessions_per_nous` | u32 | `0` | Max sessions per agent (0 = unlimited). A nonzero value is enforced per `nous_id` when retention is enabled. |
 | `archive_before_delete` | bool | `true` | Export sessions to JSON before deletion |
 
 ```toml
@@ -469,6 +468,26 @@ The `aletheia add-nous` scaffolding command currently validates only `anthropic`
 session_max_age_days = 90
 archive_before_delete = true
 ```
+
+### Session cap semantics
+
+The TOML key is `maxSessionsPerNous`; `max_sessions_per_nous` is also accepted as
+an alias. When `maintenance.retention.enabled` is `true` and
+`maxSessionsPerNous` is greater than `0`, the retention task enforces a per-agent
+(`nous_id`) cap:
+
+- `0` means unlimited; no cap-based deletions occur.
+- A nonzero cap is enforced per `nous_id`. Sessions are ordered newest first by
+  `updated_at`, then by `id` ascending for ties. The newest `maxSessionsPerNous`
+  records are retained.
+- Active sessions are protected and are never deleted by the cap.
+- Archived and distilled sessions that fall outside the retained slots are
+  eligible for deletion.
+- If `archiveBeforeDelete` is `true`, cap deletions are exported to
+  `instance/data/archive/sessions/{session_id}.json` before removal, using the
+  same archive path as TTL cleanup.
+- The retention summary reports the count of cap-based session deletions
+  separately from TTL/orphan cleanup.
 
 ---
 
@@ -559,6 +578,10 @@ Background maintenance tasks. Some run automatically when the server is running;
 
 ### maintenance.drift_detection
 
+Drift detection compares the live instance root against the sibling
+`instance.example` template. If the template directory is unavailable, the task
+reports degraded/failed rather than clean.
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether drift detection runs |
@@ -644,6 +667,45 @@ enabled = true
 [maintenance.knowledge_maintenance_serendipity]
 enabled = true
 cadence = "0 0 7 * * *"
+```
+
+### maintenance.prosoche
+
+Prosoche heartbeat and self-audit scheduling. The mode selects whether the
+in-process daemon scheduler, an external systemd timer, both, or neither drive
+the heartbeat path. Defaults preserve the historical daemon-only behavior.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | string | `"daemon"` | Scheduling owner: `"daemon"`, `"external"`, `"both"`, or `"disabled"` |
+| `heartbeat.enabled` | bool | `true` | Run the per-agent prosoche attention check |
+| `heartbeat.intervalSecs` | u64 | `2700` | Attention-check interval (45 minutes) |
+| `heartbeat.activeWindow` | object | `{ startHour = 8, endHour = 23 }` | Optional hour window `(startHour, endHour)` for attention checks |
+| `selfAudit.enabled` | bool | `true` | Run the prosoche self-audit task |
+| `selfAudit.intervalSecs` | u64 | `21600` | Self-audit interval (6 hours) |
+| `selfAudit.activeWindow` | object | `{ startHour = 8, endHour = 23 }` | Optional hour window `(startHour, endHour)` for self-audits |
+| `externalTimer.enabled` | bool | `false` | Use the external `aletheia-health.timer` path |
+| `externalTimer.taskId` | string | `"prosoche-self-audit"` | Task id invoked by `scripts/aletheia-heartbeat.sh` |
+| `externalTimer.intervalSecs` | u64 | `300` | Cadence of the external timer (must match the systemd unit) |
+
+```toml
+[maintenance.prosoche]
+mode = "daemon"
+
+[maintenance.prosoche.heartbeat]
+enabled = true
+intervalSecs = 2700
+activeWindow = { startHour = 8, endHour = 23 }
+
+[maintenance.prosoche.selfAudit]
+enabled = true
+intervalSecs = 21600
+activeWindow = { startHour = 8, endHour = 23 }
+
+[maintenance.prosoche.externalTimer]
+enabled = false
+taskId = "prosoche-self-audit"
+intervalSecs = 300
 ```
 
 ---
@@ -810,6 +872,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `ALETHEIA_METRICS_URL` | `scripts/health-monitor.sh` | Metrics endpoint. Defaults to `http://localhost:18789/metrics`. |
 | `ALETHEIA_NOTIFY_TO` | `scripts/health-monitor.sh` | Optional `signal-cli` recipient for health alerts. |
 | `ALETHEIA_HEARTBEAT_TASK` | `scripts/aletheia-heartbeat.sh` | Task id pinged by the heartbeat. Defaults to `prosoche-self-audit`. |
+| `ALETHEIA_HEARTBEAT_INTERVAL_SECS` | `scripts/aletheia-heartbeat.sh`, `aletheia-health.timer` | External heartbeat cadence in seconds. Defaults to `300` and must stay in sync with the systemd timer. |
 | `ALETHEIA_PRIMARY_KEY` | `taxis::encrypt` | Master encryption key. Overrides the instance keyfile when set. Security-sensitive. |
 | `ALETHEIA_JWT_SECRET` | `taxis` gateway | JWT signing key used when `gateway.jwt_secret` is unset. Security-sensitive. |
 | `ALETHEIA_ALLOW_AUTH_NONE` | `taxis::validate` | Operator gate: set to `1` to permit `auth = "none"`. Off by default. Security-sensitive. |

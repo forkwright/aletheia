@@ -11,6 +11,7 @@ use sha2::Sha256;
 use tracing::instrument;
 
 use subtle::ConstantTimeEq;
+use zeroize::Zeroizing;
 
 use koina::secret::SecretString;
 
@@ -119,8 +120,8 @@ impl JwtConfig {
 
 /// Manages JWT issuance and validation.
 pub struct JwtManager {
-    /// Raw secret bytes for HMAC-SHA256 signing.
-    signing_key_bytes: Vec<u8>,
+    /// Secret bytes for HMAC-SHA256 signing, zeroized on drop.
+    signing_key_bytes: Zeroizing<Vec<u8>>,
     config: JwtConfig,
 }
 
@@ -128,7 +129,8 @@ impl JwtManager {
     /// Create a new JWT manager from the given config.
     #[must_use]
     pub fn new(config: JwtConfig) -> Self {
-        let signing_key_bytes = config.signing_key.expose_secret().as_bytes().to_vec();
+        let signing_key_bytes =
+            Zeroizing::new(config.signing_key.expose_secret().as_bytes().to_vec());
         Self {
             signing_key_bytes,
             config,
@@ -382,6 +384,16 @@ mod tests {
         assert_eq!(claims.role, Role::Operator);
         assert_eq!(claims.kind, TokenKind::Access);
         assert!(claims.nous_id.is_none());
+    }
+
+    #[test]
+    fn signing_key_is_zeroizing_wrapper() {
+        let mgr = hmac_manager();
+        let _: &Zeroizing<Vec<u8>> = &mgr.signing_key_bytes;
+        let token = mgr.issue_access("user-5563", Role::Operator, None).unwrap();
+        let claims = mgr.validate(&token).unwrap();
+        assert_eq!(claims.sub, "user-5563");
+        assert_eq!(claims.role, Role::Operator);
     }
 
     #[test]

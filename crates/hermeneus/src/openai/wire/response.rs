@@ -338,7 +338,8 @@ fn map_finish_reason(reason: &str) -> StopReason {
     match reason {
         "length" => StopReason::MaxTokens,
         "tool_calls" | "function_call" => StopReason::ToolUse,
-        "stop" | "content_filter" | "" => StopReason::EndTurn,
+        "content_filter" => StopReason::ContentFiltered,
+        "stop" | "" => StopReason::EndTurn,
         other => {
             tracing::debug!(
                 reason = other,
@@ -417,6 +418,22 @@ mod tests {
             }
             other => panic!("expected ToolUse, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn content_filter_finish_reason_maps_to_content_filtered() {
+        let body = r#"{
+            "id": "chatcmpl-filter",
+            "model": "qwen",
+            "choices": [{
+                "message": { "role": "assistant", "content": "" },
+                "finish_reason": "content_filter",
+                "index": 0
+            }]
+        }"#;
+        let parsed: ChatCompletionResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.stop_reason, StopReason::ContentFiltered);
     }
 
     #[test]

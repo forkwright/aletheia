@@ -12,8 +12,8 @@ pub use krites as engine;
 pub use eidos::id;
 /// Knowledge graph domain types (re-exported from `eidos`).
 pub use eidos::knowledge;
-/// Error types (re-exported from `graphe`).
-pub use graphe::error;
+/// Error types for knowledge operations.
+pub mod error;
 
 /// Memory admission control: structured decision gate for knowledge graph insertion.
 pub mod admission;

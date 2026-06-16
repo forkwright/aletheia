@@ -414,40 +414,6 @@ impl CacheControl {
     }
 }
 
-/// Caching strategy for prompt caching.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub(crate) enum CachingStrategy {
-    #[default]
-    Auto,
-    Disabled,
-}
-
-/// Configuration for prompt caching behavior.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "prompt caching wire types; not yet wired into provider"
-    )
-)]
-pub(crate) struct CachingConfig {
-    pub enabled: bool,
-    #[serde(default)]
-    pub strategy: CachingStrategy,
-}
-
-impl Default for CachingConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            strategy: CachingStrategy::Auto,
-        }
-    }
-}
-
 /// Control tool use behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -645,6 +611,8 @@ pub enum StopReason {
     MaxTokens,
     /// Hit a stop sequence.
     StopSequence,
+    /// Provider safety/content filter stopped generation.
+    ContentFiltered,
 }
 
 impl StopReason {
@@ -657,6 +625,7 @@ impl StopReason {
             Self::ToolUse => "tool_use",
             Self::MaxTokens => "max_tokens",
             Self::StopSequence => "stop_sequence",
+            Self::ContentFiltered => "content_filtered",
         }
     }
 }
@@ -670,6 +639,7 @@ impl std::str::FromStr for StopReason {
             "tool_use" => Ok(Self::ToolUse),
             "max_tokens" => Ok(Self::MaxTokens),
             "stop_sequence" => Ok(Self::StopSequence),
+            "content_filtered" => Ok(Self::ContentFiltered),
             other => Err(format!("unknown stop_reason: {other}")),
         }
     }

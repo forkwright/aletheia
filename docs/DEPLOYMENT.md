@@ -370,9 +370,14 @@ Status values: `healthy` (all pass), `degraded` (warnings, e.g. no LLM provider)
 
 ## Prosoche heartbeat timer
 
-The optional user timer checks the running server and then executes the local
-prosoche self-audit task. The timer starts one minute after activation and runs
-every five minutes.
+The optional user timer is the **external** prosoche heartbeat path. It checks
+the running server and then executes the local prosoche self-audit task. The
+timer starts one minute after activation and runs every five minutes.
+
+Use this timer when `[maintenance.prosoche].mode` is set to `"external"` or
+`"both"`. With the default `mode = "daemon"`, the daemon's in-process scheduler
+handles prosoche internally and the timer is unnecessary; running both without
+`mode = "both"` can execute the self-audit twice.
 
 ```bash
 install -m 0755 scripts/aletheia-heartbeat.sh ~/.local/bin/aletheia-heartbeat
@@ -461,6 +466,9 @@ The template sets
 `EnvironmentFile` from `%h/aletheia/instance/config/env` (silently ignored if absent).
 `ReadWritePaths=%h/aletheia/instance` grants write access to the instance under
 `ProtectSystem=strict`; update it when you change the instance root.
+Drift detection resolves the sibling `instance.example` template from the
+configured instance root; if the template is unavailable, the task reports
+degraded/failed rather than clean.
 If your API key is stored in `instance/config/credentials/anthropic.json` (written by
 `aletheia init`), no extra environment setup is needed.
 
@@ -507,6 +515,10 @@ aletheia maintenance run drift-detection        # check instance structure
 aletheia maintenance run db-monitor             # check database sizes
 aletheia maintenance run all                    # run everything
 ```
+
+Drift detection compares the live instance root against the sibling
+`instance.example` template. If the template directory is unavailable, the task
+reports degraded/failed rather than clean.
 
 ---
 

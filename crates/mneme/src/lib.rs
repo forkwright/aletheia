@@ -101,6 +101,11 @@ pub mod error {
     pub use graphe::error::Error;
 }
 
+/// Knowledge-domain error types and result alias (re-exported from `episteme`).
+pub mod knowledge_error {
+    pub use episteme::error::{Error, Result};
+}
+
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 pub mod portability {
     pub use graphe::portability::{
@@ -140,6 +145,19 @@ pub mod training {
         RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
         TrainingRecord,
     };
+}
+
+/// Finding types for attention-quality audits and eval reports.
+pub mod finding {
+    pub use eidos::knowledge::finding::{
+        ConfidenceSummary, EvidenceLevel, EvidenceRef, Finding, FindingStats, FindingSupport,
+        stable_hash,
+    };
+}
+
+/// Metadata provenance primitives for stamped artefacts.
+pub mod meta {
+    pub use eidos::meta::{ArtefactMeta, Provenance, ProvenanceProject, Stamped};
 }
 
 // ── Knowledge pipeline (episteme) ──────────────────────────────────────────
@@ -293,13 +311,15 @@ pub mod skill {
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
 pub mod skills {
     pub use episteme::skills::{
-        CandidateTracker, PendingSkill, SkillExtractor, ToolCallRecord, TrackResult,
+        CandidateTracker, PendingSkill, SkillExtractor, SkillReviewAudit, SkillReviewDecision,
+        SkillReviewInput, ToolCallRecord, TrackResult,
     };
 
     /// Skill extraction provider types.
     pub mod extract {
         pub use episteme::skills::extract::{
-            LlmCallSnafu, PendingSkill, SkillExtractionError, SkillExtractionProvider,
+            LlmCallSnafu, PendingSkill, SkillExtractionAudit, SkillExtractionError,
+            SkillExtractionProvider,
         };
     }
 }

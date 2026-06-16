@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-//! Parse Slack-style request text into a structured report scaffold.
+//! Parse Slack-style request text into a structured intake request.
 //!
 //! Keyword-based classification (no LLM call) for v1.  Reuses keyword patterns
 //! from [`aletheia_lexica`] where applicable.
@@ -38,9 +38,7 @@ pub struct IntakeRequest {
     pub requirements: Vec<String>,
 }
 
-pub use poiesis_scaffold::ScaffoldFile;
-
-/// Errors from intake parsing or scaffold generation.
+/// Errors from intake parsing.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
@@ -141,111 +139,6 @@ fn extract_requirements(description: &str) -> Vec<String> {
         .collect()
 }
 
-// ── Scaffold generation ───────────────────────────────────────────────────────
-
-/// Generate a skeleton file list for the given intake request.
-///
-/// # Errors
-///
-/// Currently infallible, but returns [`Result`] for forward compatibility.
-pub fn generate_scaffold(req: &IntakeRequest) -> Result<Vec<ScaffoldFile>> {
-    let slug = &req.slug;
-    let files = match req.kind {
-        RequestKind::Analysis => vec![
-            ScaffoldFile::new(
-                format!("{slug}.md"),
-                analysis_template(&req.description, &req.requirements).into_bytes(),
-            ),
-            ScaffoldFile::new(format!("{slug}_data.md"), b"# Data sources\n\n".to_vec()),
-        ],
-        RequestKind::Report => vec![
-            ScaffoldFile::new(
-                format!("{slug}.md"),
-                report_template(&req.description, &req.requirements).into_bytes(),
-            ),
-            ScaffoldFile::new(format!("{slug}_appendix.md"), b"# Appendix\n\n".to_vec()),
-        ],
-        RequestKind::Dashboard => vec![
-            ScaffoldFile::new(
-                format!("{slug}.md"),
-                dashboard_template(&req.description, &req.requirements).into_bytes(),
-            ),
-            ScaffoldFile::new(format!("{slug}_data.md"), b"# Data model\n\n".to_vec()),
-        ],
-        RequestKind::Unclassified => vec![ScaffoldFile::new(
-            format!("{slug}.md"),
-            generic_template(&req.description, &req.requirements).into_bytes(),
-        )],
-    };
-    Ok(files)
-}
-
-fn analysis_template(description: &str, requirements: &[String]) -> String {
-    let mut out = format!("# Analysis: {description}\n\n## Objective\n\n");
-    if !requirements.is_empty() {
-        out.push_str("## Requirements\n\n");
-        for req in requirements {
-            out.push_str("- ");
-            out.push_str(req);
-            out.push('\n');
-        }
-        out.push('\n');
-    }
-    out.push_str("## Methodology\n\n");
-    out.push_str("## Findings\n\n");
-    out.push_str("## Conclusion\n\n");
-    out
-}
-
-fn report_template(description: &str, requirements: &[String]) -> String {
-    let mut out = format!("# Report: {description}\n\n## Executive Summary\n\n");
-    if !requirements.is_empty() {
-        out.push_str("## Requirements\n\n");
-        for req in requirements {
-            out.push_str("- ");
-            out.push_str(req);
-            out.push('\n');
-        }
-        out.push('\n');
-    }
-    out.push_str("## Background\n\n");
-    out.push_str("## Key Points\n\n");
-    out.push_str("## Recommendations\n\n");
-    out
-}
-
-fn dashboard_template(description: &str, requirements: &[String]) -> String {
-    let mut out = format!("# Dashboard: {description}\n\n## Overview\n\n");
-    if !requirements.is_empty() {
-        out.push_str("## Requirements\n\n");
-        for req in requirements {
-            out.push_str("- ");
-            out.push_str(req);
-            out.push('\n');
-        }
-        out.push('\n');
-    }
-    out.push_str("## Metrics\n\n");
-    out.push_str("## Visualisations\n\n");
-    out.push_str("## Data Refresh\n\n");
-    out
-}
-
-fn generic_template(description: &str, requirements: &[String]) -> String {
-    let mut out = format!("# {description}\n\n");
-    if !requirements.is_empty() {
-        out.push_str("## Requirements\n\n");
-        for req in requirements {
-            out.push_str("- ");
-            out.push_str(req);
-            out.push('\n');
-        }
-        out.push('\n');
-    }
-    out.push_str("## Notes\n\n");
-    out
-}
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
@@ -279,35 +172,6 @@ mod tests {
     fn parse_intake_falls_back_to_unclassified() {
         let req = parse_intake("hello world").expect("parse");
         assert_eq!(req.kind, RequestKind::Unclassified);
-    }
-
-    #[test]
-    fn generate_scaffold_returns_files() {
-        let req = IntakeRequest {
-            kind: RequestKind::Analysis,
-            slug: "q3-revenue".to_owned(),
-            description: "Analyze Q3 revenue".to_owned(),
-            requirements: vec!["Include YoY comparison".to_owned()],
-        };
-        let files = generate_scaffold(&req).expect("scaffold");
-        assert!(!files.is_empty());
-        assert!(
-            files
-                .iter()
-                .any(|f| f.path == std::path::Path::new("q3-revenue.md"))
-        );
-        assert!(
-            files
-                .iter()
-                .any(|f| f.path == std::path::Path::new("q3-revenue_data.md"))
-        );
-        for f in &files {
-            assert!(
-                !f.contents.is_empty(),
-                "{} must have content",
-                f.path.display()
-            );
-        }
     }
 
     #[test]

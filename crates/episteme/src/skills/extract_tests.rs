@@ -62,6 +62,7 @@ fn sample_candidate() -> SkillCandidate {
         last_seen: jiff::Timestamp::now(),
         heuristic_score: 0.72,
         pattern_type: Some(PatternType::Diagnostic),
+        evidence: Vec::new(),
     }
 }
 
@@ -467,6 +468,77 @@ fn pending_skill_serialization_roundtrip() {
 }
 
 #[test]
+fn pending_skill_provenance_records_redacted_evidence() {
+    let extracted = ExtractedSkill {
+        name: "reviewable-skill".to_owned(),
+        description: "Tests provenance".to_owned(),
+        steps: vec!["step".to_owned()],
+        tools_used: vec!["Bash".to_owned()],
+        domain_tags: vec!["test".to_owned()],
+        when_to_use: "For tests".to_owned(),
+    };
+    let tool_calls = vec![ToolCallRecord::new("Bash", 42).with_evidence(
+        "tool-1",
+        &serde_json::json!({
+            "cmd": "build",
+            "api_key": "test-key-not-real"
+        }),
+        Some("tool output"),
+        Some("receipt-1"),
+    )];
+    let mut candidate = sample_candidate();
+    candidate.session_refs = vec!["session-1".to_owned()];
+    candidate.evidence = vec![crate::skills::SkillObservationEvidence::new(
+        "session-1",
+        &tool_calls,
+    )];
+    let audit = SkillExtractionAudit {
+        model: Some("haiku-test".to_owned()),
+        system_prompt_ref: ContentEvidenceRef::sha256("system", "system prompt"),
+        user_prompt_ref: ContentEvidenceRef::sha256("user", "user prompt"),
+        response_ref: ContentEvidenceRef::sha256("response", "response body"),
+        extracted_at: jiff::Timestamp::now(),
+    };
+
+    let pending = PendingSkill::new_with_provenance(&extracted, &candidate, audit);
+    let json = pending.to_json().expect("pending skill serializes");
+    let back = PendingSkill::from_json(&json).expect("pending skill deserializes");
+
+    assert_eq!(
+        back.source_session_id.as_deref(),
+        Some("session-1"),
+        "source session should be retained for fact provenance"
+    );
+    assert_eq!(
+        back.source_evidence.sequence_hashes.len(),
+        1,
+        "sequence hash should be stored with candidate evidence"
+    );
+    let redacted_input = &back
+        .source_evidence
+        .observations
+        .first()
+        .expect("observation stored")
+        .tool_calls
+        .first()
+        .expect("tool call stored")
+        .redacted_input
+        .as_ref()
+        .expect("redacted input stored")
+        .get("api_key")
+        .expect("api_key field retained as redacted marker");
+    assert_eq!(
+        redacted_input.as_str(),
+        Some("[REDACTED]"),
+        "secret-like tool input fields should be redacted"
+    );
+    assert!(
+        back.extraction_audit.is_some(),
+        "extraction prompt/response audit refs should be retained"
+    );
+}
+
+#[test]
 fn pending_skill_approved_status() {
     let mut pending = PendingSkill {
         skill: SkillContent {
@@ -482,6 +554,10 @@ fn pending_skill_approved_status() {
         candidate_id: "c".to_owned(),
         status: "approved".to_owned(),
         extracted_at: jiff::Timestamp::now(),
+        source_session_id: None,
+        source_evidence: SkillSourceEvidence::default(),
+        extraction_audit: None,
+        review: None,
     };
     assert!(
         pending.is_approved(),

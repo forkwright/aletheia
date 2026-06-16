@@ -98,11 +98,33 @@ struct RegisteredTask {
     last_errors: u32,
 }
 
+/// Terminal outcome classification for a single task action.
+///
+/// WHY(#5129): a bare `success: bool` conflates "ran and succeeded" with
+/// "could not run because a dependency was not configured". A soft-skip must
+/// not be recorded as a success (it inflates run counts and masks
+/// misconfiguration) nor as a failure (it would trip the backoff/auto-disable
+/// machinery for a benign no-op).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TaskOutcome {
+    /// The task ran and completed without error.
+    Success,
+    /// The task ran and failed.
+    Failed,
+    /// The task did not run because a required dependency was absent.
+    Skipped,
+}
+
 /// Outcome of executing a single task action.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+///
+/// WHY(#5129): no `Default` derive — a task outcome must be an explicit
+/// `Success`/`Failed`/`Skipped` classification (constructed via the
+/// `success`/`failed`/`skipped` constructors), never a silent default that
+/// would mask misclassification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
-    /// Whether the task completed without error.
-    pub success: bool,
+    /// Terminal outcome classification for the task.
+    pub outcome: TaskOutcome,
     /// Task output or diagnostic message.
     pub output: Option<String>,
     /// Number of non-fatal errors encountered by the task implementation.
@@ -115,19 +137,61 @@ pub struct ExecutionResult {
 impl ExecutionResult {
     /// Build an execution result from a knowledge-maintenance report.
     ///
-    /// Maps [`MaintenanceOutcome::Success`] to `success: true`; degraded and
-    /// failure outcomes become `success: false` per existing task policy, while
-    /// the non-fatal error count is preserved for status and metrics.
+    /// Maps [`MaintenanceOutcome::Success`] to [`TaskOutcome::Success`]; degraded
+    /// and failure outcomes become [`TaskOutcome::Failed`] per existing task policy,
+    /// while the non-fatal error count is preserved for status and metrics.
     pub fn from_maintenance_report(
         report: &crate::maintenance::MaintenanceReport,
         output: String,
     ) -> Self {
         use crate::maintenance::MaintenanceOutcome;
         Self {
-            success: report.outcome() == MaintenanceOutcome::Success,
+            outcome: if report.outcome() == MaintenanceOutcome::Success {
+                TaskOutcome::Success
+            } else {
+                TaskOutcome::Failed
+            },
             output: Some(output),
             errors: report.errors,
         }
+    }
+}
+
+impl ExecutionResult {
+    /// Construct a successful result.
+    #[must_use]
+    pub fn success(output: Option<String>) -> Self {
+        Self {
+            outcome: TaskOutcome::Success,
+            output,
+            errors: 0,
+        }
+    }
+
+    /// Construct a failed result.
+    #[must_use]
+    pub fn failed(output: Option<String>) -> Self {
+        Self {
+            outcome: TaskOutcome::Failed,
+            output,
+            errors: 0,
+        }
+    }
+
+    /// Construct a soft-skip result (dependency not configured).
+    #[must_use]
+    pub fn skipped(output: Option<String>) -> Self {
+        Self {
+            outcome: TaskOutcome::Skipped,
+            output,
+            errors: 0,
+        }
+    }
+
+    /// Whether the task ran and completed successfully.
+    #[must_use]
+    pub fn is_success(&self) -> bool {
+        self.outcome == TaskOutcome::Success
     }
 }
 
