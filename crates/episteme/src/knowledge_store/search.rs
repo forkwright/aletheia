@@ -542,7 +542,10 @@ impl KnowledgeStore {
                         match raw.parse::<crate::knowledge::FactSensitivity>() {
                             Ok(s) => s,
                             Err(_) => {
-                                tracing::warn!(raw, "search: undecodable fact sensitivity; defaulting to Public");
+                                tracing::warn!(
+                                    raw,
+                                    "search: undecodable fact sensitivity; defaulting to Public"
+                                );
                                 crate::knowledge::FactSensitivity::default()
                             }
                         }
@@ -696,7 +699,10 @@ impl KnowledgeStore {
                         match raw.parse::<crate::knowledge::FactSensitivity>() {
                             Ok(s) => s,
                             Err(_) => {
-                                tracing::warn!(raw, "search: undecodable fact sensitivity; defaulting to Public");
+                                tracing::warn!(
+                                    raw,
+                                    "search: undecodable fact sensitivity; defaulting to Public"
+                                );
                                 crate::knowledge::FactSensitivity::default()
                             }
                         }

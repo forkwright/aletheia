@@ -290,7 +290,11 @@ fn parse_jsonl_facts(content: &str) -> crate::error::Result<Vec<Fact>> {
         }
     }
     if bad_lines > 0 {
-        tracing::warn!(bad_lines, total = facts.len(), "jsonl ingest: completed with skipped lines");
+        tracing::warn!(
+            bad_lines,
+            total = facts.len(),
+            "jsonl ingest: completed with skipped lines"
+        );
     }
     Ok(facts)
 }

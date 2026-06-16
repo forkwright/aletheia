@@ -517,7 +517,8 @@ impl RecallStage {
             let egress_candidates = self.provider_egress_candidates(candidates_c1.clone(), nous_id);
             self.side_query_ids(query, &egress_candidates, ranker)
         });
-        let ranked_c1 = self.rank_candidates_with_side_ids(candidates_c1, side_ids_c1.as_ref(), nous_id);
+        let ranked_c1 =
+            self.rank_candidates_with_side_ids(candidates_c1, side_ids_c1.as_ref(), nous_id);
 
         let terms = discover_terminology(&ranked_c1, query);
         let gaps = detect_gaps(&ranked_c1);
