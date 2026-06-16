@@ -124,6 +124,11 @@ pub struct MaintenanceConfig {
     pub cron_tasks: Option<Value>,
     #[schema(value_type = Object)]
     pub backup: Option<Value>,
+    /// Prosoche heartbeat and self-audit scheduling configuration.
+    ///
+    /// The runtime scheduler owns these values through `[maintenance.prosoche]`.
+    #[schema(value_type = Object)]
+    pub prosoche: Option<Value>,
 }
 
 /// Schema for a single pricing entry.

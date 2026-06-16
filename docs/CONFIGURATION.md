@@ -578,6 +578,10 @@ Background maintenance tasks. Some run automatically when the server is running;
 
 ### maintenance.drift_detection
 
+Drift detection compares the live instance root against the sibling
+`instance.example` template. If the template directory is unavailable, the task
+reports degraded/failed rather than clean.
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether drift detection runs |
@@ -663,6 +667,45 @@ enabled = true
 [maintenance.knowledge_maintenance_serendipity]
 enabled = true
 cadence = "0 0 7 * * *"
+```
+
+### maintenance.prosoche
+
+Prosoche heartbeat and self-audit scheduling. The mode selects whether the
+in-process daemon scheduler, an external systemd timer, both, or neither drive
+the heartbeat path. Defaults preserve the historical daemon-only behavior.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | string | `"daemon"` | Scheduling owner: `"daemon"`, `"external"`, `"both"`, or `"disabled"` |
+| `heartbeat.enabled` | bool | `true` | Run the per-agent prosoche attention check |
+| `heartbeat.intervalSecs` | u64 | `2700` | Attention-check interval (45 minutes) |
+| `heartbeat.activeWindow` | object | `{ startHour = 8, endHour = 23 }` | Optional hour window `(startHour, endHour)` for attention checks |
+| `selfAudit.enabled` | bool | `true` | Run the prosoche self-audit task |
+| `selfAudit.intervalSecs` | u64 | `21600` | Self-audit interval (6 hours) |
+| `selfAudit.activeWindow` | object | `{ startHour = 8, endHour = 23 }` | Optional hour window `(startHour, endHour)` for self-audits |
+| `externalTimer.enabled` | bool | `false` | Use the external `aletheia-health.timer` path |
+| `externalTimer.taskId` | string | `"prosoche-self-audit"` | Task id invoked by `scripts/aletheia-heartbeat.sh` |
+| `externalTimer.intervalSecs` | u64 | `300` | Cadence of the external timer (must match the systemd unit) |
+
+```toml
+[maintenance.prosoche]
+mode = "daemon"
+
+[maintenance.prosoche.heartbeat]
+enabled = true
+intervalSecs = 2700
+activeWindow = { startHour = 8, endHour = 23 }
+
+[maintenance.prosoche.selfAudit]
+enabled = true
+intervalSecs = 21600
+activeWindow = { startHour = 8, endHour = 23 }
+
+[maintenance.prosoche.externalTimer]
+enabled = false
+taskId = "prosoche-self-audit"
+intervalSecs = 300
 ```
 
 ---
@@ -829,6 +872,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `ALETHEIA_METRICS_URL` | `scripts/health-monitor.sh` | Metrics endpoint. Defaults to `http://localhost:18789/metrics`. |
 | `ALETHEIA_NOTIFY_TO` | `scripts/health-monitor.sh` | Optional `signal-cli` recipient for health alerts. |
 | `ALETHEIA_HEARTBEAT_TASK` | `scripts/aletheia-heartbeat.sh` | Task id pinged by the heartbeat. Defaults to `prosoche-self-audit`. |
+| `ALETHEIA_HEARTBEAT_INTERVAL_SECS` | `scripts/aletheia-heartbeat.sh`, `aletheia-health.timer` | External heartbeat cadence in seconds. Defaults to `300` and must stay in sync with the systemd timer. |
 | `ALETHEIA_PRIMARY_KEY` | `taxis::encrypt` | Master encryption key. Overrides the instance keyfile when set. Security-sensitive. |
 | `ALETHEIA_JWT_SECRET` | `taxis` gateway | JWT signing key used when `gateway.jwt_secret` is unset. Security-sensitive. |
 | `ALETHEIA_ALLOW_AUTH_NONE` | `taxis::validate` | Operator gate: set to `1` to permit `auth = "none"`. Off by default. Security-sensitive. |

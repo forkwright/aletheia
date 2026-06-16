@@ -176,6 +176,27 @@ fn register_maintenance_tasks_respects_enabled() {
 }
 
 #[test]
+fn register_maintenance_tasks_includes_instance_backup_status() {
+    let token = CancellationToken::new();
+    let mut config = MaintenanceConfig::default();
+    config.instance_backup.enabled = true;
+
+    let mut runner = TaskRunner::new("system", token).with_maintenance(config);
+    runner.register_maintenance_tasks();
+
+    let statuses = runner.status();
+    let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
+    assert!(
+        ids.contains(&"instance-backup"),
+        "status ids should include canonical instance-backup"
+    );
+    assert!(
+        !ids.contains(&"fjall-backup"),
+        "status ids should not include legacy fjall-backup"
+    );
+}
+
+#[test]
 fn serendipity_discovery_task_registers_at_daily_seven_utc() {
     let token = CancellationToken::new();
     let mut config = MaintenanceConfig::default();

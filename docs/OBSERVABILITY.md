@@ -102,7 +102,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 | HTTP 5xx rate | < 1% over 5 minutes | `aletheia_http_requests_total{status=~"5.."}` |
 | LLM p95 latency | < 30 seconds | `aletheia_llm_request_duration_seconds` |
 | LLM TTFT p95 | < 5 seconds | `aletheia_llm_ttft_seconds` |
-| Backup freshness | Deployment-defined | `aletheia_backup_duration_seconds{status="ok"}` (recorded per completed fjall backup) |
+| Backup freshness | Deployment-defined | `aletheia_backup_duration_seconds{status="ok"}` (recorded per completed whole-instance backup) |
 | Hung processes | 0 | `aletheia_watchdog_hung_processes` |
 
 ---
@@ -170,7 +170,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 
 **Steps:**
 1. Check `aletheia_backup_duration_seconds{status="error"}` for failed backup runs (failures are always recorded).
-2. If the metric has no recent `status="ok"` samples, recent runs either failed or were skipped (skipped runs record nothing). Check the daemon's fjall backup task and run a manual backup if needed.
+2. If the metric has no recent `status="ok"` samples, recent runs either failed or were skipped (skipped runs record nothing). Check the daemon's whole-instance backup task and run a manual backup if needed.
 3. Check cron timer: `systemctl --user list-timers | grep aletheia`
 4. Review backup script logs: `journalctl --user -u aletheia-health --since "48 hours ago"`
 5. Test a restore from the latest backup file

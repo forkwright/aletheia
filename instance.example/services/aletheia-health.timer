@@ -3,6 +3,9 @@ Description=Aletheia prosoche heartbeat timer
 Requires=aletheia.service
 
 [Timer]
+# First tick 60s after the timer is enabled, then every 300s.
+# Keep OnUnitActiveSec in sync with [maintenance.prosoche.externalTimer].intervalSecs
+# and with ALETHEIA_HEARTBEAT_INTERVAL_SECS in scripts/aletheia-heartbeat.sh.
 OnActiveSec=60
 OnUnitActiveSec=300
 AccuracySec=30

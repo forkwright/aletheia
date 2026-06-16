@@ -76,9 +76,14 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
     let checks = tokio::time::timeout(OVERALL_TIMEOUT, async {
         // WHY: read config once before spawning concurrent checks so each check
         // does not contend on the config lock.
-        let api_limits = &state.config.read().await.api_limits;
-        let clock_skew_leeway = api_limits.clock_skew_leeway_secs;
-        let expiry_warning_threshold = api_limits.expiry_warning_threshold_secs;
+        let (clock_skew_leeway, expiry_warning_threshold, prosoche) = {
+            let config = state.config.read().await;
+            (
+                config.api_limits.clock_skew_leeway_secs,
+                config.api_limits.expiry_warning_threshold_secs,
+                config.maintenance.prosoche.clone(),
+            )
+        };
 
         let (store_check, actor_check, config_check, storage_check) = tokio::join!(
             timed_check("session_store", check_session_store(state)),
@@ -93,6 +98,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
             check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
         let embedding_check = check_embedding_provider(state);
         let gateway_security_check = check_gateway_security(state).await;
+        let prosoche_check = check_prosoche_heartbeat_path(&prosoche);
 
         // WHY: synchronous and cheap — the snapshot is a few atomic reads plus a
         // short mutex hold on the last recorded poller error.
@@ -114,6 +120,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
             storage_check,
             embedding_check,
             nous_poller_check,
+            prosoche_check,
         ]
     })
     .await
@@ -445,6 +452,44 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
             status: "pass",
             message: None,
         }
+    }
+}
+
+/// Report the currently active prosoche heartbeat path.
+///
+/// WHY(#5150): Prosoche scheduling is split between the in-process daemon
+/// scheduler and an optional external systemd timer. This check makes the
+/// active path visible to operators without changing the minimal public
+/// `/api/health` response.
+fn check_prosoche_heartbeat_path(
+    settings: &taxis::config::ProsocheMaintenanceSettings,
+) -> HealthCheck {
+    let runs_daemon = settings.mode.runs_daemon_tasks()
+        && (settings.heartbeat.enabled || settings.self_audit.enabled);
+    let uses_external = settings.mode.uses_external_timer() && settings.external_timer.enabled;
+    let message = match (runs_daemon, uses_external) {
+        (true, true) => format!(
+            "active path: both; daemon heartbeat every {}s, self-audit every {}s; external timer task {} every {}s",
+            settings.heartbeat.interval_secs,
+            settings.self_audit.interval_secs,
+            settings.external_timer.task_id,
+            settings.external_timer.interval_secs
+        ),
+        (true, false) => format!(
+            "active path: daemon; heartbeat every {}s, self-audit every {}s",
+            settings.heartbeat.interval_secs, settings.self_audit.interval_secs
+        ),
+        (false, true) => format!(
+            "active path: external; timer task {} every {}s",
+            settings.external_timer.task_id, settings.external_timer.interval_secs
+        ),
+        (false, false) => "active path: disabled".to_owned(),
+    };
+
+    HealthCheck {
+        name: "prosoche_heartbeat_path",
+        status: "pass",
+        message: Some(message),
     }
 }
 
@@ -933,6 +978,25 @@ mod tests {
         assert_eq!(check.status, "warn");
         let message = check.message.as_deref().unwrap_or_default();
         assert!(message.contains("restart_count=3"));
+    }
+
+    #[test]
+    fn prosoche_heartbeat_path_check_reports_daemon_path() {
+        let check =
+            check_prosoche_heartbeat_path(&taxis::config::ProsocheMaintenanceSettings::default());
+        assert_eq!(check.name, "prosoche_heartbeat_path");
+        assert_eq!(check.status, "pass");
+        let Some(msg) = check.message else {
+            panic!("prosoche check has a message");
+        };
+        assert!(
+            msg.contains("daemon"),
+            "message should name daemon path: {msg}"
+        );
+        assert!(
+            msg.contains("21600s"),
+            "message should reference default self-audit cadence: {msg}"
+        );
     }
 
     #[test]

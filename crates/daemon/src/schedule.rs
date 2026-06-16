@@ -137,8 +137,8 @@ pub enum BuiltinTask {
     SelfPrompt,
     /// Analyze recent session observations and write candidate lint rule proposals.
     ProposeRules,
-    /// Periodic file-level backup of the fjall knowledge store.
-    FjallBackup,
+    /// Periodic whole-instance backup.
+    InstanceBackup,
     /// Prune prompt audit log daily files past the retention window (#3411).
     PromptAuditRotation,
     /// Refresh empirical after-action routing statistics from JSONL logs.

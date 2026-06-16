@@ -535,6 +535,30 @@ async fn self_audit_no_bridge_runs_prosoche_runner() {
 }
 
 #[tokio::test]
+async fn self_audit_persist_failure_returns_unsuccessful_result() {
+    let file = tempfile::NamedTempFile::new().expect("tempfile");
+    let maintenance = crate::maintenance::MaintenanceConfig {
+        prosoche_audit_dir: file.path().to_path_buf(),
+        ..crate::maintenance::MaintenanceConfig::default()
+    };
+    let result = execute_builtin(
+        &BuiltinTask::SelfAudit,
+        "test-nous",
+        None,
+        Some(&maintenance),
+        None,
+        None,
+    )
+    .await
+    .expect("should compute report even when persistence fails");
+
+    assert!(!result.success);
+    let output = result.output.as_deref().unwrap_or_default();
+    assert!(output.contains("report computed but not persisted"));
+    assert!(output.contains("persist error"));
+}
+
+#[tokio::test]
 async fn self_audit_with_bridge_runs_local_runner() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let maintenance = crate::maintenance::MaintenanceConfig {
@@ -608,6 +632,45 @@ async fn self_prompt_returns_runner_only_message() {
             .as_deref()
             .unwrap_or_default()
             .contains("self-prompt must be dispatched")
+    );
+}
+
+#[tokio::test]
+async fn drift_detection_missing_template_reports_unsuccessful() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let missing_example = tmp.path().join("definitely-missing-instance.example");
+    let maintenance = crate::maintenance::MaintenanceConfig {
+        drift_detection: crate::maintenance::DriftDetectionConfig {
+            enabled: true,
+            instance_root: tmp.path().join("instance"),
+            example_root: missing_example.clone(),
+            alert_on_missing: true,
+            ignore_patterns: Vec::new(),
+            optional_patterns: Vec::new(),
+        },
+        ..crate::maintenance::MaintenanceConfig::default()
+    };
+
+    let result = execute_builtin(
+        &BuiltinTask::DriftDetection,
+        "test-nous",
+        None,
+        Some(&maintenance),
+        None,
+        None,
+    )
+    .await
+    .expect("should not error even when template is missing");
+
+    assert!(!result.success, "missing template must be unsuccessful");
+    let output = result.output.as_deref().unwrap_or_default();
+    assert!(
+        output.contains("template unavailable"),
+        "expected unavailable warning, got: {output}"
+    );
+    assert!(
+        output.contains(&missing_example.display().to_string()),
+        "expected template path in output, got: {output}"
     );
 }
 

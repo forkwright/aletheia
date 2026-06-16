@@ -146,6 +146,155 @@ async fn in_flight_reported_in_status() {
     }
 }
 
+#[tokio::test]
+async fn unsuccessful_in_flight_result_records_failure_status_and_metrics() {
+    use koina::metrics::MetricsRegistry;
+
+    let registry = MetricsRegistry::new();
+    registry.with_registry(crate::metrics::register);
+
+    let token = CancellationToken::new();
+    let mut runner = TaskRunner::new("test-nous", token);
+    let task = TaskDef {
+        id: "unsuccessful-task".to_owned(),
+        name: "_test_unsuccessful_inflight".to_owned(),
+        nous_id: "test-nous".to_owned(),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
+        action: TaskAction::Command("echo ignored".to_owned()),
+        enabled: true,
+        ..TaskDef::default()
+    };
+    runner.register(task);
+
+    let handle = tokio::spawn(async {
+        Ok(ExecutionResult {
+            success: false,
+            errors: 0,
+            output: Some("probe detected violation".to_owned()),
+        })
+    });
+    runner.in_flight.insert(
+        "unsuccessful-task".to_owned(),
+        InFlightTask {
+            handle,
+            cancel: CancellationToken::new(),
+            started_at: Instant::now(),
+            timeout: Duration::from_mins(5),
+            warned: false,
+        },
+    );
+
+    tokio::task::yield_now().await;
+    runner.check_in_flight().await;
+
+    assert!(
+        !runner.in_flight.contains_key("unsuccessful-task"),
+        "finished task should be removed from in_flight"
+    );
+    let statuses = runner.status();
+    assert_eq!(
+        statuses[0].run_count, 0,
+        "failed result should not increment run_count"
+    );
+    assert_eq!(
+        statuses[0].consecutive_failures, 1,
+        "failed result should increment consecutive_failures"
+    );
+    assert_eq!(
+        statuses[0].last_error,
+        Some("probe detected violation".to_owned()),
+        "failed result output should become last_error"
+    );
+
+    let mut buf = String::new();
+    registry
+        .encode(&mut buf)
+        .expect("encoding metrics into String is infallible");
+    let expected = r#"aletheia_cron_executions_total{task_name="_test_unsuccessful_inflight",status="error"} 1"#;
+    assert!(
+        buf.contains(expected),
+        "metrics should record the result as a failure; got: {buf}"
+    );
+}
+
+#[tokio::test]
+async fn unsuccessful_in_flight_result_without_output_uses_fallback_error() {
+    let token = CancellationToken::new();
+    let mut runner = TaskRunner::new("test-nous", token);
+    runner.register(make_echo_task("unsuccessful-no-output"));
+
+    let handle = tokio::spawn(async {
+        Ok(ExecutionResult {
+            success: false,
+            errors: 0,
+            output: None,
+        })
+    });
+    runner.in_flight.insert(
+        "unsuccessful-no-output".to_owned(),
+        InFlightTask {
+            handle,
+            cancel: CancellationToken::new(),
+            started_at: Instant::now(),
+            timeout: Duration::from_mins(5),
+            warned: false,
+        },
+    );
+
+    tokio::task::yield_now().await;
+    runner.check_in_flight().await;
+
+    let statuses = runner.status();
+    assert_eq!(
+        statuses[0].last_error,
+        Some("task returned success=false".to_owned()),
+        "missing output should use concise fallback last_error"
+    );
+    assert_eq!(statuses[0].consecutive_failures, 1);
+}
+
+#[tokio::test]
+async fn repeated_unsuccessful_in_flight_results_accumulate_failures() {
+    let token = CancellationToken::new();
+    let mut runner = TaskRunner::new("test-nous", token);
+    runner.register(make_echo_task("repeated-failure"));
+
+    for n in 1..=2 {
+        let output = format!("failure number {n}");
+        let handle = tokio::spawn(async move {
+            Ok(ExecutionResult {
+                success: false,
+                errors: 0,
+                output: Some(output),
+            })
+        });
+        runner.in_flight.insert(
+            "repeated-failure".to_owned(),
+            InFlightTask {
+                handle,
+                cancel: CancellationToken::new(),
+                started_at: Instant::now(),
+                timeout: Duration::from_mins(5),
+                warned: false,
+            },
+        );
+
+        tokio::task::yield_now().await;
+        runner.check_in_flight().await;
+    }
+
+    let statuses = runner.status();
+    assert_eq!(
+        statuses[0].consecutive_failures, 2,
+        "two failed results should yield two consecutive failures"
+    );
+    assert_eq!(
+        statuses[0].last_error,
+        Some("failure number 2".to_owned()),
+        "last_error should reflect the most recent failure output"
+    );
+}
+
 /// IDs returned by `status()` for the core maintenance tasks must match the IDs
 /// accepted by `aletheia maintenance run <id>`.
 #[test]

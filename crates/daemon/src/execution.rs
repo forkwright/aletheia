@@ -335,11 +335,28 @@ pub(crate) async fn execute_builtin_with_behavior(
                 context: "drift detection",
             })??;
 
+            let template_display = report.template_root.display();
+
+            if !report.template_available {
+                tracing::warn!(
+                    template_path = %template_display,
+                    "maintenance: drift detection template unavailable"
+                );
+                return Ok(ExecutionResult {
+                    success: false,
+                    errors: 0,
+                    output: Some(format!(
+                        "drift detection template unavailable: {template_display}"
+                    )),
+                });
+            }
+
             tracing::info!(
                 missing = report.missing_files.len(),
                 optional_missing = report.optional_missing_files.len(),
                 extra = report.extra_files.len(),
                 permission_issues = report.permission_issues.len(),
+                template_path = %template_display,
                 "maintenance: drift detection complete"
             );
 
@@ -377,10 +394,11 @@ pub(crate) async fn execute_builtin_with_behavior(
                 success: true,
                 errors: 0,
                 output: Some(format!(
-                    "{} missing, {} optional missing, {} extra",
+                    "{} missing, {} optional missing, {} extra (template: {})",
                     report.missing_files.len(),
                     report.optional_missing_files.len(),
-                    report.extra_files.len()
+                    report.extra_files.len(),
+                    template_display,
                 )),
             })
         }
@@ -449,15 +467,29 @@ pub(crate) async fn execute_builtin_with_behavior(
                 .map_or_else(default_prosoche_audit_dir, |m| m.prosoche_audit_dir.clone());
             let runner = ProsocheAuditRunner::default_checks(&audit_dir);
             let state = build_prosoche_audit_state(nous_id);
-            let report = runner.run_audit(&state).await;
+            let outcome = runner.run_audit(&state).await;
+            let output = if let Some(err) = outcome.last_persist_error.as_deref() {
+                format!(
+                    "prosoche self-audit report computed but not persisted: {} findings across {} checks; persist error: {err}",
+                    outcome.findings.len(),
+                    outcome.check_summary.len()
+                )
+            } else {
+                let persisted = outcome
+                    .persisted_path
+                    .as_ref()
+                    .map(|path| format!("; report persisted to {}", path.display()))
+                    .unwrap_or_default();
+                format!(
+                    "prosoche self-audit complete: {} findings across {} checks{persisted}",
+                    outcome.findings.len(),
+                    outcome.check_summary.len()
+                )
+            };
             Ok(ExecutionResult {
-                success: true,
+                success: outcome.last_persist_error.is_none(),
                 errors: 0,
-                output: Some(format!(
-                    "prosoche self-audit complete: {} findings across {} checks",
-                    report.findings.len(),
-                    report.check_summary.len()
-                )),
+                output: Some(output),
             })
         }
         BuiltinTask::ProbeAudit => execute_probe_audit(nous_id, bridge, cancel.clone()).await,
@@ -532,7 +564,7 @@ pub(crate) async fn execute_builtin_with_behavior(
                 ),
             })
         }
-        BuiltinTask::FjallBackup => {
+        BuiltinTask::InstanceBackup => {
             let config = maintenance
                 .map_or_else(InstanceBackupConfig::default, |m| m.instance_backup.clone());
             let backup_metrics = maintenance.and_then(|m| m.backup_metrics.clone());
@@ -803,11 +835,13 @@ async fn execute_knowledge_task(
             | BuiltinTask::LessonExtraction
             | BuiltinTask::SelfPrompt
             | BuiltinTask::ProposeRules
-            | BuiltinTask::FjallBackup
+            | BuiltinTask::InstanceBackup
             | BuiltinTask::PromptAuditRotation
-            | BuiltinTask::RoutingStoreRefresh => {
-                unreachable!("non-knowledge task routed to execute_knowledge_task")
+            | BuiltinTask::RoutingStoreRefresh => error::TaskFailedSnafu {
+                task_id: format!("{builtin_clone:?}"),
+                reason: "non-knowledge task routed to knowledge executor".to_owned(),
             }
+            .fail(),
         }?;
 
         report.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
