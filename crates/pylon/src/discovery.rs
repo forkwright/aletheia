@@ -6,7 +6,9 @@
 //!
 //! Clients check in order: localhost, discovery file, Tailscale, manual entry.
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use jiff::Timestamp;
 use snafu::{ResultExt, Snafu};
@@ -112,11 +114,40 @@ pub(crate) async fn remove_discovery_file(data_dir: &Path) {
 /// Returns `None` if Tailscale is not installed, not running, or the
 /// output cannot be parsed.
 async fn query_tailscale_ip() -> Option<String> {
-    let output = tokio::process::Command::new("tailscale")
-        .args(["status", "--json"])
-        .output()
-        .await
-        .ok()?;
+    // WHY: Tailscale is best-effort; cap the wait so a hung CLI cannot
+    // block server startup.
+    query_tailscale_ip_with_timeout(
+        tokio::process::Command::new("tailscale")
+            .args(["status", "--json"])
+            .output(),
+        Duration::from_secs(5),
+    )
+    .await
+}
+
+/// Query Tailscale for this node's first IPv4 address with a bounded wait.
+///
+/// `output_fut` should resolve to the output of `tailscale status --json`.
+/// Returns `None` on timeout, process failure, or parse failure so that
+/// startup is not aborted.
+async fn query_tailscale_ip_with_timeout<Fut>(
+    output_fut: Fut,
+    timeout_duration: Duration,
+) -> Option<String>
+where
+    Fut: Future<Output = std::io::Result<std::process::Output>>,
+{
+    let output = match tokio::time::timeout(timeout_duration, output_fut).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(_)) => return None,
+        Err(_elapsed) => {
+            warn!(
+                timeout_secs = timeout_duration.as_secs(),
+                "tailscale status timed out"
+            );
+            return None;
+        }
+    };
 
     if !output.status.success() {
         warn!(status = %output.status, "tailscale status exited with error");
@@ -248,5 +279,12 @@ mod tests {
         assert!(dir.path().exists());
         let entries: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
         assert!(entries.is_empty(), "directory should be empty");
+    }
+
+    #[tokio::test]
+    async fn query_tailscale_ip_times_out_on_hung_output() {
+        let never = std::future::pending::<std::io::Result<std::process::Output>>();
+        let result = query_tailscale_ip_with_timeout(never, Duration::from_millis(50)).await;
+        assert!(result.is_none());
     }
 }
