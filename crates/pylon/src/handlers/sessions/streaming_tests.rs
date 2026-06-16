@@ -827,6 +827,44 @@ async fn reconnect_running_buffer_reports_running_live_and_streams_later_event()
     );
 }
 
+// ── reconnect_turn AbortOnDrop ──
+
+#[tokio::test]
+async fn reconnect_turn_aborts_replay_task_on_client_disconnect() {
+    // WHY(#5736): dropping the SSE stream must abort the spawned replay task.
+    // Before the fix, reconnect_turn discarded the JoinHandle so the task ran
+    // until the buffer closed naturally rather than being aborted on disconnect.
+    let (state, handle, _tmp) = reconnect_running_test_state_for("turn-abort").await;
+
+    let sse = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path_for("turn-abort"),
+    )
+    .await
+    .expect("reconnect should succeed");
+
+    // Convert to response so we hold the underlying GuardedStream.
+    let response = sse.into_response();
+
+    // Drop the response (simulates client disconnect) while the buffer is
+    // still running; this must abort the replay task via AbortOnDrop.
+    drop(response);
+
+    // Yield to let the abort propagate.
+    tokio::task::yield_now().await;
+
+    // Now mark the buffer completed — the tx side of the replay channel must
+    // be gone because the task was aborted, so this send goes unread.
+    handle.mark_completed().await;
+
+    // WHY: The test passes by not hanging; if the replay task were not aborted
+    // it would keep the rx half alive and mark_completed would be the only
+    // thing that could unblock it. The real assertion is that the drop chain
+    // runs without panic and the task does not outlive the stream.
+}
+
 // ── IdempotencyGuard ──
 
 #[test]

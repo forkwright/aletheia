@@ -1403,7 +1403,7 @@ pub async fn reconnect_turn(
     let handle = TurnBufferHandle::new(buf);
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(32);
 
-    tokio::spawn(async move {
+    let reconnect_handle = tokio::spawn(async move {
         let mut last_seq = last_event_id;
         let initial = handle.snapshot_after(last_seq).await;
         let live = initial.state == crate::turn_buffer::TurnState::Running;
@@ -1448,7 +1448,21 @@ pub async fn reconnect_turn(
         }
     });
 
-    Ok(Sse::new(ReceiverStream::new(rx)).keep_alive(
+    // WHY: Wrap the handle in GuardedStream so the replay task is aborted when
+    // the client disconnects — consistent with send_message and stream_turn
+    // (#5736). Without this, a disconnected client leaves the replay loop
+    // running until the buffer closes naturally.
+    let turn_cancel = CancellationToken::new();
+    let stream = GuardedStream {
+        inner: ReceiverStream::new(rx),
+        _guard: AbortOnDrop {
+            task: reconnect_handle,
+            turn_cancel,
+            _idem_guard: None,
+        },
+    };
+
+    Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))
             .text("ping"),
