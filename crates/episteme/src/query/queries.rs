@@ -219,7 +219,7 @@ pub(crate) fn facts_at_time() -> String {
 /// Params: `$old_id`, `$old_valid_from`, `$old_content`, `$nous_id`,
 /// `$old_confidence`, `$old_tier`, `$now`, `$new_id`, `$old_source`,
 /// `$old_recorded`, `$new_content`, `$new_confidence`, `$new_tier`,
-/// `$source_session_id`.
+/// `$source_session_id`, `$new_valid_to`.
 #[must_use]
 pub(crate) fn supersede_fact() -> String {
     use FactsField::*;
@@ -277,7 +277,7 @@ pub(crate) fn supersede_fact() -> String {
             "$nous_id",
             "$new_confidence",
             "$new_tier",
-            "\"9999-12-31\"",
+            "$new_valid_to",
             "null",
             "$source_session_id",
             "$now",
@@ -499,7 +499,7 @@ pub(crate) const TEMPORAL_DIFF_REMOVED: &str = r"
         is_forgotten == false,
         valid_to > $from_time,
         valid_to <= $to_time,
-        valid_to != '9999-12-31'
+        not starts_with(valid_to, '9999-')
 ";
 
 /// Query returning only forgotten facts. Params: `$nous_id`, `$limit`.
