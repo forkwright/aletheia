@@ -448,3 +448,23 @@ fn graph_snapshot_from_graph_context_infers_missing_nodes_from_edges() {
     assert_eq!(ml.community, -1);
     assert_eq!(graph.neighbors("ml"), vec!["rust"]);
 }
+
+#[test]
+fn community_novelty_cross_community_is_1() {
+    let home: std::collections::HashSet<i64> = [0].into();
+    assert!((community_novelty(1, &home) - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn community_novelty_same_community_is_0_3() {
+    let home: std::collections::HashSet<i64> = [0].into();
+    assert!((community_novelty(0, &home) - 0.3).abs() < f64::EPSILON);
+}
+
+#[test]
+fn community_novelty_unassigned_sentinel_is_0_7() {
+    // WHY: Louvain sentinel -1 means unassigned; must score higher than
+    // confirmed same-community (0.3) to avoid penalising uncertain nodes.
+    let home: std::collections::HashSet<i64> = [0].into();
+    assert!((community_novelty(-1, &home) - 0.7).abs() < f64::EPSILON);
+}

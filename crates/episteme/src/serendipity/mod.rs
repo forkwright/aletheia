@@ -518,10 +518,15 @@ pub(crate) fn select_injection<S: ::std::hash::BuildHasher>(
         })
 }
 
-/// Community novelty score: 1.0 if in a different community, 0.3 if same.
+/// Community novelty score: 1.0 for cross-community, 0.7 for unassigned (Louvain
+/// sentinel -1), 0.3 for confirmed same-community.
 fn community_novelty(community: i64, home_communities: &HashSet<i64>) -> f64 {
     if community >= 0 && !home_communities.contains(&community) {
         1.0
+    } else if community < 0 {
+        // WHY: Louvain assigns -1 to nodes not yet placed in any cluster; treat
+        // as high-novelty (uncertain membership) rather than penalising as same-community.
+        0.7
     } else {
         0.3
     }
@@ -832,7 +837,7 @@ pub(crate) fn discover_serendipitous_facts(
 
     Ok(SerendipityDiscoveryReport {
         items_processed,
-        items_modified: discovery_count,
+        items_modified: 0,
         discovery_count,
         selected_fact_id: selected_injection
             .as_ref()
