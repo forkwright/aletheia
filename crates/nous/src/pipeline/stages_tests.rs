@@ -185,7 +185,7 @@ async fn full_compaction_uses_llm_summary() {
         ],
         ..PipelineContext::default()
     };
-    let emitter = EventEmitter::new();
+    let (emitter, captured) = capturing_emitter();
 
     run_full_compact_stage(&config, &mut ctx, &providers, &emitter)
         .await
@@ -198,6 +198,26 @@ async fn full_compaction_uses_llm_summary() {
             .content
             .contains("llm compacted summary"),
         "full compaction should use provider summary"
+    );
+
+    let events = captured.lock().expect("metric lock");
+    assert!(
+        events.iter().any(|(name, labels)| {
+            name == "StageCompleted"
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "stage" && v == "full_compact")
+        }),
+        "happy path should emit StageCompleted for full_compact"
+    );
+    assert!(
+        !events.iter().any(|(name, labels)| {
+            name == "StageError"
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "stage" && v == "full_compact")
+        }),
+        "happy path should not emit StageError for full_compact"
     );
 }
 
@@ -216,7 +236,7 @@ async fn full_compaction_falls_back_when_llm_unavailable() {
         }],
         ..PipelineContext::default()
     };
-    let emitter = EventEmitter::new();
+    let (emitter, captured) = capturing_emitter();
 
     run_full_compact_stage(&config, &mut ctx, &providers, &emitter)
         .await
@@ -229,6 +249,29 @@ async fn full_compaction_falls_back_when_llm_unavailable() {
             .content
             .contains("Previous conversation context:"),
         "fallback should use structural summary"
+    );
+
+    let events = captured.lock().expect("metric lock");
+    assert!(
+        events.iter().any(|(name, labels)| {
+            name == "StageError"
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "stage" && v == "full_compact")
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "error_type" && v == "llm_fallback")
+        }),
+        "fallback should emit StageError {{ stage: full_compact, error_type: llm_fallback }}"
+    );
+    assert!(
+        events.iter().any(|(name, labels)| {
+            name == "StageCompleted"
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "stage" && v == "full_compact")
+        }),
+        "fallback should still emit StageCompleted for full_compact"
     );
 }
 
@@ -317,7 +360,14 @@ fn apply_recall_result_injects_into_system_prompt_by_default() {
         filtered_facts: Vec::new(),
     };
     let span = tracing::info_span!("test");
-    super::apply_recall_result(Ok(recall), &mut ctx, &span, false);
+    super::apply_recall_result(
+        Ok(recall),
+        &mut ctx,
+        &span,
+        false,
+        &EventEmitter::new(),
+        "test-nous",
+    );
     assert!(
         ctx.system_prompt
             .as_ref()
@@ -346,7 +396,14 @@ fn apply_recall_result_late_inject_appends_system_message() {
         filtered_facts: Vec::new(),
     };
     let span = tracing::info_span!("test");
-    super::apply_recall_result(Ok(recall), &mut ctx, &span, true);
+    super::apply_recall_result(
+        Ok(recall),
+        &mut ctx,
+        &span,
+        true,
+        &EventEmitter::new(),
+        "test-nous",
+    );
     assert!(
         !ctx.system_prompt
             .as_ref()
@@ -360,6 +417,39 @@ fn apply_recall_result_late_inject_appends_system_message() {
             .is_some_and(|m| m.role == "system" && m.content.contains("Recalled Knowledge"))
     );
     assert_eq!(ctx.remaining_tokens, 90, "tokens should be deducted");
+}
+
+#[test]
+fn apply_recall_result_error_emits_stage_error_metric() {
+    let mut ctx = PipelineContext {
+        system_prompt: Some("base prompt".to_owned()),
+        messages: vec![make_msg("user", "hello")],
+        remaining_tokens: 100,
+        ..PipelineContext::default()
+    };
+    let span = tracing::info_span!("test");
+    let (emitter, captured) = capturing_emitter();
+    let err = error::PipelineStageSnafu {
+        stage: "recall".to_owned(),
+        message: "injected test failure".to_owned(),
+    }
+    .build();
+    super::apply_recall_result(Err(err), &mut ctx, &span, false, &emitter, "test-nous");
+
+    let events = captured.lock().expect("metric lock");
+    assert!(
+        events.iter().any(|(name, labels)| {
+            name == "StageError"
+                && labels.iter().any(|(k, v)| k == "stage" && v == "recall")
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "error_type" && v == "recall_failed")
+                && labels
+                    .iter()
+                    .any(|(k, v)| k == "nous_id" && v == "test-nous")
+        }),
+        "recall failure should emit StageError {{ stage: recall, error_type: recall_failed, nous_id: test-nous }}"
+    );
 }
 
 // --- Execute-stage timeout / degraded-mode tests (#4690) ---
