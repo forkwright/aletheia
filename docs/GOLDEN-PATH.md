@@ -60,11 +60,9 @@ manage the client connection: server URL, optional bearer token, saved servers,
 active server switching, and connection probes. They do not replace the server
 provider config.
 
-**Experimental:** Ops -> Credentials renders a credential-management panel for
-listing, validating, rotating, adding, and removing credentials. The source
-marks its API types as local until the server exposes `/api/system/credentials`,
-so treat this as an in-progress surface rather than the primary provider setup
-path.
+Ops -> Credentials renders a credential-management panel for listing, validating,
+rotating, adding, and removing credentials. The server exposes the credential API
+at `/api/v1/system/credentials`.
 
 ## 2. Start or Resume a Session
 

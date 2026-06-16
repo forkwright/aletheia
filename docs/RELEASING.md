@@ -39,12 +39,12 @@ scripts/check-cargo-publish-policy.py
    - Generates and attaches an SBOM (SPDX)
    - Uploads everything to the GitHub Release
 
-## Substance audit gate
+## Substance audit (manual checklist)
 
 Before merging the release-please PR, run the substance audit against the
-security-critical and execution-critical crates. This is a manual step -
-the audit is not fast enough to run on every PR - but release time is the
-right moment to verify that the tests still catch real mutations.
+security-critical and execution-critical crates. This is a required manual step —
+not an automated gate. Include the audit result or a link to recorded output in
+the release PR description before merging.
 
 ```bash
 # Install once per machine (see CLAUDE.md § Mutation testing).
@@ -124,9 +124,17 @@ The tag push builds binaries the same way. Merge the hotfix branch back to `main
 ## Binary verification
 
 Each binary and tarball has a `.sha256` companion file attached to the GitHub
-Release. The tarball is self-describing: it includes `LICENSE`, `LICENSE-DOCS`,
-`README.md`, `SECURITY.md`, `CHANGELOG.md`, `Cargo.toml`, `Cargo.lock`,
-`deny.toml`, `docs/`, `instance.example/`, and `PACKAGE-MANIFEST.txt`.
+Release.
+
+### Release artifact contract
+
+The tarball is a binary-and-docs package, not an agent-operable development package.
+It contains: `LICENSE`, `LICENSE-DOCS`, `README.md`, `SECURITY.md`, `CHANGELOG.md`,
+`Cargo.toml`, `Cargo.lock`, `deny.toml`, `docs/`, `instance.example/`, and `PACKAGE-MANIFEST.txt`.
+Agent-facing development surfaces (`AGENTS.md`, `CLAUDE.md`, `_llm/`, `standards/`) are
+intentionally excluded — they are internal development context, not runtime artifacts.
+
+The tarball is self-describing:
 
 `PACKAGE-MANIFEST.txt` records the version, target triple, source commit,
 feature set, provenance/SBOM asset names, and SHA256, mode, and size for each
@@ -140,7 +148,18 @@ gh release download v0.10.0 -p 'aletheia-linux-x86_64*'
 sha256sum -c aletheia-linux-x86_64.sha256
 ```
 
-The SBOM (`aletheia-sbom.spdx.json`) is also attached to each release, listing all Cargo dependencies with versions.
+The release attaches multiple SBOM artifacts with distinct subjects:
+
+| Artifact | Subject | Format | Attested |
+|----------|---------|--------|----------|
+| `aletheia-linux-x86_64.spdx.json` | Linux x86_64 binary | SPDX | Yes (per-binary) |
+| `aletheia-linux-x86_64.cdx.json` | Linux x86_64 binary | CycloneDX | Yes (per-binary) |
+| `aletheia-macos-aarch64.spdx.json` | macOS ARM64 binary | SPDX | Yes (per-binary) |
+| `aletheia-macos-aarch64.cdx.json` | macOS ARM64 binary | CycloneDX | Yes (per-binary) |
+| `aletheia-sbom.spdx.json` | Full source workspace (Anchore) | SPDX | Informational only |
+| `bom.cdx.json` | Full source workspace (cargo-cyclonedx) | CycloneDX | Informational only |
+
+Per-binary SBOMs are attested and scoped to the linked binary artifact. Workspace SBOMs cover all Cargo dependencies regardless of which binary they end up in.
 
 ## Supply chain
 

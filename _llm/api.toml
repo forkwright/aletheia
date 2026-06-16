@@ -159,3 +159,34 @@ purpose = "List entities and relationships"
 method = "GET"
 path = "/api/v1/knowledge/timeline"
 purpose = "Fact activity timeline"
+
+# Credentials
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/system/credentials"
+purpose = "List all credentials with status"
+
+[[api.endpoint]]
+method = "GET"
+path = "/api/v1/system/credentials/{provider}"
+purpose = "Get credential status for a provider"
+
+[[api.endpoint]]
+method = "PUT"
+path = "/api/v1/system/credentials/{provider}"
+purpose = "Set or update a credential"
+
+[[api.endpoint]]
+method = "DELETE"
+path = "/api/v1/system/credentials/{provider}"
+purpose = "Remove a credential"
+
+[[api.endpoint]]
+method = "POST"
+path = "/api/v1/system/credentials/{provider}/validate"
+purpose = "Validate a credential (probe the provider)"
+
+[[api.endpoint]]
+method = "POST"
+path = "/api/v1/system/credentials/{provider}/rotate"
+purpose = "Force OAuth token rotation"

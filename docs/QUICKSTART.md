@@ -37,9 +37,13 @@ cargo build --release
 The binary lands at `target/release/aletheia`. Copy it somewhere on your PATH:
 
 ```bash
+mkdir -p ~/.local/bin
+mkdir -p ~/.local/bin
 cp target/release/aletheia ~/.local/bin/
 # or: sudo cp target/release/aletheia /usr/local/bin/
 ```
+
+Ensure `~/.local/bin` is on your `PATH` (add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile if needed).
 
 Verify:
 
@@ -172,7 +176,7 @@ Create a session, then send a message:
 curl -s http://localhost:18789/api/v1/sessions \
   -H "Content-Type: application/json" \
   -H "X-Requested-With: aletheia" \
-  -d '{"nous_id": "pronoea"}' | jq .
+  -d '{"nous_id": "pronoea"}' | jq .  # jq is optional; omit or install it for pretty-printing
 
 # Send a message (replace SESSION_ID with the id from the session creation response)
 curl -N http://localhost:18789/api/v1/sessions/SESSION_ID/messages \

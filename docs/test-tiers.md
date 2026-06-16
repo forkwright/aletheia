@@ -7,7 +7,7 @@ coverage against build time and resource requirements.
 
 | Tier | Feature flag | What it enables | Approx. tests |
 |------|-------------|-----------------|---------------|
-| **default** | *(none)* | Pure-logic unit tests, config validation, type invariants | ~5,400 |
+| **default** | *(none)* | Full default-feature-unified workspace tests (includes engine and ML via feature unification — see NOTE below) | ~5,400 |
 | **test-core** | `--features test-core` | Storage engine tests (Datalog, HNSW, fjall, knowledge store CRUD) | ~5,435 |
 | **test-full** | `--features test-full` | ML embedding tests (candle model loading, vector generation) - includes `online-tests` | ~5,435 |
 | **all** | `--all-features` | Provider subprocess adapters, computer-use, bookkeeper, z3, other optional features | ~5,475 |
