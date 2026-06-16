@@ -43,7 +43,7 @@ impl DaemonBridge for NousDaemonBridge {
         let prompt = prompt.to_owned();
 
         Box::pin(async move {
-            let Some(handle) = self.nous_manager.get(&nous_id).cloned() else {
+            let Some(handle) = self.nous_manager.get(&nous_id) else {
                 tracing::warn!(nous_id = %nous_id, "daemon bridge: nous actor not found");
                 return Ok(ExecutionResult::failed(Some(format!(
                     "nous actor {nous_id} not found"

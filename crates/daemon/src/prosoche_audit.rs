@@ -34,17 +34,18 @@
 //! existing trait contract.
 
 use std::io::Write as _;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
-use eidos::knowledge::finding::{
+use mneme::finding::{
     EvidenceLevel, EvidenceRef, Finding, FindingStats, FindingSupport, stable_hash,
 };
-use eidos::meta::{ArtefactMeta, Stamped};
+use mneme::meta::{ArtefactMeta, Stamped};
 use serde::{Deserialize, Serialize};
-use snafu::IntoError as _;
 use serde_json::Value;
+use snafu::IntoError as _;
 use tracing::Instrument as _;
 
 /// The five categories of prosoche self-audit check, one per
@@ -1574,6 +1575,36 @@ impl Stamped for AuditReport {
     }
 }
 
+/// Result of running and persisting a prosoche self-audit pass.
+///
+/// The computed [`AuditReport`] is always produced, even when persistence fails.
+/// The outcome records whether the report was written to disk (`persisted_path`)
+/// or why the write failed (`last_persist_error`). Only one of those two fields
+/// will be set for any given run.
+#[derive(Debug, Clone)]
+pub struct ProsocheAuditOutcome {
+    /// The computed audit report, independent of persistence success or failure.
+    pub report: AuditReport,
+    /// Path where the report was persisted, when persistence succeeded.
+    pub persisted_path: Option<PathBuf>,
+    /// Human-readable persistence error, when persistence failed.
+    pub last_persist_error: Option<String>,
+}
+
+impl Deref for ProsocheAuditOutcome {
+    type Target = AuditReport;
+
+    fn deref(&self) -> &Self::Target {
+        &self.report
+    }
+}
+
+impl DerefMut for ProsocheAuditOutcome {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.report
+    }
+}
+
 /// Runs all registered prosoche checks and persists the resulting findings.
 ///
 /// # Usage
@@ -1625,15 +1656,12 @@ impl ProsocheAuditRunner {
     }
 
     /// Run all registered checks against `state`, persist the report, and
-    /// return the completed [`AuditReport`] together with the persist result.
-    ///
-    /// WHY(#5148): the persist result is surfaced to the caller (rather than
-    /// only logged) so a failure to write the audit artefact can be treated as
-    /// a task failure rather than a silent success.
+    /// return a [`ProsocheAuditOutcome`] containing the completed [`AuditReport`].
     ///
     /// Each check runs sequentially (they're fast heuristics). The runner
     /// captures check panics as [`CheckFailure`] records rather than failing
-    /// the whole audit.
+    /// the whole audit. A persistence failure is captured in the outcome and
+    /// never fails the audit.
     ///
     /// # Observability
     ///
@@ -1641,10 +1669,7 @@ impl ProsocheAuditRunner {
     ///   (emitted by each check implementation).
     /// - `tracing::info!` at audit completion with total `findings_count`.
     #[tracing::instrument(skip(self, state), fields(nous_id = %state.nous_id))]
-    pub async fn run_audit(
-        &self,
-        state: &ProsocheState,
-    ) -> (AuditReport, Result<PathBuf, crate::error::Error>) {
+    pub async fn run_audit(&self, state: &ProsocheState) -> ProsocheAuditOutcome {
         let mut all_findings: Vec<Finding> = Vec::new();
         let mut check_summary: Vec<CheckSummary> = Vec::new();
         let mut check_provenances: Vec<CheckProvenance> = Vec::new();
@@ -1720,10 +1745,9 @@ impl ProsocheAuditRunner {
             provenance: Some(provenance),
         };
 
-        // WHY(#5148): the persist result is returned to the caller so a write
-        // failure can be surfaced as a task failure, not just logged. The
-        // report itself is always returned for in-memory inspection.
-        let persist_result = match self.storage.persist(&report) {
+        // WHY: a persist failure is logged but never fails the audit — the
+        // report is still returned to the caller inside the outcome.
+        let (persisted_path, last_persist_error) = match self.storage.persist(&report) {
             Ok(path) => {
                 tracing::info!(
                     nous_id = %state.nous_id,
@@ -1731,7 +1755,7 @@ impl ProsocheAuditRunner {
                     path = %path.display(),
                     "prosoche self-audit complete"
                 );
-                Ok(path)
+                (Some(path), None)
             }
             Err(e) => {
                 tracing::warn!(
@@ -1740,14 +1764,15 @@ impl ProsocheAuditRunner {
                     error = %e,
                     "prosoche self-audit complete — report persist failed"
                 );
-                Err(crate::error::MaintenanceIoSnafu {
-                    context: "persisting prosoche audit report".to_owned(),
-                }
-                .into_error(e))
+                (None, Some(e.to_string()))
             }
         };
 
-        (report, persist_result)
+        ProsocheAuditOutcome {
+            report,
+            persisted_path,
+            last_persist_error,
+        }
     }
 }
 

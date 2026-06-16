@@ -211,6 +211,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
             sse::handle_sse_distill_stage(app, nous_id, stage)
         }
         Msg::SseDistillAfter { nous_id } => sse::handle_sse_distill_after(app, nous_id).await,
+        Msg::SseStreamLagged { dropped } => sse::handle_sse_stream_lagged(app, dropped).await,
 
         Msg::StreamTurnStart {
             turn_id, nous_id, ..

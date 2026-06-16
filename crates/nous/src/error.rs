@@ -211,7 +211,7 @@ pub enum Error {
     /// Knowledge-store persistence failed.
     #[snafu(display("knowledge store error: {source}"))]
     KnowledgeStore {
-        source: mneme::error::Error,
+        source: mneme::knowledge_error::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },

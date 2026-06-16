@@ -782,3 +782,169 @@ fn pricing_from_json() {
         "sonnet output cost should be 15.0"
     );
 }
+
+#[test]
+fn prosoche_defaults_match_hardcoded_runtime() {
+    let config = AletheiaConfig::default();
+    let prosoche = &config.maintenance.prosoche;
+
+    assert_eq!(
+        prosoche.mode,
+        ProsocheScheduleMode::Daemon,
+        "default prosoche scheduling mode should be daemon"
+    );
+    assert!(
+        prosoche.mode.runs_daemon_tasks(),
+        "daemon mode should run internal tasks"
+    );
+    assert!(
+        !prosoche.mode.uses_external_timer(),
+        "daemon mode should not use the external timer"
+    );
+
+    assert!(
+        prosoche.heartbeat.enabled,
+        "prosoche heartbeat should be enabled by default"
+    );
+    assert_eq!(
+        prosoche.heartbeat.interval_secs,
+        45 * 60,
+        "prosoche heartbeat interval should be 45 minutes"
+    );
+    assert_eq!(
+        prosoche.heartbeat.active_window,
+        Some(ProsocheActiveWindowSettings {
+            start_hour: 8,
+            end_hour: 23,
+        }),
+        "prosoche heartbeat active window should be 8..23"
+    );
+
+    assert!(
+        prosoche.self_audit.enabled,
+        "prosoche self-audit should be enabled by default"
+    );
+    assert_eq!(
+        prosoche.self_audit.interval_secs,
+        6 * 3600,
+        "prosoche self-audit interval should be 6 hours"
+    );
+    assert_eq!(
+        prosoche.self_audit.active_window,
+        Some(ProsocheActiveWindowSettings {
+            start_hour: 8,
+            end_hour: 23,
+        }),
+        "prosoche self-audit active window should be 8..23"
+    );
+
+    assert!(
+        !prosoche.external_timer.enabled,
+        "external timer should be disabled by default"
+    );
+    assert_eq!(
+        prosoche.external_timer.task_id, "prosoche-self-audit",
+        "external timer default task id should be prosoche-self-audit"
+    );
+    assert_eq!(
+        prosoche.external_timer.interval_secs, 300,
+        "external timer default interval should be 300 seconds"
+    );
+}
+
+#[test]
+fn prosoche_config_overrides_parse() {
+    let toml = r#"
+[maintenance.prosoche]
+mode = "both"
+
+[maintenance.prosoche.heartbeat]
+enabled = false
+intervalSecs = 1800
+
+[maintenance.prosoche.heartbeat.activeWindow]
+startHour = 9
+endHour = 22
+
+[maintenance.prosoche.selfAudit]
+intervalSecs = 7200
+
+[maintenance.prosoche.externalTimer]
+enabled = true
+taskId = "custom-self-audit"
+intervalSecs = 60
+"#;
+
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse prosoche overrides");
+    let prosoche = &config.maintenance.prosoche;
+
+    assert_eq!(prosoche.mode, ProsocheScheduleMode::Both);
+    assert!(prosoche.mode.runs_daemon_tasks());
+    assert!(prosoche.mode.uses_external_timer());
+
+    assert!(!prosoche.heartbeat.enabled);
+    assert_eq!(prosoche.heartbeat.interval_secs, 1800);
+    assert_eq!(
+        prosoche.heartbeat.active_window,
+        Some(ProsocheActiveWindowSettings {
+            start_hour: 9,
+            end_hour: 22,
+        })
+    );
+
+    assert!(prosoche.self_audit.enabled);
+    assert_eq!(prosoche.self_audit.interval_secs, 7200);
+    assert_eq!(
+        prosoche.self_audit.active_window,
+        Some(ProsocheActiveWindowSettings {
+            start_hour: 8,
+            end_hour: 23,
+        })
+    );
+
+    assert!(prosoche.external_timer.enabled);
+    assert_eq!(prosoche.external_timer.task_id, "custom-self-audit");
+    assert_eq!(prosoche.external_timer.interval_secs, 60);
+}
+
+#[test]
+fn prosoche_disabled_mode_parses() {
+    let toml = r#"
+[maintenance.prosoche]
+mode = "disabled"
+
+[maintenance.prosoche.heartbeat]
+enabled = true
+"#;
+
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse disabled prosoche mode");
+    let prosoche = &config.maintenance.prosoche;
+
+    assert_eq!(prosoche.mode, ProsocheScheduleMode::Disabled);
+    assert!(!prosoche.mode.runs_daemon_tasks());
+    assert!(!prosoche.mode.uses_external_timer());
+    // Enablement on individual tasks is ignored when the mode disables scheduling.
+    assert!(prosoche.heartbeat.enabled);
+    assert_eq!(prosoche.heartbeat.interval_secs, 45 * 60);
+}
+
+#[test]
+fn prosoche_external_only_mode_parses() {
+    let toml = r#"
+[maintenance.prosoche]
+mode = "external"
+
+[maintenance.prosoche.externalTimer]
+enabled = true
+"#;
+
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse external-only prosoche mode");
+    let prosoche = &config.maintenance.prosoche;
+
+    assert_eq!(prosoche.mode, ProsocheScheduleMode::External);
+    assert!(!prosoche.mode.runs_daemon_tasks());
+    assert!(prosoche.mode.uses_external_timer());
+    assert!(prosoche.external_timer.enabled);
+    assert_eq!(prosoche.external_timer.task_id, "prosoche-self-audit");
+    assert_eq!(prosoche.external_timer.interval_secs, 300);
+}

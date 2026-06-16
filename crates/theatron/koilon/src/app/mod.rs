@@ -450,7 +450,7 @@ impl App {
         }
 
         self.connection.sse = Some(SseConnection::connect(
-            self.client.raw_client().clone(),
+            self.client.streaming_client().clone(),
             &self.config.url,
         ));
 

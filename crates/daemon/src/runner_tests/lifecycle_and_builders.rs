@@ -113,7 +113,7 @@ async fn successful_command_resets_failures() {
     runner.register(task);
 
     runner.tasks[0].consecutive_failures = 2;
-    runner.record_task_completion("echo-task", Duration::from_millis(10));
+    runner.record_task_completion("echo-task", Duration::from_millis(10), 0);
 
     let statuses = runner.status();
     assert_eq!(statuses[0].consecutive_failures, 0);
@@ -173,6 +173,27 @@ fn register_maintenance_tasks_respects_enabled() {
     assert!(!ids.contains(&"drift-detection"));
     assert!(ids.contains(&"db-monitor"));
     assert!(!ids.contains(&"retention-execution"));
+}
+
+#[test]
+fn register_maintenance_tasks_includes_instance_backup_status() {
+    let token = CancellationToken::new();
+    let mut config = MaintenanceConfig::default();
+    config.instance_backup.enabled = true;
+
+    let mut runner = TaskRunner::new("system", token).with_maintenance(config);
+    runner.register_maintenance_tasks();
+
+    let statuses = runner.status();
+    let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
+    assert!(
+        ids.contains(&"instance-backup"),
+        "status ids should include canonical instance-backup"
+    );
+    assert!(
+        !ids.contains(&"fjall-backup"),
+        "status ids should not include legacy fjall-backup"
+    );
 }
 
 #[test]
@@ -518,6 +539,7 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledgeExecutor 
 fn execution_result_serialization() {
     let result = ExecutionResult {
         outcome: TaskOutcome::Success,
+        errors: 0,
         output: Some("hello".to_owned()),
     };
     let json = serde_json::to_string(&result).expect("serialize");
@@ -692,7 +714,7 @@ fn backoff_cleared_on_success() {
     runner.record_task_failure("backoff-clear", "fail");
     assert!(runner.tasks[0].backoff_until.is_some());
 
-    runner.record_task_completion("backoff-clear", Duration::from_millis(1));
+    runner.record_task_completion("backoff-clear", Duration::from_millis(1), 0);
     assert!(runner.tasks[0].backoff_until.is_none());
     assert_eq!(runner.tasks[0].consecutive_failures, 0);
 }
@@ -721,6 +743,7 @@ async fn hung_task_cancelled_after_2x_timeout() {
             tokio::time::sleep(Duration::from_mins(1)).await;
             Ok(ExecutionResult {
                 outcome: TaskOutcome::Success,
+                errors: 0,
                 output: None,
             })
         }
@@ -778,6 +801,7 @@ impl DaemonBridge for CancelCapturingBridge {
         Box::pin(async {
             Ok(ExecutionResult {
                 outcome: TaskOutcome::Failed,
+                errors: 0,
                 output: Some("send_prompt not expected".to_owned()),
             })
         })

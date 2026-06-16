@@ -87,6 +87,7 @@ struct ArchiveStats {
 #[derive(Default)]
 struct RetentionCounters {
     sessions_cleaned: u32,
+    cap_sessions_cleaned: u32,
     messages_cleaned: u32,
     bytes_freed: u64,
 }
@@ -94,6 +95,9 @@ struct RetentionCounters {
 impl RetentionCounters {
     fn add(&mut self, other: &Self) {
         self.sessions_cleaned = self.sessions_cleaned.saturating_add(other.sessions_cleaned);
+        self.cap_sessions_cleaned = self
+            .cap_sessions_cleaned
+            .saturating_add(other.cap_sessions_cleaned);
         self.messages_cleaned = self.messages_cleaned.saturating_add(other.messages_cleaned);
         self.bytes_freed = self.bytes_freed.saturating_add(other.bytes_freed);
     }
@@ -106,29 +110,20 @@ impl RetentionExecutor for SessionRetentionAdapter {
 
         let blackboard_entries_cleaned = cleanup_blackboard_entries(&store)?;
         let mut counters = RetentionCounters::default();
-        let mut cap_sessions_cleaned = 0u32;
 
         if settings.enabled {
             counters.messages_cleaned = counters
                 .messages_cleaned
                 .saturating_add(cleanup_orphan_messages(&store, &settings)?);
             counters.add(&cleanup_closed_sessions(&store, &settings)?);
-
-            // WHY(#5134): enforce the per-agent session cap after TTL-based
-            // cleanup so the most recent N sessions per agent are retained
-            // regardless of age. `0` means unlimited.
-            if settings.max_sessions_per_nous > 0 {
-                let cap_counters = cleanup_per_agent_cap(&store, &settings)?;
-                cap_sessions_cleaned = cap_counters.sessions_cleaned;
-                counters.add(&cap_counters);
-            }
+            counters.add(&enforce_session_cap(&store, &settings)?);
         }
 
         Ok(RetentionSummary {
             sessions_cleaned: counters.sessions_cleaned,
             messages_cleaned: counters.messages_cleaned,
             blackboard_entries_cleaned,
-            cap_sessions_cleaned,
+            cap_sessions_cleaned: counters.cap_sessions_cleaned,
             bytes_freed: counters.bytes_freed,
         })
     }
@@ -216,18 +211,11 @@ fn cleanup_closed_sessions(
     Ok(counters)
 }
 
-/// Enforce the per-agent session cap (#5134).
-///
-/// For each agent, retains the most recently updated `max_sessions_per_nous`
-/// non-active sessions and removes the rest. Active sessions are always
-/// preserved and never counted against the cap. When `archive_before_delete`
-/// is set, each removed session is exported to a JSON archive before deletion.
-fn cleanup_per_agent_cap(
+fn enforce_session_cap(
     store: &SessionStore,
     settings: &RetentionSettings,
 ) -> oikonomos::error::Result<RetentionCounters> {
-    let cap = usize::try_from(settings.max_sessions_per_nous).unwrap_or(usize::MAX);
-    if cap == 0 {
+    if settings.max_sessions_per_nous == 0 {
         return Ok(RetentionCounters::default());
     }
 
@@ -236,51 +224,51 @@ fn cleanup_per_agent_cap(
         .list_sessions(None)
         .map_err(|e| retention_failure(format!("list sessions failed: {e}")))?;
 
-    // Group eligible (non-active) sessions by owning agent.
-    let mut by_agent: std::collections::HashMap<String, Vec<Session>> =
-        std::collections::HashMap::new();
-    for session in all_sessions {
-        // WHY: active sessions are live and must never be capped.
-        if session.status == SessionStatus::Active {
-            continue;
-        }
-        by_agent
-            .entry(session.nous_id.clone())
-            .or_default()
-            .push(session);
-    }
-
     let mut counters = RetentionCounters::default();
 
-    for (nous_id, mut sessions) in by_agent {
-        if sessions.len() <= cap {
-            continue;
+    let mut by_nous: std::collections::HashMap<&str, Vec<&Session>> =
+        std::collections::HashMap::new();
+    for session in &all_sessions {
+        by_nous.entry(&session.nous_id).or_default().push(session);
+    }
+
+    let cap = usize::try_from(settings.max_sessions_per_nous)
+        .map_err(|e| retention_failure(format!("session cap conversion failed: {e}")))?;
+    for sessions in by_nous.values_mut() {
+        sessions.sort_by(|a, b| {
+            b.updated_at
+                .cmp(&a.updated_at)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+
+        for session in sessions.iter().skip(cap) {
+            match session.status {
+                SessionStatus::Archived | SessionStatus::Distilled => {
+                    let archive_stats = if settings.archive_before_delete {
+                        Some(write_session_archive(store, &archive_dir, session)?)
+                    } else {
+                        None
+                    };
+                    store.delete_session(&session.id).map_err(|e| {
+                        retention_failure(format!("delete session {} failed: {e}", session.id))
+                    })?;
+                    counters.sessions_cleaned = counters.sessions_cleaned.saturating_add(1);
+                    counters.cap_sessions_cleaned = counters.cap_sessions_cleaned.saturating_add(1);
+                    record_session_cleanup(&mut counters, session, archive_stats);
+                }
+                _ => {}
+            }
         }
+    }
 
-        // WHY: lexicographic comparison is correct for fixed-format ISO 8601
-        // UTC timestamps; sort newest-first so the cap retains the freshest.
-        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-
-        for session in sessions.into_iter().skip(cap) {
-            let archive_stats = if settings.archive_before_delete {
-                Some(write_session_archive(store, &archive_dir, &session)?)
-            } else {
-                None
-            };
-            store.delete_session(&session.id).map_err(|e| {
-                retention_failure(format!(
-                    "delete capped session '{}' failed: {e}",
-                    session.id
-                ))
-            })?;
-            counters.sessions_cleaned = counters.sessions_cleaned.saturating_add(1);
-            record_session_cleanup(&mut counters, &session, archive_stats);
-        }
-
+    if counters.cap_sessions_cleaned > 0 {
         info!(
-            nous_id = %nous_id,
-            cap,
-            "session retention enforced per-agent session cap"
+            cap_sessions_cleaned = counters.cap_sessions_cleaned,
+            sessions_cleaned = counters.sessions_cleaned,
+            messages_cleaned = counters.messages_cleaned,
+            bytes_freed = counters.bytes_freed,
+            max_sessions_per_nous = settings.max_sessions_per_nous,
+            "session cap retention pass completed"
         );
     }
 
@@ -457,6 +445,7 @@ fn cutoff_iso(ttl_days: u32) -> String {
     reason = "test assertions index a known-shape JSON archive"
 )]
 mod tests {
+    use mneme::types::{SessionMetrics, SessionOrigin, SessionType};
     use oikonomos::maintenance::RetentionExecutor as _;
 
     use super::*;
@@ -467,6 +456,64 @@ mod tests {
             reason: reason.into(),
         }
         .build()
+    }
+
+    fn session_fixture(
+        id: &str,
+        nous_id: &str,
+        session_key: &str,
+        status: SessionStatus,
+        updated_at: &str,
+    ) -> Session {
+        Session {
+            id: id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            session_key: session_key.to_owned(),
+            status,
+            model: None,
+            session_type: SessionType::Primary,
+            created_at: updated_at.to_owned(),
+            updated_at: updated_at.to_owned(),
+            metrics: SessionMetrics {
+                token_count_estimate: 0,
+                message_count: 0,
+                last_input_tokens: 0,
+                bootstrap_hash: None,
+                distillation_count: 0,
+                last_distilled_at: None,
+                computed_context_tokens: 0,
+            },
+            origin: SessionOrigin {
+                parent_session_id: None,
+                thread_id: None,
+                transport: None,
+                display_name: None,
+            },
+            artefact_meta: None,
+        }
+    }
+
+    fn import_fixture(
+        store: &SessionStore,
+        id: &str,
+        nous_id: &str,
+        status: SessionStatus,
+        updated_at: &str,
+    ) -> oikonomos::error::Result<()> {
+        store
+            .import_session(
+                &session_fixture(id, nous_id, &format!("key-{id}"), status, updated_at),
+                false,
+            )
+            .map_err(|e| retention_error(format!("import {id}: {e}")))?;
+        Ok(())
+    }
+
+    fn session_exists(store: &SessionStore, id: &str) -> oikonomos::error::Result<bool> {
+        store
+            .find_session_by_id(id)
+            .map(|session| session.is_some())
+            .map_err(|e| retention_error(format!("find {id}: {e}")))
     }
 
     #[tokio::test]
@@ -656,6 +703,270 @@ mod tests {
             session.is_none(),
             "archived session must be deleted after archive write"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn retention_cap_zero_is_unlimited() -> oikonomos::error::Result<()> {
+        let store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory()
+                .map_err(|e| retention_error(format!("store open: {e}")))?,
+        ));
+        {
+            let locked = store.lock().await;
+            import_fixture(
+                &locked,
+                "ses-a",
+                "syn",
+                SessionStatus::Archived,
+                "2024-01-01T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "ses-b",
+                "syn",
+                SessionStatus::Distilled,
+                "2024-01-02T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "ses-c",
+                "syn",
+                SessionStatus::Archived,
+                "2024-01-03T00:00:00Z",
+            )?;
+        }
+
+        let settings = RetentionSettings {
+            enabled: true,
+            closed_session_ttl_days: None,
+            max_sessions_per_nous: 0,
+            archive_before_delete: true,
+            ..RetentionSettings::default()
+        };
+        let adapter = SessionRetentionAdapter::new_with_settings(Arc::clone(&store), settings);
+        let summary = tokio::task::spawn_blocking(move || adapter.execute_retention())
+            .await
+            .map_err(|e| retention_error(format!("join: {e}")))??;
+
+        assert_eq!(summary.sessions_cleaned, 0);
+        assert_eq!(summary.cap_sessions_cleaned, 0);
+        let locked = store.lock().await;
+        for id in ["ses-a", "ses-b", "ses-c"] {
+            assert!(session_exists(&locked, id)?);
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn retention_cap_enforces_per_nous_and_preserves_active_sessions()
+    -> oikonomos::error::Result<()> {
+        let store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory()
+                .map_err(|e| retention_error(format!("store open: {e}")))?,
+        ));
+        {
+            let locked = store.lock().await;
+            import_fixture(
+                &locked,
+                "syn-active-new",
+                "syn",
+                SessionStatus::Active,
+                "2024-01-05T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "syn-arch-keep",
+                "syn",
+                SessionStatus::Archived,
+                "2024-01-04T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "syn-dist-drop",
+                "syn",
+                SessionStatus::Distilled,
+                "2024-01-03T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "syn-arch-drop",
+                "syn",
+                SessionStatus::Archived,
+                "2024-01-02T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "syn-active-old",
+                "syn",
+                SessionStatus::Active,
+                "2024-01-01T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "bob-arch-keep",
+                "bob",
+                SessionStatus::Archived,
+                "2024-01-03T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "bob-dist-keep",
+                "bob",
+                SessionStatus::Distilled,
+                "2024-01-02T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "bob-arch-drop",
+                "bob",
+                SessionStatus::Archived,
+                "2024-01-01T00:00:00Z",
+            )?;
+        }
+
+        let settings = RetentionSettings {
+            enabled: true,
+            closed_session_ttl_days: None,
+            max_sessions_per_nous: 2,
+            archive_before_delete: false,
+            ..RetentionSettings::default()
+        };
+        let adapter = SessionRetentionAdapter::new_with_settings(Arc::clone(&store), settings);
+        let summary = tokio::task::spawn_blocking(move || adapter.execute_retention())
+            .await
+            .map_err(|e| retention_error(format!("join: {e}")))??;
+
+        assert_eq!(summary.sessions_cleaned, 3);
+        assert_eq!(summary.cap_sessions_cleaned, 3);
+        let locked = store.lock().await;
+        for id in [
+            "syn-active-new",
+            "syn-arch-keep",
+            "syn-active-old",
+            "bob-arch-keep",
+            "bob-dist-keep",
+        ] {
+            assert!(session_exists(&locked, id)?, "{id} should remain");
+        }
+        for id in ["syn-dist-drop", "syn-arch-drop", "bob-arch-drop"] {
+            assert!(!session_exists(&locked, id)?, "{id} should be deleted");
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn retention_cap_uses_session_id_for_stable_ties() -> oikonomos::error::Result<()> {
+        let store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory()
+                .map_err(|e| retention_error(format!("store open: {e}")))?,
+        ));
+        {
+            let locked = store.lock().await;
+            import_fixture(
+                &locked,
+                "b",
+                "syn",
+                SessionStatus::Archived,
+                "2024-01-01T00:00:00Z",
+            )?;
+            import_fixture(
+                &locked,
+                "a",
+                "syn",
+                SessionStatus::Archived,
+                "2024-01-01T00:00:00Z",
+            )?;
+        }
+
+        let settings = RetentionSettings {
+            enabled: true,
+            closed_session_ttl_days: None,
+            max_sessions_per_nous: 1,
+            archive_before_delete: false,
+            ..RetentionSettings::default()
+        };
+        let adapter = SessionRetentionAdapter::new_with_settings(Arc::clone(&store), settings);
+        let summary = tokio::task::spawn_blocking(move || adapter.execute_retention())
+            .await
+            .map_err(|e| retention_error(format!("join: {e}")))??;
+
+        assert_eq!(summary.sessions_cleaned, 1);
+        assert_eq!(summary.cap_sessions_cleaned, 1);
+        let locked = store.lock().await;
+        assert!(session_exists(&locked, "a")?);
+        assert!(!session_exists(&locked, "b")?);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn retention_cap_archives_before_delete() -> oikonomos::error::Result<()> {
+        let store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory()
+                .map_err(|e| retention_error(format!("store open: {e}")))?,
+        ));
+        {
+            let locked = store.lock().await;
+            locked
+                .create_session("cap-del", "syn", "key-cap-del", None, None)
+                .map_err(|e| retention_error(format!("create: {e}")))?;
+            locked
+                .append_message(
+                    "cap-del",
+                    mneme::types::Role::User,
+                    "cap archive me",
+                    None,
+                    None,
+                    2,
+                )
+                .map_err(|e| retention_error(format!("append: {e}")))?;
+            locked
+                .import_session(
+                    &session_fixture(
+                        "cap-del",
+                        "syn",
+                        "key-cap-del",
+                        SessionStatus::Archived,
+                        "2024-01-01T00:00:00Z",
+                    ),
+                    true,
+                )
+                .map_err(|e| retention_error(format!("import cap-del: {e}")))?;
+            import_fixture(
+                &locked,
+                "keep",
+                "syn",
+                SessionStatus::Archived,
+                "2024-01-02T00:00:00Z",
+            )?;
+        }
+
+        let settings = RetentionSettings {
+            enabled: true,
+            closed_session_ttl_days: None,
+            max_sessions_per_nous: 1,
+            archive_before_delete: true,
+            ..RetentionSettings::default()
+        };
+        let adapter = SessionRetentionAdapter::new_with_settings(Arc::clone(&store), settings);
+        let summary = tokio::task::spawn_blocking(move || adapter.execute_retention())
+            .await
+            .map_err(|e| retention_error(format!("join: {e}")))??;
+
+        assert_eq!(summary.sessions_cleaned, 1);
+        assert_eq!(summary.cap_sessions_cleaned, 1);
+        assert_eq!(summary.messages_cleaned, 1);
+        assert!(summary.bytes_freed > 0);
+        let locked = store.lock().await;
+        let archive_path = archive_dir_for_store(&locked)?.join("cap-del.json");
+        let archive = std::fs::read_to_string(&archive_path)
+            .map_err(|e| retention_error(format!("read archive: {e}")))?;
+        let archive_json: serde_json::Value = serde_json::from_str(&archive)
+            .map_err(|e| retention_error(format!("parse archive: {e}")))?;
+        assert_eq!(archive_json["session"]["id"], "cap-del");
+        assert_eq!(archive_json["messages"][0]["content"], "cap archive me");
+        assert!(!session_exists(&locked, "cap-del")?);
+        assert!(session_exists(&locked, "keep")?);
         Ok(())
     }
 }

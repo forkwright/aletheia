@@ -251,11 +251,6 @@ pub struct ReloadOutcome {
 /// Returns [`ReloadError::Load`] if reading from disk fails.
 /// Returns [`ReloadError::Validation`] if the new config is invalid
 /// (the current config is unchanged).
-#[expect(
-    clippy::result_large_err,
-    reason = "ReloadError wraps taxis Error which carries PathBuf fields; \
-              boxing would require a crate-wide change"
-)]
 pub fn prepare_reload(
     oikos: &Oikos,
     current: &AletheiaConfig,

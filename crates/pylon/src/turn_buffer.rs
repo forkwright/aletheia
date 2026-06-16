@@ -10,9 +10,11 @@
 //! expired entries.
 
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use tokio::sync::futures::OwnedNotified;
 use tokio::sync::{Mutex, Notify};
 use tracing::{Instrument as _, debug, warn};
 
@@ -20,7 +22,12 @@ use tracing::{Instrument as _, debug, warn};
 const DEFAULT_COMPLETED_TTL: Duration = Duration::from_mins(5);
 
 /// Maximum events retained per turn buffer to bound memory usage.
-const MAX_EVENTS_PER_TURN: usize = 10_000;
+const DEFAULT_MAX_EVENTS_PER_TURN: usize = 10_000;
+
+/// Retained marker emitted when a turn buffer reaches its capacity limit.
+pub(crate) const REPLAY_GAP_EVENT_TYPE: &str = "replay_gap";
+
+pub(crate) const REPLAY_GAP_REASON_BUFFER_CAPACITY: &str = "buffer_capacity";
 
 /// A single buffered SSE event with its sequence ID.
 #[derive(Debug, Clone)]
@@ -31,6 +38,21 @@ pub(crate) struct BufferedEvent {
     pub event_type: String,
     /// Serialized JSON payload.
     pub data: String,
+}
+
+/// Result of recording an event into the replay buffer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RecordOutcome {
+    /// The caller's event was retained at this sequence number.
+    Recorded { seq: u64 },
+    /// The buffer retained a gap marker instead of the caller's event.
+    ReplayGap {
+        seq: u64,
+        dropped_after_seq: u64,
+        retained_limit: usize,
+    },
+    /// The buffer was already truncated; the caller's event was not retained.
+    Dropped,
 }
 
 /// Turn completion state.
@@ -52,6 +74,8 @@ pub(crate) struct TurnBuffer {
     events: Vec<BufferedEvent>,
     next_seq: u64,
     state: TurnState,
+    max_events_per_turn: usize,
+    truncated: bool,
     /// When the turn completed or failed (for TTL-based reaping).
     finished_at: Option<Instant>,
     /// Notified whenever a new event is appended. Reconnecting clients
@@ -60,36 +84,70 @@ pub(crate) struct TurnBuffer {
 }
 
 impl TurnBuffer {
-    fn new() -> Self {
+    fn new(max_events_per_turn: usize) -> Self {
         Self {
             events: Vec::new(),
             next_seq: 1,
             state: TurnState::Running,
+            max_events_per_turn,
+            truncated: false,
             finished_at: None,
             notify: Arc::new(Notify::new()),
         }
     }
 
     /// Append an event and return its assigned sequence number.
-    fn push(&mut self, event_type: String, data: String) -> u64 {
-        let seq = self.next_seq;
-        self.next_seq += 1;
+    fn push(&mut self, event_type: String, data: String) -> RecordOutcome {
+        if self.truncated {
+            return RecordOutcome::Dropped;
+        }
 
-        if self.events.len() < MAX_EVENTS_PER_TURN {
+        let seq = self.next_seq;
+
+        if self.events.len() < self.max_events_per_turn {
+            self.next_seq += 1;
             self.events.push(BufferedEvent {
                 seq,
                 event_type,
                 data,
             });
-        } else if self.events.len() == MAX_EVENTS_PER_TURN {
-            warn!(
-                seq,
-                "turn buffer reached max capacity ({MAX_EVENTS_PER_TURN}), dropping new events"
-            );
+            self.notify.notify_waiters();
+            return RecordOutcome::Recorded { seq };
         }
 
+        let dropped_after_seq = self
+            .events
+            .last()
+            .map_or(0, |event| event.seq.saturating_sub(1));
+        let retained_limit = self.max_events_per_turn;
+        let gap = BufferedEvent {
+            seq,
+            event_type: REPLAY_GAP_EVENT_TYPE.to_owned(),
+            data: serde_json::json!({
+                "type": REPLAY_GAP_EVENT_TYPE,
+                "reason": REPLAY_GAP_REASON_BUFFER_CAPACITY,
+                "dropped_after_seq": dropped_after_seq,
+                "retained_limit": retained_limit,
+            })
+            .to_string(),
+        };
+        if !self.events.is_empty() {
+            self.events.pop();
+        }
+        self.events.push(gap);
+        self.next_seq += 1;
+        self.truncated = true;
+
+        warn!(
+            seq,
+            retained_limit, "turn buffer reached max capacity, emitting replay gap"
+        );
         self.notify.notify_waiters();
-        seq
+        RecordOutcome::ReplayGap {
+            seq,
+            dropped_after_seq,
+            retained_limit,
+        }
     }
 
     /// Mark the turn as completed or failed.
@@ -109,6 +167,13 @@ impl TurnBuffer {
     }
 }
 
+/// Replay snapshot with a waiter already registered for the next change.
+pub(crate) struct TurnBufferSnapshot {
+    pub events: Vec<BufferedEvent>,
+    pub state: TurnState,
+    pub notified: Pin<Box<OwnedNotified>>,
+}
+
 /// Key for looking up a turn buffer.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct TurnKey {
@@ -122,6 +187,7 @@ struct TurnKey {
 pub struct TurnBufferRegistry {
     buffers: Mutex<HashMap<TurnKey, Arc<Mutex<TurnBuffer>>>>,
     completed_ttl: Duration,
+    max_events_per_turn: usize,
 }
 
 impl Default for TurnBufferRegistry {
@@ -134,9 +200,15 @@ impl TurnBufferRegistry {
     /// Create a new registry with the default completed-turn TTL.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_limits(DEFAULT_COMPLETED_TTL, DEFAULT_MAX_EVENTS_PER_TURN)
+    }
+
+    /// Create a registry with explicit replay retention limits.
+    pub(crate) fn with_limits(completed_ttl: Duration, max_events_per_turn: usize) -> Self {
         Self {
             buffers: Mutex::new(HashMap::new()),
-            completed_ttl: DEFAULT_COMPLETED_TTL,
+            completed_ttl,
+            max_events_per_turn: max_events_per_turn.max(1),
         }
     }
 
@@ -154,7 +226,7 @@ impl TurnBufferRegistry {
         let mut map = self.buffers.lock().await;
         Arc::clone(
             map.entry(key)
-                .or_insert_with(|| Arc::new(Mutex::new(TurnBuffer::new()))),
+                .or_insert_with(|| Arc::new(Mutex::new(TurnBuffer::new(self.max_events_per_turn)))),
         )
     }
 
@@ -218,8 +290,8 @@ impl TurnBufferHandle {
         Self { inner: buffer }
     }
 
-    /// Record an SSE event. Returns the assigned sequence number.
-    pub(crate) async fn record(&self, event_type: &str, data: &str) -> u64 {
+    /// Record an SSE event. Returns the retained record outcome.
+    pub(crate) async fn record(&self, event_type: &str, data: &str) -> RecordOutcome {
         let mut buf = self.inner.lock().await;
         buf.push(event_type.to_owned(), data.to_owned())
     }
@@ -236,16 +308,23 @@ impl TurnBufferHandle {
         buf.finish(TurnState::Failed);
     }
 
-    /// Get the notify handle for live-streaming to reconnecting clients.
-    pub(crate) async fn notify_handle(&self) -> Arc<Notify> {
-        let buf = self.inner.lock().await;
-        Arc::clone(&buf.notify)
-    }
-
     /// Get events after a given sequence number, plus the current turn state.
+    #[cfg(test)]
     pub(crate) async fn events_after(&self, after_seq: u64) -> (Vec<BufferedEvent>, TurnState) {
         let buf = self.inner.lock().await;
         (buf.events_after(after_seq), buf.state.clone())
+    }
+
+    /// Get a replay snapshot with a waiter armed before the lock is released.
+    pub(crate) async fn snapshot_after(&self, after_seq: u64) -> TurnBufferSnapshot {
+        let buf = self.inner.lock().await;
+        let mut notified = Box::pin(Arc::clone(&buf.notify).notified_owned());
+        notified.as_mut().enable();
+        TurnBufferSnapshot {
+            events: buf.events_after(after_seq),
+            state: buf.state.clone(),
+            notified,
+        }
     }
 }
 
@@ -295,9 +374,9 @@ mod tests {
             .record("message_complete", r#"{"stop_reason":"end_turn"}"#)
             .await;
 
-        assert_eq!(seq1, 1);
-        assert_eq!(seq2, 2);
-        assert_eq!(seq3, 3);
+        assert_eq!(seq1, RecordOutcome::Recorded { seq: 1 });
+        assert_eq!(seq2, RecordOutcome::Recorded { seq: 2 });
+        assert_eq!(seq3, RecordOutcome::Recorded { seq: 3 });
     }
 
     #[tokio::test]
@@ -372,11 +451,8 @@ mod tests {
 
     #[tokio::test]
     async fn reap_removes_expired_buffers() {
-        let registry = TurnBufferRegistry {
-            buffers: Mutex::new(HashMap::new()),
-            // WHY: use zero TTL so the buffer expires immediately for testing
-            completed_ttl: Duration::from_secs(0),
-        };
+        let registry =
+            TurnBufferRegistry::with_limits(Duration::from_secs(0), DEFAULT_MAX_EVENTS_PER_TURN);
 
         let buf = registry.get_or_create("ses-1", "turn-1").await;
         let handle = TurnBufferHandle::new(buf);
@@ -391,10 +467,8 @@ mod tests {
 
     #[tokio::test]
     async fn reap_keeps_running_buffers() {
-        let registry = TurnBufferRegistry {
-            buffers: Mutex::new(HashMap::new()),
-            completed_ttl: Duration::from_secs(0),
-        };
+        let registry =
+            TurnBufferRegistry::with_limits(Duration::from_secs(0), DEFAULT_MAX_EVENTS_PER_TURN);
 
         let _ = registry.get_or_create("ses-1", "turn-1").await;
         // Buffer is still Running (not completed)
@@ -413,7 +487,7 @@ mod tests {
         let handle = TurnBufferHandle::new(buf);
 
         // Push MAX + 10 events
-        for i in 0..(MAX_EVENTS_PER_TURN + 10) {
+        for i in 0..(DEFAULT_MAX_EVENTS_PER_TURN + 10) {
             handle
                 .record("text_delta", &format!(r#"{{"text":"event-{i}"}}"#))
                 .await;
@@ -422,8 +496,55 @@ mod tests {
         let (events, _) = handle.events_after(0).await;
         assert_eq!(
             events.len(),
-            MAX_EVENTS_PER_TURN,
-            "buffer must cap at MAX_EVENTS_PER_TURN"
+            DEFAULT_MAX_EVENTS_PER_TURN,
+            "buffer must cap at DEFAULT_MAX_EVENTS_PER_TURN"
         );
+    }
+
+    #[tokio::test]
+    async fn buffer_emits_replay_gap_at_capacity() {
+        let registry = TurnBufferRegistry::with_limits(DEFAULT_COMPLETED_TTL, 3);
+        let buf = registry.get_or_create("ses-1", "turn-1").await;
+        let handle = TurnBufferHandle::new(buf);
+
+        assert_eq!(
+            handle.record("text_delta", r#"{"text":"a"}"#).await,
+            RecordOutcome::Recorded { seq: 1 }
+        );
+        assert_eq!(
+            handle.record("text_delta", r#"{"text":"b"}"#).await,
+            RecordOutcome::Recorded { seq: 2 }
+        );
+        assert_eq!(
+            handle.record("text_delta", r#"{"text":"c"}"#).await,
+            RecordOutcome::Recorded { seq: 3 }
+        );
+
+        assert_eq!(
+            handle.record("text_delta", r#"{"text":"d"}"#).await,
+            RecordOutcome::ReplayGap {
+                seq: 4,
+                dropped_after_seq: 2,
+                retained_limit: 3,
+            }
+        );
+        assert_eq!(
+            handle.record("text_delta", r#"{"text":"e"}"#).await,
+            RecordOutcome::Dropped
+        );
+
+        let (events, _) = handle.events_after(0).await;
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].seq, 1);
+        assert_eq!(events[1].seq, 2);
+        assert_eq!(events[2].seq, 4);
+        assert_eq!(events[2].event_type, REPLAY_GAP_EVENT_TYPE);
+        let Ok(gap) = serde_json::from_str::<serde_json::Value>(&events[2].data) else {
+            panic!("gap json");
+        };
+        assert_eq!(gap["type"], REPLAY_GAP_EVENT_TYPE);
+        assert_eq!(gap["reason"], REPLAY_GAP_REASON_BUFFER_CAPACITY);
+        assert_eq!(gap["dropped_after_seq"], 2);
+        assert_eq!(gap["retained_limit"], 3);
     }
 }

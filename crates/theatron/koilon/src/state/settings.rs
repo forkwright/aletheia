@@ -364,6 +364,101 @@ fn build_sections(config: &serde_json::Value) -> Vec<SettingsSection> {
                 false,
             ));
         }
+        if let Some(pro) = maint.get("prosoche") {
+            // NOTE: mode is read-only because the set of valid values is an enum
+            // (daemon | external | both | disabled) and FieldType does not yet
+            // support constrained choice editing.
+            fields.push(field(
+                "maintenance.prosoche.mode",
+                "Prosoche mode",
+                pro.get("mode"),
+                FieldType::ReadOnly,
+                false,
+                true,
+            ));
+            if let Some(hb) = pro.get("heartbeat") {
+                fields.push(field(
+                    "maintenance.prosoche.heartbeat.enabled",
+                    "Heartbeat enabled",
+                    hb.get("enabled"),
+                    FieldType::Bool,
+                    true,
+                    true,
+                ));
+                fields.push(field(
+                    "maintenance.prosoche.heartbeat.intervalSecs",
+                    "Heartbeat interval (s)",
+                    hb.get("intervalSecs"),
+                    FieldType::Integer,
+                    true,
+                    true,
+                ));
+                if let Some(aw) = hb.get("activeWindow") {
+                    fields.push(field(
+                        "maintenance.prosoche.heartbeat.activeWindow",
+                        "Heartbeat active window",
+                        Some(aw),
+                        FieldType::ReadOnly,
+                        false,
+                        true,
+                    ));
+                }
+            }
+            if let Some(sa) = pro.get("selfAudit") {
+                fields.push(field(
+                    "maintenance.prosoche.selfAudit.enabled",
+                    "Self-audit enabled",
+                    sa.get("enabled"),
+                    FieldType::Bool,
+                    true,
+                    true,
+                ));
+                fields.push(field(
+                    "maintenance.prosoche.selfAudit.intervalSecs",
+                    "Self-audit interval (s)",
+                    sa.get("intervalSecs"),
+                    FieldType::Integer,
+                    true,
+                    true,
+                ));
+                if let Some(aw) = sa.get("activeWindow") {
+                    fields.push(field(
+                        "maintenance.prosoche.selfAudit.activeWindow",
+                        "Self-audit active window",
+                        Some(aw),
+                        FieldType::ReadOnly,
+                        false,
+                        true,
+                    ));
+                }
+            }
+            if let Some(et) = pro.get("externalTimer") {
+                fields.push(field(
+                    "maintenance.prosoche.externalTimer.enabled",
+                    "External timer enabled",
+                    et.get("enabled"),
+                    FieldType::Bool,
+                    true,
+                    true,
+                ));
+                fields.push(field(
+                    "maintenance.prosoche.externalTimer.taskId",
+                    "External timer task id",
+                    et.get("taskId"),
+                    FieldType::ReadOnly,
+                    false,
+                    true,
+                ));
+                fields.push(field(
+                    "maintenance.prosoche.externalTimer.intervalSecs",
+                    "External timer interval (s)",
+                    et.get("intervalSecs"),
+                    FieldType::Integer,
+                    true,
+                    true,
+                ));
+            }
+        }
         if !fields.is_empty() {
             sections.push(SettingsSection {
                 name: "Maintenance".to_owned(),
@@ -578,6 +673,95 @@ mod tests {
             .find(|s| s.name == "Maintenance")
             .unwrap();
         assert_eq!(maint.fields.len(), 5);
+    }
+
+    #[test]
+    fn from_config_with_prosoche() {
+        let config = serde_json::json!({
+            "maintenance": {
+                "prosoche": {
+                    "mode": "daemon",
+                    "heartbeat": {
+                        "enabled": true,
+                        "intervalSecs": 2700,
+                        "activeWindow": { "startHour": 8, "endHour": 23 }
+                    },
+                    "selfAudit": {
+                        "enabled": true,
+                        "intervalSecs": 21600,
+                        "activeWindow": { "startHour": 8, "endHour": 23 }
+                    },
+                    "externalTimer": {
+                        "enabled": false,
+                        "taskId": "prosoche-self-audit",
+                        "intervalSecs": 300
+                    }
+                }
+            }
+        });
+        let overlay = SettingsOverlay::from_config(&config);
+        assert!(overlay.sections.iter().any(|s| s.name == "Maintenance"));
+        let maint = overlay
+            .sections
+            .iter()
+            .find(|s| s.name == "Maintenance")
+            .unwrap();
+
+        let keys: Vec<&str> = maint.fields.iter().map(|f| f.key.as_str()).collect();
+        assert!(keys.contains(&"maintenance.prosoche.mode"));
+        assert!(keys.contains(&"maintenance.prosoche.heartbeat.enabled"));
+        assert!(keys.contains(&"maintenance.prosoche.heartbeat.intervalSecs"));
+        assert!(keys.contains(&"maintenance.prosoche.selfAudit.enabled"));
+        assert!(keys.contains(&"maintenance.prosoche.externalTimer.taskId"));
+
+        let mode = maint
+            .fields
+            .iter()
+            .find(|f| f.key == "maintenance.prosoche.mode")
+            .unwrap();
+        assert_eq!(mode.field_type, FieldType::ReadOnly);
+        assert!(!mode.editable);
+
+        let hb = maint
+            .fields
+            .iter()
+            .find(|f| f.key == "maintenance.prosoche.heartbeat.enabled")
+            .unwrap();
+        assert_eq!(hb.field_type, FieldType::Bool);
+        assert!(hb.editable);
+
+        let task_id = maint
+            .fields
+            .iter()
+            .find(|f| f.key == "maintenance.prosoche.externalTimer.taskId")
+            .unwrap();
+        assert_eq!(task_id.field_type, FieldType::ReadOnly);
+        assert_eq!(task_id.value, serde_json::json!("prosoche-self-audit"));
+    }
+
+    #[test]
+    fn changed_sections_reconstructs_prosoche() {
+        let config = serde_json::json!({
+            "maintenance": {
+                "prosoche": {
+                    "heartbeat": { "enabled": true, "intervalSecs": 2700 }
+                }
+            }
+        });
+        let mut overlay = SettingsOverlay::from_config(&config);
+        // Cursor order: mode (0), heartbeat.enabled (1), heartbeat.intervalSecs (2)
+        overlay.cursor = 2;
+        if let Some(f) = overlay.current_field_mut() {
+            f.value = serde_json::json!(3600);
+        }
+        let changed = overlay.changed_sections();
+        let interval = changed
+            .get("maintenance")
+            .and_then(|v| v.get("prosoche"))
+            .and_then(|v| v.get("heartbeat"))
+            .and_then(|v| v.get("intervalSecs"))
+            .and_then(|v| v.as_u64());
+        assert_eq!(interval, Some(3600));
     }
 
     #[test]

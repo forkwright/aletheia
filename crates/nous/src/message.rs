@@ -106,6 +106,30 @@ pub struct NousStatus {
     pub panic_count: u32,
     /// How long the actor has been running.
     pub uptime: Duration,
+    /// Total background task failures (panics and join errors) since start.
+    pub background_failure_total_count: u32,
+    /// Background task failures within `degraded_window_secs`.
+    pub background_failure_recent_count: u32,
+    /// Most recent background failure message, if any.
+    pub background_failure_latest_message: Option<String>,
+    /// Kind of the most recent background failure (`panic`, `error`, etc.).
+    pub background_failure_latest_kind: Option<String>,
+    /// True when recent background failures reached `degraded_panic_threshold`.
+    ///
+    /// WHY(#5147): background failures are reported explicitly in status/health
+    /// but do NOT transition the pipeline lifecycle to `Degraded`.
+    pub background_health_degraded: bool,
+}
+
+/// Snapshot of the manager's health-poller supervisor state.
+#[derive(Debug, Clone)]
+pub struct ManagerPollerSnapshot {
+    /// Whether the supervisor task is currently running.
+    pub running: bool,
+    /// Number of times the supervisor has had to respawn the inner poller.
+    pub restart_count: u64,
+    /// Message from the most recent inner-poller panic, if any.
+    pub last_error: Option<String>,
 }
 
 /// Health snapshot returned by the manager's periodic health check.
@@ -117,6 +141,16 @@ pub struct ActorHealth {
     pub panic_count: u32,
     /// Uptime since last (re)start.
     pub uptime: Duration,
+    /// Total background task failures (panics and join errors) since start.
+    pub background_failure_total_count: u32,
+    /// Background task failures within `degraded_window_secs`.
+    pub background_failure_recent_count: u32,
+    /// Most recent background failure message, if any.
+    pub background_failure_latest_message: Option<String>,
+    /// Kind of the most recent background failure (`panic`, `error`, etc.).
+    pub background_failure_latest_kind: Option<String>,
+    /// True when recent background failures reached `degraded_panic_threshold`.
+    pub background_health_degraded: bool,
 }
 
 #[cfg(test)]
@@ -148,12 +182,19 @@ mod tests {
             active_session: None,
             panic_count: 0,
             uptime: Duration::from_mins(1),
+            background_failure_total_count: 0,
+            background_failure_recent_count: 0,
+            background_failure_latest_message: None,
+            background_failure_latest_kind: None,
+            background_health_degraded: false,
         };
         assert_eq!(status.id, "syn");
         assert_eq!(status.lifecycle, NousLifecycle::Idle);
         assert_eq!(status.session_count, 3);
         assert!(status.active_session.is_none());
         assert_eq!(status.panic_count, 0);
+        assert_eq!(status.background_failure_total_count, 0);
+        assert!(!status.background_health_degraded);
     }
 
     #[test]
@@ -165,6 +206,11 @@ mod tests {
             active_session: Some("main".to_owned()),
             panic_count: 0,
             uptime: Duration::from_secs(0),
+            background_failure_total_count: 0,
+            background_failure_recent_count: 0,
+            background_failure_latest_message: None,
+            background_failure_latest_kind: None,
+            background_health_degraded: false,
         };
         assert_eq!(status.lifecycle, NousLifecycle::Active);
         assert_eq!(status.active_session.as_deref(), Some("main"));
@@ -200,9 +246,25 @@ mod tests {
             alive: true,
             panic_count: 2,
             uptime: Duration::from_mins(2),
+            background_failure_total_count: 1,
+            background_failure_recent_count: 1,
+            background_failure_latest_message: Some("boom".to_owned()),
+            background_failure_latest_kind: Some("panic".to_owned()),
+            background_health_degraded: true,
         };
         assert!(health.alive);
         assert_eq!(health.panic_count, 2);
         assert_eq!(health.uptime.as_secs(), 120);
+        assert_eq!(health.background_failure_total_count, 1);
+        assert_eq!(health.background_failure_recent_count, 1);
+        assert_eq!(
+            health.background_failure_latest_message.as_deref(),
+            Some("boom")
+        );
+        assert_eq!(
+            health.background_failure_latest_kind.as_deref(),
+            Some("panic")
+        );
+        assert!(health.background_health_degraded);
     }
 }

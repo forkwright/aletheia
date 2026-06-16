@@ -137,8 +137,8 @@ pub enum BuiltinTask {
     SelfPrompt,
     /// Analyze recent session observations and write candidate lint rule proposals.
     ProposeRules,
-    /// Periodic file-level backup of the fjall knowledge store.
-    FjallBackup,
+    /// Periodic whole-instance backup.
+    InstanceBackup,
     /// Prune prompt audit log daily files past the retention window (#3411).
     PromptAuditRotation,
     /// Refresh empirical after-action routing statistics from JSONL logs.
@@ -330,10 +330,28 @@ pub struct TaskStatus {
     /// ISO 8601 timestamp of the underlying data (last run), if known. (#5131)
     #[serde(default)]
     pub as_of: Option<String>,
+    /// Number of non-fatal errors reported by the last execution.
+    /// Maintenance tasks may complete with partial errors (e.g. knowledge
+    /// graph updates that fail per-item but do not abort the whole task).
+    #[serde(default)]
+    pub last_errors: u32,
+    /// Whether the task is available in the current runtime configuration.
+    /// Tasks that require optional executors (e.g. knowledge graph) are
+    /// unavailable when the executor is not configured.
+    #[serde(default = "default_true")]
+    pub available: bool,
+    /// Human-readable reason when the task is unavailable or not scheduled.
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 fn default_data_source() -> String {
     "live".to_owned()
+}
+
+#[inline]
+const fn default_true() -> bool {
+    true
 }
 
 #[cfg(test)]
@@ -470,6 +488,9 @@ mod tests {
             last_error: None,
             data_source: "live".to_owned(),
             as_of: None,
+            last_errors: 3,
+            available: true,
+            reason: Some("test reason".to_owned()),
         };
         assert_eq!(status.id, "test-id");
         assert_eq!(status.name, "Test Task");
@@ -478,6 +499,9 @@ mod tests {
         assert!(status.last_run.is_none());
         assert_eq!(status.run_count, 42);
         assert_eq!(status.consecutive_failures, 0);
+        assert_eq!(status.last_errors, 3);
+        assert!(status.available);
+        assert_eq!(status.reason.as_deref(), Some("test reason"));
     }
 
     #[test]

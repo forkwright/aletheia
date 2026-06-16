@@ -15,6 +15,7 @@ impl SseEvent {
             Self::ToolResult { .. } => "tool_result",
             Self::MessageComplete { .. } => "message_complete",
             Self::Error { .. } => "error",
+            Self::ReplayGap { .. } => "replay_gap",
         }
     }
 }
@@ -33,6 +34,7 @@ impl TurnStreamEvent {
             Self::ToolResult { .. } => "tool_result",
             Self::MessageComplete { .. } => "message_complete",
             Self::Error { .. } => "error",
+            Self::ReplayGap { .. } => "replay_gap",
         }
     }
 }

@@ -28,8 +28,10 @@ pub use maintenance::{
     BackupSettings, CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
     DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, KnowledgeGraphMcpConfig,
     LoggingSettings, MaintenanceSettings, McpConfig, McpRateLimitConfig, PromptAuditSettings,
-    RedactionSettings, RepomixMcpConfig, RetentionSettings, SandboxSettings,
-    SerendipityMaintenanceSettings, TraceRotationSettings, WatchdogSettings,
+    ProsocheActiveWindowSettings, ProsocheExternalTimerSettings, ProsocheMaintenanceSettings,
+    ProsocheScheduleMode, ProsocheTaskScheduleSettings, RedactionSettings, RepomixMcpConfig,
+    RetentionSettings, SandboxSettings, SerendipityMaintenanceSettings, TraceRotationSettings,
+    WatchdogSettings,
 };
 pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,

@@ -17,6 +17,12 @@ use crate::error;
 use crate::pipeline::TurnResult;
 use crate::session::SessionState;
 
+/// Content marker prefix for assistant turns that ended for an explicitly
+/// partial reason. Stored inline because `graphe::Message` has no metadata
+/// field for `stop_reason`; this follows existing history conventions
+/// (`[tool:...]`, `[System: ...]`, `[Conversation summary FROM compaction]`).
+const PARTIAL_MARKER_PREFIX: &str = "[partial: ";
+
 /// Convert a ULID to a globally unique `i64` for use as `turn_seq` in the
 /// usage table.
 ///
@@ -60,6 +66,34 @@ pub struct FinalizeResult {
     pub messages_persisted: usize,
     /// Whether usage was recorded.
     pub usage_recorded: bool,
+}
+
+/// Returns true for stop reasons that represent a partial terminal outcome
+/// rather than a clean assistant completion.
+///
+/// `client_disconnect` and `max_tool_iterations` can carry partial content in
+/// an otherwise successful `TurnResult`, so durable history must not render
+/// them as clean assistant completions.
+fn is_partial_stop_reason(stop_reason: &str) -> bool {
+    matches!(stop_reason, "client_disconnect" | "max_tool_iterations")
+}
+
+/// Format the assistant message content for persistence.
+///
+/// Partial terminal outcomes are prefixed with a visible marker so they are
+/// not indistinguishable from clean `end_turn` assistant messages when later
+/// loaded as history. This is a history-convention marker (no schema change);
+/// callers that need the raw content can strip the prefix if desired.
+fn format_assistant_content(content: &str, stop_reason: &str) -> String {
+    if is_partial_stop_reason(stop_reason) {
+        if content.is_empty() {
+            format!("{PARTIAL_MARKER_PREFIX}{stop_reason}]")
+        } else {
+            format!("{PARTIAL_MARKER_PREFIX}{stop_reason}] {content}")
+        }
+    } else {
+        content.to_owned()
+    }
 }
 
 /// Persist turn results to the session store.
@@ -173,11 +207,12 @@ pub(crate) fn finalize(
         }
 
         let output_tokens = i64::try_from(result.usage.output_tokens).unwrap_or(0);
+        let assistant_content = format_assistant_content(&result.content, &result.stop_reason);
         store
             .append_message(
                 &session.id,
                 Role::Assistant,
-                &result.content,
+                &assistant_content,
                 None,
                 None,
                 output_tokens,
@@ -289,6 +324,13 @@ mod tests {
         }
     }
 
+    fn partial_result(stop_reason: &str) -> TurnResult {
+        TurnResult {
+            stop_reason: stop_reason.to_owned(),
+            ..simple_result()
+        }
+    }
+
     #[test]
     fn finalize_persists_user_and_assistant_messages() {
         let (store, session) = make_store_and_session();
@@ -303,6 +345,57 @@ mod tests {
         assert_eq!(history[0].content, "Hi there");
         assert_eq!(history[1].role, Role::Assistant);
         assert_eq!(history[1].content, "Hello!");
+    }
+
+    /// Regression test for #4915: partial terminal outcomes must not be
+    /// persisted as indistinguishable successful assistant messages. Because
+    /// `graphe::Message` has no metadata field for `stop_reason`, we use an
+    /// inline history-convention marker.
+    #[test]
+    fn finalize_marks_partial_stop_reasons() {
+        for reason in ["client_disconnect", "max_tool_iterations"] {
+            let (store, session) = make_store_and_session();
+            let result = partial_result(reason);
+            let config = FinalizeConfig::default();
+
+            finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+
+            let history = store.get_history("ses-1", None).expect("history");
+            assert_eq!(history.len(), 2, "{reason}: user + assistant");
+            assert_eq!(history[1].role, Role::Assistant);
+            assert_eq!(
+                history[1].content,
+                format!("[partial: {reason}] Hello!"),
+                "{reason}: assistant message should carry partial marker"
+            );
+        }
+    }
+
+    #[test]
+    fn finalize_does_not_mark_clean_end_turn() {
+        let (store, session) = make_store_and_session();
+        let result = simple_result();
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+
+        let history = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[1].role, Role::Assistant);
+        assert_eq!(history[1].content, "Hello!");
+    }
+
+    #[test]
+    fn finalize_partial_marker_handles_empty_content() {
+        let (store, session) = make_store_and_session();
+        let mut result = partial_result("client_disconnect");
+        result.content.clear();
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+
+        let history = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history[1].content, "[partial: client_disconnect]");
     }
 
     #[test]

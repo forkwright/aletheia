@@ -122,6 +122,26 @@ workspace = "nous/main"
 # [maintenance.dbMonitoring]
 # warnThresholdMb = 100
 
+# Prosoche heartbeat scheduling. mode = "daemon" uses the in-process scheduler;
+# "external" uses the systemd timer; "both" runs both; "disabled" turns it off.
+# [maintenance.prosoche]
+# mode = "daemon"
+#
+# [maintenance.prosoche.heartbeat]
+# enabled = true
+# intervalSecs = 2700          # 45 minutes
+# activeWindow = { startHour = 8, endHour = 23 }
+#
+# [maintenance.prosoche.selfAudit]
+# enabled = true
+# intervalSecs = 21600         # 6 hours
+# activeWindow = { startHour = 8, endHour = 23 }
+#
+# [maintenance.prosoche.externalTimer]
+# enabled = false
+# taskId = "prosoche-self-audit"
+# intervalSecs = 300           # must match aletheia-health.timer
+
 # --- Structured file logging ---
 # JSON log files are written to instance/logs/ with daily rotation.
 # WARN+ is captured even when stdout shows only INFO.

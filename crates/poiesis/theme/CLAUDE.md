@@ -49,25 +49,33 @@ Locks: spec 03 of forkwright/kanon#978 (apodeixis Phase-00 bootstrap).
   filename stem must match `[meta].id` (hard error on mismatch).
 - **Lint rules ship next to tokens.** The three `THEME/*` rules live here, not
   in `poiesis-lint`, so a theme update can land tokens + rules in the same
-  PR. The QA gate ([B-008]) imports them.
+  PR. The QA gate imports them.
+
+## Theme integration boundary
+
+Theme integration is stable at the organon tool boundary. `organon`
+resolves a `ResolvedTheme` through this crate and dispatches to the
+sink-specific emitters in `src/sinks/` when a tool needs themed bytes.
+The core `Renderer` trait in `poiesis-core` remains format-only and is
+not the theme integration boundary.
 
 ## Status (B-002 scope vs. what ships)
 
 | B-002 surface             | This PR                                  | Follow-up         |
 |---------------------------|------------------------------------------|-------------------|
-| `ThemeId` newtype         | shipped (`src/id.rs`)                    | re-export from [B-001] core |
+| `ThemeId` newtype         | shipped (`src/id.rs`)                    | re-export from core |
 | Token model               | shipped (`src/tokens.rs`)                |                   |
-| `ResolvedTheme`           | shipped (`src/resolved.rs`)              | bind to `Renderer` trait in [B-001] |
-| Registry + discovery      | shipped (`src/registry.rs`)              | `theme list/show/validate/compile` CLI verbs from [B-010] |
+| `ResolvedTheme`           | shipped (`src/resolved.rs`)              | consumed by organon at the tool boundary |
+| Registry + discovery      | shipped (`src/registry.rs`)              | `theme list/show/validate/compile` CLI verbs |
 | `summus` seed theme       | shipped (`themes/summus.toml`)           |                   |
-| CSS sink                  | shipped (`src/sinks/css.rs`)             | regression-byte test against offsite CSS once [B-003] lands |
-| OOXML `theme1.xml`        | shipped (`src/sinks/ooxml.rs`)           | full `assets/<name>-base.pptx` raw OOXML pack belongs to [B-004]; this crate emits the `theme1.xml` body |
-| Pandoc doc-vars           | shipped (`src/sinks/docvars.rs`, JSON + YAML) | generate `reference.docx/odt/template.{typ,latex}` in [B-006] |
+| CSS sink                  | shipped (`src/sinks/css.rs`)             | regression-byte test against offsite CSS |
+| OOXML `theme1.xml`        | shipped (`src/sinks/ooxml.rs`)           | full `assets/<name>-base.pptx` raw OOXML pack; this crate emits the `theme1.xml` body |
+| Pandoc doc-vars           | shipped (`src/sinks/docvars.rs`, JSON + YAML) | generate `reference.docx/odt/template.{typ,latex}` |
 | LaTeX prelude             | shipped (`src/sinks/latex.rs`)           | `\definecolor` / `\newcommand` assets for the doc backend |
 | PPTX pack                 | shipped (`src/sinks/pptx.rs`)            | packed base PPTX template with the theme baked in |
 | reference.docx            | shipped (`src/sinks/reference_docx.rs`)  | Pandoc reference-doc asset for DOCX theming |
 | Typst prelude             | shipped (`src/sinks/typst.rs`)           | Typst prelude for the PDF / report template path |
-| `THEME/*` lint rules      | shipped (`src/lint.rs`) — rule shapes + scan/check APIs | register with the [B-008] basanos engine |
+| `THEME/*` lint rules      | shipped (`src/lint.rs`) — rule shapes + scan/check APIs | imported by the QA gate |
 
 ## Dependencies
 

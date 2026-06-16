@@ -1,12 +1,16 @@
-//! Global SSE connection to `GET /api/v1/events`.
+//! Domain-event SSE subscription to `GET /api/v1/events/subscribe`.
 //!
-//! Provides cross-session awareness: agent status changes, session lifecycle,
-//! and memory distillation progress. Auto-reconnects with exponential backoff
-//! (1s to 30s) and treats 30s of silence as a stale connection.
+//! Subscribes to the `EventBus` topics `fact.created`, `turn.complete`, and
+//! `nous.lifecycle`, providing cross-session awareness: newly created facts,
+//! completed turns, and agent lifecycle changes. The legacy `GET /api/v1/events`
+//! endpoint is keepalive-only and is not used here.
+//!
+//! Auto-reconnects with exponential backoff (1s to 30s) and treats 45s of
+//! silence as a stale connection.
 //!
 //! The connection tracks the last received SSE event ID and sends it as
 //! `Last-Event-ID` on reconnect, enabling the server to replay missed events
-//! per RFC 7541 § 9.2.4.
+//! from the last acknowledged cursor.
 
 use futures_util::StreamExt;
 use reqwest::Client;
@@ -24,7 +28,10 @@ use super::types::SseEvent;
 /// `HEARTBEAT_TIMEOUT` and provides 3× margin over the server ping interval.
 const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
-/// Manages the global SSE connection to /api/v1/events.
+/// Topics subscribed to on the domain-event SSE endpoint.
+const SUBSCRIBE_TOPICS: &str = "fact.created,turn.complete,nous.lifecycle";
+
+/// Manages the global SSE connection to `/api/v1/events/subscribe`.
 /// Runs in a background task, sends parsed events through a channel.
 pub struct SseConnection {
     // kanon:ignore RUST/pub-visibility
@@ -33,22 +40,26 @@ pub struct SseConnection {
 }
 
 impl SseConnection {
-    /// Connect using the shared HTTP client from `ApiClient::raw_client()`.
+    /// Connect using the streaming HTTP client from `ApiClient::streaming_client()`.
     /// Auth headers are already embedded in the client. `Accept: text/event-stream`
     /// is set per-request to override the client-level `Accept: application/json` default.
     #[tracing::instrument(skip_all)]
     pub fn connect(client: Client, base_url: &str) -> Self {
         // kanon:ignore RUST/pub-visibility
         let (tx, rx) = mpsc::channel(256);
-        let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/api/v1/events/subscribe?topics={}",
+            base_url.trim_end_matches('/'),
+            SUBSCRIBE_TOPICS
+        );
 
         let span = tracing::info_span!("sse_connection", %url);
         // kanon:ignore RUST/spawn-no-instrument — future is instrumented with `.instrument(span)` before being passed to spawn
         let handle = tokio::spawn(
             async move {
                 let mut backoff_secs: u64 = 1;
-                // WHY: tracked per RFC 7541 § 9.2.4; sent as Last-Event-ID on
-                // reconnect so the server can replay missed events.
+                // WHY: sent as Last-Event-ID on reconnect so the server can
+                // replay missed events from the last acknowledged cursor.
                 let mut last_event_id: Option<String> = None;
 
                 loop {
@@ -162,6 +173,33 @@ fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> 
     })
 }
 
+fn u32_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<u32> {
+    json.get(field)
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+        .or_else(|| {
+            tracing::warn!(
+                event_type,
+                field,
+                "missing or invalid u32 field in SSE event"
+            );
+            None
+        })
+}
+
+fn bool_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<bool> {
+    json.get(field)
+        .and_then(serde_json::Value::as_bool)
+        .or_else(|| {
+            tracing::warn!(
+                event_type,
+                field,
+                "missing or invalid bool field in SSE event"
+            );
+            None
+        })
+}
+
 /// Parse a raw SSE event into a domain `SseEvent`.
 ///
 /// Returns `None` only when `data` is empty or contains only a comment.
@@ -201,6 +239,9 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
         }),
+        "turn.complete" => turn_complete_event(&json, event_type),
+        "fact.created" => fact_created_event(&json, event_type),
+        "nous.lifecycle" => nous_lifecycle_event(&json, event_type),
         "tool:called" => Some(SseEvent::ToolCalled {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             tool_name: str_field(&json, "toolName", event_type)?.to_string(),
@@ -246,6 +287,7 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             status: str_field(&json, "status", event_type)?.to_string(),
         }),
         "ping" => Some(SseEvent::Ping),
+        "stream_lagged" => stream_lagged_event(&json),
         "error" => Some(SseEvent::Error {
             message: json
                 .get("message")
@@ -263,12 +305,59 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
     }
 }
 
+fn stream_lagged_event(json: &serde_json::Value) -> Option<SseEvent> {
+    let dropped = json
+        .get("dropped")
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| {
+            tracing::warn!("SSE stream_lagged: missing or invalid dropped");
+            None
+        })?;
+    Some(SseEvent::StreamLagged { dropped })
+}
+
+fn turn_complete_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::TurnComplete {
+        session_id: SessionId::from(str_field(json, "session_id", event_type)?.to_string()),
+        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        turn_id: TurnId::from(str_field(json, "turn_id", event_type)?.to_string()),
+        input_tokens: u32_field(json, "input_tokens", event_type)?,
+        output_tokens: u32_field(json, "output_tokens", event_type)?,
+    })
+}
+
+fn fact_created_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::FactCreated {
+        fact_id: str_field(json, "fact_id", event_type)?.to_string(),
+        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        content_preview: str_field(json, "content_preview", event_type)?.to_string(),
+    })
+}
+
+fn nous_lifecycle_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::NousLifecycle {
+        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        event: str_field(json, "event", event_type)?.to_string(),
+        restart_required: bool_field(json, "restart_required", event_type)?,
+    })
+}
+
 #[cfg(test)]
 #[expect(
     clippy::indexing_slicing,
     reason = "test assertions may panic on failure"
 )]
+#[expect(
+    clippy::expect_used,
+    reason = "test helper failures should panic with context"
+)]
 mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::time::Duration;
+
+    use crate::api::client::build_streaming_client;
+
     use super::*;
 
     #[test]
@@ -393,5 +482,178 @@ mod tests {
         } else {
             panic!("expected Init");
         }
+    }
+
+    #[test]
+    fn parse_stream_lagged_valid() {
+        let data = r#"{"dropped":42}"#;
+        let result = parse_sse_event("stream_lagged", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::StreamLagged { dropped }) = result {
+            assert_eq!(dropped, 42);
+        } else {
+            panic!("expected StreamLagged");
+        }
+    }
+
+    #[test]
+    fn parse_stream_lagged_missing_dropped_returns_none() {
+        let data = "{}";
+        let result = parse_sse_event("stream_lagged", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_stream_lagged_invalid_dropped_returns_none() {
+        let data = r#"{"dropped":"many"}"#;
+        let result = parse_sse_event("stream_lagged", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_fact_created_valid() {
+        let data = r#"{"fact_id":"f-1","nous_id":"syn","content_preview":"hello world"}"#;
+        let result = parse_sse_event("fact.created", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::FactCreated {
+            fact_id,
+            nous_id,
+            content_preview,
+        }) = result
+        {
+            assert_eq!(fact_id, "f-1");
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(content_preview, "hello world");
+        } else {
+            panic!("expected FactCreated");
+        }
+    }
+
+    #[test]
+    fn parse_fact_created_missing_field_returns_none() {
+        let data = r#"{"fact_id":"f-1"}"#;
+        let result = parse_sse_event("fact.created", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_turn_complete_valid() {
+        let data = r#"{"session_id":"s1","nous_id":"syn","turn_id":"t1","input_tokens":10,"output_tokens":5}"#;
+        let result = parse_sse_event("turn.complete", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::TurnComplete {
+            session_id,
+            nous_id,
+            turn_id,
+            input_tokens,
+            output_tokens,
+        }) = result
+        {
+            assert_eq!(&*session_id, "s1");
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*turn_id, "t1");
+            assert_eq!(input_tokens, 10);
+            assert_eq!(output_tokens, 5);
+        } else {
+            panic!("expected TurnComplete");
+        }
+    }
+
+    #[test]
+    fn parse_turn_complete_missing_field_returns_none() {
+        let data = r#"{"session_id":"s1","nous_id":"syn"}"#;
+        let result = parse_sse_event("turn.complete", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_turn_complete_invalid_tokens_returns_none() {
+        let data = r#"{"session_id":"s1","nous_id":"syn","turn_id":"t1","input_tokens":"many","output_tokens":5}"#;
+        let result = parse_sse_event("turn.complete", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_nous_lifecycle_valid() {
+        let data = r#"{"nous_id":"syn","event":"created","restart_required":true}"#;
+        let result = parse_sse_event("nous.lifecycle", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::NousLifecycle {
+            nous_id,
+            event,
+            restart_required,
+        }) = result
+        {
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(event, "created");
+            assert!(restart_required);
+        } else {
+            panic!("expected NousLifecycle");
+        }
+    }
+
+    #[test]
+    fn parse_nous_lifecycle_missing_field_returns_none() {
+        let data = r#"{"nous_id":"syn","event":"created"}"#;
+        let result = parse_sse_event("nous.lifecycle", data);
+        assert!(result.is_none());
+    }
+
+    fn serve_sse_once(body: &'static str) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 2048];
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n{body}"
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write SSE test response");
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    #[tokio::test]
+    async fn connection_receives_domain_event_sse_response() {
+        let body = concat!(
+            "event: fact.created\n",
+            "data: {\"fact_id\":\"f1\",\"nous_id\":\"syn\",\"content_preview\":\"hello\"}\n\n",
+            "event: turn.complete\n",
+            "data: {\"session_id\":\"s1\",\"nous_id\":\"syn\",\"turn_id\":\"t1\",\"input_tokens\":10,\"output_tokens\":5}\n\n",
+            "event: nous.lifecycle\n",
+            "data: {\"nous_id\":\"syn\",\"event\":\"created\",\"restart_required\":true}\n\n",
+        );
+        let (base_url, server) = serve_sse_once(body);
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let mut conn = SseConnection::connect(client, &base_url);
+
+        let mut events = Vec::new();
+        while let Some(event) = tokio::time::timeout(Duration::from_secs(2), conn.next())
+            .await
+            .expect("should receive event within timeout")
+        {
+            events.push(event);
+            if events.len() == 4 {
+                // Connected + three domain events.
+                break;
+            }
+        }
+        drop(conn);
+        server.join().expect("test server thread should finish");
+
+        assert!(matches!(events[0], SseEvent::Connected));
+        assert!(matches!(events[1], SseEvent::FactCreated { ref fact_id, .. } if fact_id == "f1"));
+        assert!(
+            matches!(events[2], SseEvent::TurnComplete { input_tokens, output_tokens, .. } if input_tokens == 10 && output_tokens == 5)
+        );
+        assert!(
+            matches!(events[3], SseEvent::NousLifecycle { restart_required, .. } if restart_required)
+        );
     }
 }

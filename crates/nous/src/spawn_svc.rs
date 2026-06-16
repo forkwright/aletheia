@@ -5,20 +5,19 @@ use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
 use hermeneus::provider::ProviderRegistry;
 use koina::defaults::{
-    BOOTSTRAP_MAX_TOKENS, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS, MAX_TOOL_ITERATIONS,
-    MAX_TOOL_RESULT_BYTES,
+    BOOTSTRAP_MAX_TOKENS, CHARS_PER_TOKEN, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS,
+    MAX_TOOL_ITERATIONS, MAX_TOOL_RESULT_BYTES,
 };
 use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
-use organon::types::{SpawnRequest, SpawnResult, SpawnService, ToolServices};
+use organon::types::{SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolServices};
 use taxis::oikos::Oikos;
 use tokio::sync::Mutex;
 
@@ -131,17 +130,17 @@ impl SpawnServiceImpl {
         // kanon:ignore RUST/no-silent-result-swallow — set once during initialization; duplicate calls are programmer error
         let _ = self.tool_services.set(services);
     }
-}
 
-impl SpawnService for SpawnServiceImpl {
-    // NOTE: sequential ephemeral-actor lifecycle: build config, spawn actor, run single turn,
-    // teardown. Splitting would fragment a cohesive lifecycle.
-    #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
-    fn spawn_and_run(
+    /// Build a [`NousConfig`] for an ephemeral sub-agent.
+    ///
+    /// WHY(#5555): keep config construction deterministic and testable so the
+    /// spawned `allowed_roots` can be asserted independently of the actor
+    /// lifecycle.
+    fn build_spawn_config(
         &self,
-        request: SpawnRequest,
+        request: &SpawnRequest,
         parent_nous_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
+    ) -> (String, NousConfig, String) {
         let spawn_id = format!(
             "spawn-{}-{}",
             parent_nous_id,
@@ -175,14 +174,15 @@ impl SpawnService for SpawnServiceImpl {
                 t.tool_groups.clone()
             });
 
-        let timeout = Duration::from_secs(request.timeout_secs);
-        let task = request.task.clone();
         let session_key = format!(
             "spawn:{}",
             koina::ulid::Ulid::new().to_string().to_lowercase()
         );
         let workspace = self.oikos.nous_dir(&spawn_id);
-        let allowed_roots = vec![self.oikos.root().to_path_buf()];
+        // WHY(#5555): spawned sub-agents must only access their own workspace,
+        // not the entire oikos root. `workspace` is already under the oikos root
+        // and is created before the actor starts.
+        let allowed_roots = vec![workspace.clone()];
 
         let config = NousConfig {
             id: Arc::from(spawn_id.as_str()),
@@ -196,7 +196,7 @@ impl SpawnService for SpawnServiceImpl {
                 bootstrap_max_tokens: BOOTSTRAP_MAX_TOKENS,
                 thinking_enabled: false,
                 thinking_budget: 0,
-                chars_per_token: 4,
+                chars_per_token: CHARS_PER_TOKEN,
                 prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
                     .to_owned(),
                 complexity: hermeneus::complexity::ComplexityConfig::default(),
@@ -227,6 +227,28 @@ impl SpawnService for SpawnServiceImpl {
             hooks: crate::config::HookConfig::default(),
             behavior: taxis::config::AgentBehaviorDefaults::default(),
         };
+
+        (spawn_id, config, session_key)
+    }
+}
+
+impl SpawnService for SpawnServiceImpl {
+    // NOTE: sequential ephemeral-actor lifecycle: build config, spawn actor, run single turn,
+    // teardown. Splitting would fragment a cohesive lifecycle.
+    #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
+    fn spawn_and_run(
+        &self,
+        request: SpawnRequest,
+        context: SpawnContext,
+    ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
+        let parent_nous_id = context.parent_nous_id.clone();
+        let parent_cancel = context.parent_cancel.clone();
+        let (spawn_id, config, session_key) = self.build_spawn_config(&request, &parent_nous_id);
+        let timeout = Duration::from_secs(request.timeout_secs);
+        let task = request.task.clone();
+        let workspace = config.workspace.clone();
+        let role = resolve_role(&request.role);
+        let template = role.map(Role::template);
 
         // WHY: ephemeral sub-agents do not capture training data — their turns
         // are internal delegation, not user-facing conversation.
@@ -269,7 +291,7 @@ impl SpawnService for SpawnServiceImpl {
 
         Box::pin(
             async move {
-                let nous_dir = oikos.nous_dir(&spawn_id);
+                let nous_dir = workspace.clone();
                 if let Err(e) = tokio::fs::create_dir_all(&nous_dir).await {
                     return Err(format!("failed to create spawn workspace: {e}"));
                 }
@@ -278,8 +300,9 @@ impl SpawnService for SpawnServiceImpl {
                     return Err(format!("failed to write SOUL.md: {e}"));
                 }
 
-                // WHY: ephemeral actors get their own cancellation token: short-lived, no shared parent
-                let ephemeral_cancel = CancellationToken::new();
+                // WHY(#5088): child actor lifetime is tied to the parent turn so
+                // parent cancellation does not leave spawned work running.
+                let ephemeral_cancel = parent_cancel.child_token();
                 let actor_cancel = ephemeral_cancel.clone();
                 let (cross_tx, cross_rx) = if let Some(router) = router.as_ref() {
                     let (tx, rx) = tokio::sync::mpsc::channel(32);
@@ -316,23 +339,31 @@ impl SpawnService for SpawnServiceImpl {
                 // turn itself when the parent timeout fires. Wrapping only the
                 // waiting future with `tokio::time::timeout` drops the reply but
                 // leaves the pipeline running inside the actor (#4776).
-                let turn_cancel = CancellationToken::new();
-                let result = tokio::time::timeout(
-                    timeout,
-                    handle.send_turn_with_cancel(
-                        &session_key,
-                        None,
-                        &task,
-                        DEFAULT_SEND_TIMEOUT,
-                        turn_cancel.clone(),
-                    ),
-                )
-                .await;
-
-                if result.is_err() {
-                    turn_cancel.cancel();
-                    ephemeral_cancel.cancel();
-                }
+                let turn_cancel = ephemeral_cancel.child_token();
+                let result = tokio::select! {
+                    biased;
+                    () = parent_cancel.cancelled() => {
+                        turn_cancel.cancel();
+                        ephemeral_cancel.cancel();
+                        None
+                    }
+                    result = tokio::time::timeout(
+                        timeout,
+                        handle.send_turn_with_cancel(
+                            &session_key,
+                            None,
+                            &task,
+                            DEFAULT_SEND_TIMEOUT,
+                            turn_cancel.clone(),
+                        ),
+                    ) => {
+                        if result.is_err() {
+                            turn_cancel.cancel();
+                            ephemeral_cancel.cancel();
+                        }
+                        Some(result)
+                    }
+                };
 
                 // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown of ephemeral actor
                 let _ = handle.shutdown().await;
@@ -345,22 +376,31 @@ impl SpawnService for SpawnServiceImpl {
                 let _ = tokio::fs::remove_dir_all(&nous_dir).await;
 
                 match result {
-                    Ok(Ok(turn)) => Ok(SpawnResult {
+                    Some(Ok(Ok(turn))) => Ok(SpawnResult {
                         content: turn.content,
                         is_error: false,
                         input_tokens: turn.usage.input_tokens,
                         output_tokens: turn.usage.output_tokens,
                     }),
-                    Ok(Err(e)) => Ok(SpawnResult {
+                    Some(Ok(Err(e))) => Ok(SpawnResult {
                         content: format!("Sub-agent error: {e}"),
                         is_error: true,
                         input_tokens: 0,
                         output_tokens: 0,
                     }),
-                    Err(_elapsed) => {
+                    Some(Err(_elapsed)) => {
                         warn!(timeout_secs = timeout.as_secs(), "sub-agent timed out");
                         Ok(SpawnResult {
                             content: format!("Sub-agent timed out after {}s", timeout.as_secs()),
+                            is_error: true,
+                            input_tokens: 0,
+                            output_tokens: 0,
+                        })
+                    }
+                    None => {
+                        warn!("sub-agent cancelled by parent turn");
+                        Ok(SpawnResult {
+                            content: "Sub-agent cancelled by parent turn".to_owned(),
                             is_error: true,
                             input_tokens: 0,
                             output_tokens: 0,
@@ -453,7 +493,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 30,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");
@@ -462,6 +502,37 @@ mod tests {
         assert_eq!(result.content, "Sub-agent result");
         assert_eq!(result.input_tokens, 200);
         assert_eq!(result.output_tokens, 80);
+    }
+
+    #[test]
+    fn spawn_allowed_roots_restricted_to_workspace() {
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+        );
+
+        assert!(
+            config.workspace.starts_with(oikos.root()),
+            "spawn workspace should be under the oikos root"
+        );
+        assert_eq!(
+            config.allowed_roots,
+            vec![config.workspace.clone()],
+            "spawned agent should only be granted its own workspace root"
+        );
+        assert!(
+            !config.allowed_roots.contains(&oikos.root().to_path_buf()),
+            "spawned agent must not inherit the entire oikos root"
+        );
     }
 
     #[tokio::test]
@@ -496,7 +567,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 30,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");
@@ -508,6 +579,7 @@ mod tests {
             if let Some(stats) = store
                 .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
                 .await
+                .expect("rolling stats query")
             {
                 assert_eq!(stats.successes, 1);
                 assert_eq!(stats.failures, 0);
@@ -597,7 +669,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 1,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");
@@ -622,6 +694,62 @@ mod tests {
         assert!(
             !stuck.completed(),
             "stuck provider should not complete after cancellation"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn spawn_parent_cancel_returns_error_and_stops_child() {
+        let (_dir, oikos) = make_oikos();
+
+        let stuck = Arc::new(StuckProvider::new());
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(StuckProvider::clone_ref(&stuck)));
+        let svc = SpawnServiceImpl::new(Arc::new(providers), Arc::new(ToolRegistry::new()), oikos);
+        let parent_cancel = tokio_util::sync::CancellationToken::new();
+        let context = SpawnContext::new("test-parent", parent_cancel.clone());
+        let task = tokio::spawn(async move {
+            svc.spawn_and_run(
+                SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Stuck task".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                context,
+            )
+            .await
+            .expect("spawn")
+        });
+
+        for _ in 0..50 {
+            if stuck.started() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            stuck.started(),
+            "stuck provider should have started the child turn"
+        );
+
+        parent_cancel.cancel();
+        let result = tokio::time::timeout(Duration::from_secs(3), task)
+            .await
+            .expect("parent cancellation should return promptly")
+            .expect("spawn task should not panic");
+
+        assert!(result.is_error);
+        assert!(result.content.contains("cancelled by parent turn"));
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), stuck.dropped())
+                .await
+                .is_ok(),
+            "stuck provider future should be dropped after parent cancellation"
+        );
+        assert!(
+            !stuck.completed(),
+            "stuck provider should not complete after parent cancellation"
         );
     }
 
@@ -760,7 +888,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 30,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");
@@ -782,7 +910,7 @@ mod tests {
                     allowed_tools: None,
                     timeout_secs: 30,
                 },
-                "test-parent",
+                SpawnContext::detached("test-parent"),
             )
             .await
             .expect("spawn");

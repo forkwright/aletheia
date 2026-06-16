@@ -33,6 +33,9 @@ pub struct RetentionSummary {
     pub cap_sessions_cleaned: u32,
     /// Total bytes reclaimed from storage.
     pub bytes_freed: u64,
+    /// Number of sessions removed because they exceeded the per-nous cap.
+    #[serde(default)]
+    pub cap_sessions_cleaned: u32,
 }
 
 #[cfg(test)]
@@ -100,6 +103,7 @@ mod tests {
         assert_eq!(summary.messages_cleaned, 0);
         assert_eq!(summary.blackboard_entries_cleaned, 0);
         assert_eq!(summary.bytes_freed, 0);
+        assert_eq!(summary.cap_sessions_cleaned, 0);
     }
 
     #[test]

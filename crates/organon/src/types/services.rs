@@ -4,6 +4,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 
 use crate::error::{KnowledgeAdapterError, PlanningAdapterError};
 
@@ -341,6 +342,30 @@ pub struct SpawnRequest {
     pub timeout_secs: u64,
 }
 
+/// Runtime context for an ephemeral sub-agent spawn.
+#[derive(Debug, Clone)]
+pub struct SpawnContext {
+    /// Parent agent identifier used for spawn lineage.
+    pub parent_nous_id: String,
+    /// Parent turn cancellation token propagated into spawned work.
+    pub parent_cancel: CancellationToken,
+}
+
+impl SpawnContext {
+    /// Create a spawn context tied to a parent turn.
+    pub fn new(parent_nous_id: impl Into<String>, parent_cancel: CancellationToken) -> Self {
+        Self {
+            parent_nous_id: parent_nous_id.into(),
+            parent_cancel,
+        }
+    }
+
+    /// Create a spawn context for intentionally detached background work.
+    pub fn detached(parent_nous_id: impl Into<String>) -> Self {
+        Self::new(parent_nous_id, CancellationToken::new())
+    }
+}
+
 /// Result from an ephemeral sub-agent's single turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpawnResult {
@@ -406,6 +431,6 @@ pub trait SpawnService: Send + Sync {
     fn spawn_and_run(
         &self,
         request: SpawnRequest,
-        parent_nous_id: &str,
+        context: SpawnContext,
     ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>>;
 }

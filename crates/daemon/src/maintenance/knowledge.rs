@@ -7,6 +7,23 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// Discrete outcome for a knowledge maintenance task.
+///
+/// Maps [`MaintenanceReport::errors`] to the task-policy outcome expected by
+/// the runner: complete success, completed with non-fatal errors (degraded),
+/// or an unrecoverable failure.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MaintenanceOutcome {
+    /// No errors were reported; the task completed cleanly.
+    #[default]
+    Success,
+    /// The task finished but reported non-fatal errors; operators should
+    /// review the detail string but the task is not retried as a hard failure.
+    Degraded,
+    /// The task could not complete.
+    Failure,
+}
+
 /// Outcome of a single knowledge maintenance operation.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MaintenanceReport {
@@ -20,6 +37,21 @@ pub struct MaintenanceReport {
     pub duration_ms: u64,
     /// Optional human-readable detail string.
     pub detail: Option<String>,
+}
+
+impl MaintenanceReport {
+    /// Classify this report into a discrete task outcome.
+    ///
+    /// Any non-fatal error count degrades the result; callers should map
+    /// unhandled `Err` returns to [`MaintenanceOutcome::Failure`].
+    #[must_use]
+    pub fn outcome(&self) -> MaintenanceOutcome {
+        if self.errors == 0 {
+            MaintenanceOutcome::Success
+        } else {
+            MaintenanceOutcome::Degraded
+        }
+    }
 }
 
 /// Bridge trait for knowledge graph maintenance operations.

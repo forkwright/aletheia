@@ -35,6 +35,7 @@ async fn self_prompt_not_queued_when_disabled() {
 
     let result = ExecutionResult {
         outcome: TaskOutcome::Success,
+        errors: 0,
         output: Some("## Follow-up\nInvestigate disk usage.\n".to_owned()),
     };
     runner.maybe_queue_self_prompt("test-task", &result);
@@ -64,6 +65,7 @@ async fn self_prompt_queued_when_enabled_with_follow_up() {
 
     let result = ExecutionResult {
         outcome: TaskOutcome::Success,
+        errors: 0,
         output: Some("## Follow-up\nCheck /data disk usage.\n".to_owned()),
     };
     runner.maybe_queue_self_prompt("test-task", &result);
@@ -88,6 +90,7 @@ async fn self_prompt_rate_limited_after_max() {
 
     let result = ExecutionResult {
         outcome: TaskOutcome::Success,
+        errors: 0,
         output: Some("## Follow-up\nFirst action.\n".to_owned()),
     };
     runner.maybe_queue_self_prompt("test-task", &result);
@@ -95,6 +98,7 @@ async fn self_prompt_rate_limited_after_max() {
 
     let result2 = ExecutionResult {
         outcome: TaskOutcome::Success,
+        errors: 0,
         output: Some("## Follow-up\nSecond action.\n".to_owned()),
     };
     runner.maybe_queue_self_prompt("test-task", &result2);
@@ -118,6 +122,7 @@ fn self_prompt_no_follow_up_no_dispatch() {
 
     let result = ExecutionResult {
         outcome: TaskOutcome::Success,
+        errors: 0,
         output: Some("Everything is fine. No issues.".to_owned()),
     };
     runner.maybe_queue_self_prompt("test-task", &result);

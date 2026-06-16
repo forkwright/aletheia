@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# UNSUPPORTED BEFORE v1.0
+# This script is a design template for a planned declarative shell hook.
+# The current Aletheia runtime uses in-process turn hooks (crates/nous/src/hooks)
+# and does NOT load or execute YAML/shell hook files.
+
 THRESHOLD="${LOOP_GUARD_THRESHOLD:-15}"
 SENTINEL_DIR="${TMPDIR:-/tmp}/aletheia-loop-guard"
 

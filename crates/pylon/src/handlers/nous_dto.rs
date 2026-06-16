@@ -82,6 +82,19 @@ pub struct NousStatus {
     pub max_tool_iterations: u32,
     /// Actor lifecycle status.
     pub status: String,
+    /// Total number of background failures recorded since actor start.
+    pub background_failure_total_count: u32,
+    /// Number of background failures recorded in the recent window.
+    pub background_failure_recent_count: u32,
+    /// Human-readable message from the most recent background failure, if any.
+    pub background_failure_latest_message: Option<String>,
+    /// Classification kind of the most recent background failure, if any.
+    pub background_failure_latest_kind: Option<String>,
+    /// Whether recent background failures have pushed the actor into degraded background health.
+    ///
+    /// This does not change the actor lifecycle; it is an independent signal used by the
+    /// detailed health endpoint to surface repeated background-work failures.
+    pub background_health_degraded: bool,
 }
 
 /// Response listing tools available to a nous agent.

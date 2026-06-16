@@ -11,6 +11,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use aletheia_routing::store::AfterActionStoreError;
 use aletheia_routing::types::{RequestFeatures, TurnOutcome};
 use aletheia_routing::{BoxFuture, Router, RouterError, RoutingDecision};
 use tracing::Instrument;
@@ -54,7 +55,6 @@ impl EmpiricalRouter {
     /// * `min_samples` — minimum records before empirical choice is made (default 5)
     /// * `window` — rolling window for record weighting (default 7 days)
     /// * `confidence_threshold` — minimum gap (winner − static) to override (default 0.1)
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn new(
         store: Arc<AfterActionStore>,
         fallback: StaticRouter,
@@ -74,17 +74,30 @@ impl EmpiricalRouter {
     /// Select the best provider for `task_category` from `candidates`.
     ///
     /// Returns the static fallback provider when empirical data is absent or
-    /// insufficient.  If `candidates` is empty the static default is returned.
+    /// insufficient. If `candidates` is empty the static default is returned.
+    /// Returns an error when the after-action store is unavailable, so callers
+    /// can distinguish a routing fault from healthy empty history.
+    #[cfg(test)]
     pub(crate) async fn pick(
         &self,
         task_category: &TaskCategory,
         candidates: &[ProviderId],
-    ) -> ProviderId {
-        if candidates.is_empty() {
-            return self.fallback.pick(*task_category).clone();
-        }
+    ) -> Result<ProviderId, AfterActionStoreError> {
+        self.pick_with_static_boundary(task_category, candidates, true)
+            .await
+    }
 
+    async fn pick_with_static_boundary(
+        &self,
+        task_category: &TaskCategory,
+        candidates: &[ProviderId],
+        static_allowed: bool,
+    ) -> Result<ProviderId, AfterActionStoreError> {
         let static_choice = self.fallback.pick(*task_category);
+
+        if candidates.is_empty() {
+            return Ok(static_choice.clone());
+        }
 
         let mut best_provider: Option<&ProviderId> = None;
         let mut best_rate: f64 = -1.0;
@@ -93,7 +106,15 @@ impl EmpiricalRouter {
             let stats = self
                 .store
                 .rolling_stats(provider, task_category, self.window)
-                .await;
+                .await
+                .inspect_err(|error| {
+                    tracing::error!(
+                        error = %error,
+                        provider = %provider,
+                        category = %task_category,
+                        "empirical routing stats store unavailable"
+                    );
+                })?;
 
             let Some(stats) = stats else {
                 continue;
@@ -121,20 +142,40 @@ impl EmpiricalRouter {
         }
 
         let Some(winner) = best_provider else {
-            return static_choice.clone();
+            return if static_allowed {
+                Ok(static_choice.clone())
+            } else {
+                Ok(candidates
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| static_choice.clone()))
+            };
         };
 
-        // Only override the static choice if the empirical winner is strictly
-        // better by at least `confidence_threshold`.
-        let static_rate = self
-            .store
-            .rolling_stats(static_choice, task_category, self.window)
-            .await
-            .and_then(|s| s.success_rate())
-            .unwrap_or(0.0);
+        // WHY: a disallowed static choice cannot veto an eligible empirical
+        // winner; otherwise a cloud default could leak through a local boundary.
+        // When the static choice is allowed, preserve the existing confidence
+        // threshold before switching away from it.
+        let static_rate = if static_allowed {
+            self.store
+                .rolling_stats(static_choice, task_category, self.window)
+                .await
+                .inspect_err(|error| {
+                    tracing::error!(
+                        error = %error,
+                        provider = %static_choice,
+                        category = %task_category,
+                        "empirical routing stats store unavailable for static provider"
+                    );
+                })?
+                .and_then(|s| s.success_rate())
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
 
         let gap = best_rate - static_rate;
-        if gap >= self.confidence_threshold {
+        if !static_allowed || gap >= self.confidence_threshold {
             tracing::info!(
                 empirical_winner = %winner,
                 static_choice = %static_choice,
@@ -144,7 +185,7 @@ impl EmpiricalRouter {
                 gap,
                 "empirical router overriding static choice"
             );
-            winner.clone()
+            Ok(winner.clone())
         } else {
             tracing::debug!(
                 empirical_winner = %winner,
@@ -154,7 +195,7 @@ impl EmpiricalRouter {
                 threshold = self.confidence_threshold,
                 "confidence gap below threshold, using static choice"
             );
-            static_choice.clone()
+            Ok(static_choice.clone())
         }
     }
 
@@ -166,12 +207,12 @@ impl EmpiricalRouter {
         &self,
         provider: &ProviderId,
         task_category: &TaskCategory,
-    ) -> Option<f64> {
+    ) -> Result<Option<f64>, AfterActionStoreError> {
         let stats = self
             .store
             .rolling_stats(provider, task_category, self.window)
             .await?;
-        stats.success_rate()
+        Ok(stats.and_then(|s| s.success_rate()))
     }
 }
 
@@ -180,17 +221,49 @@ impl Router for EmpiricalRouter {
     ///
     /// Delegates to [`pick`](Self::pick) using candidates and category from
     /// `features`. Returns the static fallback with `confidence: None` when
-    /// data is insufficient; returns `confidence: Some(rate)` when the
-    /// empirical winner was selected.
+    /// data is insufficient or the store is unavailable; unavailable-store
+    /// faults are emitted as error-level tracing events.
     fn route<'a>(&'a self, features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
         Box::pin(async move {
             let category = features.effective_category();
-            let chosen = self.pick(&category, &features.candidates).await;
-            let confidence = self
+            let candidates = features
+                .candidates
+                .iter()
+                .filter(|provider| features.candidate_allowed_by_boundary(provider))
+                .cloned()
+                .collect::<Vec<_>>();
+            let static_allowed =
+                features.candidate_allowed_by_boundary(self.fallback.pick(category));
+            let chosen = match self
+                .pick_with_static_boundary(&category, &candidates, static_allowed)
+                .await
+            {
+                Ok(chosen) => chosen,
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        category = %category,
+                        "empirical router unavailable, using static fallback"
+                    );
+                    self.fallback.pick(category).clone()
+                }
+            };
+            let confidence = match self
                 .store
                 .rolling_stats(&chosen, &category, self.window)
                 .await
-                .and_then(|s| s.success_rate());
+            {
+                Ok(stats) => stats.and_then(|s| s.success_rate()),
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        provider = %chosen,
+                        category = %category,
+                        "empirical routing confidence unavailable"
+                    );
+                    None
+                }
+            };
             RoutingDecision::new(chosen.0.clone(), confidence)
         })
     }
@@ -224,13 +297,12 @@ impl Router for EmpiricalRouter {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use std::io::Write as _;
-    use std::time::Duration;
+
+    use aletheia_routing::{DEFAULT_ROUTING_WINDOW, RoutingBoundary};
 
     use super::*;
     use crate::routing::store::AfterActionStore;
     use crate::routing::{ProviderId, StaticRouter, TaskCategory};
-
-    const WINDOW: Duration = Duration::from_hours(168);
 
     fn session_line(model: &str, status: &str, category: &str) -> serde_json::Value {
         serde_json::json!({
@@ -259,7 +331,7 @@ mod tests {
             store,
             StaticRouter::new(ProviderId::new(default)),
             min_samples,
-            WINDOW,
+            DEFAULT_ROUTING_WINDOW,
             threshold,
         )
     }
@@ -289,7 +361,10 @@ mod tests {
 
         let router = make_router(tmp.path(), "provider-b", 5, 0.1).await;
         let candidates = vec![ProviderId::new("provider-a"), ProviderId::new("provider-b")];
-        let chosen = router.pick(&TaskCategory::Feature, &candidates).await;
+        let chosen = router
+            .pick(&TaskCategory::Feature, &candidates)
+            .await
+            .unwrap();
         assert_eq!(&*chosen.0, "provider-a");
     }
 
@@ -304,7 +379,10 @@ mod tests {
 
         let router = make_router(tmp.path(), "fallback-provider", 5, 0.1).await;
         let candidates = vec![ProviderId::new("provider-a")];
-        let chosen = router.pick(&TaskCategory::Feature, &candidates).await;
+        let chosen = router
+            .pick(&TaskCategory::Feature, &candidates)
+            .await
+            .unwrap();
         assert_eq!(&*chosen.0, "fallback-provider");
     }
 
@@ -313,7 +391,7 @@ mod tests {
     async fn router_returns_static_for_empty_candidates() {
         let tmp = tempfile::tempdir().unwrap();
         let router = make_router(tmp.path(), "default", 5, 0.1).await;
-        let chosen = router.pick(&TaskCategory::Feature, &[]).await;
+        let chosen = router.pick(&TaskCategory::Feature, &[]).await.unwrap();
         assert_eq!(&*chosen.0, "default");
     }
 
@@ -342,8 +420,38 @@ mod tests {
             ProviderId::new("provider-a"),
             ProviderId::new("static-choice"),
         ];
-        let chosen = router.pick(&TaskCategory::Feature, &candidates).await;
+        let chosen = router
+            .pick(&TaskCategory::Feature, &candidates)
+            .await
+            .unwrap();
         assert_eq!(&*chosen.0, "static-choice");
+    }
+
+    #[tokio::test]
+    async fn router_pick_returns_error_when_stats_store_unavailable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("not-a-directory");
+        std::fs::write(&path, "not jsonl").unwrap();
+
+        let store = Arc::new(AfterActionStore::new_with_window(
+            path,
+            Duration::from_hours(480),
+        ));
+        let router = EmpiricalRouter::new(
+            store,
+            StaticRouter::new(ProviderId::new("fallback")),
+            5,
+            Duration::from_hours(240),
+            0.1,
+        );
+        let result = router
+            .pick(&TaskCategory::Feature, &[ProviderId::new("provider-a")])
+            .await;
+
+        assert!(
+            matches!(result, Err(AfterActionStoreError::Io { .. })),
+            "expected I/O error, got {result:?}"
+        );
     }
 
     /// `success_rate` returns `None` when no data.
@@ -353,7 +461,8 @@ mod tests {
         let router = make_router(tmp.path(), "default", 5, 0.1).await;
         let rate = router
             .success_rate(&ProviderId::new("nobody"), &TaskCategory::Feature)
-            .await;
+            .await
+            .unwrap();
         assert!(rate.is_none());
     }
 
@@ -373,7 +482,8 @@ mod tests {
         let router = make_router(tmp.path(), "default", 5, 0.1).await;
         let rate = router
             .success_rate(&ProviderId::new("provider-x"), &TaskCategory::Bug)
-            .await;
+            .await
+            .unwrap();
         assert!((rate.unwrap() - 0.8).abs() < 0.001);
     }
 
@@ -407,5 +517,35 @@ mod tests {
             "confidence should be present when empirical data exists"
         );
         assert!(decision.confidence.unwrap() > 0.8);
+    }
+
+    #[tokio::test]
+    async fn route_excludes_cloud_candidate_for_local_hosted_boundary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lines = vec![];
+        for _ in 0..10 {
+            lines.push(session_line("cloud-only", "success", "feature"));
+        }
+        for _ in 0..6 {
+            lines.push(session_line("local", "success", "feature"));
+        }
+        for _ in 0..4 {
+            lines.push(session_line("local", "failed", "feature"));
+        }
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &lines);
+
+        let router = make_router(tmp.path(), "cloud-only", 5, 0.1).await;
+        let features = RequestFeatures::new(
+            vec![ProviderId::new("cloud-only"), ProviderId::new("local")],
+            Some(TaskCategory::Feature),
+            None,
+        )
+        .with_deployment_target(RoutingBoundary::LocalHosted)
+        .with_candidate_deployment_target("cloud-only", RoutingBoundary::Cloud)
+        .with_candidate_deployment_target("local", RoutingBoundary::LocalHosted);
+
+        let decision = router.route(&features).await;
+
+        assert_eq!(&*decision.provider, "local");
     }
 }

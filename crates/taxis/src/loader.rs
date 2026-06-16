@@ -93,7 +93,9 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
         let decrypted_content = decrypt_toml_content(&interpolated)?;
 
         let toml_json: JsonValue =
-            toml::from_str(&decrypted_content).context(crate::error::ParseTomlSnafu)?;
+            toml::from_str(&decrypted_content).context(crate::error::ParseTomlSnafu {
+                path: toml_path.clone(),
+            })?;
         deep_merge(&mut root, toml_json);
     } else if fs.exists(&yaml_path) {
         warn!(
@@ -381,7 +383,9 @@ pub fn parse_toml_file_with(path: &std::path::Path, fs: &impl FileSystem) -> Res
     let toml_content = String::from_utf8_lossy(&bytes);
     let interpolated = interpolate::interpolate_env_vars(toml_content.as_ref())?;
     let mut value: toml::Value =
-        toml::from_str(&interpolated).context(crate::error::ParseTomlSnafu)?;
+        toml::from_str(&interpolated).context(crate::error::ParseTomlSnafu {
+            path: path.to_path_buf(),
+        })?;
     decrypt_toml_value(&mut value)?;
     Ok(value)
 }

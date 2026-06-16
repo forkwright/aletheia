@@ -345,6 +345,10 @@ aletheia maintenance run drift-detection --verbose
 aletheia maintenance run db-monitor --verbose
 ```
 
+Drift detection compares the live instance root against the sibling
+`instance.example` template. If the template directory is unavailable, the task
+reports degraded/failed rather than clean.
+
 ## Log latency spikes
 
 ```bash

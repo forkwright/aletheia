@@ -32,6 +32,7 @@ impl TestBridge {
         Self {
             result: Mutex::new(Ok(ExecutionResult {
                 outcome: TaskOutcome::Success,
+                errors: 0,
                 output: Some(output.to_owned()),
             })),
             calls: Mutex::new(Vec::new()),
@@ -354,6 +355,7 @@ async fn routing_store_refresh_builtin_refreshes_attached_store() {
             std::time::Duration::from_hours(168),
         )
         .await
+        .expect("rolling stats query")
         .expect("refreshed stats");
     assert_eq!(stats.total, 1);
 }
@@ -533,6 +535,30 @@ async fn self_audit_no_bridge_runs_prosoche_runner() {
 }
 
 #[tokio::test]
+async fn self_audit_persist_failure_returns_unsuccessful_result() {
+    let file = tempfile::NamedTempFile::new().expect("tempfile");
+    let maintenance = crate::maintenance::MaintenanceConfig {
+        prosoche_audit_dir: file.path().to_path_buf(),
+        ..crate::maintenance::MaintenanceConfig::default()
+    };
+    let result = execute_builtin(
+        &BuiltinTask::SelfAudit,
+        "test-nous",
+        None,
+        Some(&maintenance),
+        None,
+        None,
+    )
+    .await
+    .expect("should compute report even when persistence fails");
+
+    assert!(!result.success);
+    let output = result.output.as_deref().unwrap_or_default();
+    assert!(output.contains("report computed but not persisted"));
+    assert!(output.contains("persist error"));
+}
+
+#[tokio::test]
 async fn self_audit_with_bridge_runs_local_runner() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let maintenance = crate::maintenance::MaintenanceConfig {
@@ -609,6 +635,45 @@ async fn self_prompt_returns_runner_only_message() {
     );
 }
 
+#[tokio::test]
+async fn drift_detection_missing_template_reports_unsuccessful() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let missing_example = tmp.path().join("definitely-missing-instance.example");
+    let maintenance = crate::maintenance::MaintenanceConfig {
+        drift_detection: crate::maintenance::DriftDetectionConfig {
+            enabled: true,
+            instance_root: tmp.path().join("instance"),
+            example_root: missing_example.clone(),
+            alert_on_missing: true,
+            ignore_patterns: Vec::new(),
+            optional_patterns: Vec::new(),
+        },
+        ..crate::maintenance::MaintenanceConfig::default()
+    };
+
+    let result = execute_builtin(
+        &BuiltinTask::DriftDetection,
+        "test-nous",
+        None,
+        Some(&maintenance),
+        None,
+        None,
+    )
+    .await
+    .expect("should not error even when template is missing");
+
+    assert!(!result.success, "missing template must be unsuccessful");
+    let output = result.output.as_deref().unwrap_or_default();
+    assert!(
+        output.contains("template unavailable"),
+        "expected unavailable warning, got: {output}"
+    );
+    assert!(
+        output.contains(&missing_example.display().to_string()),
+        "expected template path in output, got: {output}"
+    );
+}
+
 // --- execute_builtin: executor-dependent paths ---
 
 #[tokio::test]
@@ -616,10 +681,10 @@ async fn retention_with_executor_returns_summary() {
     let executor: Arc<dyn crate::maintenance::RetentionExecutor> = Arc::new(MockRetention {
         summary: RetentionSummary {
             sessions_cleaned: 3,
+            cap_sessions_cleaned: 1,
             messages_cleaned: 12,
             blackboard_entries_cleaned: 2,
             bytes_freed: 4096,
-            cap_sessions_cleaned: 0,
         },
     });
     let result = execute_builtin(
@@ -634,7 +699,7 @@ async fn retention_with_executor_returns_summary() {
     .expect("should succeed");
     assert!(result.is_success());
     let output = result.output.expect("output");
-    assert!(output.contains("3 sessions"));
+    assert!(output.contains("3 sessions (1 cap)"));
     assert!(output.contains("12 messages"));
     assert!(output.contains("2 blackboard entries"));
     assert!(output.contains("4096 bytes"));

@@ -19,6 +19,8 @@ pub enum QaIssueKind {
     ProseViolation,
     /// A required section is absent from the document.
     MissingSection,
+    /// A theme token rule was violated (raw literal or unknown token).
+    ThemeViolation,
 }
 
 /// A single QA issue with kind, optional source location, and human message.

@@ -25,6 +25,50 @@ use serde::{Deserialize, Serialize};
 /// drop fields that v2 expects to round-trip.
 pub const AGENT_FILE_VERSION: u32 = 2;
 
+/// Machine-readable metadata describing the completeness of an export.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportMetadata {
+    /// Whether the export contains every populated slot the format supports.
+    #[serde(default)]
+    pub lossless: bool,
+    /// Sections that were omitted because they were excluded or unavailable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub omitted_sections: Vec<OmittedSection>,
+    /// Slots where the exported data was truncated by operator request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub truncations: Vec<TruncationRecord>,
+}
+
+/// A section that was omitted from an export.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmittedSection {
+    /// Section name, e.g. "knowledge" or "sessions".
+    pub section: String,
+    /// Human/machine-readable reason, e.g. "`store_unavailable`".
+    pub reason: String,
+    /// Number of omitted items, when meaningful.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<usize>,
+}
+
+/// A truncation applied to an export slot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TruncationRecord {
+    /// Section name, e.g. "`session_messages`".
+    pub section: String,
+    /// Identifier of the truncated item, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
+    /// Maximum number of items that were exported.
+    pub limit: usize,
+    /// Original number of items, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original: Option<usize>,
+}
+
 /// Portable agent file: wire-compatible with the TypeScript `AgentFile` format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,6 +88,9 @@ pub struct AgentFile {
     /// Knowledge graph export (facts, entities, relationships).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub knowledge: Option<KnowledgeExport>,
+    /// Export completeness metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_metadata: Option<ExportMetadata>,
 }
 
 /// Agent identity and configuration snapshot.
@@ -288,6 +335,7 @@ mod tests {
             }],
             memory: None,
             knowledge: None,
+            export_metadata: None,
         }
     }
 

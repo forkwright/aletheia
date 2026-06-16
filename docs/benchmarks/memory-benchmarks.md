@@ -34,17 +34,27 @@ BenchmarkRunner (crates/eval/src/benchmarks/runner.rs)
 
 ### Per-question flow (live runner)
 
-1. `POST /api/v1/sessions` - create a fresh session keyed to the question
-2. Replay every **user turn** from the haystack sessions as messages
-   (assistant turns are skipped to avoid contaminating the answer signal)
+1. `POST /api/v1/sessions` - create a session keyed to the question and
+   `eval_run_id` (official-parity mode), or reuse the single
+   continuous-memory session
+2. `POST /api/v1/knowledge/ingest` - seed the full haystack transcript into
+   the knowledge store as markdown. Every turn keeps its original role
+   (`user`, `assistant`, `system`, `tool`, or dataset speaker labels) so the
+   memory pipeline sees the complete conversation without replaying the
+   turns as user messages and contaminating the answer signal.
 3. `POST /api/v1/sessions/{id}/messages` - ask the benchmark question
 4. Collect the SSE stream; extract concatenated `text_delta` events
 5. Score the answer with `score_answer(actual, expected_answers)`
-6. Optionally `DELETE /api/v1/sessions/{id}` to reset memory between questions
+6. In official-parity mode, `DELETE /api/v1/sessions/{id}` closes the
+   session after the question. In continuous-memory mode the session stays
+   open so earlier questions remain in context.
 
-Per-question errors are logged and scored as zero - a network hiccup does
-not abort the entire run. The runner produces a `BenchmarkReport` with
-`exact_match_rate()`, `mean_f1()`, and a `per_category()` breakdown.
+Per-question ingestion errors are surfaced in the question result instead
+of being silently ignored. Other per-question errors are logged and scored
+as zero - a network hiccup does not abort the entire run. The runner
+produces a `BenchmarkReport` tagged with `eval_run_id` and per-question
+`id`, plus `exact_match_rate()`, `mean_f1()`, and a `per_category()`
+breakdown.
 
 ### Test coverage (already passing)
 
@@ -55,7 +65,7 @@ The runner has 188 passing tests (`cargo test -p dokimion`):
 | Dataset parsers (LongMemEval + LoCoMo) | 14 | JSON format, alternates, multi-session, error cases |
 | Scoring (EM, F1, contains) | 10 | exact, normalized, partial, substring, duplicates |
 | Report aggregation | 3 | empty, EM+F1 math, per-category grouping |
-| Runner unit tests | 7 | role filtering, config defaults, max_questions |
+| Runner unit tests | 8 | transcript role preservation, config defaults, mode mapping, max_questions |
 | Runner integration tests (wiremock) | 6 | perfect answer, wrong answer, empty dataset, metadata, category, max_questions |
 
 ---
@@ -198,9 +208,27 @@ Configure `BenchmarkRunnerConfig` for production runs:
 | `session_key_prefix` | `"bench"` | Include date: `"bench-20260412"` |
 | `question_timeout` | 120s | Increase to 300s for long haystack ingestion |
 | `max_questions` | all | Use `Some(50)` for a fast representive sample |
-| `close_between_questions` | true | Keep true - resets memory between questions for clean isolation |
+| `close_between_questions` | true | `true` = `OfficialParity` (fresh session per question); `false` = `ContinuousMemory` (shared session). See [Execution modes](#execution-modes). |
 | `judge` | `None` | Set to an `LlmJudgeConfig` for LLM-as-judge scoring |
 | `retrieval_k` | `None` | Set to `Some(k)` to compute Recall@k / NDCG@k from the knowledge store |
+
+### Execution modes
+
+The runner supports two explicitly separated modes, controlled by
+`close_between_questions` on `BenchmarkRunnerConfig`:
+
+| Mode | `close_between_questions` | Session behavior | Use case |
+|---|---|---|---|
+| **Official parity** | `true` (default) | Fresh session per question; session closed after each question | Published benchmark numbers; each question evaluated in isolation |
+| **Continuous memory** | `false` | One session shared across all questions; session closed at the end of the run | Simulates a real user conversation where earlier Q&A pairs remain in context |
+
+**Isolation note:** A fresh session removes prior question/answer pairs from
+the live prompt, but the underlying knowledge store is scoped to the
+`nous_id`. For true disposable-memory isolation in official-parity mode,
+use a dedicated, disposable `nous_id` for each benchmark run (for example,
+`benchmark-{date}`) and discard the agent after the run. The runner tags
+every generated artifact with the run's `eval_run_id` and each question's
+`id` so results can be traced back to a clean namespace.
 
 ### Capturing results
 
@@ -232,6 +260,8 @@ Record the following for each run and add to the Results table:
 | Error rate | Fraction of questions logged as `"scored as no-answer"` |
 | Aletheia version | `git rev-parse HEAD` at time of run |
 | Nous model | Model ID from `GET /api/v1/nous/{id}` |
+| `eval_run_id` | Run identifier from `BenchmarkReport.provenance.eval_run_id` |
+| Mode | `OfficialParity` or `ContinuousMemory` used for the run |
 
 ---
 

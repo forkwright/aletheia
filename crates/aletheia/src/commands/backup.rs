@@ -221,7 +221,7 @@ fn run_instance(
         backup_dir: oikos.backups().join("instance"),
         interval_hours: 24,
         retention_count: keep,
-            additional_workspaces: Vec::new(),
+        additional_workspaces: Vec::new(),
     };
     let manager = InstanceBackup::new(config);
 
@@ -378,6 +378,9 @@ mod tests {
                 snapshot_time: jiff::Zoned::now().to_string(),
                 byte_count: 0,
                 status: String::from("ok"),
+                agent_id: None,
+                workspace_source_class: None,
+                exclusion_reason: None,
             }],
             optional_stores: Vec::new(),
             workspace_omissions: Vec::new(),

@@ -132,6 +132,8 @@ fn drift_detector_reports_missing_files_via_public_api() {
         report.checked_at.is_some(),
         "checked_at must be populated on success"
     );
+    assert!(report.template_available);
+    assert_eq!(report.template_root, example_root);
 }
 
 #[test]
@@ -139,10 +141,11 @@ fn drift_detector_missing_example_root_when_enabled_errors() {
     // WHY(#5143): an enabled drift check with no template cannot assess drift;
     // it now fails loudly instead of returning a misleading clean report.
     let tmp = tempfile::tempdir().expect("tempdir");
+    let example_root = tmp.path().join("does-not-exist");
     let config = DriftDetectionConfig {
         enabled: true,
         instance_root: tmp.path().join("instance"),
-        example_root: tmp.path().join("does-not-exist"),
+        example_root: example_root.clone(),
         alert_on_missing: true,
         ignore_patterns: Vec::new(),
         optional_patterns: Vec::new(),
@@ -185,6 +188,7 @@ fn drift_detector_missing_example_root_when_disabled_returns_unavailable() {
         !report.template_available,
         "report must flag the template as unavailable"
     );
+    assert_eq!(report.template_root, example_root);
 }
 
 #[test]

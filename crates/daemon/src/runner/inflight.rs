@@ -35,6 +35,9 @@ impl TaskRunner {
                 last_error: t.last_error.clone(),
                 data_source: data_source.to_owned(),
                 as_of: t.last_run.map(|ts| ts.to_string()),
+                last_errors: t.last_errors,
+                available: true,
+                reason: None,
             })
             .collect()
     }
@@ -93,12 +96,13 @@ impl TaskRunner {
                         self.maybe_queue_self_prompt(&task_id, &result);
                         match result.outcome {
                             TaskOutcome::Success => {
-                                self.record_task_completion(&task_id, duration);
+                                self.record_task_completion(&task_id, duration, result.errors);
                             }
                             TaskOutcome::Failed => {
                                 let reason = result
                                     .output
                                     .as_deref()
+                                    .filter(|s| !s.is_empty())
                                     .unwrap_or("task reported failure");
                                 self.record_task_failure(&task_id, reason);
                             }
@@ -152,7 +156,7 @@ impl TaskRunner {
         }
     }
 
-    /// Check if a completed task's output contains a `## Follow-up` section
+    /// Check if a completed task output contains a Follow-up section
     /// and, if self-prompting is enabled and rate-allowed, spawn a self-prompt.
     ///
     /// WHY: self-prompting closes the feedback loop. A prosoche check that finds
@@ -189,7 +193,7 @@ impl TaskRunner {
 
         // WHY: spawn as a detached task. Self-prompt execution should not block
         // the main scheduler loop. Failures are logged but do not affect the
-        // originating task's status.
+        // originating task status.
         let task_name = "self_prompt";
         tokio::spawn(
             async move {

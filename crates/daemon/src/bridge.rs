@@ -54,10 +54,7 @@ mod tests {
             .send_prompt("test-nous", "test-session", "hello")
             .await
             .expect("should not error");
-        assert!(
-            !result.is_success(),
-            "NoopBridge should not report success"
-        );
+        assert!(!result.is_success(), "NoopBridge should not report success");
     }
 
     #[tokio::test]

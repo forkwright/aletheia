@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use dioxus::prelude::*;
 use tokio_util::sync::CancellationToken;
 
-use crate::api::client::authenticated_client;
+use crate::api::client::authenticated_streaming_client;
 use crate::components::chat::{
     ChatMessage as LegacyChatMessage, ChatState, ChatStateManager, MessageRole,
 };
@@ -252,7 +252,7 @@ pub(crate) fn Chat() -> Element {
         cancel_token.set(new_token.clone());
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = authenticated_streaming_client(&cfg);
 
             // WHY: Use agent_store.active_id (set by topbar pill clicks) instead
             // of legacy_state.agent_id (which is always None). Without this,

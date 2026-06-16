@@ -74,6 +74,17 @@ async fn setup_mock_server(answer_text: &str) -> MockServer {
         .mount(&server)
         .await;
 
+    // POST /api/v1/knowledge/ingest → 200 (seed transcript into memory substrate)
+    Mock::given(method("POST"))
+        .and(path("/api/v1/knowledge/ingest"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "inserted": 1,
+            "skipped": 0,
+            "errors": []
+        })))
+        .mount(&server)
+        .await;
+
     server
 }
 
@@ -110,6 +121,17 @@ async fn setup_slow_mock_server(answer_text: &str, delay: std::time::Duration) -
     Mock::given(method("DELETE"))
         .and(path_regex(r"^/api/v1/sessions/[^/]+$"))
         .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    // POST /api/v1/knowledge/ingest → 200
+    Mock::given(method("POST"))
+        .and(path("/api/v1/knowledge/ingest"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "inserted": 1,
+            "skipped": 0,
+            "errors": []
+        })))
         .mount(&server)
         .await;
 

@@ -1,5 +1,9 @@
-# Loop guard — write sentinel when an agent appears stuck in a tool loop
-# Copy to shared/hooks/ and set enabled: true to activate.
+# UNSUPPORTED BEFORE v1.0
+# This file is a design template for a planned declarative shell hook.
+# The current Aletheia runtime uses in-process turn hooks (crates/nous/src/hooks)
+# and does NOT load or execute YAML/shell hook files.
+#
+# Loop guard — write sentinel when an agent appears stuck in a tool loop.
 # Supplements the built-in loop detector (which runs inside the pipeline).
 
 name: loop-guard
@@ -7,7 +11,7 @@ event: turn:after
 enabled: false
 description: External loop guard — writes sentinel file on high tool call count
 
-handler: ~
+handler:
   type: shell
   command: <aletheia-root>/shared/hooks/_templates/loop-guard.sh
   timeout: 5s
