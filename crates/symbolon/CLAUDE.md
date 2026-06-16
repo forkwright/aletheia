@@ -11,10 +11,10 @@ Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OA
 ## Read first
 
 1. `src/credential/mod.rs`: CredentialChain, RefreshingCredentialProvider, FileCredentialProvider (LLM API key resolution)
-2. `src/jwt.rs`: JwtManager, JwtConfig (HS256 JWT issuance and validation using ring::hmac)
+2. `src/jwt.rs`: JwtManager, JwtConfig (HS256 JWT issuance and validation using hmac+sha2 (RustCrypto))
 3. `src/types.rs`: Claims, Role, TokenKind, Action (shared auth types)
 4. `src/auth.rs`: AuthService facade composing JWT, API keys, passwords, RBAC
-5. `src/store.rs`: AuthStore (fjall-backed credential and token storage)
+5. `src/store/`: AuthStore (fjall-backed credential and token storage)
 
 ## Key types
 
@@ -30,7 +30,7 @@ Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OA
 | `Claims` | `types.rs` | JWT payload: sub, role, nous_id, iss, iat, exp, jti, kind |
 | `Role` | `types.rs` | RBAC roles: Operator, Agent, Readonly |
 | `AuthService` | `auth.rs` | Unified facade: register, login, issue/validate tokens, check permissions |
-| `AuthStore` | `store.rs` | fjall-backed user, API key, and token persistence |
+| `AuthStore` | `store/fjall_store.rs` | fjall-backed user, API key, and token persistence |
 
 ## Patterns
 
@@ -38,7 +38,7 @@ Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OA
 - **Circuit breaker**: Three-state (Closed/Open/HalfOpen) breaker on OAuth refresh prevents thundering herd on provider outages.
 - **Background refresh**: Tokio task polls token expiry at 60s intervals, refreshes when under 1h remaining.
 - **File mtime watch**: FileCredentialProvider detects external credential file updates every 30s.
-- **Encryption at rest**: AES-256-GCM via `encrypt` module for credential files. `enc:` prefix in config triggers transparent decryption.
+- **Encryption at rest**: AES-256-GCM via `encrypt` module for credential files. `ALETHEIA_ENC_V1:` prefix in config triggers transparent decryption.
 - **Clock skew tolerance**: 30s leeway on token expiry checks to handle NTP drift.
 
 ## Recent substrate notes
@@ -53,10 +53,10 @@ Authentication and authorization: JWT sessions, API keys, Argon2id passwords, OA
 | Add credential source | `src/credential/` (implement `CredentialProvider` trait from koina) |
 | Add RBAC role | `src/types.rs` (Role enum) + `src/auth.rs` (permission checks) |
 | Modify JWT claims | `src/types.rs` (Claims struct) + `src/jwt.rs` (encode/decode) |
-| Add auth store table | `src/store.rs` (AuthStore, schema migrations) |
+| Add auth store table | `src/store/fjall_store.rs` (AuthStore, schema migrations) |
 | Modify circuit breaker | `src/circuit_breaker.rs` (CircuitBreakerConfig thresholds) |
 
 ## Dependencies
 
-Uses: koina, argon2, ring, reqwest, fjall
+Uses: koina, argon2, hmac, sha2, aes-gcm, reqwest, fjall
 Used by: pylon, diaporeia, aletheia (binary)
