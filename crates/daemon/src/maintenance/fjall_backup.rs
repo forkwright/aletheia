@@ -185,6 +185,13 @@ impl FjallBackup {
     /// WHY: this is used both by the legacy `aletheia backup verify` path and
     /// by whole-instance backup verification for the `knowledge.fjall` and
     /// `sessions.db` stores.
+    ///
+    /// SAFETY(#5754): `fjall::open()` applies destructive auto-recovery that
+    /// deletes segment files absent from the levels manifest. Verify is a
+    /// forensic/read-only operation with respect to the canonical backup path:
+    /// we copy the directory to a throwaway temp location and open only the
+    /// copy, with background workers disabled so compaction/flush cannot mutate
+    /// it during iteration.
     pub fn verify_store(path: &Path) -> error::Result<FjallVerifyResult> {
         // WHY: FjallDb::open_existing eagerly creates `version`, `keyspaces/`,
         // and a fresh journal in the target directory if it doesn't already
@@ -200,10 +207,25 @@ impl FjallBackup {
             .fail();
         }
 
-        let fdb = koina::fjall::FjallDb::open_existing(path)
+        // SAFETY(#5754): copy the backup to a temp dir before opening so that
+        // any destructive auto-recovery only touches the disposable copy.
+        let temp_dir = tempfile::TempDir::new().context(error::MaintenanceIoSnafu {
+            context: String::from("creating temp dir for fjall verify"),
+        })?;
+        let temp_copy = temp_dir.path().join("store");
+        copy_dir_recursive(path, &temp_copy)?;
+
+        // WHY(#5754): open the temp copy with zero background workers to
+        // prevent flush/compaction from mutating the copy during iteration.
+        // `worker_threads_unchecked` is used because the public
+        // `worker_threads` panics on zero in non-test builds, and verify has
+        // no need for background work.
+        let db = fjall::SingleWriterTxDatabase::builder(&temp_copy)
+            .worker_threads_unchecked(0)
+            .open()
             .map_err(|e| std::io::Error::other(e.to_string()))
             .context(error::MaintenanceIoSnafu {
-                context: format!("opening fjall store {}", path.display()),
+                context: format!("opening fjall store copy for verify: {}", path.display()),
             })?;
 
         let mut result = FjallVerifyResult {
@@ -212,18 +234,17 @@ impl FjallBackup {
             total_keys: 0,
         };
 
-        let names = fdb.db.list_keyspace_names();
+        let names = db.list_keyspace_names();
         for name in names {
             let name_str = name.as_ref();
-            let ks = fdb
-                .db
+            let ks = db
                 .keyspace(name_str, fjall::KeyspaceCreateOptions::default)
                 .map_err(|e| std::io::Error::other(e.to_string()))
                 .context(error::MaintenanceIoSnafu {
                     context: format!("opening partition {name_str}"),
                 })?;
 
-            let snap = fdb.db.read_tx();
+            let snap = db.read_tx();
             let mut count = 0usize;
 
             for guard in snap.range::<&str, _>(&ks, ..) {
@@ -564,5 +585,94 @@ mod tests {
         assert!(!config.enabled);
         assert_eq!(config.interval_hours, 24);
         assert_eq!(config.retention_count, 7);
+    }
+
+    /// #5754 regression: verify must not destructively recover the canonical
+    /// backup directory. A hot-copy may contain orphan segment files; opening
+    /// the backup in-place would delete them. Verify should copy first and only
+    /// open the disposable copy.
+    #[test]
+    fn verify_store_does_not_mutate_backup_directory() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let source = tmp.path().join("knowledge.fjall");
+        let backup = tmp.path().join("backup").join("knowledge.fjall");
+
+        // Create a live store with one partition and a few keys.
+        {
+            fs::create_dir_all(&source).unwrap();
+            let db = fjall::SingleWriterTxDatabase::builder(&source)
+                .worker_threads_unchecked(0)
+                .open()
+                .unwrap();
+            let partition = db
+                .keyspace("test_data", fjall::KeyspaceCreateOptions::default)
+                .unwrap();
+            for i in 0..5u8 {
+                partition.insert(format!("key-{i}"), vec![i]).unwrap();
+            }
+            db.persist(fjall::PersistMode::SyncAll).unwrap();
+            drop(db);
+        }
+
+        // Simulate a hot-copy backup.
+        fs::create_dir_all(backup.parent().unwrap()).unwrap();
+        copy_dir_recursive(&source, &backup).unwrap();
+
+        // Inject a fake orphan segment file into the backup. A real hot-copy
+        // could contain compaction-in-progress segments not yet referenced by
+        // the manifest; the name here is chosen to look like an SST.
+        let orphan_rel = PathBuf::from("orphan-0001.sst");
+        let orphan = backup.join(&orphan_rel);
+        write_fixture(&orphan, "orphan segment data");
+
+        let files_before: std::collections::HashSet<PathBuf> =
+            walk_paths(&backup).into_iter().collect();
+        assert!(files_before.contains(&orphan_rel));
+
+        // Verify the backup. This must open only a temp copy, leaving the
+        // canonical backup untouched.
+        let result = FjallBackup::verify_store(&backup).expect("verify succeeds");
+        assert!(result.first_error.is_none());
+        assert_eq!(result.total_keys, 5);
+
+        let files_after: std::collections::HashSet<PathBuf> =
+            walk_paths(&backup).into_iter().collect();
+        assert!(
+            files_after.contains(&orphan_rel),
+            "verify deleted the orphan segment from the canonical backup"
+        );
+        assert_eq!(
+            files_before, files_after,
+            "verify mutated the canonical backup directory"
+        );
+
+        // Simulate restore by opening the backup directly. The orphan is
+        // expected to be discarded by recovery, but all real records must
+        // survive.
+        let restored = fjall::SingleWriterTxDatabase::builder(&backup)
+            .worker_threads_unchecked(0)
+            .open()
+            .unwrap();
+        let partition = restored
+            .keyspace("test_data", fjall::KeyspaceCreateOptions::default)
+            .unwrap();
+        let snap = restored.read_tx();
+        let count = snap.range::<&str, _>(&partition, ..).count();
+        assert_eq!(count, 5, "restore lost real records");
+    }
+
+    fn walk_paths(dir: &Path) -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    paths.extend(walk_paths(&path));
+                } else {
+                    paths.push(path.strip_prefix(dir).unwrap().to_path_buf());
+                }
+            }
+        }
+        paths
     }
 }
