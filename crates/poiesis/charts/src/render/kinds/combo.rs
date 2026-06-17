@@ -32,19 +32,16 @@
 
 use std::fmt::Write as _;
 
+use super::shared::{
+    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64, legend_needed,
+    ticks_for_axis,
+};
 use crate::Result;
 use crate::format::{coord, format_number};
-use crate::model::{AxisSide, Chart, CiteOrText, FactCite, NumFormat, Series};
+use crate::model::{AxisSide, AxisSpec, Chart, CiteOrText, FactCite, NumFormat, Series, Unit};
 use crate::render::canvas::{Canvas, PlotBox};
-use crate::scale::{self, Scale};
+use crate::scale::Scale;
 use crate::theme::{ColorMode, ResolvedTheme};
-
-// WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
-// literal mandated by the SVG spec. Renderers (browsers, ImageMagick,
-// LibreOffice) match it as an opaque string; it is never fetched. Substituting
-// `https://` produces SVG that browsers refuse to render (the namespace string
-// must match the spec verbatim). See SVG 1.1 §1.3.
-const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 
 /// Emit the combo chart SVG.
 ///
@@ -74,16 +71,31 @@ pub fn emit(
         });
     }
 
-    let (y_left, y_right) = build_scales(col_series, line_series, &plot);
+    let y_left_spec = &chart.axes.y_left;
+    let y_right_default = AxisSpec::default();
+    let y_right_spec = chart.axes.y_right.as_ref().unwrap_or(&y_right_default);
+    let (y_left, y_right) = build_scales(col_series, line_series, y_left_spec, y_right_spec, &plot);
     let band_w = plot.width() / idx_to_f64(n);
     let bar_w = band_w * 0.5;
 
     let col_fill = theme.fill_for(&col_series.tone, mode, col_idx)?;
     let line_stroke = theme.fill_for(&line_series.tone, mode, line_idx)?;
 
+    let y_left_ticks = ticks_for_axis(y_left_spec, y_left.domain.0, y_left.domain.1);
+    let y_right_ticks = ticks_for_axis(y_right_spec, y_right.domain.0, y_right.domain.1);
+
     let mut out = String::new();
     emit_svg_open(&mut out, chart, canvas);
-    emit_gridlines_and_axes(&mut out);
+    emit_gridlines_and_axes(
+        &mut out,
+        &plot,
+        &y_left,
+        &y_right,
+        &y_left_ticks,
+        &y_right_ticks,
+        theme,
+        chart,
+    );
     emit_bars(
         &mut out, col_series, &y_left, &plot, band_w, bar_w, &col_fill,
     );
@@ -92,6 +104,10 @@ pub fn emit(
         emit_data_labels(&mut out, col_series, &y_left, &plot, band_w, theme);
     }
     emit_x_labels(&mut out, col_series, &plot, band_w, theme);
+    if legend_needed(chart.legend, chart.series.len()) {
+        emit_legend(&mut out, chart, theme, mode, &plot)?;
+    }
+    emit_caption(&mut out, chart, theme, &plot);
     out.push_str("</svg>");
     Ok(out)
 }
@@ -117,38 +133,79 @@ const fn axis_name(side: AxisSide) -> &'static str {
     }
 }
 
-fn build_scales(col_series: &Series, line_series: &Series, plot: &PlotBox) -> (Scale, Scale) {
+fn build_scales(
+    col_series: &Series,
+    line_series: &Series,
+    y_left_spec: &AxisSpec,
+    y_right_spec: &AxisSpec,
+    plot: &PlotBox,
+) -> (Scale, Scale) {
     let col_values: Vec<f64> = col_series.points.iter().map(|p| p.y.value).collect();
     let line_values: Vec<f64> = line_series.points.iter().map(|p| p.y.value).collect();
-    let (l_lo, l_hi) = nice_domain(&col_values);
-    let (r_lo, r_hi) = nice_domain(&line_values);
+    let (l_lo, l_hi) = domain_bounds(&col_values, y_left_spec);
+    let (r_lo, r_hi) = domain_bounds(&line_values, y_right_spec);
     (
         Scale::new((l_lo, l_hi), (plot.y1, plot.y0)),
         Scale::new((r_lo, r_hi), (plot.y1, plot.y0)),
     )
 }
 
-fn emit_svg_open(out: &mut String, chart: &Chart, canvas: &Canvas) {
-    let _ = write!(
-        out,
-        "<svg xmlns=\"{ns}\" \
-         viewBox=\"0 0 {w} {h}\" \
-         preserveAspectRatio=\"{aspect}\" \
-         role=\"img\" aria-label=\"{aria}\">",
-        ns = SVG_NAMESPACE,
-        w = canvas.width(),
-        h = canvas.height(),
-        aspect = canvas.preserve_aspect_ratio(),
-        aria = aria_label(chart),
-    );
-}
+fn emit_gridlines_and_axes(
+    out: &mut String,
+    plot: &PlotBox,
+    y_left: &Scale,
+    y_right: &Scale,
+    y_left_ticks: &[f64],
+    y_right_ticks: &[f64],
+    theme: &ResolvedTheme,
+    chart: &Chart,
+) {
+    out.push_str("<g class=\"gridlines\">");
+    for tick in y_left_ticks {
+        let y = y_left.map(*tick);
+        let _ = write!(
+            out,
+            "<line x1=\"{x1}\" y1=\"{y}\" x2=\"{x2}\" y2=\"{y}\" stroke=\"#e5e7eb\" stroke-width=\"1\"/>",
+            x1 = coord(plot.x0),
+            y = coord(y),
+            x2 = coord(plot.x1),
+        );
+    }
+    out.push_str("</g>");
 
-fn emit_gridlines_and_axes(out: &mut String) {
-    // Scaffold: structural placeholders. The follow-up arm fills these in with
-    // tick lines + tick labels at the y_left tick positions (and y_right for
-    // combo), using the `scale::ticks` generator.
-    out.push_str("<g class=\"gridlines\"></g>");
-    out.push_str("<g class=\"axes\"></g>");
+    out.push_str("<g class=\"axes\">");
+    for tick in y_left_ticks {
+        let y = y_left.map(*tick);
+        let label = escape_xml(&format_number(
+            *tick,
+            chart.axes.y_left.format,
+            Unit::Number,
+        ));
+        let _ = write!(
+            out,
+            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{font}\">{label}</text>",
+            x = coord(plot.x0 - 8.0),
+            y = coord(y),
+            font = theme.font_sans,
+        );
+    }
+    for tick in y_right_ticks {
+        let y = y_right.map(*tick);
+        let right_format = chart
+            .axes
+            .y_right
+            .as_ref()
+            .map_or(NumFormat::FromUnit, |a| a.format);
+        let label = escape_xml(&format_number(*tick, right_format, Unit::Number));
+        let _ = write!(
+            out,
+            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"start\" dominant-baseline=\"middle\" font-family=\"{font}\">{label}</text>",
+            x = coord(plot.x1 + 8.0),
+            y = coord(y),
+            font = theme.font_sans,
+        );
+    }
+    out.push_str("</g>");
 }
 
 fn emit_bars(
@@ -255,8 +312,8 @@ fn emit_x_labels(
     for (i, point) in series.points.iter().enumerate() {
         let cx = plot.x0 + band_w * idx_to_f64(i) + band_w * 0.5;
         let label = match &point.label {
-            Some(CiteOrText::Text(t)) => t.clone(),
-            Some(CiteOrText::Cite(id)) => id.0.clone(),
+            Some(CiteOrText::Text(t)) => escape_xml(t),
+            Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
             None => String::new(),
         };
         let _ = write!(
@@ -270,51 +327,8 @@ fn emit_x_labels(
     out.push_str("</g>");
 }
 
-#[expect(
-    clippy::cast_precision_loss,
-    clippy::as_conversions,
-    reason = "category index never approaches f64 mantissa limit"
-)]
-const fn idx_to_f64(i: usize) -> f64 {
-    i as f64
-}
-
-fn nice_domain(values: &[f64]) -> (f64, f64) {
-    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
-    for v in values {
-        if *v < lo {
-            lo = *v;
-        }
-        if *v > hi {
-            hi = *v;
-        }
-    }
-    if lo > 0.0 {
-        lo = 0.0;
-    }
-    if !lo.is_finite() || !hi.is_finite() {
-        return (0.0, 1.0);
-    }
-    scale::nice(lo, hi)
-}
-
-fn aria_label(chart: &Chart) -> String {
-    match &chart.title {
-        Some(CiteOrText::Text(t)) => escape_xml(t),
-        Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
-        None => format!("{} chart", chart.kind.name()),
-    }
-}
-
 fn label_text(cite: &FactCite) -> String {
     escape_xml(&format_number(cite.value, NumFormat::FromUnit, cite.unit))
-}
-
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]
@@ -433,6 +447,25 @@ mod tests {
         )
         .expect("second emit");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn x_labels_escape_xml_reserved_characters() {
+        let mut spec = offsite_spec();
+        for point in &mut spec.series[0].points {
+            point.label = Some(CiteOrText::Text("R&D <2024>".to_owned()));
+        }
+        let theme = ResolvedTheme::summus_stub();
+        let svg = emit(
+            &spec,
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("emit");
+        assert!(svg.contains("R&amp;D"));
+        assert!(svg.contains("&lt;2024&gt;"));
+        assert!(!svg.contains("R&D <2024>"));
     }
 
     #[test]

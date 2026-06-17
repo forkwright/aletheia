@@ -22,4 +22,5 @@ pub mod doughnut;
 pub mod line;
 pub mod pie;
 pub mod scatter;
+pub mod shared;
 pub mod stat;

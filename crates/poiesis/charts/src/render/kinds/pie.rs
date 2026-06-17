@@ -15,17 +15,12 @@
 
 use std::fmt::Write as _;
 
+use super::shared::{emit_caption, emit_legend, emit_svg_open, escape_xml, legend_needed};
 use crate::Result;
 use crate::format::{coord, format_number};
-use crate::model::{Chart, CiteOrText, NumFormat, ToneRef, Unit};
+use crate::model::{Chart, NumFormat, Unit};
 use crate::render::canvas::Canvas;
 use crate::theme::{ColorMode, ResolvedTheme};
-
-// WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
-// literal mandated by the SVG spec. Renderers match it as an opaque string;
-// it is never fetched. Substituting `https://` produces SVG that browsers
-// refuse to render. See SVG 1.1 §1.3.
-const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 
 /// Emit the pie chart SVG.
 ///
@@ -33,6 +28,10 @@ const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 /// - `chart.kind == ChartKind::Pie`
 /// - `series.len() == 1`
 /// - `points.len() >= 1`
+#[expect(
+    clippy::too_many_lines,
+    reason = "single emit function per kind pattern"
+)]
 pub fn emit(
     chart: &Chart,
     theme: &ResolvedTheme,
@@ -76,7 +75,7 @@ pub fn emit(
         let start_angle = cumulative_angle;
         let end_angle = start_angle + sweep;
 
-        let fill = theme.fill_for(&ToneRef::Indexed(j), mode, j)?;
+        let fill = theme.fill_for_slice(&series.tone, mode, 0, j)?;
 
         let path_d = if (sweep - 2.0 * std::f64::consts::PI).abs() < 1e-12 {
             // WHY: a single slice spans the full circle, and an SVG arc with
@@ -149,6 +148,10 @@ pub fn emit(
         out.push_str("</g>");
     }
 
+    if legend_needed(chart.legend, chart.series.len()) {
+        emit_legend(&mut out, chart, theme, mode, &plot)?;
+    }
+    emit_caption(&mut out, chart, theme, &plot);
     out.push_str("</svg>");
     Ok(out)
 }
@@ -156,36 +159,6 @@ pub fn emit(
 fn polar_to_xy(cx: f64, cy: f64, r: f64, angle_rad: f64) -> (f64, f64) {
     let svg_angle = angle_rad - std::f64::consts::FRAC_PI_2;
     (cx + r * svg_angle.cos(), cy + r * svg_angle.sin())
-}
-
-fn emit_svg_open(out: &mut String, chart: &Chart, canvas: &Canvas) {
-    let _ = write!(
-        out,
-        "<svg xmlns=\"{ns}\" \
-         viewBox=\"0 0 {w} {h}\" \
-         preserveAspectRatio=\"{aspect}\" \
-         role=\"img\" aria-label=\"{aria}\">",
-        ns = SVG_NAMESPACE,
-        w = canvas.width(),
-        h = canvas.height(),
-        aspect = canvas.preserve_aspect_ratio(),
-        aria = aria_label(chart),
-    );
-}
-
-fn aria_label(chart: &Chart) -> String {
-    match &chart.title {
-        Some(CiteOrText::Text(t)) => escape_xml(t),
-        Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
-        None => "pie chart".to_owned(),
-    }
-}
-
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]
@@ -292,5 +265,24 @@ mod tests {
         )
         .expect("single slice emits");
         assert!(svg.contains("<path"));
+    }
+
+    #[test]
+    fn more_slices_than_palette_renders_without_error() {
+        let theme = ResolvedTheme::summus_stub();
+        let svg = emit(
+            &pie_chart(&[
+                (10.0, "a"),
+                (15.0, "b"),
+                (20.0, "c"),
+                (25.0, "d"),
+                (30.0, "e"),
+            ]),
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("palette-cycled pie emits");
+        assert_eq!(svg.matches("<path").count(), 5);
     }
 }

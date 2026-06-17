@@ -81,8 +81,8 @@ pub fn render_chart(
 mod tests {
     use super::*;
     use crate::model::{
-        Axes, AxisSide, Chart, ChartKind, CiteOrScalar, CiteOrText, FactCite, FactId, LegendSpec,
-        Point, Series, SeriesStyle, ToneRef, Unit,
+        Axes, AxisSide, Chart, ChartKind, CiteOrScalar, CiteOrText, Domain, FactCite, FactId,
+        Inlines, LegendSpec, Point, Series, SeriesStyle, Ticks, ToneRef, Unit,
     };
     use crate::render::canvas::DeckCanvas;
 
@@ -330,6 +330,108 @@ mod tests {
             value,
             unit: Unit::Number,
         }
+    }
+
+    #[test]
+    fn fixed_domain_and_explicit_ticks_appear_in_bar_svg() {
+        let mut spec = chart_spec(
+            ChartKind::Bar,
+            vec![series(
+                "A",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("Q1", 10.0), point("Q2", 90.0)],
+            )],
+            false,
+        );
+        spec.axes.x.domain = Domain::Fixed {
+            min: 0.0,
+            max: 100.0,
+        };
+        spec.axes.x.ticks = Ticks::Explicit(vec![25.0, 50.0, 75.0]);
+        let theme = ResolvedTheme::summus_stub();
+        let svg = render_chart(
+            &spec,
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("renders");
+        assert!(
+            svg.contains(">25<"),
+            "explicit tick label should appear: {svg}"
+        );
+        assert!(svg.contains(">50<"));
+        assert!(svg.contains(">75<"));
+    }
+
+    #[test]
+    fn caption_appears_in_line_svg() {
+        let mut spec = chart_spec(
+            ChartKind::Line,
+            vec![series(
+                "A",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("Q1", 10.0), point("Q2", 20.0)],
+            )],
+            false,
+        );
+        spec.caption = Some(Inlines(vec![
+            "Fig 1:".to_owned(),
+            "caption text".to_owned(),
+        ]));
+        let theme = ResolvedTheme::summus_stub();
+        let svg = render_chart(
+            &spec,
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("renders");
+        assert!(svg.contains("<g class=\"caption\">"));
+        assert!(svg.contains("Fig 1: caption text"));
+    }
+
+    #[test]
+    fn legend_appears_for_multi_series_when_forced() {
+        let spec = Chart {
+            kind: ChartKind::Bar,
+            title: None,
+            series: vec![
+                series(
+                    "A",
+                    0,
+                    SeriesStyle::Default,
+                    AxisSide::Left,
+                    vec![point("Q1", 10.0)],
+                ),
+                series(
+                    "B",
+                    1,
+                    SeriesStyle::Default,
+                    AxisSide::Left,
+                    vec![point("Q1", 20.0)],
+                ),
+            ],
+            axes: Axes::default(),
+            legend: LegendSpec::TopRight,
+            data_labels: false,
+            caption: None,
+        };
+        let theme = ResolvedTheme::summus_stub();
+        let svg = render_chart(
+            &spec,
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("renders");
+        assert!(svg.contains("<g class=\"legend\">"));
+        assert!(svg.contains(">A<"));
+        assert!(svg.contains(">B<"));
     }
 
     fn assert_kind_svg(spec: &Chart, markers: &[&str]) {

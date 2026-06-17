@@ -14,18 +14,12 @@
 
 use std::fmt::Write as _;
 
+use super::shared::{SVG_NAMESPACE, emit_caption, emit_legend, escape_xml, legend_needed};
 use crate::Result;
 use crate::format::{coord, format_number};
 use crate::model::{Chart, CiteOrText};
-use crate::render::canvas::Canvas;
+use crate::render::canvas::{Canvas, PlotBox};
 use crate::theme::{ColorMode, ResolvedTheme};
-
-// WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
-// literal mandated by the SVG spec. Renderers (browsers, ImageMagick,
-// LibreOffice) match it as an opaque string; it is never fetched. Substituting
-// `https://` produces SVG that browsers refuse to render (the namespace string
-// must match the spec verbatim). See SVG 1.1 §1.3.
-const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 
 /// Emit the stat chart SVG.
 ///
@@ -38,6 +32,10 @@ const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 #[expect(
     clippy::indexing_slicing,
     reason = "validated by Chart::validate (exactly 1 series) and empty-point guard above"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single emit function per kind pattern"
 )]
 pub fn emit(
     chart: &Chart,
@@ -107,10 +105,10 @@ pub fn emit(
     if !series_name.is_empty() {
         let _ = write!(
             out,
-            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-size=\"24\" font-family=\"{font}\" fill=\"{fill}\">{label}</text>",
+            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" class=\"code\" font-size=\"24\" font-family=\"{font}\" fill=\"{fill}\">{label}</text>",
             x = coord(cx),
             y = coord(cy - 50.0),
-            font = theme.font_sans,
+            font = theme.font_mono,
             fill = fill,
             label = escape_xml(&series_name),
         );
@@ -142,15 +140,33 @@ pub fn emit(
         );
     }
 
+    if legend_needed(chart.legend, chart.series.len()) {
+        emit_legend(
+            &mut out,
+            chart,
+            theme,
+            mode,
+            &PlotBox {
+                x0: 0.0,
+                y0: 0.0,
+                x1: f64::from(width),
+                y1: f64::from(height),
+            },
+        )?;
+    }
+    emit_caption(
+        &mut out,
+        chart,
+        theme,
+        &PlotBox {
+            x0: 0.0,
+            y0: 0.0,
+            x1: f64::from(width),
+            y1: f64::from(height),
+        },
+    );
     out.push_str("</g></svg>");
     Ok(out)
-}
-
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]
@@ -239,6 +255,20 @@ mod tests {
         )
         .expect("second emit");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn series_name_uses_mono_font() {
+        let theme = ResolvedTheme::summus_stub();
+        let svg = emit(
+            &stat_chart(42.0, Unit::Number, "Users"),
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("stat emits");
+        assert!(svg.contains("class=\"code\""));
+        assert!(svg.contains(&theme.font_mono));
     }
 
     #[test]

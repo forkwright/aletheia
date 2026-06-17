@@ -11,17 +11,16 @@
 
 use std::fmt::Write as _;
 
+use super::shared::{
+    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64, legend_needed,
+    ticks_for_axis,
+};
 use crate::Result;
 use crate::format::{coord, format_number};
-use crate::model::{Chart, CiteOrText, Unit};
+use crate::model::{AxisSpec, Chart, CiteOrText, Unit};
 use crate::render::canvas::{Canvas, PlotBox};
-use crate::scale::{self, Scale};
+use crate::scale::Scale;
 use crate::theme::{ColorMode, ResolvedTheme};
-
-// WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
-// literal mandated by the SVG spec. Renderers match it as an opaque string;
-// substituting `https://` produces SVG that browsers refuse to render.
-const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 
 /// Emit the column chart SVG.
 ///
@@ -55,7 +54,7 @@ pub fn emit(
         .iter()
         .flat_map(|s| s.points.iter().map(|p| p.y.value))
         .collect();
-    let (lo, hi) = nice_domain(&all_values);
+    let (lo, hi) = domain_bounds(&all_values, &chart.axes.y_left);
     let y_scale = Scale::new((lo, hi), (plot.y1, plot.y0));
 
     let n_cats_f = idx_to_f64(n_cats);
@@ -73,8 +72,18 @@ pub fn emit(
 
     let mut out = String::new();
     emit_svg_open(&mut out, chart, canvas);
-    emit_gridlines(&mut out, lo, hi, &y_scale, &plot);
-    emit_axes(&mut out, chart, lo, hi, &y_scale, &plot, band_w, theme);
+    emit_gridlines(&mut out, lo, hi, &y_scale, &plot, &chart.axes.y_left);
+    emit_axes(
+        &mut out,
+        chart,
+        lo,
+        hi,
+        &y_scale,
+        &plot,
+        band_w,
+        theme,
+        &chart.axes.y_left,
+    );
     emit_bars(
         &mut out, chart, &y_scale, &plot, band_w, sub_w, bar_w, &fills,
     );
@@ -83,28 +92,24 @@ pub fn emit(
             &mut out, chart, &y_scale, &plot, band_w, sub_w, theme, &fills,
         );
     }
+    if legend_needed(chart.legend, chart.series.len()) {
+        emit_legend(&mut out, chart, theme, mode, &plot)?;
+    }
+    emit_caption(&mut out, chart, theme, &plot);
     out.push_str("</svg>");
     Ok(out)
 }
 
-fn emit_svg_open(out: &mut String, chart: &Chart, canvas: &Canvas) {
-    let _ = write!(
-        out,
-        "<svg xmlns=\"{ns}\" \
-         viewBox=\"0 0 {w} {h}\" \
-         preserveAspectRatio=\"{aspect}\" \
-         role=\"img\" aria-label=\"{aria}\">",
-        ns = SVG_NAMESPACE,
-        w = canvas.width(),
-        h = canvas.height(),
-        aspect = canvas.preserve_aspect_ratio(),
-        aria = aria_label(chart),
-    );
-}
-
-fn emit_gridlines(out: &mut String, lo: f64, hi: f64, y_scale: &Scale, plot: &PlotBox) {
+fn emit_gridlines(
+    out: &mut String,
+    lo: f64,
+    hi: f64,
+    y_scale: &Scale,
+    plot: &PlotBox,
+    axis: &AxisSpec,
+) {
     out.push_str("<g class=\"gridlines\">");
-    let ticks = scale::ticks(lo, hi, 5);
+    let ticks = ticks_for_axis(axis, lo, hi);
     for tick in &ticks {
         let tick_y = y_scale.map(*tick);
         let _ = write!(
@@ -127,13 +132,14 @@ fn emit_axes(
     plot: &PlotBox,
     band_w: f64,
     theme: &ResolvedTheme,
+    axis: &AxisSpec,
 ) {
     out.push_str("<g class=\"axes\">");
 
-    let ticks = scale::ticks(lo, hi, 5);
+    let ticks = ticks_for_axis(axis, lo, hi);
     for tick in &ticks {
         let tick_y = y_scale.map(*tick);
-        let tick_label = format_number(*tick, chart.axes.y_left.format, Unit::Number);
+        let tick_label = format_number(*tick, axis.format, Unit::Number);
         let _ = write!(
             out,
             "<text x=\"{x}\" y=\"{y}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{font}\">{label}</text>",
@@ -224,49 +230,6 @@ fn emit_labels(
         }
     }
     out.push_str("</g>");
-}
-
-#[expect(
-    clippy::cast_precision_loss,
-    clippy::as_conversions,
-    reason = "category index never approaches f64 mantissa limit"
-)]
-const fn idx_to_f64(i: usize) -> f64 {
-    i as f64
-}
-
-fn nice_domain(values: &[f64]) -> (f64, f64) {
-    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
-    for v in values {
-        if *v < lo {
-            lo = *v;
-        }
-        if *v > hi {
-            hi = *v;
-        }
-    }
-    if lo > 0.0 {
-        lo = 0.0;
-    }
-    if !lo.is_finite() || !hi.is_finite() {
-        return (0.0, 1.0);
-    }
-    scale::nice(lo, hi)
-}
-
-fn aria_label(chart: &Chart) -> String {
-    match &chart.title {
-        Some(CiteOrText::Text(t)) => escape_xml(t),
-        Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
-        None => format!("{} chart", chart.kind.name()),
-    }
-}
-
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]
