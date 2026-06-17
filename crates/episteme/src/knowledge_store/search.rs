@@ -913,6 +913,11 @@ impl KnowledgeStore {
         let script = build_scoped_hybrid_query(q);
         let rows = self.run_read(&script, params)?;
         let mut results = rows_to_hybrid_results(rows)?;
+
+        // WHY (#5846): The BM25, vector, and graph indices do not carry the
+        // `is_forgotten` flag. Filter out forgotten facts before truncating so
+        // soft-deleted entries never surface in scoped recall results.
+        results = self.filter_forgotten_results(results)?;
         results.truncate(q.limit);
 
         let fact_ids: Vec<crate::id::FactId> = results.iter().map(|r| r.id.clone()).collect();

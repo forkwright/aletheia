@@ -10,7 +10,7 @@
 
 use super::*;
 use crate::consolidation::ConsolidationResult;
-use crate::test_fixtures::make_store;
+use crate::test_fixtures::{make_entity, make_store};
 
 // kanon:ignore RUST/doc-promised-observability — doc comment describes data-flow invariants, not tracing
 /// Requirement #3634: consolidating N source facts into one Fact must
@@ -307,5 +307,105 @@ fn consolidation_mixed_project_ids_refused() {
     assert!(
         msg.contains("mixed project IDs"),
         "error should identify project conflict: {msg}"
+    );
+}
+
+// WHY (#5849): Mock provider that returns an empty JSON array, exercising the
+// zero-output consolidation path that previously destroyed source facts.
+struct EmptyResponseProvider;
+
+impl ConsolidationProvider for EmptyResponseProvider {
+    fn consolidate(
+        &self,
+        _system: &str,
+        _user_message: &str,
+    ) -> Result<String, ConsolidationError> {
+        Ok("[]".to_owned())
+    }
+}
+
+/// Requirement #5849: a batch whose LLM response is `[]` must produce zero
+/// consolidated facts and zero superseded fact IDs.
+#[test]
+fn run_llm_consolidation_empty_response_skips_supersession() {
+    let provider = EmptyResponseProvider;
+    let facts: Vec<SourceFact> = (0..3)
+        .map(|i| SourceFact {
+            id: FactId::new(format!("f-empty-{i}")).expect("valid test id"),
+            content: format!("source fact {i}"),
+            confidence: 0.8,
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            source_session_id: None,
+        })
+        .collect();
+
+    let result = run_llm_consolidation(&provider, &facts, &ConsolidationConfig::default())
+        .expect("run_llm_consolidation must succeed");
+
+    assert!(
+        result.consolidated_facts.is_empty(),
+        "empty LLM response must produce zero consolidated facts"
+    );
+    assert!(
+        result.superseded_fact_ids.is_empty(),
+        "empty LLM response must not supersede any source facts"
+    );
+}
+
+/// Requirement #5849: after `execute_consolidation` with an empty LLM response,
+/// the source facts must remain retrievable (not marked superseded).
+#[test]
+fn execute_consolidation_empty_response_preserves_source_facts() {
+    let store = make_store();
+    let entity = make_entity("e-empty", "Empty Entity", "topic");
+    store.insert_entity(&entity).expect("insert entity");
+
+    let fact = crate::test_fixtures::make_fact("f-empty-0", "alice", "source fact zero");
+    store.insert_fact(&fact).expect("insert fact");
+    store
+        .insert_fact_entity(&fact.id, &entity.id)
+        .expect("link fact to entity");
+
+    let candidate = ConsolidationCandidate {
+        trigger: ConsolidationTrigger::EntityOverflow {
+            entity_id: entity.id.clone(),
+            fact_count: 1,
+        },
+        fact_ids: vec![fact.id.clone()],
+        fact_count: 1,
+        entity_id: Some(entity.id.clone()),
+        cluster_id: None,
+    };
+
+    let result = store
+        .execute_consolidation(
+            &EmptyResponseProvider,
+            &candidate,
+            "alice",
+            &ConsolidationConfig::default(),
+            false,
+        )
+        .expect("execute_consolidation must succeed");
+
+    assert!(
+        result.consolidated_facts.is_empty(),
+        "empty consolidation must produce zero new facts"
+    );
+    assert!(
+        result.superseded_fact_ids.is_empty(),
+        "empty consolidation must not supersede source facts"
+    );
+
+    let remaining = store
+        .query_facts("alice", "2026-06-17T00:00:00Z", 10)
+        .expect("query active facts");
+    let ids: Vec<&str> = remaining.iter().map(|f| f.id.as_str()).collect();
+    assert!(
+        ids.contains(&"f-empty-0"),
+        "source fact must remain retrievable after empty consolidation; got {ids:?}"
     );
 }

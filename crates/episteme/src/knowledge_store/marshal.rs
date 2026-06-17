@@ -1125,8 +1125,10 @@ pub(super) fn parse_epistemic_tier(s: &str) -> crate::knowledge::EpistemicTier {
     use crate::knowledge::EpistemicTier;
     match s {
         "verified" => EpistemicTier::Verified,
+        "reflected" => EpistemicTier::Reflected,
         "inferred" => EpistemicTier::Inferred,
         "assumed" => EpistemicTier::Assumed,
+        "training" => EpistemicTier::Training,
         other => {
             tracing::warn!(tier = %other, "unknown epistemic tier in stored fact, defaulting to assumed");
             EpistemicTier::Assumed
@@ -1138,7 +1140,7 @@ pub(super) fn parse_epistemic_tier(s: &str) -> crate::knowledge::EpistemicTier {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
-    use crate::engine::DataValue;
+    use crate::engine::{DataValue, NamedRows};
     use crate::knowledge::EpistemicTier;
 
     // ── compute_tool_overlap — Jaccard similarity on string slices ──────────
@@ -1641,5 +1643,113 @@ mod tests {
                 .expect("valid project ok"),
             Some(project)
         );
+    }
+
+    // WHY (#5848): Helper building a full 21-column fact row in the order expected
+    // by `rows_to_facts`, with the epistemic tier parameterized.
+    fn rows_to_facts_row(tier: &str) -> Vec<DataValue> {
+        vec![
+            DataValue::from("f-tier-test"),
+            DataValue::from("tier round-trip content"),
+            DataValue::from(0.9f64),
+            DataValue::from(tier),
+            DataValue::from("2026-03-01T00:00:00Z"),
+            DataValue::from("alice"),
+            DataValue::from("2026-01-01T00:00:00Z"),
+            DataValue::from("9999-01-01T00:00:00Z"),
+            DataValue::Null,           // superseded_by
+            DataValue::Null,           // source_session_id
+            DataValue::from(0i64),     // access_count
+            DataValue::from(""),       // last_accessed_at
+            DataValue::from(720.0f64), // stability_hours
+            DataValue::from("observation"),
+            DataValue::Bool(false),     // is_forgotten
+            DataValue::Null,            // forgotten_at
+            DataValue::Null,            // forget_reason
+            DataValue::Null,            // scope
+            DataValue::Null,            // project_id
+            DataValue::from("private"), // visibility
+            DataValue::from("public"),  // sensitivity
+        ]
+    }
+
+    // WHY (#5848): Helper building a full 21-column fact row in the order expected
+    // by `rows_to_raw_facts`, with the epistemic tier parameterized.
+    fn rows_to_raw_facts_row(tier: &str) -> Vec<DataValue> {
+        vec![
+            DataValue::from("f-tier-test"),
+            DataValue::from("2026-01-01T00:00:00Z"), // valid_from
+            DataValue::from("tier round-trip content"),
+            DataValue::from("alice"),
+            DataValue::from(0.9f64),
+            DataValue::from(tier),
+            DataValue::from("9999-01-01T00:00:00Z"), // valid_to
+            DataValue::Null,                         // superseded_by
+            DataValue::Null,                         // source_session_id
+            DataValue::from("2026-03-01T00:00:00Z"), // recorded_at
+            DataValue::from(0i64),                   // access_count
+            DataValue::from(""),                     // last_accessed_at
+            DataValue::from(720.0f64),               // stability_hours
+            DataValue::from("observation"),
+            DataValue::Bool(false),     // is_forgotten
+            DataValue::Null,            // forgotten_at
+            DataValue::Null,            // forget_reason
+            DataValue::Null,            // scope
+            DataValue::Null,            // project_id
+            DataValue::from("private"), // visibility
+            DataValue::from("public"),  // sensitivity
+        ]
+    }
+
+    fn named_rows(row: Vec<DataValue>) -> NamedRows {
+        NamedRows {
+            headers: Vec::new(),
+            rows: vec![row],
+            next: None,
+        }
+    }
+
+    /// Requirement #5848: `rows_to_facts` must preserve `Reflected` and `Training`
+    /// epistemic tiers instead of silently downgrading them to `Assumed`.
+    #[test]
+    fn rows_to_facts_preserves_reflected_and_training_tiers() {
+        for tier in [EpistemicTier::Reflected, EpistemicTier::Training] {
+            let rows = named_rows(rows_to_facts_row(tier.as_str()));
+            let facts = rows_to_facts(rows, "alice").expect("rows_to_facts must succeed");
+            assert_eq!(
+                facts.len(),
+                1,
+                "expected one fact for tier {}",
+                tier.as_str()
+            );
+            assert_eq!(
+                facts[0].provenance.tier,
+                tier,
+                "rows_to_facts must round-trip tier {}, not downgrade to Assumed",
+                tier.as_str()
+            );
+        }
+    }
+
+    /// Requirement #5848: `rows_to_raw_facts` must preserve `Reflected` and
+    /// `Training` epistemic tiers instead of silently downgrading them to `Assumed`.
+    #[test]
+    fn rows_to_raw_facts_preserves_reflected_and_training_tiers() {
+        for tier in [EpistemicTier::Reflected, EpistemicTier::Training] {
+            let rows = named_rows(rows_to_raw_facts_row(tier.as_str()));
+            let facts = rows_to_raw_facts(rows).expect("rows_to_raw_facts must succeed");
+            assert_eq!(
+                facts.len(),
+                1,
+                "expected one fact for tier {}",
+                tier.as_str()
+            );
+            assert_eq!(
+                facts[0].provenance.tier,
+                tier,
+                "rows_to_raw_facts must round-trip tier {}, not downgrade to Assumed",
+                tier.as_str()
+            );
+        }
     }
 }
