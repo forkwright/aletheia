@@ -78,7 +78,6 @@ struct EmbeddingEntry {
 #[derive(Debug, Deserialize)]
 struct EmbeddingResponse {
     data: Vec<EmbeddingEntry>,
-    #[expect(dead_code, reason = "captured for completeness; not dispatched on yet")]
     model: String,
 }
 
@@ -190,6 +189,16 @@ impl OpenAiEmbeddingProvider {
             .build()
         })?;
 
+        // WHY: model drift check — a misconfigured endpoint or server-side model
+        // substitution corrupts embedding indexes that assume a fixed embedding space.
+        if parsed.model != self.model {
+            tracing::warn!(
+                configured_model = %self.model,
+                returned_model = %parsed.model,
+                "embedding provider returned a different model than configured; embedding space may be inconsistent"
+            );
+        }
+
         let mut results = vec![Vec::new(); texts.len()];
         for entry in parsed.data {
             if entry.index >= texts.len() {
@@ -226,7 +235,11 @@ impl OpenAiEmbeddingProvider {
     }
 
     fn embed_inner(&self, texts: &[String]) -> EmbeddingResult<Vec<Vec<f32>>> {
-        self.runtime.block_on(self.embed_async(texts))
+        let start = std::time::Instant::now();
+        let result = self.runtime.block_on(self.embed_async(texts));
+        let duration_secs = start.elapsed().as_secs_f64();
+        crate::metrics::record_embedding_duration(&self.model, duration_secs);
+        result
     }
 }
 

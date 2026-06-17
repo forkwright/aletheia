@@ -490,7 +490,6 @@ fn parse_skill_response(response: &str) -> Result<ExtractedSkill, SkillExtractio
 
 /// A skill awaiting human review before activation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(from = "PendingSkillRaw")]
 pub struct PendingSkill {
     /// The extracted skill content.
     pub skill: SkillContent,
@@ -642,38 +641,6 @@ impl SkillReviewAudit {
     /// Returns a [`serde_json::Error`] if serialization fails.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
-    }
-}
-
-/// Raw deserialization type for [`PendingSkill`].
-#[derive(Debug, Clone, Deserialize)]
-struct PendingSkillRaw {
-    skill: SkillContent,
-    candidate_id: String,
-    status: String,
-    extracted_at: jiff::Timestamp,
-    #[serde(default)]
-    source_session_id: Option<String>,
-    #[serde(default)]
-    source_evidence: SkillSourceEvidence,
-    #[serde(default)]
-    extraction_audit: Option<SkillExtractionAudit>,
-    #[serde(default)]
-    review: Option<SkillReviewDecision>,
-}
-
-impl From<PendingSkillRaw> for PendingSkill {
-    fn from(raw: PendingSkillRaw) -> Self {
-        Self {
-            skill: raw.skill,
-            candidate_id: raw.candidate_id,
-            status: raw.status,
-            extracted_at: raw.extracted_at,
-            source_session_id: raw.source_session_id,
-            source_evidence: raw.source_evidence,
-            extraction_audit: raw.extraction_audit,
-            review: raw.review,
-        }
     }
 }
 

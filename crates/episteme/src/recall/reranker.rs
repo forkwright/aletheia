@@ -195,67 +195,18 @@ impl HttpReranker {
             tracing::trace!(?err, "rustls crypto provider already installed");
         }
 
+        // WHY: without a timeout, a slow or hung cross-encoder backend stalls
+        // the recall actor unboundedly; match the pattern in openai.rs.
+        let client = reqwest::ClientBuilder::new()
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_default();
+
         Self {
-            client: reqwest::Client::new(),
+            client,
             url: url.into(),
         }
-    }
-}
-
-/// In-process cross-encoder reranker backed by a local ONNX model.
-///
-/// This is a **groundwork stub**: the constructor validates that the model
-/// path exists, but [`Reranker::rerank`] always returns an error because
-/// full ONNX inference is not yet wired.  Gated behind the `local-reranker`
-/// feature.
-#[cfg(feature = "local-reranker")]
-#[derive(Debug, Clone)]
-pub struct CrossEncoderReranker {
-    #[expect(
-        dead_code,
-        reason = "groundwork stub: model_path stored for future ONNX wiring"
-    )]
-    model_path: String,
-}
-
-#[cfg(feature = "local-reranker")]
-impl CrossEncoderReranker {
-    /// Create a new local cross-encoder reranker pointing at `model_path`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`EpistemeError::RerankerFailed`] when `model_path` does not
-    /// exist on the filesystem.
-    pub fn new(model_path: impl Into<String>) -> Result<Self, EpistemeError> {
-        let path = model_path.into();
-        if !std::path::Path::new(&path).exists() {
-            return Err(RerankerFailedSnafu {
-                message: format!("local reranker model path does not exist: {path}"),
-            }
-            .build());
-        }
-        Ok(Self { model_path: path })
-    }
-}
-
-#[cfg(feature = "local-reranker")]
-impl Reranker for CrossEncoderReranker {
-    #[instrument(skip(self, candidates))]
-    fn rerank<'a>(&'a self, query: &'a str, candidates: Vec<RecallCandidate>) -> RerankFuture<'a> {
-        Box::pin(
-            async move {
-                let _ = (query, candidates);
-                Err(RerankerFailedSnafu {
-                    message: "local cross-encoder scoring not yet implemented".to_owned(),
-                }
-                .build())
-            }
-            .instrument(tracing::Span::current()),
-        )
-    }
-
-    fn name(&self) -> &'static str {
-        "cross-encoder-reranker"
     }
 }
 
@@ -634,47 +585,6 @@ mod tests {
         assert!(
             msg.contains("test failure"),
             "error display should contain message: {msg}"
-        );
-    }
-
-    #[cfg(feature = "local-reranker")]
-    #[tokio::test]
-    async fn cross_encoder_reranker_new_fails_when_path_missing() {
-        let result = CrossEncoderReranker::new("/nonexistent/path/to/model");
-        assert!(
-            matches!(result, Err(EpistemeError::RerankerFailed { .. })),
-            "missing model path should yield RerankerFailed"
-        );
-    }
-
-    #[cfg(feature = "local-reranker")]
-    #[tokio::test]
-    async fn cross_encoder_reranker_new_succeeds_when_path_exists() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().to_str().expect("utf8 path");
-        let reranker = CrossEncoderReranker::new(path).expect("valid path should succeed");
-        assert_eq!(reranker.name(), "cross-encoder-reranker");
-    }
-
-    #[cfg(feature = "local-reranker")]
-    #[tokio::test]
-    async fn cross_encoder_reranker_rerank_fails_clearly() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().to_str().expect("utf8 path");
-        let reranker = CrossEncoderReranker::new(path).expect("valid path");
-        let candidates = vec![make_candidate("foo bar baz", 0.5)];
-        let result = reranker.rerank("query", candidates).await;
-        assert!(
-            matches!(result, Err(EpistemeError::RerankerFailed { .. })),
-            "rerank should fail clearly when scoring is not implemented"
-        );
-        let Err(err) = result else {
-            panic!("rerank should have failed");
-        };
-        let msg = err.to_string();
-        assert!(
-            msg.contains("not yet implemented"),
-            "error message should explain scoring is not yet implemented: {msg}"
         );
     }
 }
