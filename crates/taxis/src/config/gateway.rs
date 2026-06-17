@@ -62,6 +62,13 @@ pub struct GatewayAuthConfig {
     ///
     /// WHY: `SecretString` prevents accidental logging of the key value.
     pub signing_key: Option<SecretString>,
+    /// Explicit operator acknowledgement required to expose MCP on a non-loopback address
+    /// with `auth_mode = "none"`.
+    ///
+    /// WHY(#5183): without authentication, the full MCP surface (sessions, memory, knowledge)
+    /// is reachable from the network. This must be a deliberate, named, operator decision —
+    /// not a silent fallback. Default `false` causes startup to panic on this combination.
+    pub allow_unauthenticated_network_mcp: bool,
 }
 
 impl Default for GatewayAuthConfig {
@@ -70,6 +77,7 @@ impl Default for GatewayAuthConfig {
             mode: "token".to_owned(),
             none_role: "admin".to_owned(),
             signing_key: None,
+            allow_unauthenticated_network_mcp: false,
         }
     }
 }
