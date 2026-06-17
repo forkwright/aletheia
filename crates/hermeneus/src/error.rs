@@ -131,6 +131,7 @@ impl Error {
             Error::ApiRequest { message, .. } => {
                 let msg = message.to_lowercase();
                 msg.contains("timeout")
+                    || msg.contains("timed out")
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
@@ -274,6 +275,20 @@ mod tests {
         }
         .build();
         assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn api_request_timed_out_only_is_retryable() {
+        // WHY(#5455): "timed out" must be retryable on its own, without relying
+        // on "timeout", "connection", or provider-specific substrings.
+        let err = ApiRequestSnafu {
+            message: "timed out".to_owned(),
+        }
+        .build();
+        assert!(
+            err.is_retryable(),
+            "bare 'timed out' ApiRequest should be retryable"
+        );
     }
 
     #[test]
