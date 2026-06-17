@@ -179,16 +179,32 @@ impl AuthService {
         }
 
         if self.store.is_token_revoked(&claims.jti)? {
+            // WARNING: a revoked refresh token presented again indicates possible
+            // token reuse — log at error level for operator visibility.
+            // Full session revocation (revoke all tokens for subject) is a
+            // future hardening step pending a subject-indexed revocation store.
+            tracing::error!(
+                sub = %claims.sub,
+                "refresh token reuse detected — revoked token presented again"
+            );
             return Err(error::InvalidTokenSnafu {
                 message: "refresh token has been revoked".to_owned(),
             }
             .build());
         }
 
+        // WHY: revoke the consumed refresh token before issuing the new pair so
+        // a stolen token cannot be replayed for the full refresh_ttl window.
+        // This enforces the single-use rotation guarantee documented in jwt.rs.
+        let consumed_jti = claims.jti.clone();
+        let consumed_exp = format_unix_iso(claims.exp);
+
         let access = self
             .jwt
             .issue_access(&claims.sub, claims.role, claims.nous_id.as_deref())?;
         let refresh = self.jwt.issue_refresh(&claims.sub, claims.role)?;
+
+        self.store.revoke_token(&consumed_jti, &consumed_exp)?;
 
         Ok(TokenPair {
             access_token: SecretString::from(access),
@@ -474,6 +490,48 @@ mod tests {
 
         let result = svc.refresh_token(pair.access_token.expose_secret());
         assert!(result.is_err());
+    }
+
+    // ── issue 5448: refresh token rotation (single-use enforcement) ──
+
+    #[test]
+    fn refresh_token_is_revoked_after_use() {
+        let svc = memory_service();
+        svc.register_user("alice", &secret("pw"), Role::Operator)
+            .unwrap();
+        let pair = svc.login("alice", &secret("pw")).unwrap();
+        let original_refresh = pair.refresh_token.expose_secret().to_owned();
+
+        // First refresh should succeed and consume the original token.
+        let _new_pair = svc.refresh_token(&original_refresh).unwrap();
+
+        // Replaying the original refresh token must be rejected.
+        let replay_result = svc.refresh_token(&original_refresh);
+        assert!(
+            replay_result.is_err(),
+            "replayed refresh token must be rejected after single use"
+        );
+    }
+
+    #[test]
+    fn rotated_refresh_token_is_independently_valid() {
+        let svc = memory_service();
+        svc.register_user("alice", &secret("pw"), Role::Operator)
+            .unwrap();
+        let pair = svc.login("alice", &secret("pw")).unwrap();
+
+        let new_pair = svc
+            .refresh_token(pair.refresh_token.expose_secret())
+            .unwrap();
+
+        // The new refresh token must work for a subsequent refresh.
+        let newer_pair = svc
+            .refresh_token(new_pair.refresh_token.expose_secret())
+            .unwrap();
+        let claims = svc
+            .validate_token(newer_pair.access_token.expose_secret())
+            .unwrap();
+        assert_eq!(claims.role, Role::Operator);
     }
 
     #[test]

@@ -387,14 +387,16 @@ fn parse_callback_request(reader: &mut BufReader<&TcpStream>) -> Result<Option<C
         .read_line(&mut first_line)
         .context(ReadRequestSnafu)?;
 
-    debug!("callback request: {}", first_line.trim());
-
     // NOTE: request line shape: GET /callback?code=...&state=... HTTP/1.1
     let mut parts = first_line.split_whitespace();
-    let _method = parts.next();
+    let method = parts.next().unwrap_or("-");
     let Some(path) = parts.next() else {
         return Ok(None);
     };
+
+    // WHY: log method + bare path only; query string contains OAuth code/state secrets
+    let bare_path = path.split('?').next().unwrap_or(path);
+    debug!(method = %method, path = %bare_path, "OAuth callback received");
 
     let query_start = path.find('?');
     // INVARIANT: i is from find('?'), so i+1 is a valid byte boundary

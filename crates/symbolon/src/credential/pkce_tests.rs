@@ -290,3 +290,36 @@ fn test_expires_at_arithmetic_contract() {
         "expires_at delta must equal exactly secs * 1000 (kills * -> +)"
     );
 }
+
+// ── callback log redaction regression (issue 5246) ──
+// WHY: parse_callback_request must never emit the raw request line; only
+// method + bare path go to debug!, not code= or state= values.
+
+#[test]
+#[tracing_test::traced_test]
+fn callback_log_never_emits_code_or_state_values() {
+    let (port, handle) = spawn_callback_handler("csrf-sentinel");
+    let _ = send_callback_request(port, "code=SECRET_OAUTH_CODE&state=csrf-sentinel");
+    let _ = handle.join();
+
+    assert!(
+        !logs_contain("SECRET_OAUTH_CODE"),
+        "OAuth authorization code must not appear in logs"
+    );
+    assert!(
+        !logs_contain("code="),
+        "query parameter 'code=' must not appear in logs"
+    );
+    assert!(
+        !logs_contain("csrf-sentinel"),
+        "CSRF state value must not appear in logs"
+    );
+    assert!(
+        !logs_contain("state="),
+        "query parameter 'state=' must not appear in logs"
+    );
+    assert!(
+        logs_contain("OAuth callback received"),
+        "callback receipt must still be logged at a safe level"
+    );
+}

@@ -648,3 +648,80 @@ async fn refresh_loop_honours_shutdown_signal() {
     provider.shutdown();
     drop(provider);
 }
+
+// ── do_refresh log-redaction regression (issue 5247) ──
+// WHY: OAuth error bodies are provider-controlled and must not appear in logs.
+// These tests drive `do_refresh` against a mock token endpoint and verify that
+// neither the raw body nor error_description are emitted.
+
+mod do_refresh_log_tests {
+    use reqwest::Client;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::super::do_refresh;
+
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn oauth_error_body_is_not_logged() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_string(
+                    r#"{"error":"server_error","error_description":"refresh_token=rt-supersecret echoed back"}"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/token", server.uri());
+        let client = Client::new();
+        let _outcome = do_refresh(&client, "rt-supersecret", &url).await;
+
+        assert!(
+            !logs_contain("rt-supersecret"),
+            "raw refresh token must not appear in error logs"
+        );
+        assert!(
+            !logs_contain("echoed back"),
+            "provider error_description body must not appear in logs"
+        );
+        assert!(
+            !logs_contain("refresh_token="),
+            "form-encoded refresh token must not appear in error logs"
+        );
+    }
+
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn invalid_grant_logs_only_error_code_not_description() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_string(
+                    r#"{"error":"invalid_grant","error_description":"account=user@example.com token=tok123"}"#,
+                ),
+            )
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/token", server.uri());
+        let client = Client::new();
+        let _outcome = do_refresh(&client, "rt-tok", &url).await;
+
+        assert!(
+            !logs_contain("user@example.com"),
+            "email in error_description must not appear in logs"
+        );
+        assert!(
+            !logs_contain("tok123"),
+            "token fragment in error_description must not appear in logs"
+        );
+        assert!(
+            logs_contain("invalid_grant"),
+            "normalized error code must still be logged"
+        );
+    }
+}
