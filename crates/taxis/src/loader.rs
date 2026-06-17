@@ -156,6 +156,23 @@ fn deep_merge(dst: &mut JsonValue, src: JsonValue) {
     }
 }
 
+/// Environment-variable names under the `ALETHEIA_` prefix that are reserved
+/// for other subsystems and must never be injected as config-tree keys.
+///
+/// WHY: `AletheiaConfig` uses `#[serde(deny_unknown_fields)]`; if these
+/// process variables were written into the merged JSON they would be rejected
+/// as unknown fields and the server would refuse to start.
+const RESERVED_ENV_NAMES: [&str; 8] = [
+    "ROOT",
+    "PRIMARY_KEY",
+    "JWT_SECRET",
+    "ENV_FILE",
+    "NOUS",
+    "CREDS",
+    "ALLOW_AUTH_NONE",
+    "ALLOW_AUTH_NONE_LAN",
+];
+
 /// Walk `ALETHEIA_*` env vars and write each into `root`, splitting the name
 /// by `separator` to build the nested path. Keys are lowercased to match
 /// serde `rename_all = "camelCase"` output (which lowercases single words).
@@ -163,6 +180,9 @@ fn deep_merge(dst: &mut JsonValue, src: JsonValue) {
 /// Known leaves are coerced to the existing JSON leaf type in the
 /// defaults-plus-TOML tree. Unknown paths keep the pre-#3447 figment autotyping
 /// contract so operators can keep writing `ALETHEIA_GATEWAY__PORT=9000` without quoting.
+///
+/// WARNING: Reserved process variables (e.g. `ALETHEIA_ROOT`) are skipped so
+/// they cannot collide with `#[serde(deny_unknown_fields)]`.
 fn apply_env_overlay(root: &mut JsonValue, prefix: &str, separator: &str) -> Vec<String> {
     let mut applied = Vec::new();
     let mut vars: Vec<_> = std::env::vars().collect();
@@ -174,6 +194,13 @@ fn apply_env_overlay(root: &mut JsonValue, prefix: &str, separator: &str) -> Vec
         };
         let path: Vec<String> = rest.split(separator).map(str::to_ascii_lowercase).collect();
         if path.iter().any(String::is_empty) {
+            continue;
+        }
+        if path.first().is_some_and(|head| {
+            RESERVED_ENV_NAMES
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(head))
+        }) {
             continue;
         }
         let parsed = get_path(root, &path).map_or_else(
@@ -762,5 +789,33 @@ archiveBeforeDelete = true
         );
         assert_eq!(config.maintenance.retention.max_sessions_per_nous, 200);
         assert!(config.maintenance.retention.archive_before_delete);
+    }
+
+    #[test]
+    fn reserved_env_vars_do_not_break_config_load() {
+        let mut jail = EnvJail::new();
+        // WHY: these variables are documented as reserved for other subsystems;
+        // they must not be injected as config keys, or `deny_unknown_fields`
+        // rejects them and the server cannot start.
+        let root = jail.directory().to_str().expect("utf-8 path").to_owned();
+        jail.set_env("ALETHEIA_ROOT", &root);
+        jail.set_env(
+            "ALETHEIA_JWT_SECRET",
+            "synthetic-jwt-secret-must-not-be-injected",
+        );
+        jail.set_env("ALETHEIA_PRIMARY_KEY", "/nonexistent/primary.key");
+        jail.set_env("ALETHEIA_ENV_FILE", "/etc/aletheia/env");
+        jail.set_env("ALETHEIA_NOUS", "/srv/aletheia/nous");
+        jail.set_env("ALETHEIA_CREDS", "/srv/aletheia/creds.json");
+        jail.set_env("ALETHEIA_ALLOW_AUTH_NONE", "1");
+        jail.set_env("ALETHEIA_ALLOW_AUTH_NONE_LAN", "1");
+
+        let oikos = Oikos::from_root(jail.directory());
+        let config = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
+
+        assert_eq!(
+            config.gateway.port, 18789,
+            "reserved env vars must not break default config load"
+        );
     }
 }
