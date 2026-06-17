@@ -3,15 +3,13 @@
 //! Creates an in-memory [`EnergeiaStore`] + [`MockEngine`], registers all 9 tools with
 //! real [`EnergeiaServices`], calls each with valid input, and verifies that each
 //! returns a non-error [`ToolResult`].
-#![expect(clippy::expect_used, reason = "integration test assertions")]
-#![expect(clippy::unwrap_used, reason = "integration test assertions")]
+#![allow(clippy::doc_markdown)]
 #![expect(
-    clippy::too_many_lines,
-    reason = "single integration test covers all 9 tools"
-)]
-#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
     clippy::indexing_slicing,
-    reason = "integration test assertions — index panics identify test bugs"
+    clippy::too_many_lines,
+    reason = "integration test assertions"
 )]
 
 use std::collections::HashSet;

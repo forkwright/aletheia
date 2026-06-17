@@ -44,7 +44,7 @@ pub(crate) async fn execute_group(
     cancel: &CancellationToken,
 ) -> Vec<SessionOutcome> {
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
-    let mut join_set: JoinSet<SessionOutcome> = JoinSet::new();
+    let mut join_set: JoinSet<(u32, SessionOutcome)> = JoinSet::new();
 
     for prompt in prompts {
         let engine = Arc::clone(&engine);
@@ -56,23 +56,30 @@ pub(crate) async fn execute_group(
         let prompt = prompt.clone();
 
         join_set.spawn(async move {
+            let prompt_number = prompt.number;
+
             // WHY: Cancellation is checked before acquiring the semaphore to avoid
             // starting work that will immediately be discarded.
             if token.is_cancelled() {
-                return skipped_outcome(&prompt, "dispatch cancelled");
+                return (
+                    prompt_number,
+                    skipped_outcome(&prompt, "dispatch cancelled"),
+                );
             }
 
             let Ok(_permit) = sem.acquire().await else {
-                return skipped_outcome(&prompt, "semaphore closed");
+                return (prompt_number, skipped_outcome(&prompt, "semaphore closed"));
             };
 
             if token.is_cancelled() {
-                return skipped_outcome(&prompt, "dispatch cancelled");
+                return (
+                    prompt_number,
+                    skipped_outcome(&prompt, "dispatch cancelled"),
+                );
             }
 
             let mgr = SessionManager::new(engine, Arc::clone(&budget), policy);
             let opts = routed_options(opts, &prompt).await;
-
             let outcome = match mgr.execute(&prompt, &opts).await {
                 Ok(outcome) => outcome,
                 Err(e) => SessionOutcome {
@@ -105,7 +112,7 @@ pub(crate) async fn execute_group(
                 token.cancel();
             }
 
-            outcome
+            (prompt_number, outcome)
         });
     }
 
@@ -115,14 +122,25 @@ pub(crate) async fn execute_group(
 
     while let Some(result) = join_set.join_next().await {
         match result {
-            Ok(outcome) => outcomes.push(outcome),
+            Ok((_prompt_number, outcome)) => outcomes.push(outcome),
             Err(join_err) => {
-                // SAFETY: JoinError means the task panicked or was cancelled.
-                // Log and produce a failed outcome so the orchestrator can
-                // mark dependents as blocked.
-                tracing::error!(error = %join_err, "session task join error");
+                // WHY: JoinError does not carry the task output, so we use the
+                // task_id to recover the prompt number. JoinSet::spawn returns a
+                // task AbortHandle but not an id paired to our data — instead we
+                // embed the prompt number in the task output (u32, SessionOutcome)
+                // so the Ok branch above always has identity. A JoinError (panic
+                // or cancellation) means we lost the identity; we log at error
+                // level and emit an InfraFailure with the unknown sentinel so the
+                // gap is visible in reports rather than silently producing a fake
+                // prompt-0 record.
+                tracing::error!(
+                    error = %join_err,
+                    "session task join error — prompt identity lost; inspect logs for the panicking task"
+                );
+                // NOTE: prompt_number u32::MAX is a sentinel for "identity lost on panic".
+                // Downstream callers must not block dependents on this sentinel.
                 outcomes.push(SessionOutcome {
-                    prompt_number: 0,
+                    prompt_number: u32::MAX,
                     status: SessionStatus::InfraFailure,
                     session_id: None,
                     cost_usd: 0.0,
@@ -130,7 +148,9 @@ pub(crate) async fn execute_group(
                     duration_ms: 0,
                     resume_count: 0,
                     pr_url: None,
-                    error: Some(format!("task join error: {join_err}")),
+                    error: Some(format!(
+                        "task join error (prompt identity lost): {join_err}"
+                    )),
                     model: None,
                     blast_radius: vec![],
                     corrective_attempts: 0,

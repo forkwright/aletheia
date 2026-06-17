@@ -465,6 +465,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     reason = "test helpers write/remove files directly; synchronous access matches the test contract"
 )]
 mod tests {
+    #![expect(clippy::expect_used, reason = "test assertions")]
     use super::*;
     use crate::registry::ToolRegistry;
 
@@ -480,8 +481,15 @@ mod tests {
     }
 
     fn write_test_file(path: &std::path::Path, content: &str) {
-        std::fs::write(path, content)
-            .unwrap_or_else(|source| panic!("failed to write {}: {source}", path.display()));
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .unwrap_or_else(|e| panic!("failed to create {}: {e}", path.display()));
+        f.write_all(content.as_bytes())
+            .unwrap_or_else(|e| panic!("failed to write {}: {e}", path.display()));
     }
 
     fn remove_test_dir(path: &std::path::Path) {

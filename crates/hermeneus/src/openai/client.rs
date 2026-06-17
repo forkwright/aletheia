@@ -17,10 +17,13 @@ use tracing::{Instrument as _, info, info_span};
 
 use koina::secret::SecretString;
 
+use std::collections::HashMap;
+
 use crate::anthropic::StreamEvent;
+use crate::anthropic::pricing::estimate_cost;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
-use crate::provider::{DeploymentTarget, LlmProvider, leak_models};
+use crate::provider::{DeploymentTarget, LlmProvider, ModelPricing, leak_models};
 use crate::retry::backoff_delay;
 use crate::types::{CompletionRequest, CompletionResponse};
 
@@ -116,6 +119,13 @@ pub struct OpenAiProviderConfig {
     /// `aletheia.toml` so the recall filter lets `Internal` /
     /// `Confidential` facts through to the non-cloud boundary.
     pub deployment_target: DeploymentTarget,
+    /// Per-model pricing for cost metrics (optional).
+    ///
+    /// WHY(#4628): local/compatible providers have no built-in pricing
+    /// table; operators that route priced models (e.g. GPT-4o) through
+    /// OpenAI-compatible configs must supply rates here so cost telemetry
+    /// is non-zero. Unpriced models record `0.0` with a trace warning.
+    pub pricing: HashMap<String, ModelPricing>,
 }
 
 impl std::fmt::Debug for OpenAiProviderConfig {
@@ -129,6 +139,7 @@ impl std::fmt::Debug for OpenAiProviderConfig {
             .field("max_retries", &self.max_retries)
             .field("api_family", &self.api_family)
             .field("deployment_target", &self.deployment_target)
+            .field("pricing_models", &self.pricing.len())
             .finish()
     }
 }
@@ -146,6 +157,8 @@ impl Default for OpenAiProviderConfig {
             // WHY(#3736): mirror the trait default so `..Default::default()`
             // does not silently downgrade a caller-specified target.
             deployment_target: DeploymentTarget::Cloud,
+            // NOTE: empty by default — unpriced models record 0.0 cost
+            pricing: HashMap::new(),
         }
     }
 }
@@ -166,6 +179,8 @@ pub struct OpenAiProvider {
     /// Leaked once at construction — the provider lives for the server lifetime.
     model_refs: &'static [&'static str],
     health: Arc<ProviderHealthTracker>,
+    /// Merged pricing table (config-supplied; empty = unpriced local model).
+    pricing: HashMap<String, ModelPricing>,
 }
 
 impl OpenAiProvider {
@@ -199,11 +214,13 @@ impl OpenAiProvider {
             "OpenAI provider initialized"
         );
 
+        let pricing = config.pricing.clone();
         Ok(Self {
             client,
             config,
             model_refs,
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
+            pricing,
         })
     }
 
@@ -300,28 +317,21 @@ impl OpenAiProvider {
                 })?;
                 let mut resp = self.parse_response_body(&text)?;
                 self.health.record_success();
-                resp.duration_ms =
-                    Some(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
-                tracing::Span::current().record("llm.tokens_in", resp.usage.input_tokens);
-                tracing::Span::current().record("llm.tokens_out", resp.usage.output_tokens);
-                tracing::Span::current().record("llm.status", "ok");
-                tracing::Span::current().record("llm.retries", attempt);
-                info!(
-                    provider = %self.config.name,
-                    api_family,
-                    model = %request.model,
-                    tokens_in = resp.usage.input_tokens,
-                    tokens_out = resp.usage.output_tokens,
-                    "OpenAI call complete"
-                );
-                crate::metrics::record_completion(
-                    &self.config.name,
+                let cost_usd = estimate_cost(
+                    &self.pricing,
+                    &request.model,
                     resp.usage.input_tokens,
                     resp.usage.output_tokens,
-                    0.0,
-                    true,
                 );
-                crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
+                record_nonstream_success(
+                    start,
+                    attempt,
+                    &self.config.name,
+                    api_family,
+                    request,
+                    &mut resp,
+                    cost_usd,
+                );
                 return Ok(resp);
             }
 
@@ -443,7 +453,20 @@ impl OpenAiProvider {
             match resp {
                 Ok(mut resp) => {
                     self.health.record_success();
-                    record_stream_success(start, attempt, &self.config.name, request, &mut resp);
+                    let cost_usd = estimate_cost(
+                        &self.pricing,
+                        &request.model,
+                        resp.usage.input_tokens,
+                        resp.usage.output_tokens,
+                    );
+                    record_stream_success(
+                        start,
+                        attempt,
+                        &self.config.name,
+                        request,
+                        &mut resp,
+                        cost_usd,
+                    );
                     return Ok(resp);
                 }
                 Err(err) => {
@@ -562,6 +585,38 @@ fn elapsed_millis_u64(start: Instant) -> u64 {
     u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
+fn record_nonstream_success(
+    start: Instant,
+    attempt: u32,
+    provider_name: &str,
+    api_family: &str,
+    request: &CompletionRequest,
+    response: &mut CompletionResponse,
+    cost_usd: f64,
+) {
+    response.duration_ms = Some(elapsed_millis_u64(start));
+    tracing::Span::current().record("llm.tokens_in", response.usage.input_tokens);
+    tracing::Span::current().record("llm.tokens_out", response.usage.output_tokens);
+    tracing::Span::current().record("llm.status", "ok");
+    tracing::Span::current().record("llm.retries", attempt);
+    info!(
+        provider = %provider_name,
+        api_family,
+        model = %request.model,
+        tokens_in = response.usage.input_tokens,
+        tokens_out = response.usage.output_tokens,
+        "OpenAI call complete"
+    );
+    crate::metrics::record_completion(
+        provider_name,
+        response.usage.input_tokens,
+        response.usage.output_tokens,
+        cost_usd,
+        true,
+    );
+    crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
+}
+
 fn record_stream_failure(
     start: Instant,
     attempt: u32,
@@ -602,6 +657,7 @@ fn record_stream_success(
     provider_name: &str,
     request: &CompletionRequest,
     response: &mut CompletionResponse,
+    cost_usd: f64,
 ) {
     let duration_ms = elapsed_millis_u64(start);
     response.duration_ms = Some(duration_ms);
@@ -614,7 +670,7 @@ fn record_stream_success(
         provider_name,
         response.usage.input_tokens,
         response.usage.output_tokens,
-        0.0,
+        cost_usd,
         true,
     );
     crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());

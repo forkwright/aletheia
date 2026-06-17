@@ -169,6 +169,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 #[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
+    #![expect(clippy::expect_used, reason = "test assertions")]
     use std::collections::HashSet;
     use std::sync::{Arc, RwLock};
 
@@ -246,7 +247,13 @@ mod tests {
         let ctx = mock_ctx();
         let executor = Z3SolverExecutor;
         // A deliberately hard formula: 256-bit bit-vector factorization.
-        let hard_formula = "\n(declare-const x (_ BitVec 256))\n(declare-const y (_ BitVec 256))\n(assert (= (bvmul x y) (_ bv340282366920938463463374607431768211457 256)))\n(assert (not (= x (_ bv1 256))))\n(check-sat)\n";
+        let hard_formula = r"
+(declare-const x (_ BitVec 256))
+(declare-const y (_ BitVec 256))
+(assert (= (bvmul x y) (_ bv340282366920938463463374607431768211457 256)))
+(assert (not (= x (_ bv1 256))))
+(check-sat)
+";
         let input = make_input(hard_formula, Some(100));
 
         let result = executor.execute(&input, &ctx).await.expect("execute");
@@ -266,7 +273,10 @@ mod tests {
 
         let result = executor.execute(&input, &ctx).await;
         assert!(result.is_err(), "expected Err for malformed formula");
-        let err_msg = format!("{:?}", result.unwrap_err());
+        let Err(err) = result else {
+            panic!("expected Err for malformed formula");
+        };
+        let err_msg = format!("{err:?}");
         assert!(
             err_msg.contains("malformed") || err_msg.contains("unbalanced"),
             "expected diagnostic message about malformed formula: {err_msg}"
