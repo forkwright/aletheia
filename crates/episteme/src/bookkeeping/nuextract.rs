@@ -485,8 +485,14 @@ mod tests {
         });
         let extraction = parse_extraction_json(&json);
         assert_eq!(extraction.entities.len(), 1);
-        assert_eq!(extraction.entities[0].name, "Alice");
-        assert_eq!(extraction.entities[0].entity_type, "person");
+        assert_eq!(
+            extraction.entities.first().map(|e| e.name.as_str()),
+            Some("Alice")
+        );
+        assert_eq!(
+            extraction.entities.first().map(|e| e.entity_type.as_str()),
+            Some("person")
+        );
     }
 
     #[test]
@@ -501,7 +507,10 @@ mod tests {
         });
         let extraction = parse_extraction_json(&json);
         assert_eq!(extraction.entities.len(), 1);
-        assert_eq!(extraction.entities[0].name, "Bob");
+        assert_eq!(
+            extraction.entities.first().map(|e| e.name.as_str()),
+            Some("Bob")
+        );
     }
 
     #[test]
@@ -515,8 +524,16 @@ mod tests {
         });
         let extraction = parse_extraction_json(&json);
         assert_eq!(extraction.relationships.len(), 1);
-        assert_eq!(extraction.relationships[0].source, "Alice");
-        assert!((extraction.relationships[0].confidence - 0.9).abs() < 1e-9);
+        assert_eq!(
+            extraction.relationships.first().map(|r| r.source.as_str()),
+            Some("Alice")
+        );
+        assert!(
+            extraction
+                .relationships
+                .first()
+                .is_some_and(|r| (r.confidence - 0.9).abs() < 1e-9)
+        );
     }
 
     #[test]
@@ -530,7 +547,10 @@ mod tests {
         });
         let extraction = parse_extraction_json(&json);
         assert_eq!(extraction.facts.len(), 1);
-        assert_eq!(extraction.facts[0].predicate, "written in");
+        assert_eq!(
+            extraction.facts.first().map(|f| f.predicate.as_str()),
+            Some("written in")
+        );
     }
 
     #[test]

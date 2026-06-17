@@ -115,11 +115,14 @@ pub struct CronFireRecord {
 
 /// Fjall-backed lock store that persists the last-fired timestamp per task.
 ///
-/// A mutex serializes lock acquisition within a single process; the fjall
-/// write provides cross-restart deduplication.
+/// A tokio mutex serializes lock acquisition within a single process; fjall
+/// writes run in `spawn_blocking` so Tokio worker threads are not stalled.
+/// The write provides cross-restart deduplication.
 pub struct CronLockStore {
     db: Arc<fjall::SingleWriterTxDatabase>,
-    lock: parking_lot::Mutex<()>,
+    /// WHY: `tokio::sync::Mutex` instead of `parking_lot` so the guard can be held
+    /// across the `spawn_blocking` await without blocking the worker thread.
+    lock: tokio::sync::Mutex<()>,
 }
 
 impl CronLockStore {
@@ -135,7 +138,7 @@ impl CronLockStore {
             .map_err(|e| store_err("open cron_fire_state partition", e))?;
         Ok(Self {
             db,
-            lock: parking_lot::Mutex::new(()),
+            lock: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -145,25 +148,34 @@ impl CronLockStore {
     /// `scheduled_time`). On success, persists `scheduled_time` as the last-fired
     /// timestamp.
     ///
+    /// The mutex guard is held across the fjall write, but the write itself runs
+    /// inside `tokio::task::spawn_blocking` so Tokio worker threads are not
+    /// stalled by synchronous LSM-tree I/O.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::Store`] on fjall I/O failure.
-    pub fn try_acquire(&self, task_name: &str, scheduled_time: Timestamp) -> Result<bool> {
-        let _guard = self.lock.lock();
+    pub async fn try_acquire(&self, task_name: &str, scheduled_time: Timestamp) -> Result<bool> {
+        let _guard = self.lock.lock().await;
         let existing = self.get_last_fired(task_name)?;
         if let Some(ts) = existing
             && ts >= scheduled_time
         {
             return Ok(false);
         }
-        let partition = self
-            .db
-            .keyspace(LOCK_PARTITION, fjall::KeyspaceCreateOptions::default)
-            .map_err(|e| store_err("open cron_locks partition", e))?;
+        let db = Arc::clone(&self.db);
+        let task_name_owned = task_name.to_owned();
         let value = scheduled_time.to_string();
-        let mut tx = self.db.write_tx();
-        tx.insert(&partition, task_name.as_bytes(), value.as_bytes());
-        tx.commit().map_err(|e| store_err("commit cron lock", e))?;
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let partition = db
+                .keyspace(LOCK_PARTITION, fjall::KeyspaceCreateOptions::default)
+                .map_err(|e| store_err("open cron_locks partition", e))?;
+            let mut tx = db.write_tx();
+            tx.insert(&partition, task_name_owned.as_bytes(), value.as_bytes());
+            tx.commit().map_err(|e| store_err("commit cron lock", e))
+        })
+        .await
+        .map_err(|e| store_err("spawn_blocking join", e))??;
         Ok(true)
     }
 
@@ -455,11 +467,11 @@ impl CronScheduler {
                 continue;
             }
 
-            self.try_fire(task, base_scheduled, &on_fire);
+            self.try_fire(task, base_scheduled, &on_fire).await;
         }
     }
 
-    fn try_fire<F, Fut>(&self, task: &CronTask, base_scheduled: Timestamp, on_fire: &F)
+    async fn try_fire<F, Fut>(&self, task: &CronTask, base_scheduled: Timestamp, on_fire: &F)
     where
         F: Fn(CronTask) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = ()> + Send + 'static,
@@ -477,6 +489,7 @@ impl CronScheduler {
             if let Err(e) = self
                 .lock_store
                 .try_acquire(task.name.as_str(), base_scheduled)
+                .await
             {
                 tracing::error!(
                     task = %task.name,
@@ -489,6 +502,7 @@ impl CronScheduler {
         match self
             .lock_store
             .try_acquire(task.name.as_str(), base_scheduled)
+            .await
         {
             Ok(true) => self.spawn_fire(task.clone(), base_scheduled, on_fire.clone()),
             Ok(false) => tracing::debug!(
@@ -835,36 +849,36 @@ mod tests {
         );
     }
 
-    #[test]
-    fn try_acquire_allows_first_fire() {
+    #[tokio::test]
+    async fn try_acquire_allows_first_fire() {
         let store = dummy_lock_store();
         let now = Timestamp::now();
-        assert!(store.try_acquire("task-a", now).unwrap());
+        assert!(store.try_acquire("task-a", now).await.unwrap());
     }
 
-    #[test]
-    fn try_acquire_denies_repeat_within_same_window() {
+    #[tokio::test]
+    async fn try_acquire_denies_repeat_within_same_window() {
         let store = dummy_lock_store();
         let now = Timestamp::now();
-        assert!(store.try_acquire("task-b", now).unwrap());
-        assert!(!store.try_acquire("task-b", now).unwrap());
+        assert!(store.try_acquire("task-b", now).await.unwrap());
+        assert!(!store.try_acquire("task-b", now).await.unwrap());
     }
 
-    #[test]
-    fn try_acquire_allows_next_window() {
+    #[tokio::test]
+    async fn try_acquire_allows_next_window() {
         let store = dummy_lock_store();
         let t1 = Timestamp::now();
         let t2 = t1.checked_add(SignedDuration::from_hours(1)).unwrap();
-        assert!(store.try_acquire("task-c", t1).unwrap());
-        assert!(store.try_acquire("task-c", t2).unwrap());
+        assert!(store.try_acquire("task-c", t1).await.unwrap());
+        assert!(store.try_acquire("task-c", t2).await.unwrap());
     }
 
-    #[test]
-    fn last_fired_roundtrip() {
+    #[tokio::test]
+    async fn last_fired_roundtrip() {
         let store = dummy_lock_store();
         let now = utc_datetime(2026, 4, 17, 10, 0, 0).timestamp();
         assert!(store.last_fired("task-d").unwrap().is_none());
-        store.try_acquire("task-d", now).unwrap();
+        store.try_acquire("task-d", now).await.unwrap();
         let read = store.last_fired("task-d").unwrap();
         assert_eq!(read, Some(now));
     }
