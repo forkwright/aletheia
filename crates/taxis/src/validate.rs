@@ -113,7 +113,15 @@ pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), Va
                 "agent '{}' workspace '{}' does not exist",
                 agent.id, agent.workspace
             ));
+            continue;
         }
+        if let Err(msg) = validate_contained_path(&path, oikos.root()) {
+            errors.push(format!("agent '{}' workspace escapes instance root: {msg}", agent.id));
+        }
+    }
+
+    if let Err(err) = validate_allowed_roots_contained(config, oikos.root()) {
+        errors.extend(err);
     }
 
     if let Err(err) = validate_agent_workspaces(config, oikos) {
@@ -125,6 +133,81 @@ pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), Va
     } else {
         ValidationSnafu { errors }.fail()
     }
+}
+
+/// Verify that `path` canonicalizes to a location under `instance_root`.
+///
+/// Returns the canonical path on success, or a human-readable error message on
+/// failure. Symlink escapes are caught because canonicalization resolves links.
+fn validate_contained_path(
+    path: &std::path::Path,
+    instance_root: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let root = std::fs::canonicalize(instance_root)
+        .map_err(|e| format!("cannot canonicalize instance root: {e}"))?;
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|e| format!("'{}' cannot be resolved: {e}", path.display()))?;
+    if !canonical.starts_with(&root) {
+        return Err(format!(
+            "'{}' is outside the instance root '{}'",
+            canonical.display(),
+            root.display()
+        ));
+    }
+    Ok(canonical)
+}
+
+/// Validate that every configured `allowed_roots` entry is contained under the
+/// instance root.
+///
+/// WHY: allowed_roots become entries in the agent's ToolContext. An absolute
+/// path outside the instance root would let the agent read and write arbitrary
+/// filesystem locations. (#5561)
+fn validate_allowed_roots_contained(
+    config: &AletheiaConfig,
+    instance_root: &std::path::Path,
+) -> Result<(), Vec<String>> {
+    let mut errors = Vec::new();
+
+    for root in &config.agents.defaults.allowed_roots {
+        if let Err(msg) = validate_contained_path_string(root, instance_root) {
+            errors.push(format!(
+                "agents.defaults.allowed_roots entry '{}' is not contained: {msg}",
+                root
+            ));
+        }
+    }
+
+    for agent in &config.agents.list {
+        for root in &agent.allowed_roots {
+            if let Err(msg) = validate_contained_path_string(root, instance_root) {
+                errors.push(format!(
+                    "agents.list.{}.allowed_roots entry '{}' is not contained: {msg}",
+                    agent.id, root
+                ));
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
+/// Like [`validate_contained_path`], but accepts a string that may be relative
+/// to the instance root.
+fn validate_contained_path_string(
+    path_str: &str,
+    instance_root: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let path = if std::path::Path::new(path_str).is_absolute() {
+        std::path::PathBuf::from(path_str)
+    } else {
+        instance_root.join(path_str)
+    };
+    validate_contained_path(&path, instance_root)
 }
 
 /// Instance subdirectories required for correct runtime operation.

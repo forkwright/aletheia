@@ -188,6 +188,11 @@ pub(crate) fn validate_agent_workspaces(
             continue;
         }
 
+        if let Err(msg) = check_contained(&workspace_path, oikos.root()) {
+            all_failures.push(format!("agent '{}': {msg}", agent.id));
+            continue;
+        }
+
         if let Err(e) = schema.validate(&workspace_path) {
             for f in e.failures {
                 all_failures.push(format!("agent '{}': {f}", agent.id));
@@ -217,6 +222,25 @@ fn resolve_workspace_path(workspace: &str, instance_root: &Path) -> PathBuf {
     } else {
         instance_root.join(workspace)
     }
+}
+
+/// Verify that `path` canonicalizes to a location under `instance_root`.
+///
+/// Returns the canonical path on success, or a human-readable error message on
+/// failure. Symlink escapes are caught because canonicalization resolves links.
+fn check_contained(path: &Path, instance_root: &Path) -> Result<PathBuf, String> {
+    let root = std::fs::canonicalize(instance_root)
+        .map_err(|e| format!("cannot canonicalize instance root: {e}"))?;
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|e| format!("'{}' cannot be resolved: {e}", path.display()))?;
+    if !canonical.starts_with(&root) {
+        return Err(format!(
+            "'{}' is outside the instance root '{}'",
+            canonical.display(),
+            root.display()
+        ));
+    }
+    Ok(canonical)
 }
 
 #[cfg(test)]
@@ -447,6 +471,39 @@ mod tests {
         assert!(
             validate_agent_workspaces(&config, &oikos).is_ok(),
             "valid workspace should pass"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn validate_agent_workspaces_rejects_absolute_workspace_outside_root() {
+        use crate::config::NousDefinition;
+
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        let mut config = AletheiaConfig::default();
+        config.agents.list.push(NousDefinition {
+            id: "dave".to_owned(),
+            name: None,
+            model: None,
+            workspace: "/tmp".to_owned(),
+            thinking_enabled: None,
+            agency: None,
+            allowed_roots: Vec::new(),
+            domains: Vec::new(),
+            default: false,
+            private: false,
+            episteme_cohort: None,
+            recall: None,
+            recall_profile: None,
+            behavior: None,
+            ..Default::default()
+        });
+
+        let err = validate_agent_workspaces(&config, &oikos).unwrap_err();
+        assert!(
+            err.failures.iter().any(|f| f.contains("outside")),
+            "expected outside-root failure for /tmp workspace, got: {err:?}"
         );
     }
 }

@@ -300,15 +300,18 @@ impl Oikos {
         Ok(())
     }
 
-    /// Validate that a workspace path from agent config resolves to an existing directory.
+    /// Validate that a workspace path from agent config resolves to an existing
+    /// directory contained under the instance root.
     ///
     /// Relative paths are resolved against the instance root. Absolute paths are
-    /// used as-is.
+    /// accepted only when they resolve inside the canonicalized instance root;
+    /// paths outside the root are rejected to prevent an agent from reading or
+    /// writing arbitrary filesystem locations.
     ///
     /// # Errors
     ///
-    /// Returns an error if the path does not
-    /// exist or is not a directory.
+    /// Returns an error if the path does not exist, is not a directory, or
+    /// escapes the instance root.
     // kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
     pub fn validate_workspace_path(&self, workspace: &str) -> crate::error::Result<()> {
         use crate::error::WorkspacePathInvalidSnafu;
@@ -320,6 +323,10 @@ impl Oikos {
         };
 
         ensure!(path.is_dir(), WorkspacePathInvalidSnafu { path });
+
+        // WHY: containment check after existence so a missing path reports the
+        // workspace error, while an existing escape reports PathOutsideRoot.
+        self.canonical_path_under_root(path)?;
 
         Ok(())
     }
@@ -752,6 +759,20 @@ mod tests {
         assert!(
             msg.contains("aletheia init") || msg.contains("update the workspace path"),
             "expected help hint in: {msg}"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn validate_workspace_path_rejects_absolute_outside_root() {
+        let dir = make_valid_instance();
+        let oikos = Oikos::from_root(dir.path());
+        // SAFETY: /tmp is used only as a well-known absolute path outside the
+        // temp instance root; the test does not write to it.
+        let err = oikos.validate_workspace_path("/tmp").unwrap_err();
+        assert!(
+            matches!(err, crate::error::Error::PathOutsideRoot { .. }),
+            "expected PathOutsideRoot for absolute workspace outside root, got {err:?}"
         );
     }
 

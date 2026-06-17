@@ -1194,3 +1194,52 @@ fn is_loopback_bind_rejects_wildcard_and_lan() {
     assert!(!crate::validate::is_loopback_bind("172.16.0.1"));
     assert!(!crate::validate::is_loopback_bind("host-a.lan"));
 }
+
+#[test]
+#[cfg(unix)]
+fn validate_startup_rejects_allowed_root_outside_instance() {
+    use crate::config::{AgentDefaults, NousDefinition};
+
+    let dir = tempfile::tempdir().unwrap();
+    let workspace_dir = dir.path().join("nous").join("alice");
+    std::fs::create_dir_all(&workspace_dir).unwrap();
+    std::fs::write(workspace_dir.join("SOUL.md"), b"# Alice\n").unwrap();
+
+    let oikos = Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.defaults.allowed_roots = vec!["/tmp".to_owned()];
+    config.agents.list.push(NousDefinition {
+        id: "alice".to_owned(),
+        workspace: "nous/alice".to_owned(),
+        ..Default::default()
+    });
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("allowed_roots") && e.contains("outside")),
+        "expected allowed_roots outside-root error, got: {err:?}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn validate_startup_rejects_agent_workspace_outside_instance() {
+    use crate::config::NousDefinition;
+
+    let dir = tempfile::tempdir().unwrap();
+    // WHY: /tmp exists and is a directory, but it is outside the temp instance
+    // root. The workspace existence check passes, but containment must reject it.
+    let oikos = Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.push(NousDefinition {
+        id: "alice".to_owned(),
+        workspace: "/tmp".to_owned(),
+        ..Default::default()
+    });
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("escapes instance root")),
+        "expected workspace escape error, got: {err:?}"
+    );
+}
