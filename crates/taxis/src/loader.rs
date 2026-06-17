@@ -370,14 +370,15 @@ fn decrypt_toml_value(value: &mut toml::Value) -> Result<()> {
         }
     }
 
-    match encrypt::decrypt_toml_values(value, primary_key.as_ref()) {
-        Ok(()) => Ok(()),
-        Err(failures) if !failures.is_empty() => Err(crate::error::ConfigDecryptSnafu {
+    if let Err(failures) = encrypt::decrypt_toml_values(value, primary_key.as_ref())
+        && !failures.is_empty()
+    {
+        return Err(crate::error::ConfigDecryptSnafu {
             fields: failures.join(", "),
         }
-        .build()),
-        Err(_) => Ok(()),
+        .build());
     }
+    Ok(())
 }
 
 /// Read a standalone TOML file, apply env-var interpolation and decrypt
@@ -848,11 +849,28 @@ archiveBeforeDelete = true
     #[test]
     fn decrypt_toml_value_to_string_propagates_serialize_failure() {
         let mut table = toml::map::Map::new();
-        table.insert("bad".to_owned(), toml::Value::Float(f64::NAN));
+        // WHY: an invalid datetime cannot be emitted as TOML, so the
+        // re-serialization step in the loader must fail. The old
+        // implementation silently returned the original ciphertext string.
+        table.insert(
+            "bad".to_owned(),
+            toml::Value::Datetime(toml::value::Datetime {
+                date: Some(toml::value::Date {
+                    year: 2024,
+                    month: 13,
+                    day: 1,
+                }),
+                time: Some(toml::value::Time {
+                    hour: 0,
+                    minute: 0,
+                    second: Some(0),
+                    nanosecond: Some(0),
+                }),
+                offset: None,
+            }),
+        );
         let mut value = toml::Value::Table(table);
 
-        // WHY: toml cannot represent NaN, so re-serialization must fail. The
-        // old implementation silently returned the original ciphertext string.
         let result = decrypt_toml_value(&mut value).and_then(|()| {
             toml::to_string(&value).map_err(|e| {
                 SerializeTomlSnafu {
@@ -872,13 +890,14 @@ archiveBeforeDelete = true
         let mut jail = EnvJail::new();
         let key1_path = jail.directory().join("key1.key");
         let key2_path = jail.directory().join("key2.key");
-        crate::encrypt::generate_primary_key(&key1_path).unwrap();
-        crate::encrypt::generate_primary_key(&key2_path).unwrap();
+        crate::encrypt::generate_primary_key(&key1_path).expect("generate key1");
+        crate::encrypt::generate_primary_key(&key2_path).expect("generate key2");
 
         let key1 = crate::encrypt::load_primary_key(&key1_path)
-            .unwrap()
+            .expect("load key1")
             .expect("key1 loaded");
-        let encrypted = crate::encrypt::encrypt_value("synthetic-secret", &key1).unwrap();
+        let encrypted =
+            crate::encrypt::encrypt_value("synthetic-secret", &key1).expect("encrypt value");
 
         // WHY: point the resolver at key2 so the loader has a present but
         // wrong key for the ciphertext.
@@ -888,9 +907,7 @@ archiveBeforeDelete = true
         );
         jail.create_file(
             "config/aletheia.toml",
-            &format!(
-                "[gateway.auth]\nmode = \"token\"\nsigningKey = \"{encrypted}\"\n"
-            ),
+            &format!("[gateway.auth]\nmode = \"token\"\nsigningKey = \"{encrypted}\"\n"),
         );
 
         let oikos = Oikos::from_root(jail.directory());
@@ -899,7 +916,10 @@ archiveBeforeDelete = true
             result.is_err(),
             "present-but-wrong primary key must fail config load closed"
         );
-        let msg = result.unwrap_err().to_string();
+        let msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected config load to fail"),
+        };
         assert!(
             msg.contains("encrypted config fields cannot be decrypted"),
             "error should mention encrypted fields: {msg}"
@@ -923,7 +943,10 @@ archiveBeforeDelete = true
             result.is_err(),
             "missing primary key with enc values must fail closed"
         );
-        let msg = result.unwrap_err().to_string();
+        let msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected config load to fail"),
+        };
         assert!(
             msg.contains("encrypted config fields cannot be decrypted"),
             "error should mention encrypted fields: {msg}"

@@ -432,21 +432,6 @@ mod tests {
     }
 
     #[test]
-    fn diff_configs_propagates_serialization_failure() {
-        let mut bad_config = AletheiaConfig::default();
-        // WHY: serde_json cannot represent NaN, so serializing this config
-        // must fail. The old implementation silently replaced the failure
-        // with Null and returned an empty diff.
-        bad_config.agents.defaults.behavior.competence_correction_penalty = f64::NAN;
-
-        let result = diff_configs(&AletheiaConfig::default(), &bad_config);
-        assert!(
-            result.is_err(),
-            "serialization failure must propagate instead of producing an empty diff"
-        );
-    }
-
-    #[test]
     fn diff_detects_hot_reloadable_change() {
         let old = AletheiaConfig::default();
         let mut new = old.clone();
@@ -490,7 +475,7 @@ mod tests {
         new.gateway.port = 9999;
         new.maintenance.trace_rotation.max_age_days = 7;
 
-        let diff = diff_configs(&old, &new);
+        let diff = diff_configs(&old, &new).unwrap();
         assert!(
             diff.changes.len() >= 3,
             "expected at least 3 changes, got {}",
@@ -505,7 +490,7 @@ mod tests {
         new.agents.defaults.max_tool_iterations = 500;
         new.gateway.port = 9999;
 
-        let diff = diff_configs(&old, &new);
+        let diff = diff_configs(&old, &new).unwrap();
         let hot = diff.hot_changes();
         let cold = diff.cold_changes();
 

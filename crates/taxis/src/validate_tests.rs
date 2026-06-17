@@ -1198,12 +1198,13 @@ fn is_loopback_bind_rejects_wildcard_and_lan() {
 #[test]
 #[cfg(unix)]
 fn validate_startup_rejects_allowed_root_outside_instance() {
-    use crate::config::{AgentDefaults, NousDefinition};
+    use crate::config::NousDefinition;
 
     let dir = tempfile::tempdir().unwrap();
     let workspace_dir = dir.path().join("nous").join("alice");
     std::fs::create_dir_all(&workspace_dir).unwrap();
-    std::fs::write(workspace_dir.join("SOUL.md"), b"# Alice\n").unwrap();
+    let mut file = std::fs::File::create(workspace_dir.join("SOUL.md")).unwrap();
+    std::io::Write::write_all(&mut file, b"# Alice\n").unwrap();
 
     let oikos = Oikos::from_root(dir.path());
     let mut config = AletheiaConfig::default();
@@ -1216,7 +1217,9 @@ fn validate_startup_rejects_allowed_root_outside_instance() {
 
     let err = validate_startup(&config, &oikos).unwrap_err();
     assert!(
-        err.errors.iter().any(|e| e.contains("allowed_roots") && e.contains("outside")),
+        err.errors
+            .iter()
+            .any(|e| e.contains("allowed_roots") && e.contains("outside")),
         "expected allowed_roots outside-root error, got: {err:?}"
     );
 }
@@ -1239,7 +1242,9 @@ fn validate_startup_rejects_agent_workspace_outside_instance() {
 
     let err = validate_startup(&config, &oikos).unwrap_err();
     assert!(
-        err.errors.iter().any(|e| e.contains("escapes instance root")),
+        err.errors
+            .iter()
+            .any(|e| e.contains("escapes instance root")),
         "expected workspace escape error, got: {err:?}"
     );
 }
@@ -1253,7 +1258,9 @@ fn validate_startup_rejects_empty_training_path() {
 
     let err = validate_startup(&config, &oikos).unwrap_err();
     assert!(
-        err.errors.iter().any(|e| e.contains("training.path") && e.contains("empty")),
+        err.errors
+            .iter()
+            .any(|e| e.contains("training.path") && e.contains("empty")),
         "expected empty training.path error, got: {err:?}"
     );
 }
@@ -1267,7 +1274,9 @@ fn validate_startup_rejects_absolute_training_path() {
 
     let err = validate_startup(&config, &oikos).unwrap_err();
     assert!(
-        err.errors.iter().any(|e| e.contains("training.path") && e.contains("relative")),
+        err.errors
+            .iter()
+            .any(|e| e.contains("training.path") && e.contains("relative")),
         "expected absolute training.path error, got: {err:?}"
     );
 }
@@ -1281,22 +1290,35 @@ fn validate_startup_rejects_traversal_training_path() {
 
     let err = validate_startup(&config, &oikos).unwrap_err();
     assert!(
-        err.errors.iter().any(|e| e.contains("training.path") && e.contains("..")),
+        err.errors
+            .iter()
+            .any(|e| e.contains("training.path") && e.contains("..")),
         "expected traversal training.path error, got: {err:?}"
     );
 }
 
 #[test]
 fn validate_startup_accepts_relative_training_path_under_root() {
+    use crate::config::NousDefinition;
+
     let dir = tempfile::tempdir().unwrap();
     let training_dir = dir.path().join("data").join("training");
     std::fs::create_dir_all(&training_dir).unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("nous").join("alice")).unwrap();
+    let mut soul =
+        std::fs::File::create(dir.path().join("nous").join("alice").join("SOUL.md")).unwrap();
+    std::io::Write::write_all(&mut soul, b"# Alice\n").unwrap();
     let oikos = Oikos::from_root(dir.path());
     let mut config = AletheiaConfig::default();
     config.training.path = "data/training".to_owned();
+    config.agents.list.push(NousDefinition {
+        id: "alice".to_owned(),
+        workspace: "nous/alice".to_owned(),
+        ..Default::default()
+    });
 
-    assert!(
-        validate_startup(&config, &oikos).is_ok(),
-        "relative training.path under root should be accepted"
-    );
+    if let Err(e) = validate_startup(&config, &oikos) {
+        panic!("relative training.path under root should be accepted: {e:?}");
+    }
 }

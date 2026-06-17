@@ -199,17 +199,17 @@ fn load_config_rejects_encrypted_value_when_primary_key_is_missing() {
 fn interpolate_applies_default_when_env_var_unset() {
     let mut jail = EnvJail::new();
     let root = seed_instance(&jail).to_path_buf();
-    // NOTE: _TAXIS_TEST_UNSET_PORT_A is not set in the jail
-    jail.remove_env("_TAXIS_TEST_UNSET_PORT_A");
+    // NOTE: _TAXIS_TEST_UNSET_BIND_A is not set in the jail
+    jail.remove_env("_TAXIS_TEST_UNSET_BIND_A");
     write_toml(
         &root,
-        "[gateway]\nport = ${_TAXIS_TEST_UNSET_PORT_A:-4242}\n",
+        "[gateway]\nbind = \"${_TAXIS_TEST_UNSET_BIND_A:-127.0.0.1}\"\n",
     );
 
     let oikos = Oikos::from_root(&root);
     let config = load_config(&oikos).unwrap();
     assert_eq!(
-        config.gateway.port, 4242,
+        config.gateway.bind, "127.0.0.1",
         "default from :-syntax should apply when var is unset"
     );
 }
@@ -218,12 +218,15 @@ fn interpolate_applies_default_when_env_var_unset() {
 fn interpolate_substitutes_env_var_value_when_set() {
     let mut jail = EnvJail::new();
     let root = seed_instance(&jail).to_path_buf();
-    jail.set_env("_TAXIS_TEST_SET_PORT_B", "7777");
-    write_toml(&root, "[gateway]\nport = ${_TAXIS_TEST_SET_PORT_B:-1111}\n");
+    jail.set_env("_TAXIS_TEST_SET_BIND_B", "0.0.0.0");
+    write_toml(
+        &root,
+        "[gateway]\nbind = \"${_TAXIS_TEST_SET_BIND_B:-1111}\"\n",
+    );
 
     let oikos = Oikos::from_root(&root);
     let config = load_config(&oikos).unwrap();
-    assert_eq!(config.gateway.port, 7777);
+    assert_eq!(config.gateway.bind, "0.0.0.0");
 }
 
 #[test]

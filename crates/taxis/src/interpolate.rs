@@ -51,46 +51,6 @@ use crate::error::{EnvVarRequiredSnafu, EnvVarUnterminatedSnafu, Result};
 /// # Ok(())
 /// # }
 /// ```
-/// Interpolate `${VAR:-default}` and `${VAR:?error}` expressions inside every
-/// string leaf of a parsed TOML value tree.
-///
-/// Walks tables and arrays recursively and applies [`interpolate_env_vars`] to
-/// each [`toml::Value::String`]. Because the TOML is already parsed, the
-/// substituted environment value becomes a literal string in the configuration;
-/// it cannot introduce new keys, tables, comments, or change value types.
-///
-/// # Errors
-///
-/// Returns the first interpolation error encountered (unset required variable,
-/// unterminated expression, etc.).
-#[must_use]
-#[expect(
-    clippy::double_must_use,
-    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
-)]
-pub fn interpolate_env_vars_in_value(value: &mut toml::Value) -> Result<()> {
-    match value {
-        toml::Value::String(s) => {
-            *s = interpolate_env_vars(s)?;
-        }
-        toml::Value::Array(arr) => {
-            for item in arr {
-                interpolate_env_vars_in_value(item)?;
-            }
-        }
-        toml::Value::Table(table) => {
-            for (_, val) in table.iter_mut() {
-                interpolate_env_vars_in_value(val)?;
-            }
-        }
-        _ => {
-            // NOTE: non-string leaf values (bool, integer, float, datetime)
-            // cannot contain env-var expressions after TOML parsing.
-        }
-    }
-    Ok(())
-}
-
 #[must_use]
 #[expect(
     clippy::double_must_use,
@@ -142,6 +102,46 @@ pub fn interpolate_env_vars(content: &str) -> Result<String> {
 
     result.push_str(rest);
     Ok(result)
+}
+
+/// Interpolate `${VAR:-default}` and `${VAR:?error}` expressions inside every
+/// string leaf of a parsed TOML value tree.
+///
+/// Walks tables and arrays recursively and applies [`interpolate_env_vars`] to
+/// each [`toml::Value::String`]. Because the TOML is already parsed, the
+/// substituted environment value becomes a literal string in the configuration;
+/// it cannot introduce new keys, tables, comments, or change value types.
+///
+/// # Errors
+///
+/// Returns the first interpolation error encountered (unset required variable,
+/// unterminated expression, etc.).
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
+pub fn interpolate_env_vars_in_value(value: &mut toml::Value) -> Result<()> {
+    match value {
+        toml::Value::String(s) => {
+            *s = interpolate_env_vars(s)?;
+        }
+        toml::Value::Array(arr) => {
+            for item in arr {
+                interpolate_env_vars_in_value(item)?;
+            }
+        }
+        toml::Value::Table(table) => {
+            for (_, val) in table.iter_mut() {
+                interpolate_env_vars_in_value(val)?;
+            }
+        }
+        _ => {
+            // NOTE: non-string leaf values (bool, integer, float, datetime)
+            // cannot contain env-var expressions after TOML parsing.
+        }
+    }
+    Ok(())
 }
 
 /// Resolve the expression body between `${` and `}`.
@@ -302,10 +302,7 @@ mod tests {
     #[test]
     fn interpolate_in_value_keeps_env_values_literal() {
         let mut jail = EnvJail::new();
-        jail.set_env(
-            "_TAX_INTERP_IN_VALUE",
-            "\"]\n[evil]\nkey = \"value",
-        );
+        jail.set_env("_TAX_INTERP_IN_VALUE", "\"]\n[evil]\nkey = \"value");
 
         let mut value: toml::Value = toml::from_str(
             r#"
@@ -318,13 +315,14 @@ mod tests {
 
         interpolate_env_vars_in_value(&mut value).unwrap();
 
+        let section = value.get("section").unwrap();
         assert_eq!(
-            value["section"]["key"].as_str(),
+            section.get("key").and_then(toml::Value::as_str),
             Some("\"]\n[evil]\nkey = \"value"),
             "structural env value must stay a literal string"
         );
         assert_eq!(
-            value["section"]["count"].as_integer(),
+            section.get("count").and_then(toml::Value::as_integer),
             Some(42),
             "non-string leaves must not be interpolated"
         );

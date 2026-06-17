@@ -226,7 +226,8 @@ fn validate_startup_accepts_agent_with_real_workspace_directory() {
         behavior: None,
         ..Default::default()
     });
-    assert!(validate_startup(&config, &oikos).is_ok());
+    validate_startup(&config, &oikos)
+        .unwrap_or_else(|e| panic!("validate_startup should pass: {e:?}"));
 }
 
 // ─── Section validation (validate_section) ────────────────────────────

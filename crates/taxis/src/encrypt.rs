@@ -311,7 +311,7 @@ pub fn encrypt_config_file(toml_path: &Path, primary_key: &[u8; KEY_LEN]) -> Res
 pub(crate) fn decrypt_toml_values(
     value: &mut toml::Value,
     primary_key: Option<&[u8; KEY_LEN]>,
-) -> Result<(), Vec<String>> {
+) -> std::result::Result<(), Vec<String>> {
     let mut failures = Vec::new();
     decrypt_toml_values_recursive(value, primary_key, String::new(), &mut failures);
     if failures.is_empty() {
@@ -357,12 +357,7 @@ fn decrypt_toml_values_recursive(
         }
         toml::Value::Array(arr) => {
             for (i, item) in arr.iter_mut().enumerate() {
-                decrypt_toml_values_recursive(
-                    item,
-                    primary_key,
-                    format!("{path}[{i}]"),
-                    failures,
-                );
+                decrypt_toml_values_recursive(item, primary_key, format!("{path}[{i}]"), failures);
             }
         }
         _ => {

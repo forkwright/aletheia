@@ -116,7 +116,10 @@ pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), Va
             continue;
         }
         if let Err(msg) = validate_contained_path(&path, oikos.root()) {
-            errors.push(format!("agent '{}' workspace escapes instance root: {msg}", agent.id));
+            errors.push(format!(
+                "agent '{}' workspace escapes instance root: {msg}",
+                agent.id
+            ));
         }
     }
 
@@ -164,9 +167,9 @@ fn validate_contained_path(
 /// Validate that every configured `allowed_roots` entry is contained under the
 /// instance root.
 ///
-/// WHY: allowed_roots become entries in the agent's ToolContext. An absolute
-/// path outside the instance root would let the agent read and write arbitrary
-/// filesystem locations. (#5561)
+/// WHY: `allowed_roots` become entries in the agent's `ToolContext`. An
+/// absolute path outside the instance root would let the agent read and write
+/// arbitrary filesystem locations. (#5561)
 fn validate_allowed_roots_contained(
     config: &AletheiaConfig,
     instance_root: &std::path::Path,
@@ -176,8 +179,7 @@ fn validate_allowed_roots_contained(
     for root in &config.agents.defaults.allowed_roots {
         if let Err(msg) = validate_contained_path_string(root, instance_root) {
             errors.push(format!(
-                "agents.defaults.allowed_roots entry '{}' is not contained: {msg}",
-                root
+                "agents.defaults.allowed_roots entry '{root}' is not contained: {msg}"
             ));
         }
     }
@@ -186,8 +188,8 @@ fn validate_allowed_roots_contained(
         for root in &agent.allowed_roots {
             if let Err(msg) = validate_contained_path_string(root, instance_root) {
                 errors.push(format!(
-                    "agents.list.{}.allowed_roots entry '{}' is not contained: {msg}",
-                    agent.id, root
+                    "agents.list.{}.allowed_roots entry '{root}' is not contained: {msg}",
+                    agent.id
                 ));
             }
         }
@@ -220,10 +222,7 @@ fn validate_contained_path_string(
 /// components (no `..` or empty segments), and contained under the instance
 /// root after normalization. The DPO writer derives its directory from the
 /// same path, so this rule also covers DPO output. (#5385)
-fn validate_training_path(
-    path_str: &str,
-    instance_root: &std::path::Path,
-) -> Result<(), String> {
+fn validate_training_path(path_str: &str, instance_root: &std::path::Path) -> Result<(), String> {
     if path_str.is_empty() {
         return Err("training.path must not be empty".to_owned());
     }
@@ -241,8 +240,20 @@ fn validate_training_path(
         }
     }
 
-    validate_contained_path_string(path_str, instance_root)
-        .map_err(|e| format!("training.path '{path_str}' is not contained: {e}"))?;
+    // WHY: training output is created lazily at runtime, so the path need not
+    // exist at startup. Resolve it against the canonicalized instance root and
+    // verify containment without calling canonicalize on the target.
+    let root = std::fs::canonicalize(instance_root)
+        .map_err(|e| format!("cannot canonicalize instance root: {e}"))?;
+    let resolved = path
+        .components()
+        .fold(root.clone(), |acc, c| acc.join(c.as_os_str()));
+    if !resolved.starts_with(&root) {
+        return Err(format!(
+            "training.path '{path_str}' is outside the instance root '{}'",
+            root.display()
+        ));
+    }
 
     Ok(())
 }
