@@ -17,12 +17,15 @@
 
 use std::fmt::Write as _;
 
-use super::shared::{emit_svg_open, escape_xml, nice_domain};
+use super::shared::{
+    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, legend_needed,
+    ticks_for_axis,
+};
 use crate::Result;
 use crate::format::{coord, format_number};
 use crate::model::{Chart, CiteOrScalar, Unit};
 use crate::render::canvas::{Canvas, PlotBox};
-use crate::scale::{self, Scale};
+use crate::scale::Scale;
 use crate::theme::{ColorMode, ResolvedTheme};
 
 /// Emit the scatter chart SVG.
@@ -46,7 +49,7 @@ pub fn emit(
     let (x_lo, x_hi) = if x_values.is_empty() {
         (0.0, 1.0)
     } else {
-        nice_domain(&x_values)
+        domain_bounds(&x_values, &chart.axes.x)
     };
 
     let y_values: Vec<f64> = chart
@@ -54,13 +57,13 @@ pub fn emit(
         .iter()
         .flat_map(|s| s.points.iter().map(|p| p.y.value))
         .collect();
-    let (y_lo, y_hi) = nice_domain(&y_values);
+    let (y_lo, y_hi) = domain_bounds(&y_values, &chart.axes.y_left);
 
     let x_scale = Scale::new((x_lo, x_hi), (plot.x0, plot.x1));
     let y_scale = Scale::new((y_lo, y_hi), (plot.y1, plot.y0));
 
-    let x_ticks = scale::ticks(x_lo, x_hi, 5);
-    let y_ticks = scale::ticks(y_lo, y_hi, 5);
+    let x_ticks = ticks_for_axis(&chart.axes.x, x_lo, x_hi);
+    let y_ticks = ticks_for_axis(&chart.axes.y_left, y_lo, y_hi);
 
     let mut out = String::new();
     emit_svg_open(&mut out, chart, canvas);
@@ -72,6 +75,10 @@ pub fn emit(
     if chart.data_labels {
         emit_labels(&mut out, chart, &x_scale, &y_scale, theme, mode)?;
     }
+    if legend_needed(chart.legend, chart.series.len()) {
+        emit_legend(&mut out, chart, theme, mode, &plot)?;
+    }
+    emit_caption(&mut out, chart, theme, &plot);
     out.push_str("</svg>");
     Ok(out)
 }

@@ -11,12 +11,15 @@
 
 use std::fmt::Write as _;
 
-use super::shared::{emit_svg_open, escape_xml, idx_to_f64, nice_domain};
+use super::shared::{
+    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64,
+    legend_needed, ticks_for_axis,
+};
 use crate::Result;
 use crate::format::{coord, format_number};
-use crate::model::{Chart, CiteOrText, Unit};
+use crate::model::{AxisSpec, Chart, CiteOrText, Unit};
 use crate::render::canvas::{Canvas, PlotBox};
-use crate::scale::{self, Scale};
+use crate::scale::Scale;
 use crate::theme::{ColorMode, ResolvedTheme};
 
 /// Emit the bar chart SVG.
@@ -51,7 +54,7 @@ pub fn emit(
         .iter()
         .flat_map(|s| s.points.iter().map(|p| p.y.value))
         .collect();
-    let (lo, hi) = nice_domain(&all_values);
+    let (lo, hi) = domain_bounds(&all_values, &chart.axes.x);
     let x_scale = Scale::new((lo, hi), (plot.x0, plot.x1));
 
     let n_cats_f = idx_to_f64(n_cats);
@@ -69,8 +72,10 @@ pub fn emit(
 
     let mut out = String::new();
     emit_svg_open(&mut out, chart, canvas);
-    emit_gridlines(&mut out, lo, hi, &x_scale, &plot);
-    emit_axes(&mut out, chart, lo, hi, &x_scale, &plot, band_h, theme);
+    emit_gridlines(&mut out, lo, hi, &x_scale, &plot, &chart.axes.x);
+    emit_axes(
+        &mut out, chart, lo, hi, &x_scale, &plot, band_h, theme, &chart.axes.x,
+    );
     emit_bars(
         &mut out, chart, &x_scale, &plot, band_h, sub_h, bar_h, &fills,
     );
@@ -79,13 +84,24 @@ pub fn emit(
             &mut out, chart, &x_scale, &plot, band_h, sub_h, theme, &fills,
         );
     }
+    if legend_needed(chart.legend, chart.series.len()) {
+        emit_legend(&mut out, chart, theme, mode, &plot)?;
+    }
+    emit_caption(&mut out, chart, theme, &plot);
     out.push_str("</svg>");
     Ok(out)
 }
 
-fn emit_gridlines(out: &mut String, lo: f64, hi: f64, x_scale: &Scale, plot: &PlotBox) {
+fn emit_gridlines(
+    out: &mut String,
+    lo: f64,
+    hi: f64,
+    x_scale: &Scale,
+    plot: &PlotBox,
+    axis: &AxisSpec,
+) {
     out.push_str("<g class=\"gridlines\">");
-    let ticks = scale::ticks(lo, hi, 5);
+    let ticks = ticks_for_axis(axis, lo, hi);
     for tick in &ticks {
         let tick_x = x_scale.map(*tick);
         let _ = write!(
@@ -108,13 +124,14 @@ fn emit_axes(
     plot: &PlotBox,
     band_h: f64,
     theme: &ResolvedTheme,
+    axis: &AxisSpec,
 ) {
     out.push_str("<g class=\"axes\">");
 
-    let ticks = scale::ticks(lo, hi, 5);
+    let ticks = ticks_for_axis(axis, lo, hi);
     for tick in &ticks {
         let tick_x = x_scale.map(*tick);
-        let tick_label = format_number(*tick, chart.axes.x.format, Unit::Number);
+        let tick_label = format_number(*tick, axis.format, Unit::Number);
         let _ = write!(
             out,
             "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-family=\"{font}\">{label}</text>",

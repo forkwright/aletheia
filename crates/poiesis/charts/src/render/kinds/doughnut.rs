@@ -15,7 +15,9 @@
 
 use std::fmt::Write as _;
 
-use super::shared::{emit_svg_open, escape_xml};
+use super::shared::{
+    emit_caption, emit_legend, emit_svg_open, escape_xml, legend_needed,
+};
 use crate::Result;
 use crate::format::{coord, format_number};
 use crate::model::{Chart, NumFormat, Unit};
@@ -165,6 +167,10 @@ pub fn emit(
         out.push_str("</g>");
     }
 
+    if legend_needed(chart.legend, chart.series.len()) {
+        emit_legend(&mut out, chart, theme, mode, &plot)?;
+    }
+    emit_caption(&mut out, chart, theme, &plot);
     out.push_str("</svg>");
     Ok(out)
 }

@@ -5,8 +5,10 @@
 
 use std::fmt::Write as _;
 
-use crate::model::{Chart, CiteOrText};
-use crate::render::canvas::Canvas;
+use crate::model::{AxisSpec, Chart, CiteOrText, Domain, Inlines, LegendSpec, Ticks};
+use crate::render::canvas::{Canvas, PlotBox};
+use crate::theme::{ColorMode, ResolvedTheme};
+use crate::Result;
 
 // WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
 // literal mandated by the SVG spec. Renderers match it as an opaque string;
@@ -72,6 +74,29 @@ pub(crate) fn nice_domain(values: &[f64]) -> (f64, f64) {
     crate::scale::nice(lo, hi)
 }
 
+/// Determine the value domain for an axis.
+///
+/// Honors [`Domain::Fixed`] when set; otherwise computes a nice-rounded
+/// domain from the supplied data values.
+pub(crate) fn domain_bounds(values: &[f64], spec: &AxisSpec) -> (f64, f64) {
+    match spec.domain {
+        Domain::Fixed { min, max } => (min, max),
+        Domain::Auto => nice_domain(values),
+    }
+}
+
+/// Generate tick positions for an axis.
+///
+/// Honors [`Ticks::Count`] and [`Ticks::Explicit`]; falls back to the
+/// default ~5 tick 1-2-5 generator for [`Ticks::Auto`].
+pub(crate) fn ticks_for_axis(spec: &AxisSpec, lo: f64, hi: f64) -> Vec<f64> {
+    match &spec.ticks {
+        Ticks::Auto => crate::scale::ticks(lo, hi, 5),
+        Ticks::Count(n) => crate::scale::ticks(lo, hi, *n),
+        Ticks::Explicit(values) => values.clone(),
+    }
+}
+
 /// Convert a category index to `f64` for geometric calculations.
 #[expect(
     clippy::cast_precision_loss,
@@ -80,6 +105,86 @@ pub(crate) fn nice_domain(values: &[f64]) -> (f64, f64) {
 )]
 pub(crate) const fn idx_to_f64(i: usize) -> f64 {
     i as f64
+}
+
+/// Decide whether a legend should be emitted for this chart.
+pub(crate) fn legend_needed(spec: LegendSpec, n_series: usize) -> bool {
+    match spec {
+        LegendSpec::None => false,
+        LegendSpec::Auto => n_series > 1,
+        LegendSpec::TopRight | LegendSpec::Bottom => true,
+    }
+}
+
+/// Emit a `<g class="legend">` with colored swatches and series names.
+pub(crate) fn emit_legend(
+    out: &mut String,
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    mode: ColorMode,
+    plot: &PlotBox,
+) -> Result<()> {
+    let n = chart.series.len();
+    if n == 0 {
+        return Ok(());
+    }
+
+    let item_w = 120.0;
+    let total_w = item_w * idx_to_f64(n);
+    let start_x = (plot.x1 - total_w).max(plot.x0);
+    let y = if matches!(chart.legend, LegendSpec::Bottom) {
+        plot.y1 + 50.0
+    } else {
+        plot.y0 - 20.0
+    };
+
+    out.push_str("<g class=\"legend\">");
+    for (i, series) in chart.series.iter().enumerate() {
+        let fill = theme.fill_for(&series.tone, mode, i)?;
+        let x = start_x + item_w * idx_to_f64(i);
+        let name = match &series.name {
+            CiteOrText::Text(t) => escape_xml(t),
+            CiteOrText::Cite(id) => escape_xml(&id.0),
+        };
+        let _ = write!(
+            out,
+            "<rect x=\"{x}\" y=\"{y}\" width=\"12\" height=\"12\" fill=\"{fill}\"/>\
+             <text x=\"{tx}\" y=\"{ty}\" font-family=\"{font}\" font-size=\"12\">{name}</text>",
+            x = crate::format::coord(x),
+            y = crate::format::coord(y),
+            fill = fill,
+            tx = crate::format::coord(x + 16.0),
+            ty = crate::format::coord(y + 10.0),
+            font = theme.font_sans,
+            name = name,
+        );
+    }
+    out.push_str("</g>");
+    Ok(())
+}
+
+/// Emit an optional `<g class="caption">` below the plot box.
+pub(crate) fn emit_caption(
+    out: &mut String,
+    chart: &Chart,
+    theme: &ResolvedTheme,
+    plot: &PlotBox,
+) {
+    let Some(Inlines(parts)) = chart.caption.as_ref() else {
+        return;
+    };
+    if parts.is_empty() {
+        return;
+    }
+    let text = escape_xml(&parts.join(" "));
+    let _ = write!(
+        out,
+        "<g class=\"caption\"><text x=\"{x}\" y=\"{y}\" font-family=\"{font}\" font-size=\"14\">{text}</text></g>",
+        x = crate::format::coord(plot.x0),
+        y = crate::format::coord(plot.y1 + 50.0),
+        font = theme.font_sans,
+        text = text,
+    );
 }
 
 #[cfg(test)]
@@ -113,6 +218,32 @@ mod tests {
     #[test]
     fn idx_to_f64_round_trips() {
         assert!((idx_to_f64(5) - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn domain_bounds_honors_fixed_domain() {
+        let spec = AxisSpec {
+            domain: Domain::Fixed { min: 5.0, max: 50.0 },
+            ..AxisSpec::default()
+        };
+        let (lo, hi) = domain_bounds(&[1.0, 100.0], &spec);
+        assert!((lo - 5.0).abs() < 1e-9);
+        assert!((hi - 50.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ticks_for_axis_honors_explicit_ticks() {
+        let spec = AxisSpec {
+            ticks: Ticks::Explicit(vec![0.0, 25.0, 75.0]),
+            ..AxisSpec::default()
+        };
+        assert_eq!(ticks_for_axis(&spec, 0.0, 100.0), vec![0.0, 25.0, 75.0]);
+    }
+
+    #[test]
+    fn legend_auto_shows_for_multi_series() {
+        assert!(legend_needed(LegendSpec::Auto, 2));
+        assert!(!legend_needed(LegendSpec::Auto, 1));
     }
 
     #[test]
