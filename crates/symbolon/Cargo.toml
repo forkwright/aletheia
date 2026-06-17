@@ -46,6 +46,9 @@ zeroize = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 tempfile = { workspace = true }
+tracing-test = { workspace = true }
+wiremock = { workspace = true }
+rustls = { workspace = true }
 
 # WHY: every authenticated request hits JwtManager::validate; track latency
 # regressions in CI.

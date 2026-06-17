@@ -22,11 +22,11 @@ use super::{
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
 /// OAuth error response from the token endpoint.
+// WHY: error_description is intentionally omitted — provider-controlled text
+// must not enter logs; only the normalized error code is safe to emit
 #[derive(Debug, Deserialize)]
 struct OAuthErrorResponse {
     error: String,
-    #[serde(default)]
-    error_description: Option<String>,
 }
 
 /// Outcome of an OAuth refresh attempt.
@@ -421,7 +421,7 @@ async fn refresh_loop(
             "credential refresh needed"
         );
 
-        let refresh_result = do_refresh(&client, &refresh_token_value).await;
+        let refresh_result = do_refresh(&client, &refresh_token_value, OAUTH_TOKEN_URL).await;
         // SAFETY: The refresh token is zeroized immediately after use to
         // limit the window for memory disclosure attacks. The token is
         // still in the OAuthResponse if we need to persist it to disk.
@@ -462,7 +462,11 @@ async fn refresh_loop(
     }
 }
 
-pub(super) async fn do_refresh(client: &reqwest::Client, refresh_token: &str) -> RefreshOutcome {
+pub(super) async fn do_refresh(
+    client: &reqwest::Client,
+    refresh_token: &str,
+    token_url: &str,
+) -> RefreshOutcome {
     // NOTE: Anthropic OAuth endpoint expects form-urlencoded, not JSON.
     // This matches RFC 6749 Section 4.1.3 for token refresh requests.
     let body = format!(
@@ -470,7 +474,7 @@ pub(super) async fn do_refresh(client: &reqwest::Client, refresh_token: &str) ->
     );
 
     let resp = match client
-        .post(OAUTH_TOKEN_URL)
+        .post(token_url)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(body)
         .timeout(Duration::from_secs(30))
@@ -497,10 +501,11 @@ pub(super) async fn do_refresh(client: &reqwest::Client, refresh_token: &str) ->
         if let Ok(err_resp) = serde_json::from_str::<OAuthErrorResponse>(&body_text)
             && err_resp.error == "invalid_grant"
         {
+            // WHY: error_description is provider-controlled and may contain account
+            // identifiers or token fragments — log only the normalized error code
             error!(
                 status = %status,
                 error = %err_resp.error,
-                description = err_resp.error_description.as_deref().unwrap_or(""),
                 "OAuth refresh token is invalid — re-authentication required. \
                  Run `aletheia auth login` or re-authorize via Claude Code to obtain \
                  a new refresh token."
@@ -508,7 +513,8 @@ pub(super) async fn do_refresh(client: &reqwest::Client, refresh_token: &str) ->
             return RefreshOutcome::InvalidGrant;
         }
 
-        warn!(status = %status, body = %body_text, "OAuth refresh returned error");
+        // WHY: raw body may contain provider-echoed request material; log only status
+        warn!(status = %status, "OAuth refresh returned error");
         return RefreshOutcome::TransientError;
     }
 
@@ -541,7 +547,7 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
         .ok_or("no refresh token in credential file")?;
 
     let client = reqwest::Client::new();
-    let resp = match do_refresh(&client, refresh_token.expose_secret()).await {
+    let resp = match do_refresh(&client, refresh_token.expose_secret(), OAUTH_TOKEN_URL).await {
         RefreshOutcome::Success(r) => r,
         RefreshOutcome::InvalidGrant => {
             return Err(

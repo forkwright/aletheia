@@ -127,7 +127,14 @@ fn spawn_callback_handler(
 ) -> (u16, std::thread::JoinHandle<Result<CallbackData>>) {
     let listener = StdTcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
-    let handle = std::thread::spawn(move || handle_callback_connection(&listener, expected_state));
+    // WHY: `#[tracing_test::traced_test]` captures logs per-scope; carry the
+    // calling test's span into the handler thread so `logs_contain` can see
+    // production logs emitted while parsing the callback request.
+    let span = tracing::Span::current();
+    let handle = std::thread::spawn(move || {
+        let _enter = span.enter();
+        handle_callback_connection(&listener, expected_state)
+    });
     (port, handle)
 }
 
@@ -288,5 +295,38 @@ fn test_expires_at_arithmetic_contract() {
     assert_eq!(
         delta_ms, 3_600_000,
         "expires_at delta must equal exactly secs * 1000 (kills * -> +)"
+    );
+}
+
+// ── callback log redaction regression (issue 5246) ──
+// WHY: parse_callback_request must never emit the raw request line; only
+// method + bare path go to debug!, not code= or state= values.
+
+#[test]
+#[tracing_test::traced_test]
+fn callback_log_never_emits_code_or_state_values() {
+    let (port, handle) = spawn_callback_handler("csrf-sentinel");
+    let _ = send_callback_request(port, "code=SECRET_OAUTH_CODE&state=csrf-sentinel");
+    let _ = handle.join();
+
+    assert!(
+        !logs_contain("SECRET_OAUTH_CODE"),
+        "OAuth authorization code must not appear in logs"
+    );
+    assert!(
+        !logs_contain("code="),
+        "query parameter 'code=' must not appear in logs"
+    );
+    assert!(
+        !logs_contain("csrf-sentinel"),
+        "CSRF state value must not appear in logs"
+    );
+    assert!(
+        !logs_contain("state="),
+        "query parameter 'state=' must not appear in logs"
+    );
+    assert!(
+        logs_contain("OAuth callback received"),
+        "callback receipt must still be logged at a safe level"
     );
 }
