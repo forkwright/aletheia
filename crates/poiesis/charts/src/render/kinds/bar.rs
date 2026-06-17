@@ -114,7 +114,7 @@ fn emit_axes(
     let ticks = scale::ticks(lo, hi, 5);
     for tick in &ticks {
         let tick_x = x_scale.map(*tick);
-        let tick_label = format_number(*tick, chart.axes.y_left.format, Unit::Number);
+        let tick_label = format_number(*tick, chart.axes.x.format, Unit::Number);
         let _ = write!(
             out,
             "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-family=\"{font}\">{label}</text>",
@@ -193,7 +193,7 @@ fn emit_labels(
         for (j, point) in series.points.iter().enumerate() {
             let label_x = x_scale.map(point.y.value) + 6.0;
             let label_y = plot.y0 + band_h * idx_to_f64(j) + sub_h * idx_to_f64(i) + sub_h * 0.5;
-            let text = format_number(point.y.value, chart.axes.y_left.format, point.y.unit);
+            let text = format_number(point.y.value, chart.axes.x.format, point.y.unit);
             let _ = write!(
                 out,
                 "<text x=\"{x}\" y=\"{y}\" dominant-baseline=\"middle\" font-family=\"{font}\" fill=\"{fill}\">{label}</text>",
@@ -213,8 +213,8 @@ fn emit_labels(
 mod tests {
     use super::*;
     use crate::model::{
-        Axes, AxisSide, Chart, ChartKind, CiteOrText, FactCite, FactId, LegendSpec, Point, Series,
-        SeriesStyle, ToneRef, Unit,
+        Axes, AxisSide, Chart, ChartKind, CiteOrText, FactCite, FactId, LegendSpec, NumFormat,
+        Point, Series, SeriesStyle, ToneRef, Unit,
     };
     use crate::render::canvas::DeckCanvas;
 
@@ -302,6 +302,30 @@ mod tests {
         )
         .expect("emit b");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn value_format_uses_x_axis_not_y_left() {
+        let mut chart = single_chart();
+        chart.data_labels = true;
+        chart.axes.x.format = NumFormat::Money;
+        chart.axes.y_left.format = NumFormat::Percent;
+        let theme = ResolvedTheme::summus_stub();
+        let svg = emit(
+            &chart,
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("emit");
+        assert!(
+            svg.contains("$10"),
+            "bar value labels should use axes.x.format (money)"
+        );
+        assert!(
+            !svg.contains("10%"),
+            "bar value labels should ignore axes.y_left.format"
+        );
     }
 
     #[test]
