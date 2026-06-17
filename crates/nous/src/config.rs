@@ -149,6 +149,14 @@ pub struct NousLimits {
     /// Operator-tunable via `KOINA_CONSECUTIVE_MISTAKE_LIMIT` environment
     /// variable. Default: 5.
     pub consecutive_mistake_limit: u32,
+    /// Sliding window size for loop-detection history. Default: 50.
+    ///
+    /// Matches `taxis::config::NousBehaviorConfig::loop_detection_window`.
+    pub loop_detection_window: usize,
+    /// Maximum cycle length checked during loop detection. Default: 10.
+    ///
+    /// Matches `taxis::config::NousBehaviorConfig::cycle_detection_max_len`.
+    pub cycle_detection_max_len: usize,
 }
 
 impl Default for NousLimits {
@@ -163,6 +171,8 @@ impl Default for NousLimits {
             max_tool_result_bytes: default_max_tool_result_bytes(),
             max_consecutive_tool_only_iterations: 3,
             consecutive_mistake_limit: default_consecutive_mistake_limit(),
+            loop_detection_window: 50,
+            cycle_detection_max_len: 10,
         }
     }
 }
@@ -701,6 +711,8 @@ mod tests {
                 max_tool_result_bytes: 32_768,
                 max_consecutive_tool_only_iterations: 3,
                 consecutive_mistake_limit: 5,
+                loop_detection_window: 50,
+                cycle_detection_max_len: 10,
             },
             domains: vec!["medical".to_owned()],
             private: true,

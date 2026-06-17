@@ -23,7 +23,6 @@ pub(crate) const MAX_MEMORY_ENTRIES: usize = 200;
 /// Analogous to CC's `MemoryHeader` but adapted for knowledge-store facts
 /// rather than filesystem files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(from = "MemoryHeaderRaw")]
 pub struct MemoryHeader {
     /// Source identifier (fact ID, document reference, or path).
     // kanon:ignore RUST/primitive-for-domain-id — cross-engine portability; newtype migration tracked workspace-wide.
@@ -34,26 +33,6 @@ pub struct MemoryHeader {
     pub description: Option<String>,
     /// Modification time in milliseconds since epoch.
     pub mtime_ms: i64,
-}
-
-/// Raw deserialization type for [`MemoryHeader`].
-#[derive(Debug, Clone, Deserialize)]
-struct MemoryHeaderRaw {
-    source_id: String,
-    name: String,
-    description: Option<String>,
-    mtime_ms: i64,
-}
-
-impl From<MemoryHeaderRaw> for MemoryHeader {
-    fn from(raw: MemoryHeaderRaw) -> Self {
-        Self {
-            source_id: raw.source_id,
-            name: raw.name,
-            description: raw.description,
-            mtime_ms: raw.mtime_ms,
-        }
-    }
 }
 
 impl MemoryHeader {

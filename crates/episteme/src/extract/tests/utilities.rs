@@ -429,6 +429,7 @@ fn slugify_all_special_chars() {
 
 #[test]
 fn slugify_unicode_mixed() {
+    // WHY: with ASCII-only slugify, non-ASCII chars (CJK) are replaced with hyphens.
     let result = utils::slugify("Hello 世界 Rust");
     assert!(
         result.contains("hello"),
@@ -439,14 +440,18 @@ fn slugify_unicode_mixed() {
         "ASCII letters should be preserved in slug"
     );
     assert!(
-        result.chars().all(|c| c.is_alphanumeric() || c == '-'),
-        "slugify output should only contain alphanumeric or hyphens"
+        result
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-'),
+        "slugify output should only contain ASCII alphanumeric or hyphens"
     );
 }
 
 #[test]
 fn slugify_nfc_normalization_composed_vs_decomposed() {
-    // NOTE: "café" in NFC (composed é = U+00E9) vs NFD (decomposed e + combining accent)
+    // WHY: NFC normalization runs before ASCII filtering, so visually identical
+    // strings with different codepoint sequences produce the same slug (both "caf").
+    // "café" NFC (é = U+00E9) and NFD (e + combining U+0301) must produce equal slugs.
     let composed = "caf\u{00E9}"; // NFC é
     let decomposed = "cafe\u{0301}"; // NFD: e + combining acute accent
     let slug_composed = utils::slugify(composed);
@@ -454,6 +459,13 @@ fn slugify_nfc_normalization_composed_vs_decomposed() {
     assert_eq!(
         slug_composed, slug_decomposed,
         "NFC-composed and NFD-decomposed forms must produce the same slug"
+    );
+    // Both are ASCII-only after filtering (é and combining accent are non-ASCII)
+    assert!(
+        slug_composed
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-'),
+        "slug must be ASCII-only"
     );
 }
 
@@ -658,12 +670,11 @@ mod proptests {
         #[test]
         fn slugify_never_panics(input in "\\PC{0,200}") {
             let result = utils::slugify(&input);
-            // NOTE: BUG: slugify uses char::is_alphanumeric() which is Unicode-aware,
-            // so non-ASCII alphanumeric chars (Tamil, Cyrillic, etc.) pass through.
-            // Slugs should ideally be ASCII-only. Documented for fix in a separate PR.
+            // FIXME(#4724): fixed — slugify now uses is_ascii_alphanumeric() so only
+            // ASCII alphanumerics and hyphens appear in slugs.
             assert!(
-                result.chars().all(|c| c.is_alphanumeric() || c == '-'),
-                "slugify produced unexpected character in: {result:?}"
+                result.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'),
+                "slugify produced non-ASCII character in: {result:?}"
             );
         }
     }

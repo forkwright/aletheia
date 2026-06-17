@@ -51,10 +51,9 @@ pub(crate) fn parse_output(stdout: &str) -> Result<CodexParsedOutput> {
                         .get("item")
                         .and_then(|item| item.get("text"))
                         .and_then(Value::as_str)
+                    && !part.is_empty()
                 {
-                    if !part.is_empty() {
-                        text.push_str(part);
-                    }
+                    text.push_str(part);
                 }
             }
             Some("turn.completed") => {

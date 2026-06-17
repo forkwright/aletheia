@@ -79,7 +79,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Mcp => {
             #[cfg(feature = "mcp")]
             {
-                mcp::run(instance_root).await.map_err(Into::into)
+                Box::pin(mcp::run(instance_root)).await.map_err(Into::into)
             }
             #[cfg(not(feature = "mcp"))]
             {

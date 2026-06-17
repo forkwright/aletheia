@@ -108,10 +108,12 @@ async fn execute_with_dispatch(
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
-    let mut loop_detector = LoopDetector::with_limits(
+    let mut loop_detector = LoopDetector::with_window(
         config.limits.loop_detection_threshold,
         config.limits.consecutive_error_threshold,
         config.limits.loop_max_warnings,
+        config.limits.loop_detection_window,
+        config.limits.cycle_detection_max_len,
     );
     let mut iterations: u32 = 0;
     let mut consecutive_tool_only: u32 = 0;
@@ -495,10 +497,12 @@ pub async fn execute_streaming(
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
-    let mut loop_detector = LoopDetector::with_limits(
+    let mut loop_detector = LoopDetector::with_window(
         config.limits.loop_detection_threshold,
         config.limits.consecutive_error_threshold,
         config.limits.loop_max_warnings,
+        config.limits.loop_detection_window,
+        config.limits.cycle_detection_max_len,
     );
     let mut iterations: u32 = 0;
     let mut consecutive_tool_only: u32 = 0;

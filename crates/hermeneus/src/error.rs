@@ -131,6 +131,7 @@ impl Error {
             Error::ApiRequest { message, .. } => {
                 let msg = message.to_lowercase();
                 msg.contains("timeout")
+                    || msg.contains("timed out")
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
@@ -164,11 +165,14 @@ impl koina::error_class::Classifiable for Error {
             Error::ApiRequest { message, .. } => {
                 let msg = message.to_lowercase();
                 if msg.contains("timeout")
+                    || msg.contains("timed out")
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
                     || msg.contains("is currently unavailable")
                     || msg.contains("circuit-breaker open")
+                    || msg.contains("cc process exited")
+                    || msg.contains("cc subprocess")
                 {
                     ErrorClass::Transient
                 } else {
@@ -206,11 +210,14 @@ impl koina::error_class::Classifiable for Error {
             Error::ApiRequest { message, .. } => {
                 let msg = message.to_lowercase();
                 if msg.contains("timeout")
+                    || msg.contains("timed out")
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
                     || msg.contains("is currently unavailable")
                     || msg.contains("circuit-breaker open")
+                    || msg.contains("cc process exited")
+                    || msg.contains("cc subprocess")
                 {
                     ErrorAction::Retry {
                         max_attempts: 3,
@@ -268,6 +275,20 @@ mod tests {
         }
         .build();
         assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn api_request_timed_out_only_is_retryable() {
+        // WHY(#5455): "timed out" must be retryable on its own, without relying
+        // on "timeout", "connection", or provider-specific substrings.
+        let err = ApiRequestSnafu {
+            message: "timed out".to_owned(),
+        }
+        .build();
+        assert!(
+            err.is_retryable(),
+            "bare 'timed out' ApiRequest should be retryable"
+        );
     }
 
     #[test]
@@ -357,6 +378,44 @@ mod tests {
         assert!(
             err.is_retryable(),
             "CC subprocess timeout should be retryable"
+        );
+    }
+
+    #[test]
+    fn api_request_cc_process_exit_action_is_retry() {
+        // WHY(#5455): action() must agree with is_retryable() so degraded-mode
+        // activates when the CC subprocess crashes mid-turn.
+        let err = ApiRequestSnafu {
+            message: "CC process exited with exit status: 1: OAuth token rejected".to_owned(),
+        }
+        .build();
+        assert!(
+            matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
+            "CC process exit must action as Retry, not Escalate"
+        );
+        assert_eq!(
+            err.class(),
+            koina::error_class::ErrorClass::Transient,
+            "CC process exit must classify as Transient"
+        );
+    }
+
+    #[test]
+    fn api_request_cc_subprocess_timeout_action_is_retry() {
+        // WHY(#5455): "timed out" != "timeout"; both must route to Retry so
+        // is_retryable() and action() agree for CC subprocess timeouts.
+        let err = ApiRequestSnafu {
+            message: "CC subprocess timed out after 300s".to_owned(),
+        }
+        .build();
+        assert!(
+            matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
+            "CC subprocess timed out must action as Retry, not Escalate"
+        );
+        assert_eq!(
+            err.class(),
+            koina::error_class::ErrorClass::Transient,
+            "CC subprocess timed out must classify as Transient"
         );
     }
 

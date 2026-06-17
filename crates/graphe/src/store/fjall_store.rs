@@ -60,18 +60,26 @@ fn storage_error(message: impl Into<String>) -> error::Error {
 /// lexicographic sort equals numeric sort.
 const SEQ_WIDTH: usize = 20;
 
+/// Maximum number of distillation event records retained per session.
+const DISTILLATION_RECORD_CAP: u64 = 100;
+
 /// Format a u64 as a zero-padded key component.
 fn pad_u64(v: u64) -> String {
     format!("{v:0>SEQ_WIDTH$}")
 }
 
-/// Decode a big-endian u64 from 8 bytes.
-fn decode_u64(bytes: &[u8]) -> u64 {
-    let arr: [u8; 8] = bytes
-        .get(..8)
-        .and_then(|s| s.try_into().ok())
-        .unwrap_or([0u8; 8]);
-    u64::from_be_bytes(arr)
+/// Decode a big-endian u64 counter from exactly 8 bytes.
+///
+/// A present-but-malformed (non-8-byte) value indicates corruption and is
+/// rejected rather than silently reset to zero — see issue #5029.
+fn try_decode_u64(bytes: &[u8], context: &str) -> Result<u64> {
+    let arr: [u8; 8] = bytes.try_into().map_err(|source| {
+        storage_error(format!(
+            "corrupt counter \"{context}\": expected 8 bytes, got {} ({source})",
+            bytes.len()
+        ))
+    })?;
+    Ok(u64::from_be_bytes(arr))
 }
 
 /// Encode a u64 as big-endian bytes.
@@ -310,6 +318,27 @@ impl SessionStore {
     fn read_session_by_raw_id(&self, id: &str) -> Result<Option<Session>> {
         let sessions = self.partition("sessions")?;
         self.get_json::<Session>(&sessions, id)
+    }
+
+    /// WHY: referential-integrity guard — child writes (usage, notes,
+    /// distillations) must reject non-existent sessions (#5027). Reads only the
+    /// session row's presence; never decodes it.
+    fn require_session_exists(&self, session_id: &str, context: &str) -> Result<()> {
+        use fjall::Readable;
+
+        let sessions_part = self.partition("sessions")?;
+        let snap = self.db.read_tx();
+        if snap
+            .get(&sessions_part, session_id)
+            .map_err(|e| storage_error(format!("fjall {context} session check: {e}")))?
+            .is_none()
+        {
+            return Err(error::SessionNotFoundSnafu {
+                id: session_id.to_owned(),
+            }
+            .build());
+        }
+        Ok(())
     }
 
     // ── Public API ────────────────────────────────────────────────────────
@@ -803,15 +832,17 @@ impl SessionStore {
 
         let next_seq_key = format!("next_seq:{session_id}");
         let snap = self.db.read_tx();
-        let current_seq = snap
+        let current_seq = match snap
             .get(&messages_part, next_seq_key.as_str())
             .map_err(|e| {
                 error::StorageSnafu {
                     message: format!("fjall seq read: {e}"),
                 }
                 .build()
-            })?
-            .map_or(0, |b| decode_u64(&b));
+            })? {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "next_seq")?,
+        };
         let seq = current_seq + 1;
         drop(snap);
 
@@ -819,16 +850,15 @@ impl SessionStore {
             // WHY: the `id` field uses a global counter so it is unique across sessions.
             let counters = self.partition("counters")?;
             let snap2 = self.db.read_tx();
-            let c = snap2
-                .get(&counters, "msg_id")
-                .map_err(|e| {
-                    error::StorageSnafu {
-                        message: format!("fjall msg_id counter: {e}"),
-                    }
-                    .build()
-                })?
-                .map_or(0, |b| decode_u64(&b))
-                + 1;
+            let c = match snap2.get(&counters, "msg_id").map_err(|e| {
+                error::StorageSnafu {
+                    message: format!("fjall msg_id counter: {e}"),
+                }
+                .build()
+            })? {
+                None => 0u64,
+                Some(b) => try_decode_u64(&b, "msg_id")?,
+            } + 1;
             drop(snap2);
             c
         };
@@ -883,8 +913,6 @@ impl SessionStore {
 
     /// Get non-distilled messages, newest `limit` in chronological order.
     fn load_messages_in_range(&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>> {
-        use std::collections::VecDeque;
-
         use fjall::Readable;
 
         let messages_part = self.partition("messages")?;
@@ -892,25 +920,41 @@ impl SessionStore {
         let upper = format!("{session_id};\x00");
         let snap = self.db.read_tx();
 
-        let limit = limit.and_then(|lim| usize::try_from(lim).ok());
-        let mut messages = VecDeque::new();
-        for guard in snap.range(&messages_part, prefix.as_str()..upper.as_str()) {
-            let (_k, v) = guard
-                .into_inner()
-                .map_err(|e| storage_error(format!("fjall load_messages_in_range: {e}")))?;
-            let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
-            if msg.is_distilled {
-                continue;
-            }
-            messages.push_back(msg);
-            if let Some(lim) = limit
-                && messages.len() > lim
+        if let Some(lim) = limit.and_then(|l| usize::try_from(l).ok()) {
+            // PERF: reverse scan with early-exit is O(limit) vs O(active_rows) forward scan.
+            let mut result = Vec::with_capacity(lim);
+            for guard in snap
+                .range(&messages_part, prefix.as_str()..upper.as_str())
+                .rev()
             {
-                messages.pop_front();
+                let (_k, v) = guard
+                    .into_inner()
+                    .map_err(|e| storage_error(format!("fjall load_messages_in_range: {e}")))?;
+                let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
+                if msg.is_distilled {
+                    continue;
+                }
+                result.push(msg);
+                if result.len() >= lim {
+                    break;
+                }
             }
+            result.reverse();
+            Ok(result)
+        } else {
+            // WHY: no limit — full forward scan returns all active messages in order.
+            let mut messages = Vec::new();
+            for guard in snap.range(&messages_part, prefix.as_str()..upper.as_str()) {
+                let (_k, v) = guard
+                    .into_inner()
+                    .map_err(|e| storage_error(format!("fjall load_messages_in_range: {e}")))?;
+                let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
+                if !msg.is_distilled {
+                    messages.push(msg);
+                }
+            }
+            Ok(messages)
         }
-
-        Ok(messages.into_iter().collect())
     }
 
     /// Get message history for a session.
@@ -1115,6 +1159,8 @@ impl SessionStore {
         let messages_part = self.partition("messages")?;
         let sessions_part = self.partition("sessions")?;
 
+        self.require_session_exists(session_id, "insert_distillation_summary")?;
+
         let mut tx = self.db.write_tx();
 
         let seq0_key = format!("{session_id}:{}", pad_u64(0));
@@ -1142,10 +1188,13 @@ impl SessionStore {
         }
 
         let counters_part = self.partition("counters")?;
-        let current_msg_id = tx
+        let current_msg_id = match tx
             .get(&counters_part, "msg_id")
             .map_err(|e| storage_error(format!("fjall msg_id counter read: {e}")))?
-            .map_or(0, |b| decode_u64(&b));
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "msg_id")?,
+        };
         let new_msg_id = current_msg_id + 1;
         tx.insert(&counters_part, "msg_id", encode_u64(new_msg_id));
 
@@ -1226,7 +1275,7 @@ impl SessionStore {
     ) -> Result<()> {
         use fjall::Readable;
 
-        let _guard = self
+        let guard = self
             .write_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -1235,11 +1284,26 @@ impl SessionStore {
         let counters_part = self.partition("counters")?;
 
         let snap = self.db.read_tx();
-        let dist_id = snap
+
+        // WHY: referential integrity — reject distillation records for non-existent sessions (#5027).
+        if snap
+            .get(&sessions_part, session_id)
+            .map_err(|e| storage_error(format!("fjall record_distillation session check: {e}")))?
+            .is_none()
+        {
+            return Err(error::SessionNotFoundSnafu {
+                id: session_id.to_owned(),
+            }
+            .build());
+        }
+
+        let dist_id = match snap
             .get(&counters_part, "dist_id")
             .map_err(|e| storage_error(format!("fjall dist_id counter read: {e}")))?
-            .map_or(0, |b| decode_u64(&b))
-            + 1;
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "dist_id")?,
+        } + 1;
         drop(snap);
 
         let rec = DistillationRecord {
@@ -1279,11 +1343,104 @@ impl SessionStore {
             .build()
         })?;
 
+        // WARNING: release the write lock before pruning — prune_distillation_records
+        // re-acquires it and the Mutex is non-reentrant (would self-deadlock).
+        drop(guard);
+
+        // WHY: cap per-session distillation records to avoid unbounded accumulation (#5693).
+        self.prune_distillation_records(session_id)?;
+
         info!(
             session_id,
             messages_before, messages_after, tokens_before, tokens_after, "recorded distillation"
         );
         Ok(())
+    }
+
+    /// Prune a session's distillation records to the most recent
+    /// [`DISTILLATION_RECORD_CAP`] entries.
+    ///
+    /// Records are keyed by a monotonically increasing per-store `dist_id`, so
+    /// lexicographic order equals chronological order and the oldest excess
+    /// keys are the lexicographically smallest.
+    ///
+    /// # Errors
+    /// Returns an error if the scan or delete transaction fails.
+    fn prune_distillation_records(&self, session_id: &str) -> Result<()> {
+        use fjall::Readable;
+
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let distillations_part = self.partition("distillations")?;
+        let snap = self.db.read_tx();
+        let prefix = format!("{session_id}:");
+        let upper = format!("{session_id};\x00");
+        let keys: Vec<Vec<u8>> = snap
+            .range(&distillations_part, prefix.as_str()..upper.as_str())
+            .map(|g| {
+                g.into_inner().map(|(k, _v)| k.to_vec()).map_err(|e| {
+                    storage_error(format!("fjall prune_distillation_records scan: {e}"))
+                })
+            })
+            .collect::<Result<_>>()?;
+        let cap = usize::try_from(DISTILLATION_RECORD_CAP).unwrap_or(usize::MAX);
+        let excess = keys.len().saturating_sub(cap);
+        if excess == 0 {
+            return Ok(());
+        }
+        let mut tx = self.db.write_tx();
+        for key in keys.iter().take(excess) {
+            tx.remove(&distillations_part, key.as_slice());
+        }
+        tx.commit()
+            .map_err(|e| storage_error(format!("fjall prune_distillation_records: {e}")))?;
+        Ok(())
+    }
+
+    /// Prune old usage records for a session, keeping at most `keep_last_n`
+    /// most recent rows.
+    ///
+    /// Usage rows are keyed by zero-padded `turn_seq`, so lexicographic order
+    /// equals chronological order and the oldest excess keys are the
+    /// lexicographically smallest.
+    ///
+    /// Returns the number of rows deleted.
+    ///
+    /// # Errors
+    /// Returns an error if the scan or delete transaction fails.
+    pub fn cleanup_usage_records(&self, session_id: &str, keep_last_n: u64) -> Result<u64> {
+        use fjall::Readable;
+
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let usage_part = self.partition("usage")?;
+        let snap = self.db.read_tx();
+        let prefix = format!("{session_id}:");
+        let upper = format!("{session_id};\x00");
+        let keys: Vec<Vec<u8>> = snap
+            .range(&usage_part, prefix.as_str()..upper.as_str())
+            .map(|g| {
+                g.into_inner()
+                    .map(|(k, _v)| k.to_vec())
+                    .map_err(|e| storage_error(format!("fjall cleanup_usage_records scan: {e}")))
+            })
+            .collect::<Result<_>>()?;
+        let keep = usize::try_from(keep_last_n).unwrap_or(usize::MAX);
+        let to_delete = keys.len().saturating_sub(keep);
+        if to_delete == 0 {
+            return Ok(0);
+        }
+        let mut tx = self.db.write_tx();
+        for key in keys.iter().take(to_delete) {
+            tx.remove(&usage_part, key.as_slice());
+        }
+        tx.commit()
+            .map_err(|e| storage_error(format!("fjall cleanup_usage_records: {e}")))?;
+        Ok(to_delete as u64) // kanon:ignore RUST/as-cast — count of deleted rows, bounded by partition size
     }
 
     // ── Usage ─────────────────────────────────────────────────────────────
@@ -1299,11 +1456,29 @@ impl SessionStore {
     /// Record token usage for a turn.
     #[instrument(skip(self, record), level = "debug")]
     pub fn record_usage(&self, record: &UsageRecord) -> Result<()> {
+        use fjall::Readable;
+
         let _guard = self
             .write_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let usage_part = self.partition("usage")?;
+
+        // WHY: referential integrity — reject usage writes to non-existent sessions (#5027).
+        let sessions_part = self.partition("sessions")?;
+        let snap = self.db.read_tx();
+        if snap
+            .get(&sessions_part, record.session_id.as_str())
+            .map_err(|e| storage_error(format!("fjall record_usage session check: {e}")))?
+            .is_none()
+        {
+            return Err(error::SessionNotFoundSnafu {
+                id: record.session_id.clone(),
+            }
+            .build());
+        }
+        drop(snap);
+
         let key = format!(
             "{}:{}",
             record.session_id,
@@ -1380,16 +1555,34 @@ impl SessionStore {
         let counters_part = self.partition("counters")?;
 
         let snap = self.db.read_tx();
-        let note_id = snap
+
+        // WHY: referential integrity — reject notes for non-existent sessions (#5027).
+        let sessions_part = self.partition("sessions")?;
+        if snap
+            .get(&sessions_part, session_id.as_bytes())
+            .map_err(|e| storage_error(format!("fjall add_note session check: {e}")))?
+            .is_none()
+        {
+            return Err(error::SessionNotFoundSnafu {
+                id: session_id.to_owned(),
+            }
+            .build());
+        }
+
+        let note_id = match snap
             .get(&counters_part, "note_local_id")
             .map_err(|e| storage_error(format!("fjall note_local_id counter read: {e}")))?
-            .map_or(0, |b| decode_u64(&b))
-            + 1;
-        let global_id = snap
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "note_local_id")?,
+        } + 1;
+        let global_id = match snap
             .get(&counters_part, "note_global_id")
             .map_err(|e| storage_error(format!("fjall note_global_id counter read: {e}")))?
-            .map_or(0, |b| decode_u64(&b))
-            + 1;
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "note_global_id")?,
+        } + 1;
         drop(snap);
 
         let note = AgentNote {
@@ -1631,18 +1824,19 @@ impl SessionStore {
     /// Returns an error if the message/session scan, JSON decoding, delete
     /// transaction, or durability flush fails.
     pub fn cleanup_orphan_messages(&self, cutoff_iso: &str) -> Result<u64> {
-        use std::collections::BTreeSet;
+        use std::collections::{BTreeSet, HashMap};
 
         use fjall::Readable;
 
-        let _guard = self
-            .write_lock
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // WHY: scan + resolve orphan-ness under a read snapshot BEFORE taking the
+        // write lock; the lock is held only for the delete batch (#5697).
         let messages_part = self.partition("messages")?;
         let sessions_part = self.partition("sessions")?;
         let snap = self.db.read_tx();
 
+        // WHY: deduplicate session lookups — one get per unique session_id rather
+        // than one per message row.
+        let mut session_exists: HashMap<String, bool> = HashMap::new();
         let mut keys_to_delete: BTreeSet<Vec<u8>> = BTreeSet::new();
         let mut primary_message_count: u64 = 0;
         for guard in snap.range::<&str, _>(&messages_part, ..) {
@@ -1660,13 +1854,19 @@ impl SessionStore {
             let Some((session_id, _seq)) = key_str.split_once(':') else {
                 continue;
             };
-            if snap
-                .get(&sessions_part, session_id.as_bytes())
-                .map_err(|e| {
-                    storage_error(format!("fjall cleanup_orphan_messages session lookup: {e}"))
-                })?
-                .is_some()
-            {
+            let exists = if let Some(&present) = session_exists.get(session_id) {
+                present
+            } else {
+                let present = snap
+                    .get(&sessions_part, session_id.as_bytes())
+                    .map_err(|e| {
+                        storage_error(format!("fjall cleanup_orphan_messages session lookup: {e}"))
+                    })?
+                    .is_some();
+                session_exists.insert(session_id.to_owned(), present);
+                present
+            };
+            if exists {
                 continue;
             }
             let message =
@@ -1682,6 +1882,10 @@ impl SessionStore {
         drop(snap);
 
         if !keys_to_delete.is_empty() {
+            let _guard = self
+                .write_lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut tx = self.db.write_tx();
             for key in &keys_to_delete {
                 tx.remove(&messages_part, key.as_slice());
@@ -1819,14 +2023,20 @@ impl SessionStore {
         }
 
         let next_seq_key = format!("next_seq:{}", msg.session_id);
-        let current_seq = snap
+        let current_seq = match snap
             .get(&messages_part, next_seq_key.as_str())
             .map_err(|e| storage_error(format!("fjall insert_message_raw seq read: {e}")))?
-            .map_or(0u64, |b| decode_u64(&b));
-        let current_msg_id = snap
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "next_seq")?,
+        };
+        let current_msg_id = match snap
             .get(&counters_part, "msg_id")
             .map_err(|e| storage_error(format!("fjall insert_message_raw msg_id read: {e}")))?
-            .map_or(0u64, |b| decode_u64(&b));
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "msg_id")?,
+        };
         drop(snap);
 
         let msg_seq_u64 = u64::try_from(msg.seq).map_err(|src| {
@@ -1936,6 +2146,29 @@ impl SessionStore {
                 let stale_nous_idx =
                     Self::session_nous_index_key(&prev.nous_id, &prev.updated_at, &prev.id);
                 tx.remove(&sessions_part, stale_nous_idx.as_str());
+            }
+        }
+
+        // WHY: a forced overwrite that displaces a DIFFERENT session from the
+        // (nous_id, session_key) slot must also evict that displaced owner — its
+        // session row and nous_idx would otherwise be orphaned, surfacing in list
+        // scans while its key index now points elsewhere (#5028).
+        if let Some(displaced_id) = existing_key_owner.as_deref()
+            && displaced_id != session.id.as_str()
+        {
+            let displaced_bytes = tx
+                .get(&sessions_part, displaced_id)
+                .map_err(|e| storage_error(format!("fjall import_session displaced get: {e}")))?;
+            if let Some(bytes) = displaced_bytes {
+                let displaced: Session =
+                    serde_json::from_slice(&bytes).context(error::StoredJsonSnafu)?;
+                let displaced_nous_idx = Self::session_nous_index_key(
+                    &displaced.nous_id,
+                    &displaced.updated_at,
+                    &displaced.id,
+                );
+                tx.remove(&sessions_part, displaced_nous_idx.as_str());
+                tx.remove(&sessions_part, displaced.id.as_str());
             }
         }
 

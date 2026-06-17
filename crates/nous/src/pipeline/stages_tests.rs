@@ -569,13 +569,16 @@ fn sleeping_providers(sleep: Duration) -> ProviderRegistry {
     providers
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn execute_timeout_with_distillation_returns_degraded_response() {
     let config = execute_stage_config();
     let mut pipeline_config = PipelineConfig::default();
     pipeline_config.stage_budget.execute_secs = 1;
 
     let store = SessionStore::open_in_memory().expect("in-memory store");
+    store
+        .create_session("ses-1", "test-agent", "main", None, None)
+        .expect("create session");
     store
         .insert_distillation_summary("ses-1", "cached distillation summary")
         .expect("insert summary");
@@ -641,7 +644,7 @@ async fn execute_timeout_with_distillation_returns_degraded_response() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn execute_timeout_without_distillation_returns_hard_timeout() {
     let config = execute_stage_config();
     let mut pipeline_config = PipelineConfig::default();
@@ -728,13 +731,16 @@ async fn provider_recall_bridge_bounds_rankings_to_manifest_ids() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn execute_timeout_streaming_with_distillation_returns_degraded_response() {
     let config = execute_stage_config();
     let mut pipeline_config = PipelineConfig::default();
     pipeline_config.stage_budget.execute_secs = 1;
 
     let store = SessionStore::open_in_memory().expect("in-memory store");
+    store
+        .create_session("ses-3", "test-agent", "main", None, None)
+        .expect("create session");
     store
         .insert_distillation_summary("ses-3", "cached distillation summary")
         .expect("insert summary");
