@@ -90,9 +90,17 @@ pub(crate) struct UsageData {
 
 /// SSE events for the turn streaming protocol (`POST /api/v1/sessions/stream`).
 ///
-/// Used by `koilon` and the Signal integration. Unified with `SseEvent` naming:
-/// event types use the same `message_start`/`message_complete` vocabulary,
-/// and all fields use `snake_case` per API.md (#3271).
+/// Used by `koilon` and the Signal integration. Event type discriminators
+/// (`message_start`/`message_complete`) are shared with `SseEvent`, and all
+/// fields use `snake_case` per API.md (#3271).
+///
+/// WARNING(#5785): `ToolUse` field names diverge from `SseEvent::ToolUse`:
+/// this type uses `tool_id`/`tool_name`; `SseEvent` uses `id`/`name`.
+/// `ToolResult` also diverges: this type carries `tool_name`, `tool_id`,
+/// `result`, `is_error`, `duration_ms`; `SseEvent` carries `tool_use_id`,
+/// `content`, `is_error`. Clients consuming both streams must handle both
+/// shapes. Unifying the field names is a breaking wire change tracked by
+/// #5785.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]

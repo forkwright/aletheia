@@ -88,6 +88,9 @@ pub struct AppState {
     /// drained by approval handlers keyed by turn and tool id, and removed when
     /// the turn ends.
     pub approval_registry: Arc<ApprovalRegistry>,
+    /// When `true`, the `/metrics` endpoint is restricted to loopback
+    /// connections only (#4995). Derived from `gateway.bind` at startup.
+    pub loopback_only_metrics: bool,
 }
 
 impl AppState {
@@ -210,6 +213,8 @@ pub struct MetricsState {
     pub start_time: std::time::Instant,
     /// Shared Prometheus metrics registry for encoding scrapes.
     pub metrics_registry: MetricsRegistry,
+    /// When true, `/metrics` is restricted to loopback connections only (#4995).
+    pub loopback_only_metrics: bool,
 }
 
 impl FromRef<Arc<AppState>> for MetricsState {
@@ -218,6 +223,7 @@ impl FromRef<Arc<AppState>> for MetricsState {
             session_store: Arc::clone(&state.session_store),
             start_time: state.start_time,
             metrics_registry: state.metrics_registry.clone(),
+            loopback_only_metrics: state.loopback_only_metrics,
         }
     }
 }

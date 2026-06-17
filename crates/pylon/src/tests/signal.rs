@@ -136,5 +136,6 @@ fn minimal_app_state() -> Arc<AppState> {
         metrics_registry,
         event_bus: Arc::new(crate::event_bus::EventBus::new(256)),
         approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),
+        loopback_only_metrics: false,
     })
 }

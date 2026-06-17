@@ -9,6 +9,8 @@ use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
+use tracing::Instrument;
+
 use crate::error::{ErrorBody, ErrorResponse};
 
 /// Per-IP sliding-window rate limiter for anonymous HTTP requests.
@@ -103,6 +105,57 @@ impl RateLimiter {
             reset_secs: remaining_time.as_secs() + 1,
         })
     }
+
+    /// Remove entries for IPs whose rate-limit window has already expired.
+    ///
+    /// Called periodically by [`spawn_anon_cleanup`] to prevent unbounded map growth.
+    /// Returns the number of entries evicted.
+    // WHY(#5664): The per-IP map accumulates one entry per distinct client IP
+    // with no eviction path. Under IP-spoofed bursts this grows without bound
+    // and holds a Mutex contended on every hot request path.
+    pub(crate) fn cleanup_stale(&self) -> usize {
+        let now = Instant::now();
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let before = state.len();
+        state.retain(|_, (window_start, _)| now.duration_since(*window_start) < self.window);
+        before - state.len()
+    }
+}
+
+/// Spawn a background task that periodically evicts stale per-IP rate-limit
+/// entries to prevent unbounded [`HashMap`] growth (#5664).
+///
+/// # Cancel safety
+///
+/// Cancel-safe. The task exits cleanly on `shutdown.cancelled()`.
+pub fn spawn_anon_cleanup(
+    limiter: Arc<RateLimiter>,
+    shutdown: tokio_util::sync::CancellationToken,
+) {
+    // WHY(#5664): Evict every half-window so stale entries age out within one
+    // full window of inactivity. Clamped to at least 30 seconds.
+    let interval = (limiter.window / 2).max(Duration::from_secs(30));
+    let span = tracing::info_span!("anon_rate_limit_cleanup");
+    tokio::spawn(
+        async move {
+            loop {
+                tokio::select! {
+                    biased;
+                    () = shutdown.cancelled() => break,
+                    () = tokio::time::sleep(interval) => {
+                        let evicted = limiter.cleanup_stale();
+                        if evicted > 0 {
+                            tracing::debug!(evicted, "evicted stale anonymous rate-limit entries");
+                        }
+                    }
+                }
+            }
+        }
+        .instrument(span),
+    );
 }
 
 /// Extract the best available client identifier for rate limiting.

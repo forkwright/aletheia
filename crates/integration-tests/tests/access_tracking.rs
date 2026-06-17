@@ -5,7 +5,6 @@
     clippy::indexing_slicing,
     reason = "test: vec indices valid after length assertions"
 )]
-
 use std::sync::Arc;
 
 use mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};

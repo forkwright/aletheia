@@ -38,6 +38,9 @@ pub enum EndpointCategory {
     Llm,
     /// Tool execution endpoints.
     Tool,
+    /// Control-plane endpoints that affect sensitive backend state (#4773):
+    /// tool approvals, event subscriptions, and knowledge mutations.
+    ControlPlane,
     /// All other API endpoints.
     General,
 }
@@ -52,6 +55,18 @@ impl EndpointCategory {
         }
         if path.contains("/tools") || path.contains("/config/reload") {
             return Self::Tool;
+        }
+        // WHY(#4773): Approval decisions, event subscriptions, and knowledge
+        // mutations are control-plane operations with outsized backend impact;
+        // they should not share a bucket with low-risk general traffic.
+        if path.contains("/approvals")
+            || path.contains("/events/subscribe")
+            || path.contains("/knowledge/ingest")
+            || path.contains("/knowledge/import")
+            || path.contains("/knowledge/bulk")
+            || path.contains("/knowledge/entities/merge")
+        {
+            return Self::ControlPlane;
         }
         Self::General
     }
@@ -230,7 +245,7 @@ impl UserRateLimiter {
         buckets.last_access = now;
 
         let bucket = match category {
-            EndpointCategory::General => &mut buckets.general,
+            EndpointCategory::General | EndpointCategory::ControlPlane => &mut buckets.general,
             EndpointCategory::Llm => &mut buckets.llm,
             EndpointCategory::Tool => &mut buckets.tool,
         };
@@ -251,7 +266,7 @@ impl UserRateLimiter {
 
         let buckets = state.get(user)?;
         let bucket = match category {
-            EndpointCategory::General => &buckets.general,
+            EndpointCategory::General | EndpointCategory::ControlPlane => &buckets.general,
             EndpointCategory::Llm => &buckets.llm,
             EndpointCategory::Tool => &buckets.tool,
         };
@@ -295,7 +310,7 @@ impl UserRateLimiter {
         buckets.last_access = now;
 
         let bucket = match category {
-            EndpointCategory::General => &mut buckets.general,
+            EndpointCategory::General | EndpointCategory::ControlPlane => &mut buckets.general,
             EndpointCategory::Llm => &mut buckets.llm,
             EndpointCategory::Tool => &mut buckets.tool,
         };
