@@ -710,7 +710,7 @@ impl RuntimeBuilder {
                             Arc::clone(cron_lock_store),
                             &task_tracker,
                             &shutdown_token,
-                        )?;
+                        );
                     } else {
                         warn!(
                             cron_tasks = self.config.dispatch.cron_tasks.len(),

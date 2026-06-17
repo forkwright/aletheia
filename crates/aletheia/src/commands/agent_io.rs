@@ -1985,10 +1985,9 @@ fn truncate_for_review(value: &str, max_chars: usize) -> String {
     }
 }
 
-#[expect(
-    clippy::unused_async,
-    reason = "async required when migrate-qdrant feature is enabled"
-)]
+// async required when migrate-qdrant feature is enabled; with the feature
+// disabled this function has no await points.
+#[allow(clippy::unused_async)]
 pub(crate) async fn migrate_memory(
     instance_root: Option<&PathBuf>,
     args: MigrateMemoryArgs,

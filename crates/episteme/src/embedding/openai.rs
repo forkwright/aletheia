@@ -410,9 +410,8 @@ mod tests {
         std::thread::spawn(|| {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let server = rt.block_on(async {
-                let server = MockServer::start().await;
                 // No mock mounted — if we made an HTTP request it would fail.
-                server
+                MockServer::start().await
             });
 
             let provider = mock_provider(&server);
