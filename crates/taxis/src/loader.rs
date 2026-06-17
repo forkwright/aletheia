@@ -7,6 +7,11 @@
 //!    then `enc:` values decrypted.
 //! 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`),
 //!    with `__` splitting nested keys and lowercasing.
+//!
+//! Encrypted values (`enc:` prefix) are transparently decrypted using the
+//! primary key from `~/.config/aletheia/primary.key`. If the key is missing
+//! but `enc:` values are present, startup fails with an actionable error
+//! listing the affected fields.
 
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -33,8 +38,9 @@ use crate::oikos::Oikos;
 /// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
 ///
 /// Encrypted values (`enc:` prefix) are transparently decrypted using the
-/// primary key from `~/.config/aletheia/primary.key`. If the key is missing,
-/// encrypted values pass through unchanged with a warning.
+/// primary key from `~/.config/aletheia/primary.key`. If the key is missing
+/// but `enc:` values are present, startup fails with an actionable error
+/// listing the affected fields.
 ///
 /// Call [`load_config_with`] to supply a custom [`FileSystem`] implementation
 /// (e.g. `koina::system::TestSystem` in tests).
@@ -789,6 +795,30 @@ archiveBeforeDelete = true
         );
         assert_eq!(config.maintenance.retention.max_sessions_per_nous, 200);
         assert!(config.maintenance.retention.archive_before_delete);
+    }
+
+    #[test]
+    fn missing_primary_key_with_enc_values_fails() {
+        let mut jail = EnvJail::new();
+        // WHY: point the primary-key resolver at a nonexistent file so the
+        // loader sees encrypted values and no key.
+        jail.set_env("ALETHEIA_PRIMARY_KEY", "/nonexistent/primary.key");
+        jail.create_file(
+            "config/aletheia.toml",
+            "[gateway.auth]\nmode = \"token\"\nsigningKey = \"enc:AAAA\"\n",
+        );
+
+        let oikos = Oikos::from_root(jail.directory());
+        let result = load_config(&oikos);
+        assert!(
+            result.is_err(),
+            "missing primary key with enc values must fail closed"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("encrypted config fields cannot be decrypted"),
+            "error should mention encrypted fields: {msg}"
+        );
     }
 
     #[test]
