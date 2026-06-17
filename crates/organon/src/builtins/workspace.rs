@@ -464,6 +464,12 @@ impl ToolExecutor for EditExecutor {
             let new_text = extract_str(&input.arguments, "new_text", &input.name)?;
             let path = validate_path(path_str, ctx, &input.name)?;
 
+            if let Some(protected) = is_protected_file(&path, &ctx.workspace) {
+                return Ok(err_result(format!(
+                    "cannot edit protected file: {protected}"
+                )));
+            }
+
             let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

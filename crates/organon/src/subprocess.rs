@@ -210,7 +210,7 @@ impl SubprocessRunner {
             }
         }
 
-        apply_resource_limits(&mut cmd, self.sandbox.nproc_limit);
+        apply_resource_limits(&mut cmd, self.sandbox.nproc_limit, self.sandbox.enforcement);
         isolate_process_group(&mut cmd);
 
         if self.sandbox.enabled {
@@ -305,10 +305,15 @@ impl SubprocessRunner {
 }
 
 #[cfg(target_os = "linux")]
-fn apply_resource_limits(cmd: &mut Command, nproc_limit: u32) {
+fn apply_resource_limits(
+    cmd: &mut Command,
+    nproc_limit: u32,
+    enforcement: crate::sandbox::SandboxEnforcement,
+) {
     use std::os::unix::process::CommandExt as _;
 
     let nproc_cap = u64::from(nproc_limit);
+    let enforcing = enforcement == crate::sandbox::SandboxEnforcement::Enforcing;
 
     #[expect(
         unsafe_code,
@@ -322,13 +327,28 @@ fn apply_resource_limits(cmd: &mut Command, nproc_limit: u32) {
                 current: Some(nproc_cap),
                 maximum: Some(nproc_cap),
             };
-            let _ = setrlimit(Resource::Nproc, nproc_limit);
+            // WHY: Under enforcing policy, resource limits are safety controls
+            // and must succeed. Under permissive policy, failures are logged
+            // but do not block execution.
+            if let Err(e) = setrlimit(Resource::Nproc, nproc_limit)
+                && enforcing
+            {
+                return Err(std::io::Error::other(format!(
+                    "setrlimit(RLIMIT_NPROC) failed: {e}"
+                )));
+            }
 
             let cpu_limit = Rlimit {
                 current: Some(60),
                 maximum: Some(60),
             };
-            let _ = setrlimit(Resource::Cpu, cpu_limit);
+            if let Err(e) = setrlimit(Resource::Cpu, cpu_limit)
+                && enforcing
+            {
+                return Err(std::io::Error::other(format!(
+                    "setrlimit(RLIMIT_CPU) failed: {e}"
+                )));
+            }
 
             Ok(())
         });
@@ -336,7 +356,12 @@ fn apply_resource_limits(cmd: &mut Command, nproc_limit: u32) {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn apply_resource_limits(_cmd: &mut Command, _nproc_limit: u32) {}
+fn apply_resource_limits(
+    _cmd: &mut Command,
+    _nproc_limit: u32,
+    _enforcement: crate::sandbox::SandboxEnforcement,
+) {
+}
 
 #[cfg(unix)]
 fn isolate_process_group(cmd: &mut Command) {
