@@ -39,7 +39,8 @@ impl Default for ComputerUseSessionConfig {
                 PathBuf::from("/lib"),
                 PathBuf::from("/lib64"),
                 PathBuf::from("/etc"),
-                PathBuf::from("/proc"),
+                // WHY: Same minimal /proc grant as the execution sandbox.
+                PathBuf::from("/proc/self"),
                 PathBuf::from("/dev"),
             ],
             allowed_write_paths: vec![RealSystem.temp_dir()],

@@ -67,7 +67,7 @@ fn permissive_fails_open_when_landlock_unavailable() {
             PathBuf::from("/lib"),
             PathBuf::from("/lib64"),
             PathBuf::from("/etc"),
-            PathBuf::from("/proc"),
+            PathBuf::from("/proc/self"),
             PathBuf::from("/dev"),
             workspace.path().to_path_buf(),
         ],
@@ -125,24 +125,72 @@ fn disabled_policy_allows_all() {
 
 // ── Edge cases ──
 
-/// Test /proc/self access restrictions (escape vector).
+/// Test that /proc/self remains readable for the child's own metadata.
 #[cfg(target_os = "linux")]
 #[test]
-fn proc_self_access_restricted() {
+fn proc_self_access_allowed() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // WHY: /proc/self/environ would leak parent environment variables if readable.
+    // WHY: /proc/self is explicitly allowed because the child's environment
+    // is already scrubbed; reading its own metadata does not leak parent secrets.
     let mut cmd = Command::new("cat");
     cmd.arg("/proc/self/environ");
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
     let output = cmd.output().expect("spawn child");
-    // NOTE: /proc is in read_paths by default so the read may succeed; this
-    // test only guards that sandbox setup and spawn complete without crashing.
     assert!(
-        output.status.success() || !output.status.success(),
-        "proc access test should complete without crashing"
+        output.status.success(),
+        "reading /proc/self/environ should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// Test that a sandboxed child cannot read the parent's /proc environ.
+#[cfg(target_os = "linux")]
+#[test]
+fn proc_parent_environ_blocked() {
+    let _guard = crate::subprocess::SUBPROCESS_ENV_LOCK
+        .lock()
+        .expect("env lock");
+
+    let secret = "ORGANON_PARENT_SECRET=not-for-sandboxed-child";
+    #[expect(unsafe_code, reason = "test controls process environment")]
+    unsafe {
+        std::env::set_var("ORGANON_PARENT_SECRET", "not-for-sandboxed-child");
+    }
+
+    let workspace = tempfile::tempdir().expect("create workspace");
+    let policy = policy_with_system_paths(workspace.path());
+
+    // WHY: $PPID is the parent test process. /proc/<ppid>/environ would expose
+    // every variable the parent inherited, including API keys. Only /proc/self
+    // is in the read set, so this read must be denied.
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c")
+        .arg("cat /proc/$PPID/environ 2>&1; echo exit=$?");
+    apply_sandbox(&mut cmd, policy).expect("apply sandbox");
+
+    let output = cmd.output().expect("spawn child");
+
+    #[expect(unsafe_code, reason = "test controls process environment")]
+    unsafe {
+        std::env::remove_var("ORGANON_PARENT_SECRET");
+    }
+
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        !combined.contains(secret),
+        "sandboxed child must not read parent environ through /proc: {combined}"
+    );
+    assert!(
+        combined.contains("exit=1") || combined.contains("Permission denied"),
+        "reading /proc/$PPID/environ should fail: {combined}"
     );
 }
 

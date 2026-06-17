@@ -301,6 +301,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "allow-absolute-file-refs"))]
     fn absolute_path_rejected() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let text = "{{file:/etc/passwd:1:1}}";

@@ -98,6 +98,7 @@ optional = true
 energeia = { path = "../energeia", features = ["storage-fjall"] }
 fjall = { version = "3", default-features = false, features = ["lz4"] }
 indexmap = { workspace = true }
+libc = { workspace = true }
 proptest = { workspace = true }
 rustls = { workspace = true }
 snafu = { workspace = true }

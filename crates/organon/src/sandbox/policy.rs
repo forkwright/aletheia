@@ -85,27 +85,41 @@ impl SandboxPolicy {
     /// on failure; on unsupported kernels, logs and continues based on
     /// enforcement mode.
     pub(crate) fn apply(&self) -> std::io::Result<()> {
-        self.apply_egress()
-            .or_else(|e| self.degrade_or_fail("egress", &e))?;
-        self.apply_landlock()
-            .or_else(|e| self.degrade_or_fail("landlock", &e))?;
-        self.apply_seccomp()
-            .or_else(|e| self.degrade_or_fail("seccomp", &e))?;
-        Ok(())
-    }
+        // WHY: Egress, Landlock, and seccomp are independent controls. A failure
+        // in one must not short-circuit the others; otherwise a missing kernel
+        // feature (e.g. Landlock) could leave the child fully unsandboxed.
+        let egress = self.apply_egress();
+        let landlock = self.apply_landlock();
+        let seccomp = self.apply_seccomp();
 
-    fn degrade_or_fail(
-        &self,
-        guarantee: &'static str,
-        err: &std::io::Error,
-    ) -> std::io::Result<()> {
-        if self.enforcement == SandboxEnforcement::Permissive {
-            Ok(())
-        } else {
-            Err(std::io::Error::other(format!(
-                "{guarantee} sandbox setup failed: {err}"
-            )))
+        let mut failures: Vec<(&str, String)> = Vec::new();
+        if let Err(e) = egress {
+            failures.push(("egress", e.to_string()));
         }
+        if let Err(e) = landlock {
+            failures.push(("landlock", e.to_string()));
+        }
+        if let Err(e) = seccomp {
+            failures.push(("seccomp", e.to_string()));
+        }
+
+        if failures.is_empty() || self.enforcement == SandboxEnforcement::Permissive {
+            // WHY: Permissive mode deliberately continues after logging the
+            // degradation in the parent. All requested controls were still
+            // attempted above, so any that could be installed are active.
+            return Ok(());
+        }
+
+        // INVARIANT: In enforcing mode, any sandbox setup failure is fatal.
+        // Return the first failure with a clear name so operators can tell
+        // which guarantee blocked execution.
+        if let Some((name, err)) = failures.into_iter().next() {
+            return Err(std::io::Error::other(format!(
+                "{name} sandbox setup failed: {err}"
+            )));
+        }
+
+        Ok(())
     }
 
     /// Apply network egress restrictions via Linux network namespaces.
@@ -184,7 +198,7 @@ impl SandboxPolicy {
         .map_err(|e| std::io::Error::other(format!("seccomp condition failed: {e}")))?;
 
         let rules = std::collections::BTreeMap::from([(
-            41i64, /* SYS_socket */
+            arch_syscalls::SYS_SOCKET,
             vec![
                 SeccompRule::new(vec![block_inet])
                     .map_err(|e| std::io::Error::other(format!("seccomp rule failed: {e}")))?,
@@ -335,19 +349,7 @@ impl SandboxPolicy {
 
         use seccompiler::{SeccompAction, SeccompFilter, SeccompRule};
 
-        let blocked_syscalls: &[i64] = &[
-            // kanon:ignore RUST/indexing-slicing
-            101i64, /* SYS_ptrace */
-            165i64, /* SYS_mount */
-            166i64, /* SYS_umount2 */
-            169i64, /* SYS_reboot */
-            246i64, /* SYS_kexec_load */
-            175i64, /* SYS_init_module */
-            176i64, /* SYS_delete_module */
-            313i64, /* SYS_finit_module */
-            155i64, /* SYS_pivot_root */
-            161i64, /* SYS_chroot */
-        ];
+        let blocked_syscalls: &[i64] = blocked_syscalls();
 
         let rules: BTreeMap<i64, Vec<SeccompRule>> =
             blocked_syscalls.iter().map(|&nr| (nr, vec![])).collect();
@@ -403,6 +405,66 @@ fn target_arch() -> seccompiler::TargetArch {
     {
         seccompiler::TargetArch::aarch64
     }
+}
+
+/// Architecture-specific syscall numbers used in seccomp BPF filters.
+///
+/// WHY: seccompiler validates the filter against a target architecture, but the
+/// rule keys are raw syscall numbers. Using `x86_64` numbers on `aarch64` (or
+/// vice versa) would silently fail to block the intended syscalls.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) mod arch_syscalls {
+    pub const SYS_PTRACE: i64 = 101;
+    pub const SYS_MOUNT: i64 = 165;
+    pub const SYS_UMOUNT2: i64 = 166;
+    pub const SYS_REBOOT: i64 = 169;
+    pub const SYS_KEXEC_LOAD: i64 = 246;
+    pub const SYS_INIT_MODULE: i64 = 175;
+    pub const SYS_DELETE_MODULE: i64 = 176;
+    pub const SYS_FINIT_MODULE: i64 = 313;
+    pub const SYS_PIVOT_ROOT: i64 = 155;
+    pub const SYS_CHROOT: i64 = 161;
+    pub const SYS_SOCKET: i64 = 41;
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+pub(crate) mod arch_syscalls {
+    pub const SYS_PTRACE: i64 = 117;
+    pub const SYS_MOUNT: i64 = 40;
+    pub const SYS_UMOUNT2: i64 = 39;
+    pub const SYS_REBOOT: i64 = 142;
+    pub const SYS_KEXEC_LOAD: i64 = 104;
+    pub const SYS_INIT_MODULE: i64 = 105;
+    pub const SYS_DELETE_MODULE: i64 = 106;
+    pub const SYS_FINIT_MODULE: i64 = 273;
+    pub const SYS_PIVOT_ROOT: i64 = 41;
+    pub const SYS_CHROOT: i64 = 51;
+    pub const SYS_SOCKET: i64 = 198;
+}
+
+/// Return the list of syscalls blocked by the seccomp filter for this arch.
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+#[must_use]
+pub(crate) fn blocked_syscalls() -> &'static [i64] {
+    use arch_syscalls::{
+        SYS_CHROOT, SYS_DELETE_MODULE, SYS_FINIT_MODULE, SYS_INIT_MODULE, SYS_KEXEC_LOAD,
+        SYS_MOUNT, SYS_PIVOT_ROOT, SYS_PTRACE, SYS_REBOOT, SYS_UMOUNT2,
+    };
+    &[
+        SYS_PTRACE,
+        SYS_MOUNT,
+        SYS_UMOUNT2,
+        SYS_REBOOT,
+        SYS_KEXEC_LOAD,
+        SYS_INIT_MODULE,
+        SYS_DELETE_MODULE,
+        SYS_FINIT_MODULE,
+        SYS_PIVOT_ROOT,
+        SYS_CHROOT,
+    ]
 }
 
 /// Cached Landlock ABI version, initialized on first sandbox use.

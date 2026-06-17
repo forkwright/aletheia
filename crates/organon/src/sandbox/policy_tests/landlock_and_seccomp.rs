@@ -321,13 +321,16 @@ fn seccomp_blocks_reboot() {
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = policy_with_system_paths(workspace.path());
 
-    // 169 == SYS_reboot on x86_64. Invalid magic (0) => EINVAL even for a privileged
-    // caller; the enforcing seccomp filter returns EPERM first. The syscall always
-    // fails (ret == -1) and never performs a reboot.
-    let probe = "import ctypes, sys\n\
-                 libc = ctypes.CDLL(None, use_errno=True)\n\
-                 ret = libc.syscall(169, 0, 0, 0, 0)\n\
-                 sys.stdout.write('ret=%d errno=%d' % (ret, ctypes.get_errno()))\n";
+    // Use the architecture-correct syscall number; invalid magic (0) => EINVAL even
+    // for a privileged caller, and the enforcing seccomp filter returns EPERM first.
+    // The syscall always fails (ret == -1) and never performs a reboot.
+    let sys_reboot = arch_syscalls::SYS_REBOOT;
+    let probe = format!(
+        "import ctypes, sys\n\
+         libc = ctypes.CDLL(None, use_errno=True)\n\
+         ret = libc.syscall({sys_reboot}, 0, 0, 0, 0)\n\
+         sys.stdout.write('ret=%d errno=%d' % (ret, ctypes.get_errno()))\n"
+    );
     let mut cmd = Command::new("python3");
     cmd.arg("-c").arg(probe);
     apply_sandbox(&mut cmd, policy).expect("apply sandbox");
@@ -525,4 +528,41 @@ fn namespace_allows_loopback() {
         stdout.contains("retcode=0") || stdout.contains("retcode=1"),
         "loopback test should complete: {stdout}"
     );
+}
+
+// ── Architecture-correct syscall number coverage ──
+
+/// WHY(#5070): The seccomp filter keys are raw syscall numbers. This test
+/// guards against accidentally embedding `x86_64` numbers on `aarch64` (or vice
+/// versa), which would silently disable the filter on that architecture.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn seccomp_blocked_numbers_match_libc_x86_64() {
+    assert_eq!(arch_syscalls::SYS_PTRACE, libc::SYS_ptrace);
+    assert_eq!(arch_syscalls::SYS_MOUNT, libc::SYS_mount);
+    assert_eq!(arch_syscalls::SYS_UMOUNT2, libc::SYS_umount2);
+    assert_eq!(arch_syscalls::SYS_REBOOT, libc::SYS_reboot);
+    assert_eq!(arch_syscalls::SYS_KEXEC_LOAD, libc::SYS_kexec_load);
+    assert_eq!(arch_syscalls::SYS_INIT_MODULE, libc::SYS_init_module);
+    assert_eq!(arch_syscalls::SYS_DELETE_MODULE, libc::SYS_delete_module);
+    assert_eq!(arch_syscalls::SYS_FINIT_MODULE, libc::SYS_finit_module);
+    assert_eq!(arch_syscalls::SYS_PIVOT_ROOT, libc::SYS_pivot_root);
+    assert_eq!(arch_syscalls::SYS_CHROOT, libc::SYS_chroot);
+    assert_eq!(arch_syscalls::SYS_SOCKET, libc::SYS_socket);
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+#[test]
+fn seccomp_blocked_numbers_match_libc_aarch64() {
+    assert_eq!(arch_syscalls::SYS_PTRACE, libc::SYS_ptrace);
+    assert_eq!(arch_syscalls::SYS_MOUNT, libc::SYS_mount);
+    assert_eq!(arch_syscalls::SYS_UMOUNT2, libc::SYS_umount2);
+    assert_eq!(arch_syscalls::SYS_REBOOT, libc::SYS_reboot);
+    assert_eq!(arch_syscalls::SYS_KEXEC_LOAD, libc::SYS_kexec_load);
+    assert_eq!(arch_syscalls::SYS_INIT_MODULE, libc::SYS_init_module);
+    assert_eq!(arch_syscalls::SYS_DELETE_MODULE, libc::SYS_delete_module);
+    assert_eq!(arch_syscalls::SYS_FINIT_MODULE, libc::SYS_finit_module);
+    assert_eq!(arch_syscalls::SYS_PIVOT_ROOT, libc::SYS_pivot_root);
+    assert_eq!(arch_syscalls::SYS_CHROOT, libc::SYS_chroot);
+    assert_eq!(arch_syscalls::SYS_SOCKET, libc::SYS_socket);
 }
