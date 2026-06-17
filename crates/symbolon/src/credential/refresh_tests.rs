@@ -661,9 +661,21 @@ mod do_refresh_log_tests {
 
     use super::super::do_refresh;
 
+    // WHY(#5247): reqwest 0.13 with rustls-no-provider panics with
+    // "No provider set" if no crypto provider is installed before any
+    // `Client` is constructed. Each regression test must be self-contained
+    // and not rely on another test having installed the provider first.
+    fn ensure_crypto_provider() {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        });
+    }
+
     #[tokio::test]
     #[tracing_test::traced_test]
     async fn oauth_error_body_is_not_logged() {
+        ensure_crypto_provider();
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/token"))
@@ -696,6 +708,7 @@ mod do_refresh_log_tests {
     #[tokio::test]
     #[tracing_test::traced_test]
     async fn invalid_grant_logs_only_error_code_not_description() {
+        ensure_crypto_provider();
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/token"))
