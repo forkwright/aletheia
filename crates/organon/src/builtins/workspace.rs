@@ -144,11 +144,16 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
             .fold(base, |acc, component| acc.join(component))
     };
 
-    // WHY: Single-phase check using canonical paths for both the input and
-    // the allowed roots. The previous two-phase approach hard-rejected in the
-    // normalized check before reaching the canonical check, which broke when
-    // oikos canonicalized roots at startup (resolving symlinks) but the input
-    // path used the non-canonical form.
+    // INVARIANT: Authorization must use the canonical, symlink-resolved
+    // target only. Accepting the normalized (pre-canonicalization) path
+    // allowed an in-root symlink to point outside the allowed roots: the
+    // normalized path started with the root while the canonical target did
+    // not (#4954).
+    //
+    // WHY: Each allowed root is canonicalized so non-canonical root forms
+    // (symlinks, trailing slashes) still match their resolved children.
+    // The containment check is a strict prefix on Path components, so
+    // "/allowed-root" correctly rejects "/allowed-root-impostor".
     let allowed = ctx.allowed_roots.iter().any(|root| {
         let canon_root = root.canonicalize().unwrap_or_else(|_| normalize(root));
         canonical.starts_with(&canon_root)

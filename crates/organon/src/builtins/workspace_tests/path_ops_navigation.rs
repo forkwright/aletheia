@@ -430,3 +430,77 @@ fn test_validate_path_root_exact_match() {
         "path that exactly matches an allowed root should be accepted: {result:?}"
     );
 }
+
+#[test]
+fn test_validate_path_rejects_in_root_symlink_to_outside() {
+    // WHY(#4954): An in-root symlink whose canonical target is outside the
+    // allowed roots must be rejected. The previous check accepted the
+    // normalized (pre-canonicalization) path, which started with the root.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let outside_dir = tempfile::tempdir().expect("create outside temp dir");
+    let secret = outside_dir.path().join("secret.txt");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test setup requires direct filesystem access"
+    )]
+    std::fs::write(&secret, "escaped secret").expect("write secret");
+
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(outside_dir.path(), &link).expect("create symlink");
+
+    let canonical_root = dir.path().canonicalize().expect("canonicalize root");
+    let ctx = ToolContext {
+        nous_id: NousId::new("test-agent").expect("valid"),
+        session_id: SessionId::new(),
+        turn_number: 0,
+        workspace: canonical_root.clone(),
+        allowed_roots: vec![canonical_root],
+        services: None,
+        active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+    };
+    let name = koina::id::ToolName::new("read").expect("valid");
+
+    let result = validate_path("link/secret.txt", &ctx, &name);
+    let err = match result {
+        Err(e) => e,
+        Ok(path) => {
+            panic!("in-root symlink pointing outside the root must be rejected; got {path:?}")
+        }
+    };
+    assert!(
+        err.to_string().contains("outside allowed roots"),
+        "error must name the containment failure"
+    );
+}
+
+#[test]
+fn test_validate_path_rejects_write_through_symlink_to_outside() {
+    // WHY(#4954): The same containment rule must hold for write destinations
+    // that do not yet exist, where the canonicalization resolves a symlinked
+    // parent to an outside directory.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let outside_dir = tempfile::tempdir().expect("create outside temp dir");
+
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(outside_dir.path(), &link).expect("create symlink");
+
+    let canonical_root = dir.path().canonicalize().expect("canonicalize root");
+    let ctx = ToolContext {
+        nous_id: NousId::new("test-agent").expect("valid"),
+        session_id: SessionId::new(),
+        turn_number: 0,
+        workspace: canonical_root.clone(),
+        allowed_roots: vec![canonical_root],
+        services: None,
+        active_tools: Arc::new(RwLock::new(HashSet::new())),
+        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+    };
+    let name = koina::id::ToolName::new("write").expect("valid");
+
+    let result = validate_path("link/new_file.txt", &ctx, &name);
+    assert!(
+        result.is_err(),
+        "write through in-root symlink to outside must be rejected: {result:?}"
+    );
+}
