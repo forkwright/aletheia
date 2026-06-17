@@ -12,8 +12,8 @@
 use std::fmt::Write as _;
 
 use super::shared::{
-    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64,
-    legend_needed, ticks_for_axis,
+    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64, legend_needed,
+    ticks_for_axis,
 };
 use crate::Result;
 use crate::format::{coord, format_number};
@@ -74,7 +74,15 @@ pub fn emit(
     emit_svg_open(&mut out, chart, canvas);
     emit_gridlines(&mut out, lo, hi, &x_scale, &plot, &chart.axes.x);
     emit_axes(
-        &mut out, chart, lo, hi, &x_scale, &plot, band_h, theme, &chart.axes.x,
+        &mut out,
+        chart,
+        lo,
+        hi,
+        &x_scale,
+        &plot,
+        band_h,
+        theme,
+        &chart.axes.x,
     );
     emit_bars(
         &mut out, chart, &x_scale, &plot, band_h, sub_h, bar_h, &fills,

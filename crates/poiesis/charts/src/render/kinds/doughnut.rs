@@ -15,9 +15,7 @@
 
 use std::fmt::Write as _;
 
-use super::shared::{
-    emit_caption, emit_legend, emit_svg_open, escape_xml, legend_needed,
-};
+use super::shared::{emit_caption, emit_legend, emit_svg_open, escape_xml, legend_needed};
 use crate::Result;
 use crate::format::{coord, format_number};
 use crate::model::{Chart, NumFormat, Unit};

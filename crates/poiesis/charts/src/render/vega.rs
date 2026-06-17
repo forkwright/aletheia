@@ -190,12 +190,7 @@ fn vl_to_svg(spec_json: &str) -> crate::Result<String> {
         message: "temp path is not valid UTF-8".into(),
     })?;
     let output = Command::new("npx")
-        .args([
-            "--yes",
-            "vega-lite@5.20.1",
-            "--vl2svg",
-            tmp_path,
-        ])
+        .args(["--yes", "vega-lite@5.20.1", "--vl2svg", tmp_path])
         .output()
         .map_err(|e| crate::Error::VegaShellout {
             message: format!("npx spawn failed: {e}"),

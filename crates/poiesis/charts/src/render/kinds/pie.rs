@@ -15,9 +15,7 @@
 
 use std::fmt::Write as _;
 
-use super::shared::{
-    emit_caption, emit_legend, emit_svg_open, escape_xml, legend_needed,
-};
+use super::shared::{emit_caption, emit_legend, emit_svg_open, escape_xml, legend_needed};
 use crate::Result;
 use crate::format::{coord, format_number};
 use crate::model::{Chart, NumFormat, Unit};
@@ -30,7 +28,10 @@ use crate::theme::{ColorMode, ResolvedTheme};
 /// - `chart.kind == ChartKind::Pie`
 /// - `series.len() == 1`
 /// - `points.len() >= 1`
-#[expect(clippy::too_many_lines, reason = "single emit function per kind pattern")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single emit function per kind pattern"
+)]
 pub fn emit(
     chart: &Chart,
     theme: &ResolvedTheme,

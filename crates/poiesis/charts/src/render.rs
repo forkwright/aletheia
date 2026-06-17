@@ -345,7 +345,10 @@ mod tests {
             )],
             false,
         );
-        spec.axes.x.domain = Domain::Fixed { min: 0.0, max: 100.0 };
+        spec.axes.x.domain = Domain::Fixed {
+            min: 0.0,
+            max: 100.0,
+        };
         spec.axes.x.ticks = Ticks::Explicit(vec![25.0, 50.0, 75.0]);
         let theme = ResolvedTheme::summus_stub();
         let svg = render_chart(
@@ -355,7 +358,10 @@ mod tests {
             ColorMode::Resolved,
         )
         .expect("renders");
-        assert!(svg.contains(">25<"), "explicit tick label should appear: {svg}");
+        assert!(
+            svg.contains(">25<"),
+            "explicit tick label should appear: {svg}"
+        );
         assert!(svg.contains(">50<"));
         assert!(svg.contains(">75<"));
     }
@@ -373,7 +379,10 @@ mod tests {
             )],
             false,
         );
-        spec.caption = Some(Inlines(vec!["Fig 1:".to_owned(), "caption text".to_owned()]));
+        spec.caption = Some(Inlines(vec![
+            "Fig 1:".to_owned(),
+            "caption text".to_owned(),
+        ]));
         let theme = ResolvedTheme::summus_stub();
         let svg = render_chart(
             &spec,
@@ -392,8 +401,20 @@ mod tests {
             kind: ChartKind::Bar,
             title: None,
             series: vec![
-                series("A", 0, SeriesStyle::Default, AxisSide::Left, vec![point("Q1", 10.0)]),
-                series("B", 1, SeriesStyle::Default, AxisSide::Left, vec![point("Q1", 20.0)]),
+                series(
+                    "A",
+                    0,
+                    SeriesStyle::Default,
+                    AxisSide::Left,
+                    vec![point("Q1", 10.0)],
+                ),
+                series(
+                    "B",
+                    1,
+                    SeriesStyle::Default,
+                    AxisSide::Left,
+                    vec![point("Q1", 20.0)],
+                ),
             ],
             axes: Axes::default(),
             legend: LegendSpec::TopRight,

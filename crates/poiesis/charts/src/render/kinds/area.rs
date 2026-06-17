@@ -16,8 +16,8 @@
 use std::fmt::Write as _;
 
 use super::shared::{
-    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64,
-    legend_needed, ticks_for_axis,
+    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64, legend_needed,
+    ticks_for_axis,
 };
 use crate::Result;
 use crate::format::{coord, format_number};

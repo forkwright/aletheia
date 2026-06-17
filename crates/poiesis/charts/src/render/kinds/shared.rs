@@ -5,10 +5,10 @@
 
 use std::fmt::Write as _;
 
+use crate::Result;
 use crate::model::{AxisSpec, Chart, CiteOrText, Domain, Inlines, LegendSpec, Ticks};
 use crate::render::canvas::{Canvas, PlotBox};
 use crate::theme::{ColorMode, ResolvedTheme};
-use crate::Result;
 
 // WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
 // literal mandated by the SVG spec. Renderers match it as an opaque string;
@@ -164,12 +164,7 @@ pub(crate) fn emit_legend(
 }
 
 /// Emit an optional `<g class="caption">` below the plot box.
-pub(crate) fn emit_caption(
-    out: &mut String,
-    chart: &Chart,
-    theme: &ResolvedTheme,
-    plot: &PlotBox,
-) {
+pub(crate) fn emit_caption(out: &mut String, chart: &Chart, theme: &ResolvedTheme, plot: &PlotBox) {
     let Some(Inlines(parts)) = chart.caption.as_ref() else {
         return;
     };
@@ -223,7 +218,10 @@ mod tests {
     #[test]
     fn domain_bounds_honors_fixed_domain() {
         let spec = AxisSpec {
-            domain: Domain::Fixed { min: 5.0, max: 50.0 },
+            domain: Domain::Fixed {
+                min: 5.0,
+                max: 50.0,
+            },
             ..AxisSpec::default()
         };
         let (lo, hi) = domain_bounds(&[1.0, 100.0], &spec);

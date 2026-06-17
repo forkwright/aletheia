@@ -14,9 +14,7 @@
 
 use std::fmt::Write as _;
 
-use super::shared::{
-    SVG_NAMESPACE, emit_caption, emit_legend, escape_xml, legend_needed,
-};
+use super::shared::{SVG_NAMESPACE, emit_caption, emit_legend, escape_xml, legend_needed};
 use crate::Result;
 use crate::format::{coord, format_number};
 use crate::model::{Chart, CiteOrText};
@@ -35,7 +33,10 @@ use crate::theme::{ColorMode, ResolvedTheme};
     clippy::indexing_slicing,
     reason = "validated by Chart::validate (exactly 1 series) and empty-point guard above"
 )]
-#[expect(clippy::too_many_lines, reason = "single emit function per kind pattern")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single emit function per kind pattern"
+)]
 pub fn emit(
     chart: &Chart,
     theme: &ResolvedTheme,
@@ -140,19 +141,30 @@ pub fn emit(
     }
 
     if legend_needed(chart.legend, chart.series.len()) {
-        emit_legend(&mut out, chart, theme, mode, &PlotBox {
+        emit_legend(
+            &mut out,
+            chart,
+            theme,
+            mode,
+            &PlotBox {
+                x0: 0.0,
+                y0: 0.0,
+                x1: f64::from(width),
+                y1: f64::from(height),
+            },
+        )?;
+    }
+    emit_caption(
+        &mut out,
+        chart,
+        theme,
+        &PlotBox {
             x0: 0.0,
             y0: 0.0,
             x1: f64::from(width),
             y1: f64::from(height),
-        })?;
-    }
-    emit_caption(&mut out, chart, theme, &PlotBox {
-        x0: 0.0,
-        y0: 0.0,
-        x1: f64::from(width),
-        y1: f64::from(height),
-    });
+        },
+    );
     out.push_str("</g></svg>");
     Ok(out)
 }

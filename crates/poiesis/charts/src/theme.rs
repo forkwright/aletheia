@@ -197,14 +197,15 @@ impl ResolvedTheme {
                 },
                 |_| Ok(*i),
             )?,
-            ToneRef::Named(name) => self
-                .named
-                .iter()
-                .position(|t| &t.name == name)
-                .ok_or_else(|| crate::Error::UnresolvedTone {
-                    tone: format!("named({name})"),
-                    series_index,
-                })?,
+            ToneRef::Named(name) => {
+                self.named
+                    .iter()
+                    .position(|t| &t.name == name)
+                    .ok_or_else(|| crate::Error::UnresolvedTone {
+                        tone: format!("named({name})"),
+                        series_index,
+                    })?
+            }
         };
         let palette_len = self.series.len().max(1);
         let cycled = (base_idx + slice_index) % palette_len;

@@ -33,8 +33,8 @@
 use std::fmt::Write as _;
 
 use super::shared::{
-    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64,
-    legend_needed, ticks_for_axis,
+    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64, legend_needed,
+    ticks_for_axis,
 };
 use crate::Result;
 use crate::format::{coord, format_number};
@@ -74,8 +74,7 @@ pub fn emit(
     let y_left_spec = &chart.axes.y_left;
     let y_right_default = AxisSpec::default();
     let y_right_spec = chart.axes.y_right.as_ref().unwrap_or(&y_right_default);
-    let (y_left, y_right) =
-        build_scales(col_series, line_series, y_left_spec, y_right_spec, &plot);
+    let (y_left, y_right) = build_scales(col_series, line_series, y_left_spec, y_right_spec, &plot);
     let band_w = plot.width() / idx_to_f64(n);
     let bar_w = band_w * 0.5;
 
@@ -177,7 +176,11 @@ fn emit_gridlines_and_axes(
     out.push_str("<g class=\"axes\">");
     for tick in y_left_ticks {
         let y = y_left.map(*tick);
-        let label = escape_xml(&format_number(*tick, chart.axes.y_left.format, Unit::Number));
+        let label = escape_xml(&format_number(
+            *tick,
+            chart.axes.y_left.format,
+            Unit::Number,
+        ));
         let _ = write!(
             out,
             "<text x=\"{x}\" y=\"{y}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{font}\">{label}</text>",
