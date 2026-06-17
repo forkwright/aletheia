@@ -57,7 +57,8 @@ impl MeetAggrObj for MeetAggrAnd {
             (DataValue::Bool(l), DataValue::Bool(r)) => {
                 let old = *l;
                 *l &= *r;
-                Ok(old == *l)
+                // WHY: MeetAggrObj::update must return true iff left changed.
+                Ok(old != *l)
             }
             (u, v) => TypeMismatchSnafu {
                 op: "and",
@@ -105,7 +106,8 @@ impl MeetAggrObj for MeetAggrOr {
             (DataValue::Bool(l), DataValue::Bool(r)) => {
                 let old = *l;
                 *l |= *r;
-                Ok(old == *l)
+                // WHY: MeetAggrObj::update must return true iff left changed.
+                Ok(old != *l)
             }
             (u, v) => TypeMismatchSnafu {
                 op: "or",
