@@ -36,6 +36,38 @@ pub struct MemoryServer {
 impl MemoryServer {
     const WRITE_TOOLS: [&'static str; 3] = ["nous_annotate", "nous_supersede", "nous_forget"];
 
+    /// Minimum token length enforcing the documented 32-byte random token expectation.
+    const MIN_WRITE_TOKEN_LEN: usize = 32;
+
+    /// Sanitize a raw write token value read from env or provided by the caller.
+    ///
+    /// Returns `None` (write-disabled) when the value is absent, blank, or shorter
+    /// than [`MIN_WRITE_TOKEN_LEN`]. A token that is present but too short emits a
+    /// tracing warning so operators can detect misconfiguration without the token
+    /// value appearing in logs.
+    ///
+    /// [`MIN_WRITE_TOKEN_LEN`]: Self::MIN_WRITE_TOKEN_LEN
+    fn sanitize_write_token(raw: Option<String>) -> Option<String> {
+        match raw {
+            None => None,
+            Some(s) if s.trim().is_empty() => {
+                tracing::warn!(
+                    "ALETHEIA_MEMORY_MCP_WRITE_TOKEN is set but blank; write tools will be disabled"
+                );
+                None
+            }
+            Some(s) if s.len() < Self::MIN_WRITE_TOKEN_LEN => {
+                tracing::warn!(
+                    min_len = Self::MIN_WRITE_TOKEN_LEN,
+                    actual_len = s.len(),
+                    "write token is shorter than the minimum required length; write tools will be disabled"
+                );
+                None
+            }
+            Some(s) => Some(s),
+        }
+    }
+
     fn router_for(write_token: Option<&String>) -> ToolRouter<Self> {
         let mut tool_router = Self::tool_router();
         if write_token.is_none() {
@@ -54,7 +86,8 @@ impl MemoryServer {
     /// Write tools are registered if `write_token` is `Some(_)`.
     #[must_use]
     pub fn new(store: Arc<KnowledgeStore>, store_path: Option<PathBuf>) -> Self {
-        let write_token = std::env::var("ALETHEIA_MEMORY_MCP_WRITE_TOKEN").ok();
+        let write_token =
+            Self::sanitize_write_token(std::env::var("ALETHEIA_MEMORY_MCP_WRITE_TOKEN").ok());
         let tool_router = Self::router_for(write_token.as_ref());
         Self {
             store,
@@ -74,6 +107,7 @@ impl MemoryServer {
         store_path: Option<PathBuf>,
         write_token: Option<String>,
     ) -> Self {
+        let write_token = Self::sanitize_write_token(write_token);
         let tool_router = Self::router_for(write_token.as_ref());
         Self {
             store,
@@ -210,14 +244,16 @@ mod tests {
     #[test]
     fn validate_write_token_accepts_match() {
         let store = KnowledgeStore::open_mem().unwrap();
-        let server = MemoryServer::with_write_token(store, None, Some("secret-token".to_owned()));
-        assert!(server.validate_write_token("secret-token").is_ok());
+        let token = "a".repeat(32);
+        let server = MemoryServer::with_write_token(store, None, Some(token.clone()));
+        assert!(server.validate_write_token(&token).is_ok());
     }
 
     #[test]
     fn validate_write_token_rejects_mismatch() {
         let store = KnowledgeStore::open_mem().unwrap();
-        let server = MemoryServer::with_write_token(store, None, Some("secret-token".to_owned()));
+        let token = "a".repeat(32);
+        let server = MemoryServer::with_write_token(store, None, Some(token));
         let result = server.validate_write_token("wrong-token");
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -238,5 +274,49 @@ mod tests {
     fn open_in_memory_creates_server() {
         let server = MemoryServer::open_in_memory().unwrap();
         assert!(server.store_path.is_none());
+    }
+
+    #[test]
+    fn empty_write_token_is_rejected() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let server = MemoryServer::with_write_token(store, None, Some(String::new()));
+        // Empty token must be treated as write-disabled
+        let result = server.validate_write_token("");
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::WriteNotAvailable { .. })
+        ));
+    }
+
+    #[test]
+    fn blank_write_token_is_rejected() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let server = MemoryServer::with_write_token(store, None, Some("   ".to_owned()));
+        let result = server.validate_write_token("   ");
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::WriteNotAvailable { .. })
+        ));
+    }
+
+    #[test]
+    fn short_write_token_is_rejected() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let short_token = "short".to_owned();
+        let server = MemoryServer::with_write_token(store, None, Some(short_token));
+        // Token shorter than MIN_WRITE_TOKEN_LEN must be treated as write-disabled
+        let result = server.validate_write_token("short");
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::WriteNotAvailable { .. })
+        ));
+    }
+
+    #[test]
+    fn valid_length_write_token_is_accepted() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let token = "x".repeat(MemoryServer::MIN_WRITE_TOKEN_LEN);
+        let server = MemoryServer::with_write_token(store, None, Some(token.clone()));
+        assert!(server.validate_write_token(&token).is_ok());
     }
 }

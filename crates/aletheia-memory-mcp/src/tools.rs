@@ -116,7 +116,8 @@ pub struct NousNeighborsParams {
 }
 
 /// Parameters for `nous_annotate`.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+// WARNING: manual Debug omits write_token to prevent credential leak in tracing spans
+#[derive(Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousAnnotateParams {
     /// Owning agent (nous) that is authoring the annotation. Must be explicit;
@@ -131,8 +132,20 @@ pub struct NousAnnotateParams {
     pub write_token: String,
 }
 
+impl std::fmt::Debug for NousAnnotateParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NousAnnotateParams")
+            .field("session_id", &self.session_id)
+            .field("fact_id", &self.fact_id)
+            .field("content", &self.content)
+            .field("write_token", &"[redacted]")
+            .finish()
+    }
+}
+
 /// Parameters for `nous_supersede`.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+// WARNING: manual Debug omits write_token to prevent credential leak in tracing spans
+#[derive(Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousSupersedeParams {
     /// ID of the fact being superseded.
@@ -149,8 +162,21 @@ pub struct NousSupersedeParams {
     pub write_token: String,
 }
 
+impl std::fmt::Debug for NousSupersedeParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NousSupersedeParams")
+            .field("old_fact_id", &self.old_fact_id)
+            .field("new_fact_id", &self.new_fact_id)
+            .field("nous_id", &self.nous_id)
+            .field("reason", &self.reason)
+            .field("write_token", &"[redacted]")
+            .finish()
+    }
+}
+
 /// Parameters for `nous_forget`.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+// WARNING: manual Debug omits write_token to prevent credential leak in tracing spans
+#[derive(Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousForgetParams {
     /// ID of the fact to forget.
@@ -162,6 +188,17 @@ pub struct NousForgetParams {
     pub reason: String,
     /// Capability token for write authorization.
     pub write_token: String,
+}
+
+impl std::fmt::Debug for NousForgetParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NousForgetParams")
+            .field("fact_id", &self.fact_id)
+            .field("nous_id", &self.nous_id)
+            .field("reason", &self.reason)
+            .field("write_token", &"[redacted]")
+            .finish()
+    }
 }
 
 /// Default search limit when the caller omits one.
@@ -771,23 +808,42 @@ impl MemoryServer {
                 // build the script via concat! so each `[...]` occurrence lives
                 // on a single-line string literal (per-line linters treat it as
                 // data, not Rust indexing).
+                // WHY: visible_neighbor requires every returned entity to be backed by at
+                // least one active fact visible to the requester, preventing graph
+                // traversal from leaking entity names/relations owned only by other nouses.
                 let script = concat!(
+                    "visible_neighbor[entity_id] :=\n",
+                    "    *fact_entities{entity_id, fact_id: _fid},\n",
+                    "    *facts{id: _fid, nous_id: $requester_nous_id, is_forgotten: false, superseded_by: _sb},\n",
+                    "    is_null(_sb)\n",
+                    "visible_neighbor[entity_id] :=\n",
+                    "    *fact_entities{entity_id, fact_id: _fid},\n",
+                    "    *facts{id: _fid, visibility: 'shared', is_forgotten: false, superseded_by: _sb},\n",
+                    "    is_null(_sb)\n",
+                    "visible_neighbor[entity_id] :=\n",
+                    "    *fact_entities{entity_id, fact_id: _fid},\n",
+                    "    *facts{id: _fid, visibility: 'published', is_forgotten: false, superseded_by: _sb},\n",
+                    "    is_null(_sb)\n",
+                    "\n",
                     "seed_entity[entity_id] :=\n",
                     "    *fact_entities{fact_id: $fact_id, entity_id}\n",
                     "\n",
                     "?[src_id, dst_id, name, entity_type, relation, weight] :=\n",
                     "    seed_entity[src_id],\n",
                     "    *relationships{src: src_id, dst: dst_id, relation, weight},\n",
+                    "    visible_neighbor[dst_id],\n",
                     "    *entities{id: dst_id, name, entity_type}\n",
                     "\n",
                     "?[src_id, dst_id, name, entity_type, relation, weight] :=\n",
                     "    seed_entity[dst_id],\n",
                     "    *relationships{src: src_id, dst: dst_id, relation, weight},\n",
+                    "    visible_neighbor[src_id],\n",
                     "    *entities{id: src_id, name, entity_type}\n",
                 );
 
                 let mut params = BTreeMap::new();
                 params.insert("fact_id".to_owned(), DataValue::Str(fact_id.clone().into()));
+                params.insert("requester_nous_id".to_owned(), DataValue::Str(requester.clone().into()));
 
                 let result = store.run_query(script, params).map_err(|e| {
                     KnowledgeStoreSnafu {
@@ -1057,7 +1113,7 @@ impl MemoryServer {
         description = "Create an annotation on an owned fact in the aletheia nous local knowledge store; not kanon mnemosyne's durable corpus. \
                          Requires write capability token. Returns the created annotation ID."
     )]
-    #[tracing::instrument(skip(self), fields(tool = "nous_annotate", fact_id = %params.fact_id))]
+    #[tracing::instrument(skip_all, fields(tool = "nous_annotate"))]
     async fn nous_annotate(
         &self,
         Parameters(params): Parameters<NousAnnotateParams>,
@@ -1227,7 +1283,7 @@ impl MemoryServer {
         description = "Mark one owned fact as superseded by another in the aletheia nous local knowledge store; not kanon mnemosyne's durable corpus. \
                          Requires write capability token. Returns the supersession record ID."
     )]
-    #[tracing::instrument(skip(self), fields(tool = "nous_supersede", old_id = %params.old_fact_id, new_id = %params.new_fact_id))]
+    #[tracing::instrument(skip_all, fields(tool = "nous_supersede"))]
     async fn nous_supersede(
         &self,
         Parameters(params): Parameters<NousSupersedeParams>,
@@ -1429,7 +1485,7 @@ impl MemoryServer {
         description = "Soft-delete an owned fact in the aletheia nous local knowledge store; not kanon mnemosyne's durable corpus. \
                          Requires write capability token. Returns forgotten_at timestamp."
     )]
-    #[tracing::instrument(skip(self), fields(tool = "nous_forget", fact_id = %params.fact_id))]
+    #[tracing::instrument(skip_all, fields(tool = "nous_forget"))]
     async fn nous_forget(
         &self,
         Parameters(params): Parameters<NousForgetParams>,
@@ -1914,12 +1970,12 @@ mod tests {
         // project_id is not set in sample_fact; leave it None for this test
         store.insert_fact(&target).unwrap();
 
-        let server = MemoryServer::with_write_token(store.clone(), None, Some("token".to_owned()));
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
         let params = NousAnnotateParams {
             session_id: "alice".to_owned(),
             fact_id: "f-target-1".to_owned(),
             content: "verified by external source".to_owned(),
-            write_token: "token".to_owned(),
+            write_token: "a".repeat(32),
         };
         let result = server.nous_annotate(Parameters(params)).await.unwrap();
         let text = result
@@ -1963,12 +2019,12 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("token".to_owned()));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
         let params = NousAnnotateParams {
             session_id: "alice".to_owned(),
             fact_id: "f-bob-1".to_owned(),
             content: "verified by external source".to_owned(),
-            write_token: "token".to_owned(),
+            write_token: "a".repeat(32),
         };
         let result = server.nous_annotate(Parameters(params)).await;
         assert!(result.is_err(), "alice must not annotate bob's fact");
@@ -1998,13 +2054,13 @@ mod tests {
         store.insert_fact(&old_fact).unwrap();
         store.insert_fact(&new_fact).unwrap();
 
-        let server = MemoryServer::with_write_token(store.clone(), None, Some("token".to_owned()));
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
         let params = NousSupersedeParams {
             old_fact_id: "f-old-1".to_owned(),
             new_fact_id: "f-new-1".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "updated".to_owned(),
-            write_token: "token".to_owned(),
+            write_token: "a".repeat(32),
         };
         let result = server.nous_supersede(Parameters(params)).await.unwrap();
         let text = result
@@ -2056,13 +2112,13 @@ mod tests {
         store.insert_fact(&old_fact).unwrap();
         store.insert_fact(&new_fact).unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("token".to_owned()));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
         let params = NousSupersedeParams {
             old_fact_id: "f-old-bob".to_owned(),
             new_fact_id: "f-new-alice".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "updated".to_owned(),
-            write_token: "token".to_owned(),
+            write_token: "a".repeat(32),
         };
         let result = server.nous_supersede(Parameters(params)).await;
         assert!(
@@ -2086,12 +2142,12 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("token".to_owned()));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
         let params = NousForgetParams {
             fact_id: "f-bob-1".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "stale".to_owned(),
-            write_token: "token".to_owned(),
+            write_token: "a".repeat(32),
         };
         let result = server.nous_forget(Parameters(params)).await;
         assert!(result.is_err(), "alice must not forget bob's fact");
