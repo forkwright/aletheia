@@ -297,7 +297,7 @@ pub(crate) fn Ops() -> Element {
             let base = cfg.server_url.trim_end_matches('/');
 
             let agents_url = format!("{base}/api/v1/nous");
-            let health_url = format!("{base}/api/health");
+            let health_url = format!("{base}/api/v1/system/health");
             let config_url = format!("{base}/api/v1/config");
 
             let (agents_res, health_res, config_res) = tokio::join!(
@@ -474,18 +474,19 @@ pub(crate) fn Ops() -> Element {
     });
 
     // ── Auto-refresh for non-SSE data ──
-    use_effect(move || {
-        spawn(async move {
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(AUTO_REFRESH_SECS)).await;
-                refresh_dashboard();
-            }
-        });
+    // WHY: use_future is cancelled on unmount; use_effect+spawn leaks a loop.
+    use_future(move || async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(AUTO_REFRESH_SECS)).await;
+            refresh_dashboard();
+        }
     });
 
     // ── Wire SSE events into agent store ──
-    let events = event_state.read();
-    {
+    // WHY: Writing to a Signal inside the render body causes a panic in Dioxus;
+    // use_effect defers the write to after the render pass completes.
+    use_effect(move || {
+        let events = event_state.read();
         let mut store = agent_store.write();
         let mut turn_counts: HashMap<skene::id::NousId, u32> = HashMap::new();
         for turn in &events.active_turns {
@@ -498,7 +499,7 @@ pub(crate) fn Ops() -> Element {
         for (id, status) in &events.agent_statuses {
             store.set_health(id, health_from_status(status));
         }
-    }
+    });
 
     // ── Render ──
     let tab = *active_tab.read();
@@ -546,6 +547,9 @@ pub(crate) fn Ops() -> Element {
             // ── Tab content ──
             match tab {
                 OpsTab::Dashboard => rsx! {
+                    if let FetchState::Loading = &*dash_fetch.read() {
+                        div { style: "display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); font-size: var(--text-sm);", "Loading\u{2026}" }
+                    }
                     if let FetchState::Error(err) = &*dash_fetch.read() {
                         div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
                     }
@@ -560,6 +564,9 @@ pub(crate) fn Ops() -> Element {
                 },
 
                 OpsTab::Tools => rsx! {
+                    if let FetchState::Loading = &*tools_fetch.read() {
+                        div { style: "display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); font-size: var(--text-sm);", "Loading\u{2026}" }
+                    }
                     if let FetchState::Error(err) = &*tools_fetch.read() {
                         div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
                     }

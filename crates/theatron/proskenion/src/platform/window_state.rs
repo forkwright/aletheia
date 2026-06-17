@@ -102,27 +102,28 @@ pub(crate) fn load_or_default() -> WindowState {
 /// Save window state to disk synchronously.
 fn save_sync(state: &WindowState) -> Result<(), WindowStateError> {
     let path = state_path()?;
+    let parent = path.parent().ok_or(WindowStateError::NoConfigDir)?;
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).context(CreateDirSnafu {
-            path: parent.to_path_buf(),
-        })?;
-    }
+    std::fs::create_dir_all(parent).context(CreateDirSnafu {
+        path: parent.to_path_buf(),
+    })?;
 
     let content = toml::to_string_pretty(state).context(SerializeSnafu)?;
 
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&path)
-            .context(WriteFileSnafu { path: &path })?;
-        file.write_all(content.as_bytes())
-            .context(WriteFileSnafu { path: &path })?;
-    }
+    use std::os::unix::fs::PermissionsExt as _;
+    let perms = std::fs::Permissions::from_mode(0o600);
+    let mut tmp = tempfile::Builder::new()
+        .permissions(perms)
+        .tempfile_in(parent)
+        .context(WriteFileSnafu { path: parent })?;
+    tmp.write_all(content.as_bytes())
+        .context(WriteFileSnafu { path: parent })?;
+    tmp.as_file()
+        .sync_all()
+        .context(WriteFileSnafu { path: parent })?;
+    tmp.persist(&path)
+        .map_err(|e| e.error)
+        .context(WriteFileSnafu { path: &path })?;
 
     Ok(())
 }

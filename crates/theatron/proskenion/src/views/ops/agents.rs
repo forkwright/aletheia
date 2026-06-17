@@ -1,6 +1,7 @@
 //! Agent status cards grid with live SSE updates.
 
 use dioxus::prelude::*;
+use skeue::EmptyState;
 
 use crate::state::ops::{AgentCardData, AgentStatusStore};
 
@@ -57,12 +58,6 @@ const DOT_BASE: &str = "\
     margin-left: auto;\
 ";
 
-const EMPTY_STATE: &str = "\
-    color: var(--text-muted); \
-    font-size: var(--text-sm); \
-    padding: var(--space-3) 0;\
-";
-
 #[component]
 pub(crate) fn AgentCards(store: Signal<AgentStatusStore>) -> Element {
     let cards = store.read();
@@ -70,7 +65,7 @@ pub(crate) fn AgentCards(store: Signal<AgentStatusStore>) -> Element {
 
     if ordered.is_empty() {
         return rsx! {
-            div { style: "{EMPTY_STATE}", "No agents registered" }
+            EmptyState { title: "No agents registered".to_string() }
         };
     }
 

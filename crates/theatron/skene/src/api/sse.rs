@@ -48,8 +48,8 @@ impl SseConnection {
         // kanon:ignore RUST/pub-visibility
         let (tx, rx) = mpsc::channel(256);
         let url = format!(
-            "{}/api/v1/events/subscribe?topics={}",
-            base_url.trim_end_matches('/'),
+            "{}?topics={}",
+            keryx::url::join_base_path(base_url, "/api/v1/events/subscribe"),
             SUBSCRIBE_TOPICS
         );
 

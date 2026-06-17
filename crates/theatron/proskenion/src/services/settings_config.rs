@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::Write as _;
-use std::os::unix::fs::OpenOptionsExt as _;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -317,18 +317,20 @@ pub(crate) fn save(config: &SettingsConfig) -> Result<(), SettingsConfigError> {
 
 pub(crate) fn save_in(config: &SettingsConfig, base: &Path) -> Result<(), SettingsConfigError> {
     let path = settings_path_from(base);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).context(CreateDirSnafu)?;
-    }
+    let parent = path.parent().ok_or(SettingsConfigError::NoConfigDir)?;
+    std::fs::create_dir_all(parent).context(CreateDirSnafu)?;
     let contents = toml::to_string_pretty(config).context(TomlSerializeSnafu)?;
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&path)
+    let perms = std::fs::Permissions::from_mode(0o600);
+    let mut tmp = tempfile::Builder::new()
+        .permissions(perms)
+        .tempfile_in(parent)
         .context(WriteFileSnafu)?;
-    file.write_all(contents.as_bytes()).context(WriteFileSnafu)
+    tmp.write_all(contents.as_bytes()).context(WriteFileSnafu)?;
+    tmp.as_file().sync_all().context(WriteFileSnafu)?;
+    tmp.persist(&path)
+        .map_err(|e| e.error)
+        .context(WriteFileSnafu)?;
+    Ok(())
 }
 
 /// Load settings from disk, falling back to defaults on any error.

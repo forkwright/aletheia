@@ -35,14 +35,8 @@ use reflection::SystemReflectionSection;
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct HealthApiResponse {
-    #[expect(dead_code, reason = "deserialized from API for future use")]
-    #[serde(default)]
-    status: String,
     #[serde(default)]
     uptime_seconds: u64,
-    #[expect(dead_code, reason = "deserialized from API for future use")]
-    #[serde(default)]
-    version: String,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -71,9 +65,6 @@ struct AgentTokenRowEntry {
 struct CostMetricsApiResponse {
     #[serde(default)]
     series: Vec<CostBucketEntry>,
-    #[expect(dead_code, reason = "deserialized from API for future use")]
-    #[serde(default)]
-    month_cost: f64,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -127,22 +118,10 @@ struct TimelineEntry {
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct SessionEntry {
-    #[expect(
-        dead_code,
-        reason = "deserialized; used when session detail linking is added"
-    )]
-    #[serde(default)]
-    id: String,
     #[serde(default)]
     nous_id: String,
     #[serde(default)]
     message_count: u32,
-    #[expect(
-        dead_code,
-        reason = "deserialized; used when status filtering is added"
-    )]
-    #[serde(default)]
-    status: String,
     #[serde(default)]
     created_at: String,
     #[serde(default)]
@@ -616,9 +595,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let health: HealthApiResponse =
         match crate::api::health::fetch_health_response(health_res).await {
             Ok(data) => HealthApiResponse {
-                status: data.status,
                 uptime_seconds: data.uptime_seconds,
-                version: data.version,
             },
             Err(err) => {
                 return FetchState::Error(err.to_string());

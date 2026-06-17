@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::api::client::authenticated_client;
+use crate::components::badge::status_badge_style as badge_style;
 use crate::state::checkpoints::{
     Checkpoint, CheckpointAction, CheckpointActionRequest, CheckpointStatus,
 };
@@ -26,16 +27,6 @@ const TITLE_STYLE: &str = "\
     font-size: var(--text-md); \
     font-weight: var(--weight-semibold); \
     color: var(--text-primary);\
-";
-
-const BADGE_BASE: &str = "\
-    display: inline-block; \
-    font-size: var(--text-xs); \
-    font-weight: var(--weight-semibold); \
-    padding: var(--space-1) var(--space-2); \
-    border-radius: var(--radius-lg); \
-    text-transform: uppercase; \
-    letter-spacing: 0.4px;\
 ";
 
 const DESCRIPTION_STYLE: &str = "\
@@ -291,7 +282,7 @@ pub(crate) fn CheckpointCard(
     };
 
     let card_style = card_container_style(checkpoint.status);
-    let badge_style = status_badge_style(checkpoint.status);
+    let badge_style = checkpoint_badge_style(checkpoint.status);
     let badge_label = status_label(checkpoint.status);
 
     rsx! {
@@ -430,14 +421,14 @@ fn card_container_style(status: CheckpointStatus) -> String {
     format!("{CARD_BASE} background: {bg}; border-color: {border};")
 }
 
-fn status_badge_style(status: CheckpointStatus) -> String {
+fn checkpoint_badge_style(status: CheckpointStatus) -> String {
     let (bg, color) = match status {
         CheckpointStatus::Pending => ("var(--status-info-bg)", "var(--status-info)"),
         CheckpointStatus::Approved => ("var(--status-success-bg)", "var(--status-success)"),
         CheckpointStatus::Skipped => ("var(--status-warning-bg)", "var(--status-warning)"),
         CheckpointStatus::Overridden => ("var(--status-error-bg)", "var(--status-error)"),
     };
-    format!("{BADGE_BASE} background: {bg}; color: {color};")
+    badge_style(bg, color)
 }
 
 fn status_label(status: CheckpointStatus) -> &'static str {
@@ -482,8 +473,8 @@ mod tests {
 
     #[test]
     fn status_badge_style_differs_by_status() {
-        let pending = status_badge_style(CheckpointStatus::Pending);
-        let approved = status_badge_style(CheckpointStatus::Approved);
+        let pending = checkpoint_badge_style(CheckpointStatus::Pending);
+        let approved = checkpoint_badge_style(CheckpointStatus::Approved);
         assert_ne!(pending, approved);
     }
 

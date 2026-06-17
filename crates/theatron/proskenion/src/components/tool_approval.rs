@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::components::badge::status_badge_style;
 use crate::state::tools::{RiskLevel, ToolApprovalState};
 
 const APPROVAL_BASE_STYLE: &str = "\
@@ -35,17 +36,6 @@ const INPUT_PREVIEW_STYLE: &str = "\
     max-height: 120px; \
     overflow-y: auto; \
     white-space: pre-wrap;\
-";
-
-const RISK_BADGE_BASE: &str = "\
-    display: inline-block; \
-    font-size: var(--text-xs); \
-    font-weight: var(--weight-semibold); \
-    padding: var(--space-1) var(--space-2); \
-    border-radius: var(--radius-lg); \
-    margin-left: var(--space-2); \
-    text-transform: uppercase; \
-    letter-spacing: 0.5px;\
 ";
 
 const BUTTON_ROW_STYLE: &str = "\
@@ -161,7 +151,11 @@ fn risk_badge_style(risk: RiskLevel) -> String {
         RiskLevel::High => ("var(--status-error-bg)", "var(--status-error)"),
         RiskLevel::Critical => ("var(--aima-bg)", "var(--aima)"),
     };
-    format!("{RISK_BADGE_BASE} background: {bg}; color: {color};")
+    // NOTE: risk badge appends margin-left absent from the shared base.
+    format!(
+        "{} margin-left: var(--space-2);",
+        status_badge_style(bg, color)
+    )
 }
 
 #[cfg(test)]

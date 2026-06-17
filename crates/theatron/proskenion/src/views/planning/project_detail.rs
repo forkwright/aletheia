@@ -196,7 +196,7 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
                 FetchState::NotAvailable => rsx! {
                     div {
                         style: "{HEADER_STYLE}",
-                        div { style: "color: var(--text-secondary); font-size: var(--text-base);", "Project metadata not available" }
+                        div { style: "color: var(--text-secondary); font-size: var(--text-base);", "Planning project" }
                     }
                 },
             }

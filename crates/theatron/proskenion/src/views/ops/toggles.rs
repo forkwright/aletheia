@@ -1,6 +1,7 @@
 //! Toggle controls panel: agent enable/disable, tool toggles, feature flags.
 
 use dioxus::prelude::*;
+use skeue::EmptyState;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
@@ -71,12 +72,6 @@ const FLAG_DESC: &str = "\
     color: var(--text-muted); \
     font-size: var(--text-xs); \
     padding: 0 0 var(--space-2) 0;\
-";
-
-const EMPTY_STATE: &str = "\
-    color: var(--text-muted); \
-    font-size: var(--text-xs); \
-    padding: var(--space-1) 0;\
 ";
 
 const CONFIRM_OVERLAY: &str = "\
@@ -153,7 +148,7 @@ pub(crate) fn ToggleControlsPanel(
             div { style: "{SUBSECTION_TITLE}", "Agents" }
 
             if agent_ids.is_empty() {
-                div { style: "{EMPTY_STATE}", "No agents available" }
+                EmptyState { title: "No agents available".to_string() }
             }
 
             for (id , name , enabled , pending) in agent_ids {
@@ -172,7 +167,7 @@ pub(crate) fn ToggleControlsPanel(
             div { style: "{SUBSECTION_TITLE}", "Feature Flags" }
 
             if flag_data.is_empty() {
-                div { style: "{EMPTY_STATE}", "No feature flags configured" }
+                EmptyState { title: "No feature flags configured".to_string() }
             }
 
             if !restart_required.is_empty() {
