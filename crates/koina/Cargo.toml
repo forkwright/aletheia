@@ -36,6 +36,10 @@ tokio = { workspace = true, features = ["sync", "time"] }
 prometheus-client = { workspace = true }
 reqwest = { workspace = true }
 
+[build-dependencies]
+serde = { workspace = true }
+toml = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 criterion = { workspace = true }

@@ -136,12 +136,15 @@ struct ModelEntry {
     recommended: bool,
 }
 
-static MODEL_SEED: LazyLock<ModelSeed> = LazyLock::new(|| match toml::from_str(MODEL_SEED_TOML) {
-    Ok(seed) => seed,
-    Err(err) => {
-        panic!("compiled model seed must parse as model-seed.toml: {err}");
-    }
-});
+// WHY (#5635): `data/model-seed.toml` is parsed at build time in `build.rs`;
+// any malformed file fails compilation. The runtime parse is therefore
+// guaranteed to succeed, so `expect` documents an unreachable invariant.
+#[expect(
+    clippy::expect_used,
+    reason = "model-seed.toml is validated at build time in build.rs"
+)]
+static MODEL_SEED: LazyLock<ModelSeed> =
+    LazyLock::new(|| toml::from_str(MODEL_SEED_TOML).expect("compiled model seed must parse"));
 
 static ANTHROPIC_MODELS: LazyLock<Box<[&'static str]>> =
     LazyLock::new(|| models_for_provider_boxed(ModelProvider::Anthropic));
