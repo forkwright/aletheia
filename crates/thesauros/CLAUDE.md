@@ -34,7 +34,7 @@ Domain pack loader: parses pack.toml manifests, resolves context files, register
 - **Agent filtering**: Sections and overlays can target specific agents by ID or domain tags. Empty filter means all agents.
 - **Priority cascade**: Context sections declare bootstrap priority (Required > Important > Flexible > Optional) matching the nous bootstrap assembler.
 - **Shell tool execution**: Pack tools run as shell scripts with JSON input on stdin, stdout captured as result. ProcessGuard prevents orphan processes.
-- **ETXTBSY retry**: Shell executor retries up to 4 times on ETXTBSY (errno 26) to handle races between file writes and exec.
+- **ETXTBSY retry**: Shell executor makes up to 4 attempts total (3 retries) on ETXTBSY (errno 26) with exponential backoff (1 ms, 4 ms, 16 ms) to handle races between file writes and exec.
 
 ## Common tasks
 
