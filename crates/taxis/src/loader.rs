@@ -2,9 +2,9 @@
 //!
 //! Resolution order (later wins):
 //! 1. Compiled defaults ([`AletheiaConfig::default()`])
-//! 2. `{oikos.config()}/aletheia.toml` (if it exists), with env-var
-//!    interpolation (`${VAR:-default}`, `${VAR:?error}`) applied first,
-//!    then `enc:` values decrypted.
+//! 2. `{oikos.config()}/aletheia.toml` (if it exists), parsed first, then
+//!    env-var interpolation (`${VAR:-default}`, `${VAR:?error}`) applied only to
+//!    string leaf values, then `enc:` values decrypted.
 //! 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`),
 //!    with `__` splitting nested keys and lowercasing.
 //!
@@ -12,6 +12,11 @@
 //! primary key from `~/.config/aletheia/primary.key`. If the key is missing
 //! but `enc:` values are present, startup fails with an actionable error
 //! listing the affected fields.
+//!
+//! Environment interpolation is TOML-aware: the file is parsed before
+//! substitution, and only string leaf values are replaced. A value containing
+//! quotes, newlines, arrays, or table syntax remains a literal string rather
+//! than altering the parsed configuration structure.
 
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -33,14 +38,18 @@ use crate::oikos::Oikos;
 ///
 /// Resolution order (later wins):
 /// 1. Compiled defaults ([`AletheiaConfig::default()`])
-/// 2. `{oikos.config()}/aletheia.toml` (if it exists), with env-var interpolation
-///    (`${VAR:-default}`, `${VAR:?error}`) applied first, then `enc:` values decrypted
+/// 2. `{oikos.config()}/aletheia.toml` (if it exists), parsed first, then
+///    env-var interpolation (`${VAR:-default}`, `${VAR:?error}`) applied only to
+///    string leaf values, then `enc:` values decrypted
 /// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
 ///
 /// Encrypted values (`enc:` prefix) are transparently decrypted using the
 /// primary key from `~/.config/aletheia/primary.key`. If the key is missing
 /// but `enc:` values are present, startup fails with an actionable error
 /// listing the affected fields.
+///
+/// Environment interpolation is TOML-aware: the file is parsed before
+/// substitution, and only string leaf values are replaced.
 ///
 /// Call [`load_config_with`] to supply a custom [`FileSystem`] implementation
 /// (e.g. `koina::system::TestSystem` in tests).
@@ -87,7 +96,7 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
         .build()
     })?;
 
-    // Tier 2: TOML file (if present), interpolated + decrypted, then deep-merged.
+    // Tier 2: TOML file (if present), parsed first, then interpolated + decrypted.
     if fs.exists(&toml_path) {
         let bytes = fs
             .read_file(&toml_path)
@@ -95,8 +104,18 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
                 path: toml_path.clone(),
             })?;
         let toml_content = String::from_utf8_lossy(&bytes);
-        let interpolated = interpolate::interpolate_env_vars(toml_content.as_ref())?;
-        let decrypted_content = decrypt_toml_content(&interpolated)?;
+        let mut toml_value: toml::Value =
+            toml::from_str(&toml_content).context(crate::error::ParseTomlSnafu {
+                path: toml_path.clone(),
+            })?;
+        interpolate::interpolate_env_vars_in_value(&mut toml_value)?;
+        decrypt_toml_value(&mut toml_value)?;
+        let decrypted_content = toml::to_string(&toml_value).map_err(|e| {
+            SerializeTomlSnafu {
+                reason: e.to_string(),
+            }
+            .build()
+        })?;
 
         let toml_json: JsonValue =
             toml::from_str(&decrypted_content).context(crate::error::ParseTomlSnafu {
@@ -361,36 +380,6 @@ fn decrypt_toml_value(value: &mut toml::Value) -> Result<()> {
     }
 }
 
-/// Decrypt any `enc:` values in a parsed TOML tree and serialize it back.
-///
-/// Returns an error if encrypted values are found but the decryption key is
-/// missing, or if the decrypted value tree cannot be re-serialized. This
-/// prevents the server from silently starting with undecrypted `enc:` values
-/// or leaking ciphertext when re-serialization fails.
-fn decrypt_toml_value_to_string(value: &mut toml::Value) -> Result<String> {
-    decrypt_toml_value(value)?;
-
-    toml::to_string(value).map_err(|e| {
-        SerializeTomlSnafu {
-            reason: e.to_string(),
-        }
-        .build()
-    })
-}
-
-/// Parse TOML content, decrypt any `enc:` values, and serialize back.
-///
-/// Returns an error if encrypted values are found but the decryption key is
-/// missing, or if the decrypted value tree cannot be re-serialized.
-fn decrypt_toml_content(content: &str) -> Result<String> {
-    let mut value: toml::Value = match toml::from_str(content) {
-        Ok(v) => v,
-        Err(_) => return Ok(content.to_owned()),
-    };
-
-    decrypt_toml_value_to_string(&mut value)
-}
-
 /// Read a standalone TOML file, apply env-var interpolation and decrypt
 /// `enc:` values, and return the parsed value tree.
 ///
@@ -434,11 +423,11 @@ pub fn parse_toml_file_with(path: &std::path::Path, fs: &impl FileSystem) -> Res
         path: path.to_path_buf(),
     })?;
     let toml_content = String::from_utf8_lossy(&bytes);
-    let interpolated = interpolate::interpolate_env_vars(toml_content.as_ref())?;
     let mut value: toml::Value =
-        toml::from_str(&interpolated).context(crate::error::ParseTomlSnafu {
+        toml::from_str(&toml_content).context(crate::error::ParseTomlSnafu {
             path: path.to_path_buf(),
         })?;
+    interpolate::interpolate_env_vars_in_value(&mut value)?;
     decrypt_toml_value(&mut value)?;
     Ok(value)
 }
@@ -780,6 +769,45 @@ mod tests {
     }
 
     #[test]
+    fn env_interpolation_is_toml_aware() {
+        let mut jail = EnvJail::new();
+        jail.set_env("_TAX_INJECT_QUOTES", "hello \"world\"");
+        jail.set_env("_TAX_INJECT_TABLE", "127.0.0.1\"\n[evil]\nport = 1");
+        jail.set_env("_TAX_INJECT_ARRAY", "[\"a\", \"b\"]");
+        jail.create_file(
+            "config/aletheia.toml",
+            r#"
+[gateway]
+bind = "${_TAX_INJECT_TABLE}"
+
+[embedding]
+provider = "${_TAX_INJECT_ARRAY}"
+model = "${_TAX_INJECT_QUOTES}"
+"#,
+        );
+
+        let oikos = Oikos::from_root(jail.directory());
+        let config = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
+
+        // WHY: these values were substituted as literal strings, so quotes,
+        // newlines, arrays, and table syntax remain part of the string value
+        // rather than altering the parsed configuration structure.
+        assert_eq!(
+            config.gateway.bind, "127.0.0.1\"\n[evil]\nport = 1",
+            "table-like env value should remain a literal string"
+        );
+        assert_eq!(
+            config.embedding.provider, "[\"a\", \"b\"]",
+            "array-like env value should remain a literal string"
+        );
+        assert_eq!(
+            config.embedding.model,
+            Some("hello \"world\"".to_owned()),
+            "quotes in env value should remain literal"
+        );
+    }
+
+    #[test]
     fn load_config_with_mirrors_data_retention_to_maintenance() {
         let jail = EnvJail::new();
         let oikos = Oikos::from_root(jail.directory());
@@ -825,7 +853,14 @@ archiveBeforeDelete = true
 
         // WHY: toml cannot represent NaN, so re-serialization must fail. The
         // old implementation silently returned the original ciphertext string.
-        let result = decrypt_toml_value_to_string(&mut value);
+        let result = decrypt_toml_value(&mut value).and_then(|()| {
+            toml::to_string(&value).map_err(|e| {
+                SerializeTomlSnafu {
+                    reason: e.to_string(),
+                }
+                .build()
+            })
+        });
         assert!(
             result.is_err(),
             "non-serializable TOML value must propagate an error instead of returning content"
