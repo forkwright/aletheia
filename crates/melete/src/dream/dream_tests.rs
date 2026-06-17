@@ -469,6 +469,50 @@ async fn on_turn_complete_surfaces_panic_and_releases_lock() {
     assert!(!lock_path.exists(), "lock must be rolled back after panic");
 }
 
+#[tokio::test]
+async fn shutdown_waits_for_active_consolidation_and_marks_complete() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join(".consolidate-lock");
+
+    let config = make_config(lock_path.clone());
+    let engine = Arc::new(DreamEngine::new(config));
+
+    let transcripts = vec![sample_transcript("session-001", "alice")];
+    let source: Arc<dyn TranscriptSource> =
+        Arc::new(MockTranscriptSource::with_transcripts(transcripts));
+    let target: Arc<dyn ConsolidationTarget> = Arc::new(MockConsolidationTarget::new());
+
+    let summary = "## Summary\nBorrow checker overview\n\
+                    ## Key Decisions\n- Use references\n\
+                    ## Task Context\nLearning Rust";
+    let provider: Arc<dyn LlmProvider> =
+        Arc::new(hermeneus::test_utils::MockProvider::new(summary));
+
+    engine.on_turn_complete(&source, &target, &provider);
+
+    assert!(
+        engine.shutdown().await.is_ok(),
+        "shutdown must await active consolidation to completion"
+    );
+
+    // WHY: mark_complete writes an empty body and updates mtime; a stale mtime
+    // would cause the next run to re-process already-merged sessions.
+    assert!(lock_path.exists(), "lock file must exist after completion");
+    let body = std::fs::read_to_string(&lock_path).unwrap();
+    assert!(
+        body.trim().is_empty(),
+        "lock body must be cleared to signal completion"
+    );
+    let mtime = std::fs::metadata(&lock_path).unwrap().modified().unwrap();
+    let age = std::time::SystemTime::now()
+        .duration_since(mtime)
+        .unwrap_or_default();
+    assert!(
+        age < std::time::Duration::from_secs(5),
+        "lock mtime must be updated on completion"
+    );
+}
+
 #[test]
 fn dream_engine_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}

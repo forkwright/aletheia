@@ -368,6 +368,13 @@ impl DreamEngine {
             .active_task
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // WHY(#5679): the lock gate prevents actual concurrent runs, but a
+        // still-running task at the next turn is a shutdown-risk signal.
+        if let Some(ref previous) = *guard && !previous.is_finished() {
+            tracing::warn!(
+                "auto-dream consolidation still in progress; next turn will re-evaluate gates"
+            );
+        }
         *guard = Some(handle);
     }
 
