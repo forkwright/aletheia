@@ -127,7 +127,14 @@ fn spawn_callback_handler(
 ) -> (u16, std::thread::JoinHandle<Result<CallbackData>>) {
     let listener = StdTcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
-    let handle = std::thread::spawn(move || handle_callback_connection(&listener, expected_state));
+    // WHY: `#[tracing_test::traced_test]` captures logs per-scope; carry the
+    // calling test's span into the handler thread so `logs_contain` can see
+    // production logs emitted while parsing the callback request.
+    let span = tracing::Span::current();
+    let handle = std::thread::spawn(move || {
+        let _enter = span.enter();
+        handle_callback_connection(&listener, expected_state)
+    });
     (port, handle)
 }
 
