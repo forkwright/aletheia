@@ -337,6 +337,10 @@ while IFS= read -r line; do :; done
             perms.set_mode(0o755);
             fs::set_permissions(&script, perms).expect("chmod");
         }
+        // WHY: close the script file before executing it. On Unix a writable file
+        // handle left open causes ETXTBSY ("Text file busy") when trying to spawn
+        // the script as an executable.
+        drop(file);
 
         // Set a "secret" in the test process environment.
         // WHY: std::env::set_var in a test is acceptable since tests run in-process
