@@ -204,6 +204,33 @@ fn multi_transaction_read_only_handle() {
     let _tx = db.multi_transaction(false);
 }
 
+/// Test multi-transaction public API: query and commit.
+#[test]
+fn multi_transaction_runs_query_and_commits() {
+    let db = Db::open_mem().expect("opening in-memory database should succeed");
+
+    db.run(
+        ":create multi_test {id: Int => value: String}",
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("creating relation should succeed");
+
+    let tx = db.multi_transaction(true);
+    tx.transact(krites::TransactionPayload::Query((
+        r#"?[id, value] <- [[1, "one"]] :put multi_test {id => value}"#.to_string(),
+        BTreeMap::new(),
+    )))
+    .expect("insert inside multi-transaction should succeed");
+
+    tx.commit().expect("commit should succeed");
+
+    let result = db
+        .run_read_only("?[id, value] := *multi_test{id, value}", BTreeMap::new())
+        .expect("reading committed row should succeed");
+    assert_eq!(result.rows.len(), 1);
+}
+
 /// Test HNSW index creation and KNN search.
 #[cfg(feature = "storage-fjall")]
 #[test]

@@ -4,6 +4,7 @@
     clippy::indexing_slicing,
     reason = "test assertions: index into known-shape NamedRows results"
 )]
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
 
@@ -369,5 +370,31 @@ fn relation_locks_are_consistent_across_concurrent_first_access_and_cleaned_on_r
     assert!(
         !locks.contains_key(&rel_name),
         "relation_locks entry must be removed when the relation is dropped"
+    );
+}
+
+#[test]
+fn multi_transaction_reports_worker_termination_as_typed_error() {
+    use crossbeam::channel::bounded;
+
+    use crate::{MultiTransaction, MultiTransactionError, TransactionPayload};
+
+    let (app_tx, _app_rx) = bounded::<TransactionPayload>(1);
+    let (db_tx, db_rx) = bounded::<crate::error::InternalResult<crate::NamedRows>>(1);
+    // Simulate a worker that terminated before sending a result: the result
+    // Sender is dropped, so the application's recv returns RecvError.
+    drop(db_tx);
+
+    let tx = MultiTransaction::new_for_test(app_tx, db_rx);
+    let err = tx
+        .transact(TransactionPayload::Query((
+            "?[] := 1".to_string(),
+            BTreeMap::new(),
+        )))
+        .expect_err("transact should fail when worker is dead");
+
+    assert!(
+        matches!(err, MultiTransactionError::WorkerPanicked),
+        "expected WorkerPanicked error, got {err:?}"
     );
 }
