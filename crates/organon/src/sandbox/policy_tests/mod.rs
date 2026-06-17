@@ -33,7 +33,8 @@ fn policy_with_system_paths(workspace: &std::path::Path) -> SandboxPolicy {
         PathBuf::from("/lib"),
         PathBuf::from("/lib64"),
         PathBuf::from("/etc"),
-        PathBuf::from("/proc"),
+        // WHY: Tests use the same minimal /proc grant as production defaults.
+        PathBuf::from("/proc/self"),
         PathBuf::from("/dev"),
     ];
     let write_paths = vec![workspace.to_path_buf()];

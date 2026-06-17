@@ -170,7 +170,11 @@ impl SandboxConfig {
             PathBuf::from("/lib"),
             PathBuf::from("/lib64"),
             PathBuf::from("/etc"),
-            PathBuf::from("/proc"),
+            // WHY: Grant only /proc/self, not all of /proc. The sandboxed child
+            // may need its own process metadata (e.g. /proc/self/exe, status),
+            // but reading /proc/<parent-pid>/environ or cmdline would bypass
+            // the environment-scrubbing boundary and leak parent secrets.
+            PathBuf::from("/proc/self"),
             PathBuf::from("/dev"),
         ];
 

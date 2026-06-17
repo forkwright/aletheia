@@ -181,6 +181,14 @@ fn policy_includes_system_paths() {
         "policy should include /etc in read paths"
     );
     assert!(
+        policy.read_paths.contains(&PathBuf::from("/proc/self")),
+        "policy should include only /proc/self, not all of /proc"
+    );
+    assert!(
+        !policy.read_paths.contains(&PathBuf::from("/proc")),
+        "policy must not grant broad /proc reads"
+    );
+    assert!(
         policy.exec_paths.contains(&PathBuf::from("/usr/bin")),
         "policy should include /usr/bin in exec paths"
     );
@@ -463,7 +471,7 @@ fn landlock_blocks_outside_workspace() {
         PathBuf::from("/lib"),
         PathBuf::from("/lib64"),
         PathBuf::from("/etc"),
-        PathBuf::from("/proc"),
+        PathBuf::from("/proc/self"),
         PathBuf::from("/dev"),
         workspace.path().to_path_buf(),
     ];
@@ -638,7 +646,7 @@ fn sandbox_write_outside_workspace_blocked() {
             PathBuf::from("/lib"),
             PathBuf::from("/lib64"),
             PathBuf::from("/etc"),
-            PathBuf::from("/proc"),
+            PathBuf::from("/proc/self"),
             PathBuf::from("/dev"),
             workspace.path().to_path_buf(),
         ],

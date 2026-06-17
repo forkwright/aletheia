@@ -111,7 +111,7 @@ fn sandbox_policy_apply_unit() {
             PathBuf::from("/lib"),
             PathBuf::from("/lib64"),
             PathBuf::from("/etc"),
-            PathBuf::from("/proc"),
+            PathBuf::from("/proc/self"),
             PathBuf::from("/dev"),
             workspace.path().to_path_buf(),
         ],
