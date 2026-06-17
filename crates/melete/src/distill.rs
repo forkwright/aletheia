@@ -13,7 +13,9 @@ use crate::contradiction::{self, ContradictionLog};
 use crate::error::{EmptySummarySnafu, LlmCallSnafu, NoMessagesSnafu, Result};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 use crate::prompt;
-use crate::similarity::{self, DEFAULT_SIMILARITY_THRESHOLD, PruningStats};
+use crate::similarity::{
+    self, DEFAULT_MAX_SIMILARITY_MESSAGES, DEFAULT_SIMILARITY_THRESHOLD, PruningStats,
+};
 
 /// Default maximum conversation turns to skip between distillation retry attempts.
 ///
@@ -231,6 +233,8 @@ pub struct DistillEngine {
     config: DistillConfig,
     // WHY: std::sync::Mutex: retry counter check/increment is O(1), never crosses an await point.
     retry_state: std::sync::Mutex<RetryState>,
+    /// Maximum number of messages to compare for similarity in a single pass.
+    max_similarity_messages: usize,
 }
 
 impl DistillEngine {
@@ -240,7 +244,16 @@ impl DistillEngine {
         Self {
             config,
             retry_state: std::sync::Mutex::new(RetryState::default()),
+            max_similarity_messages: DEFAULT_MAX_SIMILARITY_MESSAGES,
         }
+    }
+
+    /// Set the maximum number of messages compared for similarity pruning.
+    ///
+    /// Older messages outside this window are always preserved. This is a
+    /// runtime override; the default is [`DEFAULT_MAX_SIMILARITY_MESSAGES`].
+    pub fn set_max_similarity_messages(&mut self, max: usize) {
+        self.max_similarity_messages = max;
     }
 
     /// Acquire the retry state lock, recovering from a poisoned mutex.
@@ -355,8 +368,10 @@ impl DistillEngine {
     ///
     /// # Complexity
     ///
-    /// O(m² × t) where m is the number of messages and t is the tokenization cost.
-    /// This includes the similarity pruning phase which performs pairwise comparisons.
+    /// Similarity pruning is capped to the most recent
+    /// [`DEFAULT_MAX_SIMILARITY_MESSAGES`] and uses `MinHash` LSH, so the
+    /// expected cost is sub-quadratic. The worst-case pairwise cost is bounded
+    /// by the cap.
     #[instrument(skip(self, messages, provider), fields(nous_id, distillation_number))]
     #[expect(
         clippy::too_many_lines,
@@ -389,8 +404,11 @@ impl DistillEngine {
 
         let tokens_before = estimate_tokens(messages);
 
-        let (pruned_messages, pruning_stats) =
-            similarity::prune_similar_messages(to_summarize, self.config.similarity_threshold);
+        let (pruned_messages, pruning_stats) = similarity::prune_similar_messages(
+            to_summarize,
+            self.config.similarity_threshold,
+            self.max_similarity_messages,
+        );
 
         if pruning_stats.pruned_count > 0 {
             tracing::info!(
