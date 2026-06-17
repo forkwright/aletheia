@@ -34,6 +34,10 @@ use crate::model::{NumFormat, Unit};
 /// ```
 #[must_use]
 pub fn format_number(value: f64, format: NumFormat, unit: Unit) -> String {
+    assert!(
+        value.is_finite(),
+        "format_number received non-finite value: {value}"
+    );
     let effective = if matches!(format, NumFormat::FromUnit) {
         format_for_unit(unit)
     } else {
@@ -122,6 +126,7 @@ fn format_default(v: f64) -> String {
 /// the byte-identical golden-snapshot contract hold.
 #[must_use]
 pub fn coord(v: f64) -> String {
+    assert!(v.is_finite(), "coord received non-finite value: {v}");
     let rounded = (v * 100.0).round() / 100.0;
     if rounded == 0.0 {
         return "0".to_owned();
@@ -202,5 +207,17 @@ mod tests {
         assert_eq!(coord(0.0), "0");
         assert_eq!(coord(-0.001), "0");
         assert_eq!(coord(10.0), "10");
+    }
+
+    #[test]
+    #[should_panic(expected = "coord received non-finite value: NaN")]
+    fn coord_panics_on_nan() {
+        let _ = coord(f64::NAN);
+    }
+
+    #[test]
+    #[should_panic(expected = "format_number received non-finite value: inf")]
+    fn format_number_panics_on_infinity() {
+        let _ = format_number(f64::INFINITY, NumFormat::Int, Unit::Number);
     }
 }

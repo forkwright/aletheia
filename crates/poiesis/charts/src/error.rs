@@ -87,6 +87,16 @@ pub enum Error {
         path: String,
     },
 
+    /// A data value was `NaN` or infinite.
+    ///
+    /// The model rejects non-finite values at parse time so the emitter never
+    /// produces invalid `x="NaN"` / `y="NaN"` SVG output.
+    #[snafu(display("non-finite value at {path}"))]
+    NonFiniteValue {
+        /// JSON pointer to the offending value.
+        path: String,
+    },
+
     /// Vega-Lite shell-out failed (npx not found, non-zero exit, etc.).
     #[snafu(display("vega-lite shell-out failed: {message}"))]
     VegaShellout {

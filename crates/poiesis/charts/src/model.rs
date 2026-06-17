@@ -468,6 +468,27 @@ impl Chart {
             });
         }
 
+        for (series_idx, series) in self.series.iter().enumerate() {
+            for (point_idx, point) in series.points.iter().enumerate() {
+                if !point.y.value.is_finite() {
+                    return Err(crate::Error::NonFiniteValue {
+                        path: format!("/series/{series_idx}/points/{point_idx}/y"),
+                    });
+                }
+                if let Some(x) = &point.x {
+                    let x_value = match x {
+                        CiteOrScalar::Cite(fc) => fc.value,
+                        CiteOrScalar::Scalar(v) => *v,
+                    };
+                    if !x_value.is_finite() {
+                        return Err(crate::Error::NonFiniteValue {
+                            path: format!("/series/{series_idx}/points/{point_idx}/x"),
+                        });
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -651,5 +672,57 @@ mod tests {
         ] {
             assert_eq!(k.render_path(), RenderPath::Vega, "{}", k.name());
         }
+    }
+
+    #[test]
+    fn nan_y_value_fails_validation() {
+        let c = Chart {
+            kind: ChartKind::Bar,
+            title: None,
+            series: vec![series(
+                "Values",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![point("MAR", cite("f1", f64::NAN))],
+            )],
+            axes: Axes::default(),
+            legend: LegendSpec::Auto,
+            data_labels: false,
+            caption: None,
+        };
+        let r = c.validate();
+        assert!(
+            matches!(r, Err(crate::Error::NonFiniteValue { ref path }) if path.contains("/y")),
+            "expected NonFiniteValue for NaN y, got {r:?}"
+        );
+    }
+
+    #[test]
+    fn infinite_x_value_fails_validation() {
+        let c = Chart {
+            kind: ChartKind::Scatter,
+            title: None,
+            series: vec![series(
+                "Values",
+                0,
+                SeriesStyle::Default,
+                AxisSide::Left,
+                vec![Point {
+                    label: None,
+                    x: Some(CiteOrScalar::Scalar(f64::INFINITY)),
+                    y: cite("f1", 10.0),
+                }],
+            )],
+            axes: Axes::default(),
+            legend: LegendSpec::Auto,
+            data_labels: false,
+            caption: None,
+        };
+        let r = c.validate();
+        assert!(
+            matches!(r, Err(crate::Error::NonFiniteValue { ref path }) if path.contains("/x")),
+            "expected NonFiniteValue for infinite x, got {r:?}"
+        );
     }
 }
