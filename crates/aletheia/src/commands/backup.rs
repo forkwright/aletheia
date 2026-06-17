@@ -386,9 +386,7 @@ mod tests {
             workspace_omissions: Vec::new(),
             total_bytes: 0,
             snapshot_epoch: jiff::Zoned::now().to_string(),
-            snapshot_protocol_version: String::from(
-                "aletheia-instance-backup-v1-snapshot-1",
-            ),
+            snapshot_protocol_version: String::from("aletheia-instance-backup-v1-snapshot-1"),
             quiesced: false,
             store_generations: std::collections::HashMap::new(),
         };
