@@ -55,7 +55,7 @@ pub struct ApprovalResponse {
     ),
     responses(
         (status = 200, description = "Decision routed", body = ApprovalResponse),
-        (status = 400, description = "Bad decision value", body = ErrorResponse),
+        (status = 422, description = "Invalid decision value", body = ErrorResponse),
         (status = 404, description = "No active turn for session", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
     ),
@@ -70,12 +70,8 @@ pub async fn resolve(
 ) -> Result<impl IntoResponse, ApiError> {
     require_role(&claims, Role::Operator)?;
 
-    // SECURITY(#4584, #5340): Resolve session ownership and enforce nous scope
-    // before routing the decision. A scoped operator token must not be able
-    // to approve/deny another agent's tool gate by knowing the session id.
-    let session = find_session(&state, &session_id).await?;
-    require_nous_access(&claims, &session.nous_id)?;
-
+    // Validate the operator's decision before any session lookup so that an
+    // invalid decision always surfaces as 422 regardless of session state.
     let choice = match body.decision.as_str() {
         "approved" => ApprovalChoice::Approved,
         "denied" => ApprovalChoice::Denied,
@@ -90,6 +86,12 @@ pub async fn resolve(
             .fail();
         }
     };
+
+    // SECURITY(#4584, #5340): Resolve session ownership and enforce nous scope
+    // before routing the decision. A scoped operator token must not be able
+    // to approve/deny another agent's tool gate by knowing the session id.
+    let session = find_session(&state, &session_id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
 
     let routed = state
         .approval_registry
