@@ -19,6 +19,8 @@ pub(crate) struct SessionCreateParams {
 pub(crate) struct SessionListParams {
     /// Filter by nous agent ID.
     pub nous_id: Option<String>, // kanon:ignore RUST/primitive-for-domain-id -- WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
+    /// Maximum number of sessions to return (default: 50, max: 1000).
+    pub limit: Option<usize>,
 }
 
 /// Parameters for sending a message to a session.

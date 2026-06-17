@@ -55,7 +55,7 @@ DESCRIPTION_RE = re.compile(
 )
 STRING_LITERAL_RE = re.compile(r'"(?:\\.|[^"\\])*"', re.DOTALL)
 TIER_RE = re.compile(r"self\.rate_limiter\.check\(Tier::(?P<tier>\w+)\)")
-ROLE_RE = re.compile(r"require_role\s*\(\s*self\s*,\s*&context\s*,\s*Role::(?P<role>\w+)")
+ROLE_RE = re.compile(r"require(?:_caller)?_role\s*\(\s*(?:self\s*,\s*&context|&caller)\s*,\s*Role::(?P<role>\w+)")
 
 # WHY: resource templates are statically defined as tuples or RawResourceTemplate::new calls.
 # Parse the WORKSPACE_FILES constant for the nous templates and the config resource separately.

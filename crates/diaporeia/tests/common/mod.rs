@@ -42,6 +42,10 @@ pub struct StateBuilder {
     signing_key: String,
     instance_root: tempfile::TempDir,
     repomix_enabled: bool,
+    knowledge_graph_enabled: bool,
+    knowledge_store: Option<std::sync::Arc<mneme::knowledge_store::KnowledgeStore>>,
+    note_store: Option<std::sync::Arc<dyn organon::types::NoteStore>>,
+    blackboard_store: Option<std::sync::Arc<dyn organon::types::BlackboardStore>>,
 }
 
 impl StateBuilder {
@@ -53,6 +57,10 @@ impl StateBuilder {
             signing_key: "integration-test-signing-key-at-least-32-bytes!".to_owned(),
             instance_root,
             repomix_enabled: false,
+            knowledge_graph_enabled: false,
+            knowledge_store: None,
+            note_store: None,
+            blackboard_store: None,
         }
     }
 
@@ -68,6 +76,32 @@ impl StateBuilder {
 
     pub fn repomix_enabled(mut self) -> Self {
         self.repomix_enabled = true;
+        self
+    }
+
+    pub fn knowledge_graph_enabled(mut self) -> Self {
+        self.knowledge_graph_enabled = true;
+        self
+    }
+
+    pub fn knowledge_store(
+        mut self,
+        store: std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    ) -> Self {
+        self.knowledge_store = Some(store);
+        self
+    }
+
+    pub fn note_store(mut self, store: std::sync::Arc<dyn organon::types::NoteStore>) -> Self {
+        self.note_store = Some(store);
+        self
+    }
+
+    pub fn blackboard_store(
+        mut self,
+        store: std::sync::Arc<dyn organon::types::BlackboardStore>,
+    ) -> Self {
+        self.blackboard_store = Some(store);
         self
     }
 
@@ -114,6 +148,9 @@ impl StateBuilder {
             cfg.mcp.repomix.enabled = true;
             cfg.mcp.repomix.max_output_tokens = 10_000;
         }
+        if self.knowledge_graph_enabled {
+            cfg.mcp.knowledge_graph.enabled = true;
+        }
         let config = Arc::new(RwLock::new(cfg));
 
         let state = Arc::new(DiaporeiaState {
@@ -128,9 +165,9 @@ impl StateBuilder {
             none_role: self.none_role,
             shutdown: CancellationToken::new(),
             #[cfg(feature = "knowledge-store")]
-            knowledge_store: None,
-            note_store: None,
-            blackboard_store: None,
+            knowledge_store: self.knowledge_store,
+            note_store: self.note_store,
+            blackboard_store: self.blackboard_store,
         });
 
         (state, jwt_manager, self.instance_root)
@@ -140,4 +177,14 @@ impl StateBuilder {
 pub fn issue_token(jwt: &JwtManager, subject: &str, role: Role) -> String {
     jwt.issue_access(subject, role, None)
         .expect("issue test access token")
+}
+
+pub fn issue_token_with_nous_id(
+    jwt: &JwtManager,
+    subject: &str,
+    role: Role,
+    nous_id: &str,
+) -> String {
+    jwt.issue_access(subject, role, Some(nous_id))
+        .expect("issue scoped test access token")
 }
