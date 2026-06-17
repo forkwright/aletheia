@@ -97,7 +97,16 @@ pub fn available_space(path: &Path) -> std::io::Result<u64> {
 
     // WHY: f_bavail (blocks available to unprivileged users) * f_frsize
     // (fragment size) gives the bytes available for non-root writes.
-    Ok(stat.f_bavail * stat.f_frsize)
+    // Saturating multiplication prevents silent wrap on theoretical >u64::MAX
+    // filesystem products; returning u64::MAX conservatively reports "plenty of
+    // space" instead of an incorrect low value.
+    Ok(available_bytes_from_stat(stat.f_bavail, stat.f_frsize))
+}
+
+/// Convert statvfs block counts to available bytes without silent overflow.
+#[must_use]
+fn available_bytes_from_stat(blocks_available: u64, fragment_size: u64) -> u64 {
+    blocks_available.saturating_mul(fragment_size)
 }
 
 /// Check disk space and classify against thresholds.
@@ -347,6 +356,20 @@ mod tests {
             display.contains("warning"),
             "display should contain level: {display}"
         );
+    }
+
+    #[test]
+    fn available_bytes_from_stat_saturates_on_overflow() {
+        // WHY (#5634): on sufficiently large filesystems the u64 product can
+        // wrap in release mode. Saturating to u64::MAX keeps the monitor from
+        // incorrectly reporting Critical/Ok due to wrapped arithmetic.
+        assert_eq!(available_bytes_from_stat(u64::MAX, 2), u64::MAX);
+        assert_eq!(
+            available_bytes_from_stat(u64::MAX / 2 + 1, 2),
+            u64::MAX,
+            "product overflowing u64 must saturate"
+        );
+        assert_eq!(available_bytes_from_stat(10, 100), 1_000);
     }
 
     #[test]
