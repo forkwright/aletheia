@@ -234,8 +234,8 @@ fn emit_x_labels(
     for (i, point) in series.points.iter().enumerate() {
         let cx = plot.x0 + band_w * idx_to_f64(i) + band_w * 0.5;
         let label = match &point.label {
-            Some(CiteOrText::Text(t)) => t.clone(),
-            Some(CiteOrText::Cite(id)) => id.0.clone(),
+            Some(CiteOrText::Text(t)) => escape_xml(t),
+            Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
             None => String::new(),
         };
         let _ = write!(
@@ -369,6 +369,25 @@ mod tests {
         )
         .expect("second emit");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn x_labels_escape_xml_reserved_characters() {
+        let mut spec = offsite_spec();
+        for point in &mut spec.series[0].points {
+            point.label = Some(CiteOrText::Text("R&D <2024>".to_owned()));
+        }
+        let theme = ResolvedTheme::summus_stub();
+        let svg = emit(
+            &spec,
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("emit");
+        assert!(svg.contains("R&amp;D"));
+        assert!(svg.contains("&lt;2024&gt;"));
+        assert!(!svg.contains("R&D <2024>"));
     }
 
     #[test]
