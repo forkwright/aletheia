@@ -85,27 +85,41 @@ impl SandboxPolicy {
     /// on failure; on unsupported kernels, logs and continues based on
     /// enforcement mode.
     pub(crate) fn apply(&self) -> std::io::Result<()> {
-        self.apply_egress()
-            .or_else(|e| self.degrade_or_fail("egress", &e))?;
-        self.apply_landlock()
-            .or_else(|e| self.degrade_or_fail("landlock", &e))?;
-        self.apply_seccomp()
-            .or_else(|e| self.degrade_or_fail("seccomp", &e))?;
-        Ok(())
-    }
+        // WHY: Egress, Landlock, and seccomp are independent controls. A failure
+        // in one must not short-circuit the others; otherwise a missing kernel
+        // feature (e.g. Landlock) could leave the child fully unsandboxed.
+        let egress = self.apply_egress();
+        let landlock = self.apply_landlock();
+        let seccomp = self.apply_seccomp();
 
-    fn degrade_or_fail(
-        &self,
-        guarantee: &'static str,
-        err: &std::io::Error,
-    ) -> std::io::Result<()> {
-        if self.enforcement == SandboxEnforcement::Permissive {
-            Ok(())
-        } else {
-            Err(std::io::Error::other(format!(
-                "{guarantee} sandbox setup failed: {err}"
-            )))
+        let mut failures: Vec<(&str, String)> = Vec::new();
+        if let Err(e) = egress {
+            failures.push(("egress", e.to_string()));
         }
+        if let Err(e) = landlock {
+            failures.push(("landlock", e.to_string()));
+        }
+        if let Err(e) = seccomp {
+            failures.push(("seccomp", e.to_string()));
+        }
+
+        if failures.is_empty() || self.enforcement == SandboxEnforcement::Permissive {
+            // WHY: Permissive mode deliberately continues after logging the
+            // degradation in the parent. All requested controls were still
+            // attempted above, so any that could be installed are active.
+            return Ok(());
+        }
+
+        // INVARIANT: In enforcing mode, any sandbox setup failure is fatal.
+        // Return the first failure with a clear name so operators can tell
+        // which guarantee blocked execution.
+        if let Some((name, err)) = failures.into_iter().next() {
+            return Err(std::io::Error::other(format!(
+                "{name} sandbox setup failed: {err}"
+            )));
+        }
+
+        Ok(())
     }
 
     /// Apply network egress restrictions via Linux network namespaces.
