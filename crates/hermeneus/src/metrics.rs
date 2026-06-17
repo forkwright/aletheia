@@ -89,12 +89,32 @@ static LLM_CONCURRENCY_IN_FLIGHT: LazyLock<Family<ProviderLabels, Gauge>> =
 ///
 /// WHY(#5684): `Family<ModelStatusLabels, Histogram>` never evicts entries,
 /// so using raw model IDs (e.g. `claude-opus-4-20250514`) causes cardinality
-/// to grow unboundedly as versioned snapshots accumulate. Stripping the
-/// last dash-segment collapses all snapshots of a family to one label key.
+/// to grow unboundedly as versioned snapshots accumulate. Stripping a trailing
+/// version suffix collapses all snapshots of a family to one label key.
 fn model_family_label(model: &str) -> &str {
-    model
-        .rfind('-')
-        .map_or(model, |pos| model.get(..pos).unwrap_or(model))
+    let Some((prefix, suffix)) = model.rsplit_once('-') else {
+        return model;
+    };
+
+    // Date/patch snapshots look like `20250514` or `6`. They are only
+    // stripped when another dash already anchors a major version (e.g.
+    // `claude-opus-4-20250514`), so a lone major version like `gpt-4` is
+    // preserved as a family name.
+    if suffix.bytes().all(|b| b.is_ascii_digit()) && prefix.contains('-') {
+        return prefix;
+    }
+
+    // Letter snapshots attach to a major version token, e.g. `gpt-4o`.
+    let leading_digits = suffix.bytes().take_while(u8::is_ascii_digit).count();
+    let Some(rest) = suffix.get(leading_digits..) else {
+        return model;
+    };
+    if leading_digits > 0 && rest.bytes().all(|b| b.is_ascii_alphabetic()) {
+        let cut = prefix.len() + 1 + leading_digits;
+        model.get(..cut).unwrap_or(model)
+    } else {
+        model
+    }
 }
 
 /// Register this crate's metrics with the shared registry.
