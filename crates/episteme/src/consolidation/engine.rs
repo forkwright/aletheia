@@ -862,9 +862,9 @@ fn run_llm_consolidation(
         let batch_session_ids: Vec<Option<String>> =
             batch.iter().map(|s| s.source_session_id.clone()).collect();
 
-        for entry in entries {
+        for entry in &entries {
             all_consolidated.push(ConsolidatedFact {
-                content: entry.content,
+                content: entry.content.clone(),
                 confidence: 0.95,
                 tier: "inferred".to_owned(),
                 // WHY: each ConsolidatedFact owns its source IDs, and we also
@@ -879,7 +879,18 @@ fn run_llm_consolidation(
                 source_session_ids: batch_session_ids.clone(),
             });
         }
-        all_superseded.extend(batch_fact_ids);
+
+        // WHY (#5849): A batch that produces zero consolidated outputs must not
+        // supersede its source facts. Marking originals as superseded with no
+        // replacement would silently destroy knowledge.
+        if entries.is_empty() {
+            tracing::warn!(
+                batch_size = batch.len(),
+                "LLM consolidation returned no outputs for batch; skipping supersession to avoid data loss"
+            );
+        } else {
+            all_superseded.extend(batch_fact_ids);
+        }
     }
 
     Ok(ConsolidationResult {
