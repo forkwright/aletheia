@@ -38,9 +38,6 @@ tracing-subscriber = { workspace = true }
 # Time
 jiff = { workspace = true }
 
-# Constant-time comparison for capability tokens
-subtle = "2.5"
-
 # Internal crates: memory facade + path resolver + UUID generation
 mneme = { path = "../mneme", features = ["storage-fjall"] }
 taxis = { path = "../taxis" }

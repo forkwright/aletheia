@@ -6,8 +6,8 @@
 //!
 //! Write tools (`nous_annotate`, `nous_supersede`, `nous_forget`) are only
 //! registered if the `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` environment variable is
-//! set at server startup. Each write call must include a `write_token` field
-//! that matches the configured token (via constant-time comparison).
+//! set at server startup. The capability token is configured out-of-band and is
+//! never accepted as a model-visible tool argument.
 
 use std::collections::BTreeMap;
 
@@ -32,9 +32,6 @@ use crate::server::MemoryServer;
 pub struct NousSearchParams {
     /// Free-text query string; matched via BM25 against current fact content.
     pub query: String,
-    /// Owning agent (nous) for whom results are being recalled. Filters out
-    /// foreign private facts and respects visibility rules.
-    pub nous_id: String,
     /// Maximum number of results to return. Defaults to 20 when omitted.
     #[serde(default)]
     pub limit: Option<usize>,
@@ -56,8 +53,6 @@ pub struct NousSearchParams {
 // kanon:ignore RUST/no-debug-derive-on-public-types — contains only scope filters; no secrets
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct NousListTopicsParams {
-    /// Owning agent (nous) whose view of the topic distribution is requested.
-    pub nous_id: String,
     /// Optional project partition filter.
     #[serde(default)]
     pub project_id: Option<String>,
@@ -76,8 +71,6 @@ pub struct NousListTopicsParams {
 // kanon:ignore RUST/no-debug-derive-on-public-types — contains only scope filters; no secrets
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct NousStatsParams {
-    /// Owning agent (nous) whose view of the stats is requested.
-    pub nous_id: String,
     /// Optional project partition filter.
     #[serde(default)]
     pub project_id: Option<String>,
@@ -99,8 +92,6 @@ pub struct NousNeighborsParams {
     /// ID of the seed fact whose entity neighbors should be returned.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
-    /// Owning agent (nous) whose scoped view is requesting the neighbors.
-    pub nous_id: String,
     /// Optional project partition filter.
     #[serde(default)]
     pub project_id: Option<String>,
@@ -116,8 +107,8 @@ pub struct NousNeighborsParams {
 }
 
 /// Parameters for `nous_annotate`.
-// WARNING: manual Debug omits write_token to prevent credential leak in tracing spans
-#[derive(Clone, Deserialize, Serialize, JsonSchema)]
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only the target fact and owner session; no secrets
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousAnnotateParams {
     /// Owning agent (nous) that is authoring the annotation. Must be explicit;
@@ -128,24 +119,11 @@ pub struct NousAnnotateParams {
     pub fact_id: String,
     /// Annotation content — agent-authored note or observation.
     pub content: String,
-    /// Capability token for write authorization.
-    pub write_token: String,
-}
-
-impl std::fmt::Debug for NousAnnotateParams {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NousAnnotateParams")
-            .field("session_id", &self.session_id)
-            .field("fact_id", &self.fact_id)
-            .field("content", &self.content)
-            .field("write_token", &"[redacted]")
-            .finish()
-    }
 }
 
 /// Parameters for `nous_supersede`.
-// WARNING: manual Debug omits write_token to prevent credential leak in tracing spans
-#[derive(Clone, Deserialize, Serialize, JsonSchema)]
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only fact IDs and owner; no secrets
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousSupersedeParams {
     /// ID of the fact being superseded.
@@ -158,25 +136,11 @@ pub struct NousSupersedeParams {
     pub nous_id: String,
     /// Reason for supersession.
     pub reason: String,
-    /// Capability token for write authorization.
-    pub write_token: String,
-}
-
-impl std::fmt::Debug for NousSupersedeParams {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NousSupersedeParams")
-            .field("old_fact_id", &self.old_fact_id)
-            .field("new_fact_id", &self.new_fact_id)
-            .field("nous_id", &self.nous_id)
-            .field("reason", &self.reason)
-            .field("write_token", &"[redacted]")
-            .finish()
-    }
 }
 
 /// Parameters for `nous_forget`.
-// WARNING: manual Debug omits write_token to prevent credential leak in tracing spans
-#[derive(Clone, Deserialize, Serialize, JsonSchema)]
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only fact ID and owner; no secrets
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousForgetParams {
     /// ID of the fact to forget.
@@ -186,19 +150,6 @@ pub struct NousForgetParams {
     pub nous_id: String,
     /// Reason for forgetting.
     pub reason: String,
-    /// Capability token for write authorization.
-    pub write_token: String,
-}
-
-impl std::fmt::Debug for NousForgetParams {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NousForgetParams")
-            .field("fact_id", &self.fact_id)
-            .field("nous_id", &self.nous_id)
-            .field("reason", &self.reason)
-            .field("write_token", &"[redacted]")
-            .finish()
-    }
 }
 
 /// Default search limit when the caller omits one.
@@ -604,7 +555,7 @@ impl MemoryServer {
     /// ```json
     /// {
     ///   "name": "nous_search",
-    ///   "arguments": { "query": "fleet dispatch config", "nous_id": "alice", "limit": 10 }
+    ///   "arguments": { "query": "fleet dispatch config", "limit": 10 }
     /// }
     /// ```
     #[tool(
@@ -639,16 +590,11 @@ impl MemoryServer {
             )
         })?;
 
-        if params.nous_id.trim().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
+        // WHY: recall scope is bound to the server's authenticated caller
+        // identity, not to any model-supplied argument.
+        let requester = self.requester_nous_id()?.to_owned();
 
         let query = params.query.clone();
-        let requester = params.nous_id.clone();
         let project_id = params.project_id.clone().filter(|s| !s.is_empty());
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
@@ -702,7 +648,7 @@ impl MemoryServer {
     /// ```json
     /// {
     ///   "name": "nous_neighbors",
-    ///   "arguments": { "fact_id": "f-abc-123", "nous_id": "alice" }
+    ///   "arguments": { "fact_id": "f-abc-123" }
     /// }
     /// ```
     #[tool(
@@ -722,16 +668,11 @@ impl MemoryServer {
             .into());
         }
 
-        if params.nous_id.trim().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
+        // WHY: recall scope is bound to the server's authenticated caller
+        // identity, not to any model-supplied argument.
+        let requester = self.requester_nous_id()?.to_owned();
 
         let fact_id = params.fact_id.clone();
-        let requester = params.nous_id.clone();
         let project_id = params.project_id.clone().filter(|s| !s.is_empty());
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
@@ -895,7 +836,7 @@ impl MemoryServer {
     /// ```json
     /// {
     ///   "name": "nous_list_topics",
-    ///   "arguments": { "nous_id": "alice" }
+    ///   "arguments": {}
     /// }
     /// ```
     #[tool(
@@ -908,15 +849,10 @@ impl MemoryServer {
         &self,
         Parameters(params): Parameters<NousListTopicsParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        if params.nous_id.trim().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
+        // WHY: recall scope is bound to the server's authenticated caller
+        // identity, not to any model-supplied argument.
+        let requester = self.requester_nous_id()?.to_owned();
 
-        let requester = params.nous_id.clone();
         let project_id = params.project_id.clone().filter(|s| !s.is_empty());
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
@@ -988,7 +924,7 @@ impl MemoryServer {
     /// ```json
     /// {
     ///   "name": "nous_stats",
-    ///   "arguments": { "nous_id": "alice" }
+    ///   "arguments": {}
     /// }
     /// ```
     #[tool(
@@ -1000,16 +936,11 @@ impl MemoryServer {
         &self,
         Parameters(params): Parameters<NousStatsParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        if params.nous_id.trim().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
+        // WHY: recall scope is bound to the server's authenticated caller
+        // identity, not to any model-supplied argument.
+        let requester = self.requester_nous_id()?.to_owned();
 
         let store_path = self.store_path.as_ref().map(|p| p.display().to_string());
-        let requester = params.nous_id.clone();
         let project_id = params.project_id.clone().filter(|s| !s.is_empty());
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
@@ -1104,23 +1035,22 @@ impl MemoryServer {
     ///     "fact_id": "f-abc-123",
     ///     "content": "This fact was verified against external source X",
     ///     "session_id": "agent-uuid",
-    ///     "write_token": "..."
     ///   }
     /// }
     /// ```
     #[tool(
         name = "nous_annotate",
         description = "Create an annotation on an owned fact in the aletheia nous local knowledge store; not kanon mnemosyne's durable corpus. \
-                         Requires write capability token. Returns the created annotation ID."
+                         Write capability must be configured server-side. Returns the created annotation ID."
     )]
     #[tracing::instrument(skip_all, fields(tool = "nous_annotate"))]
     async fn nous_annotate(
         &self,
         Parameters(params): Parameters<NousAnnotateParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        // Validate write authorization first, before any side effects
-        self.validate_write_token(&params.write_token)
-            .map_err(rmcp::ErrorData::from)?;
+        // WHY: write authorization is server-side; there is no credential in the
+        // model-visible tool arguments.
+        self.require_write_token().map_err(rmcp::ErrorData::from)?;
 
         if params.fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1274,23 +1204,22 @@ impl MemoryServer {
     ///     "new_fact_id": "f-abc-124",
     ///     "nous_id": "alice",
     ///     "reason": "Updated with more recent information",
-    ///     "write_token": "..."
     ///   }
     /// }
     /// ```
     #[tool(
         name = "nous_supersede",
         description = "Mark one owned fact as superseded by another in the aletheia nous local knowledge store; not kanon mnemosyne's durable corpus. \
-                         Requires write capability token. Returns the supersession record ID."
+                         Write capability must be configured server-side. Returns the supersession record ID."
     )]
     #[tracing::instrument(skip_all, fields(tool = "nous_supersede"))]
     async fn nous_supersede(
         &self,
         Parameters(params): Parameters<NousSupersedeParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        // Validate write authorization first
-        self.validate_write_token(&params.write_token)
-            .map_err(rmcp::ErrorData::from)?;
+        // WHY: write authorization is server-side; there is no credential in the
+        // model-visible tool arguments.
+        self.require_write_token().map_err(rmcp::ErrorData::from)?;
 
         if params.old_fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1476,23 +1405,22 @@ impl MemoryServer {
     ///     "fact_id": "f-abc-123",
     ///     "nous_id": "alice",
     ///     "reason": "Fact is no longer valid",
-    ///     "write_token": "..."
     ///   }
     /// }
     /// ```
     #[tool(
         name = "nous_forget",
         description = "Soft-delete an owned fact in the aletheia nous local knowledge store; not kanon mnemosyne's durable corpus. \
-                         Requires write capability token. Returns forgotten_at timestamp."
+                         Write capability must be configured server-side. Returns forgotten_at timestamp."
     )]
     #[tracing::instrument(skip_all, fields(tool = "nous_forget"))]
     async fn nous_forget(
         &self,
         Parameters(params): Parameters<NousForgetParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        // Validate write authorization first
-        self.validate_write_token(&params.write_token)
-            .map_err(rmcp::ErrorData::from)?;
+        // WHY: write authorization is server-side; there is no credential in the
+        // model-visible tool arguments.
+        self.require_write_token().map_err(rmcp::ErrorData::from)?;
 
         if params.fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1663,25 +1591,36 @@ mod tests {
 
     #[test]
     fn nous_search_params_round_trip() {
-        let json =
-            r#"{"query":"fleet dispatch config","nous_id":"alice","limit":10,"scope":"project"}"#;
+        let json = r#"{"query":"fleet dispatch config","limit":10,"scope":"project"}"#;
         let params: NousSearchParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.query, "fleet dispatch config");
-        assert_eq!(params.nous_id, "alice");
         assert_eq!(params.limit, Some(10));
         assert_eq!(params.scope, Some("project".to_owned()));
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousSearchParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.nous_id, "alice");
         assert_eq!(back.limit, Some(10));
     }
 
     #[test]
-    fn nous_search_params_requires_nous_id() {
+    fn nous_search_params_accepts_no_nous_id() {
+        // WHY: recall scope is server-bound, so the model cannot supply it.
         let json = r#"{"query":"foo"}"#;
         let result = serde_json::from_str::<NousSearchParams>(json);
-        assert!(result.is_err(), "nous_id is required for scoped search");
+        assert!(
+            result.is_ok(),
+            "nous_id must not be required in tool arguments"
+        );
+    }
+
+    #[test]
+    fn search_params_ignores_foreign_nous_id_argument() {
+        // WHY: extra arguments must not be able to choose a sibling identity.
+        let json = r#"{"query":"foo","nous_id":"bob"}"#;
+        let result = serde_json::from_str::<NousSearchParams>(json).unwrap();
+        // serde ignores unknown fields by default, so the supplied nous_id
+        // has no effect on recall scope.
+        assert_eq!(result.query, "foo");
     }
 
     #[test]
@@ -1696,50 +1635,45 @@ mod tests {
 
     #[test]
     fn nous_neighbors_params_round_trip() {
-        let json = r#"{"fact_id":"f-abc-123","nous_id":"alice","scope":"project"}"#;
+        let json = r#"{"fact_id":"f-abc-123","scope":"project"}"#;
         let params: NousNeighborsParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.fact_id, "f-abc-123");
-        assert_eq!(params.nous_id, "alice");
         assert_eq!(params.scope, Some("project".to_owned()));
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousNeighborsParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.nous_id, "alice");
+        assert_eq!(back.fact_id, "f-abc-123");
     }
 
     #[test]
-    fn nous_annotate_params_requires_write_token_and_owner() {
-        // Missing write_token
-        let json = r#"{"session_id":"agent-uuid","fact_id":"f-abc-123","content":"note"}"#;
-        assert!(serde_json::from_str::<NousAnnotateParams>(json).is_err());
+    fn nous_annotate_params_requires_owner() {
         // Missing session_id (owner)
-        let json = r#"{"fact_id":"f-abc-123","content":"note","write_token":"sekrit"}"#;
+        let json = r#"{"fact_id":"f-abc-123","content":"note"}"#;
         assert!(serde_json::from_str::<NousAnnotateParams>(json).is_err());
     }
 
     #[test]
     fn nous_annotate_params_round_trip() {
-        let json = r#"{"session_id":"agent-uuid","fact_id":"f-abc-123","content":"verified","write_token":"sekrit"}"#;
+        let json = r#"{"session_id":"agent-uuid","fact_id":"f-abc-123","content":"verified"}"#;
         let params: NousAnnotateParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.session_id, "agent-uuid".to_owned());
         assert_eq!(params.fact_id, "f-abc-123");
         assert_eq!(params.content, "verified");
-        assert_eq!(params.write_token, "sekrit");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousAnnotateParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.write_token, "sekrit");
+        assert_eq!(back.session_id, "agent-uuid");
     }
 
     #[test]
     fn nous_supersede_params_round_trip() {
-        let json = r#"{"old_fact_id":"f-old","new_fact_id":"f-new","nous_id":"alice","reason":"updated","write_token":"sekrit"}"#;
+        let json =
+            r#"{"old_fact_id":"f-old","new_fact_id":"f-new","nous_id":"alice","reason":"updated"}"#;
         let params: NousSupersedeParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.old_fact_id, "f-old");
         assert_eq!(params.new_fact_id, "f-new");
         assert_eq!(params.nous_id, "alice");
         assert_eq!(params.reason, "updated");
-        assert_eq!(params.write_token, "sekrit");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousSupersedeParams = serde_json::from_str(&out).unwrap();
@@ -1748,21 +1682,59 @@ mod tests {
 
     #[test]
     fn nous_forget_params_round_trip() {
-        let json =
-            r#"{"fact_id":"f-abc-123","nous_id":"alice","reason":"stale","write_token":"sekrit"}"#;
+        let json = r#"{"fact_id":"f-abc-123","nous_id":"alice","reason":"stale"}"#;
         let params: NousForgetParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.fact_id, "f-abc-123");
         assert_eq!(params.nous_id, "alice");
         assert_eq!(params.reason, "stale");
-        assert_eq!(params.write_token, "sekrit");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousForgetParams = serde_json::from_str(&out).unwrap();
         assert_eq!(back.nous_id, "alice");
     }
 
+    #[test]
+    fn write_tool_schemas_expose_no_credential_field() {
+        // WHY: regression test for #5068 — the capability token must never be
+        // advertised as part of the model-visible input schema.
+        use schemars::JsonSchema;
+
+        let annotate_schema =
+            NousAnnotateParams::json_schema(&mut schemars::SchemaGenerator::default());
+        let annotate_props = annotate_schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("annotate schema properties");
+        assert!(
+            !annotate_props.contains_key("write_token"),
+            "nous_annotate schema must not contain write_token"
+        );
+
+        let supersede_schema =
+            NousSupersedeParams::json_schema(&mut schemars::SchemaGenerator::default());
+        let supersede_props = supersede_schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("supersede schema properties");
+        assert!(
+            !supersede_props.contains_key("write_token"),
+            "nous_supersede schema must not contain write_token"
+        );
+
+        let forget_schema =
+            NousForgetParams::json_schema(&mut schemars::SchemaGenerator::default());
+        let forget_props = forget_schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("forget schema properties");
+        assert!(
+            !forget_props.contains_key("write_token"),
+            "nous_forget schema must not contain write_token"
+        );
+    }
+
     #[tokio::test]
-    async fn search_scopes_to_requester_nous_id() {
+    async fn search_scopes_to_bound_server_identity() {
         let store = open_store();
         store
             .insert_fact(&sample_fact(
@@ -1787,10 +1759,10 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, None);
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousSearchParams {
             query: "dispatch".to_owned(),
-            nous_id: "alice".to_owned(),
             limit: Some(10),
             project_id: None,
             scope: None,
@@ -1814,7 +1786,81 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_topics_scopes_to_requester_nous_id() {
+    async fn search_ignores_model_supplied_nous_id() {
+        // WHY: regression test for #5067 — a caller must not be able to recall
+        // as a sibling identity by passing a different `nous_id` argument.
+        let store = open_store();
+        store
+            .insert_fact(&sample_fact(
+                "f-alice-1",
+                "alice",
+                "alice private note about dispatch",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+        store
+            .insert_fact(&sample_fact(
+                "f-bob-1",
+                "bob",
+                "bob private note about dispatch",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+
+        // Server is bound to alice; the request still carries a foreign nous_id.
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+        let params = NousSearchParams {
+            query: "dispatch".to_owned(),
+            limit: Some(10),
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+        };
+        let result = server.nous_search(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        assert!(text.contains("f-alice-1"));
+        assert!(
+            !text.contains("f-bob-1"),
+            "model-supplied nous_id must not change recall scope"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_tools_reject_unbound_identity() {
+        let store = open_store();
+        let server = MemoryServer::with_write_token(store, None, None);
+        let params = NousSearchParams {
+            query: "dispatch".to_owned(),
+            limit: Some(10),
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+        };
+        let result = server.nous_search(Parameters(params)).await;
+        assert!(
+            result.is_err(),
+            "read tools must fail closed when no caller identity is bound"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_topics_scopes_to_bound_server_identity() {
         let store = open_store();
         store
             .insert_fact(&sample_fact(
@@ -1850,9 +1896,9 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, None);
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousListTopicsParams {
-            nous_id: "alice".to_owned(),
             project_id: None,
             scope: None,
             min_visibility: None,
@@ -1877,7 +1923,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stats_scopes_to_requester_nous_id() {
+    async fn stats_scopes_to_bound_server_identity() {
         let store = open_store();
         store
             .insert_fact(&sample_fact(
@@ -1902,9 +1948,9 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, None);
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousStatsParams {
-            nous_id: "alice".to_owned(),
             project_id: None,
             scope: None,
             min_visibility: None,
@@ -1925,7 +1971,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn neighbors_scopes_seed_fact_to_requester_nous_id() {
+    async fn neighbors_scopes_seed_fact_to_bound_server_identity() {
         let store = open_store();
         store
             .insert_fact(&sample_fact(
@@ -1939,10 +1985,10 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, None);
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousNeighborsParams {
             fact_id: "f-bob-1".to_owned(),
-            nous_id: "alice".to_owned(),
             project_id: None,
             scope: None,
             min_visibility: None,
@@ -1975,7 +2021,6 @@ mod tests {
             session_id: "alice".to_owned(),
             fact_id: "f-target-1".to_owned(),
             content: "verified by external source".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_annotate(Parameters(params)).await.unwrap();
         let text = result
@@ -2024,7 +2069,6 @@ mod tests {
             session_id: "alice".to_owned(),
             fact_id: "f-bob-1".to_owned(),
             content: "verified by external source".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_annotate(Parameters(params)).await;
         assert!(result.is_err(), "alice must not annotate bob's fact");
@@ -2060,7 +2104,6 @@ mod tests {
             new_fact_id: "f-new-1".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "updated".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_supersede(Parameters(params)).await.unwrap();
         let text = result
@@ -2118,7 +2161,6 @@ mod tests {
             new_fact_id: "f-new-alice".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "updated".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_supersede(Parameters(params)).await;
         assert!(
@@ -2147,7 +2189,6 @@ mod tests {
             fact_id: "f-bob-1".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "stale".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_forget(Parameters(params)).await;
         assert!(result.is_err(), "alice must not forget bob's fact");
