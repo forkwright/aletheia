@@ -1,6 +1,7 @@
 //! Tests for the distill module.
 
 mod extraction_integration;
+mod panic;
 mod threshold_prompt;
 
 use hermeneus::test_utils::MockProvider;

@@ -10,7 +10,7 @@ use hermeneus::provider::LlmProvider;
 use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 
 use crate::contradiction::{self, ContradictionLog};
-use crate::error::{EmptySummarySnafu, LlmCallSnafu, LlmPanicSnafu, NoMessagesSnafu, Result};
+use crate::error::{EmptySummarySnafu, LlmCallSnafu, NoMessagesSnafu, Result};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 use crate::prompt;
 use crate::similarity::{self, DEFAULT_SIMILARITY_THRESHOLD, PruningStats};
@@ -457,18 +457,19 @@ impl DistillEngine {
                 return Err(e).context(LlmCallSnafu);
             }
             Err(panic_payload) => {
-                let msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                    (*s).to_owned()
-                } else if let Some(s) = panic_payload.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    "unknown panic".to_owned()
-                };
+                // WHY(#5749): record the failure for backoff bookkeeping, then
+                // re-raise the panic so the caller observes a hard error and the
+                // engine does not continue using a potentially-corrupted provider.
+                let msg = panic_payload
+                    .downcast_ref::<&str>()
+                    .copied()
+                    .or_else(|| panic_payload.downcast_ref::<String>().map(String::as_str))
+                    .unwrap_or("unknown panic");
                 tracing::error!(nous_id, panic_message = %msg, "LLM provider panicked during distillation");
                 self.lock_retry_state()
                     .record_failure(self.config.max_backoff_turns);
                 record_outcome(nous_id, &distill_start, false, 0, 0);
-                return LlmPanicSnafu { message: msg }.fail();
+                std::panic::resume_unwind(panic_payload);
             }
         };
 
