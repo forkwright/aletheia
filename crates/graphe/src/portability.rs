@@ -144,6 +144,25 @@ pub struct ExportedSession {
     pub messages: Vec<ExportedMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage_records: Option<Vec<ExportedUsageRecord>>,
+    // NOTE: artefact_meta from Session is intentionally excluded — store-internal
+    // provenance, not user/agent data. The identity fields below were excluded from
+    // v1; they now round-trip, guarded by serde(default) so older files still load.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub parent_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub thread_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub transport: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub last_input_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub bootstrap_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub last_distilled_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub computed_context_tokens: Option<i64>,
 }
 
 /// Single message within an exported session.
@@ -332,6 +351,14 @@ mod tests {
                     cache_write_tokens: 0,
                     model: Some("claude-sonnet-4-6".to_owned()),
                 }]),
+                parent_session_id: Some("ses-parent".to_owned()),
+                thread_id: Some("thread-9".to_owned()),
+                transport: Some("stdio".to_owned()),
+                display_name: Some("Main Session".to_owned()),
+                last_input_tokens: Some(64),
+                bootstrap_hash: Some("abc123".to_owned()),
+                last_distilled_at: Some("2026-03-05T10:45:00Z".to_owned()),
+                computed_context_tokens: Some(210),
             }],
             memory: None,
             knowledge: None,
@@ -503,6 +530,60 @@ mod tests {
         assert_eq!(records[0].input_tokens, 65);
         assert_eq!(records[0].output_tokens, 100);
         assert_eq!(records[0].model.as_deref(), Some("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn session_identity_fields_round_trip() {
+        let original = sample_agent_file();
+        let json = serde_json::to_string(&original).expect("AgentFile is serializable");
+        let restored: AgentFile = serde_json::from_str(&json).expect("round-trip JSON is valid");
+        let s = &restored.sessions[0];
+        assert_eq!(s.parent_session_id.as_deref(), Some("ses-parent"));
+        assert_eq!(s.thread_id.as_deref(), Some("thread-9"));
+        assert_eq!(s.transport.as_deref(), Some("stdio"));
+        assert_eq!(s.display_name.as_deref(), Some("Main Session"));
+        assert_eq!(s.last_input_tokens, Some(64));
+        assert_eq!(s.bootstrap_hash.as_deref(), Some("abc123"));
+        assert_eq!(s.last_distilled_at.as_deref(), Some("2026-03-05T10:45:00Z"));
+        assert_eq!(s.computed_context_tokens, Some(210));
+    }
+
+    #[test]
+    fn session_identity_fields_omitted_when_none() {
+        let mut agent = sample_agent_file();
+        let s = &mut agent.sessions[0];
+        s.parent_session_id = None;
+        s.thread_id = None;
+        s.transport = None;
+        s.display_name = None;
+        s.last_input_tokens = None;
+        s.bootstrap_hash = None;
+        s.last_distilled_at = None;
+        s.computed_context_tokens = None;
+        let json = serde_json::to_string(&agent).expect("AgentFile is serializable");
+        assert!(
+            !json.contains("parentSessionId"),
+            "None parent_session_id leaked"
+        );
+        assert!(!json.contains("threadId"), "None thread_id leaked");
+        assert!(
+            !json.contains("bootstrapHash"),
+            "None bootstrap_hash leaked"
+        );
+    }
+
+    #[test]
+    fn session_identity_fields_deserialize_when_absent() {
+        let json = r#"{
+            "id":"ses-x","sessionKey":"main","status":"active","sessionType":"primary",
+            "messageCount":0,"tokenCountEstimate":0,"distillationCount":0,
+            "createdAt":"2026-03-05T10:00:00Z","updatedAt":"2026-03-05T11:00:00Z",
+            "notes":[],"messages":[]
+        }"#;
+        let restored: ExportedSession =
+            serde_json::from_str(json).expect("legacy session JSON is valid");
+        assert_eq!(restored.parent_session_id, None);
+        assert_eq!(restored.computed_context_tokens, None);
     }
 
     #[test]

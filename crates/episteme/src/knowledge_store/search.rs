@@ -106,9 +106,22 @@ impl KnowledgeStore {
         )]
         results.truncate(k as usize);
 
-        self.enrich_recall_results(&mut results)?;
+        // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
+        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
-        self.expand_recall_by_cluster(&mut results, k)?;
+        // WHY (#5559): extract nous_id from the seed results so cluster expansion
+        // cannot inject facts from other nouses in the same cohort store.
+        let requester_nous_id_for_cluster: Option<String> = results
+            .iter()
+            .find(|r| r.source_type == "fact" && !r.nous_id.is_empty())
+            .map(|r| r.nous_id.clone());
+        self.expand_recall_by_cluster(
+            &mut results,
+            k,
+            requester_nous_id_for_cluster.as_deref(),
+            Some(&graph_ctx),
+        )?;
 
         let source_ids: Vec<crate::id::FactId> = results
             .iter()
@@ -169,9 +182,11 @@ impl KnowledgeStore {
             visible = scoped_visibility_rules()
         );
         let mut results = rows_to_recall_results(self.run_read(&script, params)?)?;
-        self.enrich_recall_results(&mut results)?;
+        // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
+        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
-        self.expand_recall_by_cluster_scoped(&mut results, k, requester_nous_id)?;
+        self.expand_recall_by_cluster_scoped(&mut results, k, requester_nous_id, Some(&graph_ctx))?;
         truncate_recall_results(&mut results, k);
         self.increment_recall_access(&results);
         Ok(results)
@@ -247,9 +262,22 @@ impl KnowledgeStore {
 
         let rows = self.run_read(queries::BM25_RECALL, params)?;
         let mut results = rows_to_recall_results(rows)?;
-        self.enrich_recall_results(&mut results)?;
+        // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
+        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
-        self.expand_recall_by_cluster(&mut results, k)?;
+        // WHY (#5559): extract nous_id from the seed results so cluster expansion
+        // cannot inject facts from other nouses in the same cohort store.
+        let requester_nous_id_for_cluster: Option<String> = results
+            .iter()
+            .find(|r| r.source_type == "fact" && !r.nous_id.is_empty())
+            .map(|r| r.nous_id.clone());
+        self.expand_recall_by_cluster(
+            &mut results,
+            k,
+            requester_nous_id_for_cluster.as_deref(),
+            Some(&graph_ctx),
+        )?;
         Ok(results)
     }
 
@@ -298,9 +326,11 @@ impl KnowledgeStore {
             visible = scoped_visibility_rules()
         );
         let mut results = rows_to_recall_results(self.run_read(&script, params)?)?;
-        self.enrich_recall_results(&mut results)?;
+        // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
+        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
-        self.expand_recall_by_cluster_scoped(&mut results, k, requester_nous_id)?;
+        self.expand_recall_by_cluster_scoped(&mut results, k, requester_nous_id, Some(&graph_ctx))?;
         truncate_recall_results(&mut results, k);
         Ok(results)
     }
@@ -310,19 +340,24 @@ impl KnowledgeStore {
     /// For each fact result, looks up associated entities in `fact_entities`, then
     /// takes the maximum `PageRank` among those entities. Non-fact results are left
     /// unchanged (`graph_importance` stays 0.0).
+    ///
+    /// WHY (#5663): accepts a pre-loaded `GraphContext` so callers can load it once
+    /// and share it across `enrich_recall_results` + `expand_recall_by_cluster`,
+    /// eliminating redundant full-table scans of `graph_scores` per search call.
     fn enrich_recall_results(
         &self,
         results: &mut [crate::knowledge::RecallResult],
-    ) -> crate::error::Result<()> {
+        graph_ctx: &crate::graph_intelligence::GraphContext,
+    ) {
         let fact_results: Vec<&crate::knowledge::RecallResult> =
             results.iter().filter(|r| r.source_type == "fact").collect();
         if fact_results.is_empty() {
-            return Ok(());
+            return;
         }
 
-        let pageranks = self.load_graph_context()?.pageranks;
+        let pageranks = &graph_ctx.pageranks;
         if pageranks.is_empty() {
-            return Ok(());
+            return;
         }
 
         for result in results.iter_mut().filter(|r| r.source_type == "fact") {
@@ -339,12 +374,10 @@ impl KnowledgeStore {
                 .rows
                 .iter()
                 .filter_map(|row| row.first().and_then(|v| v.get_str()))
-                .filter_map(|entity_id| pageranks.get(entity_id))
-                .fold(0.0_f64, |a, b| a.max(*b));
+                .filter_map(|entity_id| pageranks.get(entity_id).copied())
+                .fold(0.0_f64, f64::max);
             result.graph_importance = max_pr;
         }
-
-        Ok(())
     }
 
     /// Populate `source_count` on fact results from the `fact_multiplicity`
@@ -420,9 +453,15 @@ impl KnowledgeStore {
                 if let Some(sensitivity_str) = row.get(3).and_then(|v| v.get_str())
                     && !sensitivity_str.is_empty()
                 {
-                    result.sensitivity = sensitivity_str
-                        .parse::<crate::knowledge::FactSensitivity>()
-                        .unwrap_or_default();
+                    if let Ok(s) = sensitivity_str.parse::<crate::knowledge::FactSensitivity>() {
+                        result.sensitivity = s;
+                    } else {
+                        tracing::warn!(
+                            sensitivity = sensitivity_str,
+                            fact_id = %result.source_id,
+                            "hydrated fact has undecodable sensitivity; leaving as-is to avoid widening to Public"
+                        );
+                    }
                 }
             }
         }
@@ -442,12 +481,20 @@ impl KnowledgeStore {
         &self,
         results: &mut Vec<crate::knowledge::RecallResult>,
         k: i64,
+        requester_nous_id: Option<&str>,
+        preloaded_ctx: Option<&crate::graph_intelligence::GraphContext>,
     ) -> crate::error::Result<()> {
         if results.is_empty() {
             return Ok(());
         }
 
-        let ctx = self.load_graph_context()?;
+        let owned_ctx: crate::graph_intelligence::GraphContext;
+        let ctx = if let Some(c) = preloaded_ctx {
+            c
+        } else {
+            owned_ctx = self.load_graph_context()?;
+            &owned_ctx
+        };
         if ctx.clusters.is_empty() {
             return Ok(());
         }
@@ -489,24 +536,39 @@ impl KnowledgeStore {
         let limit = usize::try_from(k.max(1)).unwrap_or(1);
 
         for cluster_id in context_clusters {
-            let script = r"
+            // WHY (#5559): filter by nous_id so cross-nous facts cannot be injected
+            // via cluster expansion in a shared cohort store.
+            let nous_filter = if requester_nous_id.is_some() {
+                ", nous_id == $nous_id"
+            } else {
+                ""
+            };
+            let script = format!(
+                r"
                 ?[fact_id, content, nous_id, sensitivity, scope, project_id, visibility] :=
-                    *graph_scores{entity_id, score_type: 'cluster', cluster_id: $cid},
-                    *fact_entities{fact_id: fid, entity_id},
-                    *facts{id: fid, content, nous_id, is_forgotten, superseded_by,
-                           sensitivity, scope, project_id, visibility},
+                    *graph_scores{{entity_id, score_type: 'cluster', cluster_id: $cid}},
+                    *fact_entities{{fact_id: fid, entity_id}},
+                    *facts{{id: fid, content, nous_id, is_forgotten, superseded_by,
+                           sensitivity, scope, project_id, visibility}},
                     is_forgotten == false,
-                    is_null(superseded_by),
+                    is_null(superseded_by){nous_filter},
                     fact_id = fid
                 :limit $limit
-            ";
+            "
+            );
             let mut params = std::collections::BTreeMap::new();
             params.insert("cid".to_owned(), crate::engine::DataValue::from(cluster_id));
             params.insert(
                 "limit".to_owned(),
                 crate::engine::DataValue::from(i64::try_from(limit).unwrap_or(i64::MAX)),
             );
-            let Ok(rows) = self.run_read(script, params) else {
+            if let Some(nid) = requester_nous_id {
+                params.insert(
+                    "nous_id".to_owned(),
+                    crate::engine::DataValue::Str(nid.into()),
+                );
+            }
+            let Ok(rows) = self.run_read(&script, params) else {
                 continue;
             };
             for row in &rows.rows {
@@ -526,11 +588,24 @@ impl KnowledgeStore {
                     .and_then(|v| v.get_str())
                     .unwrap_or("")
                     .to_owned();
-                let sensitivity = row
+                let sensitivity_str = row
                     .get(3)
                     .and_then(|v| v.get_str())
-                    .and_then(|s| s.parse::<crate::knowledge::FactSensitivity>().ok())
-                    .unwrap_or_default();
+                    .filter(|s| !s.is_empty());
+                let sensitivity = if let Some(s) = sensitivity_str {
+                    if let Ok(v) = s.parse::<crate::knowledge::FactSensitivity>() {
+                        v
+                    } else {
+                        tracing::warn!(
+                            sensitivity = s,
+                            fact_id = ?row.first().and_then(|v| v.get_str()),
+                            "cluster-expanded fact has undecodable sensitivity; skipping to avoid widening to Public"
+                        );
+                        continue;
+                    }
+                } else {
+                    crate::knowledge::FactSensitivity::default()
+                };
                 let scope = row
                     .get(4)
                     .and_then(|v| v.get_str())
@@ -577,12 +652,19 @@ impl KnowledgeStore {
         results: &mut Vec<crate::knowledge::RecallResult>,
         k: i64,
         requester_nous_id: &str,
+        preloaded_ctx: Option<&crate::graph_intelligence::GraphContext>,
     ) -> crate::error::Result<()> {
         if results.is_empty() {
             return Ok(());
         }
 
-        let ctx = self.load_graph_context()?;
+        let owned_ctx: crate::graph_intelligence::GraphContext;
+        let ctx = if let Some(c) = preloaded_ctx {
+            c
+        } else {
+            owned_ctx = self.load_graph_context()?;
+            &owned_ctx
+        };
         if ctx.clusters.is_empty() {
             return Ok(());
         }
@@ -669,11 +751,24 @@ impl KnowledgeStore {
                     .and_then(|v| v.get_str())
                     .unwrap_or("")
                     .to_owned();
-                let sensitivity = row
+                let sensitivity_str = row
                     .get(3)
                     .and_then(|v| v.get_str())
-                    .and_then(|s| s.parse::<crate::knowledge::FactSensitivity>().ok())
-                    .unwrap_or_default();
+                    .filter(|s| !s.is_empty());
+                let sensitivity = if let Some(s) = sensitivity_str {
+                    if let Ok(v) = s.parse::<crate::knowledge::FactSensitivity>() {
+                        v
+                    } else {
+                        tracing::warn!(
+                            sensitivity = s,
+                            fact_id = ?row.first().and_then(|v| v.get_str()),
+                            "cluster-expanded fact has undecodable sensitivity; skipping to avoid widening to Public"
+                        );
+                        continue;
+                    }
+                } else {
+                    crate::knowledge::FactSensitivity::default()
+                };
                 let scope = row
                     .get(4)
                     .and_then(|v| v.get_str())

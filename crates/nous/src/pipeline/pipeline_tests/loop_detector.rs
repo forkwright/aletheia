@@ -480,3 +480,48 @@ fn loop_verdict_warn_contains_pattern_in_message() {
         _ => panic!("expected Warn"),
     }
 }
+
+#[test]
+fn loop_detector_respects_configured_window() {
+    // WHY(#5008): a non-default window must cap history at the configured size,
+    // not the NousBehaviorConfig default of 50.
+    let mut det = LoopDetector::with_window(100, 4, 2, 5, 10);
+    for i in 0..12 {
+        det.record("tool", &format!("hash{i}"), false);
+    }
+    assert_eq!(
+        det.call_count(),
+        5,
+        "configured window of 5 must cap history at 5, not the default 50"
+    );
+}
+
+#[test]
+fn loop_detector_respects_configured_cycle_len() {
+    // WHY(#5008): cycle_detection_max_len bounds the longest cycle examined. A
+    // length-3 cycle (a,b,c,a,b,c) at threshold 2 is detectable only once the
+    // configured max cycle length reaches 3.
+    let sigs = ["a", "b", "c", "a", "b", "c"];
+
+    let mut short = LoopDetector::with_window(2, 10, 5, 50, 2);
+    let short_verdict = sigs
+        .iter()
+        .map(|s| short.record(s, "h", false))
+        .last()
+        .expect("at least one record");
+    assert!(
+        is_ok(&short_verdict),
+        "cycle_detection_max_len=2 must not detect a length-3 cycle"
+    );
+
+    let mut full = LoopDetector::with_window(2, 10, 5, 50, 3);
+    let full_verdict = sigs
+        .iter()
+        .map(|s| full.record(s, "h", false))
+        .last()
+        .expect("at least one record");
+    assert!(
+        is_warn(&full_verdict),
+        "cycle_detection_max_len=3 must detect a length-3 cycle"
+    );
+}

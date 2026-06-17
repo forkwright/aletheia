@@ -72,6 +72,10 @@ proptest = { workspace = true }
 reqwest = { workspace = true }
 tempfile = { workspace = true }
 tracing-test = { workspace = true }
+# WHY: #[tokio::test(start_paused = true)] needs tokio's test-util feature so
+# timeout/distillation tests run on deterministic virtual time instead of
+# contended wall-clock CI timers.
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

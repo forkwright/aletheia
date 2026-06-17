@@ -473,6 +473,107 @@ fn delete_session_removes_all_child_rows() {
 }
 
 #[test]
+fn delete_session_aborts_on_corrupt_session_row() {
+    // WHY(#4984): delete_session decodes the session row up front; a corrupt
+    // (non-JSON) row must abort the whole delete before any child rows are
+    // removed, so the store stays internally consistent (all-or-nothing).
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    store
+        .append_message("ses-1", Role::User, "hello", None, None, 5)
+        .expect("append");
+
+    // Corrupt the session row so its JSON decode fails during delete_session.
+    write_raw(&store, "sessions", "ses-1", b"NOT_JSON");
+
+    let result = store.delete_session("ses-1");
+    assert!(
+        result.is_err(),
+        "delete_session must abort on a corrupt session row"
+    );
+
+    // The message child row must survive the aborted delete.
+    let history = store
+        .get_history("ses-1", None)
+        .expect("history readable after abort");
+    assert_eq!(
+        history.len(),
+        1,
+        "child rows must survive a delete_session abort"
+    );
+}
+
+#[test]
+fn delete_session_removes_usage_distillation_and_note_rows() {
+    // WHY(#4984): positive-path analog — confirm delete_session leaves NO child
+    // rows behind across every partition (messages, usage, distillations, notes).
+    let store = test_store();
+    store
+        .create_session("ses-x", "alice", "main", None, None)
+        .expect("create");
+    store
+        .append_message("ses-x", Role::User, "hello", None, None, 10)
+        .expect("append");
+    store
+        .record_usage(&crate::types::UsageRecord {
+            session_id: "ses-x".to_owned(),
+            turn_seq: 1,
+            input_tokens: 5,
+            output_tokens: 7,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            model: None,
+        })
+        .expect("record usage");
+    store
+        .record_distillation("ses-x", 2, 1, 100, 40, None)
+        .expect("record distillation");
+    store
+        .add_note("ses-x", "alice", "task", "remember this")
+        .expect("add note");
+
+    assert!(
+        !store
+            .get_usage_for_session("ses-x")
+            .expect("usage")
+            .is_empty(),
+        "usage row should exist before delete"
+    );
+    assert!(
+        !store.get_notes("ses-x").expect("notes").is_empty(),
+        "note row should exist before delete"
+    );
+
+    let deleted = store.delete_session("ses-x").expect("delete");
+    assert!(deleted, "delete must return true for an existing session");
+
+    assert!(
+        store
+            .get_history("ses-x", None)
+            .expect("history")
+            .is_empty(),
+        "messages must be removed"
+    );
+    assert!(
+        store
+            .get_usage_for_session("ses-x")
+            .expect("usage")
+            .is_empty(),
+        "usage rows must be removed"
+    );
+    assert!(
+        store.get_notes("ses-x").expect("notes").is_empty(),
+        "note rows must be removed"
+    );
+    assert!(
+        store.find_session_by_id("ses-x").expect("lookup").is_none(),
+        "session row must be removed"
+    );
+}
+
+#[test]
 fn blackboard_crud() {
     let store = test_store();
     store

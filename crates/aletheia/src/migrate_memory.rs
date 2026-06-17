@@ -155,11 +155,11 @@ pub(crate) async fn run(
         "migration complete"
     );
 
-    if let Some(path) = review_file {
-        if !flagged.is_empty() {
-            write_review_file(path, &flagged)?;
-            info!(path = %path.display(), "review file written");
-        }
+    if let Some(path) = review_file
+        && !flagged.is_empty()
+    {
+        write_review_file(path, &flagged)?;
+        info!(path = %path.display(), "review file written");
     }
 
     Ok(())
@@ -335,7 +335,7 @@ fn import_fact(
 
     if let Ok(embedding) = embedder.embed(&record.content) {
         let chunk = EmbeddedChunk {
-            id: EmbeddingId::new(&format!("emb-{fact_id}"))
+            id: EmbeddingId::new(format!("emb-{fact_id}"))
                 .expect("`emb-{fact_id}` is non-empty and under MAX_ID_LEN"),
             content: record.content.clone(),
             source_type: "fact".to_owned(),
@@ -357,7 +357,7 @@ fn content_hash(content: &str) -> String {
     hasher.update(content.as_bytes());
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(digest.len() * 2);
-    for byte in digest.iter() {
+    for byte in &digest {
         std::fmt::Write::write_fmt(&mut hex, format_args!("{byte:02x}")).unwrap_or(());
     }
     hex.get(..16).unwrap_or(&hex).to_owned()

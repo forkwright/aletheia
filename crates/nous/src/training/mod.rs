@@ -109,6 +109,13 @@ pub enum TrainingCaptureError {
         to: PathBuf,
         source: std::io::Error,
     },
+
+    /// Failed to read the training manifest file that exists on disk.
+    #[snafu(display("failed to read training manifest {}: {source}", path.display()))]
+    ReadManifest {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 /// Result alias for training capture operations.
@@ -469,8 +476,9 @@ impl TrainingCapture {
         let legacy_path = dir.join("conversations.jsonl");
 
         let mut manifest = if manifest_path.exists() {
-            // kanon:ignore RUST/no-result-unwrap-or-default — manifest read failure yields empty string; serde handles empty gracefully
-            let content = fs::read_to_string(&manifest_path).unwrap_or_default();
+            let content = fs::read_to_string(&manifest_path).context(ReadManifestSnafu {
+                path: &manifest_path,
+            })?;
             serde_json::from_str(&content).unwrap_or_else(|_| TrainingManifest::new())
         } else {
             TrainingManifest::new()
@@ -939,6 +947,38 @@ mod pii_filter_disabled_regression {
         assert!(
             screened.pii_policy_ref.is_none(),
             "full PII suite policy ref must remain unset when disabled"
+        );
+    }
+}
+
+#[cfg(test)]
+mod manifest_read_regression {
+    use super::*;
+
+    #[test]
+    fn manifest_read_io_error_surfaces_as_read_manifest() {
+        // WHY(#5751): a present-but-unreadable manifest must surface as
+        // ReadManifest, not silently reset shard accounting to empty. A
+        // directory placed where the manifest file is expected makes
+        // read_to_string fail with an I/O error for any user (root included).
+        let tmp = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let config = TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
+            pii_filter_enabled: false,
+            author_classifier_enabled: false,
+            author_classifier_threshold: 0.85,
+        };
+        let dir = tmp.path().join(&config.path);
+        std::fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("mkdir: {e}"));
+        std::fs::create_dir(dir.join("training-manifest.json"))
+            .unwrap_or_else(|e| panic!("dir-in-place: {e}"));
+
+        let result = TrainingCapture::new(tmp.path(), &config);
+        assert!(
+            matches!(result, Err(TrainingCaptureError::ReadManifest { .. })),
+            "manifest read I/O failure must surface as ReadManifest"
         );
     }
 }
