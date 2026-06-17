@@ -21,6 +21,17 @@ use super::fjall_backup::{BackupEntry, FjallBackup};
 /// Manifest format version.
 const MANIFEST_VERSION: &str = "aletheia-instance-backup-v1";
 
+/// Snapshot protocol version.
+///
+/// WHY(#4950): bumped when the stage/verify/atomic-publish protocol changes.
+const SNAPSHOT_PROTOCOL_VERSION: &str = "aletheia-instance-backup-v1-snapshot-1";
+
+/// Prefix for hidden staging directories inside `backup_dir`.
+///
+/// WHY(#4950): `list_backups` skips these so an in-progress backup is never
+/// listed as a valid backup set.
+const STAGING_DIR_PREFIX: &str = ".aletheia-backup-staging.";
+
 /// Configuration for whole-instance backups.
 #[derive(Debug, Clone)]
 pub struct InstanceBackupConfig {
@@ -110,6 +121,25 @@ pub struct BackupManifest {
     pub workspace_omissions: Vec<WorkspaceOmission>,
     /// Total bytes copied across all stores.
     pub total_bytes: u64,
+    /// Snapshot epoch: the ISO 8601 timestamp that bounds this coherent backup set.
+    ///
+    /// WHY(#4950): all stores in the set are copied under this single epoch so
+    /// restore can detect cross-store time skew.
+    #[serde(default)]
+    pub snapshot_epoch: String,
+    /// Snapshot protocol version. Bumped when the staging/verify/publish protocol changes.
+    #[serde(default)]
+    pub snapshot_protocol_version: String,
+    /// Whether writers were quiesced before copying. `false` means the backup is
+    /// a live snapshot and may contain minor cross-store write-point skew.
+    #[serde(default)]
+    pub quiesced: bool,
+    /// Per-fjall-store generation (seqno) captured from the staged copy.
+    ///
+    /// WHY(#4950): generation IDs are evidence of the store state at snapshot
+    /// time and help detect restore mismatches.
+    #[serde(default)]
+    pub store_generations: HashMap<String, u64>,
 }
 
 /// Outcome of a whole-instance backup run.
@@ -136,6 +166,8 @@ pub struct InstanceVerifyResult {
     pub total_keys: usize,
     /// First error encountered, if any.
     pub first_error: Option<String>,
+    /// Per-fjall-store generation (seqno) captured during verification.
+    pub store_generations: HashMap<String, u64>,
 }
 
 /// Manages whole-instance backup sets.
@@ -143,6 +175,7 @@ pub struct InstanceBackup {
     config: InstanceBackupConfig,
 }
 
+#[derive(Clone)]
 struct BackupBuild {
     stores: Vec<StoreEntry>,
     optional_stores: Vec<StoreEntry>,
@@ -269,25 +302,63 @@ impl InstanceBackup {
     /// - `workspace/configured/<agent>/` for configured agent workspaces inside the instance root.
     /// - `data/archive/`, `data/prosoche-audits/`, `data/prompt-audit/`, `logs/prompt-audit/` if present.
     ///
+    /// WHY(#4950): the backup is built in a hidden staging directory, verified,
+    /// then atomically renamed into place. This guarantees that an incomplete
+    /// or corrupted backup set is never published as a valid backup.
+    ///
     /// After creating the backup, old backups beyond `retention_count` are pruned.
     pub fn create_backup(&self) -> error::Result<InstanceBackupReport> {
-        let backup_path = self.prepare_backup_path()?;
+        let (staging_path, final_path) = self.prepare_staging_path()?;
         let mut build = BackupBuild::new();
 
-        self.copy_required_stores(&backup_path, &mut build)?;
-        self.copy_config(&backup_path, &mut build)?;
-        self.copy_workspace_dirs(&backup_path, &mut build)?;
-        self.copy_configured_agent_workspaces(&backup_path, &mut build)?;
-        self.copy_additional_workspaces(&backup_path, &mut build)?;
-        self.copy_optional_data_dirs(&backup_path, &mut build)?;
-        self.copy_prompt_audit_dirs(&backup_path, &mut build)?;
+        self.copy_required_stores(&staging_path, &mut build)?;
+        self.copy_config(&staging_path, &mut build)?;
+        self.copy_workspace_dirs(&staging_path, &mut build)?;
+        self.copy_configured_agent_workspaces(&staging_path, &mut build)?;
+        self.copy_additional_workspaces(&staging_path, &mut build)?;
+        self.copy_optional_data_dirs(&staging_path, &mut build)?;
+        self.copy_prompt_audit_dirs(&staging_path, &mut build)?;
 
+        // WHY(#4950): verify the staged copy before publishing. If verification
+        // fails we leave the staging directory in place (caller can inspect it)
+        // and never expose an invalid backup set.
         let total_bytes = build.total_bytes;
         let total_files = build.total_files;
-        self.write_manifest(&backup_path, build)?;
+        let snapshot_epoch = build.snapshot_time.clone();
+
+        // Write a preliminary manifest so verify_backup can confirm the set
+        // structure; it will be rewritten with captured generation IDs below.
+        self.write_manifest(&staging_path, &build, &snapshot_epoch, &HashMap::new())?;
+
+        let verify = InstanceBackup::verify_backup(&staging_path)?;
+        if let Some(err) = verify.first_error {
+            return error::MaintenanceInvariantSnafu {
+                context: format!("staged backup verification failed: {err}"),
+            }
+            .fail();
+        }
+
+        // Final manifest records the generation IDs captured during verification.
+        self.write_manifest(
+            &staging_path,
+            &build,
+            &snapshot_epoch,
+            &verify.store_generations,
+        )?;
+
+        // WHY(#4950): atomic publish on the same filesystem as backup_dir.
+        // `std::fs::rename` is atomic on Unix when source and destination are
+        // on the same filesystem; we created staging inside backup_dir above.
+        fs::rename(&staging_path, &final_path).context(error::MaintenanceIoSnafu {
+            context: format!(
+                "publishing backup from {} to {}",
+                staging_path.display(),
+                final_path.display()
+            ),
+        })?;
 
         info!(
-            backup = %backup_path.display(),
+            backup = %final_path.display(),
             files = total_files,
             bytes = total_bytes,
             "instance backup created"
@@ -296,14 +367,14 @@ impl InstanceBackup {
         let backups_pruned = self.prune_old_backups()?;
 
         Ok(InstanceBackupReport {
-            backup_path: Some(backup_path),
+            backup_path: Some(final_path),
             bytes_copied: total_bytes,
             files_copied: total_files,
             backups_pruned,
         })
     }
 
-    fn prepare_backup_path(&self) -> error::Result<PathBuf> {
+    fn prepare_staging_path(&self) -> error::Result<(PathBuf, PathBuf)> {
         fs::create_dir_all(&self.config.backup_dir).context(error::MaintenanceIoSnafu {
             context: format!(
                 "creating instance backup dir {}",
@@ -314,17 +385,34 @@ impl InstanceBackup {
         // WHY: include subsecond precision to avoid collisions when backups
         // are triggered in rapid succession (e.g. tests or manual runs).
         let timestamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S%.3f").to_string();
-        let backup_path = self.config.backup_dir.join(timestamp);
+        let final_path = self.config.backup_dir.join(&timestamp);
+
+        if final_path.exists() {
+            return error::MaintenanceInvariantSnafu {
+                context: format!("backup path already exists: {}", final_path.display()),
+            }
+            .fail();
+        }
+
+        // WHY(#4950): build into a hidden staging directory inside backup_dir so
+        // the final rename is on the same filesystem and therefore atomic.
+        let staging_temp = tempfile::Builder::new()
+            .prefix(STAGING_DIR_PREFIX)
+            .tempdir_in(&self.config.backup_dir)
+            .context(error::MaintenanceIoSnafu {
+                context: format!(
+                    "creating staging dir in {}",
+                    self.config.backup_dir.display()
+                ),
+            })?;
+        let staging_path = staging_temp.keep();
 
         // WHY(#5140): a backup set contains credentials and session data; create
         // the set directory eagerly with owner-only (0o700) permissions so the
         // copied contents are never world-readable on a shared host.
-        fs::create_dir_all(&backup_path).context(error::MaintenanceIoSnafu {
-            context: format!("creating backup set dir {}", backup_path.display()),
-        })?;
-        set_dir_restrictive(&backup_path);
+        set_dir_restrictive(&staging_path);
 
-        Ok(backup_path)
+        Ok((staging_path, final_path))
     }
 
     fn required_store_paths(&self) -> error::Result<(PathBuf, PathBuf)> {
@@ -614,15 +702,25 @@ impl InstanceBackup {
         Ok(())
     }
 
-    fn write_manifest(&self, backup_path: &Path, build: BackupBuild) -> error::Result<()> {
+    fn write_manifest(
+        &self,
+        backup_path: &Path,
+        build: &BackupBuild,
+        snapshot_epoch: &str,
+        store_generations: &HashMap<String, u64>,
+    ) -> error::Result<()> {
         let manifest = BackupManifest {
             version: String::from(MANIFEST_VERSION),
-            created_at: build.snapshot_time,
+            created_at: build.snapshot_time.clone(),
             source_root: self.config.instance_root.clone(),
-            stores: build.stores,
-            optional_stores: build.optional_stores,
-            workspace_omissions: build.workspace_omissions,
+            stores: build.stores.clone(),
+            optional_stores: build.optional_stores.clone(),
+            workspace_omissions: build.workspace_omissions.clone(),
             total_bytes: build.total_bytes,
+            snapshot_epoch: String::from(snapshot_epoch),
+            snapshot_protocol_version: String::from(SNAPSHOT_PROTOCOL_VERSION),
+            quiesced: false,
+            store_generations: store_generations.clone(),
         };
         let manifest_path = backup_path.join("manifest.json");
         let manifest_json = serde_json::to_string_pretty(&manifest)
@@ -653,7 +751,14 @@ impl InstanceBackup {
                 context: "reading backup entry",
             })?;
             let path = entry.path();
-            if !path.is_dir() || !path.join("manifest.json").is_file() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+
+            // WHY(#4950): ignore in-progress staging directories. A backup set is
+            // only valid after it has been atomically renamed into place.
+            if name.starts_with(STAGING_DIR_PREFIX)
+                || !path.is_dir()
+                || !path.join("manifest.json").is_file()
+            {
                 continue;
             }
 
@@ -671,7 +776,6 @@ impl InstanceBackup {
             };
 
             let size_bytes = dir_size(&path);
-            let name = entry.file_name().to_string_lossy().into_owned();
             entries.push(BackupEntry {
                 name,
                 path,
@@ -689,6 +793,10 @@ impl InstanceBackup {
     /// Reads `manifest.json`, confirms the required stores (`knowledge.fjall`
     /// and `sessions.db`) are present, and iterates every fjall store to prove
     /// the files are openable. Returns the manifest and per-store results.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "#4950: sequential store verification with per-store error and generation tracking is clearer in one function"
+    )]
     pub fn verify_backup(path: &Path) -> error::Result<InstanceVerifyResult> {
         let manifest_path = path.join("manifest.json");
         if !manifest_path.is_file() {
@@ -716,6 +824,7 @@ impl InstanceBackup {
             store_results: Vec::new(),
             total_keys: 0,
             first_error: None,
+            store_generations: HashMap::new(),
         };
 
         // Required stores.
@@ -745,9 +854,12 @@ impl InstanceBackup {
             }
 
             match verify_store_path(name, &store_path) {
-                Ok(total) => {
+                Ok((total, seqno)) => {
                     result.total_keys += total;
                     result.store_results.push((String::from(name), Ok(total)));
+                    if let Some(seqno) = seqno {
+                        result.store_generations.insert(String::from(name), seqno);
+                    }
                 }
                 Err(err) => {
                     result
@@ -769,6 +881,13 @@ impl InstanceBackup {
             .filter(|store| store.name != "knowledge.fjall" && store.name != "sessions.db")
             .chain(manifest.optional_stores.iter())
         {
+            // WHY(#4950): excluded entries were intentionally omitted from the
+            // backup set by policy. They are recorded in the manifest but do not
+            // represent a verification failure.
+            if store.status == "excluded" {
+                continue;
+            }
+
             if store.status != "ok" {
                 let err = if let Some(reason) = &store.exclusion_reason {
                     format!("{}: {}", store.name, reason)
@@ -786,7 +905,12 @@ impl InstanceBackup {
 
             let store_path = path.join(&store.backup_path);
             match verify_manifest_store(&store.name, &store_path) {
-                Ok(total) => result.store_results.push((store.name.clone(), Ok(total))),
+                Ok((total, seqno)) => {
+                    result.store_results.push((store.name.clone(), Ok(total)));
+                    if let Some(seqno) = seqno {
+                        result.store_generations.insert(store.name.clone(), seqno);
+                    }
+                }
                 Err(err) => {
                     result
                         .store_results
@@ -826,20 +950,27 @@ impl InstanceBackup {
     }
 }
 
-fn verify_store_path(name: &str, path: &Path) -> std::result::Result<usize, String> {
+/// Verification outcome for a single store: key count and optional fjall seqno.
+///
+/// WHY(#4950): the seqno (generation) is captured during verify and recorded
+/// in the backup manifest so restore can detect mismatched write points.
+type VerifyStoreOutcome = (usize, Option<u64>);
+
+fn verify_store_path(name: &str, path: &Path) -> std::result::Result<VerifyStoreOutcome, String> {
     if path.join("version").is_file() {
         let verify = FjallBackup::verify_store(path).map_err(|e| format!("{name}: {e}"))?;
         if let Some(err) = verify.first_error {
             return Err(format!("{name}: {err}"));
         }
-        return Ok(verify.total_keys);
+        return Ok((verify.total_keys, verify.seqno));
     }
 
     if path.is_file() {
-        return path
+        let len = path
             .metadata()
             .map(|m| usize::try_from(m.len()).unwrap_or(usize::MAX))
-            .map_err(|e| format!("{name}: failed to read file metadata: {e}"));
+            .map_err(|e| format!("{name}: failed to read file metadata: {e}"))?;
+        return Ok((len, None));
     }
 
     Err(format!(
@@ -848,7 +979,10 @@ fn verify_store_path(name: &str, path: &Path) -> std::result::Result<usize, Stri
     ))
 }
 
-fn verify_manifest_store(name: &str, path: &Path) -> std::result::Result<usize, String> {
+fn verify_manifest_store(
+    name: &str,
+    path: &Path,
+) -> std::result::Result<VerifyStoreOutcome, String> {
     if !path.exists() {
         return Err(format!("missing: {name}"));
     }
@@ -858,17 +992,18 @@ fn verify_manifest_store(name: &str, path: &Path) -> std::result::Result<usize, 
         if let Some(err) = verify.first_error {
             return Err(err);
         }
-        return Ok(verify.total_keys);
+        return Ok((verify.total_keys, verify.seqno));
     }
 
     if path.is_file() {
-        return path
+        let len = path
             .metadata()
             .map(|m| usize::try_from(m.len()).unwrap_or(usize::MAX))
-            .map_err(|e| format!("failed to read file metadata: {e}"));
+            .map_err(|e| format!("failed to read file metadata: {e}"))?;
+        return Ok((len, None));
     }
 
-    Ok(usize::try_from(dir_size(path)).unwrap_or(usize::MAX))
+    Ok((usize::try_from(dir_size(path)).unwrap_or(usize::MAX), None))
 }
 
 /// Resolve a configured workspace string against the instance root.
@@ -1288,12 +1423,13 @@ workspace = "{}"
                 .is_file()
         );
 
+        // WHY(#4950): excluded entries are intentional policy omissions, not
+        // verification failures, so the published backup set must verify cleanly.
         let verify = InstanceBackup::verify_backup(&backup_path).unwrap();
         assert!(
-            verify
-                .first_error
-                .as_deref()
-                .is_some_and(|error| error.contains("outside") || error.contains("missing"))
+            verify.first_error.is_none(),
+            "excluded entries should not fail verification: {:?}",
+            verify.first_error
         );
     }
 
@@ -1363,6 +1499,10 @@ workspace = "{}"
             optional_stores: Vec::new(),
             workspace_omissions: Vec::new(),
             total_bytes: 0,
+            snapshot_epoch: jiff::Zoned::now().to_string(),
+            snapshot_protocol_version: String::from(SNAPSHOT_PROTOCOL_VERSION),
+            quiesced: false,
+            store_generations: HashMap::new(),
         };
         write_text_file(
             &backup_path.join("manifest.json"),
@@ -1450,5 +1590,150 @@ workspace = "{}"
                 .iter()
                 .any(|(name, result)| name == "sessions.db" && result.is_ok())
         );
+    }
+
+    /// #4950 regression: backup creation must stage, verify, and atomically
+    /// publish the set; the manifest must record snapshot metadata and store
+    /// generation IDs.
+    #[test]
+    fn create_backup_publishes_verified_snapshot_with_metadata() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+        fs::create_dir_all(instance_root.join("config")).unwrap();
+        write_text_file(&instance_root.join("config").join("aletheia.toml"), "test").unwrap();
+
+        make_fjall_store_with_data(&instance_root.join("data").join("knowledge.fjall"), "k1");
+        make_fjall_store_with_data(&instance_root.join("data").join("sessions.db"), "s1");
+
+        let backup_dir = tmp.path().join("backups");
+        let config = InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir: backup_dir.clone(),
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        };
+
+        let manager = InstanceBackup::new(config);
+        let report = manager.create_backup().expect("backup succeeds");
+        let backup_path = report.backup_path.expect("backup path set");
+
+        // The published path must live directly under backup_dir, not in a
+        // hidden staging directory.
+        assert_eq!(
+            backup_path.parent(),
+            Some(backup_dir.as_path()),
+            "backup was not atomically published into backup_dir"
+        );
+        assert!(
+            !backup_path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with(STAGING_DIR_PREFIX),
+            "backup path is still a staging directory"
+        );
+
+        // No staging directories should remain visible after publish.
+        let leftover_staging: Vec<_> = fs::read_dir(&backup_dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(STAGING_DIR_PREFIX)
+            })
+            .collect();
+        assert!(
+            leftover_staging.is_empty(),
+            "staging directories leaked after publish: {leftover_staging:?}"
+        );
+
+        let manifest: BackupManifest =
+            serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
+                .unwrap();
+        assert!(
+            !manifest.snapshot_epoch.is_empty(),
+            "snapshot_epoch must be recorded"
+        );
+        assert_eq!(
+            manifest.snapshot_protocol_version,
+            SNAPSHOT_PROTOCOL_VERSION
+        );
+        assert!(
+            !manifest.quiesced,
+            "live snapshot must be recorded as not quiesced"
+        );
+        assert!(
+            manifest.store_generations.contains_key("knowledge.fjall"),
+            "knowledge generation must be captured"
+        );
+        assert!(
+            manifest.store_generations.contains_key("sessions.db"),
+            "sessions generation must be captured"
+        );
+
+        let result = InstanceBackup::verify_backup(&backup_path).unwrap();
+        assert!(result.first_error.is_none());
+        assert_eq!(result.total_keys, 2);
+    }
+
+    /// #4950 regression: in-progress staging directories must never be listed
+    /// as valid backups.
+    #[test]
+    fn list_backups_skips_staging_directories() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&backup_dir).unwrap();
+
+        let manifest = BackupManifest {
+            version: String::from(MANIFEST_VERSION),
+            created_at: jiff::Zoned::now().to_string(),
+            source_root: backup_dir.clone(),
+            stores: Vec::new(),
+            optional_stores: Vec::new(),
+            workspace_omissions: Vec::new(),
+            total_bytes: 0,
+            snapshot_epoch: jiff::Zoned::now().to_string(),
+            snapshot_protocol_version: String::from(SNAPSHOT_PROTOCOL_VERSION),
+            quiesced: false,
+            store_generations: HashMap::new(),
+        };
+        let manifest_json = serde_json::to_string(&manifest).unwrap();
+
+        // Create a valid backup set.
+        let valid = backup_dir.join("20260101-000000.000");
+        fs::create_dir_all(&valid).unwrap();
+        write_text_file(&valid.join("manifest.json"), &manifest_json).unwrap();
+
+        // Create a fake staging directory with a manifest (simulating an
+        // interrupted backup).
+        let staging = backup_dir.join(format!("{STAGING_DIR_PREFIX}fake"));
+        fs::create_dir_all(&staging).unwrap();
+        write_text_file(&staging.join("manifest.json"), &manifest_json).unwrap();
+
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            backup_dir,
+            ..InstanceBackupConfig::default()
+        });
+        let backups = manager.list_backups().expect("list succeeds");
+        assert_eq!(backups.len(), 1);
+        assert_eq!(backups.first().unwrap().path, valid);
+    }
+
+    fn make_fjall_store_with_data(path: &Path, key: &str) {
+        fs::create_dir_all(path).unwrap();
+        let db = fjall::SingleWriterTxDatabase::builder(path)
+            .worker_threads_unchecked(0)
+            .open()
+            .unwrap();
+        let partition = db
+            .keyspace("test_data", fjall::KeyspaceCreateOptions::default)
+            .unwrap();
+        partition.insert(key, b"value").unwrap();
+        db.persist(fjall::PersistMode::SyncAll).unwrap();
+        drop(db);
     }
 }
