@@ -24,6 +24,7 @@ snafu = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+futures = { workspace = true }
 
 [dev-dependencies]
 organon = { path = "../organon", features = ["test-support"] }

@@ -3,6 +3,8 @@
 use std::future::Future;
 use std::sync::Arc;
 
+use futures::FutureExt;
+
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tracing::{Instrument, info_span, instrument};
@@ -181,11 +183,22 @@ impl ChannelListener {
                 );
                 let channel_id = msg.channel.clone();
                 let h = Arc::clone(&handler);
+                // WHY: run handler future directly in handler_set so JoinSet owns all
+                // handler futures; when run() is cancelled JoinSet::drop aborts them
+                // atomically — eliminates the orphaned-task risk of a nested
+                // tokio::spawn whose JoinHandle is dropped (detaches) on cancellation.
+                //
+                // Catch panics inside the handler so the channel-attributed failure
+                // metric is recorded before the panic is absorbed by the JoinSet;
+                // otherwise JoinError loses the channel_id and the metric is recorded
+                // as "_unknown".
                 handler_set.spawn(async move {
-                    let inner = tokio::spawn(h(msg).instrument(span));
-                    if let Err(e) = inner.await {
+                    if let Err(e) = std::panic::AssertUnwindSafe(h(msg).instrument(span))
+                        .catch_unwind()
+                        .await
+                    {
                         tracing::warn!(
-                            error = %e,
+                            error = ?e,
                             channel_id = %channel_id,
                             "handler task failed"
                         );
@@ -195,8 +208,14 @@ impl ChannelListener {
             }
         }
 
-        // WHY: wait for all in-flight handler tasks to complete before shutdown
-        while handler_set.join_next().await.is_some() {}
+        // WHY: wait for all in-flight handler tasks to complete before shutdown;
+        // any uncaught panic (e.g. in the wrapper itself) surfaces as JoinError.
+        while let Some(result) = handler_set.join_next().await {
+            if let Err(e) = result {
+                tracing::warn!(error = %e, "handler task panicked");
+                crate::metrics::record_handler_failure("_unknown");
+            }
+        }
 
         // Drain provider/forwarding handles so provider failures are surfaced.
         #[expect(
