@@ -3,6 +3,8 @@
 use std::future::Future;
 use std::sync::Arc;
 
+use futures::FutureExt;
+
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tracing::{Instrument, info_span, instrument};
@@ -179,17 +181,35 @@ impl ChannelListener {
                     msg.channel = %msg.channel,
                     msg.source = %redact_phone(&msg.sender),
                 );
+                let channel_id = msg.channel.clone();
                 let h = Arc::clone(&handler);
                 // WHY: run handler future directly in handler_set so JoinSet owns all
                 // handler futures; when run() is cancelled JoinSet::drop aborts them
                 // atomically — eliminates the orphaned-task risk of a nested
                 // tokio::spawn whose JoinHandle is dropped (detaches) on cancellation.
-                handler_set.spawn(h(msg).instrument(span));
+                //
+                // Catch panics inside the handler so the channel-attributed failure
+                // metric is recorded before the panic is absorbed by the JoinSet;
+                // otherwise JoinError loses the channel_id and the metric is recorded
+                // as "_unknown".
+                handler_set.spawn(async move {
+                    if let Err(e) = std::panic::AssertUnwindSafe(h(msg).instrument(span))
+                        .catch_unwind()
+                        .await
+                    {
+                        tracing::warn!(
+                            error = ?e,
+                            channel_id = %channel_id,
+                            "handler task failed"
+                        );
+                        crate::metrics::record_handler_failure(&channel_id);
+                    }
+                });
             }
         }
 
         // WHY: wait for all in-flight handler tasks to complete before shutdown;
-        // join_next returns Err(JoinError) when a handler panics — record the failure.
+        // any uncaught panic (e.g. in the wrapper itself) surfaces as JoinError.
         while let Some(result) = handler_set.join_next().await {
             if let Err(e) = result {
                 tracing::warn!(error = %e, "handler task panicked");
@@ -710,13 +730,10 @@ mod tests {
             .await;
 
         let out = encode_metrics(&r);
-        // NOTE: after removing the inner tokio::spawn, handler panics propagate
-        // as JoinError from JoinSet::join_next in the drain loop; the channel_id is
-        // no longer available at that point so failures are recorded as "_unknown".
         let count = counter_value_for(
             &out,
             "aletheia_handler_failures_total",
-            "channel_id=\"_unknown\"",
+            "channel_id=\"signal\"",
         );
         assert_eq!(
             count,
