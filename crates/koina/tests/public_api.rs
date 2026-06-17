@@ -77,6 +77,19 @@ mod secret_string {
     }
 }
 
+// --- Models ---
+
+mod models {
+    #[test]
+    fn model_seed_exposes_as_of() {
+        // WHY (#5635): regression gate for the runtime-panic path. With
+        // `build.rs` validation this is now a build-time failure, but calling a
+        // public `MODEL_SEED`-backed function here keeps the crash path under
+        // test in the published-API surface.
+        assert!(!koina::models::as_of().is_empty());
+    }
+}
+
 // --- Ulid ---
 
 mod ulid {
