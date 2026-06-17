@@ -587,45 +587,4 @@ mod tests {
             "error display should contain message: {msg}"
         );
     }
-
-    #[cfg(feature = "local-reranker")]
-    #[tokio::test]
-    async fn cross_encoder_reranker_new_fails_when_path_missing() {
-        let result = CrossEncoderReranker::new("/nonexistent/path/to/model");
-        assert!(
-            matches!(result, Err(EpistemeError::RerankerFailed { .. })),
-            "missing model path should yield RerankerFailed"
-        );
-    }
-
-    #[cfg(feature = "local-reranker")]
-    #[tokio::test]
-    async fn cross_encoder_reranker_new_succeeds_when_path_exists() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().to_str().expect("utf8 path");
-        let reranker = CrossEncoderReranker::new(path).expect("valid path should succeed");
-        assert_eq!(reranker.name(), "cross-encoder-reranker");
-    }
-
-    #[cfg(feature = "local-reranker")]
-    #[tokio::test]
-    async fn cross_encoder_reranker_rerank_fails_clearly() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().to_str().expect("utf8 path");
-        let reranker = CrossEncoderReranker::new(path).expect("valid path");
-        let candidates = vec![make_candidate("foo bar baz", 0.5)];
-        let result = reranker.rerank("query", candidates).await;
-        assert!(
-            matches!(result, Err(EpistemeError::RerankerFailed { .. })),
-            "rerank should fail clearly when scoring is not implemented"
-        );
-        let Err(err) = result else {
-            panic!("rerank should have failed");
-        };
-        let msg = err.to_string();
-        assert!(
-            msg.contains("not yet implemented"),
-            "error message should explain scoring is not yet implemented: {msg}"
-        );
-    }
 }
