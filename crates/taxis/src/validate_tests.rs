@@ -1243,3 +1243,60 @@ fn validate_startup_rejects_agent_workspace_outside_instance() {
         "expected workspace escape error, got: {err:?}"
     );
 }
+
+#[test]
+fn validate_startup_rejects_empty_training_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let oikos = Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.training.path = String::new();
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("training.path") && e.contains("empty")),
+        "expected empty training.path error, got: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_rejects_absolute_training_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let oikos = Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.training.path = "/tmp/training".to_owned();
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("training.path") && e.contains("relative")),
+        "expected absolute training.path error, got: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_rejects_traversal_training_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let oikos = Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.training.path = "../training".to_owned();
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("training.path") && e.contains("..")),
+        "expected traversal training.path error, got: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_accepts_relative_training_path_under_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let training_dir = dir.path().join("data").join("training");
+    std::fs::create_dir_all(&training_dir).unwrap();
+    let oikos = Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.training.path = "data/training".to_owned();
+
+    assert!(
+        validate_startup(&config, &oikos).is_ok(),
+        "relative training.path under root should be accepted"
+    );
+}

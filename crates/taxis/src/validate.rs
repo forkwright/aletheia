@@ -128,6 +128,10 @@ pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), Va
         errors.extend(err.failures);
     }
 
+    if let Err(msg) = validate_training_path(&config.training.path, oikos.root()) {
+        errors.push(format!("training.path is invalid: {msg}"));
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {
@@ -208,6 +212,39 @@ fn validate_contained_path_string(
         instance_root.join(path_str)
     };
     validate_contained_path(&path, instance_root)
+}
+
+/// Validate that the configured training output path is safe.
+///
+/// The path must be non-empty, relative, composed only of normal path
+/// components (no `..` or empty segments), and contained under the instance
+/// root after normalization. The DPO writer derives its directory from the
+/// same path, so this rule also covers DPO output. (#5385)
+fn validate_training_path(
+    path_str: &str,
+    instance_root: &std::path::Path,
+) -> Result<(), String> {
+    if path_str.is_empty() {
+        return Err("training.path must not be empty".to_owned());
+    }
+
+    let path = std::path::Path::new(path_str);
+    if path.is_absolute() {
+        return Err(format!("training.path '{path_str}' must be relative"));
+    }
+
+    for component in path.components() {
+        if !matches!(component, std::path::Component::Normal(_)) {
+            return Err(format!(
+                "training.path '{path_str}' must not contain '..' or empty components"
+            ));
+        }
+    }
+
+    validate_contained_path_string(path_str, instance_root)
+        .map_err(|e| format!("training.path '{path_str}' is not contained: {e}"))?;
+
+    Ok(())
 }
 
 /// Instance subdirectories required for correct runtime operation.
