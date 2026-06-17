@@ -20,6 +20,10 @@ use mneme::knowledge_store::KnowledgeStore;
 use rmcp::ServiceExt;
 use rmcp::model::{CallToolRequestParams, ClientCapabilities, ClientInfo, Implementation};
 
+/// Valid write token for tests. Must be at least 32 characters to satisfy
+/// `MemoryServer::MIN_WRITE_TOKEN_LEN`.
+const VALID_WRITE_TOKEN: &str = "correct-token-for-write-tools-test";
+
 /// Seed a fresh in-memory store with one fact so list/stats/search have
 /// something to return.
 #[expect(
@@ -407,7 +411,7 @@ async fn write_tool_rejected_without_token_env_set() {
 async fn write_tool_rejected_with_wrong_token() {
     let store = seed_store();
     // Create server with an explicit write token (avoids env var manipulation)
-    let server = MemoryServer::with_write_token(store, None, Some("correct-token".to_owned()));
+    let server = MemoryServer::with_write_token(store, None, Some(VALID_WRITE_TOKEN.to_owned()));
 
     let (server_tx, client_rx) = tokio::io::duplex(4096);
     let (client_tx, server_rx) = tokio::io::duplex(4096);
@@ -469,7 +473,7 @@ async fn write_tool_accepts_correct_token() {
     let store = seed_store_two_facts();
     let inspect_store = Arc::clone(&store);
     // Create server with an explicit write token (avoids env var manipulation)
-    let server = MemoryServer::with_write_token(store, None, Some("correct-token".to_owned()));
+    let server = MemoryServer::with_write_token(store, None, Some(VALID_WRITE_TOKEN.to_owned()));
 
     let (server_tx, client_rx) = tokio::io::duplex(4096);
     let (client_tx, server_rx) = tokio::io::duplex(4096);
@@ -508,7 +512,7 @@ async fn write_tool_accepts_correct_token() {
                     "fact_id": "f-test-0001",
                     "content": "This fact is well-established",
                     "session_id": "alice",
-                    "write_token": "correct-token"
+                    "write_token": VALID_WRITE_TOKEN
                 })
                 .as_object()
                 .expect("object")
@@ -576,7 +580,7 @@ async fn write_tool_accepts_correct_token() {
                     "new_fact_id": "f-test-0002",
                     "nous_id": "alice",
                     "reason": "Updated with fresher information",
-                    "write_token": "correct-token"
+                    "write_token": VALID_WRITE_TOKEN
                 })
                 .as_object()
                 .expect("object")
@@ -610,7 +614,7 @@ async fn write_tool_accepts_correct_token() {
                     "fact_id": "f-test-0001",
                     "nous_id": "alice",
                     "reason": "Fact is outdated",
-                    "write_token": "correct-token"
+                    "write_token": VALID_WRITE_TOKEN
                 })
                 .as_object()
                 .expect("object")
