@@ -101,51 +101,36 @@ impl Oikos {
 
     /// Shared tools directory.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn shared_tools(&self) -> PathBuf {
+    #[cfg(test)]
+    fn shared_tools(&self) -> PathBuf {
         self.root.join("shared").join("tools")
     }
 
     /// Shared skills directory.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn shared_skills(&self) -> PathBuf {
+    #[cfg(test)]
+    fn shared_skills(&self) -> PathBuf {
         self.root.join("shared").join("skills")
     }
 
     /// Shared hooks directory.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn shared_hooks(&self) -> PathBuf {
+    #[cfg(test)]
+    fn shared_hooks(&self) -> PathBuf {
         self.root.join("shared").join("hooks")
     }
 
     /// Shared coordination directory.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn coordination(&self) -> PathBuf {
+    #[cfg(test)]
+    fn coordination(&self) -> PathBuf {
         self.root.join("shared").join("coordination")
     }
 
     /// The nous directory containing all agent workspaces.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn nous_root(&self) -> PathBuf {
+    #[cfg(test)]
+    fn nous_root(&self) -> PathBuf {
         self.root.join("nous")
     }
 
@@ -183,11 +168,8 @@ impl Oikos {
 
     /// The main config file (prefers TOML, falls back to JSON).
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn config_file(&self) -> PathBuf {
+    #[cfg(test)]
+    fn config_file(&self) -> PathBuf {
         let toml = self.root.join("config").join("aletheia.toml");
         if toml.exists() {
             return toml;
@@ -203,11 +185,8 @@ impl Oikos {
 
     /// The session encryption key file.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn session_key(&self) -> PathBuf {
+    #[cfg(test)]
+    fn session_key(&self) -> PathBuf {
         self.root.join("config").join("session.key")
     }
 
@@ -225,11 +204,8 @@ impl Oikos {
 
     /// The planning database file.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn planning_db(&self) -> PathBuf {
+    #[cfg(test)]
+    fn planning_db(&self) -> PathBuf {
         self.root.join("data").join("planning.db")
     }
 
@@ -277,11 +253,8 @@ impl Oikos {
 
     /// The Signal data directory.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn signal(&self) -> PathBuf {
+    #[cfg(test)]
+    fn signal(&self) -> PathBuf {
         self.root.join("signal")
     }
 
