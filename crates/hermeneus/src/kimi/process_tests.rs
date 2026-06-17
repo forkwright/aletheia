@@ -224,10 +224,9 @@ fn build_kimi_command_includes_model_arg_when_provided() {
         .get_args()
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
-    let model_pos = args
-        .iter()
-        .position(|a| a == "--model")
-        .expect("--model flag must be present when model is Some");
+    let Some(model_pos) = args.iter().position(|a| a == "--model") else {
+        panic!("--model flag must be present when model is Some");
+    };
     assert_eq!(
         args.get(model_pos + 1).map(String::as_str),
         Some("kimi-k2"),

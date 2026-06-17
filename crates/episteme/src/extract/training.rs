@@ -17,6 +17,9 @@ use serde::{Deserialize, Serialize};
 
 /// A violation record from `workflow/training/violations.jsonl`.
 ///
+/// Expected schema version for violation records.
+const VIOLATION_SCHEMA_VERSION: u32 = 2;
+
 /// Schema version 2: each line is a JSON object describing a single lint
 /// violation detected by `kanon lint`.
 #[derive(Debug, Clone, Deserialize)]
@@ -28,8 +31,7 @@ pub(crate) struct ViolationRecord {
     /// Record type discriminator (always "violation").
     #[serde(rename = "type")]
     pub(crate) record_type: String,
-    /// Schema version for forward compatibility.
-    #[expect(dead_code, reason = "reserved for future schema migration")]
+    /// Schema version guard — records with an unexpected version are rejected.
     pub(crate) schema_version: u32,
     /// When the violation was detected.
     pub(crate) ts: String,
@@ -50,6 +52,9 @@ pub(crate) struct ViolationRecord {
     pub(crate) sha: Option<String>,
 }
 
+/// Expected schema version for lint summary records.
+const LINT_SUMMARY_SCHEMA_VERSION: u32 = 2;
+
 /// A lint summary record from `workflow/training/lint.jsonl`.
 #[derive(Debug, Clone, Deserialize)]
 #[expect(
@@ -60,8 +65,7 @@ pub(crate) struct LintSummaryRecord {
     /// Record type discriminator (always "lint").
     #[serde(rename = "type")]
     pub(crate) record_type: String,
-    /// Schema version for forward compatibility.
-    #[expect(dead_code, reason = "reserved for future schema migration")]
+    /// Schema version guard — records with an unexpected version are rejected.
     pub(crate) schema_version: u32,
     /// When the lint run completed.
     pub(crate) ts: String,
@@ -166,6 +170,15 @@ pub fn extract_from_training_data(training_dir: &Path) -> std::io::Result<Extrac
 
             match serde_json::from_str::<ViolationRecord>(trimmed) {
                 Ok(record) => {
+                    if record.schema_version != VIOLATION_SCHEMA_VERSION {
+                        tracing::warn!(
+                            schema_version = record.schema_version,
+                            expected = VIOLATION_SCHEMA_VERSION,
+                            "skipping violation record with unexpected schema version"
+                        );
+                        result.records_skipped += 1;
+                        continue;
+                    }
                     result.violations_read += 1;
                     let bucket = rule_buckets.entry(record.rule.clone()).or_default();
                     bucket.add_violation(&record);
@@ -193,6 +206,15 @@ pub fn extract_from_training_data(training_dir: &Path) -> std::io::Result<Extrac
 
             match serde_json::from_str::<LintSummaryRecord>(trimmed) {
                 Ok(record) => {
+                    if record.schema_version != LINT_SUMMARY_SCHEMA_VERSION {
+                        tracing::warn!(
+                            schema_version = record.schema_version,
+                            expected = LINT_SUMMARY_SCHEMA_VERSION,
+                            "skipping lint summary record with unexpected schema version"
+                        );
+                        result.records_skipped += 1;
+                        continue;
+                    }
                     result.lint_summaries_read += 1;
                     detect_trends(&record, &mut rule_buckets);
                 }

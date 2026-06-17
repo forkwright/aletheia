@@ -124,11 +124,7 @@ pub(crate) fn record_fact_inserted(nous_id: &str) {
 }
 
 /// Record a knowledge extraction operation.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "metric recording called from extraction pipeline")
-)]
-pub(crate) fn record_extraction(nous_id: &str, success: bool) {
+pub fn record_extraction(nous_id: &str, success: bool) {
     let status = if success { "ok" } else { "error" };
     KNOWLEDGE_EXTRACTIONS_TOTAL
         .get_or_create(&NousStatusLabels {
@@ -148,11 +144,7 @@ pub(crate) fn record_recall_duration(nous_id: &str, duration_secs: f64) {
 }
 
 /// Record embedding computation duration.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "metric recording called from embedding pipeline")
-)]
-pub(crate) fn record_embedding_duration(provider: &str, duration_secs: f64) {
+pub fn record_embedding_duration(provider: &str, duration_secs: f64) {
     EMBEDDING_DURATION_SECONDS
         .get_or_create(&ProviderLabels {
             provider: provider.to_owned(),

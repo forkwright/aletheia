@@ -6,7 +6,13 @@
 //! - Enhanced scoring functions that augment epistemic tier, relationship proximity, and access frequency
 //! - Background recomputation of `PageRank` + `Louvain` stored in `graph_scores`
 //! - Cache invalidation via [`GraphDirtyFlag`](crate::graph_intelligence::GraphDirtyFlag)
-#![cfg_attr(not(test), allow(dead_code))]
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "graph intelligence API wired through daemon maintenance; unused outside test harness"
+    )
+)]
 #![cfg_attr(
     feature = "mneme-engine",
     expect(
@@ -74,7 +80,7 @@ pub(crate) const GRAPH_SCORES_DDL: &str = r":create graph_scores {
 /// default to empty when no graph data is available, producing identical
 /// scores to the non-graph baseline formula.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct GraphContext {
+pub struct GraphContext {
     /// `entity_id` → normalized `PageRank` score [0.0, 1.0]
     pub pageranks: HashMap<String, f64>,
     /// `entity_id` → `Louvain` `cluster_id`
@@ -100,8 +106,7 @@ impl GraphContext {
     /// Returns `true` if the cached graph scores are older than the given
     /// threshold. Returns `false` when no scores have been computed.
     #[must_use]
-    #[expect(dead_code, reason = "staleness trigger pending #3432 follow-up")]
-    pub(crate) fn is_stale(&self, threshold: jiff::SignedDuration) -> bool {
+    pub fn is_stale(&self, threshold: jiff::SignedDuration) -> bool {
         let Some(updated) = self.updated_at else {
             return true;
         };
@@ -352,7 +357,7 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Populates pageranks and cluster assignments. Caller should then fill
     /// `context_clusters`, `proximity`, and `chain_lengths` based on query context.
-    pub(crate) fn load_graph_context(&self) -> crate::error::Result<GraphContext> {
+    pub fn load_graph_context(&self) -> crate::error::Result<GraphContext> {
         let result = self.run_query(LOAD_GRAPH_SCORES, std::collections::BTreeMap::new())?;
 
         let mut ctx = GraphContext::default();

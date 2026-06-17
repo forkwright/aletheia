@@ -1,14 +1,10 @@
 //! Builder-generated query scripts for `KnowledgeStore` operations.
 
-// WHY: `#[expect]` cannot be used here; this module is only compiled with the mneme-engine
-// feature, so the expectation would be unfulfilled in default-feature compilations.
-#![allow(
-    clippy::enum_glob_use,
-    clippy::wildcard_imports,
-    reason = "query builders use glob imports for enum field variants"
-)]
-
-use super::*;
+use super::{
+    CausalEdgesField, EmbeddingsField, EntitiesField, EntityFlagsField, FactEntitiesField,
+    FactsField, MergeAuditField, PendingMergesField, QueryBuilder, Relation, RelationshipsField,
+    ScanBuilder,
+};
 
 /// Canonical `?[...]` projection for full [`Fact`](crate::knowledge::Fact)
 /// hydration. The column order MUST match the positional decoding in
@@ -20,7 +16,11 @@ use super::*;
 /// audit, and current-fact reads from drifting out of the marshal contract and
 /// silently mis-hydrating policy fields (#4677/#4549).
 pub(crate) const FULL_FACT_SELECT: [FactsField; 21] = {
-    use FactsField::*;
+    use FactsField::{
+        AccessCount, Confidence, Content, FactType, ForgetReason, ForgottenAt, Id, IsForgotten,
+        LastAccessedAt, NousId, ProjectId, RecordedAt, Scope, Sensitivity, SourceSessionId,
+        StabilityHours, SupersededBy, Tier, ValidFrom, ValidTo, Visibility,
+    };
     [
         Id,
         Content,
@@ -50,7 +50,11 @@ pub(crate) const FULL_FACT_SELECT: [FactsField; 21] = {
 /// declaration order. Binding is by field name so the order is cosmetic, but a
 /// single source avoids drift from [`FULL_FACT_SELECT`].
 const FULL_FACT_BIND: [FactsField; 21] = {
-    use FactsField::*;
+    use FactsField::{
+        AccessCount, Confidence, Content, FactType, ForgetReason, ForgottenAt, Id, IsForgotten,
+        LastAccessedAt, NousId, ProjectId, RecordedAt, Scope, Sensitivity, SourceSessionId,
+        StabilityHours, SupersededBy, Tier, ValidFrom, ValidTo, Visibility,
+    };
     [
         Id,
         ValidFrom,
@@ -102,7 +106,11 @@ fn full_fact_scan() -> ScanBuilder {
 /// `$source_session_id`, `$recorded_at`.
 #[must_use]
 pub(crate) fn upsert_fact() -> String {
-    use FactsField::*;
+    use FactsField::{
+        AccessCount, Confidence, Content, FactType, ForgetReason, ForgottenAt, Id, IsForgotten,
+        LastAccessedAt, NousId, ProjectId, RecordedAt, Scope, Sensitivity, SourceSessionId,
+        StabilityHours, SupersededBy, Tier, ValidFrom, ValidTo, Visibility,
+    };
     QueryBuilder::new()
         .put(Relation::Facts)
         .keys(&[Id, ValidFrom])
@@ -139,7 +147,11 @@ pub(crate) fn upsert_fact() -> String {
     expect(dead_code, reason = "Datalog query for current (non-superseded) facts")
 )]
 pub(crate) fn current_facts() -> String {
-    use FactsField::*;
+    use FactsField::{
+        AccessCount, Confidence, Content, FactType, ForgetReason, ForgottenAt, Id, IsForgotten,
+        LastAccessedAt, NousId, ProjectId, RecordedAt, Scope, Sensitivity, StabilityHours,
+        SupersededBy, Tier, ValidFrom, ValidTo, Visibility,
+    };
     QueryBuilder::new()
         .scan(Relation::Facts)
         .select(&[Id, Content, Confidence, Tier, RecordedAt])
@@ -193,7 +205,10 @@ pub(crate) fn full_current_facts() -> String {
 /// Point-in-time fact query. Params: `$time`.
 #[must_use]
 pub(crate) fn facts_at_time() -> String {
-    use FactsField::*;
+    use FactsField::{
+        Confidence, Content, Id, IsForgotten, ProjectId, Scope, Sensitivity, Tier, ValidFrom,
+        ValidTo, Visibility,
+    };
     QueryBuilder::new()
         .scan(Relation::Facts)
         .select(&[Id, Content, Confidence, Tier, Sensitivity])
@@ -222,7 +237,11 @@ pub(crate) fn facts_at_time() -> String {
 /// `$source_session_id`.
 #[must_use]
 pub(crate) fn supersede_fact() -> String {
-    use FactsField::*;
+    use FactsField::{
+        AccessCount, Confidence, Content, FactType, ForgetReason, ForgottenAt, Id, IsForgotten,
+        LastAccessedAt, NousId, ProjectId, RecordedAt, Scope, Sensitivity, SourceSessionId,
+        StabilityHours, SupersededBy, Tier, ValidFrom, ValidTo, Visibility,
+    };
     QueryBuilder::new()
         .put(Relation::Facts)
         .keys(&[Id, ValidFrom])
@@ -308,7 +327,7 @@ pub(crate) fn supersede_fact() -> String {
 /// backfill path (#4165 / Path A).
 #[must_use]
 pub(crate) fn upsert_entity() -> String {
-    use EntitiesField::*;
+    use EntitiesField::{Aliases, CreatedAt, EntityType, Id, Name, NameEmbedding, UpdatedAt};
     QueryBuilder::new()
         .put(Relation::Entities)
         .keys(&[Id])
@@ -342,7 +361,7 @@ pub(crate) fn upsert_relationship() -> String {
 /// `$embedding`, `$created_at`.
 #[must_use]
 pub(crate) fn upsert_embedding() -> String {
-    use EmbeddingsField::*;
+    use EmbeddingsField::{Content, CreatedAt, Embedding, Id, NousId, SourceId, SourceType};
     QueryBuilder::new()
         .put(Relation::Embeddings)
         .keys(&[Id])
@@ -542,7 +561,7 @@ pub(crate) fn rm_fact_entity() -> String {
 /// Params: `$fact_id`, `$entity_id`, `$created_at`.
 #[must_use]
 pub(crate) fn upsert_fact_entity() -> String {
-    use FactEntitiesField::*;
+    use FactEntitiesField::{CreatedAt, EntityId, FactId};
     QueryBuilder::new()
         .put(Relation::FactEntities)
         .keys(&[FactId, EntityId])
@@ -592,7 +611,10 @@ pub(crate) fn rm_pending_merges() -> String {
 /// `$facts_transferred`, `$relationships_redirected`, `$merged_at`.
 #[must_use]
 pub(crate) fn put_merge_audit() -> String {
-    use MergeAuditField::*;
+    use MergeAuditField::{
+        CanonicalId, FactsTransferred, MergeScore, MergedAt, MergedId, MergedName,
+        RelationshipsRedirected,
+    };
     QueryBuilder::new()
         .put(Relation::MergeAudit)
         .keys(&[CanonicalId, MergedId])
@@ -612,7 +634,10 @@ pub(crate) fn put_merge_audit() -> String {
 /// `$embed_similarity`, `$type_match`, `$alias_overlap`, `$merge_score`, `$created_at`.
 #[must_use]
 pub(crate) fn put_pending_merge() -> String {
-    use PendingMergesField::*;
+    use PendingMergesField::{
+        AliasOverlap, CreatedAt, EmbedSimilarity, EntityA, EntityB, MergeScore, NameA, NameB,
+        NameSimilarity, TypeMatch,
+    };
     QueryBuilder::new()
         .put(Relation::PendingMerges)
         .keys(&[EntityA, EntityB])
@@ -634,7 +659,7 @@ pub(crate) fn put_pending_merge() -> String {
 /// Params: `$entity_id`, `$reason`, `$severity`, `$flagged_by`, `$flagged_at`.
 #[must_use]
 pub(crate) fn upsert_entity_flag() -> String {
-    use EntityFlagsField::*;
+    use EntityFlagsField::{EntityId, FlaggedAt, FlaggedBy, Reason, Severity};
     QueryBuilder::new()
         .put(Relation::EntityFlags)
         .keys(&[EntityId])
@@ -660,7 +685,9 @@ pub(crate) fn rm_entity_flag() -> String {
 /// `$confidence`, `$evidence_session_id`, `$created_at`.
 #[must_use]
 pub(crate) fn upsert_causal_edge() -> String {
-    use CausalEdgesField::*;
+    use CausalEdgesField::{
+        Cause, Confidence, CreatedAt, Effect, EvidenceSessionId, Id, Ordering, RelationshipType,
+    };
     QueryBuilder::new()
         .put(Relation::CausalEdges)
         .keys(&[Cause, Effect])

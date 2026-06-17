@@ -222,6 +222,28 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         let mut items_modified: u64 = 0;
         let mut errors: u32 = 0;
 
+        // WHY (#5531): check staleness before recomputing — skip the expensive
+        // PageRank+Louvain recomputation when scores are fresh (< 6h old).
+        let graph_staleness_threshold = jiff::SignedDuration::from_secs(6 * 60 * 60);
+        let should_recompute = self
+            .store
+            .load_graph_context()
+            .map(|ctx| ctx.is_stale(graph_staleness_threshold))
+            .unwrap_or(true); // WHY: fail-open — if we can't load context, recompute
+
+        if !should_recompute {
+            let duration_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+            let detail = "Graph recompute: scores are fresh, skipping recomputation".to_owned();
+            tracing::debug!(%detail, duration_ms, "maintenance: graph recompute skipped (fresh)");
+            return Ok(MaintenanceReport {
+                items_processed: 0,
+                items_modified: 0,
+                errors: 0,
+                duration_ms,
+                detail: Some(detail),
+            });
+        }
+
         if let Err(e) = self.store.recompute_graph_scores() {
             tracing::warn!(error = %e, "graph score recomputation failed");
             errors += 1;

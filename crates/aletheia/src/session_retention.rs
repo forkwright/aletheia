@@ -115,6 +115,7 @@ impl RetentionExecutor for SessionRetentionAdapter {
             counters.messages_cleaned = counters
                 .messages_cleaned
                 .saturating_add(cleanup_orphan_messages(&store, &settings)?);
+            cleanup_usage_records(&store)?;
             counters.add(&cleanup_closed_sessions(&store, &settings)?);
             counters.add(&enforce_session_cap(&store, &settings)?);
         }
@@ -158,6 +159,33 @@ fn cleanup_orphan_messages(
         .map_err(|e| retention_failure(format!("orphan message cleanup failed: {e}")))?;
     u32::try_from(cleaned)
         .map_err(|e| retention_failure(format!("orphan message cleanup count overflow: {e}")))
+}
+
+/// Prune per-session usage records so the usage partition cannot grow without
+/// bound (#5660).
+///
+/// WHY: `RetentionSettings` has no usage-specific knob today, so the cap is a
+/// fixed `USAGE_RECORDS_KEEP_LAST` — large enough that no live session loses
+/// recent accounting, small enough to bound long-lived sessions.
+fn cleanup_usage_records(store: &SessionStore) -> oikonomos::error::Result<()> {
+    /// WHY: keep the most recent N usage rows per session; bounds growth without
+    /// a config knob (#5660).
+    const USAGE_RECORDS_KEEP_LAST: u64 = 5000;
+
+    let all_sessions = store
+        .list_sessions(None)
+        .map_err(|e| retention_failure(format!("list sessions for usage cleanup failed: {e}")))?;
+    for session in all_sessions {
+        store
+            .cleanup_usage_records(&session.id, USAGE_RECORDS_KEEP_LAST)
+            .map_err(|e| {
+                retention_failure(format!(
+                    "usage cleanup for session '{}' failed: {e}",
+                    session.id
+                ))
+            })?;
+    }
+    Ok(())
 }
 
 fn cleanup_closed_sessions(

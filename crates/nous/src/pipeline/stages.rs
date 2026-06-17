@@ -784,14 +784,37 @@ pub(super) async fn run_execute_stage(
             // WHY: a None distillation summary means the session has never been
             // distilled — for a hard timeout we fail instead of serving a generic
             // unavailable message, while other transient errors still degrade.
-            let recent_distillation = session_store.and_then(|store_mutex| {
-                store_mutex.try_lock().ok().and_then(|store| {
-                    store
-                        .get_distillation_summary(&input.session.id)
-                        .ok()
-                        .flatten()
-                })
-            });
+            // WHY(#4730, #5245): use a bounded wait instead of try_lock() so a
+            // briefly-contended store does not silently produce a no-cache result.
+            // 50ms is well under any LLM latency — contention at this point is transient.
+            let recent_distillation = if let Some(store_mutex) = session_store {
+                match tokio::time::timeout(std::time::Duration::from_millis(50), store_mutex.lock())
+                    .await
+                {
+                    Ok(store) => match store.get_distillation_summary(&input.session.id) {
+                        Ok(summary) => summary,
+                        Err(e) => {
+                            // WHY(#5245): a store read error is distinct from a genuine
+                            // no-cache; surface it instead of silently collapsing both to None.
+                            tracing::warn!(
+                                nous_id = %config.id,
+                                error = ?e,
+                                "degraded recovery: session store read error; no cache available"
+                            );
+                            None
+                        }
+                    },
+                    Err(_contended) => {
+                        tracing::warn!(
+                            nous_id = %config.id,
+                            "degraded recovery: session store lock contended; no cache available"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
 
             if timed_out && recent_distillation.is_none() {
                 emitter.emit(&StageError {
@@ -857,13 +880,24 @@ pub(super) async fn run_execute_stage(
 }
 
 /// Finalize stage: persist turn results to durable storage.
+/// Return value for `run_finalize_stage`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FinalizeOutcome {
+    /// Turn was persisted to the session store.
+    Persisted,
+    /// No session store was configured; turn was not persisted.
+    NoStore,
+    /// Persistence failed with an error.
+    Failed,
+}
+
 pub(super) async fn run_finalize_stage(
     config: &NousConfig,
     input: &PipelineInput,
     result: &TurnResult,
     session_store: Option<&Mutex<SessionStore>>,
     emitter: &EventEmitter,
-) {
+) -> FinalizeOutcome {
     let span = info_span!(
         "pipeline_stage",
         stage = "finalize",
@@ -871,7 +905,7 @@ pub(super) async fn run_finalize_stage(
         status = tracing::field::Empty
     );
     let start = Instant::now();
-    if let Some(store_mutex) = session_store {
+    let outcome = if let Some(store_mutex) = session_store {
         let store = store_mutex.lock().instrument(span.clone()).await;
         let finalize_config = crate::finalize::FinalizeConfig::default();
         match crate::finalize::finalize(
@@ -888,6 +922,7 @@ pub(super) async fn run_finalize_stage(
                     "finalize complete"
                 );
                 span.record("status", "ok");
+                FinalizeOutcome::Persisted
             }
             Err(e) => {
                 error!(error = %e, "finalize failed, returning result without persistence");
@@ -897,6 +932,7 @@ pub(super) async fn run_finalize_stage(
                     stage: "finalize",
                     error_type: "persistence_failed".to_owned(),
                 });
+                FinalizeOutcome::Failed
             }
         }
     } else {
@@ -906,7 +942,8 @@ pub(super) async fn run_finalize_stage(
             stage: "finalize",
             reason: "no session store".to_owned(),
         });
-    }
+        FinalizeOutcome::NoStore
+    };
     let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
     emitter.emit(&StageCompleted {
@@ -914,6 +951,7 @@ pub(super) async fn run_finalize_stage(
         stage: "finalize",
         duration_secs,
     });
+    outcome
 }
 
 /// Reflection stage: read recent facts and emit reflected ones.
