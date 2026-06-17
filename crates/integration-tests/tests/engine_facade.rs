@@ -2,7 +2,6 @@
 #![cfg(feature = "engine-tests")]
 #![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
     clippy::indexing_slicing,
     reason = "integration tests: assertions panic on unexpected structure"
 )]

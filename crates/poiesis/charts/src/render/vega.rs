@@ -300,7 +300,10 @@ mod tests {
         let row = &data[0];
         assert_eq!(row.get("x").and_then(|v| v.as_str()), Some("ColA"));
         assert_eq!(row.get("y").and_then(|v| v.as_str()), Some("Row1"));
-        assert_eq!(row.get("value").and_then(|v| v.as_f64()), Some(42.0));
+        assert_eq!(
+            row.get("value").and_then(serde_json::Value::as_f64),
+            Some(42.0)
+        );
     }
 
     #[test]
@@ -342,8 +345,14 @@ mod tests {
             &theme,
             &Canvas::Deck(DeckCanvas::default()),
         );
-        assert_eq!(spec.get("width").and_then(|v| v.as_f64()), Some(1440.0));
-        assert_eq!(spec.get("height").and_then(|v| v.as_f64()), Some(400.0));
+        assert_eq!(
+            spec.get("width").and_then(serde_json::Value::as_f64),
+            Some(1440.0)
+        );
+        assert_eq!(
+            spec.get("height").and_then(serde_json::Value::as_f64),
+            Some(400.0)
+        );
     }
 
     #[test]

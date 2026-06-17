@@ -356,6 +356,7 @@ impl Reranker for HttpReranker {
 #[cfg(test)]
 mod tests {
     #![expect(clippy::expect_used, reason = "test assertions")]
+    #![expect(clippy::unwrap_used, reason = "test assertions")]
     #![expect(
         clippy::indexing_slicing,
         reason = "recall reranker tests: bounded indexing on known-small vecs"

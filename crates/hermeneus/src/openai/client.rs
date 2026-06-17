@@ -317,34 +317,21 @@ impl OpenAiProvider {
                 })?;
                 let mut resp = self.parse_response_body(&text)?;
                 self.health.record_success();
-                resp.duration_ms =
-                    Some(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
-                tracing::Span::current().record("llm.tokens_in", resp.usage.input_tokens);
-                tracing::Span::current().record("llm.tokens_out", resp.usage.output_tokens);
-                tracing::Span::current().record("llm.status", "ok");
-                tracing::Span::current().record("llm.retries", attempt);
-                info!(
-                    provider = %self.config.name,
-                    api_family,
-                    model = %request.model,
-                    tokens_in = resp.usage.input_tokens,
-                    tokens_out = resp.usage.output_tokens,
-                    "OpenAI call complete"
-                );
                 let cost_usd = estimate_cost(
                     &self.pricing,
                     &request.model,
                     resp.usage.input_tokens,
                     resp.usage.output_tokens,
                 );
-                crate::metrics::record_completion(
+                record_nonstream_success(
+                    start,
+                    attempt,
                     &self.config.name,
-                    resp.usage.input_tokens,
-                    resp.usage.output_tokens,
+                    api_family,
+                    request,
+                    &mut resp,
                     cost_usd,
-                    true,
                 );
-                crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
                 return Ok(resp);
             }
 
@@ -596,6 +583,38 @@ impl OpenAiProvider {
 
 fn elapsed_millis_u64(start: Instant) -> u64 {
     u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn record_nonstream_success(
+    start: Instant,
+    attempt: u32,
+    provider_name: &str,
+    api_family: &str,
+    request: &CompletionRequest,
+    response: &mut CompletionResponse,
+    cost_usd: f64,
+) {
+    response.duration_ms = Some(elapsed_millis_u64(start));
+    tracing::Span::current().record("llm.tokens_in", response.usage.input_tokens);
+    tracing::Span::current().record("llm.tokens_out", response.usage.output_tokens);
+    tracing::Span::current().record("llm.status", "ok");
+    tracing::Span::current().record("llm.retries", attempt);
+    info!(
+        provider = %provider_name,
+        api_family,
+        model = %request.model,
+        tokens_in = response.usage.input_tokens,
+        tokens_out = response.usage.output_tokens,
+        "OpenAI call complete"
+    );
+    crate::metrics::record_completion(
+        provider_name,
+        response.usage.input_tokens,
+        response.usage.output_tokens,
+        cost_usd,
+        true,
+    );
+    crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
 }
 
 fn record_stream_failure(
