@@ -227,15 +227,15 @@ pub(crate) fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Re
 
     // WHY: canonicalize resolves all symlinks and parent-dir components, then
     // verify the result is still under the pack root to prevent path traversal
-    let canonical = resolved
-        .canonicalize()
-        .context(error::ReadFileSnafu { path: resolved })?;
+    let canonical = resolved.canonicalize().context(error::ReadFileSnafu {
+        path: resolved.clone(),
+    })?;
     let canonical_root = pack_root.canonicalize().context(error::ReadFileSnafu {
         path: pack_root.to_path_buf(),
     })?;
     ensure!(
         canonical.starts_with(&canonical_root),
-        error::ContextFileEscapeSnafu { path: &canonical }
+        error::ContextFileEscapeSnafu { path: &resolved }
     );
 
     Ok(canonical)
@@ -408,6 +408,44 @@ domains = ["healthcare", "analytics", "sql"]
                 error::Error::ContextFileEscape { .. } | error::Error::ContextFileNotFound { .. }
             ),
             "traversal path must be rejected, got: {err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_context_path_escape_does_not_leak_canonical_target() {
+        use std::os::unix::fs::symlink;
+
+        let outer = TempDir::new().unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "thesauros pack loader reads binary assets from disk; synchronous I/O is inherent to asset loading"
+        )]
+        fs::write(outer.path().join("secret.md"), "secret content").unwrap();
+
+        let pack = TempDir::new().unwrap();
+        let link = pack.path().join("escape.md");
+        symlink(outer.path().join("secret.md"), &link).unwrap();
+
+        let entry = ContextEntry {
+            path: "escape.md".to_owned(),
+            priority: Priority::Important,
+            agents: vec![],
+            truncatable: false,
+        };
+        let err = resolve_context_path(pack.path(), &entry).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            matches!(err, error::Error::ContextFileEscape { .. }),
+            "symlink escape must be rejected, got: {err}"
+        );
+        assert!(
+            msg.contains("escape.md"),
+            "error should identify the pack entry path, got: {msg}"
+        );
+        assert!(
+            !msg.contains("secret.md"),
+            "error must not leak resolved symlink target, got: {msg}"
         );
     }
 
