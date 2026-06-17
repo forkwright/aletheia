@@ -81,32 +81,12 @@ async fn extract_role(
         return jwt.validate(token).ok().map(|claims| claims.role);
     }
 
-    // NOTE: decode-only fallback when no jwt_manager (should not happen when
-    // auth_mode != "none", but handle gracefully).
-    parse_role_from_token(token)
-}
-
-/// Parse role from a JWT token payload without signature verification.
-///
-/// Only used as a fallback when no `JwtManager` is available. Prefer
-/// signature-verified extraction via `extract_role`.
-fn parse_role_from_token(token: &str) -> Option<Role> {
-    let mut parts = token.split('.');
-    let _header = parts.next()?;
-    let payload = parts.next()?;
-
-    let payload_bytes = base64_decode_urlsafe(payload).ok()?;
-    let claims: serde_json::Value = serde_json::from_slice(&payload_bytes).ok()?;
-
-    claims
-        .get("role")
-        .and_then(|r| r.as_str())
-        .and_then(|r| r.parse::<Role>().ok())
-}
-
-/// Base64 decode with URL-safe alphabet and no padding.
-fn base64_decode_urlsafe(input: &str) -> Result<Vec<u8>, koina::base64::DecodeError> {
-    koina::base64::decode_url_safe_no_pad(input)
+    // INVARIANT: jwt_manager must be Some when auth_mode != "none".
+    // Fail closed: reject rather than granting access via unsigned decode.
+    tracing::error!(
+        "INVARIANT violation: jwt_manager is None but auth_mode != \"none\" — denying MCP tool access"
+    );
+    None
 }
 
 /// Check if the caller has operator-level access or above.

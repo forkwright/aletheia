@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo, Implementation, Tool,
@@ -18,6 +19,22 @@ use tokio::sync::Mutex;
 
 use crate::error::{Result, TransportSnafu};
 
+/// MCP handshake timeout: how long to wait for the `initialize` response.
+///
+/// WHY(#5755): an unresponsive MCP server would block forever without this guard.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Timeout for `tools/list` requests.
+///
+/// WHY(#5757): an unresponsive peer blocks the executor indefinitely without this guard.
+const LIST_TOOLS_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Timeout for `tools/call` requests.
+///
+/// WHY(#5757): an unresponsive peer stalls an entire agent turn without this guard.
+/// Generous default to accommodate long-running tools; should be sourced from config.
+const CALL_TOOL_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Stdio child-process MCP server configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StdioMcpServerConfig {
@@ -28,6 +45,10 @@ pub struct StdioMcpServerConfig {
     /// Optional working directory for the child process.
     pub cwd: Option<PathBuf>,
     /// Extra environment variables for the child process.
+    ///
+    /// WHY(#5186, #5346): the child environment is cleared by default; only variables
+    /// listed here are passed to the child process. Secrets and deployment metadata
+    /// from the parent process are never inherited.
     pub env: HashMap<String, String>,
 }
 
@@ -64,6 +85,10 @@ impl ExternalMcpClient {
         let env = config.env.clone();
         let transport = TokioChildProcess::new(tokio::process::Command::new(&command).configure(
             move |cmd| {
+                // WHY(#5186, #5346): clear the inherited parent env first so the
+                // child never receives secrets, tokens, or deployment metadata.
+                // Only the explicitly configured variables are forwarded.
+                cmd.env_clear();
                 cmd.args(args);
                 if let Some(dir) = cwd {
                     cmd.current_dir(dir);
@@ -82,12 +107,26 @@ impl ExternalMcpClient {
             ClientCapabilities::default(),
             Implementation::new("aletheia-diaporeia", env!("CARGO_PKG_VERSION")),
         );
-        let service = client_info.serve(transport).await.map_err(|e| {
-            TransportSnafu {
-                message: format!("failed to initialize stdio MCP server '{command}': {e}"),
-            }
-            .build()
-        })?;
+
+        // WHY(#5755): without a timeout the handshake blocks forever when the child
+        // never emits the `initialize` response.
+        let service = tokio::time::timeout(HANDSHAKE_TIMEOUT, client_info.serve(transport))
+            .await
+            .map_err(|_e| {
+                TransportSnafu {
+                    message: format!(
+                        "stdio MCP server '{command}' did not respond to handshake within {}s",
+                        HANDSHAKE_TIMEOUT.as_secs()
+                    ),
+                }
+                .build()
+            })?
+            .map_err(|e| {
+                TransportSnafu {
+                    message: format!("failed to initialize stdio MCP server '{command}': {e}"),
+                }
+                .build()
+            })?;
 
         Ok(Self {
             service: Arc::new(Mutex::new(service)), // kanon:ignore RUST/no-arc-mutex-anti-pattern -- WHY: tokio::sync::Mutex is used (correct for async); not std::sync::Mutex
@@ -105,14 +144,28 @@ impl ExternalMcpClient {
             ClientCapabilities::default(),
             Implementation::new("aletheia-diaporeia", env!("CARGO_PKG_VERSION")),
         );
-        let service = client_info.serve(transport).await.map_err(|e| {
-            TransportSnafu {
-                message: format!(
-                    "failed to initialize streamable HTTP MCP server '{endpoint}': {e}"
-                ),
-            }
-            .build()
-        })?;
+
+        // WHY(#5755): without a timeout the handshake blocks forever when the endpoint
+        // never responds to the `initialize` request.
+        let service = tokio::time::timeout(HANDSHAKE_TIMEOUT, client_info.serve(transport))
+            .await
+            .map_err(|_e| {
+                TransportSnafu {
+                    message: format!(
+                        "streamable HTTP MCP server '{endpoint}' did not respond to handshake within {}s",
+                        HANDSHAKE_TIMEOUT.as_secs()
+                    ),
+                }
+                .build()
+            })?
+            .map_err(|e| {
+                TransportSnafu {
+                    message: format!(
+                        "failed to initialize streamable HTTP MCP server '{endpoint}': {e}"
+                    ),
+                }
+                .build()
+            })?;
 
         Ok(Self {
             service: Arc::new(Mutex::new(service)), // kanon:ignore RUST/no-arc-mutex-anti-pattern -- WHY: tokio::sync::Mutex is used (correct for async); not std::sync::Mutex
@@ -123,25 +176,37 @@ impl ExternalMcpClient {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Transport`] when the MCP request fails.
+    /// Returns [`crate::error::Error::Transport`] when the MCP request fails or times out.
     pub async fn list_tools(&self) -> Result<Vec<Tool>> {
         let peer = {
             let service = self.service.lock().await;
             service.peer().clone()
         };
-        peer.list_all_tools().await.map_err(|e| {
-            TransportSnafu {
-                message: format!("MCP tools/list failed: {e}"),
-            }
-            .build()
-        })
+        // WHY(#5757): without a timeout a stalled peer blocks the caller indefinitely.
+        tokio::time::timeout(LIST_TOOLS_TIMEOUT, peer.list_all_tools())
+            .await
+            .map_err(|_e| {
+                TransportSnafu {
+                    message: format!(
+                        "MCP tools/list timed out after {}s",
+                        LIST_TOOLS_TIMEOUT.as_secs()
+                    ),
+                }
+                .build()
+            })?
+            .map_err(|e| {
+                TransportSnafu {
+                    message: format!("MCP tools/list failed: {e}"),
+                }
+                .build()
+            })
     }
 
     /// Call a tool on the connected MCP server.
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Transport`] when the MCP request fails.
+    /// Returns [`crate::error::Error::Transport`] when the MCP request fails or times out.
     pub async fn call_tool(
         &self,
         name: &str,
@@ -151,8 +216,19 @@ impl ExternalMcpClient {
             let service = self.service.lock().await;
             service.peer().clone()
         };
-        peer.call_tool(CallToolRequestParams::new(name.to_owned()).with_arguments(arguments))
+        let params = CallToolRequestParams::new(name.to_owned()).with_arguments(arguments);
+        // WHY(#5757): without a timeout a hung peer stalls an entire agent turn.
+        tokio::time::timeout(CALL_TOOL_TIMEOUT, peer.call_tool(params))
             .await
+            .map_err(|_e| {
+                TransportSnafu {
+                    message: format!(
+                        "MCP tools/call '{name}' timed out after {}s",
+                        CALL_TOOL_TIMEOUT.as_secs()
+                    ),
+                }
+                .build()
+            })?
             .map_err(|e| {
                 TransportSnafu {
                     message: format!("MCP tools/call '{name}' failed: {e}"),
@@ -231,6 +307,64 @@ done
         let tools = client.list_tools().await.expect("list tools");
         assert_eq!(tools.len(), 1);
         assert_eq!(tools.first().expect("one tool").name.as_ref(), "echo");
+
+        let _reason = client.close().await.expect("close");
+    }
+
+    #[tokio::test]
+    async fn stdio_child_inherits_no_parent_env_variables() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("env-check-mcp.sh");
+        let mut file = fs::File::create(&script).expect("create script");
+        // WHY: this server echoes back the value of SECRET_VAR from its environment.
+        // After connect_stdio applies env_clear, that variable must be absent.
+        file.write_all(
+            br#"#!/bin/sh
+IFS= read -r init
+printf '%s\n' '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"env-check","version":"0.1.0"}}}'
+IFS= read -r initialized
+IFS= read -r list
+secret_val="${SECRET_VAR:-__absent__}"
+printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"check\",\"description\":\"$secret_val\",\"inputSchema\":{\"type\":\"object\"}}]}}"
+while IFS= read -r line; do :; done
+"#,
+        )
+        .expect("write script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mut perms = fs::metadata(&script).expect("metadata").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&script, perms).expect("chmod");
+        }
+
+        // Set a "secret" in the test process environment.
+        // WHY: std::env::set_var in a test is acceptable since tests run in-process
+        // and env isolation is the point being tested.
+        #[expect(
+            unsafe_code,
+            reason = "std::env::set_var is unsafe in multi-threaded contexts; safe here because we are the only writer in this test"
+        )]
+        unsafe {
+            std::env::set_var("SECRET_VAR", "should-not-leak");
+        }
+
+        let config = StdioMcpServerConfig::new(script.display().to_string());
+        let client = ExternalMcpClient::connect_stdio(&config)
+            .await
+            .expect("connect");
+
+        let tools = client.list_tools().await.expect("list tools");
+        let description = tools
+            .first()
+            .expect("one tool")
+            .description
+            .as_deref()
+            .unwrap_or("");
+        assert_eq!(
+            description, "__absent__",
+            "child must not inherit SECRET_VAR from parent: got '{description}'"
+        );
 
         let _reason = client.close().await.expect("close");
     }

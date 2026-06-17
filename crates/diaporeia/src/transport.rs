@@ -65,9 +65,28 @@ pub fn streamable_http_router_with_config(
                 state.none_role,
             );
         } else {
+            // WHY(#5183): a non-loopback MCP bind with no authentication exposes the full
+            // MCP surface — sessions, memory, knowledge — to unauthenticated network callers.
+            // This is a hard misconfiguration; fail at startup rather than silently serving.
+            // To use auth_mode = "none" on a non-loopback bind (e.g. for a dedicated trusted
+            // LAN segment), set gateway.auth.allowUnauthenticatedNetworkMcp = true in config.
+            let allow_override = state
+                .config
+                .try_read()
+                .map(|cfg| cfg.gateway.auth.allow_unauthenticated_network_mcp)
+                .unwrap_or(false);
+            assert!(
+                allow_override,
+                concat!(
+                    "FATAL: MCP server configured with auth_mode=\"none\" on non-loopback bind. ",
+                    "This exposes the full MCP surface without authentication. ",
+                    "Set gateway.auth.allowUnauthenticatedNetworkMcp = true to explicitly ",
+                    "allow this deployment mode.",
+                )
+            );
             tracing::error!(
                 bind = %bind,
-                "MCP exposed on network with no authentication — all connections have {} access",
+                "MCP exposed on network with no authentication (explicit override active) — all connections have {} access",
                 state.none_role,
             );
         }
