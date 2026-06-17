@@ -169,6 +169,47 @@ impl ResolvedTheme {
             }
         }
     }
+
+    /// Resolve a per-slice fill for pie/doughnut charts.
+    ///
+    /// The series' declared [`ToneRef`] seeds the slice palette; each
+    /// subsequent slice cycles forward through the theme palette so charts
+    /// with more slices than palette slots still render deterministically.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::UnresolvedTone`] when the series base tone
+    /// does not resolve.
+    pub fn fill_for_slice(
+        &self,
+        base: &ToneRef,
+        mode: ColorMode,
+        series_index: usize,
+        slice_index: usize,
+    ) -> crate::Result<String> {
+        let base_idx = match base {
+            ToneRef::Indexed(i) => self.series.get(*i).map_or_else(
+                || {
+                    Err(crate::Error::UnresolvedTone {
+                        tone: format!("indexed({i})"),
+                        series_index,
+                    })
+                },
+                |_| Ok(*i),
+            )?,
+            ToneRef::Named(name) => self
+                .named
+                .iter()
+                .position(|t| &t.name == name)
+                .ok_or_else(|| crate::Error::UnresolvedTone {
+                    tone: format!("named({name})"),
+                    series_index,
+                })?,
+        };
+        let palette_len = self.series.len().max(1);
+        let cycled = (base_idx + slice_index) % palette_len;
+        self.fill_for(&ToneRef::Indexed(cycled), mode, series_index)
+    }
 }
 
 #[cfg(feature = "theme-bridge")]
@@ -215,5 +256,35 @@ mod tests {
         let t = ResolvedTheme::summus_stub();
         let r = t.fill_for(&ToneRef::Indexed(99), ColorMode::Resolved, 4);
         assert!(matches!(r, Err(crate::Error::UnresolvedTone { .. })));
+    }
+
+    #[test]
+    fn fill_for_slice_cycles_past_palette_end() {
+        let t = ResolvedTheme::summus_stub();
+        // Palette has 3 slots; 5 slices should cycle through 0..2 repeatedly.
+        let mut last = String::new();
+        for j in 0..5 {
+            let f = t
+                .fill_for_slice(&ToneRef::Indexed(0), ColorMode::Resolved, 0, j)
+                .expect("slice resolves");
+            assert!(!f.is_empty());
+            if j % 3 == 0 {
+                last = f;
+            } else {
+                assert_ne!(f, last, "cycle should advance");
+            }
+        }
+    }
+
+    #[test]
+    fn fill_for_slice_honors_base_tone() {
+        let t = ResolvedTheme::summus_stub();
+        let base_0 = t
+            .fill_for_slice(&ToneRef::Indexed(0), ColorMode::Resolved, 0, 0)
+            .expect("base 0");
+        let base_1 = t
+            .fill_for_slice(&ToneRef::Indexed(1), ColorMode::Resolved, 0, 0)
+            .expect("base 1");
+        assert_ne!(base_0, base_1);
     }
 }

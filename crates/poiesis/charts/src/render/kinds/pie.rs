@@ -18,7 +18,7 @@ use std::fmt::Write as _;
 use super::shared::{emit_svg_open, escape_xml};
 use crate::Result;
 use crate::format::{coord, format_number};
-use crate::model::{Chart, NumFormat, ToneRef, Unit};
+use crate::model::{Chart, NumFormat, Unit};
 use crate::render::canvas::Canvas;
 use crate::theme::{ColorMode, ResolvedTheme};
 
@@ -71,7 +71,7 @@ pub fn emit(
         let start_angle = cumulative_angle;
         let end_angle = start_angle + sweep;
 
-        let fill = theme.fill_for(&ToneRef::Indexed(j), mode, j)?;
+        let fill = theme.fill_for_slice(&series.tone, mode, 0, j)?;
 
         let path_d = if (sweep - 2.0 * std::f64::consts::PI).abs() < 1e-12 {
             // WHY: a single slice spans the full circle, and an SVG arc with
@@ -257,5 +257,24 @@ mod tests {
         )
         .expect("single slice emits");
         assert!(svg.contains("<path"));
+    }
+
+    #[test]
+    fn more_slices_than_palette_renders_without_error() {
+        let theme = ResolvedTheme::summus_stub();
+        let svg = emit(
+            &pie_chart(&[
+                (10.0, "a"),
+                (15.0, "b"),
+                (20.0, "c"),
+                (25.0, "d"),
+                (30.0, "e"),
+            ]),
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("palette-cycled pie emits");
+        assert_eq!(svg.matches("<path").count(), 5);
     }
 }
