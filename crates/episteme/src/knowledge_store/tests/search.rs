@@ -5,7 +5,7 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use crate::knowledge::{EmbeddedChunk, Visibility};
+use crate::knowledge::{EmbeddedChunk, ForgetReason, Visibility};
 use crate::test_fixtures::{make_entity, make_fact, make_store, test_ts};
 
 fn extraction_entity(name: &str, entity_type: &str) -> eidos::bookkeeping::ExtractedEntity {
@@ -283,6 +283,56 @@ fn scoped_hybrid_search_hides_foreign_private_and_keeps_shared() {
 
     assert!(!ids.contains(&"hybrid-private"));
     assert!(ids.contains(&"hybrid-shared"));
+}
+
+/// Requirement #5846: forgotten (soft-deleted) facts must not leak into scoped
+/// hybrid search results, even when the underlying BM25/vector/graph indices
+/// still match the query.
+#[test]
+fn scoped_hybrid_search_excludes_forgotten_facts() {
+    let store = make_store();
+    let fact = make_visible_fact(
+        "hybrid-forgotten",
+        "alice",
+        "hybrid anchor forgotten",
+        Visibility::Private,
+    );
+    store.insert_fact(&fact).expect("insert fact");
+
+    let mut chunk = make_embedding(
+        "emb-forgotten",
+        "hybrid anchor forgotten",
+        "hybrid-forgotten",
+        "alice",
+    );
+    chunk.embedding = vec![1.0, 0.0, 0.0, 0.0];
+    store.insert_embedding(&chunk).expect("insert embedding");
+
+    store
+        .forget_fact(
+            &crate::id::FactId::new("hybrid-forgotten").expect("valid test id"),
+            ForgetReason::UserRequested,
+        )
+        .expect("forget fact");
+
+    let results = store
+        .search_hybrid_scoped(
+            &crate::knowledge_store::HybridQuery {
+                text: "hybrid anchor".to_owned(),
+                embedding: vec![1.0, 0.0, 0.0, 0.0],
+                seed_entities: Vec::new(),
+                limit: 10,
+                ef: 20,
+            },
+            "alice",
+        )
+        .expect("scoped hybrid search");
+    let ids: Vec<&str> = results.iter().map(|result| result.id.as_str()).collect();
+
+    assert!(
+        !ids.contains(&"hybrid-forgotten"),
+        "forgotten fact must not appear in scoped hybrid search results; got {ids:?}"
+    );
 }
 
 #[test]
