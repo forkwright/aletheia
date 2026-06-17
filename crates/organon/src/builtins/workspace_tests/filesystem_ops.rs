@@ -450,3 +450,70 @@ async fn write_allows_non_protected_file() {
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
     assert!(!result.is_error, "non-protected file must be writable");
 }
+
+#[tokio::test]
+async fn edit_blocks_identity_md() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("IDENTITY.md");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
+    std::fs::write(&path, "original").expect("write seed");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input(
+        "edit",
+        serde_json::json!({ "path": "IDENTITY.md", "old_text": "original", "new_text": "tampered" }),
+    );
+    let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
+    assert!(result.is_error, "editing IDENTITY.md must produce an error");
+    assert!(
+        result.content.text_summary().contains("protected"),
+        "error must mention protected: {}",
+        result.content.text_summary()
+    );
+}
+
+#[tokio::test]
+async fn edit_blocks_soul_md() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("SOUL.md");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
+    std::fs::write(&path, "original").expect("write seed");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input(
+        "edit",
+        serde_json::json!({ "path": "SOUL.md", "old_text": "original", "new_text": "overwritten" }),
+    );
+    let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
+    assert!(result.is_error, "editing SOUL.md must produce an error");
+    assert!(
+        result.content.text_summary().contains("protected"),
+        "error must mention protected: {}",
+        result.content.text_summary()
+    );
+}
+
+#[tokio::test]
+async fn edit_allows_non_protected_file() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("notes.txt");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
+    )]
+    std::fs::write(&path, "original content").expect("write seed");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input(
+        "edit",
+        serde_json::json!({ "path": "notes.txt", "old_text": "original content", "new_text": "updated content" }),
+    );
+    let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
+    assert!(
+        !result.is_error,
+        "editing a non-protected file must succeed"
+    );
+}

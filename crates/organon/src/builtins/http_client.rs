@@ -31,9 +31,19 @@ use super::workspace::{extract_opt_str, extract_opt_u64, extract_str};
 /// Headers that must never be forwarded from LLM input.
 ///
 /// WHY: Host/Content-Length are computed by reqwest; the LLM setting them
-/// produces malformed requests. Authorization is operator-sensitive; agents
-/// should never inject credentials without an explicit surface (future work).
-const FORBIDDEN_REQUEST_HEADERS: &[&str] = &["host", "content-length"];
+/// produces malformed requests. Authorization, Cookie, and X-Api-Key are
+/// credential-bearing; allowing agents to inject them without an explicit
+/// operator-approved surface enables credential exfiltration through
+/// arbitrary outbound HTTP requests.
+const FORBIDDEN_REQUEST_HEADERS: &[&str] = &[
+    "host",
+    "content-length",
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "x-api-key",
+    "x-auth-token",
+];
 
 /// Upper bound on response body size forwarded to the LLM.
 const MAX_RESPONSE_BYTES: usize = 1_000_000;

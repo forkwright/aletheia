@@ -200,7 +200,12 @@ fn web_search_def() -> ToolDef {
             required: vec!["query".to_owned()],
         },
         category: ToolCategory::Research,
-        reversibility: Reversibility::FullyReversible,
+        // WHY: web_search contacts a third-party API using an operator API key,
+        // consuming quota and producing external network traffic and privacy
+        // side-effects. It is not fully reversible even though it does not
+        // mutate local files; reversible network/quota calls need their own
+        // classification so they are not automatically daemon-safe.
+        reversibility: Reversibility::Reversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Read, ToolGroupId::Mcp],
         tags: vec![ToolTag::Fetch, ToolTag::Recon],

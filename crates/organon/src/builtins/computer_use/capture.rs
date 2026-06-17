@@ -41,6 +41,10 @@ pub(super) fn capture_screen(output_path: &Path) -> std::io::Result<()> {
 }
 
 /// Read a PNG file and return its raw bytes.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "capture frame I/O is synchronous by design; the byte buffer is consumed synchronously before returning to async context"
+)]
 pub(super) fn read_frame(path: &Path) -> std::io::Result<Vec<u8>> {
     std::fs::read(path)
 }

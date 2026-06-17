@@ -96,6 +96,7 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::registry::ToolRegistry;
