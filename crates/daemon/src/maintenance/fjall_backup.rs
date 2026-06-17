@@ -77,6 +77,11 @@ pub struct FjallVerifyResult {
     pub first_error: Option<String>,
     /// Total keys iterated across all partitions.
     pub total_keys: usize,
+    /// Fjall sequence number (generation) captured at open time, if available.
+    ///
+    /// WHY(#4950): recording the store generation lets restore detect mismatched
+    /// write points between stores copied under the same snapshot epoch.
+    pub seqno: Option<u64>,
 }
 
 /// Manages fjall knowledge store backups.
@@ -232,6 +237,7 @@ impl FjallBackup {
             partition_counts: Vec::new(),
             first_error: None,
             total_keys: 0,
+            seqno: Some(db.inner().seqno()),
         };
 
         let names = db.list_keyspace_names();
