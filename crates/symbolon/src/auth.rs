@@ -199,12 +199,12 @@ impl AuthService {
         let consumed_jti = claims.jti.clone();
         let consumed_exp = format_unix_iso(claims.exp);
 
+        self.store.revoke_token(&consumed_jti, &consumed_exp)?;
+
         let access = self
             .jwt
             .issue_access(&claims.sub, claims.role, claims.nous_id.as_deref())?;
         let refresh = self.jwt.issue_refresh(&claims.sub, claims.role)?;
-
-        self.store.revoke_token(&consumed_jti, &consumed_exp)?;
 
         Ok(TokenPair {
             access_token: SecretString::from(access),
