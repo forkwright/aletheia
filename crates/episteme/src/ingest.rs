@@ -102,7 +102,7 @@ pub fn ingest_content(
                 .collect()
         }
         IngestFormat::Json => parse_json_facts(content),
-        IngestFormat::Jsonl => parse_jsonl_facts(content),
+        IngestFormat::Jsonl => Ok(parse_jsonl_facts(content)),
     }
 }
 
@@ -265,17 +265,31 @@ fn parse_json_facts(content: &str) -> crate::error::Result<Vec<Fact>> {
     }
 }
 
-fn parse_jsonl_facts(content: &str) -> crate::error::Result<Vec<Fact>> {
+fn parse_jsonl_facts(content: &str) -> Vec<Fact> {
     let mut facts = Vec::new();
-    for line in content.lines() {
+    let mut parse_errors: Vec<(usize, String)> = Vec::new();
+    for (line_idx, line) in content.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let fact: Fact = serde_json::from_str(line).context(crate::error::StoredJsonSnafu)?;
-        facts.push(fact);
+        match serde_json::from_str::<Fact>(line) {
+            Ok(fact) => facts.push(fact),
+            Err(e) => parse_errors.push((line_idx + 1, e.to_string())),
+        }
     }
-    Ok(facts)
+    if !parse_errors.is_empty() {
+        // WHY (#5758): log per-line errors but continue — a single malformed line
+        // should not discard an entire batch of otherwise valid facts.
+        for (line_num, err) in &parse_errors {
+            tracing::warn!(
+                line = line_num,
+                error = %err,
+                "skipping malformed JSONL fact line; valid facts in the batch are still stored"
+            );
+        }
+    }
+    facts
 }
 
 fn chunk_to_fact(
@@ -480,7 +494,7 @@ mod tests {
     #[test]
     fn parse_jsonl_facts_skips_empty_lines() {
         let jsonl = "\n{\"id\":\"fact-01\",\"nous_id\":\"syn\",\"fact_type\":\"observation\",\"content\":\"a\",\"valid_from\":\"2024-01-01T00:00:00Z\",\"valid_to\":\"9999-01-01T00:00:00Z\",\"recorded_at\":\"2024-01-01T00:00:00Z\",\"confidence\":0.7,\"tier\":\"inferred\",\"stability_hours\":72.0,\"access_count\":0,\"is_forgotten\":false}\n\n{\"id\":\"fact-02\",\"nous_id\":\"syn\",\"fact_type\":\"observation\",\"content\":\"b\",\"valid_from\":\"2024-01-01T00:00:00Z\",\"valid_to\":\"9999-01-01T00:00:00Z\",\"recorded_at\":\"2024-01-01T00:00:00Z\",\"confidence\":0.7,\"tier\":\"inferred\",\"stability_hours\":72.0,\"access_count\":0,\"is_forgotten\":false}\n";
-        let facts = parse_jsonl_facts(jsonl).unwrap();
+        let facts = parse_jsonl_facts(jsonl);
         assert_eq!(facts.len(), 2);
     }
 

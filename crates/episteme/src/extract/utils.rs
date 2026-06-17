@@ -38,10 +38,13 @@ pub(super) fn strip_code_fences(s: &str) -> &str {
 pub(crate) fn slugify(s: &str) -> String {
     use unicode_normalization::UnicodeNormalization as _;
     let normalized: String = s.nfc().collect();
+    // WHY: ASCII-only — is_alphanumeric() is Unicode-aware and would let Tamil,
+    // Cyrillic, etc. pass through. Restricting to ASCII alnum keeps slugs safe
+    // for filenames, URL paths, and Datalog relation keys.
     normalized
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect::<String>()
         .split('-')
         .filter(|part| !part.is_empty())
