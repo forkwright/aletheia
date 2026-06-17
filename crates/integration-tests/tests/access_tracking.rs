@@ -5,11 +5,6 @@
     clippy::indexing_slicing,
     reason = "test: vec indices valid after length assertions"
 )]
-#![expect(
-    clippy::too_many_lines,
-    reason = "integration test: single test covers the full audit invariant set"
-)]
-
 use std::sync::Arc;
 
 use mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};

@@ -447,10 +447,6 @@ fn provider_failed(operation: &'static str, message: impl std::fmt::Display) -> 
 #[cfg(test)]
 mod tests {
     #![expect(clippy::expect_used, reason = "test assertions")]
-    #![expect(
-        clippy::indexing_slicing,
-        reason = "test: indices valid by test construction"
-    )]
 
     use super::*;
 

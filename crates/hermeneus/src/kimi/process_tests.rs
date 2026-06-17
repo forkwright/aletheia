@@ -1,4 +1,4 @@
-#![expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
