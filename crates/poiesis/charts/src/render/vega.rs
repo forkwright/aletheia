@@ -18,6 +18,7 @@
 //!   swaps recolor here the same way they do on the Rust path.
 
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value;
 
@@ -185,12 +186,15 @@ fn vl_to_svg(spec_json: &str) -> crate::Result<String> {
         message: format!("temp file write failed: {e}"),
     })?;
 
+    let tmp_path = tmp.to_str().ok_or_else(|| crate::Error::VegaShellout {
+        message: "temp path is not valid UTF-8".into(),
+    })?;
     let output = Command::new("npx")
         .args([
             "--yes",
             "vega-lite@5.20.1",
             "--vl2svg",
-            tmp.to_str().unwrap_or(""),
+            tmp_path,
         ])
         .output()
         .map_err(|e| crate::Error::VegaShellout {
@@ -210,8 +214,13 @@ fn vl_to_svg(spec_json: &str) -> crate::Result<String> {
 }
 
 fn tempfile_path() -> std::path::PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let mut p = std::env::temp_dir();
-    p.push(format!("poiesis-charts-vl-{}.json", std::process::id()));
+    p.push(format!(
+        "poiesis-charts-vl-{}-{}.json",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
     p
 }
 
@@ -459,5 +468,14 @@ mod tests {
             mark.get("type").and_then(serde_json::Value::as_str),
             Some("point")
         );
+    }
+
+    #[test]
+    fn tempfile_path_is_unique_per_call() {
+        let a = tempfile_path();
+        let b = tempfile_path();
+        assert_ne!(a, b, "concurrent renders must not share a temp file");
+        assert!(a.file_name().is_some());
+        assert!(b.file_name().is_some());
     }
 }
