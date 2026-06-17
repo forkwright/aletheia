@@ -45,7 +45,13 @@ pub(super) fn capture_screen(output_path: &Path) -> std::io::Result<()> {
 // `tokio::task::spawn_blocking`; tokio::fs would require an async runtime here.
 #[allow(clippy::disallowed_methods)]
 pub(super) fn read_frame(path: &Path) -> std::io::Result<Vec<u8>> {
-    std::fs::read(path)
+    use std::io::Read as _;
+    let mut buf = Vec::new();
+    std::fs::OpenOptions::new()
+        .read(true)
+        .open(path)?
+        .read_to_end(&mut buf)?;
+    Ok(buf)
 }
 
 /// Compare two PNG byte buffers and return the bounding box of the changed region.

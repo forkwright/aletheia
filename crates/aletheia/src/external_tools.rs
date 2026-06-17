@@ -216,7 +216,10 @@ async fn register_single_tool(
 }
 
 #[cfg(feature = "mcp")]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "MCP registration iterates tool list with multi-branch error handling; cohesive logic"
+)]
 async fn register_mcp_server(
     server_name: &str,
     entry: &ExternalToolEntry,
@@ -686,8 +689,8 @@ fn mcp_result_to_tool_result(result: rmcp::model::CallToolResult) -> ToolResult 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    #![expect(clippy::expect_used, reason = "test assertions")]
     use super::*;
 
     /// WHY: reqwest requires a rustls `CryptoProvider` to be installed. In
@@ -868,13 +871,18 @@ no_endpoint = { type = "mcp" }
     #[cfg(feature = "mcp")]
     #[allow(clippy::disallowed_methods)]
     fn fake_mcp_server_script() -> (tempfile::TempDir, std::path::PathBuf) {
-        use std::fs;
-
         let dir = tempfile::tempdir().expect("tempdir");
         let script = dir.path().join("fake-mcp.sh");
-        fs::write(
-            &script,
-            r#"#!/bin/sh
+        {
+            use std::io::Write as _;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&script)
+                .expect("open script")
+                .write_all(
+                    br#"#!/bin/sh
 IFS= read -r init
 printf '%s\n' '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"fake","version":"0.1.0"}}}'
 IFS= read -r initialized
@@ -888,14 +896,15 @@ while IFS= read -r line; do
   esac
 done
 "#,
-        )
-        .expect("write script");
-        let mut perms = fs::metadata(&script).expect("metadata").permissions();
+                )
+                .expect("write script");
+        }
+        let mut perms = std::fs::metadata(&script).expect("metadata").permissions();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
             perms.set_mode(0o755);
-            fs::set_permissions(&script, perms).expect("chmod");
+            std::fs::set_permissions(&script, perms).expect("chmod");
         }
         (dir, script)
     }

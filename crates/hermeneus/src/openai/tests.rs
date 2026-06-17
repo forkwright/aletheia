@@ -832,3 +832,36 @@ async fn air_gapped_registry_routes_to_local_provider() {
         other => panic!("expected Text, got {other:?}"),
     }
 }
+
+#[test]
+fn pricing_field_defaults_empty() {
+    // WHY(#4628): unpriced local models should still construct without error.
+    let cfg = OpenAiProviderConfig::default();
+    assert!(cfg.pricing.is_empty(), "default pricing must be empty");
+}
+
+#[test]
+fn pricing_field_round_trips() {
+    // WHY(#4628): operators can supply per-model pricing rates in config.
+    use crate::provider::ModelPricing;
+    use std::collections::HashMap;
+
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "gpt-4o".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 2.5,
+            output_cost_per_mtok: 10.0,
+        },
+    );
+    let cfg = OpenAiProviderConfig {
+        name: "priced-openai".to_owned(),
+        base_url: "https://api.openai.com/v1".to_owned(),
+        pricing,
+        ..OpenAiProviderConfig::default()
+    };
+    assert_eq!(cfg.pricing.len(), 1);
+    let p = &cfg.pricing["gpt-4o"];
+    assert!((p.input_cost_per_mtok - 2.5).abs() < f64::EPSILON);
+    assert!((p.output_cost_per_mtok - 10.0).abs() < f64::EPSILON);
+}
