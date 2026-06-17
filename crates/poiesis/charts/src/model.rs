@@ -80,7 +80,7 @@ impl ChartKind {
     /// Pure rule: which emitter owns this kind?
     ///
     /// Vega kinds: `heatmap`, `boxplot`, `sankey`, `candlestick`. Axis-scale
-    /// driven Vega routing (`log`, `time`) happens at [`Chart::render_path`]
+    /// driven Vega routing (`log`, `time`) happens at [`Chart::validate`]
     /// rather than here, because it depends on the spec's axes.
     #[must_use]
     pub const fn render_path(self) -> RenderPath {
