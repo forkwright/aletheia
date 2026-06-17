@@ -20,14 +20,12 @@ For first-time setup, see [QUICKSTART.md](QUICKSTART.md).
 
 | Target | Notes |
 |--------|-------|
-| `x86_64-unknown-linux-gnu` | glibc-based Linux |
-| `aarch64-unknown-linux-gnu` | ARM64 Linux (Raspberry Pi 4+, AWS Graviton) |
-| `x86_64-apple-darwin` | macOS 12+ Intel |
+| `x86_64-unknown-linux-musl` | Linux x86_64 — static musl binary, no glibc or runtime deps |
 | `aarch64-apple-darwin` | macOS 12+ Apple Silicon |
 
 ### Software
 
-- Links dynamically against glibc only (Linux). No other runtime dependencies for core functionality.
+- Linux artifact is a fully static musl binary with no glibc or other runtime dependencies.
 - **Build from source:** Rust 1.94+ (edition 2024), Cargo
 - **Optional:** signal-cli for Signal messaging channel
 - **Optional:** Pandoc >= 3.0 for document export formats (`docx`, `html`, `md`, `latex`, `epub`). Without Pandoc, only PDF (via in-process Typst) and XLSX export are available. Missing Pandoc produces an actionable error: `{format} output requires Pandoc; install pandoc >= 3.0`.

@@ -461,12 +461,12 @@ The `aletheia add-nous` scaffolding command currently validates only `anthropic`
 | `session_max_age_days` | u32 | `90` | Max age for closed sessions |
 | `orphan_message_max_age_days` | u32 | `30` | Max age for orphaned messages |
 | `max_sessions_per_nous` | u32 | `0` | Max sessions per agent (0 = unlimited). A nonzero value is enforced per `nous_id` when retention is enabled. |
-| `archive_before_delete` | bool | `true` | Export sessions to JSON before deletion |
+| `archiveBeforeDelete` | bool | `true` | Export sessions to JSON before deletion |
 
 ```toml
 [data.retention]
 session_max_age_days = 90
-archive_before_delete = true
+archiveBeforeDelete = true
 ```
 
 ### Session cap semantics

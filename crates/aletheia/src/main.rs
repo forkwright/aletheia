@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     // WHY: `Serve` is an explicit alias for running with no subcommand.
     match cli.command {
         Some(Command::Serve) | None => {}
-        Some(cmd) => return commands::dispatch(cmd, cli.instance_root.as_ref()).await,
+        Some(cmd) => return Box::pin(commands::dispatch(cmd, cli.instance_root.as_ref())).await,
     }
 
     if cli.daemon && RealSystem.var("_ALETHEIA_DAEMON").is_none() {

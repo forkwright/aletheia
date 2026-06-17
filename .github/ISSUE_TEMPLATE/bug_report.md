@@ -1,9 +1,9 @@
 ---
 name: Bug Report
 about: Report a bug or unexpected behavior
-title: ''
+title: ""
 labels: bug
-assignees: ''
+assignees: ""
 ---
 
 ## Description
@@ -26,10 +26,10 @@ What happens instead. Include error messages or logs if available.
 
 ## Environment
 
-- **Node.js version:**
-- **OS:**
 - **Aletheia version/commit:**
-- **Relevant services:** (e.g., Qdrant, Neo4j, signal-cli)
+- **OS:**
+- **Rust toolchain:** (output of `rustc --version`)
+- **Relevant services:** (e.g., signal-cli, OAuth provider)
 
 ## Additional context
 

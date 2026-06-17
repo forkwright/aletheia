@@ -216,6 +216,7 @@ async fn register_single_tool(
 }
 
 #[cfg(feature = "mcp")]
+#[allow(clippy::too_many_lines)]
 async fn register_mcp_server(
     server_name: &str,
     entry: &ExternalToolEntry,
@@ -455,8 +456,7 @@ fn property_def_from_json(value: &serde_json::Value) -> PropertyDef {
     let property_type = value
         .get("type")
         .and_then(serde_json::Value::as_str)
-        .map(property_type_from_str)
-        .unwrap_or(PropertyType::String);
+        .map_or(PropertyType::String, property_type_from_str);
     let description = value
         .get("description")
         .and_then(serde_json::Value::as_str)
@@ -866,6 +866,7 @@ no_endpoint = { type = "mcp" }
     }
 
     #[cfg(feature = "mcp")]
+    #[allow(clippy::disallowed_methods)]
     fn fake_mcp_server_script() -> (tempfile::TempDir, std::path::PathBuf) {
         use std::fs;
 
@@ -928,8 +929,8 @@ done
         let result =
             register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
         assert_eq!(result.len(), 1);
-        assert!(result[0].available);
-        assert_eq!(result[0].name, "echo");
+        assert!(result.first().is_some_and(|e| e.available));
+        assert_eq!(result.first().map(|e| e.name.as_str()), Some("echo"));
 
         let tool_name = ToolName::new("echo").expect("tool name");
         let def = registry.get_def(&tool_name).expect("tool def");

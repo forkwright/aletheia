@@ -2,20 +2,7 @@
 
 *Available tools and workflows. Loaded on startup for operational awareness.*
 
-<!-- Customize per-agent. This template covers common patterns. -->
-
----
-
-## Prompting pipeline
-
-| What | Where |
-|------|-------|
-| Generate prompt | `gen-prompt <number> <slug> [--template standard\|gsd]` |
-| Templates | `theke/projects/<project>/prompts/templates/` |
-| Queue | `theke/projects/<project>/prompts/queue/` |
-| Done | `theke/projects/<project>/prompts/done/` |
-
-**Flow:** Write prompt → sync to operator → execute → PR → merge → update roadmap.
+<!-- Customize for your setup. Items marked [OPTIONAL] require external tools or operator-specific config. -->
 
 ---
 
@@ -23,9 +10,8 @@
 
 | Tool | Use |
 |------|-----|
-| `pplx "query"` | Perplexity pro-search (deep, sourced) |
 | `web_search` | Quick web lookup |
-| `web_fetch` | Fetch + extract text from URL |
+| `web_fetch` | Fetch and extract text from a URL |
 | `browser` | JS-rendered pages, screenshots |
 
 ---
@@ -35,9 +21,7 @@
 | Tool | Use |
 |------|-----|
 | `memory_search` | Semantic search across long-term memory |
-| `consolidate-memory` | Merge/deduplicate memory entries |
 | `aletheia-graph` | Knowledge graph queries |
-| Daily logs | `memory/YYYY-MM-DD.md` - manual session logs |
 
 ---
 
@@ -50,15 +34,6 @@
 | `credential-refresh` | Rotate OAuth tokens |
 | `aletheia backup` | Instance backup |
 | `aletheia-export` | Autarkeia export |
-
----
-
-## Calendar and tasks
-
-| Tool | Use |
-|------|-----|
-| `gcal today -c <calendar>` | Check calendar |
-| `tw` / `tw add` / `tw done` | Task management |
 
 ---
 
