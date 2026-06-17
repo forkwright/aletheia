@@ -37,25 +37,6 @@ pub struct LoadedPack {
 }
 
 impl LoadedPack {
-    /// Filter sections for a specific agent.
-    ///
-    /// Returns sections where the agent filter is empty (all agents)
-    /// or contains the given agent id.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "agent-filtered pack sections, superseded by sections_for_agent_or_domains; kept around for the inline regression test"
-        )
-    )]
-    pub(crate) fn sections_for_agent(&self, agent_id: &str) -> Vec<&PackSection> {
-        self.sections
-            .iter()
-            .filter(|s| s.agents.is_empty() || s.agents.iter().any(|a| a == agent_id))
-            .collect()
-    }
-
     /// Filter sections for an agent by ID or domain tags.
     ///
     /// A section matches if its `agents` list is empty (all agents),
@@ -327,24 +308,6 @@ domains = ["healthcare", "sql"]
     fn load_packs_empty_paths() {
         let packs = load_packs(&[]);
         assert!(packs.is_empty());
-    }
-
-    #[test]
-    fn sections_for_agent_filters() {
-        let dir = setup_pack(&[
-            ("pack.toml", full_pack_toml()),
-            ("context/LOGIC.md", "logic"),
-            ("context/GLOSSARY.md", "glossary"),
-        ]);
-
-        let pack = load_single_pack(dir.path()).unwrap();
-
-        let analyst_sections = pack.sections_for_agent("analyst");
-        assert_eq!(analyst_sections.len(), 2);
-
-        let hermes_sections = pack.sections_for_agent("hermes");
-        assert_eq!(hermes_sections.len(), 1);
-        assert_eq!(hermes_sections[0].name, "GLOSSARY.md");
     }
 
     #[test]
